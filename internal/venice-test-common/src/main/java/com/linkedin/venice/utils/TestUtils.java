@@ -497,10 +497,7 @@ public class TestUtils {
       if (executionStatus.isError()) {
         throw new VeniceException("Unexpected push failure for topic: " + topicName + ": " + jobStatusQueryResponse);
       }
-      assertEquals(
-          executionStatus,
-          ExecutionStatus.COMPLETED,
-          "Push is yet to complete: " + jobStatusQueryResponse.toString());
+      assertEquals(executionStatus, ExecutionStatus.COMPLETED, "Push is yet to complete: " + jobStatusQueryResponse);
     });
   }
 
@@ -652,8 +649,13 @@ public class TestUtils {
       String stateModelDef) {
     ZkClient foo = new ZkClient(zkAddress);
     foo.close();
-    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor =
-        new VeniceOfflinePushMonitorAccessor(cluster, new ZkClient(zkAddress), new HelixAdapterSerializer(), 3, 1000);
+    VeniceOfflinePushMonitorAccessor offlinePushStatusAccessor = new VeniceOfflinePushMonitorAccessor(
+        cluster,
+        new ZkClient(zkAddress),
+        new HelixAdapterSerializer(),
+        3,
+        1000,
+        cluster);
     MockTestStateModelFactory stateModelFactory = new MockTestStateModelFactory(offlinePushStatusAccessor);
     return getParticipant(cluster, nodeId, zkAddress, httpPort, stateModelFactory, stateModelDef);
   }

@@ -775,6 +775,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     restartVeniceComponent(veniceServerWrappers, port);
   }
 
+  public synchronized void stopAndRestartAllVeniceRouters() {
+    for (VeniceRouterWrapper router: getVeniceRouters()) {
+      stopVeniceRouter(router.getPort());
+      restartVeniceRouter(router.getPort());
+    }
+  }
+
   private <T extends ProcessWrapper> void stopVeniceComponent(Map<Integer, T> components, int port) {
     if (components.containsKey(port)) {
       T component = components.get(port);

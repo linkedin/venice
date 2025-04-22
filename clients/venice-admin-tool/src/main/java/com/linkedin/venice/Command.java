@@ -44,6 +44,7 @@ import static com.linkedin.venice.Arg.FABRIC_A;
 import static com.linkedin.venice.Arg.FABRIC_B;
 import static com.linkedin.venice.Arg.FORCE;
 import static com.linkedin.venice.Arg.FUTURE_VERSION_ETL_ENABLED;
+import static com.linkedin.venice.Arg.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.Arg.GRAVEYARD_CLUSTERS;
 import static com.linkedin.venice.Arg.HYBRID_BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.Arg.HYBRID_DATA_REPLICATION_POLICY;
@@ -299,7 +300,7 @@ public enum Command {
           MAX_COMPACTION_LAG_SECONDS, MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES,
           UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED, SEPARATE_REALTIME_TOPIC_ENABLED,
           NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER, TARGET_SWAP_REGION,
-          TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION }
+          TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION, GLOBAL_RT_DIV_ENABLED }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
@@ -461,6 +462,14 @@ public enum Command {
   ),
   LIST_CLUSTER_STALE_STORES(
       "list-cluster-stale-stores", "List all stores in a cluster which have stale replicas.", new Arg[] { URL, CLUSTER }
+  ),
+  REPUSH_STORE(
+      "repush-store", "Copy the current serving version's data into a new version and repush it to the store",
+      new Arg[] { URL, STORE }, new Arg[] { CLUSTER }
+  ),
+  GET_DEAD_STORES(
+      "get-dead-stores", "Get the stores that are considered dead via ACL DB and Store Discovery",
+      new Arg[] { URL, CLUSTER }, new Arg[] { STORE, INCLUDE_SYSTEM_STORES }
   ),
   LIST_STORE_PUSH_INFO(
       "list-store-push-info", "List information about current pushes and push history for a specific store.",

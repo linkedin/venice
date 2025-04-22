@@ -23,8 +23,9 @@ public class ClusterStats extends AbstractVeniceStats {
   private static final Logger LOGGER = LogManager.getLogger(ClusterStats.class);
 
   private final String storeName;
-  private final Sensor blockedInstanceCount;
-  private final Sensor unhealthyInstanceCount;
+  private final Sensor blockedInstanceCountSensor;
+  private final Sensor unhealthyInstanceCountSensor;
+  private final Sensor overloadedInstanceCountSensor;
   private final Sensor versionUpdateFailureSensor;
   /* This sensor tracks the version number that the client is at. This will help in case some clients are not able
   to switch to the latest version*/
@@ -34,19 +35,24 @@ public class ClusterStats extends AbstractVeniceStats {
   public ClusterStats(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
     this.storeName = storeName;
-    this.blockedInstanceCount = registerSensor("blocked_instance_count", new Avg(), new Max());
-    this.unhealthyInstanceCount = registerSensor("unhealthy_instance_count", new Avg(), new Max());
+    this.blockedInstanceCountSensor = registerSensor("blocked_instance_count", new Avg(), new Max());
+    this.unhealthyInstanceCountSensor = registerSensor("unhealthy_instance_count", new Avg(), new Max());
+    this.overloadedInstanceCountSensor = registerSensor("overloaded_instance_count", new Avg(), new Max());
     this.versionUpdateFailureSensor = registerSensor("version_update_failure", new OccurrenceRate());
     this.currentVersionNumberSensor =
         registerSensor(new AsyncGauge((ignored, ignored2) -> this.currentVersion, "current_version"));
   }
 
   public void recordBlockedInstanceCount(int count) {
-    this.blockedInstanceCount.record(count);
+    this.blockedInstanceCountSensor.record(count);
   }
 
   public void recordUnhealthyInstanceCount(int count) {
-    this.unhealthyInstanceCount.record(count);
+    this.unhealthyInstanceCountSensor.record(count);
+  }
+
+  public void recordOverloadedInstanceCount(int count) {
+    this.overloadedInstanceCountSensor.record(count);
   }
 
   public void updateCurrentVersion(int currentVersion) {

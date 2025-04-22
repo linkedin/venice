@@ -97,6 +97,7 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceResourceAccessException;
+import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
@@ -171,7 +172,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.mapred.RunningJob;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -224,7 +224,6 @@ public class VenicePushJob implements AutoCloseable {
   private ControllerClient controllerClient;
   private ControllerClient kmeSchemaSystemStoreControllerClient;
   private ControllerClient livenessHeartbeatStoreControllerClient;
-  private RunningJob runningJob;
 
   private DataWriterComputeJob dataWriterComputeJob = null;
 
@@ -394,6 +393,11 @@ public class VenicePushJob implements AutoCloseable {
     if (pushJobSettingToReturn.isIncrementalPush && (pushJobSettingToReturn.isTargetedRegionPushEnabled
         || pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled)) {
       throw new VeniceException("Incremental push is not supported while using targeted region push mode");
+    }
+
+    if (pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled && pushJobSettingToReturn.deferVersionSwap) {
+      throw new VeniceException(
+          "Target region push with deferred swap and deferred swap cannot be enabled at the same time");
     }
 
     // If target region push with deferred version swap is enabled, enable deferVersionSwap
@@ -808,7 +812,7 @@ public class VenicePushJob implements AutoCloseable {
             pushJobSetting,
             pushJobSetting.targetedRegions,
             pushJobSetting.isTargetedRegionPushEnabled,
-            false);
+            pushJobSetting.isTargetRegionPushWithDeferredSwapEnabled);
       }
 
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
@@ -1056,6 +1060,10 @@ public class VenicePushJob implements AutoCloseable {
           throw new VeniceException(
               "Data writer job failed unexpectedly with status: " + dataWriterComputeJob.getStatus());
         } else {
+          if (t instanceof VeniceInvalidInputException) {
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
+          }
+
           throwVeniceException(t);
         }
       } else {
@@ -1071,19 +1079,12 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private void checkLastModificationTimeAndLog() throws IOException {
-    checkLastModificationTimeAndLog(false);
-  }
-
-  private void checkLastModificationTimeAndLog(boolean throwExceptionOnDataSetChange) throws IOException {
     long lastModificationTime = getInputDataInfoProvider().getInputLastModificationTime(pushJobSetting.inputURI);
     if (lastModificationTime > inputDataInfo.getInputModificationTime()) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
-      String error = "Dataset changed during the push job. Please check above logs to see if the change "
-          + "caused the MapReduce failure and rerun the job without dataset change.";
-      LOGGER.error(error);
-      if (throwExceptionOnDataSetChange) {
-        throw new VeniceException(error);
-      }
+      LOGGER.error(
+          "Dataset changed during the push job. Please investigate if the change caused the failure and "
+              + "rerun the job without changing the dataset while the job is running.");
     }
   }
 
@@ -2524,7 +2525,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private void killJob(PushJobSetting pushJobSetting, ControllerClient controllerClient) {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
-    killComputeJob();
+    killDataWriterJob();
     if (!pushJobSetting.isIncrementalPush) {
       final int maxRetryAttempt = 10;
       int currentRetryAttempt = 0;
@@ -2544,35 +2545,6 @@ public class VenicePushJob implements AutoCloseable {
             c -> c.killOfflinePushJob(pushJobSetting.topic));
         LOGGER.info("Offline push job has been killed, topic: {}", pushJobSetting.topic);
       }
-    }
-  }
-
-  private void killComputeJob() {
-    killMRJob();
-    killDataWriterJob();
-  }
-
-  private void killMRJob() {
-    if (runningJob == null) {
-      LOGGER.warn("No op to kill a null running job");
-      return;
-    }
-    try {
-      if (runningJob.isComplete()) {
-        LOGGER.warn(
-            "No op to kill a completed job with name {} and ID {}",
-            runningJob.getJobName(),
-            runningJob.getID().getId());
-        return;
-      }
-      runningJob.killJob();
-    } catch (Exception ex) {
-      // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws an exception or not.
-      LOGGER.info(
-          "Received exception while killing map-reduce job with name {} and ID {}",
-          runningJob.getJobName(),
-          runningJob.getID().getId(),
-          ex);
     }
   }
 

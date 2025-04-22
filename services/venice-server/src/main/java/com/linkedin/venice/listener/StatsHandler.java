@@ -21,14 +21,17 @@ public class StatsHandler extends ChannelDuplexHandler {
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
+  private final ServerLoadControllerHandler loadControllerHandler;
 
   public StatsHandler(
       AggServerHttpRequestStats singleGetStats,
       AggServerHttpRequestStats multiGetStats,
-      AggServerHttpRequestStats computeStats) {
+      AggServerHttpRequestStats computeStats,
+      ServerLoadControllerHandler loadControllerHandler) {
     this.singleGetStats = singleGetStats;
     this.multiGetStats = multiGetStats;
     this.computeStats = computeStats;
+    this.loadControllerHandler = loadControllerHandler;
 
     this.serverStatsContext = new ServerStatsContext(singleGetStats, multiGetStats, computeStats);
   }
@@ -137,6 +140,12 @@ public class StatsHandler extends ChannelDuplexHandler {
           serverStatsContext.successRequest(serverHttpRequestStats, elapsedTime);
         } else if (!serverStatsContext.getResponseStatus().equals(TOO_MANY_REQUESTS)) {
           serverStatsContext.errorRequest(serverHttpRequestStats, elapsedTime);
+        }
+        if (loadControllerHandler != null) {
+          loadControllerHandler.recordLatency(
+              serverStatsContext.getRequestType(),
+              elapsedTime,
+              serverStatsContext.getResponseStatus().code());
         }
         serverStatsContext.setStatCallBackExecuted(true);
       }

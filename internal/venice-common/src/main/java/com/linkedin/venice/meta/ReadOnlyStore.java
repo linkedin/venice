@@ -628,6 +628,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public boolean isGlobalRtDivEnabled() {
+      return delegate.isGlobalRtDivEnabled();
+    }
+
+    @Override
+    public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void setRepushSourceVersion(int version) {
       throw new UnsupportedOperationException();
     }
@@ -1598,6 +1608,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public boolean isGlobalRtDivEnabled() {
+    return delegate.isGlobalRtDivEnabled();
+  }
+
+  @Override
+  public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public String toString() {
     return this.delegate.toString();
   }
@@ -1739,6 +1759,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setTargetSwapRegion(version.getTargetSwapRegion());
     storeVersion.setTargetSwapRegionWaitTime(version.getTargetSwapRegionWaitTime());
     storeVersion.setIsDaVinciHeartBeatReported(version.getIsDavinciHeartbeatReported());
+    storeVersion.setGlobalRtDivEnabled(version.isGlobalRtDivEnabled());
     storeVersion.setViews(convertViewConfigsStringMap(version.getViewConfigs()));
 
     return storeVersion;

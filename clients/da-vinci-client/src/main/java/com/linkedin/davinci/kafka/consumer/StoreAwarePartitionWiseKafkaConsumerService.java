@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
@@ -43,14 +44,15 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
       final MetricsRepository metricsRepository,
       final String kafkaClusterAlias,
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
-      final TopicExistenceChecker topicExistenceChecker,
+      final StaleTopicChecker staleTopicChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       final PubSubMessageDeserializer pubSubDeserializer,
       final Time time,
       final AggKafkaConsumerServiceStats stats,
       final boolean isKafkaConsumerOffsetCollectionEnabled,
       final ReadOnlyStoreRepository metadataRepository,
-      final boolean isUnregisterMetricForDeletedStoreEnabled) {
+      final boolean isUnregisterMetricForDeletedStoreEnabled,
+      VeniceServerConfig veniceServerConfig) {
     super(
         poolType,
         consumerFactory,
@@ -62,7 +64,7 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
         metricsRepository,
         kafkaClusterAlias,
         sharedConsumerNonExistingTopicCleanupDelayMS,
-        topicExistenceChecker,
+        staleTopicChecker,
         liveConfigBasedKafkaThrottlingEnabled,
         pubSubDeserializer,
         time,
@@ -70,7 +72,8 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
         isKafkaConsumerOffsetCollectionEnabled,
         metadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
-        StoreAwarePartitionWiseKafkaConsumerService.class.toString());
+        StoreAwarePartitionWiseKafkaConsumerService.class.toString(),
+        veniceServerConfig);
   }
 
   @Override

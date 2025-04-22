@@ -58,6 +58,8 @@ public class InstanceHealthMonitor implements Closeable {
 
   private final Consumer<String> counterResetConsumer;
 
+  private final InstanceLoadController loadController;
+
   public InstanceHealthMonitor(InstanceHealthMonitorConfig config) {
     this.config = config;
     this.timeoutProcessor = new TimeoutProcessor(null, true, 1);
@@ -81,6 +83,7 @@ public class InstanceHealthMonitor implements Closeable {
         return v - 1;
       });
     };
+    this.loadController = new InstanceLoadController(config);
   }
 
   private void heartBeat() {
@@ -206,6 +209,8 @@ public class InstanceHealthMonitor implements Closeable {
       } else {
         counterResetConsumer.accept(instance);
       }
+
+      loadController.recordResponse(instance, httpStatus);
     });
 
     return new ChainedCompletableFuture<>(requestFuture, resultFuture);
@@ -217,7 +222,7 @@ public class InstanceHealthMonitor implements Closeable {
    * eventually become blocked when it reaches the threshold for pendingRequestCounter. This
    * provides some break between continuously sending requests to these instances.
    */
-  public boolean isInstanceHealthy(String instance) {
+  boolean isInstanceHealthy(String instance) {
     return !unhealthyInstanceSet.contains(instance);
   }
 
@@ -225,8 +230,16 @@ public class InstanceHealthMonitor implements Closeable {
    * If an instance is blocked, it won't be considered for new requests until the requests are closed either
    * in a proper manner or closed by {@link #trackHealthBasedOnRequestToInstance#timeoutFuture}
    */
-  public boolean isInstanceBlocked(String instance) {
+  boolean isInstanceBlocked(String instance) {
     return getPendingRequestCounter(instance) >= config.getRoutingPendingRequestCounterInstanceBlockThreshold();
+  }
+
+  boolean shouldRejectRequest(String instance) {
+    return loadController.shouldRejectRequest(instance);
+  }
+
+  public boolean isRequestAllowed(String instance) {
+    return isInstanceHealthy(instance) && !isInstanceBlocked(instance) && !shouldRejectRequest(instance);
   }
 
   public int getBlockedInstanceCount() {
@@ -238,6 +251,14 @@ public class InstanceHealthMonitor implements Closeable {
       }
     }
     return blockedInstanceCount;
+  }
+
+  public int getOverloadedInstanceCount() {
+    return loadController.getTotalNumberOfOverLoadedInstances();
+  }
+
+  public double getRejectionRatio(String instance) {
+    return loadController.getRejectionRatio(instance);
   }
 
   public int getUnhealthyInstanceCount() {

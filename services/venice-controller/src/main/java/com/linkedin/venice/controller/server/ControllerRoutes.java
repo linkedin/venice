@@ -17,6 +17,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.InstanceRemovableStatuses;
+import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.AggregatedHealthStatusRequest;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -24,6 +25,7 @@ import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.controllerapi.StoppableNodeStatusResponse;
 import com.linkedin.venice.exceptions.ErrorType;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
@@ -32,7 +34,9 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
+import java.net.URL;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
@@ -242,6 +246,75 @@ public class ControllerRoutes extends AbstractRoute {
       LOGGER.info("[AggregatedHealthStatus] Response: {}", responseContent);
       return responseContent;
     };
+  }
+
+  /**
+   * Get all admin operation protocol versions of the given cluster from controllers (leader + standby).
+   */
+  public Route getAdminOperationVersionFromControllers(Admin admin) {
+    return (request, response) -> {
+      AdminOperationProtocolVersionControllerResponse responseObject =
+          new AdminOperationProtocolVersionControllerResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        String clusterName = request.queryParams(CLUSTER);
+        String currentUrl = getRequestURL(request);
+
+        responseObject.setCluster(clusterName);
+        Map<String, Long> controllerUrlToVersionMap = admin.getAdminOperationVersionFromControllers(clusterName);
+        responseObject.setControllerUrlToVersionMap(controllerUrlToVersionMap);
+        responseObject.setRequestUrl(currentUrl);
+
+        if (controllerUrlToVersionMap.containsKey(currentUrl)) {
+          responseObject.setLocalAdminOperationProtocolVersion(controllerUrlToVersionMap.get(currentUrl));
+        } else {
+          // Should not happen
+          throw new VeniceException(
+              "The current controller URL: " + currentUrl + " is not in the urlToVersionMap in the response "
+                  + controllerUrlToVersionMap);
+        }
+
+      } catch (Throwable e) {
+        responseObject.setError(e);
+        AdminSparkServer.handleError(e, request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  /**
+   * Get the local admin operation protocol version in current controller
+   */
+  public Route getLocalAdminOperationProtocolVersion(Admin admin) {
+    return (request, response) -> {
+      AdminOperationProtocolVersionControllerResponse responseObject =
+          new AdminOperationProtocolVersionControllerResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        responseObject.setLocalAdminOperationProtocolVersion(admin.getLocalAdminOperationProtocolVersion());
+        responseObject.setRequestUrl(getRequestURL(request));
+      } catch (Throwable e) {
+        responseObject.setError(e);
+        AdminSparkServer.handleError(e, request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  /**
+   * Get the request base URL from the request object.
+   * Example:
+   * request.url() = https://localhost:8080/venice/cluster/clusterName/leaderController?param1=value1&param2=value2
+   * base URL: https://localhost:8080
+   * @return the base URL
+   */
+  private String getRequestURL(Request request) {
+    try {
+      URL url = new URL(request.url());
+      return url.getProtocol() + "://" + url.getHost() + (url.getPort() != -1 ? ":" + url.getPort() : "");
+    } catch (Exception e) {
+      throw new VeniceException("Invalid URL: " + request.url(), e);
+    }
   }
 
   @FunctionalInterface

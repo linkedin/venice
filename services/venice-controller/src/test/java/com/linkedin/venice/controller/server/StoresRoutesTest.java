@@ -3,17 +3,20 @@ package com.linkedin.venice.controller.server;
 import static com.linkedin.venice.exceptions.ErrorType.INCORRECT_CONTROLLER;
 import static com.linkedin.venice.exceptions.ErrorType.INVALID_CONFIG;
 import static com.linkedin.venice.exceptions.ErrorType.STORE_NOT_FOUND;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -37,7 +40,7 @@ import spark.Response;
 import spark.Route;
 
 
-public class StoreRoutesTest {
+public class StoresRoutesTest {
   private static final String TEST_CLUSTER = "test_cluster";
   private static final String TEST_STORE_NAME = "test_store";
 
@@ -253,5 +256,30 @@ public class StoreRoutesTest {
             storesRoutes.getStore(mockAdmin).handle(request, mock(Response.class)).toString(),
             StoreResponse.class);
     Assert.assertEquals(response.getStore().getMaxRecordSizeBytes(), testMaxRecordSizeBytesValue);
+  }
+
+  @Test
+  public void testRepushStoreWithErrorResponse() throws Exception {
+    Admin mockAdmin = mock(Admin.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    Route repushStoreRoute = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).repushStore(mockAdmin);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.NAME));
+
+    QueryParamsMap queryParamsMap = mock(QueryParamsMap.class);
+    doReturn(queryParamsMap).when(request).queryMap();
+
+    Map<String, String[]> queryMap = new HashMap<>(1);
+    queryMap.put(ControllerApiConstants.NAME, new String[] { TEST_STORE_NAME });
+    doReturn(queryMap).when(queryParamsMap).toMap();
+
+    when(mockAdmin.repushStore(any())).thenThrow(mock(Exception.class));
+
+    RepushJobResponse repushJobResponse = ObjectMapperFactory.getInstance()
+        .readValue(repushStoreRoute.handle(request, mock(Response.class)).toString(), RepushJobResponse.class);
+    Assert.assertTrue(repushJobResponse.isError());
   }
 }

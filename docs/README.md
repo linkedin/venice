@@ -37,6 +37,60 @@ Venice is a system which straddles the offline, nearline and online worlds, as i
 
 ![High Level Architecture Diagram](assets/images/high_level_architecture.drawio.svg)
 
+## Dependency
+
+You can add a dependency on Venice to any Java project as specified below. Note that, currently, Venice dependencies are
+not published on Maven Central and therefore require adding an extra repository definition. All published jars can be
+seen [here](https://linkedin.jfrog.io/ui/native/venice/com/linkedin/venice/). Usually, the project is released a few 
+times per week.
+
+### Gradle
+
+Add the following to your `build.gradle`:
+
+```groovy
+repositories {
+  mavenCentral()
+  maven {
+    name 'VeniceJFrog'
+    url 'https://linkedin.jfrog.io/artifactory/venice'
+  }
+}
+
+dependencies {
+  implementation 'com.linkedin.venice:venice-client:0.4.455'
+}
+```
+
+### Maven
+
+Add the following to your `pom.xml`:
+
+```xml
+<project>
+...
+  <repositories>
+    ...
+    <repository>
+      <id>venice-jfrog</id>
+      <name>VeniceJFrog</name>
+      <url>https://linkedin.jfrog.io/artifactory/venice</url>
+    </repository>
+  </repositories>
+...
+  <dependencies>
+    ...
+    <dependency>
+      <groupId>com.linkedin.venice</groupId>
+      <artifactId>venice-client</artifactId>
+      <version>0.4.455</version>
+      <scope>compile</scope>
+    </dependency>
+  </dependencies>
+</project>
+
+```
+
 ## APIs
 From the user's perspective, Venice provides a variety of read and write APIs. These are fully decoupled from one 
 another, in the sense that no matter which write APIs are used, any of the read APIs are available.
@@ -50,7 +104,7 @@ The following diagram presents these APIs and summarizes the components coming i
 
 ![API Overview](assets/images/api_overview.drawio.svg)
 
-## Write Path
+### Write Path
 
 The Venice write path can be broken down into three granularities: full dataset swap, insertion of many rows into an 
 existing dataset, and updates of some columns of some rows. All three granularities are supported by Hadoop and Samza.
@@ -64,7 +118,7 @@ supported by each platform:
 |  Insertion of some rows into an existing dataset |                      ✅                       |                          ✅                          |                            ✅                             |
 |             Updates to some columns of some rows |                      ✅                       |                          ✅                          |                            ✅                             |
 
-### Hybrid Stores
+#### Hybrid Stores
 Moreover, the three granularities of write operations can all be mixed within a single dataset. A dataset which gets 
 full dataset swaps in addition to row insertion or row updates is called _hybrid_.
 
@@ -75,7 +129,7 @@ Leveraging this mechanism, it is possible to overlay the output of a stream proc
 job. If using partial updates, then it is possible to have some of the columns be updated in real-time and some in 
 batch, and these two sets of columns can either overlap or be disjoint, as desired.
 
-### Write Compute
+#### Write Compute
 Write Compute includes two kinds of operations, which can be performed on the value associated with a given key:
 
 - **Partial update**: set the content of a field within the value.
@@ -84,7 +138,7 @@ Write Compute includes two kinds of operations, which can be performed on the va
 N.B.: Currently, write compute is only supported in conjunction with active-passive replication. Support for 
 active-active replication is under development. 
 
-## Read Path
+### Read Path
 
 Venice supports the following read APIs:
 
@@ -100,7 +154,7 @@ Venice supports the following read APIs:
     vector provided as query param, and return the resulting vector.
   - **Collection count**: return the number of items in the collection stored in a given field.
 
-### Client Modes
+#### Client Modes
 
 There are two main modes for accessing Venice data:
 

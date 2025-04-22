@@ -42,6 +42,8 @@ import org.apache.avro.specific.SpecificRecord;
  *
  * Having these definitions in a single place makes it easy to ensure that magic bytes
  * are defined only once and do not conflict with each other.
+ *
+ * @see <a href="https://venicedb.org/docs/ops_guide/system_stores#schema-system-stores">System Stores in the docs</a>
  */
 public enum AvroProtocolDefinition {
   /**
@@ -53,7 +55,7 @@ public enum AvroProtocolDefinition {
    * Used to persist the state of a partition in Storage Nodes, including offset,
    * Data Ingest Validation state, etc.
    */
-  PARTITION_STATE(24, 15, PartitionState.class),
+  PARTITION_STATE(24, 16, PartitionState.class),
 
   /**
    * Used to persist state related to a store-version, including Start of Buffer Replay
@@ -74,7 +76,7 @@ public enum AvroProtocolDefinition {
    *
    * TODO: Move AdminOperation to venice-common module so that we can properly reference it here.
    */
-  ADMIN_OPERATION(85, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
+  ADMIN_OPERATION(86, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
 
   /**
    * Single chunk of a large multi-chunk value. Just a bunch of bytes.
@@ -145,7 +147,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(28, StoreMetaValue.class),
+  METADATA_SYSTEM_SCHEMA_STORE(29, StoreMetaValue.class),
 
   /**
    * Key schema for push status system store.

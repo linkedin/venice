@@ -43,8 +43,10 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     this.heartbeatWaitTimeSeconds =
         multiClusterConfigs.getCommonConfig().getParentSystemStoreHeartbeatCheckWaitTimeSeconds();
     for (String clusterName: multiClusterConfigs.getClusters()) {
-      clusterToSystemStoreHealthCheckStatsMap
-          .put(clusterName, new SystemStoreHealthCheckStats(metricsRepository, clusterName));
+      if (multiClusterConfigs.getControllerConfig(clusterName).isParentSystemStoreRepairServiceEnabled()) {
+        getClusterToSystemStoreHealthCheckStatsMap()
+            .put(clusterName, new SystemStoreHealthCheckStats(metricsRepository, clusterName));
+      }
     }
   }
 
@@ -78,5 +80,9 @@ public class SystemStoreRepairService extends AbstractVeniceService {
       currentThread().interrupt();
     }
     LOGGER.info("SystemStoreRepairService is shutdown.");
+  }
+
+  final Map<String, SystemStoreHealthCheckStats> getClusterToSystemStoreHealthCheckStatsMap() {
+    return clusterToSystemStoreHealthCheckStatsMap;
   }
 }

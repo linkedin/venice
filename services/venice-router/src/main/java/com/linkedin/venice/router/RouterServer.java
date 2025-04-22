@@ -575,7 +575,7 @@ public class RouterServer extends AbstractVeniceService {
 
     retryManagerExecutorService = Executors.newScheduledThreadPool(
         config.getRetryManagerCorePoolSize(),
-        new DaemonThreadFactory(ROUTER_RETRY_MANAGER_THREAD_PREFIX));
+        new DaemonThreadFactory(ROUTER_RETRY_MANAGER_THREAD_PREFIX, config.getRegionName()));
 
     VenicePathParser pathParser = new VenicePathParser(
         versionFinder,
@@ -601,7 +601,8 @@ public class RouterServer extends AbstractVeniceService {
         config.getKafkaBootstrapServers(),
         config.isSslToKafka(),
         versionFinder,
-        pushStatusStoreReader);
+        pushStatusStoreReader,
+        metricsRepository);
 
     // Setup stat tracking for exceptional case
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
@@ -696,6 +697,7 @@ public class RouterServer extends AbstractVeniceService {
         ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
             config.getClientSslHandshakeThreads(),
             "SSLHandShakeThread",
+            config.getRegionName(),
             config.getClientSslHandshakeQueueCapacity(),
             LINKED_BLOCKING_QUEUE);
         ThreadPoolStats sslHandshakeThreadPoolStats =
@@ -706,6 +708,7 @@ public class RouterServer extends AbstractVeniceService {
         ThreadPoolExecutor dnsResolveExecutor = ThreadPoolFactory.createThreadPool(
             config.getResolveThreads(),
             "DNSResolveThread",
+            config.getRegionName(),
             config.getResolveQueueCapacity(),
             LINKED_BLOCKING_QUEUE);
         new ThreadPoolStats(metricsRepository, dnsResolveExecutor, "dns_resolution_thread_pool");
@@ -1006,7 +1009,7 @@ public class RouterServer extends AbstractVeniceService {
         /**
          * This statement should be invoked after {@link #manager} is connected.
          */
-        instanceConfigRepository = new HelixInstanceConfigRepository(manager, config.isUseGroupFieldInHelixDomain());
+        instanceConfigRepository = new HelixInstanceConfigRepository(manager);
         instanceConfigRepository.refresh();
         helixGroupSelector = new HelixGroupSelector(
             metricsRepository,

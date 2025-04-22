@@ -119,6 +119,13 @@ public class BlobSnapshotManager {
     // check if the concurrent user count exceeds the limit
     checkIfConcurrentUserExceedsLimit(topicName, partitionId);
 
+    // check if storageEngineRepository has this store partition, so exit early if not, otherwise won't be able to
+    // create snapshot
+    if (storageEngineRepository.getLocalStorageEngine(topicName) == null
+        || !storageEngineRepository.getLocalStorageEngine(topicName).containsPartition(partitionId)) {
+      throw new VeniceException("No storage engine found for topic: " + topicName + " partition: " + partitionId);
+    }
+
     boolean isHybrid = isStoreHybrid(payload.getStoreName(), versionNum);
     if (!isHybrid) {
       increaseConcurrentUserCount(topicName, partitionId);

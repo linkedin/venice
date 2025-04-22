@@ -17,6 +17,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.HelixAsAServiceWrapper;
@@ -29,10 +30,12 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +56,7 @@ import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LiveInstance;
+import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -70,6 +74,61 @@ public class TestHAASController {
     enableControllerAndStorageClusterHAASProperties = (Properties) enableControllerClusterHAASProperties.clone();
     enableControllerAndStorageClusterHAASProperties
         .put(ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS, String.valueOf(true));
+  }
+
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  public void testClusterResourceInstanceTag_updateOnRestart() {
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(0)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(1)
+        .build();
+    try (VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(options);
+        HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress())) {
+      String instanceTag = "GENERAL";
+      String newInstanceTag = "NEW";
+      String controllerClusterName = "venice-controllers";
+
+      Properties clusterProperties = (Properties) enableControllerAndStorageClusterHAASProperties.clone();
+      clusterProperties.put(ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG, instanceTag);
+      clusterProperties.put(ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST, instanceTag);
+
+      VeniceControllerWrapper controllerWrapper = venice.addVeniceController(clusterProperties);
+
+      HelixAdmin helixAdmin = controllerWrapper.getVeniceHelixAdmin().getHelixAdmin();
+      String instanceName = controllerWrapper.getHost() + "_" + controllerWrapper.getPort();
+      List<String> resources = helixAdmin.getResourcesInClusterWithTag(controllerClusterName, instanceTag);
+      assertEquals(resources.size(), 1);
+      List<String> instances = helixAdmin.getInstancesInClusterWithTag(controllerClusterName, instanceTag);
+      assertEquals(instances.size(), 1);
+      // Stop controller
+      venice.stopVeniceController(controllerWrapper.getPort());
+
+      // Modify tags in ZK directly
+      InstanceConfig instanceConfig = helixAdmin.getInstanceConfig(controllerClusterName, instanceName);
+      instanceConfig.removeTag(instanceTag);
+      instanceConfig.addTag(newInstanceTag);
+      helixAdmin.setInstanceConfig(controllerClusterName, instanceName, instanceConfig);
+
+      Assert.assertTrue(
+          helixAdmin.getInstanceConfig(controllerClusterName, instanceName)
+              .getTags()
+              .equals(Arrays.asList(newInstanceTag)),
+          newInstanceTag + " tag should be added to the instance config");
+
+      venice.restartVeniceController(controllerWrapper.getPort());
+
+      // Wait for the controller to rejoin the cluster and use the tag declared in it's clusterProperties
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        InstanceConfig updatedConfig = helixAdmin.getInstanceConfig(controllerClusterName, instanceName);
+        List<String> tags = updatedConfig.getTags();
+        Assert.assertTrue(
+            tags.equals(Arrays.asList(instanceTag)),
+            "The instance tag should be updated to the one in the cluster properties");
+      });
+    } catch (Exception e) {
+      throw new VeniceException(e);
+    }
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)

@@ -43,6 +43,7 @@ import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoragePersonaResponse;
+import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
@@ -55,6 +56,7 @@ import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.controllerapi.ReadyForDataRecoveryResponse;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoragePersonaResponse;
@@ -502,6 +504,12 @@ public class AdminTool {
           break;
         case LIST_CLUSTER_STALE_STORES:
           listClusterStaleStores(cmd);
+          break;
+        case REPUSH_STORE:
+          repushStore(cmd);
+          break;
+        case GET_DEAD_STORES:
+          getDeadStores(cmd);
           break;
         case COMPARE_STORE:
           compareStore(cmd);
@@ -1321,6 +1329,7 @@ public class AdminTool {
     genericParam(cmd, Arg.TARGET_SWAP_REGION, s -> s, p -> params.setTargetRegionSwap(p), argSet);
     integerParam(cmd, Arg.TARGET_SWAP_REGION_WAIT_TIME, p -> params.setTargetRegionSwapWaitTime(p), argSet);
     booleanParam(cmd, Arg.DAVINCI_HEARTBEAT_REPORTED, p -> params.setIsDavinciHeartbeatReported(p), argSet);
+    booleanParam(cmd, Arg.GLOBAL_RT_DIV_ENABLED, params::setGlobalRtDivEnabled, argSet);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
@@ -2814,6 +2823,21 @@ public class AdminTool {
     String clusterParam = getRequiredArgument(cmd, Arg.CLUSTER);
     String urlParam = getRequiredArgument(cmd, Arg.URL);
     ClusterStaleDataAuditResponse response = controllerClient.getClusterStaleStores(clusterParam, urlParam);
+    printObject(response);
+  }
+
+  private static void repushStore(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    RepushJobResponse response = controllerClient.repushStore(storeName);
+    printObject(response);
+  }
+
+  private static void getDeadStores(CommandLine cmd) {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+    Optional<String> storeName = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE));
+    boolean includeSystemStores = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES));
+
+    MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, includeSystemStores, storeName);
     printObject(response);
   }
 

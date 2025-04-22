@@ -698,16 +698,20 @@ public class CreateVersionTest {
 
     String storeName = "test_store";
     String vtName = Version.composeKafkaTopic(storeName, 1);
-    String rtName = Version.composeRealTimeTopic(storeName);
+    String rtName = storeName + Version.REAL_TIME_TOPIC_SUFFIX;
     String srTopicName = Version.composeStreamReprocessingTopic(storeName, 1);
-    String separateRtName = Version.composeSeparateRealTimeTopic(storeName);
+    String separateRtName = rtName + Utils.SEPARATE_TOPIC_SUFFIX;
 
     RequestTopicForPushRequest request = new RequestTopicForPushRequest("v0", storeName, INCREMENTAL, "JOB_ID");
 
     // Test Case: PushType.INCREMENTAL with separate real-time topic enabled
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+    when(mockHybridConfig.getRealTimeTopicName()).thenReturn(rtName);
     Version mockVersion1 = mock(Version.class);
+    when(mockVersion1.getHybridStoreConfig()).thenReturn(mockHybridConfig);
     when(mockVersion1.kafkaTopicName()).thenReturn(vtName);
     when(mockVersion1.isSeparateRealTimeTopicEnabled()).thenReturn(true);
+    when(mockVersion1.getStoreName()).thenReturn(storeName);
     request.setSeparateRealTimeTopicEnabled(true);
     String result1 = createVersion.determineResponseTopic(storeName, mockVersion1, request);
     assertEquals(result1, separateRtName);
@@ -716,25 +720,32 @@ public class CreateVersionTest {
     // real-time topic flag
     mockVersion1 = mock(Version.class);
     when(mockVersion1.getStoreName()).thenReturn(storeName);
+    when(mockVersion1.getHybridStoreConfig()).thenReturn(mockHybridConfig);
     when(mockVersion1.kafkaTopicName()).thenReturn(vtName);
     when(mockVersion1.isSeparateRealTimeTopicEnabled()).thenReturn(true);
+    when(mockVersion1.getStoreName()).thenReturn(storeName);
+    when(mockVersion1.isHybrid()).thenReturn(true);
     request.setSeparateRealTimeTopicEnabled(false);
     result1 = createVersion.determineResponseTopic(storeName, mockVersion1, request);
     assertEquals(result1, rtName);
 
     // Test Case: PushType.INCREMENTAL without separate real-time topic enabled
     Version mockVersion2 = mock(Version.class);
+    when(mockVersion2.getHybridStoreConfig()).thenReturn(mockHybridConfig);
     when(mockVersion2.getStoreName()).thenReturn(storeName);
     when(mockVersion2.kafkaTopicName()).thenReturn(vtName);
     when(mockVersion2.isSeparateRealTimeTopicEnabled()).thenReturn(true);
+    when(mockVersion2.isHybrid()).thenReturn(true);
     request = new RequestTopicForPushRequest("v0", storeName, INCREMENTAL, "JOB_ID");
     String result2 = createVersion.determineResponseTopic(storeName, mockVersion2, request);
     assertEquals(result2, rtName);
 
     // Test Case: PushType.STREAM
     Version mockVersion3 = mock(Version.class);
+    when(mockVersion3.getHybridStoreConfig()).thenReturn(mockHybridConfig);
     when(mockVersion3.getStoreName()).thenReturn(storeName);
     when(mockVersion3.kafkaTopicName()).thenReturn(vtName);
+    when(mockVersion3.isHybrid()).thenReturn(true);
     request = new RequestTopicForPushRequest("v0", storeName, STREAM, "JOB_ID");
     String result3 = createVersion.determineResponseTopic(storeName, mockVersion3, request);
     assertEquals(result3, rtName);
@@ -763,7 +774,7 @@ public class CreateVersionTest {
 
     // Test Case 1: Real-time topic returns NO_OP
     Version mockVersion1 = mock(Version.class);
-    String responseTopic1 = Version.composeRealTimeTopic("test_store");
+    String responseTopic1 = Utils.composeRealTimeTopic("test_store", 1);
     CompressionStrategy result1 = createVersion.getCompressionStrategy(mockVersion1, responseTopic1);
     assertEquals(result1, CompressionStrategy.NO_OP);
 
@@ -893,13 +904,14 @@ public class CreateVersionTest {
     // Case 5: Parent region; Aggregate mode and there is a hybrid version
     Version mockVersion = mock(Version.class);
     when(mockVersion.getPartitionCount()).thenReturn(42);
+    when(mockVersion.getStoreName()).thenReturn(STORE_NAME);
     when(admin.isParent()).thenReturn(true);
     when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(AGGREGATE);
     when(admin.getReferenceVersionForStreamingWrites(anyString(), anyString(), anyString())).thenReturn(mockVersion);
     createVersionOk.handleStreamPushType(admin, store, request, response, Lazy.of(() -> true));
     assertEquals(response.getPartitions(), 42);
     assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
-    assertEquals(response.getKafkaTopic(), Version.composeRealTimeTopic(STORE_NAME));
+    assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
   }
 
   @Test
@@ -943,6 +955,7 @@ public class CreateVersionTest {
 
     // Case 4: Child region; Non-aggregate mode and there is a hybrid version
     Version mockVersion = mock(Version.class);
+    when(mockVersion.getStoreName()).thenReturn(STORE_NAME);
     when(mockVersion.getPartitionCount()).thenReturn(42);
     when(admin.isParent()).thenReturn(false);
     when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(DataReplicationPolicy.NON_AGGREGATE);
@@ -950,7 +963,7 @@ public class CreateVersionTest {
     createVersionOk.handleStreamPushType(admin, store, request, response, Lazy.of(() -> true));
     assertEquals(response.getPartitions(), 42);
     assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
-    assertEquals(response.getKafkaTopic(), Version.composeRealTimeTopic(STORE_NAME));
+    assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
   }
 
   @Test

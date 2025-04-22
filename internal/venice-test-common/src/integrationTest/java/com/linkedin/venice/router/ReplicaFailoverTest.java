@@ -86,10 +86,7 @@ public class ReplicaFailoverTest {
     errorHitCountMap.clear();
 
     // restart routers to discard server health info
-    for (VeniceRouterWrapper router: cluster.getVeniceRouters()) {
-      cluster.stopVeniceRouter(router.getPort());
-      cluster.restartVeniceRouter(router.getPort());
-    }
+    cluster.stopAndRestartAllVeniceRouters();
   }
 
   @DataProvider(name = "workloadParams")

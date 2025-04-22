@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -20,8 +21,6 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.meta.ViewConfig;
-import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -32,9 +31,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import org.mockito.ArgumentCaptor;
@@ -130,26 +127,21 @@ public class RealTimeTopicSwitcherTest {
     verify(mockVeniceWriter).broadcastTopicSwitch(eq(expectedSourceClusters), eq(srcTopic.getName()), anyLong(), any());
   }
 
-  // TODO(zpoliczer): Disabling the test as it seems there is a bug in the code.
-  // @Test
+  @Test
   public void testSendVersionSwap() {
     String storeName = "TestStore";
-    Map<String, ViewConfig> viewConfigs = new HashMap<>();
-    viewConfigs.put("testView", new ViewConfigImpl("testClass", Collections.emptyMap()));
 
     Store mockStore = mock(Store.class);
     when(mockStore.getName()).thenReturn(storeName);
     Version version1 = new VersionImpl(storeName, 1, "push1");
     Version version2 = new VersionImpl(storeName, 2, "push2");
-    version2.setViewConfigs(viewConfigs);
     Version version3 = new VersionImpl(storeName, 3, "push3");
-    version3.setViewConfigs(viewConfigs);
     PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version1));
 
-    when(mockStore.getVersion(1)).thenReturn(version1);
-    when(mockStore.getVersion(2)).thenReturn(version2);
-    when(mockStore.getVersion(3)).thenReturn(version3);
-    when(mockStore.getVersion(4)).thenReturn(null);
+    when(mockStore.getVersionOrThrow(1)).thenReturn(version1);
+    when(mockStore.getVersionOrThrow(2)).thenReturn(version2);
+    when(mockStore.getVersionOrThrow(3)).thenReturn(version3);
+    when(mockStore.getVersionOrThrow(4)).thenReturn(null);
 
     TopicManager mockTopicManager = mock(TopicManager.class);
     when(mockTopicManager.containsTopic(realTimeTopic)).thenReturn(true);
@@ -167,15 +159,20 @@ public class RealTimeTopicSwitcherTest {
     RealTimeTopicSwitcher realTimeTopicSwitcher =
         new RealTimeTopicSwitcher(mockTopicManager, mockWriterFactory, mockVeniceProperties, pubSubTopicRepository);
 
-    // Version 1 does not have a view but 2 does. In this case DON'T transmit a version swap message
-    realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, 1, 2);
-    // todo: Instead of interaction testing consider adding true/false return code for transmitVersionSwapMessage
+    // VSM should not be broadcasted when swapping between NON_EXISTING_VERSION and an existing version
+    realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, Store.NON_EXISTING_VERSION, 1);
     verify(mockVeniceWriter, never()).broadcastVersionSwap(anyString(), anyString(), anyMap());
+    realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, 1, Store.NON_EXISTING_VERSION);
+    verify(mockVeniceWriter, never()).broadcastVersionSwap(anyString(), anyString(), anyMap());
+
+    // Verify VSM should be broadcasted
+    realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, 1, 2);
+    verify(mockVeniceWriter).broadcastVersionSwap(anyString(), anyString(), anyMap());
 
     // Version 4 doesn't exist. In this case DON'T transmit a version swap message, and throw an exception to boot
     Assert.assertThrows(() -> realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, 3, 4));
 
-    // Version 2 and 3 both have view configs, so we should transmit a version swap message
+    // Version 2 and 3 exist, so we should transmit a version swap message
     realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, 2, 3);
     verify(mockWriterFactory, times(2)).createVeniceWriter(vwOptionsArgumentCaptor.capture());
     VeniceWriterOptions capturedVwo = vwOptionsArgumentCaptor.getValue();
@@ -189,6 +186,12 @@ public class RealTimeTopicSwitcherTest {
         .broadcastVersionSwap(oldVersionCaptor.capture(), newVersionCaptor.capture(), anyMap());
     Assert.assertEquals(oldVersionCaptor.getValue(), version2.kafkaTopicName());
     Assert.assertEquals(newVersionCaptor.getValue(), version3.kafkaTopicName());
+
+    // VSM should be broadcasted to both versions when there doesn't exist an RT topic
+    clearInvocations(mockVeniceWriter);
+    when(mockTopicManager.containsTopic(realTimeTopic)).thenReturn(false);
+    realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, 2, 3);
+    verify(mockVeniceWriter, times(2)).broadcastVersionSwap(anyString(), anyString(), anyMap());
   }
 
   @Test

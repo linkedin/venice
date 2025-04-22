@@ -2,7 +2,6 @@ package com.linkedin.venice.fastclient;
 
 import com.linkedin.alpini.base.concurrency.TimeoutProcessor;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -10,6 +9,7 @@ import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.RetryManager;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
 import java.util.Optional;
@@ -52,8 +52,6 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   private RetryManager singleKeyLongTailRetryManager = null;
   private RetryManager multiKeyLongTailRetryManager = null;
   private static final Logger LOGGER = LogManager.getLogger(RetriableAvroGenericStoreClient.class);
-  // Default value of 0.1 meaning only 10 percent of the user requests are allowed to trigger long tail retry
-  private static final double LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL = 0.1d;
   public static final String SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX = "single-key-long-tail-retry-manager-";
   public static final String MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX = "multi-key-long-tail-retry-manager-";
 
@@ -81,7 +79,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           clientConfig.getClusterStats().getMetricsRepository(),
           SINGLE_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
           clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
-          LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL,
+          clientConfig.getRetryBudgetPercentage(),
           retryManagerExecutorService);
     }
     if (longTailRetryEnabledForBatchGet && clientConfig.isRetryBudgetEnabled()) {
@@ -89,7 +87,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
           clientConfig.getClusterStats().getMetricsRepository(),
           MULTI_KEY_LONG_TAIL_RETRY_STATS_PREFIX + clientConfig.getStoreName(),
           clientConfig.getLongTailRetryBudgetEnforcementWindowInMs(),
-          LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL,
+          clientConfig.getRetryBudgetPercentage(),
           retryManagerExecutorService);
     }
   }
@@ -135,7 +133,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
    * could cause cascading failure.
    */
   @Override
-  protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
+  protected CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException {
     final CompletableFuture<V> originalRequestFuture = super.get(requestContext, key);
     if (!longTailRetryEnabledForSingleGet) {
       // if longTailRetry is not enabled for single get, simply return the original future
@@ -157,7 +155,9 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       }
       if (savedException.get() != null || singleKeyLongTailRetryManager == null
           || singleKeyLongTailRetryManager.isRetryAllowed()) {
-        super.get(requestContext, key).whenComplete((value, throwable) -> {
+        GetRequestContext<K> retryRequestContext = requestContext.createRetryRequestContext();
+
+        super.get(retryRequestContext, key).whenComplete((value, throwable) -> {
           if (throwable != null) {
             retryFuture.completeExceptionally(throwable);
           } else {
@@ -221,7 +221,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   }
 
   @Override
-  public void streamingBatchGet(
+  protected void streamingBatchGet(
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys,
       StreamingCallback<K, V> callback) throws VeniceClientException {
@@ -236,12 +236,12 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         keys,
         callback,
         longTailRetryThresholdForBatchGetInMicroSeconds,
-        BatchGetRequestContext::new,
+        (numKeysInRequest) -> requestContext.createRetryRequestContext(numKeysInRequest),
         super::streamingBatchGet);
   }
 
   @Override
-  public void compute(
+  protected void compute(
       ComputeRequestContext<K, V> requestContext,
       ComputeRequestWrapper computeRequestWrapper,
       Set<K> keys,
@@ -259,7 +259,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         keys,
         callback,
         longTailRetryThresholdForComputeInMicroSeconds,
-        ComputeRequestContext::new,
+        (numKeysInRequest) -> requestContext.createRetryRequestContext(numKeysInRequest),
         (requestContextInternal, internalKeys, internalCallback) -> {
           super.compute(
               requestContextInternal,
@@ -317,13 +317,11 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
         if (throwable != null || multiKeyLongTailRetryManager == null
             || multiKeyLongTailRetryManager.isRetryAllowed(pendingKeysFuture.keySet().size())) {
           Set<K> pendingKeys = Collections.unmodifiableSet(pendingKeysFuture.keySet());
-          R retryRequestContext =
-              requestContextConstructor.construct(pendingKeys.size(), requestContext.isPartialSuccessAllowed);
+          // Prepare the retry context and track excluded routes on a per-partition basis
+          R retryRequestContext = requestContextConstructor.construct(pendingKeys.size());
 
           requestContext.retryContext.retryRequestContext = retryRequestContext;
           LOGGER.debug("Retrying {} incomplete keys", retryRequestContext.numKeysInRequest);
-          // Prepare the retry context and track excluded routes on a per-partition basis
-          retryRequestContext.setRoutesForPartitionMapping(requestContext.getRoutesForPartitionMapping());
 
           streamingRequestExecutor.trigger(
               retryRequestContext,
@@ -451,15 +449,11 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   }
 
   private boolean isExceptionCausedByTooManyRequests(Throwable e) {
-    if (e instanceof VeniceClientHttpException) {
-      VeniceClientHttpException clientHttpException = (VeniceClientHttpException) e;
-      return clientHttpException.getHttpStatus() == VeniceClientRateExceededException.HTTP_TOO_MANY_REQUESTS;
-    }
-    return false;
+    return ExceptionUtils.recursiveClassEquals(e, VeniceClientRateExceededException.class);
   }
 
   interface RequestContextConstructor<K, V, R extends MultiKeyRequestContext<K, V>> {
-    R construct(int numKeysInRequest, boolean isPartialSuccessAllowed);
+    R construct(int numKeysInRequest);
   }
 
   interface StreamingRequestExecutor<K, V, R extends MultiKeyRequestContext<K, V>, RESPONSE> {

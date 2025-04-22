@@ -5,6 +5,7 @@ import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
@@ -29,6 +30,7 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import org.apache.helix.PropertyKey;
+import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LiveInstance;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -51,26 +53,22 @@ public class TestInstanceStatusDecider {
     clusterName = Utils.getUniqueString("TestInstanceStatusDecider");
     resources = mock(HelixVeniceClusterResources.class);
     routingDataRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
-
     readWriteStoreRepository = mock(HelixReadWriteStoreRepository.class);
     mockMonitor = mock(PushMonitorDelegator.class);
 
     doAnswer(invocation -> {
       PartitionAssignment partitionAssignment = invocation.getArgument(0);
       int partitionId = invocation.getArgument(1);
-
       return partitionAssignment.getPartition(partitionId).getReadyToServeInstances();
     }).when(routingDataRepository).getReadyToServeInstances(any(PartitionAssignment.class), anyInt());
 
     SafeHelixManager manager = mock(SafeHelixManager.class);
-
     accessor = mock(SafeHelixDataAccessor.class);
     doReturn(routingDataRepository).when(resources).getCustomizedViewRepository();
     doReturn(readWriteStoreRepository).when(resources).getStoreMetadataRepository();
     doReturn(mockMonitor).when(resources).getPushMonitor();
     doReturn(manager).when(resources).getHelixManager();
     doReturn(accessor).when(manager).getHelixDataAccessor();
-    doReturn(new LiveInstance("test_1")).when(accessor).getProperty(any(PropertyKey.class));
   }
 
   @Test
@@ -147,12 +145,18 @@ public class TestInstanceStatusDecider {
         instance2Name + " could NOT be removed because it the last online copy for partition 1.");
 
     // Locked node check when locked instance shares replicas with the instance being removed
+    NodeRemovableResult nodeRemovableWillLoseDataResult = InstanceStatusDecider
+        .isRemovable(resources, clusterName, instance1Name, Collections.singletonList(instance2Name));
     Assert.assertFalse(
-        InstanceStatusDecider
-            .isRemovable(resources, clusterName, instance1Name, Collections.singletonList(instance2Name))
-            .isRemovable(),
+        nodeRemovableWillLoseDataResult.isRemovable(),
         instance1Name + " could NOT be removed because it will be the last online copy after " + instance2Name
             + " is removed.");
+    Assert.assertEquals(
+        nodeRemovableWillLoseDataResult.getBlockingReason(),
+        NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA.toString());
+    Assert.assertEquals(
+        nodeRemovableWillLoseDataResult.getFormattedMessage(),
+        "WILL_LOSE_DATA(TestInstanceStatusDecider_v1: Partition 0 will have no online replicas after removing the node.)");
   }
 
   /**
@@ -177,6 +181,7 @@ public class TestInstanceStatusDecider {
     NodeRemovableResult result = InstanceStatusDecider.isRemovable(resources, clusterName, instanceId);
     Assert
         .assertTrue(result.isRemovable(), "Instance should be removable because ongoing push shouldn't be a blocker.");
+    Assert.assertEquals(result.getFormattedMessage(), "Instance is removable");
   }
 
   /**
@@ -238,12 +243,18 @@ public class TestInstanceStatusDecider {
         "Instance should NOT be removable because after removing one instance, there are 1 active replicas in partition 1, it will trigger re-balance.");
 
     // Locked node check when locked instance shares replicas with the instance being removed
+    NodeRemovableResult nodeRemovableWillTriggerRebalanceResult = InstanceStatusDecider
+        .isRemovable(resources, clusterName, instance2Name, Collections.singletonList(instance3Name));
     Assert.assertFalse(
-        InstanceStatusDecider
-            .isRemovable(resources, clusterName, instance2Name, Collections.singletonList(instance3Name))
-            .isRemovable(),
+        nodeRemovableWillTriggerRebalanceResult.isRemovable(),
         instance2Name + " could NOT be removed because it will trigger rebalance after " + instance3Name
             + " is removed.");
+    Assert.assertEquals(
+        nodeRemovableWillTriggerRebalanceResult.getBlockingReason(),
+        NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE.toString());
+    Assert.assertEquals(
+        nodeRemovableWillTriggerRebalanceResult.getFormattedMessage(),
+        "WILL_TRIGGER_LOAD_REBALANCE(TestInstanceStatusDecider_v1: Partition 0 will only have 1 active replicas which is smaller than required minimum active replicas: 2)");
   }
 
   private PartitionAssignment prepareAssignments(String resourceName) {
@@ -279,6 +290,22 @@ public class TestInstanceStatusDecider {
     }
 
     doReturn(store).when(readWriteStoreRepository).getStore(storeName);
+
+    // Create valid ideal state
+    IdealState idealState = mock(IdealState.class);
+    when(idealState.isEnabled()).thenReturn(true);
+    when(idealState.isValid()).thenReturn(true);
+    when(idealState.getMinActiveReplicas()).thenReturn(replicationFactor - 1);
+
+    doAnswer(invocation -> {
+      PropertyKey key = invocation.getArgument(0);
+      if (key.getPath().contains("LIVEINSTANCES")) {
+        return mock(LiveInstance.class);
+      } else if (key.getPath().contains("IDEALSTATES")) {
+        return idealState;
+      }
+      return null;
+    }).when(accessor).getProperty(any(PropertyKey.class));
 
   }
 }

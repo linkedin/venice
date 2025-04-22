@@ -24,6 +24,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_DAVINCI_HEARTBEAT_REPORTED;
@@ -199,6 +200,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -233,6 +235,7 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -361,6 +364,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private final SupersetSchemaGenerator defaultSupersetSchemaGenerator = new DefaultSupersetSchemaGenerator();
 
   private final IdentityParser identityParser;
+  private final LogContext logContext;
 
   // New fabric controller client map per cluster per fabric
   private final Map<String, Map<String, ControllerClient>> newFabricControllerClientMap =
@@ -431,6 +435,7 @@ public class VeniceParentHelixAdmin implements Admin {
     Validate.notNull(writeComputeSchemaConverter);
     this.veniceHelixAdmin = veniceHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
+    this.logContext = multiClusterConfigs.getLogContext();
     this.waitingTimeForConsumptionMs = this.multiClusterConfigs.getParentControllerWaitingTimeForConsumptionMs();
     this.veniceWriterMap = new ConcurrentHashMap<>();
     this.adminTopicMetadataAccessor = new ZkAdminTopicMetadataAccessor(
@@ -1233,9 +1238,9 @@ public class VeniceParentHelixAdmin implements Admin {
          * If the corresponding version doesn't exist, this function will issue command to kill job to deprecate
          * the incomplete topic/job.
          */
-        Pair<Store, Version> storeVersionPair =
+        StoreVersionInfo storeVersionPair =
             getVeniceHelixAdmin().waitVersion(clusterName, storeName, versionNumber, Duration.ofSeconds(30));
-        if (storeVersionPair.getSecond() == null) {
+        if (storeVersionPair.getVersion() == null) {
           // TODO: Guard this topic deletion code using a store-level lock instead.
           Long inMemoryTopicCreationTime = getVeniceHelixAdmin().getInMemoryTopicCreationTime(latestTopicName);
           if (inMemoryTopicCreationTime != null
@@ -1502,22 +1507,17 @@ public class VeniceParentHelixAdmin implements Admin {
     boolean isTargetRegionPushWithDeferredSwap = !StringUtils.isEmpty(targetedRegions) && versionSwapDeferred;
     if (isTargetRegionPushWithDeferredSwap) {
       validateTargetedRegions(targetedRegions, clusterName);
-      Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetedRegions);
-      StoreInfo childStore = getStoreInChildRegion(targetRegions.iterator().next(), clusterName, storeName);
-      Optional<Version> currentVersionInChild = childStore.getVersion(childStore.getCurrentVersion());
-      if (currentVersionInChild.isPresent()) {
-        boolean skipTargetRegionPushForDavinci = currentVersionInChild.get().getIsDavinciHeartbeatReported()
-            && multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled();
-        if (skipTargetRegionPushForDavinci) {
-          LOGGER.info(
-              "Skip setting targetedRegions and versionSwapDeferred values for store: {} "
-                  + "because isSkipDeferredVersionSwapForDVCEnabled: {} and isDavinciHeartbeatReported: {}",
-              storeName,
-              multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled(),
-              currentVersionInChild.get().getIsDavinciHeartbeatReported());
-          targetedRegions = "";
-          versionSwapDeferred = false;
-        }
+      boolean skipTargetRegionPushForDavinci = isDavinciHeartbeatReported(clusterName, storeName)
+          && multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled();
+      if (skipTargetRegionPushForDavinci) {
+        LOGGER.info(
+            "Skip setting targetedRegions and versionSwapDeferred values for store: {} "
+                + "because isSkipDeferredVersionSwapForDVCEnabled: {} and isDavinciHeartbeatReported: {}",
+            storeName,
+            multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled(),
+            isDavinciHeartbeatReported(clusterName, storeName));
+        targetedRegions = "";
+        versionSwapDeferred = false;
       }
     }
 
@@ -1635,6 +1635,31 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     return newVersion;
+  }
+
+  /**
+   * Checks if there is a davinci heartbeat reported in any region for the current version
+   * @param clusterName name of the cluster the store is in
+   * @param storeName name of the store to check for a davinci heartbeat
+   * @return
+   */
+  private boolean isDavinciHeartbeatReported(String clusterName, String storeName) {
+    Map<String, ControllerClient> clientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    for (String region: clientMap.keySet()) {
+      StoreInfo childStore = getStoreInChildRegion(region, clusterName, storeName);
+      Optional<Version> currentVersionInChild = childStore.getVersion(childStore.getCurrentVersion());
+      if (currentVersionInChild.isPresent()) {
+        LOGGER.info(
+            "isDavinciHeartbeatReported: {}, region: {}, storeName: {}",
+            currentVersionInChild.get().getIsDavinciHeartbeatReported(),
+            region,
+            storeName);
+        if (currentVersionInChild.get().getIsDavinciHeartbeatReported()) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**
@@ -2671,7 +2696,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       setStore.largestUsedRTVersionNumber =
           largestUsedRTVersionNumber.map(addToUpdatedConfigList(updatedConfigsList, LARGEST_USED_RT_VERSION_NUMBER))
-              .orElseGet(currStore::getLargestUsedRTVersionNumber);
+              .orElse(null);
 
       setStore.backupVersionRetentionMs =
           backupVersionRetentionMs.map(addToUpdatedConfigList(updatedConfigsList, BACKUP_VERSION_RETENTION_MS))
@@ -2720,6 +2745,10 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.isDaVinciHeartBeatReported = params.getIsDavinciHeartbeatReported()
           .map(addToUpdatedConfigList(updatedConfigsList, IS_DAVINCI_HEARTBEAT_REPORTED))
           .orElseGet((currStore::getIsDavinciHeartbeatReported));
+
+      setStore.globalRtDivEnabled = params.isGlobalRtDivEnabled()
+          .map(addToUpdatedConfigList(updatedConfigsList, GLOBAL_RT_DIV_ENABLED))
+          .orElseGet((currStore::isGlobalRtDivEnabled));
 
       // Check whether the passed param is valid or not
       if (latestSupersetSchemaId.isPresent()) {
@@ -3778,10 +3807,12 @@ public class VeniceParentHelixAdmin implements Admin {
             if (isTargetRegionPush && !isVersionPushed) {
               parentStore.updateVersionStatus(versionNum, PUSHED);
               repository.updateStore(parentStore);
+              LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, PUSHED);
             } else { // status ONLINE is set when all region finishes ingestion for either regular or target region
                      // push.
               parentStore.updateVersionStatus(versionNum, ONLINE);
               repository.updateStore(parentStore);
+              LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, ONLINE);
             }
           }
         }
@@ -4371,7 +4402,19 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion) {
-    getVeniceHelixAdmin().updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
+    getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
+    getVeniceHelixAdmin().getAdminConsumerService(clusterName)
+        .updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
+  }
+
+  @Override
+  public Map<String, Long> getAdminOperationVersionFromControllers(String clusterName) {
+    return getVeniceHelixAdmin().getAdminOperationVersionFromControllers(clusterName);
+  }
+
+  @Override
+  public long getLocalAdminOperationProtocolVersion() {
+    return getVeniceHelixAdmin().getLocalAdminOperationProtocolVersion();
   }
 
   /**
@@ -5009,10 +5052,10 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * see {@link Admin#compactStore}
+   * see {@link Admin#repushStore}
    */
   @Override
-  public RepushJobResponse compactStore(RepushJobRequest repushJobRequest) throws Exception {
+  public RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception {
     // TODO:
     // Repush implementation today with no parameter adjustments does a repush to all colo's. There's some discussion
     // about if this should instead be federated out and if this should be done in parent at all. Considering today
@@ -5021,12 +5064,20 @@ public class VeniceParentHelixAdmin implements Admin {
     // But when that day comes that we implement that kind of behavior dichotomy, we should code here that either honors
     // what's been passed in (parent getting a request for a repush in a child colo should forward that along) OR the
     // parent should just abort the request and return an error.
-    return veniceHelixAdmin.compactStore(repushJobRequest);
+    return veniceHelixAdmin.repushStore(repushJobRequest);
   }
 
   @Override
   public CompactionManager getCompactionManager() {
     throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
+  }
+
+  /**
+   * Cause {@link Admin#getDeadStores(String, String, boolean)}
+   */
+  @Override
+  public List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores) {
+    return getVeniceHelixAdmin().getDeadStores(clusterName, storeName, includeSystemStores);
   }
 
   /**
@@ -5704,5 +5755,10 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public PubSubTopicRepository getPubSubTopicRepository() {
     return pubSubTopicRepository;
+  }
+
+  @Override
+  public LogContext getLogContext() {
+    return getVeniceHelixAdmin().getLogContext();
   }
 }

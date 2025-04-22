@@ -6,6 +6,8 @@ import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -80,6 +82,7 @@ public class StoreInfo {
     storeInfo.setTargetRegionSwap(store.getTargetSwapRegion());
     storeInfo.setTargetRegionSwapWaitTime(store.getTargetSwapRegionWaitTime());
     storeInfo.setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
+    storeInfo.setGlobalRtDivEnabled(store.isGlobalRtDivEnabled());
     return storeInfo;
   }
 
@@ -321,6 +324,16 @@ public class StoreInfo {
    */
   private boolean storageNodeReadQuotaEnabled;
 
+  /**
+   * Reasons for why or why not the store is dead
+   */
+  private List<String> storeDeadStatusReasons = new ArrayList<>();
+
+  /**
+   * flag to indicate if the store is dead
+   */
+  private boolean isStoreDead;
+
   private long minCompactionLagSeconds;
 
   private long maxCompactionLagSeconds;
@@ -338,6 +351,7 @@ public class StoreInfo {
   private String targetRegionSwap;
   private int targetRegionSwapWaitTime;
   private boolean isDavinciHeartbeatReported;
+  private boolean globalRtDivEnabled = false;
 
   public StoreInfo() {
   }
@@ -874,5 +888,29 @@ public class StoreInfo {
 
   public boolean getIsDavinciHeartbeatReported() {
     return this.isDavinciHeartbeatReported;
+  }
+
+  public void setIsStoreDead(boolean isStoreDead) {
+    this.isStoreDead = isStoreDead;
+  }
+
+  public boolean getIsStoreDead() {
+    return this.isStoreDead;
+  }
+
+  public void setStoreDeadStatusReasons(List<String> reasons) {
+    this.storeDeadStatusReasons = reasons == null ? Collections.emptyList() : new ArrayList<>(reasons);
+  }
+
+  public List<String> getStoreDeadStatusReasons() {
+    return storeDeadStatusReasons;
+  }
+
+  public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
+    this.globalRtDivEnabled = globalRtDivEnabled;
+  }
+
+  public boolean isGlobalRtDivEnabled() {
+    return this.globalRtDivEnabled;
   }
 }

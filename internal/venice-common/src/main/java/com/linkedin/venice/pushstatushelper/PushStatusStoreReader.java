@@ -93,19 +93,48 @@ public class PushStatusStoreReader implements Closeable {
       int partitionId,
       Optional<String> incrementalPushVersion,
       Optional<String> incrementalPushPrefix) {
-    AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
-    PushStatusKey pushStatusKey =
-        PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+    // Reuse the async method but block here
     try {
-      PushStatusValue pushStatusValue = client.get(pushStatusKey).get(60, TimeUnit.SECONDS);
-      if (pushStatusValue == null) {
-        return Collections.emptyMap();
-      } else {
-        return pushStatusValue.instances;
-      }
+      return getPartitionStatusAsync(storeName, version, partitionId, incrementalPushVersion, incrementalPushPrefix)
+          .get(60, TimeUnit.SECONDS);
     } catch (Exception e) {
       LOGGER.error("Failed to read push status of partition:{} store:{}", partitionId, storeName, e);
       throw new VeniceException(e);
+    }
+  }
+
+  public CompletableFuture<Map<CharSequence, Integer>> getPartitionStatusAsync(
+      String storeName,
+      int version,
+      int partitionId,
+      Optional<String> incrementalPushVersion,
+      Optional<String> incrementalPushPrefix) {
+    try {
+      AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
+      PushStatusKey pushStatusKey =
+          PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+
+      // Get the CompletableFuture from the client and transform it
+      return client.get(pushStatusKey).<Map<CharSequence, Integer>>thenApply(pushStatusValue -> {
+        if (pushStatusValue == null) {
+          return Collections.emptyMap();
+        } else {
+          return pushStatusValue.instances;
+        }
+      }).exceptionally(e -> {
+        LOGGER.error("Failed to read push status of partition:{} store:{}", partitionId, storeName, e);
+        throw new VeniceException(e);
+      });
+    } catch (Exception e) {
+      // Handle any exceptions during setup by returning a failed future
+      LOGGER.error(
+          "Failed to set up async request for partition:{} store:{} to get partition status",
+          partitionId,
+          storeName,
+          e);
+      CompletableFuture<Map<CharSequence, Integer>> failedFuture = new CompletableFuture<>();
+      failedFuture.completeExceptionally(new VeniceException(e));
+      return failedFuture;
     }
   }
 

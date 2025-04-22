@@ -8,6 +8,10 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
@@ -41,6 +45,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
@@ -64,6 +69,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -101,6 +107,19 @@ public class VeniceChangelogConsumerImplTest {
 
     keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema);
     valueSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(valueSchema);
+  }
+
+  @Test
+  public void testConfig() {
+    ChangelogClientConfig config = new ChangelogClientConfig();
+    assertNotNull(config.getConsumerProperties());
+    assertTrue(config.getConsumerProperties().isEmpty());
+    assertThrows(NullPointerException.class, () -> config.setConsumerProperties(null));
+    Properties newProps = new Properties();
+    newProps.setProperty("foo", "bar");
+    config.setConsumerProperties(newProps);
+    assertNotNull(config.getConsumerProperties());
+    assertFalse(config.getConsumerProperties().isEmpty());
   }
 
   @Test
@@ -252,6 +271,139 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
+  public void testAdjustCheckpoints() {
+    PubSubConsumerAdapter mockConsumer = Mockito.mock(PubSubConsumerAdapter.class);
+    Map<Integer, VeniceChangeCoordinate> checkpoints = new HashMap<>();
+    Map<Integer, Long> currentVersionLastHeartbeat = new HashMap<>();
+    List<PubSubTopicPartition> topicPartitionList = new ArrayList<>();
+
+    PubSubTopicPartition partition0 =
+        new PubSubTopicPartitionImpl(new TestPubSubTopic("topic1", "store1", PubSubTopicType.VERSION_TOPIC), 0);
+    PubSubTopicPartition partition1 =
+        new PubSubTopicPartitionImpl(new TestPubSubTopic("topic1", "store1", PubSubTopicType.VERSION_TOPIC), 1);
+    PubSubTopicPartition partition2 =
+        new PubSubTopicPartitionImpl(new TestPubSubTopic("topic1", "store1", PubSubTopicType.VERSION_TOPIC), 2);
+    topicPartitionList.add(partition0);
+    topicPartitionList.add(partition1);
+    topicPartitionList.add(partition2);
+
+    PubSubPosition aheadPosition = new PubSubPosition() {
+      @Override
+      public int comparePosition(PubSubPosition other) {
+        return 1;
+      }
+
+      @Override
+      public long diff(PubSubPosition other) {
+        return 0;
+      }
+
+      @Override
+      public long getNumericOffset() {
+        return 0;
+      }
+
+      @Override
+      public PubSubPositionWireFormat getPositionWireFormat() {
+        return null;
+      }
+
+      @Override
+      public int getHeapSize() {
+        return 0;
+      }
+    };
+
+    PubSubPosition behindPosition = new PubSubPosition() {
+      @Override
+      public int comparePosition(PubSubPosition other) {
+        return -1;
+      }
+
+      @Override
+      public long diff(PubSubPosition other) {
+        return 0;
+      }
+
+      @Override
+      public long getNumericOffset() {
+        return 0;
+      }
+
+      @Override
+      public PubSubPositionWireFormat getPositionWireFormat() {
+        return null;
+      }
+
+      @Override
+      public int getHeapSize() {
+        return 0;
+      }
+    };
+
+    currentVersionLastHeartbeat.put(0, 1L);
+    currentVersionLastHeartbeat.put(1, 2L);
+
+    VeniceChangeCoordinate aheadCoordinate = new VeniceChangeCoordinate("topic1", aheadPosition, 0);
+    VeniceChangeCoordinate behindCoordinate = new VeniceChangeCoordinate("topic1", behindPosition, 1);
+    VeniceChangeCoordinate otherCoordinate = new VeniceChangeCoordinate("topic1", aheadPosition, 2);
+
+    checkpoints.put(0, aheadCoordinate);
+    checkpoints.put(1, behindCoordinate);
+    checkpoints.put(2, otherCoordinate);
+
+    // the heartbeat is ahead
+    Mockito.when(mockConsumer.getPositionByTimestamp(partition0, 1L)).thenReturn(aheadPosition);
+
+    // the heartbeat is behind
+    Mockito.when(mockConsumer.getPositionByTimestamp(partition1, 2L)).thenReturn(behindPosition);
+
+    // the heartbeat doesn't exist
+    Mockito.when(mockConsumer.getPositionByTimestamp(partition2, 1L)).thenReturn(aheadPosition);
+
+    VeniceAfterImageConsumerImpl.adjustSeekCheckPointsBasedOnHeartbeats(
+        checkpoints,
+        currentVersionLastHeartbeat,
+        mockConsumer,
+        topicPartitionList);
+
+    Assert.assertNotEquals(checkpoints.get(0), aheadCoordinate);
+    Assert.assertEquals(checkpoints.get(1), behindCoordinate);
+    Assert.assertEquals(checkpoints.get(2), otherCoordinate);
+
+    checkpoints.remove(1);
+
+    VeniceAfterImageConsumerImpl.adjustSeekCheckPointsBasedOnHeartbeats(
+        checkpoints,
+        currentVersionLastHeartbeat,
+        mockConsumer,
+        topicPartitionList);
+
+    Assert.assertNotEquals(checkpoints.get(0), aheadCoordinate);
+
+    // Let's throw some nulls at it now
+    Mockito.when(mockConsumer.getPositionByTimestamp(partition0, 1L)).thenReturn(null);
+    Mockito.when(mockConsumer.getPositionByTimestamp(partition1, 2L)).thenReturn(null);
+    Mockito.when(mockConsumer.getPositionByTimestamp(partition2, 1L)).thenReturn(null);
+
+    VeniceChangeCoordinate formerCorodinate0 = checkpoints.get(0);
+    VeniceChangeCoordinate formerCorodinate1 = checkpoints.get(1);
+    VeniceChangeCoordinate formerCorodinate2 = checkpoints.get(2);
+
+    VeniceAfterImageConsumerImpl.adjustSeekCheckPointsBasedOnHeartbeats(
+        checkpoints,
+        currentVersionLastHeartbeat,
+        mockConsumer,
+        topicPartitionList);
+
+    // This should have left everything the same
+    Assert.assertEquals(checkpoints.get(0), formerCorodinate0);
+    Assert.assertEquals(checkpoints.get(1), formerCorodinate1);
+    Assert.assertEquals(checkpoints.get(2), formerCorodinate2);
+
+  }
+
+  @Test
   public void testBootstrapState() {
     VeniceChangelogConsumerImpl veniceChangelogConsumer = mock(VeniceChangelogConsumerImpl.class);
     Map<Integer, Boolean> bootstrapStateMap = new VeniceConcurrentHashMap<>();
@@ -276,7 +428,7 @@ public class VeniceChangelogConsumerImplTest {
         0);
     doReturn(currentTimestamp).when(veniceChangelogConsumer).getSubscribeTime();
     veniceChangelogConsumer.maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
-    Assert.assertFalse(bootstrapStateMap.get(0));
+    assertFalse(bootstrapStateMap.get(0));
     kafkaMessageEnvelope.producerMetadata.messageTimestamp = currentTimestamp - TimeUnit.SECONDS.toMillis(30);
     veniceChangelogConsumer.maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
     Assert.assertTrue(bootstrapStateMap.get(0));
@@ -335,7 +487,7 @@ public class VeniceChangelogConsumerImplTest {
     prepareVersionTopicRecordsToBePolled(5L, 15L, mockPubSubConsumer, oldVersionTopic, 0, true);
     pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
-    Assert.assertFalse(pubSubMessages.isEmpty());
+    assertFalse(pubSubMessages.isEmpty());
     Assert.assertEquals(pubSubMessages.size(), 10);
     for (int i = 5; i < 15; i++) {
       PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i - 5);
@@ -408,7 +560,7 @@ public class VeniceChangelogConsumerImplTest {
 
     prepareVersionTopicRecordsToBePolled(5L, 15L, mockPubSubConsumer, oldVersionTopic, 0, true);
     pubSubMessages = new ArrayList<>(veniceChangelogConsumer.poll(100));
-    Assert.assertFalse(pubSubMessages.isEmpty());
+    assertFalse(pubSubMessages.isEmpty());
     Assert.assertEquals(pubSubMessages.size(), 10);
     for (int i = 5; i < 15; i++) {
       PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i - 5);
@@ -432,7 +584,7 @@ public class VeniceChangelogConsumerImplTest {
     Set<PubSubTopicPartition> topicPartitionSet = new HashSet<>();
     topicPartitionSet.add(topicPartition);
     Mockito.when(mockConsumer.getTopicAssignment()).thenReturn(topicPartitionSet);
-    Mockito.when(mockConsumer.internalSeekToEndOfPush(Mockito.anySet(), Mockito.any()))
+    Mockito.when(mockConsumer.internalSeekToEndOfPush(Mockito.anySet(), Mockito.any(), Mockito.anyBoolean()))
         .thenReturn(CompletableFuture.completedFuture(null));
 
     String storeName = "Leppalúði_store";
@@ -450,7 +602,7 @@ public class VeniceChangelogConsumerImplTest {
     VersionSwapDataChangeListener changeListener =
         new VersionSwapDataChangeListener(mockConsumer, mockRepository, storeName, "");
     changeListener.handleStoreChanged(mockStore);
-    Mockito.verify(mockConsumer).internalSeekToEndOfPush(Mockito.anySet(), Mockito.any());
+    Mockito.verify(mockConsumer).internalSeekToEndOfPush(Mockito.anySet(), Mockito.any(), Mockito.anyBoolean());
 
   }
 

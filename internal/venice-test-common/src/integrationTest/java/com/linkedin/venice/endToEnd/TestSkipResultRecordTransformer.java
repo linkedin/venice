@@ -24,12 +24,12 @@ public class TestSkipResultRecordTransformer extends DaVinciRecordTransformer<In
   }
 
   @Override
-  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value) {
+  public DaVinciRecordTransformerResult<String> transform(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.SKIP);
   }
 
   @Override
-  public void processPut(Lazy<Integer> key, Lazy<String> value) {
+  public void processPut(Lazy<Integer> key, Lazy<String> value, int partitionId) {
     String valueStr = convertUtf8ToString(value.get());
     put(key.get(), valueStr);
   }

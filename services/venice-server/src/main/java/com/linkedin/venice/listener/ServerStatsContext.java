@@ -34,6 +34,7 @@ public class ServerStatsContext {
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
   private AggServerHttpRequestStats currentStats;
+  private RequestType requestType = RequestType.SINGLE_GET;
 
   // a flag that indicates if this is a new HttpRequest. Netty is TCP-based, so a HttpRequest is chunked into packages.
   // Set the startTimeInNS in ChannelRead if it is the first package within a HttpRequest.
@@ -170,6 +171,7 @@ public class ServerStatsContext {
   }
 
   public void setRequestType(RequestType requestType) {
+    this.requestType = requestType;
     switch (requestType) {
       case MULTI_GET:
       case MULTI_GET_STREAMING:
@@ -182,6 +184,10 @@ public class ServerStatsContext {
       default:
         currentStats = singleGetStats;
     }
+  }
+
+  public RequestType getRequestType() {
+    return requestType;
   }
 
   public void setRequestKeyCount(int keyCount) {

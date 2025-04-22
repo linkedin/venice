@@ -1080,99 +1080,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return produceResultFuture;
   }
 
-  /**
-   * This is the main method to send DIV messages to a kafka topic through VeniceWriter. The method decides whether to
-   * send the messages in chunked or non-chunked mode based on the size of the message. Today, DIV is the only user of
-   * this method, but it can be extended easily to support other class types in the future.
-   *
-   * All the messages sent through this method are of type {@link MessageType#GLOBAL_RT_DIV} in its KafkaKey and
-   * all their corresponding {@link KafkaMessageEnvelope} uses {@link Put} as the payload. Inside the Put payload, the
-   * actual message is stored in the putValue field and the schema id has 3 cases:
-   *
-   * 1. If the message is non-chunked, the schema id is set to {@link AvroProtocolDefinition#GLOBAL_RT_DIV_STATE}.
-   * 2. If the message is chunk message, the schema id is set to {@link AvroProtocolDefinition#CHUNK}.
-   * 3. If the message is a chunk manifest message, the schema id is set to {@link AvroProtocolDefinition#CHUNKED_VALUE_MANIFEST}.
-   */
-  public CompletableFuture<PubSubProduceResult> sendGlobalRtDivMessage(int partition, K key, V value) {
-    if (partition < 0 || partition >= numberOfPartitions) {
-      throw new VeniceException("Invalid partition: " + partition);
-    }
-
-    byte[] serializedKey = keySerializer.serialize(topicName, key);
-    byte[] serializedValue = valueSerializer.serialize(topicName, value);
-
-    if (isChunkingNeededForRecord(serializedKey.length + serializedValue.length)) {
-      return sendChunkedGlobalRtDivMessage(partition, serializedKey, serializedValue);
-    }
-
-    serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
-    KafkaKey divKey = new KafkaKey(MessageType.GLOBAL_RT_DIV, serializedKey);
-
-    // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
-    Put putPayload =
-        buildPutPayload(serializedValue, AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(), null);
-
-    // TODO: This needs to be implemented later to support Global RT DIV
-    final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-    PubSubProducerCallback callback = new CompletableFutureCallback(completableFuture);
-
-    return sendMessage(
-        producerMetadata -> divKey,
-        MessageType.PUT,
-        putPayload,
-        partition,
-        callback,
-        DEFAULT_LEADER_METADATA_WRAPPER,
-        APP_DEFAULT_LOGICAL_TS);
-  }
-
-  private CompletableFuture<PubSubProduceResult> sendChunkedGlobalRtDivMessage(
-      int partition,
-      byte[] serializedKey,
-      byte[] serializedValue) {
-    final Supplier<String> reportSizeGenerator = () -> getSizeReport(serializedKey.length, serializedValue.length, 0);
-    // TODO: This needs to be implemented later to support Global RT DIV.
-    final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-    PubSubProducerCallback callback = new ErrorPropagationCallback(new CompletableFutureCallback(completableFuture));
-    BiConsumer<KeyProvider, Put> sendMessageFunction = (keyProvider, putPayload) -> sendMessage(
-        keyProvider,
-        MessageType.PUT,
-        putPayload,
-        partition,
-        callback,
-        DEFAULT_LEADER_METADATA_WRAPPER,
-        VENICE_DEFAULT_LOGICAL_TS);
-
-    ChunkedPayloadAndManifest valueChunksAndManifest = WriterChunkingHelper.chunkPayloadAndSend(
-        serializedKey,
-        serializedValue,
-        MessageType.GLOBAL_RT_DIV,
-        true,
-        AvroProtocolDefinition.GLOBAL_RT_DIV_STATE.getCurrentProtocolVersion(),
-        0,
-        false,
-        reportSizeGenerator,
-        maxSizeForUserPayloadPerMessageInBytes,
-        keyWithChunkingSuffixSerializer,
-        sendMessageFunction);
-
-    final int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
-    Put manifestPayload =
-        buildManifestPayload(null, null, valueChunksAndManifest, sizeAvailablePerMessage, reportSizeGenerator);
-    return sendManifestMessage(
-        manifestPayload,
-        serializedKey,
-        MessageType.GLOBAL_RT_DIV,
-        valueChunksAndManifest,
-        callback,
-        null,
-        partition,
-        null,
-        null,
-        DEFAULT_LEADER_METADATA_WRAPPER,
-        APP_DEFAULT_LOGICAL_TS);
-  }
-
   protected Put buildPutPayload(byte[] serializedValue, int valueSchemaId, PutMetadata putMetadata) {
     Put putPayload = new Put();
     putPayload.putValue = ByteBuffer.wrap(serializedValue);
@@ -1375,8 +1282,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
-   * Broadcast control message to real-time topic partition, to be consumed by venice leader. Partition high watermarks
-   * are left to local venice leader to prepare and then been produced to version topic partition.
+   * Broadcast control message to the real-time or version topic partition. If it's broadcasted to the RT, the leader
+   * will consume the Version Swap message and produce it to the VT to be consumed by the followers.
+   * Partition high watermarks are left to local venice leader to prepare and then been produced to version topic partition.
    *
    * @param oldServingVersionTopic the version topic change capture consumer should switch from.
    * @param newServingVersionTopic the version topic change capture consumer should switch to.

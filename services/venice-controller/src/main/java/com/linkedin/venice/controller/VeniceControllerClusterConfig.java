@@ -97,6 +97,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLIN
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION;
@@ -216,6 +217,7 @@ import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -559,8 +561,9 @@ public class VeniceControllerClusterConfig {
   private final Set<String> childDatacenters;
   private final long serviceDiscoveryRegistrationRetryMS;
 
-  private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
-  private boolean isHybridStorePartitionCountUpdateEnabled;
+  private final Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
+  private final boolean isRealTimeTopicVersioningEnabled;
+  private final boolean isHybridStorePartitionCountUpdateEnabled;
   private final long deferredVersionSwapSleepMs;
   private final boolean deferredVersionSwapServiceEnabled;
   private final boolean skipDeferredVersionSwapForDVCEnabled;
@@ -584,6 +587,16 @@ public class VeniceControllerClusterConfig {
   private final int logCompactionThreadCount;
   private final long logCompactionIntervalMS;
   private final long timeSinceLastLogCompactionThresholdMS;
+
+  /**
+   * Configs for Dead Store Endpoint
+   */
+  private final boolean isDeadStoreEndpointEnabled;
+  private final String deadStoreStatsClassName;
+  private final boolean isPreFetchDeadStoreStatsEnabled;
+  private final long deadStoreStatsPreFetchIntervalInMs;
+  private final VeniceProperties deadStoreStatsConfigs;
+  private final LogContext logContext;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -856,10 +869,9 @@ public class VeniceControllerClusterConfig {
 
     this.fatalDataValidationFailureRetentionMs =
         props.getLong(FATAL_DATA_VALIDATION_FAILURE_TOPIC_RETENTION_MS, TimeUnit.DAYS.toMillis(2));
-
+    // 30 seconds
     this.topicCleanupSleepIntervalBetweenTopicListFetchMs =
-        props.getLong(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, TimeUnit.SECONDS.toMillis(30)); // 30
-                                                                                                                // seconds
+        props.getLong(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, TimeUnit.SECONDS.toMillis(30));
     this.topicCleanupDelayFactor = props.getInt(TOPIC_CLEANUP_DELAY_FACTOR, 20); // thisFactor *
                                                                                  // topicCleanupSleepIntervalBetweenTopicListFetchMs
                                                                                  // = delayBeforeTopicDeletion
@@ -1052,6 +1064,17 @@ public class VeniceControllerClusterConfig {
     this.timeSinceLastLogCompactionThresholdMS =
         props.getLong(TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
 
+    this.isDeadStoreEndpointEnabled = props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED, false);
+    this.deadStoreStatsClassName = props.getString(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_CLASS_NAME, "");
+    this.isPreFetchDeadStoreStatsEnabled =
+        props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_ENABLED, false);
+    this.deadStoreStatsPreFetchIntervalInMs =
+        props.getLong(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PRE_FETCH_INTERVAL_MS, 24 * 60 * 60 * 1000);
+    this.deadStoreStatsConfigs = props.clipAndFilterNamespace(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_PREFIX);
+
+    this.isRealTimeTopicVersioningEnabled = props.getBoolean(
+        ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
+        DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING);
     this.isHybridStorePartitionCountUpdateEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
 
@@ -1109,6 +1132,7 @@ public class VeniceControllerClusterConfig {
         props.getLong(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, TimeUnit.MINUTES.toMillis(1));
     this.deferredVersionSwapServiceEnabled = props.getBoolean(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, false);
     this.skipDeferredVersionSwapForDVCEnabled = props.getBoolean(SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED, true);
+    this.logContext = new LogContext.Builder().setRegionName(regionName).setComponentName("controller").build();
   }
 
   public VeniceProperties getProps() {
@@ -1930,6 +1954,10 @@ public class VeniceControllerClusterConfig {
     return isHybridStorePartitionCountUpdateEnabled;
   }
 
+  public boolean getRealTimeTopicVersioningEnabled() {
+    return isRealTimeTopicVersioningEnabled;
+  }
+
   /**
    * A function that would put a k/v pair into a map with some processing works.
    */
@@ -1985,6 +2013,26 @@ public class VeniceControllerClusterConfig {
 
   public long getTimeSinceLastLogCompactionThresholdMS() {
     return timeSinceLastLogCompactionThresholdMS;
+  }
+
+  public boolean isDeadStoreEndpointEnabled() {
+    return isDeadStoreEndpointEnabled;
+  }
+
+  public String getDeadStoreStatsClassName() {
+    return deadStoreStatsClassName;
+  }
+
+  public boolean isPreFetchDeadStoreStatsEnabled() {
+    return isPreFetchDeadStoreStatsEnabled;
+  }
+
+  public long getDeadStoreStatsPreFetchRefreshIntervalInMs() {
+    return deadStoreStatsPreFetchIntervalInMs;
+  }
+
+  public VeniceProperties getDeadStoreStatsConfigs() {
+    return deadStoreStatsConfigs;
   }
 
   public Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> getHelixGlobalRebalancePreference() {
@@ -2067,5 +2115,9 @@ public class VeniceControllerClusterConfig {
       throw new ConfigurationException(
           CONTROLLER_HELIX_INSTANCE_CAPACITY + " cannot be <  " + CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT);
     }
+  }
+
+  public LogContext getLogContext() {
+    return logContext;
   }
 }
