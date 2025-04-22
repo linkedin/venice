@@ -168,7 +168,7 @@ public class VeniceVersionFinder {
         errorMessage += newVersionDecompressorReady ? "" : " Decompressor not ready for new version.";
         errorMessage += " Continuing to serve existing version: " + existingVersionNumber + ".";
         if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
-          LOGGER.debug(errorMessage);
+          LOGGER.warn(errorMessage);
         }
       }
       stats.recordStale(metadataCurrentVersionNumber, existingVersionNumber);
@@ -186,7 +186,7 @@ public class VeniceVersionFinder {
           ? ""
           : " Decompressor not ready for existing version. (Has dictionary downloaded?)";
       if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
-        LOGGER.debug(errorMessage);
+        LOGGER.warn(errorMessage);
       }
     }
     stats.recordStale(metadataCurrentVersionNumber, Store.NON_EXISTING_VERSION);
