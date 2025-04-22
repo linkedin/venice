@@ -7,7 +7,7 @@ jobs:
   ValidateGradleWrapper:
     strategy:
       fail-fast: false
-    runs-on: ubuntu-latest
+    runs-on: bp-ubuntu-latest-x64-4x
     timeout-minutes: 5
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         jdk: [17]
-    runs-on: ubuntu-latest
+    runs-on: bp-ubuntu-latest-x64-4x
     permissions:
       id-token: write
       contents: read
@@ -87,7 +87,7 @@ jobs:
      :clients:venice-producer:diffCoverage
      :clients:venice-client:diffCoverage
      :clients:venice-push-job:diffCoverage
-     :clients:venice-thin-client:diffCoverage 
+     :clients:venice-thin-client:diffCoverage
      --continue
 
   Integrations:
@@ -107,7 +107,7 @@ jobs:
      :internal:venice-client-common:diffCoverage
      :internal:venice-common:diffCoverage
      :internal:venice-jdk-compatibility-test:diffCoverage
-     :internal:venice-test-common:diffCoverage 
+     :internal:venice-test-common:diffCoverage
       --continue
 
   Controller:
@@ -115,7 +115,7 @@ jobs:
    with:
     artifact_suffix: controller
     arg:
-     :services:venice-controller:diffCoverage 
+     :services:venice-controller:diffCoverage
      --continue
 
   Server:
@@ -124,7 +124,7 @@ jobs:
     artifact_suffix: server
     arg:
      :clients:da-vinci-client:diffCoverage
-     :services:venice-server:diffCoverage 
+     :services:venice-server:diffCoverage
      --continue
 
   Router:
@@ -139,7 +139,7 @@ jobs:
   StaticAnalysisAndUnitTestsCompletionCheck:
     strategy:
       fail-fast: false
-    runs-on: ubuntu-latest
+    runs-on: bp-ubuntu-latest-x64-4x
     needs: [ValidateGradleWrapper, StaticAnalysis, Clients, Integrations, Internal, Controller, Server, Router]
     timeout-minutes: 120
     if: success() || failure()  # Always run this job, regardless of previous job status
