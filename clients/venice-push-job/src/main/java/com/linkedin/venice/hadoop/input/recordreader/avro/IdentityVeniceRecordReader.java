@@ -38,7 +38,7 @@ public class IdentityVeniceRecordReader extends AbstractVeniceRecordReader<ByteB
   }
 
   @Override
-  public Long getRecordRMD(ByteBuffer inputKey, ByteBuffer inputValue) {
+  public Long getRecordTimestamp(ByteBuffer inputKey, ByteBuffer inputValue) {
     return -1L;
   }
 

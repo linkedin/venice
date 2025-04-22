@@ -92,7 +92,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   public static class VeniceWriterMessage {
     private final byte[] keyBytes;
     private final byte[] valueBytes;
-    private final long logicalts;
+    private final long logicalTimestamp;
     private final int valueSchemaId;
     private final int rmdVersionId;
     private final Consumer<AbstractVeniceWriter<byte[], byte[], byte[]>> consumer;
@@ -119,7 +119,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     public VeniceWriterMessage(
         byte[] keyBytes,
         byte[] valueBytes,
-        long topLevelLogicalts,
+        long logicalTimestamp,
         int valueSchemaId,
         int rmdVersionId,
         ByteBuffer rmdPayload,
@@ -130,7 +130,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       this.valueBytes = valueBytes;
       this.valueSchemaId = valueSchemaId;
       this.rmdVersionId = rmdVersionId;
-      this.logicalts = topLevelLogicalts;
+      this.logicalTimestamp = logicalTimestamp;
       this.consumer = writer -> {
         if (rmdPayload != null) {
           if (rmdPayload.remaining() == 0) {
@@ -146,8 +146,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         } else if (enableWriteCompute && derivedValueSchemaId > 0) {
           writer.update(keyBytes, valueBytes, valueSchemaId, derivedValueSchemaId, callback);
         } else {
-          if (logicalts > 0) {
-            writer.put(keyBytes, valueBytes, valueSchemaId, logicalts, callback, null);
+          if (this.logicalTimestamp > 0) {
+            writer.put(keyBytes, valueBytes, valueSchemaId, this.logicalTimestamp, callback, null);
           } else {
             writer.put(keyBytes, valueBytes, valueSchemaId, callback, null);
           }
@@ -232,7 +232,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   public void processValuesForKey(
       byte[] key,
       Iterator<byte[]> values,
-      Iterator<Long> rmdIterator,
+      Iterator<Long> timestampIterator,
       DataWriterTaskTracker dataWriterTaskTracker) {
     this.dataWriterTaskTracker = dataWriterTaskTracker;
     final long timeOfLastReduceFunctionStartInNS = System.nanoTime();
@@ -242,7 +242,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           (timeOfLastReduceFunctionStartInNS - timeOfLastReduceFunctionEndInNS);
     }
     if (key.length > 0 && (!hasReportedFailure(dataWriterTaskTracker, this.isDuplicateKeyAllowed))) {
-      VeniceWriterMessage message = extract(key, values, rmdIterator, dataWriterTaskTracker);
+      VeniceWriterMessage message = extract(key, values, timestampIterator, dataWriterTaskTracker);
       if (message != null) {
         try {
           sendMessageToKafka(dataWriterTaskTracker, message.getConsumer());
@@ -287,7 +287,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   protected VeniceWriterMessage extract(
       byte[] keyBytes,
       Iterator<byte[]> values,
-      Iterator<Long> rmdIterator,
+      Iterator<Long> timestampIterator,
       DataWriterTaskTracker dataWriterTaskTracker) {
     /**
      * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
@@ -297,8 +297,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     }
     byte[] valueBytes = values.next();
     Long timestamp = -1L;
-    if (rmdIterator.hasNext()) {
-      timestamp = rmdIterator.next();
+    if (timestampIterator.hasNext()) {
+      timestamp = timestampIterator.next();
     }
     if (duplicateKeyPrinter == null) {
       throw new VeniceException("'DuplicateKeyPrinter' is not initialized properly");

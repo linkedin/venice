@@ -46,7 +46,7 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
    */
   public abstract Object getAvroValue(INPUT_KEY inputKey, INPUT_VALUE inputValue);
 
-  public abstract Long getRecordRMD(INPUT_KEY inputKey, INPUT_VALUE inputValue);
+  public abstract Long getRecordTimestamp(INPUT_KEY inputKey, INPUT_VALUE inputValue);
 
   /**
    * Return a serialized output key

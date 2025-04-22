@@ -36,9 +36,8 @@ public class SparkInputRecordProcessor extends AbstractInputRecordProcessor<Byte
     ByteBuffer keyBB = ByteBuffer.wrap(record.getAs(SparkConstants.KEY_COLUMN_NAME));
     byte[] value = record.getAs(SparkConstants.VALUE_COLUMN_NAME);
     Long timestamp = record.getAs(SparkConstants.TIMESTAMP_COLUMN_NAME);
-    // add get timestamp (make complex object?)
     ByteBuffer valueBB = value == null ? null : ByteBuffer.wrap(value);
-    super.processRecord(keyBB, valueBB, getRecordEmitter(outputRows), dataWriterTaskTracker);
+    super.processRecord(keyBB, valueBB, timestamp, getRecordEmitter(outputRows), dataWriterTaskTracker);
     return outputRows.iterator();
   }
 

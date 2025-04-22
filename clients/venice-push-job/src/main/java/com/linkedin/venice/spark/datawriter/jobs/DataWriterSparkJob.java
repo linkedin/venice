@@ -113,7 +113,7 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
       AvroWrapper<IndexedRecord> recordAvroWrapper = new AvroWrapper<>(rowRecord);
       final byte[] inputKeyBytes = recordReader.getKeyBytes(recordAvroWrapper, null);
       final byte[] inputValueBytes = recordReader.getValueBytes(recordAvroWrapper, null);
-      final Long timestamp = recordReader.getRecordRMD(recordAvroWrapper, null);
+      final Long timestamp = recordReader.getRecordTimestamp(recordAvroWrapper, null);
       return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes, timestamp }, DEFAULT_SCHEMA);
     }, RowEncoder.apply(DEFAULT_SCHEMA));
 
@@ -134,9 +134,8 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
 
           final byte[] inputKeyBytes = recordReader.getKeyBytes(record._1, record._2);
           final byte[] inputValueBytes = recordReader.getValueBytes(record._1, record._2);
-          // final Long timestamp = recordReader.getRecordRMD(record._1, record._2);
-
-          return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes }, DEFAULT_SCHEMA);
+          // timestamp isn't supported for vson
+          return new GenericRowWithSchema(new Object[] { inputKeyBytes, inputValueBytes, -1L }, DEFAULT_SCHEMA);
         });
     return sparkSession.createDataFrame(rdd, DEFAULT_SCHEMA);
   }

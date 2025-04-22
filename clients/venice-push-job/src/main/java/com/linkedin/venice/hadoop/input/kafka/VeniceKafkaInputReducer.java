@@ -127,7 +127,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
   protected AbstractPartitionWriter.VeniceWriterMessage extract(
       byte[] key,
       Iterator<byte[]> valueIterator,
-      Iterator<Long> rmdIterator,
+      Iterator<Long> timestampIterator,
       DataWriterTaskTracker dataWriterTaskTracker) {
     KafkaInputMapperKey mapperKey = KAFKA_INPUT_MAPPER_KEY_AVRO_SPECIFIC_DESERIALIZER.deserialize(key);
     byte[] keyBytes = ByteUtils.extractByteArray(mapperKey.key);
@@ -135,7 +135,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       throw new VeniceException("There is no value corresponding to key bytes: " + ByteUtils.toHexString(keyBytes));
     }
 
-    // We don't support a field override in KIF today, so we don't need to pass the rmdIterator
+    // We don't support a field override in KIF today, so we don't need to pass the timestampIterator
     return extractor.extract(keyBytes, valueIterator, dataWriterTaskTracker);
   }
 

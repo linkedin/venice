@@ -62,7 +62,7 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<KafkaInputMappe
       KafkaInputMapperValue inputValue,
       AtomicReference<byte[]> keyRef,
       AtomicReference<byte[]> valueRef,
-      AtomicReference<Long> rmdRef,
+      AtomicReference<Long> timestampRef,
       DataWriterTaskTracker dataWriterTaskTracker) {
     if (veniceFilterChain != null && veniceFilterChain.apply(inputValue)) {
       dataWriterTaskTracker.trackRepushTtlFilteredRecord();

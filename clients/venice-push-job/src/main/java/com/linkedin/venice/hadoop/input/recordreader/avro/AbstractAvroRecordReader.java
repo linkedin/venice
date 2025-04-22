@@ -140,18 +140,18 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
   }
 
   @Override
-  public Long getRecordRMD(INPUT_KEY inputKey, INPUT_VALUE inputValue) {
+  public Long getRecordTimestamp(INPUT_KEY inputKey, INPUT_VALUE inputValue) {
     if (timestampFieldPos == -1) {
       return -1L;
     }
 
-    Object rmdDatum = getRecordDatum(inputKey, inputValue).get(timestampFieldPos);
-    if (!(rmdDatum instanceof Long)) {
+    Object timestampDatum = getRecordDatum(inputKey, inputValue).get(timestampFieldPos);
+    if (!(timestampDatum instanceof Long)) {
       // This is also ok, this just means it's null or an object, and we haven't implemented the RMD version for this
       return -1L;
     }
 
-    return (Long) rmdDatum;
+    return (Long) timestampDatum;
   }
 
   @Override

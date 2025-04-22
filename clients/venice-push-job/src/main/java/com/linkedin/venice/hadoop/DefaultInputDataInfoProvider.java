@@ -98,7 +98,6 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       pushJobSetting.vsonInputKeySchema = VsonSchema.parse(pushJobSetting.vsonInputKeySchemaString);
       pushJobSetting.vsonInputValueSchemaString = fileMetadata.get(FILE_VALUE_SCHEMA);
       pushJobSetting.vsonInputValueSchema = VsonSchema.parse(pushJobSetting.vsonInputValueSchemaString);
-      // TODO: We today don't support overriding the timestamp/RMD in VSON input format
     }
     // Check the first file type prior to check schema consistency to make sure a schema can be obtained from it.
     if (fileStatuses[0].isDirectory()) {
@@ -112,8 +111,6 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       LOGGER.info("Detected Avro input format.");
       pushJobSetting.keyField = props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
       pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
-      // pushJobSetting.timestampField =
-      // props.getString(OPTIONAL_TIMESTAMP_FIELD_PROP, DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP);
 
       Pair<Schema, Schema> fileAndOutputValueSchema = checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize);
 

@@ -37,7 +37,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     if (updatePreviousReporter(reporter)) {
       dataWriterTaskTracker = new ReporterBackedMapReduceDataWriterTaskTracker(reporter);
     }
-    super.processRecord(inputKey, inputValue, getRecordEmitter(output), dataWriterTaskTracker);
+    super.processRecord(inputKey, inputValue, -1L, getRecordEmitter(output), dataWriterTaskTracker);
   }
 
   private boolean updatePreviousReporter(Reporter reporter) {

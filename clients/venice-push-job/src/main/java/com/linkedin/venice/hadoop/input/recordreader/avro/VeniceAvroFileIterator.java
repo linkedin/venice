@@ -67,7 +67,7 @@ public class VeniceAvroFileIterator implements VeniceRecordIterator {
     AvroWrapper<IndexedRecord> avroObject = new AvroWrapper<>((IndexedRecord) avroDataFileStream.next());
     currentKey = recordReader.getKeyBytes(avroObject, null);
     currentValue = recordReader.getValueBytes(avroObject, null);
-    timestamp = recordReader.getRecordRMD(avroObject, null);
+    timestamp = recordReader.getRecordTimestamp(avroObject, null);
     return true;
   }
 

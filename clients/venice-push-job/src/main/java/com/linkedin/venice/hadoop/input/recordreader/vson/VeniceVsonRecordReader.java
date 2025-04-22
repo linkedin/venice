@@ -95,7 +95,7 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
   }
 
   @Override
-  public Long getRecordRMD(BytesWritable inputKey, BytesWritable inputValue) {
+  public Long getRecordTimestamp(BytesWritable inputKey, BytesWritable inputValue) {
     return -1L;
   }
 
