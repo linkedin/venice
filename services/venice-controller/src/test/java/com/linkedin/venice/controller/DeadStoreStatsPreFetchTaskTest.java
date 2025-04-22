@@ -17,7 +17,7 @@ public class DeadStoreStatsPreFetchTaskTest {
   private Store mockStore;
 
   @BeforeClass
-  public void setUp() throws NoSuchFieldException {
+  public void setUp() {
     mockAdmin = mock(VeniceHelixAdmin.class);
     mockStore = mock(Store.class);
     when(mockAdmin.getAllStores(CLUSTER_NAME)).thenReturn(Collections.singletonList(mockStore));
