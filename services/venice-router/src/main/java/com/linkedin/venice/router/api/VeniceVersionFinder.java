@@ -15,7 +15,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.router.stats.RouterCurrentVersionStats;
 import com.linkedin.venice.router.stats.StaleVersionReason;
 import com.linkedin.venice.router.stats.StaleVersionStats;
@@ -156,8 +155,6 @@ public class VeniceVersionFinder {
 
     // check if existing version ready to serve
     Version existingVersion = store.getVersion(existingVersionNumber);
-    VersionStatus existingVersionStatus = existingVersion != null ? existingVersion.getStatus() : VersionStatus.ERROR;
-    boolean existingVersionStatusOnline = existingVersionStatus.equals(VersionStatus.ONLINE);
     boolean existingVersionDecompressorReady =
         isDecompressorReady(existingVersion, Version.composeKafkaTopic(storeName, existingVersionNumber));
     // existing version ready to serve
