@@ -7,7 +7,7 @@ permissions:
   id-token: write # This is required for requesting the JWT
   security-events: write
   contents: read
-  actions: read # This is required for actions/checkout
+  actions: write # This is required for actions/checkout
   issues: write
   pull-requests: write
   checks: write # needed for spotbugs
@@ -20,12 +20,6 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-      checks: write
-      pull-requests: write
-      issues: write
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
