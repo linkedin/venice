@@ -41,7 +41,7 @@ public class ApacheKafkaUtils {
   /**
    * Mandatory Kafka SSL configs when SSL is enabled.
    */
-  protected static final Set<String> KAFKA_SSL_MANDATORY_CONFIGS = Collections.unmodifiableSet(
+  public static final Set<String> KAFKA_SSL_MANDATORY_CONFIGS =
       new HashSet<>(
           Arrays.asList(
               CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,
@@ -54,7 +54,7 @@ public class ApacheKafkaUtils {
               SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG,
               SslConfigs.SSL_KEYMANAGER_ALGORITHM_CONFIG,
               SslConfigs.SSL_TRUSTMANAGER_ALGORITHM_CONFIG,
-              SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG)));
+              SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG));
 
   /**
    * Kafka SASL configs that are always retained if present in the properties regardless of the client type.
