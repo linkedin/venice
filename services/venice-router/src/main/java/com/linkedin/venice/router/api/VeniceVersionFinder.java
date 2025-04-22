@@ -199,21 +199,28 @@ public class VeniceVersionFinder {
       return false;
     }
     int partitionCount = routingDataRepository.getNumberOfPartitions(kafkaTopic);
+
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       List<Instance> partitionHosts = routingDataRepository.getReadyToServeInstances(kafkaTopic, partitionId);
       if (partitionHosts.isEmpty()) {
         String partitionAssignment;
+        String errorMessage = "";
         try {
           partitionAssignment = routingDataRepository.getAllInstances(kafkaTopic, partitionId).toString();
         } catch (Exception e) {
-          LOGGER.debug("Failed to get partition assignment for resource: {}", kafkaTopic, e);
+          if (LOGGER.isDebugEnabled()) {
+            errorMessage += "Failed to get partition assignment for resource: " + kafkaTopic + " " + e;
+          }
           partitionAssignment = "unknown";
         }
-        LOGGER.debug(
-            "No online replica exists for partition {} of {}, partition assignment: {}",
-            partitionId,
-            kafkaTopic,
-            partitionAssignment);
+
+        if (LOGGER.isDebugEnabled()) {
+          errorMessage += "No online replica exists for partition " + partitionId + " of " + kafkaTopic
+              + ", partition assignment: " + partitionAssignment;
+          if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
+            LOGGER.warn(errorMessage);
+          }
+        }
         return false;
       }
     }
