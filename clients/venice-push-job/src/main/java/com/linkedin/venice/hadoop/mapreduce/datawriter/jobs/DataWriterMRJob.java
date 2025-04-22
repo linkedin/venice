@@ -13,7 +13,7 @@ import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.BATCH_NUM_BYTES_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ETL_VALUE_SCHEMA_TRANSFORMATION;
@@ -270,7 +270,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       if (pushJobSetting.timestampField != null) {
         jobConf.set(TIMESTAMP_FIELD_PROP, pushJobSetting.timestampField);
       } else {
-        jobConf.set(TIMESTAMP_FIELD_PROP, DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP);
+        jobConf.set(TIMESTAMP_FIELD_PROP, DEFAULT_TIMESTAMP_FIELD_PROP);
       }
       if (pushJobSetting.etlValueSchemaTransformation != null) {
         jobConf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
