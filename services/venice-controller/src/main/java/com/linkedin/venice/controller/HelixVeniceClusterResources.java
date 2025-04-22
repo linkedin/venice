@@ -215,14 +215,14 @@ public class HelixVeniceClusterResources implements VeniceResource {
       deadStoreStatsPreFetchTask =
           new DeadStoreStatsPreFetchTask(clusterName, admin, config.getDeadStoreStatsPreFetchRefreshIntervalInMs());
     }
-    if (config.isParent() && config.getAdminOperationVersionAutoDetectionEnabled()) {
+    if (config.isParent() && config.isProtocolVersionAutoDetectionServiceEnabled()) {
       this.protocolVersionAutoDetectionService = new ProtocolVersionAutoDetectionService(
           clusterName,
           admin,
           new ProtocolVersionAutoDetectionStats(
               metricsRepository,
               "admin_operation_protocol_version_auto_detection_service_" + clusterName),
-          config.getAdminOperationVersionAutoDetectionIntervalMS());
+          config.getProtocolVersionAutoDetectionSleepMS());
     } else {
       this.protocolVersionAutoDetectionService = null;
     }

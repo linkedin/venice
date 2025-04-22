@@ -1,7 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS;
 import static com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -37,8 +37,8 @@ public class TestProtocolVersionAutoDetection {
   @BeforeClass
   public void setUp() {
     Properties parentControllerProps = new Properties();
-    parentControllerProps.put(ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_ENABLED, true);
-    parentControllerProps.put(ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_INTERVAL_MS, SERVICE_INTERVAL_MS);
+    parentControllerProps.put(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED, true);
+    parentControllerProps.put(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS, SERVICE_INTERVAL_MS);
     Properties serverProperties = new Properties();
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =

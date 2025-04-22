@@ -10,8 +10,6 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ADMIN_HOSTNAME;
-import static com.linkedin.venice.ConfigKeys.ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_SECURE_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REPLICATION_FACTOR;
@@ -79,6 +77,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEAR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
@@ -603,8 +603,8 @@ public class VeniceControllerClusterConfig {
   /*
   * Configs for admin operation version auto-detection service
   */
-  private final boolean isAdminOperationVersionAutoDetectionEnabled;
-  private final long adminOperationVersionAutoDetectionIntervalMS;
+  private final boolean isProtocolVersionAutoDetectionServiceEnabled;
+  private final long protocolVersionAutoDetectionSleepMS;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -1086,10 +1086,10 @@ public class VeniceControllerClusterConfig {
     this.isHybridStorePartitionCountUpdateEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
 
-    this.isAdminOperationVersionAutoDetectionEnabled =
-        props.getBoolean(ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_ENABLED, false);
-    this.adminOperationVersionAutoDetectionIntervalMS =
-        props.getLong(ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_INTERVAL_MS, TimeUnit.MINUTES.toMillis(10));
+    this.isProtocolVersionAutoDetectionServiceEnabled =
+        props.getBoolean(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED, false);
+    this.protocolVersionAutoDetectionSleepMS =
+        props.getLong(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS, TimeUnit.MINUTES.toMillis(10));
 
     Integer helixRebalancePreferenceEvenness =
         props.getOptionalInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS).orElse(null);
@@ -1971,12 +1971,12 @@ public class VeniceControllerClusterConfig {
     return isRealTimeTopicVersioningEnabled;
   }
 
-  public boolean getAdminOperationVersionAutoDetectionEnabled() {
-    return isAdminOperationVersionAutoDetectionEnabled;
+  public boolean isProtocolVersionAutoDetectionServiceEnabled() {
+    return isProtocolVersionAutoDetectionServiceEnabled;
   }
 
-  public long getAdminOperationVersionAutoDetectionIntervalMS() {
-    return adminOperationVersionAutoDetectionIntervalMS;
+  public long getProtocolVersionAutoDetectionSleepMS() {
+    return protocolVersionAutoDetectionSleepMS;
   }
 
   /**

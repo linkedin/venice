@@ -390,18 +390,6 @@ public class ConfigKeys {
   public static final String ADMIN_TOPIC_SOURCE_REGION = "admin.topic.source.region";
 
   /**
-   * Whether the admin operation protocol version auto-detection service is enabled or not.
-   */
-  public static final String ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_ENABLED =
-      "admin.operation.protocol.version.auto.detection.enabled";
-
-  /**
-   * The time interval to check the admin operation protocol version auto-detection service.
-   */
-  public static final String ADMIN_OPERATION_PROTOCOL_VERSION_AUTO_DETECTION_INTERVAL_MS =
-      "admin.operation.protocol.version.auto.detection.interval.ms";
-
-  /**
    * This following config defines whether admin consumption should be enabled or not, and this config will only control
    * the behavior in Child Controller. This is used for store migration.
    */
@@ -2589,6 +2577,20 @@ public class ConfigKeys {
    * controls the TTL of the cache per entry.
    */
   public static final String ACL_IN_MEMORY_CACHE_TTL_MS = "acl.in.memory.cache.ttl.ms";
+
+  /**
+   * Enables / disables protocol version auto-detection service in parent controller.
+   * This service is responsible for detecting the admin operation protocol version to serialize message
+   * Default value is disabled (false).
+   */
+  public static final String CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED =
+      "controller.protocol.version.auto.detection.service.enabled";
+
+  /**
+   * Specifies the sleep time for the protocol version auto-detection service between each detection attempt.
+   */
+  public static final String CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS =
+      "controller.protocol.version.auto.detection.sleep.ms";
 
   /**
    * If enabled, the controller's get dead store endpoint will be enabled.
