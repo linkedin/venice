@@ -3,6 +3,15 @@ name: AnalyseStatiqueEtTestsUnitaires
 
 on: [push, pull_request, workflow_dispatch]
 
+permissions:
+  id-token: write # This is required for requesting the JWT
+  security-events: write
+  contents: read
+  actions: read # This is required for actions/checkout
+  issues: write
+  pull-requests: write
+  checks: write # needed for spotbugs
+
 jobs:
 
   StaticAnalysis:
