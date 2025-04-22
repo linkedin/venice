@@ -42,6 +42,15 @@ public class BlobTransferUtils {
   }
 
   /**
+   * Listener interface for blob transfer snapshot operations.
+   * Implementations of this interface can define actions to be performed before the snapshot creation.
+   */
+  public interface BlobTransferSnapshotCreationListener {
+    // Handler the event of pre-snapshot creation
+    void preSnapshotCreationHandler(String storeNameAndVersion, int partitionId);
+  }
+
+  /**
    * Check if the HttpResponse message is for metadata.
    * @param msg the HttpResponse message
    * @return true if the message is a metadata message, false otherwise

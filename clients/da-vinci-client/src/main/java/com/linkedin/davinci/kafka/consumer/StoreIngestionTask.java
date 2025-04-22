@@ -21,6 +21,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
@@ -40,6 +41,7 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
@@ -3221,6 +3223,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Generate snapshot after batch write is done.
      */
     if (storeVersionConfig.isBlobTransferEnabled() && serverConfig.isBlobTransferManagerEnabled()) {
+      // 1. Add the pre-snapshot listener to partition for hybrid stores. No need to listen to batch stores.
+      if (isHybridMode()) {
+        try {
+          addBlobTransferSnapshotCreationListener(storageEngine, partition);
+        } catch (Exception e) {
+          LOGGER
+              .warn("Failed to setup pre-snapshot listener for topic {} partition {}", kafkaVersionTopic, partition, e);
+        }
+      }
+
+      // 2. Create snapshot for blob transfer
       storageEngine.createSnapshot(storagePartitionConfig);
     }
 
@@ -4929,5 +4942,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   boolean isGlobalRtDivEnabled() {
     return isGlobalRtDivEnabled; // mainly for unit test mocks
+  }
+
+  /**
+   * A method that adds the snapshot creation event listener for the given partition.
+   * And also overrides the pre snapshot creation handler, which will sync the offset for the given partition.
+   * @param storageEngine
+   * @param partitionId
+   */
+  private void addBlobTransferSnapshotCreationListener(AbstractStorageEngine storageEngine, int partitionId) {
+    AbstractStoragePartition rocksDBPartition = storageEngine.getPartitionOrThrow(partitionId);
+    rocksDBPartition.addPartitionSnapshotListener(new BlobTransferUtils.BlobTransferSnapshotCreationListener() {
+      @Override
+      public void preSnapshotCreationHandler(String storeNameAndVersion, int partitionId) {
+        LOGGER
+            .info("Beginning pre-snapshot offset sync for store: {}, partition: {}", storeNameAndVersion, partitionId);
+        try {
+          syncOffset(storeNameAndVersion, getPartitionConsumptionState(partitionId));
+          LOGGER.info("Completed pre-snapshot sync for store: {}, partition: {}", storeNameAndVersion, partitionId);
+        } catch (Exception e) {
+          throw new VeniceException(
+              "Interrupted while syncing offset before snapshot creation for store : " + storeNameAndVersion
+                  + ", partition: " + partitionId,
+              e);
+        }
+      }
+    });
   }
 }

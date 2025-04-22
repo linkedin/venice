@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.store.rocksdb.ReplicationMetadataRocksDBStoragePartition;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -102,6 +103,12 @@ public abstract class AbstractStoragePartition {
    * @return
    */
   public abstract boolean verifyConfig(StoragePartitionConfig storagePartitionConfig);
+
+  /**
+   * Add the snapshot creation event listener to the storage partition.
+   * @param listener
+   */
+  public abstract void addPartitionSnapshotListener(BlobTransferUtils.BlobTransferSnapshotCreationListener listener);
 
   /**
    * Creates a snapshot of the current state of the storage if the blob transfer feature is enabled via the store configuration

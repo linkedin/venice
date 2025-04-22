@@ -2,6 +2,7 @@ package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -154,6 +155,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final List<ColumnFamilyHandle> columnFamilyHandleList = new ArrayList<>();
   protected final List<ColumnFamilyDescriptor> columnFamilyDescriptors = new ArrayList<>();
   private RocksDBSstFileWriter rocksDBSstFileWriter = null;
+
+  private BlobTransferUtils.BlobTransferSnapshotCreationListener blobTransferSnapshotCreationListener;
 
   protected RocksDBStoragePartition(
       StoragePartitionConfig storagePartitionConfig,
@@ -504,9 +507,23 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
+  public void addPartitionSnapshotListener(BlobTransferUtils.BlobTransferSnapshotCreationListener listener) {
+    this.blobTransferSnapshotCreationListener = listener;
+  }
+
+  @Override
   public synchronized void createSnapshot() {
     if (blobTransferEnabled) {
-      createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
+      try {
+        // 1. Notify the handler about the pre snapshot creation event, to flush the data to disk and sync offset.
+        if (blobTransferSnapshotCreationListener != null) {
+          blobTransferSnapshotCreationListener.preSnapshotCreationHandler(storeNameAndVersion, partitionId);
+        }
+        // 2. Create the snapshot.
+        createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
+      } catch (Exception e) {
+        throw new VeniceException("Failed to create snapshot for replica: " + replicaId, e);
+      }
     }
   }
 

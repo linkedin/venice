@@ -1,5 +1,6 @@
 package com.linkedin.davinci.store.blackhole;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
@@ -84,6 +85,11 @@ public class BlackHoleStorageEnginePartition extends AbstractStoragePartition {
 
   @Override
   public void createSnapshot() {
+    throw new UnsupportedOperationException("Method not implemented!");
+  }
+
+  @Override
+  public void addPartitionSnapshotListener(BlobTransferUtils.BlobTransferSnapshotCreationListener listener) {
     throw new UnsupportedOperationException("Method not implemented!");
   }
 }
