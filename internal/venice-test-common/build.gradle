@@ -120,6 +120,7 @@ dependencies {
   testImplementation libraries.log4j2core
   testImplementation libraries.log4j2api
   testImplementation libraries.kafkaClients
+  testImplementation libraries.testcontainers
 
   jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:' + jmh.jmhVersion.get()
   jmhImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')
