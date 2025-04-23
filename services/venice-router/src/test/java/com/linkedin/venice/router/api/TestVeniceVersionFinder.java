@@ -220,7 +220,7 @@ public class TestVeniceVersionFinder {
         compressorFactory,
         mockMetricsRepository);
 
-    // for a new store, the versionFinder returns the current version, no matter the online replicas
+    // for a new store, the versionFinder returns no version
     Assert.assertEquals(versionFinder.getVersion(storeName, request), Store.NON_EXISTING_VERSION);
 
     // When the current version changes, without any online replicas the versionFinder returns the old version number
@@ -229,14 +229,14 @@ public class TestVeniceVersionFinder {
     store.setCurrentVersion(secondVersion);
     Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
 
-    // When we retire an old version, we update to the new version anyways
+    // When we retire an old version, we return last existing version
     store.addVersion(new VersionImpl(storeName, thirdVersion));
     store.updateVersionStatus(thirdVersion, VersionStatus.ONLINE);
     store.setCurrentVersion(thirdVersion);
     store.updateVersionStatus(1, VersionStatus.NOT_CREATED);
     Assert.assertEquals(versionFinder.getVersion(storeName, request), firstVersion);
 
-    // Next new version with no online instances still serves old ONLINE version
+    // Next new version with no online instances still serves old existing version
     store.addVersion(new VersionImpl(storeName, fourthVersion));
     store.updateVersionStatus(fourthVersion, VersionStatus.ONLINE);
     store.setCurrentVersion(fourthVersion);
