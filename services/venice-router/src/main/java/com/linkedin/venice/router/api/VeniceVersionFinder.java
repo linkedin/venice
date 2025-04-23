@@ -162,7 +162,7 @@ public class VeniceVersionFinder {
       LOGGER.warn(
           "Unable to serve new version: {}." + " Partition resources ready for new version? {}."
               + " Decompressor not ready for new version? {}." + " Continuing to serve existing version: {}."
-              + " Decompressor ready for existing version? (Has dictionary downloaded?) {}.",
+              + " Decompressor ready for existing version? {}.",
           newVersionKafkaTopic,
           newVersionPartitionResourcesReady,
           newVersionDecompressorReady,
