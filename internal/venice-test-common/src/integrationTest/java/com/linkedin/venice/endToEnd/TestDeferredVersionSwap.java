@@ -48,6 +48,10 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
+/**
+ * This test class is used to test the deferred version swap feature with
+ * targeted region push enabled.
+ */
 public class TestDeferredVersionSwap {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
   private static final int NUMBER_OF_CLUSTERS = 1;
@@ -495,4 +499,5 @@ public class TestDeferredVersionSwap {
       });
     }
   }
+
 }
