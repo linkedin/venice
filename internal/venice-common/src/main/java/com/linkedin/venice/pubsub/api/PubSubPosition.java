@@ -3,7 +3,7 @@ package com.linkedin.venice.pubsub.api;
 import com.linkedin.venice.annotation.RestrictedApi;
 import com.linkedin.venice.annotation.UnderDevelopment;
 import com.linkedin.venice.memory.Measurable;
-import com.linkedin.venice.pubsub.PubSubPositionInstantiator;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 
 
 /**
@@ -42,12 +42,7 @@ public interface PubSubPosition extends Measurable {
    */
   PubSubPositionWireFormat getPositionWireFormat();
 
-  static PubSubPosition getPositionFromWireFormat(byte[] positionWireFormatBytes) {
-    return PubSubPositionInstantiator.getPositionFromWireFormat(positionWireFormatBytes);
-  }
-
   static PubSubPosition getPositionFromWireFormat(PubSubPositionWireFormat positionWireFormat) {
-    return PubSubPositionInstantiator.getPositionFromWireFormat(positionWireFormat);
+    return PubSubPositionDeserializer.getPositionFromWireFormat(positionWireFormat);
   }
-
 }

@@ -10,29 +10,29 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * A utility for converting serialized {@link PubSubPositionWireFormat} objects into concrete {@link PubSubPosition}
- * instances using the configured {@link PubSubPositionTypeRegistry}.
+ * Utility for converting serialized {@link PubSubPositionWireFormat} data into concrete {@link PubSubPosition}
+ * instances using a configured {@link PubSubPositionTypeRegistry}.
  *
- * <p>This class provides static convenience methods for deserializing positions in scenarios
- * where direct injection of the registry is not available. For production use, callers should prefer
- * explicitly passing their own {@link PubSubPositionTypeRegistry} instance.</p>
+ * <p>This class offers static access to a default deserializer instance backed by the reserved registry.
+ * In most production cases, callers are encouraged to instantiate their own deserializer with a custom
+ * registry instead of relying on the default static entry point.</p>
  *
- * <p>The deserialization process involves looking up the type ID from the wire format using the registry
- * and invoking the corresponding {@link PubSubPositionFactory} to construct the position instance.</p>
+ * <p>Deserialization involves reading the type ID from the wire format and delegating to the corresponding
+ * {@link PubSubPositionFactory} to produce the appropriate position implementation.</p>
  */
-public class PubSubPositionInstantiator {
-  private static final Logger LOGGER = LogManager.getLogger(PubSubPositionInstantiator.class);
+public class PubSubPositionDeserializer {
+  private static final Logger LOGGER = LogManager.getLogger(PubSubPositionDeserializer.class);
   /**
    * Note: The following default instance is only for convenience purposes until we've updated all the code to use
    * pass the registry and resolver explicitly.
    */
-  public static final PubSubPositionInstantiator INSTANCE =
-      new PubSubPositionInstantiator(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
+  public static final PubSubPositionDeserializer DEFAULT_DESERIALIZER =
+      new PubSubPositionDeserializer(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
 
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
 
-  private PubSubPositionInstantiator(PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
-    this.pubSubPositionTypeRegistry = pubSubPositionTypeRegistry;
+  public PubSubPositionDeserializer(PubSubPositionTypeRegistry registry) {
+    this.pubSubPositionTypeRegistry = registry;
   }
 
   /**
@@ -69,10 +69,10 @@ public class PubSubPositionInstantiator {
   }
 
   public static PubSubPosition getPositionFromWireFormat(byte[] positionWireFormatBytes) {
-    return INSTANCE.convertToPosition(positionWireFormatBytes);
+    return DEFAULT_DESERIALIZER.convertToPosition(positionWireFormatBytes);
   }
 
   public static PubSubPosition getPositionFromWireFormat(PubSubPositionWireFormat positionWireFormat) {
-    return INSTANCE.convertToPosition(positionWireFormat);
+    return DEFAULT_DESERIALIZER.convertToPosition(positionWireFormat);
   }
 }

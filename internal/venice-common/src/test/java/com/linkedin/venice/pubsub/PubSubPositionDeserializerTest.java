@@ -16,13 +16,13 @@ import org.testng.annotations.Test;
 /**
  * Unit tests for PubSubPositionFactory
  */
-public class PubSubPositionInstantiatorTest {
+public class PubSubPositionDeserializerTest {
   @Test
   public void testConvertToPositionForApacheKafkaPosition() {
     ApacheKafkaOffsetPosition position = ApacheKafkaOffsetPosition.of(123);
     PubSubPositionWireFormat wireFormat = position.getPositionWireFormat();
 
-    PubSubPosition position1 = PubSubPositionInstantiator.getPositionFromWireFormat(wireFormat);
+    PubSubPosition position1 = PubSubPositionDeserializer.getPositionFromWireFormat(wireFormat);
     assertTrue(position1 instanceof ApacheKafkaOffsetPosition);
     assertEquals(position1, position);
   }
@@ -32,7 +32,7 @@ public class PubSubPositionInstantiatorTest {
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.type = Integer.MAX_VALUE;
     Exception e =
-        expectThrows(VeniceException.class, () -> PubSubPositionInstantiator.getPositionFromWireFormat(wireFormat));
+        expectThrows(VeniceException.class, () -> PubSubPositionDeserializer.getPositionFromWireFormat(wireFormat));
     assertTrue(e.getMessage().contains("PubSub position type ID not found:"), "Got: " + e.getMessage());
   }
 
@@ -44,18 +44,18 @@ public class PubSubPositionInstantiatorTest {
         AvroProtocolDefinition.PUBSUB_POSITION_WIRE_FORMAT.getSerializer();
     byte[] wireFormatBytes = wireFormatSerializer.serialize(kafkaPositionWireFormat).array();
 
-    PubSubPosition position = PubSubPositionInstantiator.getPositionFromWireFormat(wireFormatBytes);
+    PubSubPosition position = PubSubPositionDeserializer.getPositionFromWireFormat(wireFormatBytes);
     assertTrue(position instanceof ApacheKafkaOffsetPosition);
     assertEquals(position, kafkaPosition);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cannot deserialize null wire format position")
   public void testGetPositionFromWireFormatBytesThrowsExceptionWhenWireFormatBytesIsNull() {
-    PubSubPositionInstantiator.getPositionFromWireFormat((byte[]) null);
+    PubSubPositionDeserializer.getPositionFromWireFormat((byte[]) null);
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cannot deserialize null wire format position")
   public void testGetPositionFromWireFormatBytesThrowsExceptionWhenWireFormatBytesIsNull1() {
-    PubSubPositionInstantiator.getPositionFromWireFormat((PubSubPositionWireFormat) null);
+    PubSubPositionDeserializer.getPositionFromWireFormat((PubSubPositionWireFormat) null);
   }
 }
