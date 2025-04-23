@@ -6,9 +6,9 @@ import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -38,7 +38,7 @@ public class IngestionThrottler implements Closeable {
   private volatile EventThrottler finalBandwidthThrottler;
   private boolean isUsingSpeedupThrottler = false;
 
-  private final Map<ConsumerPoolType, EventThrottler> poolTypeRecordThrottlerMap;
+  private final EnumMap<ConsumerPoolType, EventThrottler> poolTypeRecordThrottlerMap;
 
   public IngestionThrottler(
       boolean isDaVinciClient,
@@ -104,7 +104,7 @@ public class IngestionThrottler implements Closeable {
           false,
           EventThrottler.BLOCK_STRATEGY);
     }
-    this.poolTypeRecordThrottlerMap = new VeniceConcurrentHashMap<>();
+    this.poolTypeRecordThrottlerMap = new EnumMap<>(ConsumerPoolType.class);
     VeniceAdaptiveIngestionThrottler adaptiveIngestionThrottler = null;
     if (isAdaptiveThrottlerEnabled) {
       adaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
