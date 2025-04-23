@@ -3774,7 +3774,7 @@ public class VeniceParentHelixAdmin implements Admin {
         LOGGER.info("Received terminal status: {} for topic: {}", currentReturnStatus, kafkaTopic);
 
         // Do not truncate the parent version topic if it is a push w/ deferred swap to prevent concurrent pushes
-        // Otherwise, truncate the parent version topic and updating the version status
+        // Otherwise, truncate the parent version topic and update the version status
         boolean isDeferredSwap = version != null && version.isVersionSwapDeferred();
         if (!isDeferredSwap || !StringUtils.isEmpty(targetedRegions)) {
           handleTerminalJobStatus(
@@ -3793,8 +3793,7 @@ public class VeniceParentHelixAdmin implements Admin {
         // If the aggregate status is not terminal, but the parent version status is marked as KILLED, we should mark
         // the
         // push job status as terminal (ERROR) as job was killed
-        Version parentStoreVersion = parentStore.getVersion(versionNum);
-        if (parentStoreVersion.getStatus().equals(KILLED)) {
+        if (version.getStatus().equals(KILLED)) {
           LOGGER.info(
               "Marking execution status as ERROR for store {} because parent version status is KILLED",
               storeName);
