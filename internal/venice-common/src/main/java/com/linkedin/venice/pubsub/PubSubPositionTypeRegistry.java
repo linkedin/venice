@@ -80,15 +80,6 @@ public class PubSubPositionTypeRegistry {
     tempMap.put(EARLIEST_POSITION_RESERVED_TYPE_ID, EarliestPositionFactory.class.getName());
     tempMap.put(LATEST_POSITION_RESERVED_TYPE_ID, LatestPositionFactory.class.getName());
     tempMap.put(APACHE_KAFKA_OFFSET_POSITION_TYPE_ID, ApacheKafkaOffsetPositionFactory.class.getName());
-
-    Int2ObjectMap<PubSubPositionFactory> factoryMap = new Int2ObjectOpenHashMap<>(3);
-    factoryMap.put(EARLIEST_POSITION_RESERVED_TYPE_ID, new EarliestPositionFactory(EARLIEST_POSITION_RESERVED_TYPE_ID));
-    factoryMap.put(LATEST_POSITION_RESERVED_TYPE_ID, new LatestPositionFactory(LATEST_POSITION_RESERVED_TYPE_ID));
-    factoryMap.put(
-        APACHE_KAFKA_OFFSET_POSITION_TYPE_ID,
-        new ApacheKafkaOffsetPositionFactory(APACHE_KAFKA_OFFSET_POSITION_TYPE_ID));
-
-    // Make the map unmodifiable for safety
     RESERVED_POSITION_TYPE_ID_TO_CLASS_NAME_MAP = Int2ObjectMaps.unmodifiable(tempMap);
   }
 
