@@ -33,6 +33,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -89,8 +90,9 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
   public InternalLocalBootstrappingVeniceChangelogConsumer(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
+      PubSubPositionDeserializer pubSubPositionDeserializer,
       String consumerId) {
-    super(changelogClientConfig, pubSubConsumer);
+    super(changelogClientConfig, pubSubConsumer, pubSubPositionDeserializer);
     bootstrapStateMap = new VeniceConcurrentHashMap<>();
     syncBytesInterval = changelogClientConfig.getDatabaseSyncBytesInterval();
     metricsRepository = changelogClientConfig.getInnerClientConfig().getMetricsRepository();
@@ -153,6 +155,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         VeniceChangeCoordinate localCheckpoint;
         try {
           localCheckpoint = VeniceChangeCoordinate.decodeStringAndConvertToVeniceChangeCoordinate(
+              pubSubPositionDeserializer,
               offsetRecord.getDatabaseInfo().get(CHANGE_CAPTURE_COORDINATE));
         } catch (IOException | ClassNotFoundException e) {
           throw new VeniceException("Failed to decode local change capture coordinate checkpoint with exception: ", e);
@@ -459,7 +462,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
                 new ApacheKafkaOffsetPosition(offsetRecord.getLocalVersionTopicOffset()),
                 partition);
           } else {
-            localCheckpoint = VeniceChangeCoordinate.decodeStringAndConvertToVeniceChangeCoordinate(offsetString);
+            localCheckpoint = VeniceChangeCoordinate
+                .decodeStringAndConvertToVeniceChangeCoordinate(pubSubPositionDeserializer, offsetString);
             if (!partition.equals(localCheckpoint.getPartition())) {
               throw new IllegalStateException(
                   String.format(

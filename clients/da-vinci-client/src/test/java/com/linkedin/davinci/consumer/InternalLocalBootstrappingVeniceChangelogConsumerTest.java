@@ -42,6 +42,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -185,8 +186,11 @@ public class InternalLocalBootstrappingVeniceChangelogConsumerTest {
             .setDatabaseSyncBytesInterval(TEST_DB_SYNC_BYTES_INTERVAL)
             .setIsBeforeImageView(true);
     changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
-    bootstrappingVeniceChangelogConsumer =
-        new InternalLocalBootstrappingVeniceChangelogConsumer<>(changelogClientConfig, pubSubConsumer, null);
+    bootstrappingVeniceChangelogConsumer = new InternalLocalBootstrappingVeniceChangelogConsumer<>(
+        changelogClientConfig,
+        pubSubConsumer,
+        PubSubPositionDeserializer.DEFAULT_DESERIALIZER,
+        null);
 
     metadataRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);

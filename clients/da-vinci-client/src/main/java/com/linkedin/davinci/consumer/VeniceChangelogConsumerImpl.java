@@ -43,6 +43,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -143,6 +144,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final String storeName;
 
   protected final PubSubConsumerAdapter pubSubConsumer;
+  protected final PubSubPositionDeserializer pubSubPositionDeserializer;
   protected final ExecutorService seekExecutorService;
 
   // This member is a map of maps in order to accommodate view topics. If the message we consume has the appropriate
@@ -162,8 +164,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
-      PubSubConsumerAdapter pubSubConsumer) {
+      PubSubConsumerAdapter pubSubConsumer,
+      PubSubPositionDeserializer pubSubPositionDeserializer) {
     this.pubSubConsumer = pubSubConsumer;
+    this.pubSubPositionDeserializer = pubSubPositionDeserializer;
     seekExecutorService = Executors.newFixedThreadPool(10);
 
     // TODO: putting the change capture case here is a little bit weird. The view abstraction should probably

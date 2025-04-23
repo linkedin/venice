@@ -3,6 +3,7 @@ package com.linkedin.davinci.consumer;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import java.util.Objects;
 import java.util.Properties;
@@ -51,6 +52,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private Boolean isExperimentalClientEnabled = false;
   private int maxBufferSize = 1000;
 
+  private PubSubPositionDeserializer pubSubPositionDeserializer = PubSubPositionDeserializer.DEFAULT_DESERIALIZER;
+
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
   }
@@ -97,6 +100,11 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public ChangelogClientConfig setPubSubPositionDeserializer(PubSubPositionDeserializer pubSubPositionDeserializer) {
+    this.pubSubPositionDeserializer = pubSubPositionDeserializer;
+    return this;
+  }
+
   public ChangelogClientConfig<T> setShouldCompactMessages(boolean compactMessages) {
     this.compactMessages = compactMessages;
     return this;
@@ -108,6 +116,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   public String getConsumerName() {
     return consumerName;
+  }
+
+  public PubSubPositionDeserializer getPubSubPositionDeserializer() {
+    return pubSubPositionDeserializer;
   }
 
   public boolean shouldCompactMessages() {
@@ -252,6 +264,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setVersionSwapDetectionIntervalTimeInSeconds(config.getVersionSwapDetectionIntervalTimeInSeconds())
         .setRocksDBBlockCacheSizeInBytes(config.getRocksDBBlockCacheSizeInBytes())
         .setConsumerName(config.consumerName)
+        .setPubSubPositionDeserializer(config.getPubSubPositionDeserializer())
         .setDatabaseSyncBytesInterval(config.getDatabaseSyncBytesInterval())
         .setShouldCompactMessages(config.shouldCompactMessages())
         .setIsBeforeImageView(config.isBeforeImageView())
