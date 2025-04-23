@@ -1,7 +1,9 @@
 package com.linkedin.venice.pubsub;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import java.nio.ByteBuffer;
 
 
 /**
@@ -28,12 +30,32 @@ public abstract class PubSubPositionFactory {
   }
 
   /**
-   * Deserializes a {@link PubSubPosition} from the given wire format.
+   * Creates a {@link PubSubPosition} instance by deserializing the provided {@link PubSubPositionWireFormat}.
+   * <p>
+   * This method validates that the type ID in the wire format matches the expected type ID for this factory.
+   * If the type ID does not match, an exception is thrown to prevent incorrect deserialization.
+   * <p>
+   * Internally, this delegates to {@link #createFromByteBuffer(ByteBuffer)} to perform the actual decoding.
    *
-   * @param positionWireFormat the serialized wire format representation
+   * @param positionWireFormat the wire format containing the type ID and raw encoded bytes
+   * @return a new {@link PubSubPosition} instance reconstructed from the wire format
+   * @throws VeniceException if the type ID does not match the factory's expected type
+   */
+  public PubSubPosition createFromWireFormat(PubSubPositionWireFormat positionWireFormat) {
+    if (positionWireFormat.getType() != positionTypeId) {
+      throw new VeniceException(
+          "Position type ID mismatch: expected " + positionTypeId + ", but got " + positionWireFormat.getType());
+    }
+    return createFromByteBuffer(positionWireFormat.getRawBytes());
+  }
+
+  /**
+   * Deserializes a {@link PubSubPosition} from the given byte buffer.
+   *
+   * @param buffer the byte buffer containing the serialized position
    * @return a new {@link PubSubPosition} instance
    */
-  public abstract PubSubPosition fromWireFormat(PubSubPositionWireFormat positionWireFormat);
+  public abstract PubSubPosition createFromByteBuffer(ByteBuffer buffer);
 
   /**
    * Returns the fully qualified class name of the {@link PubSubPosition} implementation handled by this factory.

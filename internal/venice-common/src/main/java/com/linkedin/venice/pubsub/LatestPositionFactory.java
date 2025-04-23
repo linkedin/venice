@@ -1,8 +1,8 @@
 package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import java.nio.ByteBuffer;
 
 
 /**
@@ -16,7 +16,7 @@ public class LatestPositionFactory extends PubSubPositionFactory {
   }
 
   @Override
-  public PubSubPosition fromWireFormat(PubSubPositionWireFormat positionWireFormat) {
+  public PubSubPosition createFromByteBuffer(ByteBuffer buffer) {
     return PubSubSymbolicPosition.LATEST;
   }
 

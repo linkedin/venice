@@ -16,6 +16,7 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import java.nio.ByteBuffer;
 import java.util.Properties;
 import org.testng.annotations.Test;
 
@@ -124,7 +125,12 @@ public class PubSubPositionTypeRegistryTest {
     }
 
     @Override
-    public PubSubPosition fromWireFormat(PubSubPositionWireFormat positionWireFormat) {
+    public PubSubPosition createFromWireFormat(PubSubPositionWireFormat positionWireFormat) {
+      return null;
+    }
+
+    @Override
+    public PubSubPosition createFromByteBuffer(ByteBuffer buffer) {
       return null;
     }
 

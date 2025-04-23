@@ -3,8 +3,8 @@ package com.linkedin.venice.pubsub.adapter.kafka.common;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubPositionFactory;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 
 /**
@@ -18,9 +18,9 @@ public class ApacheKafkaOffsetPositionFactory extends PubSubPositionFactory {
   }
 
   @Override
-  public PubSubPosition fromWireFormat(PubSubPositionWireFormat positionWireFormat) {
+  public PubSubPosition createFromByteBuffer(ByteBuffer buffer) {
     try {
-      return ApacheKafkaOffsetPosition.of(positionWireFormat.rawBytes);
+      return ApacheKafkaOffsetPosition.of(buffer);
     } catch (IOException e) {
       throw new VeniceException("Failed to deserialize Apache Kafka offset position", e);
     }
