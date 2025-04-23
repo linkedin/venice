@@ -10,29 +10,27 @@ import com.linkedin.venice.pubsub.PubSubPositionFactory;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import java.nio.ByteBuffer;
-import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class ApacheKafkaOffsetPositionFactoryTest {
   private PubSubPositionFactory factory;
-  private final int validTypeId = APACHE_KAFKA_OFFSET_POSITION_TYPE_ID;
+  private static final int TYPE_ID = 9;
 
-  @BeforeMethod
+  @BeforeMethod(alwaysRun = true)
   public void setUp() {
-    factory = new ApacheKafkaOffsetPositionFactory(validTypeId);
-  }
-
-  @AfterMethod
-  public void tearDown() {
-    factory = null;
+    factory = new ApacheKafkaOffsetPositionFactory(TYPE_ID);
   }
 
   @Test
   public void testCreateFromWireFormatSuccess() {
     ApacheKafkaOffsetPosition position = ApacheKafkaOffsetPosition.of(12345L);
-    PubSubPositionWireFormat wireFormat = position.getPositionWireFormat();
+    PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
+    // Use a custom type ID for testing, but reuse the position's encoded bytes to avoid manually creating Avro-encoded
+    // data
+    wireFormat.setType(TYPE_ID);
+    wireFormat.setRawBytes(position.getPositionWireFormat().getRawBytes());
 
     PubSubPosition deserialized = factory.createFromWireFormat(wireFormat);
     assertTrue(deserialized instanceof ApacheKafkaOffsetPosition);
@@ -56,14 +54,14 @@ public class ApacheKafkaOffsetPositionFactoryTest {
 
   @Test
   public void testGetPositionTypeId() {
-    assertEquals(factory.getPositionTypeId(), validTypeId);
+    assertEquals(factory.getPositionTypeId(), TYPE_ID);
   }
 
   @Test
   public void testCreateFromWireFormatThrowsOnInvalidBuffer() {
     ByteBuffer badBuffer = ByteBuffer.allocate(0);
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
-    wireFormat.setType(validTypeId);
+    wireFormat.setType(TYPE_ID);
     wireFormat.setRawBytes(badBuffer);
 
     VeniceException exception = expectThrows(VeniceException.class, () -> factory.createFromWireFormat(wireFormat));
@@ -85,7 +83,7 @@ public class ApacheKafkaOffsetPositionFactoryTest {
 
   @Test
   public void testCreateFromWireFormatThrowsOnTypeIdMismatch() {
-    ApacheKafkaOffsetPositionFactory factory = new ApacheKafkaOffsetPositionFactory(validTypeId);
+    ApacheKafkaOffsetPositionFactory factory = new ApacheKafkaOffsetPositionFactory(TYPE_ID);
 
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.setType(Integer.MAX_VALUE);

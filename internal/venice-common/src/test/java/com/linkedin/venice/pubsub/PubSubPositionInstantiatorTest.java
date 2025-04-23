@@ -2,7 +2,9 @@ package com.linkedin.venice.pubsub;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
@@ -25,11 +27,13 @@ public class PubSubPositionInstantiatorTest {
     assertEquals(position1, position);
   }
 
-  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Cannot convert to position. Unknown position type:.*")
+  @Test
   public void testConvertToPositionForUnsupportedPosition() {
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.type = Integer.MAX_VALUE;
-    PubSubPositionInstantiator.getPositionFromWireFormat(wireFormat);
+    Exception e =
+        expectThrows(VeniceException.class, () -> PubSubPositionInstantiator.getPositionFromWireFormat(wireFormat));
+    assertTrue(e.getMessage().contains("PubSub position type ID not found:"), "Got: " + e.getMessage());
   }
 
   @Test

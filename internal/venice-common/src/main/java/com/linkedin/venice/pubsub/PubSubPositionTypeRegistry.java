@@ -74,7 +74,6 @@ public class PubSubPositionTypeRegistry {
    * <p>
    */
   public static final Int2ObjectMap<String> RESERVED_POSITION_TYPE_ID_TO_CLASS_NAME_MAP;
-  public static final Int2ObjectMap<PubSubPositionFactory> RESERVED_POSITION_TYPE_ID_TO_FACTORY_MAP;
 
   static {
     Int2ObjectMap<String> tempMap = new Int2ObjectOpenHashMap<>(3);
@@ -91,7 +90,6 @@ public class PubSubPositionTypeRegistry {
 
     // Make the map unmodifiable for safety
     RESERVED_POSITION_TYPE_ID_TO_CLASS_NAME_MAP = Int2ObjectMaps.unmodifiable(tempMap);
-    RESERVED_POSITION_TYPE_ID_TO_FACTORY_MAP = Int2ObjectMaps.unmodifiable(factoryMap);
   }
 
   /**
