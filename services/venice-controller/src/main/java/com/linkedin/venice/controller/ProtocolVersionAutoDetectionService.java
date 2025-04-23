@@ -5,18 +5,23 @@ import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionController
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 /**
- * This service is responsible for auto-detecting the admin operation protocol version for all clusters periodically.
- * ProtocolVersionAutoDetectionService is a background thread which wakes up regularly, each time it will:
+ * This service is responsible for auto-detecting the admin operation protocol version for one cluster periodically.
+ * ProtocolVersionAutoDetectionService is a background scheduled executor, each attempt it will:
  * 1. Get the current admin operation protocol versions from all controllers (parent + child) in the current cluster
  * and find the smallest version - good version to use.
  * 2. Get the admin operation protocol version from ZK.
@@ -26,11 +31,13 @@ import org.apache.logging.log4j.Logger;
 public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(ProtocolVersionAutoDetectionService.class);
   private static final String PARENT_REGION_NAME = "parentRegion";
+  private static final long DEFAULT_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
+  private final ScheduledExecutorService executor =
+      Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("ProtocolVersionAutoDetectionService"));;
+  private final AtomicBoolean stop = new AtomicBoolean(false);
   private final ProtocolVersionAutoDetectionStats stats;
   private final VeniceHelixAdmin admin;
   private final String clusterName;
-  private Thread runner;
-  private ProtocolVersionDetectionTask protocolVersionDetectionTask;
   private final long sleepIntervalInMs;
 
   public ProtocolVersionAutoDetectionService(
@@ -46,20 +53,22 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
-    protocolVersionDetectionTask = new ProtocolVersionDetectionTask();
-    runner = new Thread(protocolVersionDetectionTask);
-    runner.setName("ProtocolVersionDetectionTask");
-    runner.setDaemon(true);
-    runner.start();
+    LOGGER.info("Starting {}", getClass().getSimpleName());
+    executor.scheduleAtFixedRate(getRunnableTask(), 0, sleepIntervalInMs, TimeUnit.MILLISECONDS);
     return true;
   }
 
   @Override
   public void stopInner() throws Exception {
-    if (protocolVersionDetectionTask != null) {
-      protocolVersionDetectionTask.setStop();
-      runner.interrupt();
+    LOGGER.info("Received signal to stop {}", getClass().getSimpleName());
+    stop.set(true);
+    executor.shutdownNow();
+    try {
+      executor.awaitTermination(DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
     }
+    LOGGER.info("Stopped {}", getClass().getSimpleName());
   }
 
   /**
@@ -105,54 +114,39 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
         .orElse(Long.MAX_VALUE);
   }
 
-  class ProtocolVersionDetectionTask implements Runnable {
-    private volatile boolean stop = false;
-
-    protected void setStop() {
-      stop = true;
-    }
-
-    @Override
-    public void run() {
-      LOGGER.info("Started running {}", getClass().getSimpleName());
-      while (!stop) {
-        try {
-          Thread.sleep(sleepIntervalInMs);
-        } catch (InterruptedException e) {
-          LOGGER.info("Received interruptedException while running ProtocolVersionDetectionTask, will exit");
-          stats.recordProtocolVersionAutoDetectionErrorSensor();
-          break;
-        }
-
-        try {
-          // start the clock
-          long startTime = System.currentTimeMillis();
-          Long currentGoodVersion = getSmallestLocalAdminOperationProtocolVersionForAllConsumers(clusterName);
-          Long upstreamVersion = AdminTopicMetadataAccessor
-              .getAdminOperationProtocolVersion(admin.getAdminTopicMetadata(clusterName, Optional.empty()));
-          LOGGER.info(
-              "Current good Admin Operation version for cluster {} is {} and upstream version is {}",
-              clusterName,
-              currentGoodVersion,
-              upstreamVersion);
-          if (upstreamVersion != -1 && currentGoodVersion != Long.MAX_VALUE
-              && !Objects.equals(currentGoodVersion, upstreamVersion)) {
-            admin.updateAdminOperationProtocolVersion(clusterName, currentGoodVersion);
-            LOGGER.info(
-                "Updated admin operation protocol version in ZK for cluster {} from {} to {}",
-                clusterName,
-                upstreamVersion,
-                currentGoodVersion);
-          }
-          long elapsedTimeInMs = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
-          stats.recordProtocolVersionAutoDetectionLatencySensor(elapsedTimeInMs);
-        } catch (Exception e) {
-          LOGGER.error("Received an exception while running ProtocolVersionDetectionTask", e);
-          stats.recordProtocolVersionAutoDetectionErrorSensor();
-          break;
-        }
+  private Runnable getRunnableTask() {
+    return () -> {
+      LOGGER.info("Started running task for {}.", getClass().getSimpleName());
+      if (stop.get()) {
+        return;
       }
-      LOGGER.info("{} stopped", getClass().getSimpleName());
-    }
+      try {
+        // start the clock
+        long startTime = System.currentTimeMillis();
+        Long currentGoodVersion = getSmallestLocalAdminOperationProtocolVersionForAllConsumers(clusterName);
+        Long upstreamVersion = AdminTopicMetadataAccessor
+            .getAdminOperationProtocolVersion(admin.getAdminTopicMetadata(clusterName, Optional.empty()));
+        LOGGER.info(
+            "Current good Admin Operation version for cluster {} is {} and upstream version is {}",
+            clusterName,
+            currentGoodVersion,
+            upstreamVersion);
+        if (upstreamVersion != -1 && currentGoodVersion != Long.MAX_VALUE
+            && !Objects.equals(currentGoodVersion, upstreamVersion)) {
+          admin.updateAdminOperationProtocolVersion(clusterName, currentGoodVersion);
+          LOGGER.info(
+              "Updated admin operation protocol version in ZK for cluster {} from {} to {}",
+              clusterName,
+              upstreamVersion,
+              currentGoodVersion);
+        }
+        long elapsedTimeInMs = LatencyUtils.getElapsedTimeFromMsToMs(startTime);
+        stats.recordProtocolVersionAutoDetectionLatencySensor(elapsedTimeInMs);
+      } catch (Exception e) {
+        LOGGER.error("Received an exception while running ProtocolVersionDetectionTask", e);
+        stats.recordProtocolVersionAutoDetectionErrorSensor();
+      }
+      LOGGER.info("Finished running task for {}", getClass().getSimpleName());
+    };
   }
 }

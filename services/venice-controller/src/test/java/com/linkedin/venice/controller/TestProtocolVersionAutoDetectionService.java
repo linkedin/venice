@@ -184,6 +184,7 @@ public class TestProtocolVersionAutoDetectionService {
 
       localProtocolVersionAutoDetectionService
           .getSmallestLocalAdminOperationProtocolVersionForAllConsumers(clusterName);
+      fail("Expected VeniceException to be thrown");
     } catch (VeniceException e) {
       assertEquals(
           e.getMessage(),
