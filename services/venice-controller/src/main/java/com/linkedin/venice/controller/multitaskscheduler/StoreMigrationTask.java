@@ -47,7 +47,6 @@ class StoreMigrationTask implements Runnable {
         manager.scheduleNextStep(this, 60); // Reschedule for 1 minute later
       } else {
         abortMigration();
-        manager.cleanupMigrationRecord(record.getStoreName());
       }
 
     }
