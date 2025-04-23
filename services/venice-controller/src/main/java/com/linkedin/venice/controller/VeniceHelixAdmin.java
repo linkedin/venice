@@ -6748,10 +6748,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Long statusUpdateTimestamp = statusAndDetails.getStatusUpdateTimestamp();
     if (executionStatus.equals(ExecutionStatus.NOT_CREATED)) {
       StringBuilder moreDetailsBuilder = new StringBuilder(details == null ? "" : details + " and ");
+      Version version = store.getVersion(versionNumber);
 
       // Check whether cluster is in maintenance mode or not
       if (maintenanceSignal != null) {
         moreDetailsBuilder.append("Cluster: ").append(clusterName).append(" is in maintenance mode");
+      } else if (version != null && version.getStatus() == KILLED) {
+        moreDetailsBuilder.append("Push job was killed for: ").append(kafkaTopic);
+        return new OfflinePushStatusInfo(ExecutionStatus.ERROR, statusUpdateTimestamp, moreDetailsBuilder.toString());
       } else {
         moreDetailsBuilder.append("Version creation for topic: ").append(kafkaTopic).append(" got delayed");
       }
