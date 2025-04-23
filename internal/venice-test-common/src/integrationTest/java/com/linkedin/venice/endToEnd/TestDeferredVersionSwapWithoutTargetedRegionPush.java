@@ -49,8 +49,8 @@ import org.testng.annotations.Test;
 
 
 /**
- * This test class is used to test the deferred version swap feature without
- * targeted region push enabled.
+ * This test class is used to test the deferred version swap feature without targeted region push enabled.
+ * These are for the manual deferred swaps which will be deprecated once automatic swap service is rolled out.
  */
 public class TestDeferredVersionSwapWithoutTargetedRegionPush {
   private static final Logger LOGGER = LogManager.getLogger(TestDeferredVersionSwapWithoutTargetedRegionPush.class);

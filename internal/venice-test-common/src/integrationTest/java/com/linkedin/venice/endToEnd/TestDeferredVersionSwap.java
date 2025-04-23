@@ -49,8 +49,8 @@ import org.testng.annotations.Test;
 
 
 /**
- * This test class is used to test the deferred version swap feature with
- * targeted region push enabled.
+ * This test class is used to test the deferred version swap feature with targeted region push enabled
+ * using the {@link com.linkedin.venice.controller.DeferredVersionSwapService}
  */
 public class TestDeferredVersionSwap {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
