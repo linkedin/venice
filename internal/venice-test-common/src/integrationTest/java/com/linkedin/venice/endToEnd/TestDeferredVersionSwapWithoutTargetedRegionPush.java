@@ -93,13 +93,13 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush {
 
   /**
    * This test will create a store with a version swap enabled, start a push job with deferred version
-   * swap enabled, then stop the original standby server for one of the partition, find the new standby
-   * server assigned for that partition, check if the new standby server is ready to serve in CV right
-   * when its state is updated to STANDBY in EV, roll forward to the new version, and finally verify
-   * the data in the push using a thin client.
+   * swap enabled, then stop the original standby server for one of the partition to trigger rebalance,
+   * find the new standby server assigned for that partition, check if the new standby server is ready
+   * to serve in CV and verify whether its state is updated to STANDBY in EV by then, roll forward to
+   * the new version and finally verify the data in the push using a thin client.
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testDeferredVersionSwap() throws IOException {
+  public void testDeferredVersionSwapWithRebalancing() throws IOException {
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100000, 100);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
