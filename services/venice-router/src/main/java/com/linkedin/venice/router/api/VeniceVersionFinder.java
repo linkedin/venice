@@ -153,7 +153,7 @@ public class VeniceVersionFinder {
       stats.recordStalenessReason(StaleVersionReason.DICTIONARY_NOT_DOWNLOADED);
     }
 
-    // check if existing version ready to serve
+    // log if existing version ready to serve
     Version existingVersion = store.getVersion(existingVersionNumber);
     boolean existingVersionDecompressorReady =
         isDecompressorReady(existingVersion, Version.composeKafkaTopic(storeName, existingVersionNumber));
