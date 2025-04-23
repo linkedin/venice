@@ -41,7 +41,6 @@ public class TestProtocolVersionAutoDetection {
     Properties parentControllerProps = new Properties();
     parentControllerProps.put(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED, true);
     parentControllerProps.put(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS, SERVICE_INTERVAL_MS);
-    Properties serverProperties = new Properties();
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
