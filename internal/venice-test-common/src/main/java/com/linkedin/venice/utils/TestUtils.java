@@ -51,6 +51,8 @@ import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.DataRecoveryVersionConfig;
+import com.linkedin.venice.meta.DataRecoveryVersionConfigImpl;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
@@ -613,9 +615,18 @@ public class TestUtils {
 
   public static List<Version> createTestVersions(String storeName, Random random) {
     List<Version> versions = new ArrayList<>();
-    versions.add(new VersionImpl(storeName, 0, Long.toString(random.nextLong())));
-    versions.add(new VersionImpl(storeName, 1, Long.toString(random.nextLong())));
-    versions.add(new VersionImpl(storeName, 2, Long.toString(random.nextLong())));
+    for (int i = 0; i < 5; i++) {
+      String pushJobId = Long.toString(random.nextLong());
+      PartitionerConfig partitionerConfig = createTestPartitionerConfig(random);
+      DataRecoveryVersionConfig dataRecoveryVersionConfig =
+          new DataRecoveryVersionConfigImpl(Utils.getUniqueString(), false, 1);
+      Version version = new VersionImpl(storeName, i, pushJobId);
+
+      version.setPartitionerConfig(partitionerConfig);
+      version.setDataRecoveryVersionConfig(dataRecoveryVersionConfig);
+      version.setHybridStoreConfig(createTestHybridStoreConfig(random));
+      versions.add(version);
+    }
     return versions;
   }
 
