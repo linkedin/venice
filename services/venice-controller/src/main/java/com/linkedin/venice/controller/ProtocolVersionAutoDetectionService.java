@@ -31,7 +31,6 @@ import org.apache.logging.log4j.Logger;
 public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(ProtocolVersionAutoDetectionService.class);
   private static final String PARENT_REGION_NAME = "parentRegion";
-  private static final long DEFAULT_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
   private final ScheduledExecutorService executor =
       Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("ProtocolVersionAutoDetectionService"));;
   private final AtomicBoolean stop = new AtomicBoolean(false);
@@ -60,14 +59,8 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
-    LOGGER.info("Received signal to stop {}", getClass().getSimpleName());
     stop.set(true);
     executor.shutdownNow();
-    try {
-      executor.awaitTermination(DEFAULT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-    }
     LOGGER.info("Stopped {}", getClass().getSimpleName());
   }
 
