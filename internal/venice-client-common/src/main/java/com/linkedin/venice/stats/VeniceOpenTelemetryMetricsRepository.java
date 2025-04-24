@@ -7,7 +7,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricType;
+import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
@@ -36,6 +38,7 @@ import io.tehuti.utils.RedundantLogFilter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -52,6 +55,12 @@ public class VeniceOpenTelemetryMetricsRepository {
   private final VeniceOpenTelemetryMetricNamingFormat metricFormat;
   private Meter meter;
   private String metricPrefix;
+  /**
+   * This metric is used to track the number of failures while recording metrics.
+   * Currently used in {@link com.linkedin.venice.stats.metrics.MetricEntityStateGeneric}
+   * to record if the dimensions passed in are invalid.
+   */
+  private MetricEntityStateBase recordFailureMetric;
 
   public VeniceOpenTelemetryMetricsRepository(VeniceMetricsConfig metricsConfig) {
     this.metricsConfig = metricsConfig;
@@ -65,8 +74,8 @@ public class VeniceOpenTelemetryMetricsRepository {
         "OpenTelemetry initialization for {} started with config: {}",
         metricsConfig.getServiceName(),
         metricsConfig.toString());
-    this.metricPrefix = "venice." + metricsConfig.getMetricPrefix();
-    validateMetricName(this.metricPrefix);
+    this.metricPrefix = metricsConfig.getMetricPrefix();
+    validateMetricName(getMetricPrefix());
     try {
       SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
 
@@ -100,6 +109,13 @@ public class VeniceOpenTelemetryMetricsRepository {
       OpenTelemetry openTelemetry = OpenTelemetrySdk.builder().setMeterProvider(sdkMeterProvider).build();
 
       this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
+
+      this.recordFailureMetric = MetricEntityStateBase.create(
+          CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(),
+          this,
+          Collections.EMPTY_MAP,
+          Attributes.empty());
+
       LOGGER.info(
           "OpenTelemetry initialization for {} completed with config: {}",
           metricsConfig.getServiceName(),
@@ -159,7 +175,7 @@ public class VeniceOpenTelemetryMetricsRepository {
 
     for (MetricEntity metricEntity: metricsConfig.getMetricEntities()) {
       if (metricEntity.getMetricType() == MetricType.HISTOGRAM) {
-        metricNames.add(getFullMetricName(getMetricPrefix(), metricEntity.getMetricName()));
+        metricNames.add(getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName()));
       }
     }
 
@@ -185,8 +201,18 @@ public class VeniceOpenTelemetryMetricsRepository {
     return transformMetricName(fullMetricName, getMetricFormat());
   }
 
-  private String getMetricPrefix() {
-    return metricPrefix;
+  static String createFullMetricPrefix(String metricPrefix) {
+    return "venice." + metricPrefix;
+  }
+
+  String getMetricPrefix() {
+    return createFullMetricPrefix(metricPrefix);
+  }
+
+  String getMetricPrefix(MetricEntity metricEntity) {
+    return (metricEntity.getCustomMetricPrefix() == null
+        ? getMetricPrefix()
+        : createFullMetricPrefix(metricEntity.getCustomMetricPrefix()));
   }
 
   public DoubleHistogram createHistogram(MetricEntity metricEntity) {
@@ -194,7 +220,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       return null;
     }
     return histogramMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
-      String fullMetricName = getFullMetricName(getMetricPrefix(), metricEntity.getMetricName());
+      String fullMetricName = getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName());
       DoubleHistogramBuilder builder = meter.histogramBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
           .setDescription(metricEntity.getDescription());
@@ -211,7 +237,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       return null;
     }
     return counterMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
-      String fullMetricName = getFullMetricName(getMetricPrefix(), metricEntity.getMetricName());
+      String fullMetricName = getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName());
       LongCounterBuilder builder = meter.counterBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
           .setDescription(metricEntity.getDescription());
@@ -343,6 +369,10 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
+  public void recordFailureMetric() {
+    getRecordFailureMetric().record(1);
+  }
+
   public boolean emitOpenTelemetryMetrics() {
     return emitOpenTelemetryMetrics;
   }
@@ -355,6 +385,28 @@ public class VeniceOpenTelemetryMetricsRepository {
     return metricFormat;
   }
 
+  /**
+   * List of generic metrics for Otel repository
+   */
+  private enum CommonMetricsEntity {
+    METRIC_RECORD_FAILURE(MetricType.COUNTER, MetricUnit.NUMBER, "Count of all failures during metrics recording");
+
+    private final MetricEntity metricEntity;
+
+    CommonMetricsEntity(MetricType metricType, MetricUnit unit, String description) {
+      this.metricEntity = MetricEntity.createInternalMetricEntityWithoutDimensions(
+          this.name().toLowerCase(),
+          metricType,
+          unit,
+          description,
+          "internal");
+    }
+
+    public MetricEntity getMetricEntity() {
+      return metricEntity;
+    }
+  }
+
   /** for testing purposes */
   SdkMeterProvider getSdkMeterProvider() {
     return sdkMeterProvider;
@@ -363,5 +415,10 @@ public class VeniceOpenTelemetryMetricsRepository {
   /** for testing purposes */
   Meter getMeter() {
     return meter;
+  }
+
+  /** for testing purposes */
+  public MetricEntityStateBase getRecordFailureMetric() {
+    return this.recordFailureMetric;
   }
 }

@@ -145,19 +145,14 @@ public class MetricEntityStateGeneric extends MetricEntityState {
   }
 
   public void record(long value, @Nonnull Map<VeniceMetricsDimensions, String> dimensions) {
-    try {
-      super.record(value, getAttributes(dimensions));
-    } catch (IllegalArgumentException e) {
-      if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
-        LOGGER.error("Error recording metric: ", e);
-      }
-    }
+    record((double) value, dimensions);
   }
 
   public void record(double value, @Nonnull Map<VeniceMetricsDimensions, String> dimensions) {
     try {
       super.record(value, getAttributes(dimensions));
     } catch (IllegalArgumentException e) {
+      getOtelRepository().recordFailureMetric();
       if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
         LOGGER.error("Error recording metric: ", e);
       }
