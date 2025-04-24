@@ -30,10 +30,10 @@ import org.apache.logging.log4j.Logger;
  */
 public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(ProtocolVersionAutoDetectionService.class);
+  // This constant is used for logging purposes only.
   private static final String PARENT_REGION_NAME = "parentRegion";
-  private final ScheduledExecutorService executor =
-      Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("ProtocolVersionAutoDetectionService"));;
   private final AtomicBoolean stop = new AtomicBoolean(false);
+  private final ScheduledExecutorService executor;
   private final ProtocolVersionAutoDetectionStats stats;
   private final VeniceHelixAdmin admin;
   private final String clusterName;
@@ -48,6 +48,8 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
     this.stats = stats;
     this.clusterName = clusterName;
     this.sleepIntervalInMs = sleepIntervalInMs;
+    this.executor = Executors.newSingleThreadScheduledExecutor(
+        new DaemonThreadFactory("ProtocolVersionAutoDetectionService", admin.getLogContext()));
   }
 
   @Override
