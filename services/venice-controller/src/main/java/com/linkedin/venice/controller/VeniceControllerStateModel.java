@@ -28,7 +28,6 @@ import org.apache.helix.participant.statemachine.Transition;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.eclipse.jetty.util.StringUtil;
 
 
 /**
@@ -59,7 +58,6 @@ public class VeniceControllerStateModel extends StateModel {
   private HelixVeniceClusterResources clusterResources;
 
   private final ExecutorService workerService;
-  private final String defaultSTWorkerSuffix;
 
   public VeniceControllerStateModel(
       String clusterName,
@@ -83,7 +81,6 @@ public class VeniceControllerStateModel extends StateModel {
     this.realTimeTopicSwitcher = realTimeTopicSwitcher;
     this.accessController = accessController;
     this.helixAdminClient = helixAdminClient;
-    this.defaultSTWorkerSuffix = "Worker-" + clusterName;
     this.workerService = Executors.newSingleThreadExecutor(
         new DaemonThreadFactory(String.format("Controller-ST-Worker-%s", clusterName), admin.getLogContext()));
   }
@@ -114,35 +111,46 @@ public class VeniceControllerStateModel extends StateModel {
     return result;
   }
 
-  private void executeStateTransition(Message message, StateTransition stateTransition) {
-    executeStateTransition(message, stateTransition, null);
+  /**
+   * Executes the state transition synchronously with a thread name prefix "Sync-Helix-ST".
+   */
+  private void executeStateTransitionSync(Message message, StateTransition stateTransition) {
+    String threadName = String
+        .format("Sync-Helix-ST-%s-%s->%s", message.getResourceName(), message.getFromState(), message.getToState());
+    executeStateTransitionWithThreadName(threadName, stateTransition);
   }
 
-  private void executeStateTransition(Message message, StateTransition stateTransition, String threadNameSuffix) {
-    String from = message.getFromState();
-    String to = message.getToState();
-    String threadName = StringUtil.isEmpty(threadNameSuffix)
-        ? String.format("Helix-ST-%s-%s->%s", message.getResourceName(), from, to)
-        : String.format("Helix-ST-%s-%s->%s-%s", message.getResourceName(), from, to, threadNameSuffix);
-    // Change name to indicate which st is occupied this thread.
-    Thread.currentThread().setName(threadName);
+  /**
+   * Executes the state transition asynchronously with a thread name prefix "Async-ClusterName-Helix-ST".
+   */
+  Future<?> executeStateTransitionAsync(Message message, StateTransition stateTransition) {
+    String threadName = String.format(
+        "Async-%s-Helix-ST-%s-%s->%s",
+        clusterName,
+        message.getResourceName(),
+        message.getFromState(),
+        message.getToState());
+    return workerService.submit(() -> {
+      executeStateTransitionWithThreadName(threadName, stateTransition);
+    });
+  }
 
+  /**
+   * Core method that runs the state transition with a custom thread name.
+   * The thread name is set for debugging purposes.
+   */
+  private void executeStateTransitionWithThreadName(String threadName, StateTransition stateTransition) {
+    Thread currentThread = Thread.currentThread();
+    String originalName = currentThread.getName();
+    currentThread.setName(threadName);
     try {
       stateTransition.execute();
     } catch (Exception e) {
-      LOGGER.error("Failed to execute state transition for {} from {} to {}", message.getResourceName(), from, to, e);
       throw new VeniceException("Failed to execute '" + threadName + "'.", e);
     } finally {
-      // Once st is terminated, change the name to indicate this thread will not be occupied by this st.
-      Thread.currentThread().setName("Inactive ST thread.");
+      // Once st is terminated, change the name back to indicate this thread will not be occupied by this st.
+      Thread.currentThread().setName(originalName);
     }
-  }
-
-  Future<?> executeStateTransitionAsync(Message message, StateTransition stateTransition) {
-    return workerService.submit(() -> {
-      // When run in a worker thread, we don't need to set the thread name.
-      executeStateTransition(message, stateTransition, defaultSTWorkerSuffix);
-    });
   }
 
   interface StateTransition {
@@ -157,7 +165,7 @@ public class VeniceControllerStateModel extends StateModel {
     String controllerName = message.getTgtName();
 
     // Call it in executeStateTransition to log the start of state transition with correct thread name.
-    executeStateTransition(message, () -> {
+    executeStateTransitionSync(message, () -> {
       if (clusterConfig == null) {
         throw new VeniceException("No configuration exists for " + clusterName);
       }
@@ -251,7 +259,7 @@ public class VeniceControllerStateModel extends StateModel {
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     // Call it in executeStateTransition to log the start of state transition with correct thread name.
-    executeStateTransition(message, () -> {
+    executeStateTransitionSync(message, () -> {
       String controllerName = message.getTgtName();
 
       LOGGER.info("{} becoming standby from leader for {}", controllerName, clusterName);
@@ -272,7 +280,7 @@ public class VeniceControllerStateModel extends StateModel {
    */
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
-    executeStateTransition(message, () -> {
+    executeStateTransitionSync(message, () -> {
       String controllerName = message.getTgtName();
       LOGGER.info("{} becoming offline from standby for {}", controllerName, clusterName);
     });
@@ -283,7 +291,7 @@ public class VeniceControllerStateModel extends StateModel {
    */
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
-    executeStateTransition(message, () -> {
+    executeStateTransitionSync(message, () -> {
       clusterConfig = multiClusterConfigs.getControllerConfig(clusterName);
       String controllerName = message.getTgtName();
       LOGGER.info("{} becoming standby from offline for {}", controllerName, clusterName);
@@ -295,7 +303,7 @@ public class VeniceControllerStateModel extends StateModel {
    */
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
-    executeStateTransition(message, () -> {
+    executeStateTransitionSync(message, () -> {
       LOGGER.info("{} going from OFFLINE to DROPPED.", clusterName);
     });
   }
@@ -305,7 +313,7 @@ public class VeniceControllerStateModel extends StateModel {
    */
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.ERROR_STATE)
   public void onBecomeDroppedFromError(Message message, NotificationContext context) {
-    executeStateTransition(message, () -> {
+    executeStateTransitionSync(message, () -> {
       LOGGER.info("{} going from ERROR to DROPPED.", clusterName);
     });
   }
@@ -315,7 +323,7 @@ public class VeniceControllerStateModel extends StateModel {
    */
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ERROR_STATE)
   public void onBecomingOfflineFromError(Message message, NotificationContext context) {
-    executeStateTransition(message, () -> {
+    executeStateTransitionSync(message, () -> {
       LOGGER.info("{} going from ERROR to OFFLINE.", clusterName);
     });
   }
