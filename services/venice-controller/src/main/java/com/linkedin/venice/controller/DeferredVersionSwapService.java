@@ -159,6 +159,39 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   }
 
   /**
+   * Gets the specified version for a store in a specific region
+   * @param clusterName name of the cluster the store is in
+   * @param region name of the region to get the store from
+   * @param storeName name of the store
+   * @param targetVersionNum the version number to get
+   * @return
+   */
+  private Version getVersionFromStoreInRegion(
+      String clusterName,
+      String region,
+      String storeName,
+      int targetVersionNum) {
+    StoreResponse targetRegionStoreResponse = getStoreForRegion(clusterName, region, storeName);
+
+    if (targetRegionStoreResponse.isError()) {
+      String message = "Got error when fetching targetRegionStore: " + targetRegionStoreResponse.getStore();
+      logMessageIfNotRedundant(message);
+      return null;
+    }
+
+    StoreInfo targetRegionStore = targetRegionStoreResponse.getStore();
+    Optional<Version> version = targetRegionStore.getVersion(targetVersionNum);
+    if (!version.isPresent()) {
+      String message =
+          "Unable to find version " + targetVersionNum + " for store: " + storeName + " in region " + region;
+      logMessageIfNotRedundant(message);
+      return null;
+    }
+
+    return version.get();
+  }
+
+  /**
    * Iterate through the list of given regions and checks if the specified version of the store has a davinci heartbeat in any
    * of the regions. If there is, the store is a davinci store. If not, the store is not a davinci store
    * @param cluster the cluster the store is in
@@ -169,41 +202,26 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
    */
   private boolean isDavinciStore(String cluster, Set<String> regions, String storeName, int targetVersionNum) {
     for (String region: regions) {
-      StoreResponse targetRegionStoreResponse = getStoreForRegion(cluster, region, storeName);
+      Version version = getVersionFromStoreInRegion(cluster, region, storeName, targetVersionNum);
+      Version previousVersion = getVersionFromStoreInRegion(cluster, region, storeName, targetVersionNum - 1);
 
-      if (targetRegionStoreResponse.isError()) {
-        String message = "Got error when fetching targetRegionStore: " + targetRegionStoreResponse.getStore();
-        logMessageIfNotRedundant(message);
+      if (version == null && previousVersion == null) {
         continue;
       }
 
-      StoreInfo targetRegionStore = targetRegionStoreResponse.getStore();
-      Optional<Version> version = targetRegionStore.getVersion(targetVersionNum);
-      Optional<Version> previousVersion = targetRegionStore.getVersion(targetVersionNum - 1);
-      if (!version.isPresent() && !previousVersion.isPresent()) {
-        String message =
-            "Unable to find version " + targetVersionNum + " for store: " + storeName + " in region " + region;
+      if (version.getIsDavinciHeartbeatReported()) {
+        String message = "Skipping version swap for store: " + storeName + " on version: " + targetVersionNum
+            + " as there is a davinci heartbeat in region: " + region;
         logMessageIfNotRedundant(message);
-        continue;
-      }
-
-      if (version.isPresent()) {
-        if (version.get().getIsDavinciHeartbeatReported()) {
-          String message = "Skipping version swap for store: " + storeName + " on version: " + targetVersionNum
-              + " as there is a davinci heartbeat in region: " + region;
-          logMessageIfNotRedundant(message);
-          return true;
-        }
+        return true;
       }
 
       // Check the previous version for a dvc heartbeat if we can't find the target version number
-      if (!version.isPresent() && previousVersion.isPresent()) {
-        if (previousVersion.get().getIsDavinciHeartbeatReported()) {
-          String message = "Skipping version swap for store: " + storeName + " on the previous version: "
-              + previousVersion.get().getNumber() + " as there is a davinci heartbeat in region: " + region;
-          logMessageIfNotRedundant(message);
-          return true;
-        }
+      if (version == null && previousVersion.getIsDavinciHeartbeatReported()) {
+        String message = "Skipping version swap for store: " + storeName + " on the previous version: "
+            + previousVersion.getNumber() + " as there is a davinci heartbeat in region: " + region;
+        logMessageIfNotRedundant(message);
+        return true;
       }
     }
 
@@ -272,7 +290,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     // push, the parent version status is set to PUSHED in getOfflinePushStatus when this happens or KILLED if the push
     // failed. PUSHED represents when a push successfully completes in all regions and KILLED represents when a push
     // fails in
-    // 1+ regions. KILLED is still eligible for a version swap because some non target regions may have succeeded and we
+    // 1+ regions. KILLED is still eligible for a version swap because some non target regions may have succeeded, and
+    // we
     // need to perform a version swap for those regions
     if (targetVersion.getStatus() != VersionStatus.PUSHED && targetVersion.getStatus() != VersionStatus.KILLED) {
       return false;
@@ -336,44 +355,47 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
    * COMPLETED. If there are no eligible regions to roll forward in or if not all regions have reached a terminal status, null is
    * returned and the version status is marked as PARTIALLY_ONLINE as only the target regions are serving traffic from the new version
    * @param nonTargetRegions list of regions to check eligibility for
-   * @param pushStatusInfo wrapper containing push status information
    * @param repository repository to update store
    * @param store store to update
    * @param targetVersionNum target version to roll forward in
+   * @param clusterName cluster the store is in
    * @return
    */
   private Set<String> getRegionsToRollForward(
       Set<String> nonTargetRegions,
-      Admin.OfflinePushStatusInfo pushStatusInfo,
       ReadWriteStoreRepository repository,
       Store store,
-      int targetVersionNum) {
-    int numCompletedTargetRegions =
-        getRegionsWithPushStatusCount(nonTargetRegions, pushStatusInfo, ExecutionStatus.COMPLETED);
-    int numFailedTargetRegions = getRegionsWithPushStatusCount(nonTargetRegions, pushStatusInfo, ExecutionStatus.ERROR);
+      int targetVersionNum,
+      String clusterName) {
+
     Set<String> completedNonTargetRegions = new HashSet<>();
-    if (numFailedTargetRegions == nonTargetRegions.size()) {
+    Set<String> failedNonTargetRegions = new HashSet<>();
+    for (String nonTargetRegion: nonTargetRegions) {
+      Version version = getVersionFromStoreInRegion(clusterName, nonTargetRegion, store.getName(), targetVersionNum);
+      if (version.getStatus().equals(VersionStatus.PUSHED)) {
+        completedNonTargetRegions.add(nonTargetRegion);
+      } else if (version.getStatus().equals(ERROR) || version.getStatus().equals(VersionStatus.KILLED)) {
+        failedNonTargetRegions.add(nonTargetRegion);
+      }
+    }
+
+    if (failedNonTargetRegions.size() == nonTargetRegions.size()) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
-          + "as push failed in all non target regions. Failed non target regions: " + numFailedTargetRegions
+          + "as push failed in all non target regions. Failed non target regions: " + failedNonTargetRegions
           + ", non target regions: " + nonTargetRegions;
       logMessageIfNotRedundant(message);
       store.updateVersionStatus(targetVersionNum, PARTIALLY_ONLINE);
       repository.updateStore(store);
-      return completedNonTargetRegions;
-    } else if ((numFailedTargetRegions + numCompletedTargetRegions) != nonTargetRegions.size()) {
+      return new HashSet<>();
+    } else if ((failedNonTargetRegions.size() + completedNonTargetRegions.size()) != nonTargetRegions.size()) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
           + "as push is not in terminal status in all non target regions. Completed non target regions: "
-          + numCompletedTargetRegions + ", non target regions: " + nonTargetRegions;
+          + completedNonTargetRegions + ", failed non target regions: " + failedNonTargetRegions
+          + ", non target regions: " + nonTargetRegions;
       logMessageIfNotRedundant(message);
-      return completedNonTargetRegions;
+      return new HashSet<>();
     }
 
-    for (String region: nonTargetRegions) {
-      String executionStatus = pushStatusInfo.getExtraInfo().get(region);
-      if (executionStatus.equals(ExecutionStatus.COMPLETED.toString())) {
-        completedNonTargetRegions.add(region);
-      }
-    }
     return completedNonTargetRegions;
   }
 
@@ -447,7 +469,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
             // Get eligible non target regions to roll forward in
             Set<String> nonTargetRegionsCompleted =
-                getRegionsToRollForward(remainingRegions, pushStatusInfo, repository, parentStore, targetVersionNum);
+                getRegionsToRollForward(remainingRegions, repository, parentStore, targetVersionNum, cluster);
             if (nonTargetRegionsCompleted == null) {
               continue;
             }

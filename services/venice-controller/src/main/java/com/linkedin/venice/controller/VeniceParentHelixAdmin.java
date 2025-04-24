@@ -3784,6 +3784,18 @@ public class VeniceParentHelixAdmin implements Admin {
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
     Store parentStore = repository.getStore(storeName);
     Version version = parentStore.getVersion(versionNum);
+
+    // Mark parent version as PUSHED if push is complete in target regions for target region pushes with deferred swap
+    // This will allow the DeferredVersionSwapService to pick up the fact that the push is complete in target regions
+    // and begin monitoring
+    // the wait time for roll forward
+    boolean isParentVersionStatusPushed = parentStore.getVersionStatus(versionNum).equals(PUSHED);
+    if (isTargetRegionInTerminalStatus(targetedRegionSet, extraInfo) && !isParentVersionStatusPushed) {
+      parentStore.updateVersionStatus(versionNum, PUSHED);
+      repository.updateStore(parentStore);
+      LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, PUSHED);
+    }
+
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       if (currentReturnStatus.isTerminal()) {
         LOGGER.info("Received terminal status: {} for topic: {}", currentReturnStatus, kafkaTopic);
@@ -3833,12 +3845,32 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * Checks if the given list of target regions are in a terminal state for their push status
+   * @param targetRegions
+   * @param regionToPushStatusInfo
+   * @return
+   */
+  private boolean isTargetRegionInTerminalStatus(
+      Set<String> targetRegions,
+      Map<String, String> regionToPushStatusInfo) {
+    for (String region: regionToPushStatusInfo.keySet()) {
+      String pushStatus = regionToPushStatusInfo.get(region);
+      boolean isPushStatusTerminal = pushStatus.equals(ExecutionStatus.COMPLETED.toString())
+          || pushStatus.equals(ExecutionStatus.ERROR.toString());
+      if (targetRegions.contains(region) && !isPushStatusTerminal) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * For a job with a terminal status, the following tasks are performed:
    * 1. Truncate the parent topic so that we can start another push. Truncation happens if
    *    a. It is a hybrid store or regular push. (Hybrid store target push uses repush where isTargetRegionPush == false)
    *    b. If target region push w/o deferred swap is enabled and job to push data to all regions have reached terminal status
    *    c. If it is a target region push with deferred swap and a majority of regions have reached terminal status
-   * 2. Update the parent version status to either ONLINE or PUSHED if currentReturnStatus is COMPLETED.
+   * 2. Update the parent version status to either ONLINE or PUSHED if currentReturnStatus is COMPLETED for non target region pushes w/ deferred swap.
    *    a. PUSHED is set if only the target region in a target region push is complete and serving traffic
    *    b. ONLINE is set if all regions have completed their push and are serving traffic
    * @param clusterName
@@ -3886,14 +3918,16 @@ public class VeniceParentHelixAdmin implements Admin {
           currentReturnStatusDetails);
     }
 
-    // Update the parent version status
+    // Update the parent version status for all pushes except for target region push w/ deferred swap as it's handled
+    // separately
+    // in DeferredVersionSwapService
     if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
-      if (isTargetRegionPush && !isPushCompleteInAllRegionsForTargetRegionPush) {
+      if (isTargetRegionPush && !isPushCompleteInAllRegionsForTargetRegionPush && !isTargetRegionPushWithDeferredSwap) {
         parentStore.updateVersionStatus(versionNum, PUSHED); // Push is complete in the target regions & only target
                                                              // regions are serving traffic
         repository.updateStore(parentStore);
         LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, PUSHED);
-      } else {
+      } else if (!isTargetRegionPushWithDeferredSwap) {
         parentStore.updateVersionStatus(versionNum, ONLINE); // Push is complete in all regions & version is serving
                                                              // traffic
         repository.updateStore(parentStore);
