@@ -24,7 +24,6 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_DECOMPRESSION_ENABLED
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_RESOLUTION_RETRY_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_RESOLUTION_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY;
-import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_COMPUTE_TARDY_LATENCY_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_HANDLE_MODE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_LIMIT;
@@ -198,7 +197,6 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
   private final HelixGroupSelectionStrategyEnum helixGroupSelectionStrategy;
   private final String systemSchemaClusterName;
-  private final int clientSslHandshakeThreads;
   private final int maxConcurrentSslHandshakes;
   private final int resolveThreads;
   private final int resolveQueueCapacity;
@@ -342,7 +340,6 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       ioThreadCountInPoolMode =
           props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
 
-      clientSslHandshakeThreads = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_THREADS, 0);
       maxConcurrentSslHandshakes = props.getInt(ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES, 1000);
       resolveThreads = props.getInt(ROUTER_RESOLVE_THREADS, 0);
       resolveQueueCapacity = props.getInt(ROUTER_RESOLVE_QUEUE_CAPACITY, 500000);
@@ -778,10 +775,6 @@ public class VeniceRouterConfig implements RouterRetryConfig {
     }
 
     return retryThresholdMap;
-  }
-
-  public int getClientSslHandshakeThreads() {
-    return clientSslHandshakeThreads;
   }
 
   public int getResolveThreads() {
