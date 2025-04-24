@@ -304,7 +304,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
   /**
    * Checks if a push failed a majority of target regions or succeeded in a majority of target regions. If the push failed in a
-   * majority of target regions, mark the parent version status as ERROR
+   * majority of target regions, mark the parent version status as ERROR. If all target regions have not reached a terminal push status
+   * yet, do not proceed
    * @param targetRegions list of regions to check the push status for
    * @param pushStatusInfo wrapper containing push status information
    * @return
@@ -325,6 +326,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       logMessageIfNotRedundant(message);
       store.updateVersionStatus(targetVersionNum, ERROR);
       repository.updateStore(store);
+      return true;
+    } else if (numFailedTargetRegions + numFailedTargetRegions != targetRegions.size()) {
       return true;
     }
 
@@ -465,7 +468,19 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             // TODO add call for postStoreVersionSwap() once it is implemented
 
             // Switch to the target version in the completed non target regions
-            rollForwardToTargetVersion(nonTargetRegionsCompleted, parentStore, targetVersion, cluster, repository);
+            try {
+              rollForwardToTargetVersion(nonTargetRegionsCompleted, parentStore, targetVersion, cluster, repository);
+            } catch (Exception e) {
+              LOGGER.warn("Failed to roll forward for store: {} in version: {}", storeName, targetVersionNum, e);
+              deferredVersionSwapStats.recordDeferredVersionSwapFailedRollForwardSensor();
+
+              parentStore.updateVersionStatus(targetVersionNum, VersionStatus.PARTIALLY_ONLINE);
+              repository.updateStore(parentStore);
+              LOGGER.info(
+                  "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {} after failing to roll forward in non target regions",
+                  targetVersionNum,
+                  storeName);
+            }
           }
         }
       } catch (Exception e) {
