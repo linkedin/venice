@@ -16,6 +16,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.NotificationContext;
@@ -40,6 +42,7 @@ import org.apache.logging.log4j.Logger;
 @StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = { HelixState.LEADER_STATE, HelixState.STANDBY_STATE })
 public class VeniceControllerStateModel extends StateModel {
   private static final String PARTITION_SUFFIX = "_0";
+  private static final int DEFAULT_STANDBY_TO_LEADER_ST_TIMEOUT_IN_MIN = 5;
   private static final Logger LOGGER = LogManager.getLogger(VeniceControllerStateModel.class);
 
   private final ZkClient zkClient;
@@ -177,6 +180,10 @@ public class VeniceControllerStateModel extends StateModel {
      * retry logic. However, the state transition has to be executed in order, such that if there is any unfinished
      * state transition actions from previous round (e.g. LEADER -> FOLLOWER) for the same controller, it will be
      * blocked until the previous transition is finished.
+     *
+     * We give a timeout of 5 minutes for this state transition based on the statistics today. The idea is that we
+     * want to give other good controller a chance to be able to become the leader, if current one was stuck somewhere.
+     * If the timeout is reached, we will throw an exception to indicate that the state transition failed.
      */
     try {
       executeStateTransitionAsync(message, () -> {
@@ -205,8 +212,8 @@ public class VeniceControllerStateModel extends StateModel {
               helixManager.getInstanceName(),
               clusterName);
         }
-      }).get();
-    } catch (InterruptedException | ExecutionException e) {
+      }).get(DEFAULT_STANDBY_TO_LEADER_ST_TIMEOUT_IN_MIN, TimeUnit.MINUTES);
+    } catch (InterruptedException | ExecutionException | TimeoutException e) {
       LOGGER.error("Failed to execute the controller state transition from STANDBY to LEADER for {}", clusterName, e);
       throw new VeniceException(e);
     }
