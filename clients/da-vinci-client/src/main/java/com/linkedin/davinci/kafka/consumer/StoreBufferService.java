@@ -19,6 +19,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -57,6 +58,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class StoreBufferService extends AbstractStoreBufferService {
   private static final Logger LOGGER = LogManager.getLogger(StoreBufferService.class);
+  protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
   private final int drainerNum;
   private final ArrayList<MemoryBoundBlockingQueue<QueueNode>> blockingQueueArr;
   private ExecutorService executorService;
@@ -245,10 +248,21 @@ public class StoreBufferService extends AbstractStoreBufferService {
   private static void processCommand(
       CommandQueueNode cmd,
       StoreIngestionTask ingestionTask,
-      PartitionConsumptionState pcs) {
+      PartitionConsumptionState pcs,
+      PubSubTopicPartition topicPartition) {
     // We only support SYNC_OFFSET command for now.
     if (cmd.getCommandType() != CommandQueueNode.CommandType.SYNC_OFFSET) {
       throw new VeniceException("Unsupported command type: " + cmd.getCommandType());
+    }
+
+    if (pcs == null) {
+      cmd.executeSync(() -> {
+        String msg = "PCS for topic-partition: {} is null. Skipping {} command in StoreBufferDrainer.";
+        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+          LOGGER.info(msg, topicPartition, cmd.getCommandType());
+        }
+      });
+      return;
     }
 
     cmd.executeSync(() -> ingestionTask.updateOffsetMetadataAndSyncOffset(pcs));
@@ -741,7 +755,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
             processCommand(
                 (CommandQueueNode) node,
                 ingestionTask,
-                ingestionTask.getPartitionConsumptionState(partitionNum));
+                ingestionTask.getPartitionConsumptionState(partitionNum),
+                consumerRecord.getTopicPartition());
             continue;
           } else if (node instanceof SyncVtDivNode) {
             ((SyncVtDivNode) node).execute();
