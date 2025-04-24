@@ -177,6 +177,7 @@ import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceProtocolException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
@@ -652,6 +653,17 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         // TODO Remove the admin command execution tracking code since no one is using it (might not even be working).
         adminCommandExecutionTracker.startTrackingExecution(execution);
+      } catch (VeniceProtocolException e) {
+        LOGGER.error(
+            "Failed to serialize admin message in cluster {}: {}. "
+                + "Please check the schema compatibility. Full error message: {}",
+            clusterName,
+            message,
+            e.getMessage());
+        getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
+            .getVeniceAdminStats()
+            .recordFailedSerializingAdminOperationMessageCount();
+        throw e;
       }
     } finally {
       releaseAdminMessageExecutionIdLock(clusterName);
