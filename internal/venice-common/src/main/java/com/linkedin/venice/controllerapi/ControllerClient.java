@@ -243,7 +243,7 @@ public class ControllerClient implements Closeable {
 
   public StoreResponse getStore(String storeName, int timeoutMs) {
     QueryParams params = newParams().add(NAME, storeName);
-    return request(ControllerRoute.STORE, params, StoreResponse.class, timeoutMs, 1, null);
+    return request(ControllerRoute.STORE, params, StoreResponse.class, timeoutMs, 1, null, Optional.empty());
   }
 
   public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabricName) {
@@ -838,7 +838,7 @@ public class ControllerClient implements Closeable {
     if (StringUtils.isNotEmpty(targetedRegions)) {
       params.add(TARGETED_REGIONS, targetedRegions);
     }
-    return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1, null);
+    return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1, null, Optional.empty());
   }
 
   /**
@@ -850,7 +850,14 @@ public class ControllerClient implements Closeable {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     QueryParams params = newParams().add(NAME, storeName).add(VERSION, version).add(FABRIC, region);
-    return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, QUERY_JOB_STATUS_TIMEOUT, 1, null);
+    return request(
+        ControllerRoute.JOB,
+        params,
+        JobStatusQueryResponse.class,
+        QUERY_JOB_STATUS_TIMEOUT,
+        1,
+        null,
+        Optional.empty());
   }
 
   public ControllerResponse sendPushJobDetails(String storeName, int version, byte[] pushJobDetails) {
@@ -1430,12 +1437,15 @@ public class ControllerClient implements Closeable {
         AdminOperationProtocolVersionControllerResponse.class);
   }
 
-  public AdminOperationProtocolVersionControllerResponse getLocalAdminOperationProtocolVersion() {
-    // TODO: Modify this method to send to given controller url
+  public AdminOperationProtocolVersionControllerResponse getLocalAdminOperationProtocolVersion(String controllerUrl) {
     return request(
         ControllerRoute.GET_LOCAL_ADMIN_OPERATION_PROTOCOL_VERSION,
         newParams(),
-        AdminOperationProtocolVersionControllerResponse.class);
+        AdminOperationProtocolVersionControllerResponse.class,
+        DEFAULT_REQUEST_TIMEOUT_MS,
+        DEFAULT_MAX_ATTEMPTS,
+        null,
+        Optional.of(controllerUrl));
   }
 
   public ControllerResponse deleteKafkaTopic(String topicName) {
@@ -1508,7 +1518,14 @@ public class ControllerClient implements Closeable {
   }
 
   private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType) {
-    return request(route, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_MAX_ATTEMPTS, null);
+    return request(
+        route,
+        params,
+        responseType,
+        DEFAULT_REQUEST_TIMEOUT_MS,
+        DEFAULT_MAX_ATTEMPTS,
+        null,
+        Optional.empty());
   }
 
   private <T extends ControllerResponse> T request(
@@ -1516,22 +1533,44 @@ public class ControllerClient implements Closeable {
       QueryParams params,
       Class<T> responseType,
       byte[] data) {
-    return request(route, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_MAX_ATTEMPTS, data);
+    return request(
+        route,
+        params,
+        responseType,
+        DEFAULT_REQUEST_TIMEOUT_MS,
+        DEFAULT_MAX_ATTEMPTS,
+        data,
+        Optional.empty());
   }
 
+  /**
+   * This method is used to make a request to the controller.
+   * The request will be routed to LEADER controller if the controllerUrl is not provided.
+   * @param route : Controller Route
+   * @param params : Params for the request
+   * @param responseType : Type of the response
+   * @param timeoutMs : Timeout for the request
+   * @param maxAttempts : Number of attempts to make the request
+   * @param data : Data to be sent in the request
+   * @param controllerUrl : URL of the controller to send the request to. If not provided, send to the leader controller.
+   */
   private <T extends ControllerResponse> T request(
       ControllerRoute route,
       QueryParams params,
       Class<T> responseType,
       int timeoutMs,
       int maxAttempts,
-      byte[] data) {
+      byte[] data,
+      Optional<String> controllerUrl) {
     Exception lastException = null;
     boolean logErrorMessage = true;
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
         try {
-          return transport.request(getLeaderControllerUrl(), route, params, responseType, timeoutMs, data);
+          // If the controllerUrl is not provided, use the leader controller URL.
+          // This option is useful when we want to forward request to specific controller (e.g. to standby controller)
+          return transport
+              .request(controllerUrl.orElse(getLeaderControllerUrl()), route, params, responseType, timeoutMs, data);
         } catch (ExecutionException | TimeoutException e) {
           // Controller is unreachable. Let's wait for a new leader to be elected.
           // Total wait time should be at least leader election time (~30 seconds)
@@ -1555,7 +1594,7 @@ public class ControllerClient implements Closeable {
               "Retrying controller request, attempt = {}/{}, controller = {}, route = {}, params = {}, timeout = {}",
               attempt,
               maxAttempts,
-              this.leaderControllerUrl,
+              controllerUrl.orElse(this.leaderControllerUrl),
               route.getPath(),
               params.getNameValuePairs(),
               timeoutMs,
@@ -1567,9 +1606,9 @@ public class ControllerClient implements Closeable {
       lastException = e;
     }
 
-    String message =
-        "An error occurred during controller request." + " controller = " + this.leaderControllerUrl + ", route = "
-            + route.getPath() + ", params = " + params.getAbbreviatedNameValuePairs() + ", timeout = " + timeoutMs;
+    String message = "An error occurred during controller request." + " controller = "
+        + controllerUrl.orElse(this.leaderControllerUrl) + ", route = " + route.getPath() + ", params = "
+        + params.getAbbreviatedNameValuePairs() + ", timeout = " + timeoutMs;
     return makeErrorResponse(message, lastException, responseType, logErrorMessage);
   }
 
