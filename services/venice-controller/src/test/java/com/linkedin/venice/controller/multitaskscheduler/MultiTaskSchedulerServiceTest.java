@@ -5,6 +5,8 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import java.lang.reflect.Field;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.testng.annotations.BeforeTest;
@@ -22,9 +24,17 @@ public class MultiTaskSchedulerServiceTest {
     MockitoAnnotations.openMocks(this);
     service = new MultiTaskSchedulerService(4, 3);
     // Inject the mock StoreMigrationManager into the service
-    Field field = MultiTaskSchedulerService.class.getDeclaredField("storeMigrationManager");
-    field.setAccessible(true);
-    field.set(service, mockStoreMigrationManager);
+    // Use AccessController.doPrivileged block to set the field accessible
+    AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+      try {
+        Field field = MultiTaskSchedulerService.class.getDeclaredField("storeMigrationManager");
+        field.setAccessible(true);
+        field.set(service, mockStoreMigrationManager);
+      } catch (NoSuchFieldException | IllegalAccessException e) {
+        throw new RuntimeException(e);
+      }
+      return null;
+    });
   }
 
   @Test(priority = 1)

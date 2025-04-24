@@ -2,7 +2,6 @@ package com.linkedin.venice.controller.multitaskscheduler;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.same;
 import static org.mockito.Mockito.verify;
@@ -10,19 +9,22 @@ import static org.mockito.Mockito.when;
 
 import java.time.Duration;
 import java.time.Instant;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class StoreMigrationTaskTest {
+  @Mock
   private MigrationRecord mockRecord;
+  @Mock
   private StoreMigrationManager mockManager;
   private StoreMigrationTask task;
 
   @BeforeMethod
   public void setUp() {
-    mockRecord = mock(MigrationRecord.class);
-    mockManager = mock(StoreMigrationManager.class);
+    MockitoAnnotations.openMocks(this);
     task = new StoreMigrationTask(mockRecord, mockManager);
   }
 
@@ -99,6 +101,15 @@ public class StoreMigrationTaskTest {
     task.run();
 
     verify(mockRecord).setCurrentStep(6);
+    verify(mockManager).cleanupMigrationRecord(mockRecord.getStoreName());
+  }
+
+  @Test
+  public void testRun_InvalidMigrationRecordStep() {
+    when(mockRecord.getCurrentStep()).thenReturn(99); // Invalid step
+
+    task.run();
+
     verify(mockManager).cleanupMigrationRecord(mockRecord.getStoreName());
   }
 

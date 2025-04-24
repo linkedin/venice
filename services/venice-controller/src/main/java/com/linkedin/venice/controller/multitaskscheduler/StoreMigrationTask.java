@@ -39,6 +39,12 @@ class StoreMigrationTask implements Runnable {
         case 5:
           endMigration();
           break;
+        default:
+          LOGGER.error(
+              "Invalid migration step: {} of record {}. Please retry with a valid step between 0 and 5.",
+              record.getCurrentStep(),
+              record);
+          manager.cleanupMigrationRecord(record.getStoreName());
       }
     } catch (Exception e) {
       LOGGER.error("Error occurred during migration for store: {}", record.getStoreName(), e);
@@ -48,7 +54,6 @@ class StoreMigrationTask implements Runnable {
       } else {
         abortMigration();
       }
-
     }
   }
 
