@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -11,7 +12,6 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -81,8 +81,8 @@ public class VeniceControllerStateModel extends StateModel {
     this.realTimeTopicSwitcher = realTimeTopicSwitcher;
     this.accessController = accessController;
     this.helixAdminClient = helixAdminClient;
-    this.workerService = Executors
-        .newSingleThreadExecutor(new DaemonThreadFactory("Venice-Controller-State-Model-Worker-" + this.clusterName));
+    this.workerService = Executors.newSingleThreadExecutor(
+        new DaemonThreadFactory(String.format("Controller-ST-Worker-%s", clusterName), admin.getLogContext()));
   }
 
   /**
@@ -112,29 +112,32 @@ public class VeniceControllerStateModel extends StateModel {
   }
 
   private void executeStateTransition(Message message, StateTransition stateTransition) {
+    executeStateTransition(message, stateTransition, true /* setThreadName */);
+  }
+
+  private void executeStateTransition(Message message, StateTransition stateTransition, boolean setThreadName) {
+    if (setThreadName) {
+      String from = message.getFromState();
+      String to = message.getToState();
+      String threadName = "Helix-ST-" + message.getResourceName() + "-" + from + "->" + to;
+      // Change name to indicate which st is occupied this thread.
+      Thread.currentThread().setName(threadName);
+    }
     try {
-      executeStateTransition(message, stateTransition, false).get();
-    } catch (InterruptedException | ExecutionException e) {
-      throw new VeniceException(e);
+      stateTransition.run();
+    } finally {
+      if (setThreadName) {
+        // Once st is terminated, change the name to indicate this thread will not be occupied by this st.
+        Thread.currentThread().setName("Inactive ST thread.");
+      }
     }
   }
 
-  Future<?> executeStateTransition(Message message, StateTransition stateTransition, boolean isAsync) {
-    String from = message.getFromState();
-    String to = message.getToState();
-    String threadName = "Helix-ST-" + message.getResourceName() + "-" + from + "->" + to;
-    // Change name to indicate which st is occupied this thread.
-    Thread.currentThread().setName(threadName);
-    try {
-      if (isAsync) {
-        return workerService.submit(stateTransition);
-      }
-      stateTransition.run();
-      return CompletableFuture.completedFuture(null);
-    } finally {
-      // Once st is terminated, change the name to indicate this thread will not be occupied by this st.
-      Thread.currentThread().setName("Inactive ST thread.");
-    }
+  Future<?> executeStateTransitionAsync(Message message, StateTransition stateTransition) {
+    return workerService.submit(() -> {
+      // When run in a worker thread, we don't need to set the thread name.
+      executeStateTransition(message, stateTransition, false /* setThreadName */);
+    });
   }
 
   interface StateTransition extends Runnable {
@@ -162,7 +165,7 @@ public class VeniceControllerStateModel extends StateModel {
      * blocked until the previous transition is finished.
      */
     try {
-      executeStateTransition(message, () -> {
+      executeStateTransitionAsync(message, () -> {
         if (helixManagerInitialized()) {
           // TODO: It seems like this should throw an exception. Otherwise the case would be you'd have an instance be
           // leader
@@ -188,8 +191,9 @@ public class VeniceControllerStateModel extends StateModel {
               helixManager.getInstanceName(),
               clusterName);
         }
-      }, true /* isAsync */).get();
+      }).get();
     } catch (InterruptedException | ExecutionException e) {
+      LOGGER.error("Failed to execute the controller state transition from STANDBY to LEADER for {}", clusterName, e);
       throw new VeniceException(e);
     }
   }
@@ -254,7 +258,7 @@ public class VeniceControllerStateModel extends StateModel {
      * metadata is already cleared and not able to serve. This often results in returning 404 or store not found for
      * a store that actually exists.
      */
-    executeStateTransition(message, this::reset, true /* isAsync */);
+    executeStateTransitionAsync(message, this::reset);
   }
 
   /**
@@ -400,17 +404,17 @@ public class VeniceControllerStateModel extends StateModel {
     workerService.shutdown();
   }
 
-  // Only for testing.
+  @VisibleForTesting
   void setClusterResources(HelixVeniceClusterResources clusterResources) {
     this.clusterResources = clusterResources;
   }
 
-  // Only for testing.
+  @VisibleForTesting
   void setClusterConfig(VeniceControllerClusterConfig config) {
     this.clusterConfig = config;
   }
 
-  // Only for testing.
+  @VisibleForTesting
   void setHelixManager(SafeHelixManager helixManager) {
     this.helixManager = helixManager;
   }

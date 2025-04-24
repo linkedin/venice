@@ -85,12 +85,12 @@ public class TestVeniceControllerStateModel {
     stateModel.setClusterConfig(mock(VeniceControllerClusterConfig.class));
 
     // This is a workaround for the test.
-    // We need to mock the HelixManager from the Executor thread so that the 3rd state transition to be executed
+    // We need to mock the HelixManager from the Executor thread so that the next state transition to be executed
     // successfully.
     when(mockHelixManager.isConnected()).thenReturn(true);
-    stateModel.executeStateTransition(mockMessage, () -> {
+    stateModel.executeStateTransitionAsync(mockMessage, () -> {
       stateModel.setHelixManager(mockHelixManager);
-    }, true);
+    });
 
     // 2nd state transition. It runs synchronously and should block the main thread.
     // We expect the main thread to take more than DELAY milliseconds to finish it as it has to wait for the 1st
