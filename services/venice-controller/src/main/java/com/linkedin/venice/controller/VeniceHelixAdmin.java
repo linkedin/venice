@@ -218,6 +218,7 @@ import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -457,8 +458,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Lazy<ByteBuffer> emptyPushZSTDDictionary;
 
   private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
+  private final LogContext logContext;
 
-  DeadStoreStats deadStoreStats;
+  final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
 
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -493,6 +495,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines) {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
+    this.logContext = multiClusterConfigs.getLogContext();
     VeniceControllerClusterConfig commonConfig = multiClusterConfigs.getCommonConfig();
     this.controllerName =
         Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminHostname(), multiClusterConfigs.getAdminPort());
@@ -696,22 +699,28 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               ParticipantMessageKey.getClassSchema()));
     }
 
-    if (isParent() && multiClusterConfigs.isDeadStoreEndpointEnabled()) {
-      Class<? extends DeadStoreStats> deadStoreStatsClass =
-          ReflectUtils.loadClass(multiClusterConfigs.getDeadStoreStatsClassName());
-      try {
-        deadStoreStats = ReflectUtils.callConstructor(
-            deadStoreStatsClass,
-            new Class[] { VeniceProperties.class },
-            new Object[] { multiClusterConfigs.getDeadStoreStatsConfigs() });
-      } catch (Exception e) {
-        LOGGER.error("Failed to enable " + DeadStoreStats.class.getSimpleName(), e);
-        throw new VeniceException(e);
+    for (String clusterName: multiClusterConfigs.getClusters()) {
+      if (multiClusterConfigs.getControllerConfig(clusterName).isDeadStoreEndpointEnabled()) {
+        Class<? extends DeadStoreStats> deadStoreStatsClass =
+            ReflectUtils.loadClass(multiClusterConfigs.getControllerConfig(clusterName).getDeadStoreStatsClassName());
+        try {
+          DeadStoreStats deadStoreStats = ReflectUtils.callConstructor(
+              deadStoreStatsClass,
+              new Class[] { VeniceProperties.class },
+              new Object[] { multiClusterConfigs.getControllerConfig(clusterName).getDeadStoreStatsConfigs() });
+
+          deadStoreStatsMap.put(clusterName, deadStoreStats);
+        } catch (Exception e) {
+          LOGGER.error("Failed to enable " + DeadStoreStats.class.getSimpleName(), e);
+          throw new VeniceException(e);
+        }
       }
     }
 
-    clusterLeaderInitializationManager =
-        new ClusterLeaderInitializationManager(initRoutines, commonConfig.isConcurrentInitRoutinesEnabled());
+    clusterLeaderInitializationManager = new ClusterLeaderInitializationManager(
+        initRoutines,
+        commonConfig.isConcurrentInitRoutinesEnabled(),
+        commonConfig.getLogContext());
 
     // Create the controller cluster if required.
     if (isControllerClusterHAAS) {
@@ -850,16 +859,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     InstanceConfig.Builder defaultInstanceConfigBuilder =
         new InstanceConfig.Builder().setPort(Integer.toString(multiClusterConfigs.getAdminPort()));
 
-    List<String> instanceTagList = multiClusterConfigs.getControllerInstanceTagList();
-    for (String instanceTag: instanceTagList) {
-      defaultInstanceConfigBuilder.addTag(instanceTag);
-    }
-
     HelixManagerProperty helixManagerProperty =
         new HelixManagerProperty.Builder().setDefaultInstanceConfigBuilder(defaultInstanceConfigBuilder).build();
 
     SafeHelixManager tempManager = new SafeHelixManager(
         new ZKHelixManager(controllerClusterName, controllerName, instanceType, zkAddress, null, helixManagerProperty));
+
+    // for refreshing the instance config list if the controller is already a participant in venice-controller cluster
+    // but assigned to another venice cluster
+    tempManager.addPreConnectCallback(
+        new ControllerInstanceTagRefresher(tempManager, multiClusterConfigs.getControllerInstanceTagList()));
     StateMachineEngine stateMachine = tempManager.getStateMachineEngine();
     stateMachine.registerStateModelFactory(LeaderStandbySMD.name, controllerStateModelFactory);
     try {
@@ -6749,10 +6758,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Long statusUpdateTimestamp = statusAndDetails.getStatusUpdateTimestamp();
     if (executionStatus.equals(ExecutionStatus.NOT_CREATED)) {
       StringBuilder moreDetailsBuilder = new StringBuilder(details == null ? "" : details + " and ");
+      Version version = store.getVersion(versionNumber);
 
       // Check whether cluster is in maintenance mode or not
       if (maintenanceSignal != null) {
         moreDetailsBuilder.append("Cluster: ").append(clusterName).append(" is in maintenance mode");
+      } else if (version != null && version.getStatus() == KILLED) {
+        moreDetailsBuilder.append("Push job was killed for: ").append(kafkaTopic);
+        return new OfflinePushStatusInfo(ExecutionStatus.ERROR, statusUpdateTimestamp, moreDetailsBuilder.toString());
       } else {
         moreDetailsBuilder.append("Version creation for topic: ").append(kafkaTopic).append(" got delayed");
       }
@@ -6884,7 +6897,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         helixClusterConfig.setDelayRebalaceEnabled(true);
       }
       helixClusterConfig.setPersistBestPossibleAssignment(true);
-      // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to
+      // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constraints on CRUSH alg to
       // choose proper instance to hold the replica.
       helixClusterConfig.setTopology("/" + HelixUtils.TOPOLOGY_CONSTRAINT);
       helixClusterConfig.setFaultZoneType(HelixUtils.TOPOLOGY_CONSTRAINT);
@@ -7174,7 +7187,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (nodeRemovableResult.isRemovable()) {
         stoppableInstances.add(nodeRemovableResult.getInstanceId());
       } else {
-        nonStoppableInstances.put(nodeRemovableResult.getInstanceId(), nodeRemovableResult.getBlockingReason());
+        nonStoppableInstances.put(nodeRemovableResult.getInstanceId(), nodeRemovableResult.getFormattedMessage());
       }
     }
     return statuses;
@@ -7695,11 +7708,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Unsupported operation in the child controller.
+   * Update AdminOperationProtocolVersion in metadata
    */
   public void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion) {
-    throw new VeniceUnsupportedOperationException(
-        "updateAdminOperationProtocolVersion is not supported for child controller");
+    checkControllerLeadershipFor(clusterName);
+    getAdminConsumerService(clusterName)
+        .updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
   }
 
   /**
@@ -7729,7 +7743,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       // Get the admin operation protocol version from standby controller
       AdminOperationProtocolVersionControllerResponse response =
-          localControllerClient.getLocalAdminOperationProtocolVersion();
+          localControllerClient.getLocalAdminOperationProtocolVersion(standbyControllerUrl);
       if (response.isError()) {
         throw new VeniceException(
             "Failed to get admin operation protocol version from standby controller: " + standbyControllerUrl
@@ -8271,7 +8285,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   public void preFetchDeadStoreStats(String clusterName, List<StoreInfo> storeInfos) {
     checkControllerLeadershipFor(clusterName);
-    deadStoreStats.preFetchStats(storeInfos);
+    deadStoreStatsMap.get(clusterName).preFetchStats(storeInfos);
   }
 
   /**
@@ -8280,7 +8294,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores) {
     checkControllerLeadershipFor(clusterName);
-    if (!multiClusterConfigs.isDeadStoreEndpointEnabled()) {
+    if (!multiClusterConfigs.getControllerConfig(clusterName).isDeadStoreEndpointEnabled()) {
       throw new VeniceUnsupportedOperationException("Dead store stats is not enabled.");
     }
 
@@ -8290,13 +8304,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .filter(store -> includeSystemStores || !store.isSystemStore())
           .map(StoreInfo::fromStore)
           .collect(Collectors.toList());
-      return deadStoreStats.getDeadStores(clusterStoreInfos);
+      return deadStoreStatsMap.get(clusterName).getDeadStores(clusterStoreInfos);
     } else {
       StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
       if (store == null) {
         throw new VeniceNoStoreException(storeName, clusterName);
       }
-      return deadStoreStats.getDeadStores(Collections.singletonList(store));
+      return deadStoreStatsMap.get(clusterName).getDeadStores(Collections.singletonList(store));
     }
   }
 
@@ -8335,8 +8349,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   public OfflinePushStatus retrievePushStatus(String clusterName, StoreInfo store) {
-    VeniceOfflinePushMonitorAccessor accessor =
-        new VeniceOfflinePushMonitorAccessor(clusterName, getZkClient(), getAdapterSerializer());
+    VeniceOfflinePushMonitorAccessor accessor = new VeniceOfflinePushMonitorAccessor(
+        clusterName,
+        getZkClient(),
+        getAdapterSerializer(),
+        multiClusterConfigs.getLogContext());
 
     Optional<Version> currentVersion = store.getVersion(store.getCurrentVersion());
     String kafkaTopic = currentVersion.isPresent() ? currentVersion.get().kafkaTopicName() : "";
@@ -8501,8 +8518,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     // Check all offline push zk nodes.
     if (checkOfflinePush) {
-      VeniceOfflinePushMonitorAccessor accessor =
-          new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer);
+      VeniceOfflinePushMonitorAccessor accessor = new VeniceOfflinePushMonitorAccessor(
+          clusterName,
+          zkClient,
+          adapterSerializer,
+          multiClusterConfigs.getLogContext());
       List<String> offlinePushes = zkClient.getChildren(accessor.getOfflinePushStatuesParentPath());
       offlinePushes.forEach(resource -> {
         if (Version.isVersionTopic(resource)) {
@@ -9184,5 +9204,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   InternalAvroSpecificSerializer<PushJobDetails> getPushJobDetailsSerializer() {
     return pushJobDetailsSerializer;
+  }
+
+  public LogContext getLogContext() {
+    return logContext;
   }
 }

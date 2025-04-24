@@ -146,7 +146,8 @@ public abstract class AbstractPushMonitor
         controllerConfig.getDaVinciPushStatusScanNoReportRetryMaxAttempt(),
         controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceCount(),
         controllerConfig.getDaVinciPushStatusScanMaxOfflineInstanceRatio(),
-        controllerConfig.useDaVinciSpecificExecutionStatusForError());
+        controllerConfig.useDaVinciSpecificExecutionStatusForError(),
+        controllerConfig.getLogContext());
     this.isOfflinePushMonitorDaVinciPushStatusEnabled = controllerConfig.isDaVinciPushStatusEnabled();
     this.regionName = controllerConfig.getRegionName();
     this.veniceWriterFactory = veniceWriterFactory;

@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Collections;
 import java.util.Map;
@@ -79,7 +80,8 @@ public class PushStatusCollectorTest {
         1,
         20,
         1,
-        true);
+        true,
+        LogContext.EMPTY);
     pushStatusCollector.start();
 
     pushStatusCollector.subscribeTopic(regularStoreTopicV1, 10);
@@ -236,7 +238,8 @@ public class PushStatusCollectorTest {
         1,
         20,
         1,
-        true);
+        true,
+        LogContext.EMPTY);
     pushStatusCollector.start();
 
     pushCompletedCount.set(0);
@@ -333,7 +336,8 @@ public class PushStatusCollectorTest {
         0,
         20,
         1,
-        true);
+        true,
+        LogContext.EMPTY);
     pushStatusCollector.start();
 
     pushCompletedCount.set(0);

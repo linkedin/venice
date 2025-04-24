@@ -88,6 +88,8 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -170,6 +172,7 @@ import org.apache.logging.log4j.Logger;
 public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
   public static final String GLOBAL_RT_DIV_KEY_PREFIX = "GLOBAL_RT_DIV_KEY.";
+  static final long VIEW_WRITER_CLOSE_TIMEOUT_IN_MS = 60000; // 60s
 
   /**
    * The new leader will stay inactive (not switch to any new topic or produce anything) for
@@ -215,6 +218,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final Version version;
 
   protected final ExecutorService aaWCIngestionStorageLookupThreadPool;
+  private Time time = new SystemTime();
 
   public LeaderFollowerStoreIngestionTask(
       StorageService storageService,
@@ -411,9 +415,36 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void closeVeniceViewWriters() {
+  protected void closeVeniceViewWriters(boolean doFlush) {
     if (!viewWriters.isEmpty()) {
-      viewWriters.forEach((k, v) -> v.close());
+      long gracefulCloseDeadline = time.getMilliseconds() + VIEW_WRITER_CLOSE_TIMEOUT_IN_MS;
+      viewWriters.forEach((k, v) -> v.close(doFlush));
+      // Short circuit last VT produce call future if it's incomplete to unblock any consumer thread(s) that are waiting
+      for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
+        CompletableFuture<Void> lastVTProduceCallFuture = pcs.getLastVTProduceCallFuture();
+        if (!lastVTProduceCallFuture.isDone()) {
+          if (doFlush) {
+            long timeout = gracefulCloseDeadline - time.getMilliseconds();
+            if (timeout <= 0) {
+              lastVTProduceCallFuture.completeExceptionally(
+                  new VeniceException(
+                      "Completing the future forcefully since we exceeded the view writer graceful close timeout for: "
+                          + kafkaVersionTopic));
+            } else {
+              try {
+                lastVTProduceCallFuture.get(timeout, MILLISECONDS);
+              } catch (Exception e) {
+                lastVTProduceCallFuture.completeExceptionally(
+                    new VeniceException(
+                        "Exception caught when closing the view writer in ingestion task for: " + kafkaVersionTopic,
+                        e));
+              }
+            }
+          } else {
+            lastVTProduceCallFuture.complete(null);
+          }
+        }
+      }
     }
   }
 
@@ -3206,10 +3237,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return false; // Not leader, don't compress
     }
     PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-    if (realTimeTopic != null && !realTimeTopic.equals(leaderTopic)) {
-      return false; // We're consuming from version topic (don't compress it)
+    // if we are consuming from a version topic, don't compress
+    // if we are consuming from a real time topic, compress if the compression strategy is not no_op
+    if (realTimeTopic == null || !realTimeTopic.equals(leaderTopic)) {
+      return false;
+    } else {
+      return !compressionStrategy.equals(CompressionStrategy.NO_OP);
     }
-    return !compressionStrategy.equals(CompressionStrategy.NO_OP);
   }
 
   private PubSubMessageProcessedResult processMessage(
@@ -4297,5 +4331,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   HeartbeatMonitoringService getHeartbeatMonitoringService() {
     return heartbeatMonitoringService;
+  }
+
+  // Package private for unit test
+  void setTime(Time time) {
+    this.time = time;
   }
 }

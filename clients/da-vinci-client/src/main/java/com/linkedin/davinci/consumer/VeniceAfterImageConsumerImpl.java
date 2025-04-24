@@ -118,7 +118,17 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       }
       PubSubPosition heartbeatTimestampPosition =
           consumerAdapter.getPositionByTimestamp(topicPartition, currentVersionTimestamp);
-      if (checkpoints.get(topicPartition.getPartitionNumber()) == null) {
+      if (checkpoints.get(topicPartition.getPartitionNumber()) == null && heartbeatTimestampPosition == null) {
+        LOGGER.warn(
+            "No EOP checkpoint OR heartbeat position found for partition: {} seeking to tail",
+            topicPartition.getPartitionNumber());
+        checkpoints.put(
+            topicPartition.getPartitionNumber(),
+            new VeniceChangeCoordinate(
+                topicPartition.getPubSubTopic().getName(),
+                PubSubPosition.LATEST,
+                topicPartition.getPartitionNumber()));
+      } else if (checkpoints.get(topicPartition.getPartitionNumber()) == null) {
         LOGGER.warn("No EOP checkpoint found for partition: {}", topicPartition.getPartitionNumber());
         checkpoints.put(
             topicPartition.getPartitionNumber(),
@@ -126,16 +136,22 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                 topicPartition.getPubSubTopic().getName(),
                 heartbeatTimestampPosition,
                 topicPartition.getPartitionNumber()));
-        continue;
-      }
-      PubSubPosition eopPosition = checkpoints.get(topicPartition.getPartitionNumber()).getPosition();
-      if (heartbeatTimestampPosition.comparePosition(eopPosition) > 0) {
-        checkpoints.put(
+      } else if (heartbeatTimestampPosition == null) {
+        LOGGER.warn(
+            "Null heartbeat position for partition: {} timestamp: {} starting from EOP!",
             topicPartition.getPartitionNumber(),
-            new VeniceChangeCoordinate(
-                topicPartition.getPubSubTopic().getName(),
-                heartbeatTimestampPosition,
-                topicPartition.getPartitionNumber()));
+            currentVersionTimestamp);
+        // No need to do anything here, we already have the EOP checkpoint, so we'll default to that
+      } else {
+        PubSubPosition eopPosition = checkpoints.get(topicPartition.getPartitionNumber()).getPosition();
+        if (heartbeatTimestampPosition.comparePosition(eopPosition) > 0) {
+          checkpoints.put(
+              topicPartition.getPartitionNumber(),
+              new VeniceChangeCoordinate(
+                  topicPartition.getPubSubTopic().getName(),
+                  heartbeatTimestampPosition,
+                  topicPartition.getPartitionNumber()));
+        }
       }
     }
   }

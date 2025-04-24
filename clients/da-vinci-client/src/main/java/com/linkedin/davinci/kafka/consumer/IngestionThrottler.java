@@ -212,8 +212,8 @@ public class IngestionThrottler implements Closeable {
           "current_version_speedup_kafka_consumption_bandwidth",
           false,
           EventThrottler.BLOCK_STRATEGY);
-      this.eventThrottlerUpdateService =
-          Executors.newSingleThreadScheduledExecutor(new DaemonThreadFactory("Ingestion_Event_Throttler_update"));
+      this.eventThrottlerUpdateService = Executors.newSingleThreadScheduledExecutor(
+          new DaemonThreadFactory("Ingestion_Event_Throttler_update", serverConfig.getRegionName()));
       this.eventThrottlerUpdateService.scheduleAtFixedRate(() -> {
         Map<String, StoreIngestionTask> ongoingStoreIngestionTaskMap = ongoingIngestionTaskMapSupplier.get();
         boolean hasCurrentVersionBootstrapping = false;

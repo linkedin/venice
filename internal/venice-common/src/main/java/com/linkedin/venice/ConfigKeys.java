@@ -1101,12 +1101,6 @@ public class ConfigKeys {
   public static final String ROUTER_MULTI_KEY_ROUTING_STRATEGY = "router.multi.key.routing.strategy";
 
   /**
-   * The Helix virtual group field name in domain, and the allowed values: {@link com.linkedin.venice.helix.HelixInstanceConfigRepository#GROUP_FIELD_NAME_IN_DOMAIN}
-   * and {@link com.linkedin.venice.helix.HelixInstanceConfigRepository#ZONE_FIELD_NAME_IN_DOMAIN}.
-   */
-  public static final String ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN = "router.helix.virtual.group.field.in.domain";
-
-  /**
    * Helix group selection strategy when Helix assisted routing is enabled.
    * Available strategies listed here: {@literal HelixGroupSelectionStrategyEnum}.
    */
@@ -2480,6 +2474,23 @@ public class ConfigKeys {
       "server.aa.wc.ingestion.storage.lookup.thread.pool.size";
 
   /**
+   * Please find more details here: {@link com.linkedin.venice.reliability.LoadController}.
+   */
+  public static final String SERVER_LOAD_CONTROLLER_ENABLED = "server.load.controller.enabled";
+  public static final String SERVER_LOAD_CONTROLLER_WINDOW_SIZE_IN_SECONDS =
+      "server.load.controller.window.size.in.seconds";
+  public static final String SERVER_LOAD_CONTROLLER_ACCEPT_MULTIPLIER = "server.load.controller.accept.multiplier";
+  public static final String SERVER_LOAD_CONTROLLER_MAX_REJECTION_RATIO = "server.load.controller.max.rejection.ratio";
+  public static final String SERVER_LOAD_CONTROLLER_REJECTION_RATIO_UPDATE_INTERNAL_IN_SECONDS =
+      "server.load.controller.rejection.ratio.update.internal.in.seconds";
+  public static final String SERVER_LOAD_CONTROLLER_SINGLE_GET_LATENCY_ACCEPT_THRESHOLD_IN_MS =
+      "server.load.controller.single.get.latency.accept.threshold.in.ms";
+  public static final String SERVER_LOAD_CONTROLLER_MULTI_GET_LATENCY_ACCEPT_THRESHOLD_IN_MS =
+      "server.load.controller.multi.get.latency.accept.threshold.in.ms";
+  public static final String SERVER_LOAD_CONTROLLER_COMPUTE_LATENCY_ACCEPT_THRESHOLD_IN_MS =
+      "server.load.controller.compute.latency.accept.threshold.in.ms";
+
+  /**
    * Whether to enable producer throughput optimization for realtime workload or not.
    * Two strategies:
    * 1. Disable compression.
@@ -2566,6 +2577,20 @@ public class ConfigKeys {
    * controls the TTL of the cache per entry.
    */
   public static final String ACL_IN_MEMORY_CACHE_TTL_MS = "acl.in.memory.cache.ttl.ms";
+
+  /**
+   * Enables / disables protocol version auto-detection service in parent controller.
+   * This service is responsible for detecting the admin operation protocol version to serialize message
+   * Default value is disabled (false).
+   */
+  public static final String CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED =
+      "controller.protocol.version.auto.detection.service.enabled";
+
+  /**
+   * Specifies the sleep time for the protocol version auto-detection service between each detection attempt.
+   */
+  public static final String CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS =
+      "controller.protocol.version.auto.detection.sleep.ms";
 
   /**
    * If enabled, the controller's get dead store endpoint will be enabled.

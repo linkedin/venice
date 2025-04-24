@@ -172,7 +172,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.mapred.RunningJob;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -225,7 +224,6 @@ public class VenicePushJob implements AutoCloseable {
   private ControllerClient controllerClient;
   private ControllerClient kmeSchemaSystemStoreControllerClient;
   private ControllerClient livenessHeartbeatStoreControllerClient;
-  private RunningJob runningJob;
 
   private DataWriterComputeJob dataWriterComputeJob = null;
 
@@ -393,6 +391,11 @@ public class VenicePushJob implements AutoCloseable {
     if (pushJobSettingToReturn.isIncrementalPush && (pushJobSettingToReturn.isTargetedRegionPushEnabled
         || pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled)) {
       throw new VeniceException("Incremental push is not supported while using targeted region push mode");
+    }
+
+    if (pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled && pushJobSettingToReturn.deferVersionSwap) {
+      throw new VeniceException(
+          "Target region push with deferred swap and deferred swap cannot be enabled at the same time");
     }
 
     // If target region push with deferred version swap is enabled, enable deferVersionSwap
@@ -2520,7 +2523,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private void killJob(PushJobSetting pushJobSetting, ControllerClient controllerClient) {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
-    killComputeJob();
+    killDataWriterJob();
     if (!pushJobSetting.isIncrementalPush) {
       final int maxRetryAttempt = 10;
       int currentRetryAttempt = 0;
@@ -2540,35 +2543,6 @@ public class VenicePushJob implements AutoCloseable {
             c -> c.killOfflinePushJob(pushJobSetting.topic));
         LOGGER.info("Offline push job has been killed, topic: {}", pushJobSetting.topic);
       }
-    }
-  }
-
-  private void killComputeJob() {
-    killMRJob();
-    killDataWriterJob();
-  }
-
-  private void killMRJob() {
-    if (runningJob == null) {
-      LOGGER.warn("No op to kill a null running job");
-      return;
-    }
-    try {
-      if (runningJob.isComplete()) {
-        LOGGER.warn(
-            "No op to kill a completed job with name {} and ID {}",
-            runningJob.getJobName(),
-            runningJob.getID().getId());
-        return;
-      }
-      runningJob.killJob();
-    } catch (Exception ex) {
-      // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws an exception or not.
-      LOGGER.info(
-          "Received exception while killing map-reduce job with name {} and ID {}",
-          runningJob.getJobName(),
-          runningJob.getID().getId(),
-          ex);
     }
   }
 

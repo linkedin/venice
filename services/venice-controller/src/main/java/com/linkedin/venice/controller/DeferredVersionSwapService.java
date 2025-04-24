@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import java.time.LocalDateTime;
@@ -378,6 +379,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
   private Runnable getRunnableForDeferredVersionSwap() {
     return () -> {
+      LogContext.setStructuredLogContext(veniceControllerMultiClusterConfig.getLogContext());
       if (stop.get()) {
         return;
       }

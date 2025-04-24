@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.Collection;
@@ -339,23 +340,15 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getLogCompactionIntervalMS();
   }
 
-  public String getDeadStoreStatsClassName() {
-    return getCommonConfig().getDeadStoreStatsClassName();
-  }
-
-  public VeniceProperties getDeadStoreStatsConfigs() {
-    return getCommonConfig().getDeadStoreStatsConfigs();
-  }
-
-  public boolean isDeadStoreEndpointEnabled() {
-    return getCommonConfig().isDeadStoreEndpointEnabled();
-  }
-
   public long getTimeSinceLastLogCompactionThresholdMS() {
     return getCommonConfig().getTimeSinceLastLogCompactionThresholdMS();
   }
 
   public boolean isRealTimeTopicVersioningEnabled() {
     return getCommonConfig().getRealTimeTopicVersioningEnabled();
+  }
+
+  public LogContext getLogContext() {
+    return getCommonConfig().getLogContext();
   }
 }
