@@ -4,6 +4,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -24,6 +25,8 @@ import org.apache.logging.log4j.Logger;
 public class AvroSerializer<K> implements RecordSerializer<K> {
   private static final Logger LOGGER = LogManager.getLogger(AvroSerializer.class);
   private static final ThreadLocal<ReusableObjects> REUSABLE_OBJECTS = ThreadLocal.withInitial(ReusableObjects::new);
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final DatumWriter<K> genericDatumWriter;
   private final DatumWriter<K> specificDatumWriter;
@@ -75,9 +78,11 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
        * seem to guarantee that it's in a clean state. We therefore set it to null here so that the next invocation
        * will create a brand new one.
        */
-      LOGGER.error(
-          "Caught a {} when serializing. Will reset the BinaryEncoder to avoid contaminating future serializations.",
-          t.getClass().getSimpleName());
+      String errorMsg = "Caught a " + t.getClass().getSimpleName()
+          + " when serializing. Will reset the BinaryEncoder to avoid contaminating future serializations.";
+      if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(errorMsg)) {
+        LOGGER.error(errorMsg, t);
+      }
       reusableObjects.binaryEncoder = null;
       if (AvroSchemaUtils.isUnresolvedUnionExceptionAvailable()) {
         UnresolvedUnionUtil.handleUnresolvedUnion(t);
