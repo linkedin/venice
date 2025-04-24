@@ -432,4 +432,9 @@ public class VeniceControllerStateModel extends StateModel {
   void setHelixManager(SafeHelixManager helixManager) {
     this.helixManager = helixManager;
   }
+
+  @VisibleForTesting
+  ExecutorService getWorkService() {
+    return workerService;
+  }
 }

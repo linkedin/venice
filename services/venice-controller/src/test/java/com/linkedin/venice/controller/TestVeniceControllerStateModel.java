@@ -10,6 +10,8 @@ import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.HelixUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import org.apache.helix.NotificationContext;
@@ -103,5 +105,27 @@ public class TestVeniceControllerStateModel {
         String.format(
             "Controller Standby -> Leader ST is executed synchronously. Expected a delay of more than %d seconds",
             DELAY / 1000));
+  }
+
+  @Test
+  public void testStateModelClose() {
+    VeniceDistClusterControllerStateModelFactory factory = new VeniceDistClusterControllerStateModelFactory(
+        mock(ZkClient.class),
+        mock(HelixAdapterSerializer.class),
+        mock(VeniceHelixAdmin.class),
+        mock(VeniceControllerMultiClusterConfig.class),
+        mock(MetricsRepository.class),
+        mock(ClusterLeaderInitializationRoutine.class),
+        mock(RealTimeTopicSwitcher.class),
+        Optional.empty(),
+        mock(HelixAdminClient.class));
+    int testPartition = 0;
+    String resourceName = Version.composeKafkaTopic("testStore", 1);
+    String partitionName = HelixUtils.getPartitionName(resourceName, testPartition);
+    factory.createNewStateModel(resourceName, partitionName);
+    factory.close();
+
+    // Verify that when the factor is closed, the state model is also closed and resources are released.
+    assertTrue(factory.getModel(resourceName).getWorkService().isShutdown());
   }
 }
