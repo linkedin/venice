@@ -205,7 +205,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     return "venice." + metricPrefix;
   }
 
-  String getMetricPrefix() {
+  final String getMetricPrefix() {
     return createFullMetricPrefix(metricPrefix);
   }
 
