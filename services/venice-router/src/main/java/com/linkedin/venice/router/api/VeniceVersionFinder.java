@@ -37,7 +37,6 @@ public class VeniceVersionFinder {
   private static final Logger LOGGER = LogManager.getLogger(VeniceVersionFinder.class);
   private static final RedundantExceptionFilter EXCEPTION_FILTER =
       new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(5));
-  private static final String UNINITIALISED_KAFKA_TOPIC_STRING = "";
 
   private final ReadOnlyStoreRepository metadataRepository;
   private final StaleVersionStats stats;
@@ -132,7 +131,7 @@ public class VeniceVersionFinder {
       return existingVersionNumber;
     }
 
-    // version swap: new version
+    // version swap: check if new version of existing store is ready to serve
     newVersionKafkaTopic = Version.composeKafkaTopic(storeName, metadataCurrentVersionNumber);
     newVersionPartitionResourcesReady = isPartitionResourcesReady(newVersionKafkaTopic);
     newVersionDecompressorReady =
@@ -153,6 +152,12 @@ public class VeniceVersionFinder {
       stats.recordStalenessReason(StaleVersionReason.DICTIONARY_NOT_DOWNLOADED);
     }
 
+    /**
+     * When the router has only one available version, despite offline partitions, or dictionary not yet downloaded,
+     * it will return it as the available version.
+     * If the partitions are still unavailable or the dictionary is not downloaded by the time the records needs to
+     * be decompressed, then the router will return an error response.
+     */
     // log if existing version ready to serve
     Version existingVersion = store.getVersion(existingVersionNumber);
     boolean existingVersionDecompressorReady =
@@ -171,8 +176,7 @@ public class VeniceVersionFinder {
     }
     stats.recordStale(metadataCurrentVersionNumber, existingVersionNumber);
     lastCurrentVersionMap.put(storeName, existingVersionNumber);
-    // new and existing version both being not ready is a rare case. However, returning something is better than
-    // nothing.
+    /** new and existing version both being not ready is a rare case. However, returning something is better than nothing. */
     return existingVersionNumber;
   }
 
@@ -190,18 +194,14 @@ public class VeniceVersionFinder {
         try {
           partitionAssignment = routingDataRepository.getAllInstances(kafkaTopic, partitionId).toString();
         } catch (Exception e) {
-          if (LOGGER.isDebugEnabled()) {
-            errorMessage += "Failed to get partition assignment for resource: " + kafkaTopic + " " + e;
-          }
+          errorMessage += "Failed to get partition assignment for resource: " + kafkaTopic + " " + e;
           partitionAssignment = "unknown";
         }
 
-        if (LOGGER.isDebugEnabled()) {
-          errorMessage += "No online replica exists for partition " + partitionId + " of " + kafkaTopic
-              + ", partition assignment: " + partitionAssignment;
-          if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
-            LOGGER.warn(errorMessage);
-          }
+        errorMessage += "No online replica exists for partition " + partitionId + " of " + kafkaTopic
+            + ", partition assignment: " + partitionAssignment;
+        if (!EXCEPTION_FILTER.isRedundantException(errorMessage)) {
+          LOGGER.warn(errorMessage);
         }
         return false;
       }
