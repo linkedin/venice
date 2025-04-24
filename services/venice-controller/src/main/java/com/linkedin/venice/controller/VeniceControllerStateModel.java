@@ -28,6 +28,7 @@ import org.apache.helix.participant.statemachine.Transition;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.eclipse.jetty.util.StringUtil;
 
 
 /**
@@ -58,6 +59,7 @@ public class VeniceControllerStateModel extends StateModel {
   private HelixVeniceClusterResources clusterResources;
 
   private final ExecutorService workerService;
+  private final String defaultSTWorkerSuffix;
 
   public VeniceControllerStateModel(
       String clusterName,
@@ -81,6 +83,7 @@ public class VeniceControllerStateModel extends StateModel {
     this.realTimeTopicSwitcher = realTimeTopicSwitcher;
     this.accessController = accessController;
     this.helixAdminClient = helixAdminClient;
+    this.defaultSTWorkerSuffix = "Worker-" + clusterName;
     this.workerService = Executors.newSingleThreadExecutor(
         new DaemonThreadFactory(String.format("Controller-ST-Worker-%s", clusterName), admin.getLogContext()));
   }
@@ -112,35 +115,38 @@ public class VeniceControllerStateModel extends StateModel {
   }
 
   private void executeStateTransition(Message message, StateTransition stateTransition) {
-    executeStateTransition(message, stateTransition, true /* setThreadName */);
+    executeStateTransition(message, stateTransition, null);
   }
 
-  private void executeStateTransition(Message message, StateTransition stateTransition, boolean setThreadName) {
-    if (setThreadName) {
-      String from = message.getFromState();
-      String to = message.getToState();
-      String threadName = "Helix-ST-" + message.getResourceName() + "-" + from + "->" + to;
-      // Change name to indicate which st is occupied this thread.
-      Thread.currentThread().setName(threadName);
-    }
+  private void executeStateTransition(Message message, StateTransition stateTransition, String threadNameSuffix) {
+    String from = message.getFromState();
+    String to = message.getToState();
+    String threadName = StringUtil.isEmpty(threadNameSuffix)
+        ? String.format("Helix-ST-%s-%s->%s", message.getResourceName(), from, to)
+        : String.format("Helix-ST-%s-%s->%s-%s", message.getResourceName(), from, to, threadNameSuffix);
+    // Change name to indicate which st is occupied this thread.
+    Thread.currentThread().setName(threadName);
+
     try {
-      stateTransition.run();
+      stateTransition.execute();
+    } catch (Exception e) {
+      LOGGER.error("Failed to execute state transition for {} from {} to {}", message.getResourceName(), from, to, e);
+      throw new VeniceException("Failed to execute '" + threadName + "'.", e);
     } finally {
-      if (setThreadName) {
-        // Once st is terminated, change the name to indicate this thread will not be occupied by this st.
-        Thread.currentThread().setName("Inactive ST thread.");
-      }
+      // Once st is terminated, change the name to indicate this thread will not be occupied by this st.
+      Thread.currentThread().setName("Inactive ST thread.");
     }
   }
 
   Future<?> executeStateTransitionAsync(Message message, StateTransition stateTransition) {
     return workerService.submit(() -> {
       // When run in a worker thread, we don't need to set the thread name.
-      executeStateTransition(message, stateTransition, false /* setThreadName */);
+      executeStateTransition(message, stateTransition, defaultSTWorkerSuffix);
     });
   }
 
-  interface StateTransition extends Runnable {
+  interface StateTransition {
+    void execute() throws Exception;
   }
 
   /**
