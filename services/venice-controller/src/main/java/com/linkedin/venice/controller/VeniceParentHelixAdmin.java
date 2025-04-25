@@ -1348,6 +1348,9 @@ public class VeniceParentHelixAdmin implements Admin {
     // latestTopic = Optional.of(versionTopics.get(0));
     // }
     Store store = getStore(clusterName, storeName);
+    if (store == null) {
+      return Optional.empty();
+    }
     int lastVersionNum = store.getLargestUsedVersionNumber();
     Version lastVersion = lastVersionNum > 0 ? store.getVersion(lastVersionNum) : null;
     Optional<String> latestTopic = Optional.empty();
@@ -1372,92 +1375,90 @@ public class VeniceParentHelixAdmin implements Admin {
         return Optional.of(latestTopic.get());
       }
 
-      if (!isTopicTruncated(latestTopicName)) {
+      /**
+       * Check whether the corresponding version exists or not, since it is possible that last push
+       * meets Kafka topic creation timeout.
+       * When Kafka topic creation timeout happens, topic/job could be still running, but the version
+       * should not exist according to the logic in {@link VeniceHelixAdmin#addVersion}.
+       * However, it is possible that a different request enters this code section when the topic has been created but
+       * either the version information has not been persisted to Zk or the in-memory Store object. In this case, it
+       * is desirable to add a delay to topic deletion.
+       *
+       * If the corresponding version doesn't exist, this function will issue command to kill job to deprecate
+       * the incomplete topic/job.
+       */
+      StoreVersionInfo storeVersionPair =
+          getVeniceHelixAdmin().waitVersion(clusterName, storeName, versionNumber, Duration.ofSeconds(30));
+      if (storeVersionPair.getVersion() == null) {
+        // TODO: Guard this topic deletion code using a store-level lock instead.
+        // Long inMemoryTopicCreationTime = getVeniceHelixAdmin().getInMemoryTopicCreationTime(latestTopicName);
+        // if (inMemoryTopicCreationTime != null
+        // && SystemTime.INSTANCE.getMilliseconds() < (inMemoryTopicCreationTime + TOPIC_DELETION_DELAY_MS)) {
+        // throw new VeniceException(
+        // "Failed to get version information but the topic exists and has been created recently. Try again after some
+        // time.");
+        // }
+
+        killOfflinePush(clusterName, latestTopicName, true);
+        LOGGER.info("Found topic: {} without the corresponding version, will kill it", latestTopicName);
+        return Optional.empty();
+      }
+
+      /**
+       * If Parent Controller could not infer the job status from topic retention policy, it will check the actual
+       * job status by sending requests to each individual datacenter.
+       * If the job is still running, Parent Controller will block current push.
+       */
+      final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
+      ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;
+      Map<String, String> extraInfo = new HashMap<>();
+
+      int retryTimes = 5;
+      int current = 0;
+      while (current++ < retryTimes) {
+        OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, latestTopicName);
+        jobStatus = offlineJobStatus.getExecutionStatus();
+        extraInfo = offlineJobStatus.getExtraInfo();
+        if (!extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
+          break;
+        }
+        // Retry since there is a connection failure when querying job status against each datacenter
+        try {
+          timer.sleep(SLEEP_MS_BETWEEN_RETRY);
+        } catch (InterruptedException e) {
+          throw new VeniceException("Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
+        }
+      }
+      if (extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
+        // TODO: Do we need to throw exception here??
+        LOGGER.error(
+            "Failed to get job status for topic: {} after retrying {} times, extra info: {}",
+            latestTopicName,
+            retryTimes,
+            extraInfo);
+      }
+      if (!jobStatus.isTerminal()) {
+        LOGGER.info(
+            "Job status: {} for Kafka topic: {} is not terminal, extra info: {}",
+            jobStatus,
+            latestTopicName,
+            extraInfo);
+        if (latestTopic.isPresent()) {
+          return Optional.of(latestTopic.get());
+        }
+        return Optional.empty();
+      } else {
         /**
-         * Check whether the corresponding version exists or not, since it is possible that last push
-         * meets Kafka topic creation timeout.
-         * When Kafka topic creation timeout happens, topic/job could be still running, but the version
-         * should not exist according to the logic in {@link VeniceHelixAdmin#addVersion}.
-         * However, it is possible that a different request enters this code section when the topic has been created but
-         * either the version information has not been persisted to Zk or the in-memory Store object. In this case, it
-         * is desirable to add a delay to topic deletion.
-         *
-         * If the corresponding version doesn't exist, this function will issue command to kill job to deprecate
-         * the incomplete topic/job.
+         * If the job status of latestKafkaTopic is terminal and it is not an incremental push,
+         * it will be truncated in {@link #getOffLinePushStatus(String, String)}.
          */
-        StoreVersionInfo storeVersionPair =
-            getVeniceHelixAdmin().waitVersion(clusterName, storeName, versionNumber, Duration.ofSeconds(30));
-        if (storeVersionPair.getVersion() == null) {
-          // TODO: Guard this topic deletion code using a store-level lock instead.
-          Long inMemoryTopicCreationTime = getVeniceHelixAdmin().getInMemoryTopicCreationTime(latestTopicName);
-          if (inMemoryTopicCreationTime != null
-              && SystemTime.INSTANCE.getMilliseconds() < (inMemoryTopicCreationTime + TOPIC_DELETION_DELAY_MS)) {
-            throw new VeniceException(
-                "Failed to get version information but the topic exists and has been created recently. Try again after some time.");
-          }
-
-          killOfflinePush(clusterName, latestTopicName, true);
-          LOGGER.info("Found topic: {} without the corresponding version, will kill it", latestTopicName);
-          return Optional.empty();
-        }
-
-        /**
-         * If Parent Controller could not infer the job status from topic retention policy, it will check the actual
-         * job status by sending requests to each individual datacenter.
-         * If the job is still running, Parent Controller will block current push.
-         */
-        final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
-        ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;
-        Map<String, String> extraInfo = new HashMap<>();
-
-        int retryTimes = 5;
-        int current = 0;
-        while (current++ < retryTimes) {
-          OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, latestTopicName);
-          jobStatus = offlineJobStatus.getExecutionStatus();
-          extraInfo = offlineJobStatus.getExtraInfo();
-          if (!extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
-            break;
-          }
-          // Retry since there is a connection failure when querying job status against each datacenter
-          try {
-            timer.sleep(SLEEP_MS_BETWEEN_RETRY);
-          } catch (InterruptedException e) {
-            throw new VeniceException(
-                "Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
-          }
-        }
-        if (extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
-          // TODO: Do we need to throw exception here??
-          LOGGER.error(
-              "Failed to get job status for topic: {} after retrying {} times, extra info: {}",
-              latestTopicName,
-              retryTimes,
-              extraInfo);
-        }
-        if (!jobStatus.isTerminal()) {
-          LOGGER.info(
-              "Job status: {} for Kafka topic: {} is not terminal, extra info: {}",
-              jobStatus,
-              latestTopicName,
-              extraInfo);
-          if (latestTopic.isPresent()) {
-            return Optional.of(latestTopic.get());
-          }
-          return Optional.empty();
-        } else {
-          /**
-           * If the job status of latestKafkaTopic is terminal and it is not an incremental push,
-           * it will be truncated in {@link #getOffLinePushStatus(String, String)}.
-           */
-          /*   if (!isIncrementalPush) {
-            Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
-            truncateTopicsBasedOnMaxErroredTopicNumToKeep(
-                versionTopics.stream().map(vt -> vt.getName()).collect(Collectors.toList()),
-                isRepush,
-                currentVersionsMap);
-          } */
-        }
+        /*   if (!isIncrementalPush) {
+          Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
+          truncateTopicsBasedOnMaxErroredTopicNumToKeep(
+              versionTopics.stream().map(vt -> vt.getName()).collect(Collectors.toList()),
+              isRepush,
+              currentVersionsMap);
+        } */
       }
     }
     return Optional.empty();
