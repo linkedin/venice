@@ -1,54 +1,48 @@
 package com.linkedin.venice.controller.stats;
 
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.Map;
 
 
 public class LogCompactionServiceStats {
+  private final MetricsRepository metricsRepository;
   private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Attributes baseAttributes;
-  private final Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
+  private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
-  public LogCompactionServiceStats(
-      MetricsRepository metricsRepository,
-      boolean emitOpenTelemetryMetrics,
-      VeniceOpenTelemetryMetricsRepository otelRepository,
-      Attributes baseAttributes) {
+  public LogCompactionServiceStats(MetricsRepository metricsRepository, String clusterName) {
+    this.metricsRepository = metricsRepository;
     if (metricsRepository instanceof VeniceMetricsRepository) {
       VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
       VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
       emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
       if (emitOpenTelemetryMetrics) {
         otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
-        // baseDimensionsMap = new HashMap<>();
-        // baseDimensionsMap.put(VENICE_STORE_NAME, storeName);
-        // baseDimensionsMap.put(VENICE_REQUEST_METHOD, requestType.getDimensionValue());
-        // baseDimensionsMap.put(VENICE_CLUSTER_NAME, clusterName);
-        // AttributesBuilder baseAttributesBuilder = Attributes.builder();
-        // baseAttributesBuilder.put(otelRepository.getDimensionName(VENICE_STORE_NAME), storeName);
-        // baseAttributesBuilder
-        // .put(otelRepository.getDimensionName(VENICE_REQUEST_METHOD), requestType.getDimensionValue());
-        // baseAttributesBuilder.put(otelRepository.getDimensionName(VENICE_CLUSTER_NAME), clusterName);
-        // baseAttributes = baseAttributesBuilder.build();
+        baseDimensionsMap = new HashMap<>();
+        baseDimensionsMap.put(VENICE_CLUSTER_NAME, clusterName);
+        AttributesBuilder baseAttributesBuilder = Attributes.builder();
+        baseAttributesBuilder.put(otelRepository.getDimensionName(VENICE_CLUSTER_NAME), clusterName);
+        baseAttributes = baseAttributesBuilder.build();
       } else {
         otelRepository = null;
         baseAttributes = null;
+        baseDimensionsMap = null;
       }
     } else {
-      otelRepository = null;
       emitOpenTelemetryMetrics = false;
+      otelRepository = null;
       baseAttributes = null;
+      baseDimensionsMap = null;
     }
-
-    this.emitOpenTelemetryMetrics = emitOpenTelemetryMetrics;
-    this.otelRepository = otelRepository;
-    this.baseAttributes = baseAttributes;
   }
 }
