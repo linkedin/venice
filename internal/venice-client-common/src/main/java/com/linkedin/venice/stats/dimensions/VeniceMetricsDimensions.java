@@ -31,7 +31,10 @@ public enum VeniceMetricsDimensions {
   VENICE_MESSAGE_TYPE("venice.message.type"),
 
   /** {@link RequestRetryAbortReason} */
-  VENICE_REQUEST_RETRY_ABORT_REASON("venice.request.retry_abort_reason");
+  VENICE_REQUEST_RETRY_ABORT_REASON("venice.request.retry_abort_reason"),
+
+  /** {@link JobRunStatus} */
+  JOB_EXECUTION_STATUS("job.execution.status");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
