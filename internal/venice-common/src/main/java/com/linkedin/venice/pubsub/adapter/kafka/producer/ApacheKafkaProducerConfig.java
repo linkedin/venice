@@ -32,7 +32,7 @@ public class ApacheKafkaProducerConfig {
   public static final String KAFKA_CONFIG_PREFIX = "kafka.";
   public static final String PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX = PUBSUB_CLIENT_CONFIG_PREFIX + KAFKA_CONFIG_PREFIX;
 
-  public static final String KAFKA_SECURITY_PROTOCOL =
+  public static final String KAFKA_SECURITY_PROTOCOL_WITH_PREFIX =
       KAFKA_CONFIG_PREFIX + CommonClientConfigs.SECURITY_PROTOCOL_CONFIG;
   public static final String KAFKA_BOOTSTRAP_SERVERS = KAFKA_CONFIG_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG;
   public static final String KAFKA_PRODUCER_RETRIES_CONFIG = KAFKA_CONFIG_PREFIX + ProducerConfig.RETRIES_CONFIG;
@@ -196,35 +196,6 @@ public class ApacheKafkaProducerConfig {
           "The Kafka Producer must use certain configuration settings in order to work properly. "
               + "requiredConfigKey: '" + requiredConfigKey + "', requiredConfigValue: '" + requiredConfigValue
               + "', actualConfigValue: '" + actualConfigValue + "'.");
-    }
-  }
-
-  public static void copyKafkaSASLProperties(Properties configuration, Properties properties, boolean stripPrefix) {
-    String saslConfiguration = configuration.getProperty("kafka.sasl.jaas.config", "");
-    if (saslConfiguration != null && !saslConfiguration.isEmpty()) {
-      if (stripPrefix) {
-        properties.put("sasl.jaas.config", saslConfiguration);
-      } else {
-        properties.put("kafka.sasl.jaas.config", saslConfiguration);
-      }
-    }
-
-    String saslMechanism = configuration.getProperty("kafka.sasl.mechanism", "");
-    if (saslMechanism != null && !saslMechanism.isEmpty()) {
-      if (stripPrefix) {
-        properties.put("sasl.mechanism", saslMechanism);
-      } else {
-        properties.put("kafka.sasl.mechanism", saslMechanism);
-      }
-    }
-
-    String securityProtocol = configuration.getProperty("kafka.security.protocol", "");
-    if (securityProtocol != null && !securityProtocol.isEmpty()) {
-      if (stripPrefix) {
-        properties.put("security.protocol", securityProtocol);
-      } else {
-        properties.put("kafka.security.protocol", securityProtocol);
-      }
     }
   }
 

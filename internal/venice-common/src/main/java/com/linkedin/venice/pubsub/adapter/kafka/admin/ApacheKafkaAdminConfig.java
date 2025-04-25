@@ -27,7 +27,6 @@ public class ApacheKafkaAdminConfig {
     this.adminProperties =
         ApacheKafkaUtils.getValidKafkaClientProperties(veniceProperties, AdminClientConfig.configNames());
     this.adminProperties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
-    // Setup ssl config if needed.
     this.adminProperties.put(AdminClientConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     this.topicConfigMaxRetryInMs =
         Duration

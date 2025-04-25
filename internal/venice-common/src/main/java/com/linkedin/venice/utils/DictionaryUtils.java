@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
@@ -31,7 +32,8 @@ public class DictionaryUtils {
   private static VeniceProperties getKafkaConsumerProps(VeniceProperties veniceProperties) {
     Properties props = veniceProperties.toProperties();
     // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
-    props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
+    // TODO: Remove hardcoded buffer size and pass it down from the job config.
+    props.put(ConfigKeys.KAFKA_CONFIG_PREFIX + ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     return new VeniceProperties(props);
   }
 
