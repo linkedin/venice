@@ -236,12 +236,21 @@ public final class HelixUtils {
       String path,
       int retryCount,
       DataUpdater<T> dataUpdater) {
-    int retry = 0;
-    while (retry < retryCount) {
+    int attempt = 0;
+    while (attempt < retryCount) {
       if (dataAccessor.update(path, dataUpdater, AccessOption.PERSISTENT)) {
         return;
+      } else {
+        double retryIntervalSec = Math.pow(2, attempt);
+        attempt++;
+        LOGGER.warn(
+            "dataAccessor.update() failed with path {} on attempt {}/{}. Will retry in {} seconds.",
+            path,
+            attempt,
+            retryCount,
+            retryIntervalSec);
+        Utils.sleep(TimeUnit.SECONDS.toMillis((long) retryIntervalSec));
       }
-      retry++;
     }
     throw new ZkDataAccessException(path, "compare and update", retryCount);
   }
