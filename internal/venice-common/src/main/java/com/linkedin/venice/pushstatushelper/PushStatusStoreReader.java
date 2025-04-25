@@ -139,7 +139,7 @@ public class PushStatusStoreReader implements Closeable {
   }
 
   /**
-   * If it is batch reporting, then only query with version; else query with version and partitionId.
+   * If it is batch reporting, then only query with version-level key; else query with partition-level key.
    * @param storeName store name
    * @param version version
    * @param partitionId partition id
@@ -158,7 +158,7 @@ public class PushStatusStoreReader implements Closeable {
     try {
       AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
       PushStatusKey pushStatusKey = isBatchReporting
-          ? PushStatusStoreUtils.getPushKey(version)
+          ? PushStatusStoreUtils.getPushKey(version, incrementalPushVersion)
           : PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
 
       // Get the CompletableFuture from the client and transform it
