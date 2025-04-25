@@ -11,6 +11,7 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 
 public enum VeniceMetricsDimensions {
   VENICE_STORE_NAME("venice.store.name"), VENICE_CLUSTER_NAME("venice.cluster.name"),
+  VENICE_STORE_VERSION("venice.store.version"),
 
   /** {@link com.linkedin.venice.read.RequestType} */
   VENICE_REQUEST_METHOD("venice.request.method"),
@@ -34,7 +35,10 @@ public enum VeniceMetricsDimensions {
   VENICE_REQUEST_RETRY_ABORT_REASON("venice.request.retry_abort_reason"),
 
   /** {@link JobRunStatus} */
-  JOB_EXECUTION_STATUS("job.execution.status");
+  JOB_EXECUTION_STATUS("job.execution.status"),
+
+  /** {@link LogCompactionSelectionReason} */
+  LOG_COMPACTION_SELECTION_REASON("log.compaction.selection.reason"),;
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
