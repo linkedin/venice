@@ -23,13 +23,24 @@ import org.apache.logging.log4j.Logger;
 public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
   public static final long HEARTBEAT_LAG_LIMIT = TimeUnit.MINUTES.toMillis(10);
   public static final String SINGLE_GET_LATENCY_P99_METRIC_NAME = ".total--success_request_latency.99thPercentile";
+  public static final String MULTI_GET_LATENCY_P99_METRIC_NAME =
+      ".total--multiget_storage_engine_query_latency.99thPercentile";
+  public static final String READ_COMPUTE_LATENCY_P99_METRIC_NAME =
+      ".total--compute_storage_engine_query_latency.99thPercentile";
+
   private static final Logger LOGGER = LogManager.getLogger(AdaptiveThrottlerSignalService.class);
   private final double singleGetLatencyP99Threshold;
+  private final double multiGetLatencyP99Threshold;
+  private final double readComputeLatencyP99Threshold;
+
   private final MetricsRepository metricsRepository;
   private final HeartbeatMonitoringService heartbeatMonitoringService;
   private final List<VeniceAdaptiveIngestionThrottler> throttlerList = new ArrayList<>();
   private final ScheduledExecutorService updateService = Executors.newSingleThreadScheduledExecutor();
   private boolean singleGetLatencySignal = false;
+  private boolean multiGetLatencySignal = false;
+  private boolean readComputeLatencySignal = false;
+
   private boolean currentLeaderMaxHeartbeatLagSignal = false;
   private boolean currentFollowerMaxHeartbeatLagSignal = false;
   private boolean nonCurrentLeaderMaxHeartbeatLagSignal = false;
@@ -41,6 +52,8 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
       MetricsRepository metricsRepository,
       HeartbeatMonitoringService heartbeatMonitoringService) {
     this.singleGetLatencyP99Threshold = veniceServerConfig.getAdaptiveThrottlerSingleGetLatencyThreshold();
+    this.multiGetLatencyP99Threshold = veniceServerConfig.getAdaptiveThrottlerMultiGetLatencyThreshold();
+    this.readComputeLatencyP99Threshold = veniceServerConfig.getAdaptiveThrottlerReadComputeLatencyThreshold();
     this.metricsRepository = metricsRepository;
     this.heartbeatMonitoringService = heartbeatMonitoringService;
     this.adaptiveThrottlingServiceStats = new AdaptiveThrottlingServiceStats(metricsRepository);
@@ -64,12 +77,27 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
 
   void updateReadLatencySignal() {
     Metric hostSingleGetLatencyP99Metric = metricsRepository.getMetric(SINGLE_GET_LATENCY_P99_METRIC_NAME);
+    Metric hostMultiGetLatencyP99Metric = metricsRepository.getMetric(MULTI_GET_LATENCY_P99_METRIC_NAME);
+    Metric hostReadComputeLatencyP99Metric = metricsRepository.getMetric(READ_COMPUTE_LATENCY_P99_METRIC_NAME);
+
     if (hostSingleGetLatencyP99Metric != null) {
       double hostSingleGetLatencyP99 = hostSingleGetLatencyP99Metric.value();
+      double hostMultiGetLatencyP99 = hostMultiGetLatencyP99Metric.value();
+      double hostReadComputeLatencyP99 = hostReadComputeLatencyP99Metric.value();
       singleGetLatencySignal = hostSingleGetLatencyP99 > singleGetLatencyP99Threshold;
-      LOGGER.info("Retrieved single get latency p99 value: {}", hostSingleGetLatencyP99);
+      multiGetLatencySignal = hostMultiGetLatencyP99 > multiGetLatencyP99Threshold;
+      readComputeLatencySignal = hostReadComputeLatencyP99 > readComputeLatencyP99Threshold;
+      LOGGER.info(
+          "Retrieved latency singleGet  p99: {}, multiGet p99: {}, readCompute p99 {} ",
+          hostSingleGetLatencyP99,
+          hostMultiGetLatencyP99,
+          hostReadComputeLatencyP99);
     }
-    LOGGER.info("Update read latency signal. singleGetLatency: {}", singleGetLatencySignal);
+    LOGGER.info(
+        "Update read latency signal. singleGet: {}, multiGet {}, readCompute {}",
+        singleGetLatencySignal,
+        multiGetLatencySignal,
+        readComputeLatencySignal);
   }
 
   void updateHeartbeatLatencySignal() {
@@ -95,8 +123,8 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
 
   }
 
-  public boolean isSingleGetLatencySignalActive() {
-    return singleGetLatencySignal;
+  public boolean isReadLatencySignalActive() {
+    return singleGetLatencySignal || multiGetLatencySignal || readComputeLatencySignal;
   }
 
   public boolean isCurrentLeaderMaxHeartbeatLagSignalActive() {

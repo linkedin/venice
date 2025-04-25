@@ -76,7 +76,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "kafka_consumption_records_count");
       globalRecordAdaptiveIngestionThrottler
-          .registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+          .registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveThrottlerSignalService.registerThrottler(globalRecordAdaptiveIngestionThrottler);
       globalBandwidthThrottler = null;
       globalBandwidthAdaptiveIngestionThrottler = new VeniceAdaptiveIngestionThrottler(
@@ -86,7 +86,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "kafka_consumption_bandwidth");
       globalBandwidthAdaptiveIngestionThrottler
-          .registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+          .registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveThrottlerSignalService.registerThrottler(globalBandwidthAdaptiveIngestionThrottler);
     } else {
       globalRecordAdaptiveIngestionThrottler = null;
@@ -113,7 +113,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getThrottlerFactorsForAAWCLeader(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "aa_wc_leader_records_count");
-      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
     }
     this.poolTypeRecordThrottlerMap.put(
@@ -141,7 +141,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getThrottlerFactorsForCurrentVersionAAWCLeader(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "current_version_aa_wc_leader_records_count");
-      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
     }
     this.poolTypeRecordThrottlerMap.put(
@@ -169,7 +169,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getThrottlerFactorsForCurrentVersionNonAAWCLeader(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "current_version_non_aa_wc_leader_records_count");
-      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveThrottlerSignalService.registerThrottler(adaptiveIngestionThrottler);
     }
     this.poolTypeRecordThrottlerMap.put(
@@ -189,7 +189,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getThrottlerFactorsForNonCurrentVersionAAWCLeader(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "non_current_version_aa_wc_leader_records_count");
-      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveIngestionThrottler
           .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
       adaptiveIngestionThrottler
@@ -213,7 +213,7 @@ public class IngestionThrottler implements Closeable {
           serverConfig.getThrottlerFactorsForNonCurrentVersionAAWCLeader(),
           serverConfig.getKafkaFetchQuotaTimeWindow(),
           "non_current_version_non_aa_wc_leader_records_count");
-      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isSingleGetLatencySignalActive);
+      adaptiveIngestionThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
       adaptiveIngestionThrottler
           .registerLimiterSignal(adaptiveThrottlerSignalService::isCurrentLeaderMaxHeartbeatLagSignalActive);
       adaptiveIngestionThrottler

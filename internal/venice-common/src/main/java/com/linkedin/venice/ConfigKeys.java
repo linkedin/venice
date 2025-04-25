@@ -854,6 +854,10 @@ public class ConfigKeys {
       "server.adaptive.throttler.signal.idle.threshold";
   public static final String SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD =
       "server.adaptive.throttler.single.get.latency.threshold";
+  public static final String SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD =
+      "server.adaptive.throttler.multi.get.latency.threshold";
+  public static final String SERVER_ADAPTIVE_THROTTLER_READ_COMPUTE_GET_LATENCY_THRESHOLD =
+      "server.adaptive.throttler.read.compute.latency.threshold";
 
   /**
    * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,

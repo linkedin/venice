@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.kafka.consumer.AdaptiveThrottlerSignalService.MULTI_GET_LATENCY_P99_METRIC_NAME;
+import static com.linkedin.davinci.kafka.consumer.AdaptiveThrottlerSignalService.READ_COMPUTE_LATENCY_P99_METRIC_NAME;
 import static com.linkedin.davinci.kafka.consumer.AdaptiveThrottlerSignalService.SINGLE_GET_LATENCY_P99_METRIC_NAME;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -20,27 +22,36 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class AdaptiveThrottlerSingalServiceTest {
+public class AdaptiveThrottlerSignalServiceTest {
   @Test
   public void testUpdateSignal() {
     MetricsRepository metricsRepository = mock(MetricsRepository.class);
     HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
     when(veniceServerConfig.getAdaptiveThrottlerSingleGetLatencyThreshold()).thenReturn(10d);
+    when(veniceServerConfig.getAdaptiveThrottlerMultiGetLatencyThreshold()).thenReturn(100d);
+    when(veniceServerConfig.getAdaptiveThrottlerReadComputeLatencyThreshold()).thenReturn(150d);
+
     AdaptiveThrottlerSignalService adaptiveThrottlerSignalService =
         new AdaptiveThrottlerSignalService(veniceServerConfig, metricsRepository, heartbeatMonitoringService);
 
     // Single Get Signal
-    Assert.assertFalse(adaptiveThrottlerSignalService.isSingleGetLatencySignalActive());
+    Assert.assertFalse(adaptiveThrottlerSignalService.isReadLatencySignalActive());
     Metric singleGetMetric = mock(Metric.class);
     when(singleGetMetric.value()).thenReturn(20.0d);
+    Metric multiGetMetric = mock(Metric.class);
+    when(multiGetMetric.value()).thenReturn(90.0d);
+    Metric readComputeMetric = mock(Metric.class);
+    when(readComputeMetric.value()).thenReturn(40.0d);
     when(metricsRepository.getMetric(SINGLE_GET_LATENCY_P99_METRIC_NAME)).thenReturn(singleGetMetric);
+    when(metricsRepository.getMetric(MULTI_GET_LATENCY_P99_METRIC_NAME)).thenReturn(multiGetMetric);
+    when(metricsRepository.getMetric(READ_COMPUTE_LATENCY_P99_METRIC_NAME)).thenReturn(readComputeMetric);
     adaptiveThrottlerSignalService.refreshSignalAndThrottler();
-    Assert.assertTrue(adaptiveThrottlerSignalService.isSingleGetLatencySignalActive());
+    Assert.assertTrue(adaptiveThrottlerSignalService.isReadLatencySignalActive());
     when(singleGetMetric.value()).thenReturn(1.0d);
-    Assert.assertTrue(adaptiveThrottlerSignalService.isSingleGetLatencySignalActive());
+    Assert.assertTrue(adaptiveThrottlerSignalService.isReadLatencySignalActive());
     adaptiveThrottlerSignalService.refreshSignalAndThrottler();
-    Assert.assertFalse(adaptiveThrottlerSignalService.isSingleGetLatencySignalActive());
+    Assert.assertFalse(adaptiveThrottlerSignalService.isReadLatencySignalActive());
 
     // Heartbeat signal
     Assert.assertFalse(adaptiveThrottlerSignalService.isCurrentFollowerMaxHeartbeatLagSignalActive());
