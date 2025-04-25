@@ -149,7 +149,7 @@ public class VeniceControllerStateModel extends StateModel {
     try {
       stateTransition.execute();
     } catch (Exception e) {
-      LOGGER.error("Failed to execute controller state transition: {}", threadName, e);
+      LOGGER.error("Failed to execute controller state transition", e);
       throw new VeniceException("Failed to execute '" + threadName + "'.", e);
     } finally {
       // Once st is terminated, change the name back to indicate this thread will not be occupied by this st.
