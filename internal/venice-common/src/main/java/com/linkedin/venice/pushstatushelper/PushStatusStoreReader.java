@@ -139,6 +139,53 @@ public class PushStatusStoreReader implements Closeable {
   }
 
   /**
+   * If it is batch reporting, then only query with version; else query with version and partitionId.
+   * @param storeName store name
+   * @param version version
+   * @param partitionId partition id
+   * @param incrementalPushVersion incremental push version
+   * @param incrementalPushPrefix incremental push prefix
+   * @param isBatchReporting whether it is batch reporting, if batch reporting, then only query with version.
+   * @return a CompletableFuture containing the partition status
+   */
+  public CompletableFuture<Map<CharSequence, Integer>> getPartitionOrVersionStatusAsync(
+      String storeName,
+      int version,
+      int partitionId,
+      Optional<String> incrementalPushVersion,
+      Optional<String> incrementalPushPrefix,
+      boolean isBatchReporting) {
+    try {
+      AvroSpecificStoreClient<PushStatusKey, PushStatusValue> client = getVeniceClient(storeName);
+      PushStatusKey pushStatusKey = isBatchReporting
+          ? PushStatusStoreUtils.getPushKey(version)
+          : PushStatusStoreUtils.getPushKey(version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+
+      // Get the CompletableFuture from the client and transform it
+      return client.get(pushStatusKey).<Map<CharSequence, Integer>>thenApply(pushStatusValue -> {
+        if (pushStatusValue == null) {
+          return Collections.emptyMap();
+        } else {
+          return pushStatusValue.instances;
+        }
+      }).exceptionally(e -> {
+        LOGGER.error("Failed to read push status of partition:{} store:{}", partitionId, storeName, e);
+        throw new VeniceException(e);
+      });
+    } catch (Exception e) {
+      // Handle any exceptions during setup by returning a failed future
+      LOGGER.error(
+          "Failed to set up async request for partition:{} store:{} to get partition status",
+          partitionId,
+          storeName,
+          e);
+      CompletableFuture<Map<CharSequence, Integer>> failedFuture = new CompletableFuture<>();
+      failedFuture.completeExceptionally(new VeniceException(e));
+      return failedFuture;
+    }
+  }
+
+  /**
    * Return statuses of all replicas belonging to partitions with partitionIds in the range [0 (inclusive), numberOfPartitions (exclusive))
    * {partitionId: {instance:status, instance:status,...},...}
    */

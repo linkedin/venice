@@ -85,12 +85,14 @@ import java.security.cert.CertificateExpiredException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -538,6 +540,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
    * Handles the discovery of blob transfer nodes based on store settings.
    * Retrieves host names for live DVC nodes ready to transfer blobs.
    * Only returns host names from nodes that have completed a full push and are active.
+   * Queries both version-level and partition-level status for comprehensive discovery.
    *
    * @return a response with a list of host names for live DVC nodes; returns an empty list if no live nodes are found or if conditions are not met
    */
@@ -571,79 +574,102 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
 
     try {
-      pushStatusStoreReader
-          .getPartitionStatusAsync(
+      int versionInt = Integer.parseInt(storeVersion);
+      int partitionInt = Integer.parseInt(storePartition);
+
+      // Query version-level status
+      CompletableFuture<Map<CharSequence, Integer>> versionStatusFuture =
+          pushStatusStoreReader.getPartitionOrVersionStatusAsync(
               storeName,
-              Integer.parseInt(storeVersion),
-              Integer.parseInt(storePartition),
+              versionInt,
+              partitionInt,
               Optional.empty(),
-              Optional.empty())
-          .whenComplete((instances, throwable) -> {
-            try {
-              if (throwable != null) {
-                LOGGER.error(
-                    "Failed to get partition status for store: {} version: {} partition: {}",
-                    storeName,
-                    storeVersion,
-                    storePartition,
-                    throwable);
+              Optional.empty(),
+              true);
 
-                byte[] errBody =
-                    (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
-                        .getBytes();
-                setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
-                return;
-              }
+      // Query partition-level status
+      CompletableFuture<Map<CharSequence, Integer>> partitionStatusFuture =
+          pushStatusStoreReader.getPartitionOrVersionStatusAsync(
+              storeName,
+              versionInt,
+              partitionInt,
+              Optional.empty(),
+              Optional.empty(),
+              false);
 
-              // Process successful response
-              BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+      // Combine results from both futures
+      CompletableFuture.allOf(versionStatusFuture, partitionStatusFuture).whenComplete((result, throwable) -> {
+        try {
+          if (throwable != null) {
+            LOGGER.error(
+                "Failed to get status for store: {} version: {} partition: {}",
+                storeName,
+                storeVersion,
+                storePartition,
+                throwable);
 
-              if (instances.isEmpty()) {
-                LOGGER.info(
-                    "No instances found for store: {} version: {} partition: {}",
-                    storeName,
-                    storeVersion,
-                    storePartition);
-              } else {
-                LOGGER.info(
-                    "{} instances were found for store {}, version {}, partition {}",
-                    instances.size(),
-                    storeName,
-                    storeVersion,
-                    storePartition);
-              }
+            byte[] errBody =
+                (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
+                    .getBytes();
+            setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
+            return;
+          }
 
-              List<String> readyToServeNodeHostNames = instances.entrySet()
-                  .stream()
-                  .filter(entry -> entry.getValue() == ExecutionStatus.COMPLETED.getValue())
-                  .map(Map.Entry::getKey)
-                  .map(CharSequence::toString)
-                  .collect(Collectors.toList());
+          Map<CharSequence, Integer> versionInstances = versionStatusFuture.getNow(Collections.emptyMap());
+          Map<CharSequence, Integer> partitionInstances = partitionStatusFuture.getNow(Collections.emptyMap());
 
-              if (!readyToServeNodeHostNames.isEmpty()) {
-                LOGGER.info(
-                    "{} ready to serve nodes were found for store {} version {} partition {}",
-                    readyToServeNodeHostNames.size(),
-                    storeName,
-                    storeVersion,
-                    storePartition);
-              } else {
-                LOGGER.info(
-                    "No ready to serve nodes found for store: {} version: {} partition: {}",
-                    storeName,
-                    storeVersion,
-                    storePartition);
-              }
+          Map<CharSequence, Integer> combinedInstances = new HashMap<>(versionInstances);
+          combinedInstances.putAll(partitionInstances);
 
-              response.setDiscoveryResult(readyToServeNodeHostNames);
-              setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
-            } catch (Exception e) {
-              byte[] errBody =
-                  (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
-                      .getBytes();
-              setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
-            }
-          });
+          // Process successful response
+          BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+
+          if (combinedInstances.isEmpty()) {
+            LOGGER.info(
+                "No instances found for store: {} version: {} partition: {}",
+                storeName,
+                storeVersion,
+                storePartition);
+          } else {
+            LOGGER.info(
+                "{} instances were found for store {}, version {}, partition {}",
+                combinedInstances.size(),
+                storeName,
+                storeVersion,
+                storePartition);
+          }
+
+          List<String> readyToServeNodeHostNames = combinedInstances.entrySet()
+              .stream()
+              .filter(entry -> entry.getValue() == ExecutionStatus.COMPLETED.getValue())
+              .map(Map.Entry::getKey)
+              .map(CharSequence::toString)
+              .collect(Collectors.toList());
+
+          if (!readyToServeNodeHostNames.isEmpty()) {
+            LOGGER.info(
+                "{} ready to serve nodes were found for store {} version {} partition {}",
+                readyToServeNodeHostNames.size(),
+                storeName,
+                storeVersion,
+                storePartition);
+          } else {
+            LOGGER.info(
+                "No ready to serve nodes found for store: {} version: {} partition: {}",
+                storeName,
+                storeVersion,
+                storePartition);
+          }
+
+          response.setDiscoveryResult(readyToServeNodeHostNames);
+          setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
+        } catch (Exception e) {
+          byte[] errBody =
+              (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
+                  .getBytes();
+          setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
+        }
+      });
     } catch (Exception e) {
       byte[] errBody =
           (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition)).getBytes();
