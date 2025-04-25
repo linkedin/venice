@@ -99,8 +99,8 @@ public class ApacheKafkaUtilsTest {
     Properties config = new Properties();
     config.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
     config.put("kafka.sasl.mechanism", SASL_MECHANISM);
-    config.put("kafka.security.protocol", "SASL_SSL");
     KAFKA_SSL_MANDATORY_CONFIGS.forEach(configName -> config.put(configName, configName + "DefaultValue"));
+    config.put("security.protocol", "SASL_SSL");
     VeniceProperties veniceProperties = new VeniceProperties(config);
     Properties filteredConfig =
         ApacheKafkaUtils.getValidKafkaClientProperties(veniceProperties, ProducerConfig.configNames());

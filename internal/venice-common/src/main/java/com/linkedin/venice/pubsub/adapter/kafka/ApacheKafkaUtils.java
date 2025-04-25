@@ -118,13 +118,13 @@ public class ApacheKafkaUtils {
    * @return whether Kafka SSL is enabled or not0
    */
   private static boolean validateAndCopyKafkaSSLConfig(VeniceProperties veniceProperties, Properties properties) {
-    if (!veniceProperties.containsKey(KAFKA_SECURITY_PROTOCOL)
-        && !veniceProperties.containsKey(KAFKA_SECURITY_PROTOCOL_WITH_PREFIX)) {
+    String kafkaProtocol =
+        veniceProperties.getStringWithAlternative(KAFKA_SECURITY_PROTOCOL, KAFKA_SECURITY_PROTOCOL_WITH_PREFIX, null);
+
+    if (kafkaProtocol == null) {
       // No security protocol specified
       return false;
     }
-    String kafkaProtocol =
-        veniceProperties.getStringWithAlternative(KAFKA_SECURITY_PROTOCOL, KAFKA_SECURITY_PROTOCOL_WITH_PREFIX);
     if (!isKafkaProtocolValid(kafkaProtocol)) {
       throw new VeniceException("Invalid Kafka protocol specified: " + kafkaProtocol);
     }
