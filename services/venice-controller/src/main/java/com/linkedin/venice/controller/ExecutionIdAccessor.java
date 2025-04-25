@@ -2,7 +2,6 @@ package com.linkedin.venice.controller;
 
 import java.util.Map;
 import java.util.Set;
-import org.apache.commons.lang3.tuple.Pair;
 
 
 /**
@@ -39,7 +38,7 @@ public interface ExecutionIdAccessor {
    */
   void updateLastGeneratedExecutionId(String clusterName, Long lastGeneratedExecutionId);
 
-  Pair<Map<String, Long>, Map<String, Long>> cleanExecutionIdMap(String clusterName, Set<String> allStores);
+  Map<String, Long> cleanExecutionIdMap(String clusterName, Set<String> allStores);
 
   /**
    * Read the current value from ZK and try to increment the value by 1 and write it back to ZK.

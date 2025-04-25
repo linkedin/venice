@@ -5,7 +5,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.apache.commons.lang3.tuple.Pair;
 
 
 /**
@@ -54,7 +53,8 @@ public class InMemoryExecutionIdAccessor implements ExecutionIdAccessor {
   }
 
   @Override
-  public Pair<Map<String, Long>, Map<String, Long>> cleanExecutionIdMap(String clusterName, Set<String> allStores) {
+  public Map<String, Long> cleanExecutionIdMap(String clusterName, Set<String> allStores) {
+    // initializing `executionIdsCleaned` with all the entries
     Map<String, Long> executionIdsCleaned = new HashMap<>(executionIdMapInMem.get(clusterName));
     Map<String, Long> executionIdsToKeep = executionIdMapInMem.get(clusterName)
         .entrySet()
@@ -62,9 +62,10 @@ public class InMemoryExecutionIdAccessor implements ExecutionIdAccessor {
         .filter(entry -> allStores.contains(entry.getKey()))
         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
+    // update `executionIdsCleaned` by removing the entries that are kept
     executionIdsCleaned.keySet().removeAll(executionIdsToKeep.keySet());
     executionIdMapInMem.put(clusterName, executionIdsToKeep);
-    return Pair.of(executionIdsCleaned, executionIdsToKeep);
+    return executionIdsCleaned;
   }
 
   @Override

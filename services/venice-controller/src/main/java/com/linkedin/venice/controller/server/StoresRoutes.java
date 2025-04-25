@@ -119,7 +119,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -279,11 +278,10 @@ public class StoresRoutes extends AbstractRoute {
 
         Set<String> allStores =
             veniceHelixAdmin.getAllStores(cluster).stream().map(Store::getName).collect(Collectors.toSet());
-        Pair<Map<String, Long>, Map<String, Long>> response =
+        Map<String, Long> executionIdsCleaned =
             veniceHelixAdmin.getExecutionIdAccessor().cleanExecutionIdMap(cluster, allStores);
 
-        veniceResponse.setCleanedExecutionIds(response.getLeft());
-        veniceResponse.setRemainingExecutionIds(response.getRight());
+        veniceResponse.setCleanedExecutionIds(executionIdsCleaned);
       }
     };
   }
