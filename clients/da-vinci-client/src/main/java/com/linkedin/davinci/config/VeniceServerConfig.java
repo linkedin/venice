@@ -739,7 +739,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     adaptiveThrottlerSingleGetLatencyThreshold =
         serverProperties.getDouble(SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD, 10d);
     adaptiveThrottlerMultiGetLatencyThreshold =
-        serverProperties.getDouble(SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD, 20d);
+        serverProperties.getDouble(SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD, 10d);
     adaptiveThrottlerReadComputeLatencyThreshold =
         serverProperties.getDouble(SERVER_ADAPTIVE_THROTTLER_READ_COMPUTE_GET_LATENCY_THRESHOLD, 150d);
 
