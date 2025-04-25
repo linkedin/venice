@@ -79,24 +79,29 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
     Metric hostSingleGetLatencyP99Metric = metricsRepository.getMetric(SINGLE_GET_LATENCY_P99_METRIC_NAME);
     Metric hostMultiGetLatencyP99Metric = metricsRepository.getMetric(MULTI_GET_LATENCY_P99_METRIC_NAME);
     Metric hostReadComputeLatencyP99Metric = metricsRepository.getMetric(READ_COMPUTE_LATENCY_P99_METRIC_NAME);
+    double hostSingleGetLatencyP99 = 0;
+    double hostMultiGetLatencyP99 = 0;
+    double hostReadComputeLatencyP99 = 0;
 
     if (hostSingleGetLatencyP99Metric != null) {
-      double hostSingleGetLatencyP99 = hostSingleGetLatencyP99Metric.value();
-      double hostMultiGetLatencyP99 = hostMultiGetLatencyP99Metric.value();
-      double hostReadComputeLatencyP99 = hostReadComputeLatencyP99Metric.value();
+      hostSingleGetLatencyP99 = hostSingleGetLatencyP99Metric.value();
       singleGetLatencySignal = hostSingleGetLatencyP99 > singleGetLatencyP99Threshold;
+    }
+    if (hostMultiGetLatencyP99Metric != null) {
+      hostMultiGetLatencyP99 = hostMultiGetLatencyP99Metric.value();
       multiGetLatencySignal = hostMultiGetLatencyP99 > multiGetLatencyP99Threshold;
+    }
+    if (hostReadComputeLatencyP99Metric != null) {
+      hostReadComputeLatencyP99 = hostReadComputeLatencyP99Metric.value();
       readComputeLatencySignal = hostReadComputeLatencyP99 > readComputeLatencyP99Threshold;
-      LOGGER.info(
-          "Retrieved latency singleGet  p99: {}, multiGet p99: {}, readCompute p99 {} ",
-          hostSingleGetLatencyP99,
-          hostMultiGetLatencyP99,
-          hostReadComputeLatencyP99);
     }
     LOGGER.info(
-        "Update read latency signal. singleGet: {}, multiGet {}, readCompute {}",
+        "Update read latency signal. singleGet: {} {}, multiGet: {} {}, readCompute: {} {}",
+        hostSingleGetLatencyP99,
         singleGetLatencySignal,
+        hostMultiGetLatencyP99,
         multiGetLatencySignal,
+        hostReadComputeLatencyP99,
         readComputeLatencySignal);
   }
 
