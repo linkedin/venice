@@ -85,7 +85,6 @@ import java.security.cert.CertificateExpiredException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -540,8 +539,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
    * Handles the discovery of blob transfer nodes based on store settings.
    * Retrieves host names for live DVC nodes ready to transfer blobs.
    * Only returns host names from nodes that have completed a full push and are active.
-   * Queries both version-level and partition-level status for comprehensive discovery.
-   *
+   * Queries partition level firstly, if emtpy/fail, queries version level.
    * @return a response with a list of host names for live DVC nodes; returns an empty list if no live nodes are found or if conditions are not met
    */
   private void handleBlobDiscovery(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpRequest request) {
@@ -577,17 +575,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       int versionInt = Integer.parseInt(storeVersion);
       int partitionInt = Integer.parseInt(storePartition);
 
-      // Query version-level status
-      CompletableFuture<Map<CharSequence, Integer>> versionStatusFuture =
-          pushStatusStoreReader.getPartitionOrVersionStatusAsync(
-              storeName,
-              versionInt,
-              partitionInt,
-              Optional.empty(),
-              Optional.empty(),
-              true);
-
-      // Query partition-level status
+      // 1. firstly, query the partition level status.
       CompletableFuture<Map<CharSequence, Integer>> partitionStatusFuture =
           pushStatusStoreReader.getPartitionOrVersionStatusAsync(
               storeName,
@@ -596,73 +584,37 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
               Optional.empty(),
               Optional.empty(),
               false);
-
-      // Combine results from both futures
-      CompletableFuture.allOf(versionStatusFuture, partitionStatusFuture).whenComplete((result, throwable) -> {
+      // 2. handle the partition level response.
+      partitionStatusFuture.whenComplete((partitionLevelInstances, partitionThrowable) -> {
         try {
-          if (throwable != null) {
+          // case 1: partition level throw exception, then query at version level.
+          if (partitionThrowable != null) {
             LOGGER.error(
-                "Failed to get status for store: {} version: {} partition: {}",
+                "Failed to get partition status for store: {} version: {} partition: {}",
                 storeName,
                 storeVersion,
                 storePartition,
-                throwable);
+                partitionThrowable);
 
-            byte[] errBody =
-                (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
-                    .getBytes();
-            setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
-            return;
-          }
-
-          Map<CharSequence, Integer> versionInstances = versionStatusFuture.getNow(Collections.emptyMap());
-          Map<CharSequence, Integer> partitionInstances = partitionStatusFuture.getNow(Collections.emptyMap());
-
-          Map<CharSequence, Integer> combinedInstances = new HashMap<>(versionInstances);
-          combinedInstances.putAll(partitionInstances);
-
-          // Process successful response
-          BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
-
-          if (combinedInstances.isEmpty()) {
+            queryVersionLevelPushStatus(ctx, storeName, storeVersion, storePartition, versionInt, partitionInt);
+          } else if (partitionLevelInstances == null || partitionLevelInstances.isEmpty()) {
+            // case 2: partition level return empty/null instances, then query at version level.
             LOGGER.info(
-                "No instances found for store: {} version: {} partition: {}",
+                "No partition instances found for store: {} version: {} partition: {}, will try version-level",
                 storeName,
                 storeVersion,
                 storePartition);
+
+            queryVersionLevelPushStatus(ctx, storeName, storeVersion, storePartition, versionInt, partitionInt);
           } else {
-            LOGGER.info(
-                "{} instances were found for store {}, version {}, partition {}",
-                combinedInstances.size(),
+            // case 3: partition level return instances, then check if all instances are completed.
+            extractCompleteInstancesFromPushStatusResponse(
+                ctx,
                 storeName,
                 storeVersion,
-                storePartition);
+                storePartition,
+                partitionLevelInstances);
           }
-
-          List<String> readyToServeNodeHostNames = combinedInstances.entrySet()
-              .stream()
-              .filter(entry -> entry.getValue() == ExecutionStatus.COMPLETED.getValue())
-              .map(Map.Entry::getKey)
-              .map(CharSequence::toString)
-              .collect(Collectors.toList());
-
-          if (!readyToServeNodeHostNames.isEmpty()) {
-            LOGGER.info(
-                "{} ready to serve nodes were found for store {} version {} partition {}",
-                readyToServeNodeHostNames.size(),
-                storeName,
-                storeVersion,
-                storePartition);
-          } else {
-            LOGGER.info(
-                "No ready to serve nodes found for store: {} version: {} partition: {}",
-                storeName,
-                storeVersion,
-                storePartition);
-          }
-
-          response.setDiscoveryResult(readyToServeNodeHostNames);
-          setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
         } catch (Exception e) {
           byte[] errBody =
               (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
@@ -675,6 +627,95 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition)).getBytes();
       setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
     }
+  }
+
+  /**
+   * A helper function to extract the completed instances from the push status response.
+   */
+  private void extractCompleteInstancesFromPushStatusResponse(
+      ChannelHandlerContext ctx,
+      String storeName,
+      String storeVersion,
+      String storePartition,
+      Map<CharSequence, Integer> instances) throws Exception {
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+
+    List<String> readyToServeNodeHostNames = instances.entrySet()
+        .stream()
+        .filter(entry -> entry.getValue() == ExecutionStatus.COMPLETED.getValue())
+        .map(Map.Entry::getKey)
+        .map(CharSequence::toString)
+        .collect(Collectors.toList());
+
+    if (!readyToServeNodeHostNames.isEmpty()) {
+      LOGGER.info(
+          "{} ready to serve nodes were found for store {} version {} partition {}",
+          readyToServeNodeHostNames.size(),
+          storeName,
+          storeVersion,
+          storePartition);
+    } else {
+      LOGGER.info(
+          "No ready to serve nodes found for store: {} version: {} partition: {}",
+          storeName,
+          storeVersion,
+          storePartition);
+    }
+
+    response.setDiscoveryResult(readyToServeNodeHostNames);
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
+  }
+
+  /**
+   * A helper function to query the version level push status.
+   */
+  private void queryVersionLevelPushStatus(
+      ChannelHandlerContext ctx,
+      String storeName,
+      String storeVersion,
+      String storePartition,
+      int versionInt,
+      int partitionInt) {
+    // Query version-level status
+    CompletableFuture<Map<CharSequence, Integer>> versionStatusFuture =
+        pushStatusStoreReader.getPartitionOrVersionStatusAsync(
+            storeName,
+            versionInt,
+            partitionInt,
+            Optional.empty(),
+            Optional.empty(),
+            true);
+
+    versionStatusFuture.whenComplete((versionLevelInstances, throwable) -> {
+      try {
+        if (throwable != null) {
+          LOGGER.error(
+              "Failed to get version status for store: {} version: {} partition: {}",
+              storeName,
+              storeVersion,
+              storePartition,
+              throwable);
+
+          byte[] errBody =
+              (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
+                  .getBytes();
+          setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
+          return;
+        }
+
+        extractCompleteInstancesFromPushStatusResponse(
+            ctx,
+            storeName,
+            storeVersion,
+            storePartition,
+            versionLevelInstances);
+      } catch (Exception e) {
+        byte[] errBody =
+            (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
+                .getBytes();
+        setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
+      }
+    });
   }
 
   private void handleResourceStateLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
