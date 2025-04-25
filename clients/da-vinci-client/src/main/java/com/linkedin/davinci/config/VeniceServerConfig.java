@@ -805,7 +805,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     routerConnectionWarmingDelayMs = serverProperties.getLong(SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS, 0);
     String sharedConsumerAssignmentStrategyStr = serverProperties.getString(
         SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
-        KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
+        KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
     try {
       sharedConsumerAssignmentStrategy =
           KafkaConsumerService.ConsumerAssignmentStrategy.valueOf(sharedConsumerAssignmentStrategyStr);

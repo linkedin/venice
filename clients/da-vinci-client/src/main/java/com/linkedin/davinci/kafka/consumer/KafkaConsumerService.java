@@ -596,6 +596,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
    * respectively. Each strategy will have a specific extension of {@link KafkaConsumerService}.
    */
   public enum ConsumerAssignmentStrategy {
+    @Deprecated
     TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(TopicWiseKafkaConsumerService::new),
     PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(PartitionWiseKafkaConsumerService::new),
     STORE_AWARE_PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(StoreAwarePartitionWiseKafkaConsumerService::new);
