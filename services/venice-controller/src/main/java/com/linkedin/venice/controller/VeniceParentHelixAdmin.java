@@ -1342,27 +1342,34 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean isIncrementalPush,
       boolean isRepush) {
     // The first/last topic in the list is the latest/oldest version topic
-    List<PubSubTopic> versionTopics = getKafkaTopicsByAge(storeName);
-    Optional<PubSubTopic> latestTopic = Optional.empty();
-    if (!versionTopics.isEmpty()) {
-      latestTopic = Optional.of(versionTopics.get(0));
+    // List<PubSubTopic> versionTopics = getKafkaTopicsByAge(storeName);
+    // Optional<PubSubTopic> latestTopic = Optional.empty();
+    // if (!versionTopics.isEmpty()) {
+    // latestTopic = Optional.of(versionTopics.get(0));
+    // }
+    Store store = getStore(clusterName, storeName);
+    int lastVersionNum = store.getLargestUsedVersionNumber();
+    Version lastVersion = lastVersionNum > 0 ? store.getVersion(lastVersionNum) : null;
+    Optional<String> latestTopic = Optional.empty();
+    if (lastVersion != null && lastVersion.getStatus() != ERROR && lastVersion.getStatus() != KILLED
+        && lastVersion.getStatus() != ONLINE) {
+      latestTopic = Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
     }
-
     /**
      * Check current topic retention to decide whether the previous job is already done or not
      */
     if (latestTopic.isPresent()) {
       LOGGER.debug("Latest kafka topic for store: {} is {}", storeName, latestTopic.get());
-      final String latestTopicName = latestTopic.get().getName();
+      final String latestTopicName = latestTopic.get();
       int versionNumber = Version.parseVersionFromKafkaTopicName(latestTopicName);
-      Store store = getStore(clusterName, storeName);
+
       Version version = store.getVersion(versionNumber);
       if (version != null && version.isVersionSwapDeferred()) {
         LOGGER.error(
             "There is already future version {} exists for store {}, please wait till the future version is made current.",
             versionNumber,
             storeName);
-        return Optional.of(latestTopic.get().getName());
+        return Optional.of(latestTopic.get());
       }
 
       if (!isTopicTruncated(latestTopicName)) {
@@ -1435,7 +1442,7 @@ public class VeniceParentHelixAdmin implements Admin {
               latestTopicName,
               extraInfo);
           if (latestTopic.isPresent()) {
-            return Optional.of(latestTopic.get().getName());
+            return Optional.of(latestTopic.get());
           }
           return Optional.empty();
         } else {
@@ -1443,13 +1450,13 @@ public class VeniceParentHelixAdmin implements Admin {
            * If the job status of latestKafkaTopic is terminal and it is not an incremental push,
            * it will be truncated in {@link #getOffLinePushStatus(String, String)}.
            */
-          if (!isIncrementalPush) {
+          /*   if (!isIncrementalPush) {
             Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
             truncateTopicsBasedOnMaxErroredTopicNumToKeep(
                 versionTopics.stream().map(vt -> vt.getName()).collect(Collectors.toList()),
                 isRepush,
                 currentVersionsMap);
-          }
+          } */
         }
       }
     }
@@ -4064,12 +4071,12 @@ public class VeniceParentHelixAdmin implements Admin {
         || isHybridStore // Push is to a hybrid store
     ) {
       LOGGER.info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
-      truncateTopicsOptionally(
+      /* truncateTopicsOptionally(
           clusterName,
           kafkaTopic,
           incrementalPushVersion,
           currentReturnStatus,
-          currentReturnStatusDetails);
+          currentReturnStatusDetails); */
     }
 
     // Update the parent version status for all pushes except for target region push w/ deferred swap as it's handled
@@ -5692,7 +5699,7 @@ public class VeniceParentHelixAdmin implements Admin {
       } else {
         if (storeB.getLargestUsedVersionNumber() >= versionNum) {
           // Version was added but then deleted due to errors
-          result.addVersionStateDiff(fabricA, fabricB, versionNum, version.getStatus(), VersionStatus.ERROR);
+          result.addVersionStateDiff(fabricA, fabricB, versionNum, version.getStatus(), ERROR);
         } else {
           result.addVersionStateDiff(fabricA, fabricB, versionNum, version.getStatus(), VersionStatus.NOT_CREATED);
         }
@@ -5700,7 +5707,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     for (Version version: versionsB) {
       if (storeA.getLargestUsedVersionNumber() >= version.getNumber()) {
-        result.addVersionStateDiff(fabricA, fabricB, version.getNumber(), VersionStatus.ERROR, version.getStatus());
+        result.addVersionStateDiff(fabricA, fabricB, version.getNumber(), ERROR, version.getStatus());
       } else {
         result
             .addVersionStateDiff(fabricA, fabricB, version.getNumber(), VersionStatus.NOT_CREATED, version.getStatus());
