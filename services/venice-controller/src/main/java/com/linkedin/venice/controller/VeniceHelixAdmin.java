@@ -3004,6 +3004,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             long createBatchTopicStartTime = System.currentTimeMillis();
             topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
             if (!isParent()) {
+            topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
             createBatchTopics(
                 version,
                 pushType,
