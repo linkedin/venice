@@ -38,7 +38,10 @@ public enum VeniceMetricsDimensions {
   JOB_EXECUTION_STATUS("job.execution.status"),
 
   /** {@link LogCompactionSelectionReason} */
-  LOG_COMPACTION_SELECTION_REASON("log.compaction.selection.reason"),;
+  LOG_COMPACTION_SELECTION_REASON("log.compaction.selection.reason"),
+
+  /** {@link com.linkedin.venice.controllerapi.ControllerEndpoints} */
+  VENICE_CONTROLLER_ENDPOINT("venice.controller.endpoint"),;
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
