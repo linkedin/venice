@@ -5,6 +5,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import java.nio.ByteBuffer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -40,7 +41,7 @@ public class PubSubPositionDeserializer {
    * @param positionWireFormat the wire format position
    * @return concrete position object represented by the wire format
    */
-  PubSubPosition convertToPosition(PubSubPositionWireFormat positionWireFormat) {
+  public PubSubPosition convertToPosition(PubSubPositionWireFormat positionWireFormat) {
     if (positionWireFormat == null) {
       throw new IllegalArgumentException("Cannot deserialize null wire format position");
     }
@@ -58,13 +59,23 @@ public class PubSubPositionDeserializer {
     return factory.createFromWireFormat(positionWireFormat);
   }
 
-  PubSubPosition convertToPosition(byte[] positionWireFormatBytes) {
+  public PubSubPosition convertToPosition(byte[] positionWireFormatBytes) {
     if (positionWireFormatBytes == null) {
       throw new IllegalArgumentException("Cannot deserialize null wire format position");
     }
     InternalAvroSpecificSerializer<PubSubPositionWireFormat> wireFormatSerializer =
         AvroProtocolDefinition.PUBSUB_POSITION_WIRE_FORMAT.getSerializer();
     PubSubPositionWireFormat wireFormat = wireFormatSerializer.deserialize(positionWireFormatBytes, null);
+    return convertToPosition(wireFormat);
+  }
+
+  public PubSubPosition convertToPosition(ByteBuffer positionWireFormatBytes) {
+    if (positionWireFormatBytes == null) {
+      throw new IllegalArgumentException("Cannot deserialize null wire format position");
+    }
+    InternalAvroSpecificSerializer<PubSubPositionWireFormat> wireFormatSerializer =
+        AvroProtocolDefinition.PUBSUB_POSITION_WIRE_FORMAT.getSerializer();
+    PubSubPositionWireFormat wireFormat = wireFormatSerializer.deserialize(positionWireFormatBytes.array(), null);
     return convertToPosition(wireFormat);
   }
 

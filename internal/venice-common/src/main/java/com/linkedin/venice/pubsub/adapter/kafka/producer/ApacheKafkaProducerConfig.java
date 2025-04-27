@@ -73,7 +73,8 @@ public class ApacheKafkaProducerConfig {
     validateKafkaPositionType(context.getPubSubPositionTypeRegistry());
 
     this.pubSubMessageSerializer = context.getPubSubMessageSerializer();
-    this.producerProperties = ApacheKafkaUtils.getValidKafkaClientProperties(allVeniceProperties, ProducerConfig.configNames());
+    this.producerProperties =
+        ApacheKafkaUtils.getValidKafkaClientProperties(allVeniceProperties, ProducerConfig.configNames());
     validateAndUpdateProperties(this.producerProperties, context.shouldValidateProducerConfigStrictly());
     if (allVeniceProperties.getBoolean(PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, false)) {
       addHighThroughputDefaults();

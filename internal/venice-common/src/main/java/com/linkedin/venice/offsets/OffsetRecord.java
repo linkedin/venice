@@ -7,6 +7,7 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -314,6 +315,12 @@ public class OffsetRecord {
   public void setLatestConsumedVtOffset(long latestConsumedVtOffset) {
     this.partitionState.setLastConsumedVersionTopicPubSubPosition(
         ApacheKafkaOffsetPosition.of(latestConsumedVtOffset).getPositionWireFormat().getRawBytes());
+  }
+
+  public long getLatestConsumedVtOffset() {
+    return PubSubPositionDeserializer.DEFAULT_DESERIALIZER
+        .convertToPosition(partitionState.getLastConsumedVersionTopicPubSubPosition())
+        .getNumericOffset();
   }
 
   /**
