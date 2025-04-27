@@ -2,6 +2,7 @@ package com.linkedin.venice.hadoop.input.kafka;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
@@ -21,8 +22,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -43,35 +42,52 @@ import org.apache.kafka.clients.CommonClientConfigs;
 public class KafkaInputUtils {
   private static Properties sslProps = null;
 
+  /**
+   * Extracts and prepares the Kafka consumer properties for a Venice input job.
+   *
+   * <p>This method:
+   * <ul>
+   *   <li>Copies all Hadoop job configurations into a {@link Properties} object.</li>
+   *   <li>If an SSL configurator is specified, applies SSL settings and merges SSL properties into the consumer properties.</li>
+   *   <li>Clips and merges any {@link KafkaInputRecordReader#KIF_RECORD_READER_KAFKA_CONFIG_PREFIX} prefixed properties into the consumer properties.</li>
+   *   <li>Sets a large receive buffer size (4MB) to support remote Kafka re-push scenarios.</li>
+   *   <li>Sets the PubSub bootstrap server address</li>
+   * </ul>
+   *
+   * @param config the Hadoop {@link JobConf} containing the job configurations
+   * @return a {@link VeniceProperties} object containing the prepared Kafka consumer properties
+   * @throws VeniceException if SSL configuration setup fails
+   */
+
   public static VeniceProperties getConsumerProperties(JobConf config) {
-    Properties consumerFactoryProperties = new Properties();
+    Properties allProperties = HadoopUtils.getProps(config);
+    Properties consumerProperties = new Properties();
+    consumerProperties.putAll(allProperties); // manually copy all properties
     if (config.get(SSL_CONFIGURATOR_CLASS_CONFIG) != null) {
       SSLConfigurator configurator = SSLConfigurator.getSSLConfigurator(config.get(SSL_CONFIGURATOR_CLASS_CONFIG));
       try {
-        sslProps = configurator
-            .setupSSLConfig(HadoopUtils.getProps(config), UserCredentialsFactory.getHadoopUserCredentials());
-        VeniceProperties veniceProperties = new VeniceProperties(sslProps);
-        // Copy the pass-through Kafka properties
-        consumerFactoryProperties.putAll(
-            veniceProperties.clipAndFilterNamespace(KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX)
-                .toProperties());
-        // Copy the mandatory ssl configs
-        ApacheKafkaUtils.validateAndCopyKafkaSSLConfig(veniceProperties, consumerFactoryProperties);
+        sslProps = configurator.setupSSLConfig(allProperties, UserCredentialsFactory.getHadoopUserCredentials());
+        // Add back SSL properties to the consumer properties; sslProps may have overridden some of the properties or
+        // may return only SSL related properties.
+        consumerProperties.putAll(sslProps);
       } catch (IOException e) {
         throw new VeniceException("Could not get user credential for job:" + config.getJobName(), e);
       }
     }
-
+    VeniceProperties veniceProperties = new VeniceProperties(allProperties);
+    // Drop the prefixes for some properties and add them back the consumer properties.
+    consumerProperties.putAll(
+        veniceProperties.clipAndFilterNamespace(KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX)
+            .toProperties());
     /**
      * Use a large receive buffer size: 4MB since Kafka re-push could consume remotely.
+     * TODO: Remove hardcoded buffer size and pass it down from the job config.
      */
-    consumerFactoryProperties.setProperty(CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
-    consumerFactoryProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, config.get(KAFKA_INPUT_BROKER_URL));
-    consumerFactoryProperties.setProperty(PUBSUB_BROKER_ADDRESS, config.get(KAFKA_INPUT_BROKER_URL));
-
-    ApacheKafkaProducerConfig.copyKafkaSASLProperties(HadoopUtils.getProps(config), consumerFactoryProperties, true);
-
-    return new VeniceProperties(consumerFactoryProperties);
+    consumerProperties
+        .setProperty(KAFKA_CONFIG_PREFIX + CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
+    consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, config.get(KAFKA_INPUT_BROKER_URL));
+    consumerProperties.setProperty(PUBSUB_BROKER_ADDRESS, config.get(KAFKA_INPUT_BROKER_URL));
+    return new VeniceProperties(consumerProperties);
   }
 
   public static KafkaValueSerializer getKafkaValueSerializer(JobConf config) {
