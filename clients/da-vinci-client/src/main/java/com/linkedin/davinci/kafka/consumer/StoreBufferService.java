@@ -19,7 +19,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -58,8 +57,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class StoreBufferService extends AbstractStoreBufferService {
   private static final Logger LOGGER = LogManager.getLogger(StoreBufferService.class);
-  protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter();
   private final int drainerNum;
   private final ArrayList<MemoryBoundBlockingQueue<QueueNode>> blockingQueueArr;
   private ExecutorService executorService;
@@ -255,17 +252,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
       throw new VeniceException("Unsupported command type: " + cmd.getCommandType());
     }
 
-    if (pcs == null) {
-      cmd.executeSync(() -> {
+    cmd.executeSync(() -> {
+      if (pcs == null) {
         String msg = "PCS for topic-partition: {} is null. Skipping {} command in StoreBufferDrainer.";
-        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-          LOGGER.info(msg, topicPartition, cmd.getCommandType());
-        }
-      });
-      return;
-    }
-
-    cmd.executeSync(() -> ingestionTask.updateOffsetMetadataAndSyncOffset(pcs));
+        LOGGER.warn(msg, topicPartition, cmd.getCommandType());
+      } else {
+        ingestionTask.updateOffsetMetadataAndSyncOffset(pcs);
+      }
+    });
   }
 
   /**
