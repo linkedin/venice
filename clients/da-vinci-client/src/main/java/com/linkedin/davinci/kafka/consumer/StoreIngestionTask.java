@@ -4941,7 +4941,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Otherwise, the drainer's latest processed VT offset is traditionally used.
    */
   long getLocalVtSubscribeOffset(PartitionConsumptionState pcs) {
-    // TODO: fallback to latestProcessed if LCVO == -1?
     return (isGlobalRtDivEnabled()) ? pcs.getLatestConsumedVtOffset() : pcs.getLatestProcessedLocalVersionTopicOffset();
   }
 }
