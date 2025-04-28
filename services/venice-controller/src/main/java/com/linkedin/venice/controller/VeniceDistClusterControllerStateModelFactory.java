@@ -85,4 +85,13 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   public Collection<VeniceControllerStateModel> getAllModels() {
     return clusterToStateModelsMap.values();
   }
+
+  /**
+   * Close all {@code VeniceControllerStateModel} created by the factory.
+   */
+  public void close() {
+    for (VeniceControllerStateModel model: clusterToStateModelsMap.values()) {
+      model.close();
+    }
+  }
 }
