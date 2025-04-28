@@ -110,6 +110,7 @@ import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
+import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -127,6 +128,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
@@ -222,7 +224,9 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import java.lang.reflect.Field;
 import java.net.URL;
@@ -5641,6 +5645,42 @@ public abstract class StoreIngestionTaskTest {
     } else {
       assertTrue(shouldSyncOffset && !shouldSendGlobalRtDiv);
     }
+  }
+
+  /**
+   * Verify what happens when globalRtDiv() is called and simulate loading a GlobalRtDivState object from disk.
+   */
+  @Test
+  public void testLoadGlobalRtDiv() {
+    LeaderFollowerStoreIngestionTask ingestionTask = mock(LeaderFollowerStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).restoreProducerStatesForLeaderConsumption(anyInt());
+    doCallRealMethod().when(ingestionTask).loadGlobalRtDiv(anyInt());
+    doCallRealMethod().when(ingestionTask).loadGlobalRtDiv(anyInt(), anyString());
+    doReturn(true).when(ingestionTask).isGlobalRtDivEnabled();
+
+    GenericRecord valueRecord = mock(GenericRecord.class);
+    GlobalRtDivState globalRtDivState = mock(GlobalRtDivState.class);
+    doReturn(globalRtDivState).when(valueRecord).get(any());
+    doReturn(valueRecord).when(ingestionTask).readStoredValueRecord(any(), any(), anyInt(), any(), any());
+    KafkaDataIntegrityValidator consumerDiv = mock(KafkaDataIntegrityValidator.class);
+    doReturn(consumerDiv).when(ingestionTask).getConsumerDiv();
+    Int2ObjectMap<String> brokerIdToUrlMap = new Int2ObjectOpenHashMap<>();
+    brokerIdToUrlMap.put(0, "localhost:1234");
+    brokerIdToUrlMap.put(1, "localhost:4567");
+    brokerIdToUrlMap.put(2, "localhost:8910");
+    doReturn(brokerIdToUrlMap).when(ingestionTask).getKafkaClusterIdToUrlMap();
+    OffsetRecord offsetRecord = mock(OffsetRecord.class);
+    doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    doReturn(offsetRecord).when(pcs).getOffsetRecord();
+    doReturn(pcs).when(ingestionTask).getPartitionConsumptionState(PARTITION_FOO);
+
+    ingestionTask.restoreProducerStatesForLeaderConsumption(PARTITION_FOO);
+    verify(ingestionTask, times(1)).loadGlobalRtDiv(eq(PARTITION_FOO));
+    brokerIdToUrlMap.forEach((brokerId, url) -> {
+      verify(ingestionTask, times(1)).loadGlobalRtDiv(eq(PARTITION_FOO), eq(url));
+    });
+    verify(pcs, times(brokerIdToUrlMap.size())).updateLatestConsumedRtOffset(any(), anyLong());
   }
 
   @Test

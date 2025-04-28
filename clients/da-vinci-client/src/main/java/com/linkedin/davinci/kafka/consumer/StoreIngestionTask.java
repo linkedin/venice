@@ -3708,7 +3708,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * like leaders in LeaderFollowerStoreIngestionTask should never access the DIV validator in drainer, because messages
    * consumption in leader is ahead of drainer, leaders and drainers are processing messages at different paces.
    */
-  protected void cloneProducerStates(int partition, KafkaDataIntegrityValidator validator) {
+  protected void cloneDrainerDivProducerStates(int partition, KafkaDataIntegrityValidator validator) {
     this.drainerDiv.cloneVtProducerStates(partition, validator);
   }
 

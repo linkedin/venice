@@ -3786,7 +3786,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * it from the storage engine.
    * @return {@link Optional#empty} if the value
    */
-  private GenericRecord readStoredValueRecord(
+  GenericRecord readStoredValueRecord(
       PartitionConsumptionState partitionConsumptionState,
       byte[] keyBytes,
       int readerValueSchemaID,
@@ -3846,21 +3846,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * Clone DIV check results from OffsetRecord to the DIV validator that is used for leader consumption thread.
    *
    * This step is necessary in case leadership handovers happen during batch push; if this node is used to be a
-   * follower replica for a partition and it's promoted to leader in the middle of a batch push, leader DIV validator
+   * follower replica for a partition, and it's promoted to leader in the middle of a batch push, leader DIV validator
    * should inherit/clone the latest producer states from the DIV validator in drainer; otherwise, leader will encounter
    * MISSING message DIV error immediately.
    */
-  private void restoreProducerStatesForLeaderConsumption(int partition) {
-    consumerDiv.clearPartition(partition);
+  void restoreProducerStatesForLeaderConsumption(int partition) {
+    getConsumerDiv().clearPartition(partition);
     if (isGlobalRtDivEnabled()) {
       loadGlobalRtDiv(partition);
     } else {
-      cloneProducerStates(partition, consumerDiv);
+      cloneDrainerDivProducerStates(partition, getConsumerDiv());
     }
   }
 
-  private void loadGlobalRtDiv(int partition) {
-    kafkaClusterIdToUrlMap.forEach((clusterId, brokerUrl) -> {
+  void loadGlobalRtDiv(int partition) {
+    getKafkaClusterIdToUrlMap().forEach((clusterId, brokerUrl) -> {
       loadGlobalRtDiv(partition, brokerUrl);
     });
   }
@@ -3869,9 +3869,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * Load the stored Global RT DIV object from the storage engine into the Consumer DIV during state transition
    * to LEADER. The RT DIV needs to be loaded per-broker url, and the latest consumed RT offset needs to be updated.
    */
-  private void loadGlobalRtDiv(int partition, String brokerUrl) {
-    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partition);
-    final PubSubTopic topic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+  void loadGlobalRtDiv(int partition, String brokerUrl) {
+    PartitionConsumptionState pcs = getPartitionConsumptionState(partition);
+    final PubSubTopic topic = pcs.getOffsetRecord().getLeaderTopic(getPubSubTopicRepository());
     final PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, pcs.getPartition());
 
     String globalRtDivKey = getGlobalRtDivKeyName(brokerUrl);
@@ -3900,7 +3900,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       GlobalRtDivState globalRtDivState = (GlobalRtDivState) value;
       final Map<CharSequence, ProducerPartitionState> producerStates = globalRtDivState.getProducerStates();
       PartitionTracker.TopicType realTimeTopicType = PartitionTracker.TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
-      consumerDiv.setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
+      getConsumerDiv().setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
       final long latestConsumedRtOffset = globalRtDivState.getLatestOffset(); // LCRO
       pcs.updateLatestConsumedRtOffset(brokerUrl, latestConsumedRtOffset);
     } else {
@@ -3908,7 +3908,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           "Unable to load Global RT DIV from storage engine for replica: {} brokerUrl: {}",
           topicPartition,
           brokerUrl);
-      // TODO: should we throw? or if we don't throw, which offset should the subscribe occur at? should be 0 huh
     }
   }
 
