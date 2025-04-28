@@ -88,8 +88,8 @@
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
-          account: 100582612927
-          repository: 100441445875
+          account: 357098
+          repository: 349172057
           path: |
             **/TEST-*.xml
           key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
