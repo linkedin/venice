@@ -854,6 +854,10 @@ public class ConfigKeys {
       "server.adaptive.throttler.signal.idle.threshold";
   public static final String SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD =
       "server.adaptive.throttler.single.get.latency.threshold";
+  public static final String SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD =
+      "server.adaptive.throttler.multi.get.latency.threshold";
+  public static final String SERVER_ADAPTIVE_THROTTLER_READ_COMPUTE_GET_LATENCY_THRESHOLD =
+      "server.adaptive.throttler.read.compute.latency.threshold";
 
   /**
    * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
@@ -2577,6 +2581,20 @@ public class ConfigKeys {
    * controls the TTL of the cache per entry.
    */
   public static final String ACL_IN_MEMORY_CACHE_TTL_MS = "acl.in.memory.cache.ttl.ms";
+
+  /**
+   * Enables / disables protocol version auto-detection service in parent controller.
+   * This service is responsible for detecting the admin operation protocol version to serialize message
+   * Default value is disabled (false).
+   */
+  public static final String CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED =
+      "controller.protocol.version.auto.detection.service.enabled";
+
+  /**
+   * Specifies the sleep time for the protocol version auto-detection service between each detection attempt.
+   */
+  public static final String CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS =
+      "controller.protocol.version.auto.detection.sleep.ms";
 
   /**
    * If enabled, the controller's get dead store endpoint will be enabled.

@@ -9,7 +9,9 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -49,9 +51,10 @@ public class TestDictionaryRetrievalService {
   Store store;
   Version version;
 
-  private static String STORE_NAME = "test_store";
-  private static int VERSION_NUMBER = 1;
-  private static String KAFKA_TOPIC_NAME = STORE_NAME + "_v1";
+  private static final String STORE_NAME = "test_store";
+  private static final int VERSION_NUMBER = 1;
+  private static final String KAFKA_TOPIC_NAME = STORE_NAME + "_v1";
+  private static final int DICTIONARY_RETRIEVAL_TIME_MS = 3 * Time.MS_PER_SECOND;
 
   @BeforeMethod
   public void setUp() {
@@ -230,6 +233,72 @@ public class TestDictionaryRetrievalService {
         doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
         // Reset version 1 back to active
         doReturn(version).when(store).getVersion(VERSION_NUMBER);
+      }
+    }
+  }
+
+  /**
+   * 1. This test verifies that the dictionary is fetched for a store with a future version. i.e. VersionStatus.STARTED or VersionStatus.PUSHED.
+   * 2. To simulate when the push of the future version has started but the dictionary is not ready, this test ensures that dictionary retrieval is retried if the first two attempts fail.
+   */
+  @Test(timeOut = 10 * Time.MS_PER_SECOND)
+  public void testFutureVersionDictionaryRetrieval() throws Exception {
+    DictionaryRetrievalService dictionaryRetrievalService = null;
+    try {
+      /** if dictionaryRetrievalTimeMs not set, the value would default to 0
+       * -> timeout getDictionaryFromResponse()
+       * -> fail dictionary download */
+      when(routerConfig.getDictionaryRetrievalTimeMs()).thenReturn(DICTIONARY_RETRIEVAL_TIME_MS);
+
+      dictionaryRetrievalService = spy(
+          new DictionaryRetrievalService(
+              onlineInstanceFinder,
+              routerConfig,
+              Optional.of(sslFactory),
+              metadataRepository,
+              storageNodeClient,
+              compressorFactory));
+      dictionaryRetrievalService.start();
+      StoreDataChangedListener storeChangeListener = dictionaryRetrievalService.getStoreChangeListener();
+
+      // Set up the store and version with VersionStatus.STARTED
+      doReturn(CompressionStrategy.ZSTD_WITH_DICT).when(version).getCompressionStrategy();
+      doReturn(VersionStatus.STARTED).when(version).getStatus();
+      doReturn(STORE_NAME).when(version).getStoreName();
+      doReturn(VERSION_NUMBER).when(version).getNumber();
+      doReturn(false).when(compressorFactory).versionSpecificCompressorExists(KAFKA_TOPIC_NAME);
+
+      doReturn(1).when(onlineInstanceFinder).getNumberOfPartitions(KAFKA_TOPIC_NAME);
+      Instance mockInstance = mock(Instance.class);
+      doReturn("localhost").when(mockInstance).getUrl(anyBoolean());
+      List<Instance> instances = new ArrayList<>();
+      instances.add(mockInstance);
+      doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(KAFKA_TOPIC_NAME, 0);
+
+      doReturn(new byte[] {}).when(dictionaryRetrievalService).getDictionaryFromResponse(any(), any());
+
+      // Trigger dictionary retrieval
+      storeChangeListener.handleStoreChanged(store);
+
+      // Simulate network response to query the dictionary
+      doAnswer(invocation -> {
+        return null; // Return null because the method is void
+      }).when(storageNodeClient).sendRequest(any(), any());
+
+      // Verify that the dictionary is fetched successfully
+      DictionaryRetrievalService finalDictionaryRetrievalService = dictionaryRetrievalService;
+      TestUtils.waitForNonDeterministicAssertion(MAX_DICTIONARY_DOWNLOAD_DELAY_TIME_MS, TimeUnit.SECONDS, () -> {
+        assertTrue(finalDictionaryRetrievalService.getDownloadingDictionaryFutures().containsKey(KAFKA_TOPIC_NAME));
+      });
+    } finally {
+      if (dictionaryRetrievalService != null) {
+        dictionaryRetrievalService.stop();
+        dictionaryRetrievalService.close();
+        when(routerConfig.getDictionaryRetrievalTimeMs()).thenReturn(0);
+        // Reset to NO_OP for the next test
+        doReturn(CompressionStrategy.NO_OP).when(version).getCompressionStrategy();
+        // Reset store version status to ONLINE
+        doReturn(VersionStatus.ONLINE).when(version).getStatus();
       }
     }
   }

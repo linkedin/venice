@@ -166,7 +166,6 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -795,7 +794,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     controllerConfig = new VeniceControllerClusterConfig(new VeniceProperties(clonedProperties));
     Properties properties = multiClusterConfigs.getCommonConfig().getProps().getPropertiesCopy();
-    ApacheKafkaProducerConfig.copyKafkaSASLProperties(originalPros, properties, false);
     if (ApacheKafkaUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
       Optional<SSLConfig> sslConfig = controllerConfig.getSslConfig();
       if (!sslConfig.isPresent()) {
@@ -7699,11 +7697,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Unsupported operation in the child controller.
+   * Update AdminOperationProtocolVersion in metadata
    */
   public void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion) {
-    throw new VeniceUnsupportedOperationException(
-        "updateAdminOperationProtocolVersion is not supported for child controller");
+    checkControllerLeadershipFor(clusterName);
+    getAdminConsumerService(clusterName)
+        .updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
   }
 
   /**
@@ -7733,7 +7732,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       // Get the admin operation protocol version from standby controller
       AdminOperationProtocolVersionControllerResponse response =
-          localControllerClient.getLocalAdminOperationProtocolVersion();
+          localControllerClient.getLocalAdminOperationProtocolVersion(standbyControllerUrl);
       if (response.isError()) {
         throw new VeniceException(
             "Failed to get admin operation protocol version from standby controller: " + standbyControllerUrl
