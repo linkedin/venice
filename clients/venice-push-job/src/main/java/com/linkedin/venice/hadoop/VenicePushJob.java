@@ -2304,7 +2304,7 @@ public class VenicePushJob implements AutoCloseable {
           completedDatacenters.add(region);
         }
       });
-      if (overallStatus.isTerminal()) { // check child status for terminal in all regions
+      if (overallStatus.isTerminal()) {
         if (completedDatacenters.size() != regionSpecificInfo.size() || !successfulStatuses.contains(overallStatus)) {
           // 1) For regular push, one or more DC could have an UNKNOWN status and never successfully reported a
           // completed status before,

@@ -3798,7 +3798,7 @@ public class VeniceParentHelixAdmin implements Admin {
         // Do not truncate the parent version topic if it is a push w/ deferred swap to prevent concurrent pushes
         // Otherwise, truncate the parent version topic and update the version status
         boolean isDeferredSwap = version != null && version.isVersionSwapDeferred();
-        if (!isDeferredSwap || !StringUtils.isEmpty(targetedRegions)) {
+        if (!isDeferredSwap) {
           handleTerminalJobStatus(
               clusterName,
               kafkaTopic,
@@ -3922,14 +3922,11 @@ public class VeniceParentHelixAdmin implements Admin {
     boolean isHybridStore = storeVersion != null && storeVersion.getHybridStoreConfig() != null;
 
     boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
-    boolean isTargetRegionPushWithDeferredSwap = isTargetRegionPush && version.isVersionSwapDeferred();
 
-    if ((!isTargetRegionPush // Push is complete for a normal batch push w/o target region push
+    if (!isTargetRegionPush // Push is complete for a normal batch push w/o target region push
         || isPushCompleteInAllRegionsForTargetRegionPush // Push is complete in all regions for a target region push w/o
                                                          // deferred swap
-        || isHybridStore) // Push is to a hybrid store
-        && !isTargetRegionPushWithDeferredSwap // Push is not a target region push with
-                                               // deferred swap
+        || isHybridStore // Push is to a hybrid store
     ) {
       LOGGER.info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
       truncateTopicsOptionally(
@@ -3944,12 +3941,12 @@ public class VeniceParentHelixAdmin implements Admin {
     // separately
     // in DeferredVersionSwapService
     if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
-      if (isTargetRegionPush && !isPushCompleteInAllRegionsForTargetRegionPush && !isTargetRegionPushWithDeferredSwap) {
+      if (isTargetRegionPush && !isPushCompleteInAllRegionsForTargetRegionPush) {
         parentStore.updateVersionStatus(versionNum, PUSHED); // Push is complete in the target regions & only target
                                                              // regions are serving traffic
         repository.updateStore(parentStore);
         LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, PUSHED);
-      } else if (!isTargetRegionPushWithDeferredSwap) {
+      } else {
         parentStore.updateVersionStatus(versionNum, ONLINE); // Push is complete in all regions & version is serving
                                                              // traffic
         repository.updateStore(parentStore);
