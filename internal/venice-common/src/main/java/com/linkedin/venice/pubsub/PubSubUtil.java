@@ -22,7 +22,7 @@ public final class PubSubUtil {
     return properties.getStringWithAlternative(PUBSUB_BROKER_ADDRESS, KAFKA_BOOTSTRAP_SERVERS);
   }
 
-  public static String getPubSubBrokerAddress(VeniceProperties properties, String defaultValue) {
+  public static String getPubSubBrokerAddressWithDefault(VeniceProperties properties, String defaultValue) {
     return properties.getStringWithAlternative(PUBSUB_BROKER_ADDRESS, KAFKA_BOOTSTRAP_SERVERS, defaultValue);
   }
 

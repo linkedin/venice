@@ -37,10 +37,10 @@ public class PubSubUtilTest {
   }
 
   @Test
-  public void testGetPubSubBrokerAddressWithDefault() {
+  public void testGetPubSubBrokerAddressWithDefaultWithDefault() {
     Properties props = new Properties();
     VeniceProperties veniceProps = new VeniceProperties(props);
-    String result = PubSubUtil.getPubSubBrokerAddress(veniceProps, "default://broker");
+    String result = PubSubUtil.getPubSubBrokerAddressWithDefault(veniceProps, "default://broker");
     assertEquals(result, "default://broker");
   }
 

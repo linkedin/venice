@@ -127,74 +127,6 @@ public class PubSubPositionTypeRegistry {
         factoryClassNameToTypeIdMap);
   }
 
-  private static Int2ObjectMap<String> mergeAndValidateTypes(Int2ObjectMap<String> userMap) {
-    Int2ObjectMap<String> merged = new Int2ObjectOpenHashMap<>(userMap);
-    for (Int2ObjectMap.Entry<String> reservedEntry: RESERVED_POSITION_TYPE_ID_TO_CLASS_NAME_MAP.int2ObjectEntrySet()) {
-      int reservedId = reservedEntry.getIntKey();
-      String reservedClass = reservedEntry.getValue();
-      if (merged.containsKey(reservedId)) {
-        String userClass = merged.get(reservedId);
-        if (!reservedClass.equals(userClass)) {
-          LOGGER.error(
-              "Conflicting entry for reserved position type ID: {}. Expected class name: [{}], but got: [{}].",
-              reservedId,
-              reservedClass,
-              userClass);
-          throw new VeniceException(
-              "Conflicting entry for reserved position type ID: " + reservedId + ". Expected class name: ["
-                  + reservedClass + "], but got: [" + userClass + "]");
-        }
-      } else {
-        merged.put(reservedId, reservedClass);
-      }
-    }
-    return merged;
-  }
-
-  private static Object2IntMap<String> buildClassNameToTypeIdMap(Int2ObjectMap<String> typeIdToClassMap) {
-    Object2IntMap<String> classNameToTypeId = new Object2IntOpenHashMap<>(typeIdToClassMap.size());
-    for (Map.Entry<Integer, String> entry: typeIdToClassMap.int2ObjectEntrySet()) {
-      int typeId = entry.getKey();
-      String className = entry.getValue();
-      if (StringUtils.isBlank(className)) {
-        LOGGER.error("Blank class name for type ID: {}. Type ID mapping: {} cannot be used.", typeId, typeIdToClassMap);
-        throw new VeniceException("Blank class name for type ID: " + typeId);
-      }
-      if (classNameToTypeId.containsKey(className) && classNameToTypeId.getInt(className) != typeId) {
-        LOGGER.error(
-            "Duplicate mapping for class name {}. Type ID: {} conflicts with existing mapping: {}.",
-            className,
-            typeId,
-            classNameToTypeId.getInt(className));
-        throw new VeniceException("Duplicate mapping for class " + className);
-      }
-      classNameToTypeId.put(className, typeId);
-    }
-    return classNameToTypeId;
-  }
-
-  private static Int2ObjectMap<PubSubPositionFactory> instantiateFactories(Int2ObjectMap<String> typeIdToClassMap) {
-    Int2ObjectMap<PubSubPositionFactory> factories = new Int2ObjectOpenHashMap<>(typeIdToClassMap.size());
-    for (Map.Entry<Integer, String> entry: typeIdToClassMap.int2ObjectEntrySet()) {
-      int typeId = entry.getKey();
-      String className = entry.getValue();
-      try {
-        PubSubPositionFactory factory = ReflectUtils
-            .callConstructor(ReflectUtils.loadClass(className), new Class<?>[] { int.class }, new Object[] { typeId });
-        factories.put(typeId, factory);
-      } catch (Exception e) {
-        LOGGER.error(
-            "Failed to create factory for class name: {} (type ID: {}). Mapping: {} cannot be used.",
-            className,
-            typeId,
-            typeIdToClassMap,
-            e);
-        throw new VeniceException("Failed to create factory for " + className + " (ID " + typeId + ")", e);
-      }
-    }
-    return factories;
-  }
-
   /**
    * Returns the integer type ID for the given pubsub position factory class name.
    *
@@ -283,5 +215,73 @@ public class PubSubPositionTypeRegistry {
       return new PubSubPositionTypeRegistry(properties.getIntKeyedMap(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP));
     }
     return PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
+  }
+
+  private static Int2ObjectMap<String> mergeAndValidateTypes(Int2ObjectMap<String> userMap) {
+    Int2ObjectMap<String> merged = new Int2ObjectOpenHashMap<>(userMap);
+    for (Int2ObjectMap.Entry<String> reservedEntry: RESERVED_POSITION_TYPE_ID_TO_CLASS_NAME_MAP.int2ObjectEntrySet()) {
+      int reservedId = reservedEntry.getIntKey();
+      String reservedClass = reservedEntry.getValue();
+      if (merged.containsKey(reservedId)) {
+        String userClass = merged.get(reservedId);
+        if (!reservedClass.equals(userClass)) {
+          LOGGER.error(
+              "Conflicting entry for reserved position type ID: {}. Expected class name: [{}], but got: [{}].",
+              reservedId,
+              reservedClass,
+              userClass);
+          throw new VeniceException(
+              "Conflicting entry for reserved position type ID: " + reservedId + ". Expected class name: ["
+                  + reservedClass + "], but got: [" + userClass + "]");
+        }
+      } else {
+        merged.put(reservedId, reservedClass);
+      }
+    }
+    return merged;
+  }
+
+  private static Object2IntMap<String> buildClassNameToTypeIdMap(Int2ObjectMap<String> typeIdToClassMap) {
+    Object2IntMap<String> classNameToTypeId = new Object2IntOpenHashMap<>(typeIdToClassMap.size());
+    for (Map.Entry<Integer, String> entry: typeIdToClassMap.int2ObjectEntrySet()) {
+      int typeId = entry.getKey();
+      String className = entry.getValue();
+      if (StringUtils.isBlank(className)) {
+        LOGGER.error("Blank class name for type ID: {}. Type ID mapping: {} cannot be used.", typeId, typeIdToClassMap);
+        throw new VeniceException("Blank class name for type ID: " + typeId);
+      }
+      if (classNameToTypeId.containsKey(className) && classNameToTypeId.getInt(className) != typeId) {
+        LOGGER.error(
+            "Duplicate mapping for class name {}. Type ID: {} conflicts with existing mapping: {}.",
+            className,
+            typeId,
+            classNameToTypeId.getInt(className));
+        throw new VeniceException("Duplicate mapping for class " + className);
+      }
+      classNameToTypeId.put(className, typeId);
+    }
+    return classNameToTypeId;
+  }
+
+  private static Int2ObjectMap<PubSubPositionFactory> instantiateFactories(Int2ObjectMap<String> typeIdToClassMap) {
+    Int2ObjectMap<PubSubPositionFactory> factories = new Int2ObjectOpenHashMap<>(typeIdToClassMap.size());
+    for (Map.Entry<Integer, String> entry: typeIdToClassMap.int2ObjectEntrySet()) {
+      int typeId = entry.getKey();
+      String className = entry.getValue();
+      try {
+        PubSubPositionFactory factory = ReflectUtils
+            .callConstructor(ReflectUtils.loadClass(className), new Class<?>[] { int.class }, new Object[] { typeId });
+        factories.put(typeId, factory);
+      } catch (Exception e) {
+        LOGGER.error(
+            "Failed to create factory for class name: {} (type ID: {}). Mapping: {} cannot be used.",
+            className,
+            typeId,
+            typeIdToClassMap,
+            e);
+        throw new VeniceException("Failed to create factory for " + className + " (ID " + typeId + ")", e);
+      }
+    }
+    return factories;
   }
 }
