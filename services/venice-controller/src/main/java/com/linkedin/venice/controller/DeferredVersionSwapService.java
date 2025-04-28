@@ -303,14 +303,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   }
 
   /**
-   * Checks if a push failed a majority of target regions or succeeded in a majority of target regions. If the push failed in a
-   * majority of target regions, mark the parent version status as ERROR. If all target regions have not reached a terminal push status
-   * yet, do not proceed
+   * Checks if a push completed in all target regions.
+   * If the push failed in a majority of target regions, mark the parent version status as ERROR.
+   * If all target regions have not reached a terminal push status yet, do not proceed yet
    * @param targetRegions list of regions to check the push status for
    * @param pushStatusInfo wrapper containing push status information
    * @return
    */
-  private boolean didPushFailInTargetRegions(
+  private boolean didPushCompleteInTargetRegions(
       Set<String> targetRegions,
       Admin.OfflinePushStatusInfo pushStatusInfo,
       ReadWriteStoreRepository repository,
@@ -326,12 +326,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       logMessageIfNotRedundant(message);
       store.updateVersionStatus(targetVersionNum, ERROR);
       repository.updateStore(store);
-      return true;
-    } else if (numFailedTargetRegions + numFailedTargetRegions != targetRegions.size()) {
-      return true;
+      return false;
+    } else if (numCompletedTargetRegions + numFailedTargetRegions != targetRegions.size()) {
+      return false;
     }
 
-    return false;
+    return true;
   }
 
   /**
@@ -438,7 +438,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             // If version status is marked as KILLED (push timeout, user killed push job, etc), check if target
             // regions failed
             if (targetVersion.getStatus() == VersionStatus.KILLED) {
-              if (didPushFailInTargetRegions(
+              if (!didPushCompleteInTargetRegions(
                   targetRegions,
                   pushStatusInfo,
                   repository,
