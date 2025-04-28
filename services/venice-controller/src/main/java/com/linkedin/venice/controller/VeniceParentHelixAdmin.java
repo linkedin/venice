@@ -72,9 +72,7 @@ import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
-import static com.linkedin.venice.meta.VersionStatus.KILLED;
-import static com.linkedin.venice.meta.VersionStatus.ONLINE;
-import static com.linkedin.venice.meta.VersionStatus.PUSHED;
+import static com.linkedin.venice.meta.VersionStatus.*;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
@@ -3785,15 +3783,12 @@ public class VeniceParentHelixAdmin implements Admin {
     Store parentStore = repository.getStore(storeName);
     Version version = parentStore.getVersion(versionNum);
 
-    // Mark parent version as PUSHED if push is complete in target regions for target region pushes with deferred swap
-    // This will allow the DeferredVersionSwapService to pick up the fact that the push is complete in target regions
-    // and begin monitoring
-    // the wait time for roll forward
-    boolean isParentVersionStatusPushed = parentStore.getVersionStatus(versionNum).equals(PUSHED);
-    if (isTargetRegionInTerminalStatus(targetedRegionSet, extraInfo) && !isParentVersionStatusPushed) {
-      parentStore.updateVersionStatus(versionNum, PUSHED);
-      repository.updateStore(parentStore);
-      LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, PUSHED);
+    // Check if push is in a terminal status in target regions for pushes using deferred swap and try
+    // updating the parent status. Parent status should only be updated if it is currently in a STARTED state to avoid
+    // multiple duplicate updates as vpj will keep polling until all regions are complete
+    boolean isParentVersionStatusStarted = parentStore.getVersionStatus(versionNum).equals(STARTED);
+    if (isTargetRegionPushWithDeferredSwap && isParentVersionStatusStarted) {
+      updateParentVersionStatusIfTerminal(targetedRegionSet, extraInfo, parentStore, repository, versionNum);
     }
 
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
@@ -3845,23 +3840,50 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Checks if the given list of target regions are in a terminal state for their push status
+   * Checks if all target regions have reached a terminal status (COMPLETED or ERROR). If all regions are in a COMPLETED
+   * state, mark the version status as PUSHED so the DeferredVersionSwapService can start monitoring the store to roll forward.
+   * If amy region's push failed, mark the version status as ERROR so the DeferredVersionSwapService doesn't try to roll forward
    * @param targetRegions
    * @param regionToPushStatusInfo
-   * @return
+   * @param parentStore
+   * @param repository
+   * @param versionNum
    */
-  private boolean isTargetRegionInTerminalStatus(
+  private void updateParentVersionStatusIfTerminal(
       Set<String> targetRegions,
-      Map<String, String> regionToPushStatusInfo) {
-    for (String region: regionToPushStatusInfo.keySet()) {
+      Map<String, String> regionToPushStatusInfo,
+      Store parentStore,
+      ReadWriteStoreRepository repository,
+      int versionNum) {
+    Set<String> completedRegions = new HashSet<>();
+    Set<String> failedRegions = new HashSet<>();
+    for (Map.Entry<String, String> entry: regionToPushStatusInfo.entrySet()) {
+      String region = entry.getKey();
       String pushStatus = regionToPushStatusInfo.get(region);
-      boolean isPushStatusTerminal = pushStatus.equals(ExecutionStatus.COMPLETED.toString())
-          || pushStatus.equals(ExecutionStatus.ERROR.toString());
-      if (targetRegions.contains(region) && !isPushStatusTerminal) {
-        return false;
+      if (targetRegions.contains(region)) {
+        if (pushStatus.equals(ExecutionStatus.COMPLETED.toString())) {
+          completedRegions.add(region);
+        } else if (pushStatus.equals(ExecutionStatus.ERROR.toString())) {
+          failedRegions.add(region);
+        }
       }
     }
-    return true;
+
+    if (completedRegions.size() == targetRegions.size()) {
+      parentStore.updateVersionStatus(versionNum, PUSHED);
+      repository.updateStore(parentStore);
+      LOGGER.info(
+          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          versionNum,
+          PUSHED);
+    } else if (failedRegions.size() > 0) {
+      parentStore.updateVersionStatus(versionNum, ERROR);
+      repository.updateStore(parentStore);
+      LOGGER.info(
+          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          versionNum,
+          ERROR);
+    }
   }
 
   /**
@@ -3902,12 +3924,12 @@ public class VeniceParentHelixAdmin implements Admin {
     boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
     boolean isTargetRegionPushWithDeferredSwap = isTargetRegionPush && version.isVersionSwapDeferred();
 
-    if (!isTargetRegionPush // Push is complete for a normal batch push w/o target region push
+    if ((!isTargetRegionPush // Push is complete for a normal batch push w/o target region push
         || isPushCompleteInAllRegionsForTargetRegionPush // Push is complete in all regions for a target region push w/o
                                                          // deferred swap
-        || isHybridStore // Push is to a hybrid store
-        || isTargetRegionPushWithDeferredSwap // Push is complete for a target region push with
-                                              // deferred swap
+        || isHybridStore) // Push is to a hybrid store
+        && !isTargetRegionPushWithDeferredSwap // Push is not a target region push with
+                                               // deferred swap
     ) {
       LOGGER.info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
       truncateTopicsOptionally(

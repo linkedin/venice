@@ -209,7 +209,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         continue;
       }
 
-      if (version.getIsDavinciHeartbeatReported()) {
+      if (version != null && version.getIsDavinciHeartbeatReported()) {
         String message = "Skipping version swap for store: " + storeName + " on version: " + targetVersionNum
             + " as there is a davinci heartbeat in region: " + region;
         logMessageIfNotRedundant(message);
@@ -333,17 +333,19 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Admin.OfflinePushStatusInfo pushStatusInfo,
       ReadWriteStoreRepository repository,
       Store store,
-      int targetVersionNum) {
+      int targetVersionNum,
+      String kafkaTopicName) {
     int numCompletedTargetRegions =
         getRegionsWithPushStatusCount(targetRegions, pushStatusInfo, ExecutionStatus.COMPLETED);
     int numFailedTargetRegions = getRegionsWithPushStatusCount(targetRegions, pushStatusInfo, ExecutionStatus.ERROR);
-    if (numFailedTargetRegions > targetRegions.size() / 2) {
+    if (numFailedTargetRegions > 0) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
-          + " as push failed in the majority of target regions. Completed target regions: " + numCompletedTargetRegions
+          + " as push failed in 1+ target regions. Completed target regions: " + numCompletedTargetRegions
           + " , failed target regions: " + numFailedTargetRegions + ", target regions: " + targetRegions;
       logMessageIfNotRedundant(message);
       store.updateVersionStatus(targetVersionNum, ERROR);
       repository.updateStore(store);
+      veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopicName);
       return true;
     }
 
@@ -372,6 +374,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     Set<String> failedNonTargetRegions = new HashSet<>();
     for (String nonTargetRegion: nonTargetRegions) {
       Version version = getVersionFromStoreInRegion(clusterName, nonTargetRegion, store.getName(), targetVersionNum);
+
+      // When a push is killed or errored out, the topic may have been cleaned up
+      if (version == null) {
+        failedNonTargetRegions.add(nonTargetRegion);
+        continue;
+      }
+
       if (version.getStatus().equals(VersionStatus.PUSHED)) {
         completedNonTargetRegions.add(nonTargetRegion);
       } else if (version.getStatus().equals(ERROR) || version.getStatus().equals(VersionStatus.KILLED)) {
@@ -462,7 +471,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   pushStatusInfo,
                   repository,
                   parentStore,
-                  targetVersionNum)) {
+                  targetVersionNum,
+                  kafkaTopicName)) {
                 continue;
               }
             }
@@ -470,7 +480,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             // Get eligible non target regions to roll forward in
             Set<String> nonTargetRegionsCompleted =
                 getRegionsToRollForward(remainingRegions, repository, parentStore, targetVersionNum, cluster);
-            if (nonTargetRegionsCompleted == null) {
+            if (nonTargetRegionsCompleted.isEmpty()) {
               continue;
             }
 

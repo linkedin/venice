@@ -15,6 +15,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -236,25 +237,21 @@ public class TestDeferredVersionSwap {
         Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.PUSHED);
       });
 
-      // Start a normal push
-      props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, false);
-      props.remove(TARGETED_REGION_PUSH_LIST);
-      TestWriteUtils.runPushJob("Test push job 2", props);
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 2),
-          parentControllerClient,
-          30,
-          TimeUnit.SECONDS);
-
-      // Verify that the latest version is 2
-      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
-        Map<String, Integer> coloVersions =
-            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-        coloVersions.forEach((colo, version) -> {
-          Assert.assertEquals((int) version, 2);
-        });
-      });
+      // Verify that we can't create a new version
+      VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
+          storeName,
+          1000,
+          Version.PushType.BATCH,
+          Version.guidBasedDummyPushId(),
+          true,
+          true,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
+      assertTrue(versionCreationResponse.isError());
     }
   }
 
@@ -369,8 +366,9 @@ public class TestDeferredVersionSwap {
       createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
 
       // Start push job with target region push enabled and check that it fails
+      String targetRegions = REGION1 + ", " + REGION2;
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
-      props.put(TARGETED_REGION_PUSH_LIST, REGION1 + ", " + REGION2);
+      props.put(TARGETED_REGION_PUSH_LIST, targetRegions);
       try {
         TestWriteUtils.runPushJob("Test push job", props);
       } catch (Exception e) {
@@ -385,50 +383,23 @@ public class TestDeferredVersionSwap {
         assertEquals(executionStatus, ExecutionStatus.ERROR);
       });
 
-      if (failingRegionsList.size() == 2) {
-        TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
-          Map<String, Integer> coloVersions =
-              parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+        Map<String, Integer> coloVersions =
+            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
 
-          coloVersions.forEach((colo, version) -> {
+        coloVersions.forEach((colo, version) -> {
+          if (targetRegions.contains(colo) && !failingRegionsList.contains(colo)) {
+            Assert.assertEquals((int) version, 1);
+          } else {
             Assert.assertEquals((int) version, 0);
-          });
-        });
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-          Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ERROR);
-        });
-      } else if (failingRegionsList.size() == 1) {
-        TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
-          Map<String, Integer> coloVersions =
-              parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-          coloVersions.forEach((colo, version) -> {
-            if (!failingRegionsList.contains(colo)) {
-              Assert.assertEquals((int) version, 1);
-            } else {
-              Assert.assertEquals((int) version, 0);
-            }
-          });
-        });
-
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-          Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.PARTIALLY_ONLINE);
-        });
-
-        // Check that child version status is marked as ONLINE if it didn't fail
-        for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
-          ControllerClient childControllerClient =
-              new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
-          if (!failingRegionsList.contains(childDatacenter.getRegionName())) {
-            StoreResponse store = childControllerClient.getStore(storeName);
-            Optional<Version> version = store.getStore().getVersion(1);
-            assertNotNull(version);
-            assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
           }
-        }
-      }
+        });
+      });
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ERROR);
+      });
 
       // Verify that we can create a new version
       VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
@@ -640,123 +611,6 @@ public class TestDeferredVersionSwap {
       });
 
       client2.close();
-    }
-  }
-
-  @Test(timeOut = TEST_TIMEOUT * 2)
-  public void testDvcDelayedIngestionInNonTargetRegionPolling() throws Exception {
-    // Setup job properties
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
-    storeParms.setTargetRegionSwapWaitTime(1);
-    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
-    String keySchemaStr = "\"int\"";
-    String valueSchemaStr = "\"int\"";
-
-    // Create store + start a normal push
-    int keyCount = 100;
-    File inputDir = getTempDataDirectory();
-    TestWriteUtils.writeSimpleAvroFileWithIntToIntSchema(inputDir, keyCount);
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("testDvcDelayedIngestionWithTargetRegion");
-    Properties props =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
-      createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, valueSchemaStr, props, storeParms).close();
-      TestWriteUtils.runPushJob("Test push job", props);
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 1),
-          parentControllerClient,
-          30,
-          TimeUnit.SECONDS);
-
-      // Version should only be swapped in all regions
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
-        Map<String, Integer> coloVersions =
-            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-        coloVersions.forEach((colo, version) -> {
-          Assert.assertEquals((int) version, 1);
-        });
-      });
-    }
-
-    // Create dvc client in non target region
-    List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
-    VeniceClusterWrapper cluster1 = childDatacenters.get(0).getClusters().get(CLUSTER_NAMES[0]);
-    VeniceProperties backendConfig = DaVinciTestContext.getDaVinciPropertyBuilder(cluster1.getZk().getAddress())
-        .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-        .put(LOCAL_REGION_NAME, REGION2)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .build();
-    DaVinciClient<Object, Object> client1 =
-        ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster1, new DaVinciConfig(), backendConfig);
-    client1.subscribeAll().get();
-
-    // Check that v1 is ingested
-    for (int i = 1; i <= keyCount; i++) {
-      assertNotNull(client1.get(i).get());
-    }
-
-    // Do another push with target region enabled
-    int keyCount2 = 200;
-    File inputDir2 = getTempDataDirectory();
-    String inputDirPath2 = "file://" + inputDir2.getAbsolutePath();
-    TestWriteUtils.writeSimpleAvroFileWithIntToIntSchema(inputDir2, keyCount2);
-    Properties props2 =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath2, storeName);
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
-      props2.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
-      props2.put(TARGETED_REGION_PUSH_LIST, REGION1);
-      TestWriteUtils.runPushJob("Test push job", props2);
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 2),
-          parentControllerClient,
-          30,
-          TimeUnit.SECONDS);
-
-      // Version should only be swapped in the target region
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
-        Map<String, Integer> coloVersions =
-            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-        coloVersions.forEach((colo, version) -> {
-          if (colo.equals(REGION1)) {
-            Assert.assertEquals((int) version, 2);
-          } else {
-            Assert.assertEquals((int) version, 1);
-          }
-        });
-      });
-
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-        Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.PUSHED);
-      });
-
-      // check dvc client ingested the version
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        for (int i = 101; i <= keyCount2; i++) {
-          assertNotNull(client1.get(i).get());
-        }
-      });
-
-      // check push completion
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        String kafkaTopicName = Version.composeKafkaTopic(storeName, 2);
-        JobStatusQueryResponse response =
-            parentControllerClient.queryOverallJobStatus(kafkaTopicName, Optional.empty());
-        assertEquals(response.getStatus(), ExecutionStatus.COMPLETED.toString());
-      });
-
-      // Version should be swapped in all regions
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
-        Map<String, Integer> coloVersions =
-            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-        coloVersions.forEach((colo, version) -> {
-          Assert.assertEquals((int) version, 2);
-        });
-      });
     }
   }
 }
