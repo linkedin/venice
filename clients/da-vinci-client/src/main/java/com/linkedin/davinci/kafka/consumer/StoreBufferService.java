@@ -245,8 +245,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   private static void processCommand(
       CommandQueueNode cmd,
       StoreIngestionTask ingestionTask,
-      PartitionConsumptionState pcs,
-      PubSubTopicPartition topicPartition) {
+      PartitionConsumptionState pcs) {
     // We only support SYNC_OFFSET command for now.
     if (cmd.getCommandType() != CommandQueueNode.CommandType.SYNC_OFFSET) {
       throw new VeniceException("Unsupported command type: " + cmd.getCommandType());
@@ -254,8 +253,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     cmd.executeSync(() -> {
       if (pcs == null) {
-        String msg = "PCS for topic-partition: {} is null. Skipping {} command in StoreBufferDrainer.";
-        LOGGER.warn(msg, topicPartition, cmd.getCommandType());
+        LOGGER.warn(
+            "PCS for topic-partition: {} is null. Skipping {} command in StoreBufferDrainer.",
+            cmd.getConsumerRecord().getTopicPartition(),
+            cmd.getCommandType());
       } else {
         ingestionTask.updateOffsetMetadataAndSyncOffset(pcs);
       }
@@ -749,8 +750,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
             processCommand(
                 (CommandQueueNode) node,
                 ingestionTask,
-                ingestionTask.getPartitionConsumptionState(partitionNum),
-                consumerRecord.getTopicPartition());
+                ingestionTask.getPartitionConsumptionState(partitionNum));
             continue;
           } else if (node instanceof SyncVtDivNode) {
             ((SyncVtDivNode) node).execute();
