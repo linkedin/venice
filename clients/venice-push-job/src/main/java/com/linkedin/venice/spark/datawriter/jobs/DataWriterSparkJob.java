@@ -8,6 +8,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.GENERATE_PARTIAL_UP
 import static com.linkedin.venice.vpj.VenicePushJobConstants.GLOB_FILTER_PATTERN;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
@@ -65,6 +66,7 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
     setInputConf(sparkSession, dataFrameReader, INPUT_PATH_PROP, new Path(pushJobSetting.inputURI).toString());
     setInputConf(sparkSession, dataFrameReader, KEY_FIELD_PROP, pushJobSetting.keyField);
     setInputConf(sparkSession, dataFrameReader, VALUE_FIELD_PROP, pushJobSetting.valueField);
+    setInputConf(sparkSession, dataFrameReader, RMD_SCHEMA_PROP, pushJobSetting.replicationMetadataSchemaString);
     if (pushJobSetting.timestampField != null) {
       setInputConf(sparkSession, dataFrameReader, TIMESTAMP_FIELD_PROP, pushJobSetting.timestampField);
     }
@@ -93,7 +95,6 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
   private Dataset<Row> getAvroDataFrame(SparkSession sparkSession, PushJobSetting pushJobSetting) {
     Dataset<Row> df =
         sparkSession.read().format("avro").option("pathGlobFilter", GLOB_FILTER_PATTERN).load(pushJobSetting.inputURI);
-
     // Transforming the input data format
     df = df.map((MapFunction<Row, Row>) (record) -> {
       Schema updateSchema = null;

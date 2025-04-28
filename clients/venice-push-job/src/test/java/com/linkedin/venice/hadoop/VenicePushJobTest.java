@@ -1168,7 +1168,7 @@ public class VenicePushJobTest {
     }).when(pushJob).getInputDataInfoProvider();
 
     doNothing().when(pushJob).validateKeySchema(any());
-    doNothing().when(pushJob).validateValueSchema(any(), any(), anyBoolean());
+    doNothing().when(pushJob).validateAndRetrieveValueSchemas(any(), any(), anyBoolean());
     doNothing().when(pushJob).runJobAndUpdateStatus();
   }
 

@@ -67,7 +67,14 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
       maybeSprayAllPartitions(recordEmitter, dataWriterTaskTracker);
     }
     firstRecord = false;
-    if (process(inputKey, inputValue, processedKey, processedValue, processedTimestamp, dataWriterTaskTracker)) {
+    if (process(
+        inputKey,
+        inputValue,
+        timestamp,
+        processedKey,
+        processedValue,
+        processedTimestamp,
+        dataWriterTaskTracker)) {
       // key/value pair is valid.
       recordEmitter.accept(processedKey.get(), processedValue.get(), processedTimestamp.get());
     }
@@ -100,13 +107,14 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
   protected boolean process(
       INPUT_KEY inputKey,
       INPUT_VALUE inputValue,
+      Long timestamp,
       AtomicReference<byte[]> keyRef,
       AtomicReference<byte[]> valueRef,
       AtomicReference<Long> timestampRef,
       DataWriterTaskTracker dataWriterTaskTracker) {
     byte[] recordKey = veniceRecordReader.getKeyBytes(inputKey, inputValue);
     byte[] recordValue = veniceRecordReader.getValueBytes(inputKey, inputValue);
-    long recordTimestamp = veniceRecordReader.getRecordTimestamp(inputKey, inputValue);
+    long recordTimestamp = timestamp;
     if (recordKey == null) {
       throw new VeniceException("Mapper received a empty key record");
     }

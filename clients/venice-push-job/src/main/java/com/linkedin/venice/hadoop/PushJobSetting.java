@@ -136,6 +136,8 @@ public class PushJobSetting implements Serializable {
   public Schema valueSchema;
   public String valueSchemaString;
 
+  public String replicationMetadataSchemaString;
+
   public VsonSchema vsonInputKeySchema;
   public String vsonInputKeySchemaString;
 

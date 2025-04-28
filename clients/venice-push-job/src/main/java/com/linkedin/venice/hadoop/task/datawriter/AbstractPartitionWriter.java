@@ -12,6 +12,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
@@ -40,6 +41,7 @@ import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -113,6 +115,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           null,
           callback,
           enableWriteCompute,
+          null,
           derivedValueSchemaId);
     }
 
@@ -125,6 +128,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         ByteBuffer rmdPayload,
         PubSubProducerCallback callback,
         boolean enableWriteCompute,
+        Schema rmdSchema,
         int derivedValueSchemaId) {
       this.keyBytes = keyBytes;
       this.valueBytes = valueBytes;
@@ -147,7 +151,10 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           writer.update(keyBytes, valueBytes, valueSchemaId, derivedValueSchemaId, callback);
         } else {
           if (this.logicalTimestamp > 0) {
-            writer.put(keyBytes, valueBytes, valueSchemaId, this.logicalTimestamp, callback, null);
+            PutMetadata putMetadata = new PutMetadata(
+                rmdVersionId,
+                RmdSchemaGenerator.generateRecordLevelTimestampMetadata(rmdSchema, this.logicalTimestamp));
+            writer.put(keyBytes, valueBytes, valueSchemaId, this.logicalTimestamp, callback, putMetadata);
           } else {
             writer.put(keyBytes, valueBytes, valueSchemaId, callback, null);
           }
@@ -184,6 +191,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private VeniceWriter<byte[], byte[], byte[]> mainWriter = null;
   private ComplexVeniceWriter[] childWriters = null;
   private int valueSchemaId = -1;
+  private Schema valueSchema = null;
   private int derivedValueSchemaId = -1;
   private boolean enableWriteCompute = false;
 
@@ -242,7 +250,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           (timeOfLastReduceFunctionStartInNS - timeOfLastReduceFunctionEndInNS);
     }
     if (key.length > 0 && (!hasReportedFailure(dataWriterTaskTracker, this.isDuplicateKeyAllowed))) {
-      VeniceWriterMessage message = extract(key, values, timestampIterator, dataWriterTaskTracker);
+      VeniceWriterMessage message = extract(key, values, timestampIterator, valueSchema, dataWriterTaskTracker);
       if (message != null) {
         try {
           sendMessageToKafka(dataWriterTaskTracker, message.getConsumer());
@@ -288,6 +296,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       byte[] keyBytes,
       Iterator<byte[]> values,
       Iterator<Long> timestampIterator,
+      Schema valueSchema,
       DataWriterTaskTracker dataWriterTaskTracker) {
     /**
      * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
@@ -314,6 +323,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         null,
         getCallback(),
         isEnableWriteCompute(),
+        valueSchema,
         getDerivedValueSchemaId());
   }
 
@@ -621,6 +631,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     this.duplicateKeyPrinter = initDuplicateKeyPrinter(props);
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
     this.callback = new PartitionWriterProducerCallback();
+    this.valueSchema =
+        props.getString(RMD_SCHEMA_PROP, "") != "" ? new Schema.Parser().parse(props.getString(RMD_SCHEMA_PROP)) : null;
     initStorageQuotaFields(props);
     /**
      * A dummy background task that reports progress every 5 minutes.

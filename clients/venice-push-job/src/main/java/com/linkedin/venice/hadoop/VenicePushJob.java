@@ -27,6 +27,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_JOB_STATUS_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_POLL_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_SSL_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_SSL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
@@ -73,6 +74,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUS
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
@@ -325,8 +327,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.jobServerName = props.getString(JOB_SERVER_NAME, "unknown_job_server");
     pushJobSettingToReturn.veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     pushJobSettingToReturn.enableSSL = props.getBoolean(ENABLE_SSL, DEFAULT_SSL_ENABLED);
-    // pushJobSettingToReturn.timestampField =
-    // props.getString(OPTIONAL_TIMESTAMP_FIELD_PROP, DEFAULT_OPTIONAL_TIMESTAMP_FIELD_PROP);
+    pushJobSettingToReturn.timestampField = props.getString(TIMESTAMP_FIELD_PROP, DEFAULT_TIMESTAMP_FIELD_PROP);
     if (pushJobSettingToReturn.enableSSL) {
       VPJSSLUtils.validateSslProperties(props);
     }
@@ -716,7 +717,10 @@ public class VenicePushJob implements AutoCloseable {
         }
 
         validateKeySchema(pushJobSetting);
-        validateValueSchema(controllerClient, pushJobSetting, pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
+        validateAndRetrieveValueSchemas(
+            controllerClient,
+            pushJobSetting,
+            pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
@@ -1789,12 +1793,11 @@ public class VenicePushJob implements AutoCloseable {
   /***
    * This method will talk to controller to validate value schema.
    */
-  void validateValueSchema(
+  void validateAndRetrieveValueSchemas(
       ControllerClient controllerClient,
       PushJobSetting setting,
       boolean schemaAutoRegisterFromPushJobEnabled) {
     LOGGER.info("Validating value schema: {} for store: {}", pushJobSetting.valueSchemaString, setting.storeName);
-
     SchemaResponse getValueSchemaIdResponse;
     if (setting.enableWriteCompute) {
       if (!isUpdateSchema(pushJobSetting.valueSchemaString)) {
@@ -1892,6 +1895,25 @@ public class VenicePushJob implements AutoCloseable {
       // Get value schema ID successfully
       setSchemaIdPropInPushJobSetting(pushJobSetting, getValueSchemaIdResponse, setting.enableWriteCompute);
     }
+
+    // Retrieve metadata and timestamp schemas, we should do this last as this is pending potentially newly registered
+    // schemas
+    // with the push job
+    MultiSchemaResponse replicationSchemasResponse = ControllerClient.retryableRequest(
+        controllerClient,
+        setting.controllerRetries,
+        c -> c.getAllReplicationMetadataSchemas(setting.storeName));
+    if (replicationSchemasResponse.isError()) {
+      LOGGER.error("Failed to fetch replication metadata schemas!" + replicationSchemasResponse.getError());
+    } else {
+      // We only need a single valid schema, so getting the first one is good enough.
+      if (replicationSchemasResponse.getSchemas().length > 0) {
+        pushJobSetting.replicationMetadataSchemaString = replicationSchemasResponse.getSchemas()[0].getSchemaStr();
+      } else {
+        LOGGER.info("No replication schemas associated with the store!");
+      }
+    }
+
     LOGGER.info(
         "Got schema id: {} for value schema: {} of store: {}",
         pushJobSetting.valueSchemaId,

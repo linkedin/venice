@@ -127,6 +127,7 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
       if (mapper.process(
           EMPTY_KEY,
           generateKIFRecord(),
+          -1L,
           EMPTY_BYTE_REF,
           EMPTY_BYTE_REF,
           EMPTY_LONG_REF,
@@ -151,7 +152,7 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
     // Trigger manually to set the dummy filterChain
     mapper.configureTask(any());
 
-    Assert.assertFalse(mapper.process(null, null, null, null, null, mock(DataWriterTaskTracker.class)));
+    Assert.assertFalse(mapper.process(null, null, -1L, null, null, null, mock(DataWriterTaskTracker.class)));
   }
 
   private KafkaInputMapperValue generateKIFRecord() {

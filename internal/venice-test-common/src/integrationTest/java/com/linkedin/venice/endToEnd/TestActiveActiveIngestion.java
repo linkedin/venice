@@ -15,6 +15,7 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRe
 import static com.linkedin.venice.utils.TestUtils.generateInput;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
@@ -22,7 +23,9 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_REC
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_ENABLED;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.venice.ConfigKeys;
@@ -47,6 +50,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
@@ -243,6 +247,52 @@ public class TestActiveActiveIngestion {
       }
       // Half records are valid, another half is not
       Assert.assertEquals(validGet, 10);
+    }
+
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // Run Samza job to send PUT requests
+      runSamzaStreamJob(veniceProducer, storeName, "stream_", mockTime, 10, 0, 80);
+    }
+
+    // Alright. For our last trick, we'll try and push a version which has timestamps specified in the job from spark.
+    // WHERE IS YOUR GOD NOW!?!?
+    Long newTimestamp = System.currentTimeMillis() + TimeUnit.DAYS.toMillis(1000);
+    Long oldTimestamp = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1000);
+    TestWriteUtils
+        .writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, 100, "string2string.avro", oldTimestamp);
+    props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
+    props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
+    props.setProperty(TIMESTAMP_FIELD_PROP, "timestamp");
+    TestWriteUtils.runPushJob("Run push job", props);
+
+    // All streaming writes should succeed
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(clusterWrapper.getRandomRouterURL()))) {
+      for (int i = 80; i < 90; i++) {
+        Object result = client.get(Integer.toString(i)).get();
+        if (result != null) {
+          String value = result.toString();
+          Assert.assertTrue(value.contains("stream_"), "Expected value to contain 'stream_' but got: " + value);
+        }
+      }
+    }
+
+    TestWriteUtils
+        .writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, 100, "string2string.avro", newTimestamp);
+    TestWriteUtils.runPushJob("Run push job", props);
+
+    // All of these writes should fail now
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(clusterWrapper.getRandomRouterURL()))) {
+      for (int i = 80; i < 90; i++) {
+        Object result = client.get(Integer.toString(i)).get();
+        if (result != null) {
+          String value = result.toString();
+          Assert.assertFalse(value.contains("stream_"), "Expected value to NOT contain 'stream_' but got: " + value);
+        }
+      }
     }
   }
 
@@ -528,13 +578,24 @@ public class TestActiveActiveIngestion {
       int numPuts,
       int numDels,
       int startIdx) {
+    runSamzaStreamJob(veniceProducer, storeName, "stream_", mockedTime, numPuts, numDels, startIdx);
+  }
+
+  private void runSamzaStreamJob(
+      VeniceSystemProducer veniceProducer,
+      String storeName,
+      String valuePrefix,
+      Time mockedTime,
+      int numPuts,
+      int numDels,
+      int startIdx) {
     // Send PUT requests.
     for (int i = startIdx; i < startIdx + numPuts; i++) {
       sendStreamingRecord(
           veniceProducer,
           storeName,
           Integer.toString(i),
-          "stream_" + i,
+          valuePrefix + i,
           mockedTime == null ? null : mockedTime.getMilliseconds());
     }
     // Send DELETE requests.

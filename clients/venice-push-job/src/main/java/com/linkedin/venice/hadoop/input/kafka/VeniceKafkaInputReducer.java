@@ -31,6 +31,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import javax.annotation.Nonnull;
+import org.apache.avro.Schema;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -128,6 +129,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       byte[] key,
       Iterator<byte[]> valueIterator,
       Iterator<Long> timestampIterator,
+      Schema valueSchema,
       DataWriterTaskTracker dataWriterTaskTracker) {
     KafkaInputMapperKey mapperKey = KAFKA_INPUT_MAPPER_KEY_AVRO_SPECIFIC_DESERIALIZER.deserialize(key);
     byte[] keyBytes = ByteUtils.extractByteArray(mapperKey.key);
@@ -194,6 +196,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
           value.getReplicationMetadataPayload(),
           getCallback(),
           isEnableWriteCompute(),
+          null,
           getDerivedValueSchemaId());
     }
   }
@@ -221,6 +224,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
             latestMapperValue.replicationMetadataPayload,
             getCallback(),
             isEnableWriteCompute(),
+            null,
             getDerivedValueSchemaId());
       }
       return null;
@@ -236,6 +240,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
           latestMapperValue.replicationMetadataPayload,
           getCallback(),
           isEnableWriteCompute(),
+          null,
           getDerivedValueSchemaId());
     }
     return new AbstractPartitionWriter.VeniceWriterMessage(

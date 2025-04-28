@@ -1,7 +1,24 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_TIMESTAMP_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_INPUT_FILE_DATA_SIZE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_ZSTD_COMPRESSION_DICTIONARY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_TRUST_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.google.common.base.CaseFormat;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -136,6 +153,10 @@ public class TestWriteUtils {
       new PushInputSchemaBuilder().setKeySchema(INT_SCHEMA).setValueSchema(INT_SCHEMA).build();
   public static final Schema STRING_TO_STRING_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(STRING_SCHEMA).build();
+  public static final Schema STRING_TO_STRING_WITH_TIMESTAMP = new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
+      .setValueSchema(STRING_SCHEMA)
+      .setFieldSchema(DEFAULT_TIMESTAMP_FIELD_PROP, Schema.create(Schema.Type.LONG))
+      .build();
 
   public static final Schema STRING_TO_NAME_WITH_TIMESTAMP_RECORD_V1_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
@@ -230,6 +251,22 @@ public class TestWriteUtils {
 
   public static Schema writeSimpleAvroFileWithStringToStringSchema(File parentDir) throws IOException {
     return writeSimpleAvroFileWithStringToStringSchema(parentDir, DEFAULT_USER_DATA_RECORD_COUNT);
+  }
+
+  public static Schema writeSimpleAvroFileWithStringToStringAndTimestampSchema(
+      File parentDir,
+      int recordCount,
+      String fileName,
+      long timestamp) throws IOException {
+    return writeAvroFile(parentDir, fileName, STRING_TO_STRING_WITH_TIMESTAMP, (recordSchema, writer) -> {
+      for (int i = 1; i <= recordCount; ++i) {
+        GenericRecord user = new GenericData.Record(recordSchema);
+        user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
+        user.put(DEFAULT_TIMESTAMP_FIELD_PROP, timestamp);
+        writer.append(user);
+      }
+    });
   }
 
   public static Schema writeSimpleAvroFileWithStringToStringSchema(File parentDir, int recordCount) throws IOException {
