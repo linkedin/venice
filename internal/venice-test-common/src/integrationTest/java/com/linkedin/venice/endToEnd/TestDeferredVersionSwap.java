@@ -697,13 +697,13 @@ public class TestDeferredVersionSwap {
         });
       });
 
-      // Version status should be PARTIALLY_ONLINE
+      // Version status should be ERROR
       TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, () -> {
         StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
         Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.ERROR);
       });
 
-      // verify that dvc client ingested the version
+      // verify that dvc client did not ingest the version
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         for (int i = 101; i <= keyCount2; i++) {
           assertNull(client1.get(i).get());

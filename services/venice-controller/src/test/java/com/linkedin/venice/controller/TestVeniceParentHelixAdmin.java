@@ -1704,6 +1704,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = mock(Store.class);
     doReturn(false).when(store).isIncrementalPushEnabled();
     doReturn(null).when(store).getVersion(anyInt());
+    doReturn(VersionStatus.STARTED).when(store).getVersionStatus(anyInt());
     doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
     HelixVeniceClusterResources resources = mock(HelixVeniceClusterResources.class);
     doReturn(mock(ClusterLockManager.class)).when(resources).getClusterLockManager();
@@ -1872,6 +1873,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = mock(Store.class);
     doReturn(false).when(store).isIncrementalPushEnabled();
     doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
+    doReturn(VersionStatus.STARTED).when(store).getVersionStatus(anyInt());
 
     Version version = mock(Version.class);
     doReturn(version).when(store).getVersion(anyInt());
