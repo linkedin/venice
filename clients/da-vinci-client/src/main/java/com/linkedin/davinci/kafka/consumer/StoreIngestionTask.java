@@ -891,7 +891,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return returnStatus;
   }
 
-  private void beginBatchWrite(int partitionId, boolean sorted, PartitionConsumptionState partitionConsumptionState) {
+  private void beginBatchWrite(boolean sorted, PartitionConsumptionState partitionConsumptionState) {
     Map<String, String> checkpointedDatabaseInfo = partitionConsumptionState.getOffsetRecord().getDatabaseInfo();
     StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(sorted, partitionConsumptionState);
     partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
@@ -1235,7 +1235,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processStartOfPush(
             record.getValue(),
             controlMessage,
-            record.getTopicPartition().getPartitionNumber(),
             partitionConsumptionStateMap.get(topicPartition.getPartitionNumber()));
       }
     }
@@ -2179,7 +2178,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         /**
          * Notify the underlying store engine about starting batch push.
          */
-        beginBatchWrite(partition, sorted, newPartitionConsumptionState);
+        beginBatchWrite(sorted, newPartitionConsumptionState);
 
         newPartitionConsumptionState.setStartOfPushTimestamp(storeVersionState.startOfPushTimestamp);
         newPartitionConsumptionState.setEndOfPushTimestamp(storeVersionState.endOfPushTimestamp);
@@ -3083,7 +3082,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void processStartOfPush(
       KafkaMessageEnvelope startOfPushKME,
       ControlMessage controlMessage,
-      int partition,
       PartitionConsumptionState partitionConsumptionState) {
     StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
     /*
@@ -3179,13 +3177,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         });
 
     ingestionNotificationDispatcher.reportStarted(partitionConsumptionState);
-    beginBatchWrite(partition, persistedStoreVersionState.sorted, partitionConsumptionState);
+    beginBatchWrite(persistedStoreVersionState.sorted, partitionConsumptionState);
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
   }
 
   protected void processEndOfPush(
       KafkaMessageEnvelope endOfPushKME,
-      int partition,
       long offset,
       PartitionConsumptionState partitionConsumptionState) {
 
@@ -3335,7 +3332,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         break;
       case END_OF_PUSH:
-        processEndOfPush(kafkaMessageEnvelope, partition, offset, partitionConsumptionState);
+        processEndOfPush(kafkaMessageEnvelope, offset, partitionConsumptionState);
         break;
       case START_OF_SEGMENT:
         break;
@@ -4120,7 +4117,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // {@link LeaderFollowerStoreIngestionTask#hasProducedToKafka(ConsumerRecord)}. This must be always set to true
     // except
     // as needed in integration test.
-    if (purgeTransientRecordBuffer && isTransientRecordBufferUsed() && partitionConsumptionState.isEndOfPushReceived()
+    if (purgeTransientRecordBuffer && isTransientRecordBufferUsed(partitionConsumptionState)
         && leaderProducedRecordContext != null && leaderProducedRecordContext.getConsumedOffset() != -1) {
       partitionConsumptionState.mayRemoveTransientRecord(
           leaderProducedRecordContext.getConsumedKafkaClusterId(),
@@ -4724,11 +4721,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * This is not a per record state. Rather it's used to indicate if the transient record buffer is being used at all
-   * for this ingestion task or not.
-   * For L/F mode only WC ingestion task needs this buffer.
+   * for this ingestion task/partition or not. The criterias are the following:
+   *
+   * 1. For L/F mode only WC ingestion task needs this buffer.
+   * 2. The transient record buffer is only used post-EOP.
    */
-  public boolean isTransientRecordBufferUsed() {
-    return isWriteComputationEnabled;
+  public boolean isTransientRecordBufferUsed(PartitionConsumptionState partitionConsumptionState) {
+    return this.isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived();
   }
 
   // Visible for unit test.

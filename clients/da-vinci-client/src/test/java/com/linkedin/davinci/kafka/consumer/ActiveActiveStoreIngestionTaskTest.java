@@ -374,7 +374,7 @@ public class ActiveActiveStoreIngestionTaskTest {
             .build();
     VeniceWriter<byte[], byte[], byte[]> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
-    when(ingestionTask.isTransientRecordBufferUsed()).thenReturn(true);
+    when(ingestionTask.isTransientRecordBufferUsed(any())).thenReturn(true);
     when(ingestionTask.getVeniceWriter(any())).thenReturn(Lazy.of(() -> writer));
     StringBuilder stringBuilder = new StringBuilder();
     for (int i = 0; i < 50000; i++) {

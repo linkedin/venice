@@ -1293,12 +1293,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * For Active-Active this buffer is always used.
+   * For Active-Active this buffer is always used, as long as we're post-EOP.
    * @return
    */
   @Override
-  public boolean isTransientRecordBufferUsed() {
-    return true;
+  public boolean isTransientRecordBufferUsed(PartitionConsumptionState partitionConsumptionState) {
+    return partitionConsumptionState.isEndOfPushReceived();
   }
 
   @Override
