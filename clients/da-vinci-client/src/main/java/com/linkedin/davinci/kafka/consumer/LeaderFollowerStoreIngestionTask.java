@@ -2372,7 +2372,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * The caller of this function should only process this {@param consumerRecord} further if the return is
    * {@link DelegateConsumerRecordResult#QUEUED_TO_DRAINER}.
    *
-   * This function assumes {@link #shouldProcessRecord(PubSubMessage)} has been called which happens in
+   * This function assumes {@link #shouldProcessRecord(DefaultPubSubMessage)} has been called which happens in
    * {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka(Iterable, PubSubTopicPartition, String, int)}
    * before calling this and the it was decided that this record needs to be processed. It does not perform any
    * validation check on the PartitionConsumptionState object to keep the goal of the function simple and not overload.
@@ -3288,7 +3288,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * For WC enabled stores update the transient record map with the latest {key,value}. This is needed only for messages
          * received from RT. Messages received from VT have been persisted to disk already before switching to RT topic.
          */
-        if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
+        if (isTransientRecordBufferUsed(partitionConsumptionState)) {
           partitionConsumptionState.setTransientRecord(
               kafkaClusterId,
               consumerRecord.getPosition().getNumericOffset(),
@@ -3423,7 +3423,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         /**
          * For WC enabled stores update the transient record map with the latest {key,null} for similar reason as mentioned in PUT above.
          */
-        if (isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived()) {
+        if (isTransientRecordBufferUsed(partitionConsumptionState)) {
           partitionConsumptionState
               .setTransientRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), keyBytes, -1, null);
         }
