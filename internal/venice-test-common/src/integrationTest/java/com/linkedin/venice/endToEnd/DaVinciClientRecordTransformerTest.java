@@ -174,6 +174,8 @@ public class DaVinciClientRecordTransformerTest {
           VeniceProperties.empty(),
           null)) {
         producer.asyncDelete(1).get();
+        producer.asyncDelete(2).get();
+        producer.asyncDelete(3).get();
 
         // Validate metrics
         String metricPrefix = "." + storeName + "_total--";
@@ -182,7 +184,7 @@ public class DaVinciClientRecordTransformerTest {
         String deleteLatency = metricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + metricPostfix;
 
         TestUtils.waitForNonDeterministicAssertion(
-            60,
+            10,
             TimeUnit.SECONDS,
             true,
             () -> assertTrue(metricsRepository.getMetric(deleteLatency).value() > 0));
