@@ -14,12 +14,16 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.memory.ClassSizeEstimator;
 import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -65,6 +69,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   private final RecordHandler leaderRecordHandler;
   private final StoreBufferServiceStats storeBufferServiceStats;
+  private final VeniceConcurrentHashMap<PubSubTopic, Integer> sepRtHashCodeCache = new VeniceConcurrentHashMap<>();
 
   private final boolean isSorted;
 
@@ -146,13 +151,29 @@ public class StoreBufferService extends AbstractStoreBufferService {
     return blockingQueueArr.get(drainerIndex);
   }
 
+  /**
+   * {@link #getDrainerIndexForConsumerRecord} hashes topic name and partition to a drainer. The different naming
+   * convention suffixes for RT (_rt) and Separate RT (_rt_sep) means that different drainers would be assigned because
+   * the topic name is "different", when the same drainer should be used for both. Converting the topic name fixes this.
+   */
+  public int getHashCode(PubSubTopic topic) {
+    if (topic.isSeparateRealTimeTopic()) {
+      return sepRtHashCodeCache.computeIfAbsent(topic, inputTopic -> {
+        String rtName = Utils.getRealTimeTopicNameFromSeparateRealTimeTopic(inputTopic.getName());
+        PubSubTopic convertedTopic = new PubSubTopicImpl(rtName);
+        return convertedTopic.hashCode();
+      });
+    }
+    return topic.hashCode();
+  }
+
   protected int getDrainerIndexForConsumerRecord(DefaultPubSubMessage consumerRecord, int partition) {
     /**
      * This will guarantee that 'topicHash' will be a positive integer, whose maximum value is
      * {@link Integer.MAX_VALUE} / 2 + 1, which could make sure 'topicHash + consumerRecord.partition()' should be
      * positive for most time to guarantee even partition assignment.
      */
-    int topicHash = Math.abs(consumerRecord.getTopicPartition().getPubSubTopic().hashCode() / 2);
+    int topicHash = Math.abs(getHashCode(consumerRecord.getTopicPartition().getPubSubTopic()) / 2);
     return Math.abs((topicHash + partition) % this.drainerNum);
   }
 
