@@ -16,7 +16,6 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.memory.ClassSizeEstimator;
 import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -148,14 +147,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
      * different naming conventions for RT (_rt) and Separate RT (_rt_sep), different drainers might be assigned while
      * the same drainer handling both topics would help with concurrency. Normalizing the topic name fixes this issue.
      */
-    this.hashCodeCache = Caffeine.newBuilder().maximumSize(2000).build(topic -> {
-      if (topic.isSeparateRealTimeTopic()) {
-        String realTimeTopicName = Utils.getRealTimeTopicNameFromSeparateRealTimeTopic(topic.getName());
-        PubSubTopic normalizedTopic = new PubSubTopicImpl(realTimeTopicName);
-        return normalizedTopic.hashCode();
-      }
-      return topic.hashCode();
-    });
+    this.hashCodeCache = Caffeine.newBuilder().maximumSize(2000).build(Utils::calculateTopicHashCode);
   }
 
   protected MemoryBoundBlockingQueue<QueueNode> getDrainerForConsumerRecord(
@@ -171,7 +163,11 @@ public class StoreBufferService extends AbstractStoreBufferService {
      * {@link Integer.MAX_VALUE} / 2 + 1, which could make sure 'topicHash + consumerRecord.partition()' should be
      * positive for most time to guarantee even partition assignment.
      */
-    int topicHash = Math.abs(hashCodeCache.get(consumerRecord.getTopicPartition().getPubSubTopic()) / 2);
+    Integer topicHashCode = hashCodeCache.get(consumerRecord.getTopicPartition().getPubSubTopic());
+    if (topicHashCode == null) { // this should never happen, but FindBugs linting needs to be soothed
+      topicHashCode = Utils.calculateTopicHashCode(consumerRecord.getTopicPartition().getPubSubTopic());
+    }
+    int topicHash = Math.abs(topicHashCode / 2);
     return Math.abs((topicHash + partition) % this.drainerNum);
   }
 
