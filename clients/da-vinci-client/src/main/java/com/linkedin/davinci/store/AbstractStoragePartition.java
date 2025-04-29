@@ -113,7 +113,12 @@ public abstract class AbstractStoragePartition {
   /**
    * Creates a snapshot of the current state of the storage if the blob transfer feature is enabled via the store configuration
    */
-  public abstract void createSnapshot();
+  public abstract void createSnapshot(String fullPathForPartitionDBSnapshot);
+
+  /**
+   * Notify the snapshot creation listener about the trigger event.
+   */
+  public abstract void notifySnapshotCreationListener();
 
   /**
    * checks whether the current state of the database is valid

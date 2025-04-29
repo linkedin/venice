@@ -109,6 +109,7 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
@@ -3223,18 +3224,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Generate snapshot after batch write is done.
      */
     if (storeVersionConfig.isBlobTransferEnabled() && serverConfig.isBlobTransferManagerEnabled()) {
-      // 1. Add the pre-snapshot listener to partition for hybrid stores. No need to listen to batch stores.
-      if (isHybridMode()) {
-        try {
-          addBlobTransferSnapshotCreationListener(storageEngine, partition);
-        } catch (Exception e) {
-          LOGGER
-              .warn("Failed to setup pre-snapshot listener for topic {} partition {}", kafkaVersionTopic, partition, e);
-        }
+      // 1. Add the pre snapshot listener to partition for all stores.
+      try {
+        addBlobTransferSnapshotCreationListener(storageEngine, partition, this);
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Failed to setup snapshot creation listener for topic {} partition {}",
+            kafkaVersionTopic,
+            partition,
+            e);
       }
-
-      // 2. Create snapshot for blob transfer
-      storageEngine.createSnapshot(storagePartitionConfig);
+      // 2. Notify the listener to create snapshot after end of push for batch store.
+      // hybrid store snapshot is created when receiving requests.
+      if (!isHybridMode()) {
+        storageEngine.getPartitionOrThrow(storagePartitionConfig.getPartitionId()).notifySnapshotCreationListener();
+      }
     }
 
     /**
@@ -4946,24 +4950,54 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * A method that adds the snapshot creation event listener for the given partition.
-   * And also overrides the pre snapshot creation handler, which will sync the offset for the given partition.
-   * @param storageEngine
-   * @param partitionId
+   * And also overrides syncOffsetAndCreateSnapshot, which will sync the offset and create snapshot for that parition.
    */
-  private void addBlobTransferSnapshotCreationListener(AbstractStorageEngine storageEngine, int partitionId) {
+  private void addBlobTransferSnapshotCreationListener(
+      AbstractStorageEngine storageEngine,
+      int partitionId,
+      StoreIngestionTask storeIngestionTask) {
     AbstractStoragePartition rocksDBPartition = storageEngine.getPartitionOrThrow(partitionId);
     rocksDBPartition.addPartitionSnapshotListener(new BlobTransferUtils.BlobTransferSnapshotCreationListener() {
       @Override
-      public void preSnapshotCreationHandler(String storeNameAndVersion, int partitionId) {
-        LOGGER
-            .info("Beginning pre-snapshot offset sync for store: {}, partition: {}", storeNameAndVersion, partitionId);
+      public void syncOffsetAndCreateSnapshot(String storeNameAndVersion, int partitionId) {
+        LOGGER.info(
+            "Beginning sync offset and snapshot creation process for store: {}, partition: {}",
+            storeName,
+            partitionId);
+        PubSubTopicPartition topicPartition =
+            new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(storeName), partitionId);
+
         try {
-          syncOffset(storeNameAndVersion, getPartitionConsumptionState(partitionId));
-          LOGGER.info("Completed pre-snapshot sync for store: {}, partition: {}", storeNameAndVersion, partitionId);
+          CompletableFuture<Void> cmdFuture =
+              storeBufferService.execSyncOffsetCommandAsync(topicPartition, storeIngestionTask);
+
+          cmdFuture.thenRunAsync(() -> {
+            try {
+              LOGGER.info(
+                  "Offset sync completed, start creating snapshot for store: {}, partition: {}",
+                  storeName,
+                  partitionId);
+
+              AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(storeNameAndVersion);
+              if (storageEngine != null) {
+                AbstractStoragePartition partition = storageEngine.getPartitionOrThrow(partitionId);
+                String fullPathForPartitionDBSnapshot =
+                    RocksDBUtils.composeSnapshotDir(serverConfig.getRocksDBPath(), storeNameAndVersion, partitionId);
+                partition.createSnapshot(fullPathForPartitionDBSnapshot);
+              }
+            } catch (Exception e) {
+              LOGGER.error(
+                  "Failed to create snapshot after offset sync for store: {}, partition: {}",
+                  storeName,
+                  partitionId,
+                  e);
+            }
+          });
         } catch (Exception e) {
-          throw new VeniceException(
-              "Interrupted while syncing offset before snapshot creation for store : " + storeNameAndVersion
-                  + ", partition: " + partitionId,
+          LOGGER.error(
+              "Failed to initiate offset sync for snapshot creation for store: {}, partition: {}",
+              storeName,
+              partitionId,
               e);
         }
       }

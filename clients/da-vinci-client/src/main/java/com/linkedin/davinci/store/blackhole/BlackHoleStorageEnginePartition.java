@@ -84,7 +84,12 @@ public class BlackHoleStorageEnginePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public void createSnapshot() {
+  public void notifySnapshotCreationListener() {
+    throw new UnsupportedOperationException("Method not implemented!");
+  }
+
+  @Override
+  public void createSnapshot(String fullPathForPartitionDBSnapshot) {
     throw new UnsupportedOperationException("Method not implemented!");
   }
 

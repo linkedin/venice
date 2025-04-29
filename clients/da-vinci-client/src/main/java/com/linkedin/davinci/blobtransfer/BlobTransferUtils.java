@@ -43,11 +43,11 @@ public class BlobTransferUtils {
 
   /**
    * Listener interface for blob transfer snapshot operations.
-   * Implementations of this interface can define actions to be performed before the snapshot creation.
+   * Implementations of this interface can define actions to be performed during the snapshot creation.
    */
   public interface BlobTransferSnapshotCreationListener {
-    // Handler the event of pre-snapshot creation
-    void preSnapshotCreationHandler(String storeNameAndVersion, int partitionId);
+    // Handler the event of snapshot creation
+    void syncOffsetAndCreateSnapshot(String storeNameAndVersion, int partitionId);
   }
 
   /**
