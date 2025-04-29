@@ -1,16 +1,24 @@
 package com.linkedin.venice.utils;
 
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.exceptions.ZkDataAccessException;
 import com.linkedin.venice.meta.Instance;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.apache.helix.AccessOption;
 import org.apache.helix.HelixException;
 import org.apache.helix.cloud.constants.CloudProvider;
+import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.model.CloudConfig;
+import org.apache.helix.zookeeper.zkclient.DataUpdater;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -73,5 +81,31 @@ public class TestHelixUtils {
             cloudInfoSources,
             "com.linkedin.venice.controller.helix",
             ""));
+  }
+
+  @Test
+  public void testCompareAndUpdate() {
+    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
+    String testPath = "/test/path";
+    DataUpdater<String> dataUpdater = mock(DataUpdater.class);
+
+    doReturn(true).when(mockDataAccessor).update(testPath, dataUpdater, AccessOption.PERSISTENT);
+
+    HelixUtils.compareAndUpdate(mockDataAccessor, testPath, 3, dataUpdater);
+
+    verify(mockDataAccessor, times(1)).update(testPath, dataUpdater, AccessOption.PERSISTENT);
+  }
+
+  @Test
+  public void testCompareAndUpdateFailsAfterRetries() {
+    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
+    String testPath = "/test/path";
+    DataUpdater<String> dataUpdater = mock(DataUpdater.class);
+
+    doReturn(false).when(mockDataAccessor).update(testPath, dataUpdater, AccessOption.PERSISTENT);
+
+    Assert.assertThrows(ZkDataAccessException.class, () -> {
+      HelixUtils.compareAndUpdate(mockDataAccessor, testPath, 3, dataUpdater);
+    });
   }
 }
