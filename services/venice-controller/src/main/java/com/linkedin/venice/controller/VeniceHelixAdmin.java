@@ -4649,8 +4649,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .append(futureVersion)
             .append(" failed for store: ")
             .append(storeName)
-            .append(" as the following partitions do not have enough ready-to-serve instances: ")
-            .append(unFinishedPartitions);
+            .append(" as the following ")
+            .append(unFinishedPartitions.size())
+            .append(" partitions do not have enough ready-to-serve instances (capped at 10): ")
+            .append(unFinishedPartitions.subList(0, Math.min(10, unFinishedPartitions.size())));
         String errorMessage = errorBuilder.toString();
         LOGGER.error(errorMessage);
         throw new VeniceException(errorMessage);
