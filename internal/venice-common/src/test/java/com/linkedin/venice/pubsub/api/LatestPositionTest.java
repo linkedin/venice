@@ -63,7 +63,7 @@ public class LatestPositionTest {
   @Test
   public void testNumericOffset() {
     LatestPosition instance = LatestPosition.getInstance();
-    assertEquals(instance.getNumericOffset(), -1L, "Numeric offset should be -1");
+    assertThrows(UnsupportedOperationException.class, () -> instance.getNumericOffset());
   }
 
   @Test

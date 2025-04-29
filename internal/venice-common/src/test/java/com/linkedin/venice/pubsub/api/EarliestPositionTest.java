@@ -67,7 +67,7 @@ public class EarliestPositionTest {
   @Test
   public void testNumericOffset() {
     EarliestPosition instance = EarliestPosition.getInstance();
-    assertEquals(instance.getNumericOffset(), -1L, "Numeric offset should be -1");
+    assertThrows(UnsupportedOperationException.class, () -> instance.getNumericOffset());
   }
 
   @Test
