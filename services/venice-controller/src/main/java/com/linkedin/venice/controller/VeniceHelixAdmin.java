@@ -4596,23 +4596,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  boolean isCurrentRegionPartOfRegionFilter(String regionFilter) {
+    if (StringUtils.isEmpty(regionFilter)) {
+      return true;
+    }
+    String currRegionName = multiClusterConfigs.getRegionName();
+    Set<String> regionsFilter = parseRegionsFilterList(regionFilter);
+    return regionsFilter.contains(currRegionName);
+  }
+
   @Override
   public void rollForwardToFutureVersion(String clusterName, String storeName, String regionFilter) {
-    if (!StringUtils.isEmpty(regionFilter)) {
-      Set<String> regionsFilter = parseRegionsFilterList(regionFilter);
-      if (!regionsFilter.contains(multiClusterConfigs.getRegionName())) {
-        LOGGER.info(
-            "rollForwardToFutureVersion command will be skipped for store: {} in cluster: {}, because the region filter is {}"
-                + " which doesn't include the current region: {}",
-            storeName,
-            clusterName,
-            regionsFilter,
-            multiClusterConfigs.getRegionName());
-        return;
-      }
+    if (!isCurrentRegionPartOfRegionFilter(regionFilter)) {
+      LOGGER.info(
+          "Rolling forward will be skipped for store: {} in cluster: {}, as the region filter is {}",
+          storeName,
+          clusterName,
+          regionFilter);
+      return;
     }
     int futureVersion = getOnlineFutureVersion(clusterName, storeName);
     if (futureVersion == NON_EXISTING_VERSION) {
+      LOGGER.info(
+          "Rolling forward will be skipped for store: {} in cluster: {}, as there is no future version",
+          storeName,
+          clusterName);
       return;
     }
     storeMetadataUpdate(clusterName, storeName, store -> {
@@ -4620,14 +4628,48 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         throw new VeniceException(
             "Unable to update store:" + storeName + " current version since store does not enable writes");
       }
+      // check whether the future version has enough ready-to-serve instances for all partitions in CV
       int previousVersion = store.getCurrentVersion();
+      Version futureVersionObj = store.getVersion(futureVersion);
+      int partitionCount = futureVersionObj.getPartitionCount();
+      int minActiveReplicas = futureVersionObj.getMinActiveReplicas();
+      String currentVersionKafka = Version.composeKafkaTopic(storeName, futureVersion);
+      HelixCustomizedViewOfflinePushRepository customizedViewRepository =
+          getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
+      List<Integer> unFinishedPartitions = new ArrayList<>();
+      for (int partition = 0; partition < partitionCount; partition++) {
+        List<Instance> readyToServeInstances;
+        try {
+          readyToServeInstances = customizedViewRepository.getReadyToServeInstances(currentVersionKafka, partition);
+        } catch (Exception e) {
+          readyToServeInstances = Collections.emptyList();
+        }
+
+        if (readyToServeInstances.size() < minActiveReplicas) {
+          unFinishedPartitions.add(partition);
+        }
+      }
+      if (!unFinishedPartitions.isEmpty()) {
+        StringBuilder errorBuilder = new StringBuilder();
+        errorBuilder.append("Rolling forward current version ")
+            .append(previousVersion)
+            .append(" to future version: ")
+            .append(futureVersion)
+            .append(" failed for store: ")
+            .append(storeName)
+            .append(" as the following partitions do not have enough ready-to-serve instances: ")
+            .append(unFinishedPartitions);
+        String errorMessage = errorBuilder.toString();
+        LOGGER.error(errorMessage);
+        throw new VeniceException(errorMessage);
+      }
       store.setCurrentVersion(futureVersion);
       LOGGER.info(
-          "Rolling forward current version {} to version {} in store {}",
+          "Rolling forward current version: {} to future version: {} succeeded for store: {}",
           previousVersion,
           futureVersion,
           storeName);
-      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, futureVersion);
+      getRealTimeTopicSwitcher().transmitVersionSwapMessage(store, previousVersion, futureVersion);
       return store;
     });
   }
@@ -7573,7 +7615,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     configAccessor.set(clusterScope, ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_DISABLED.name(),
         String.valueOf(disable));*/
     String message = enable
-        ? "Enabled delayed rebalance for cluster: " + clusterName + " with delayed time" + delayedTime
+        ? "Enabled delayed rebalance for cluster: " + clusterName + " with delayed time " + delayedTime
         : "Disabled delayed rebalance for cluster: " + clusterName;
     LOGGER.info(message);
   }
@@ -9197,5 +9239,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   public LogContext getLogContext() {
     return logContext;
+  }
+
+  // visible for testing
+  RealTimeTopicSwitcher getRealTimeTopicSwitcher() {
+    return realTimeTopicSwitcher;
   }
 }

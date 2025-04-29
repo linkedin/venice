@@ -618,7 +618,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().isClusterValid(clusterName);
   }
 
-  private void sendAdminMessageAndWaitForConsumed(String clusterName, String storeName, AdminOperation message) {
+  void sendAdminMessageAndWaitForConsumed(String clusterName, String storeName, AdminOperation message) {
     if (!veniceWriterMap.containsKey(clusterName)) {
       throw new VeniceException("Cluster: " + clusterName + " is not started yet!");
     }
@@ -802,7 +802,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * ongoing admin operation is being performed.
    * This lock is held when generating, writing and processing the admin messages for the given store.
    */
-  private void acquireAdminMessageLock(String clusterName, String storeName) {
+  void acquireAdminMessageLock(String clusterName, String storeName) {
     try {
       if (clusterName == null) {
         throw new VeniceException("Cannot acquire admin message lock with a null cluster name");
@@ -830,7 +830,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
-  private void releaseAdminMessageLock(String clusterName, String storeName) {
+  void releaseAdminMessageLock(String clusterName, String storeName) {
     if (clusterName == null) {
       throw new VeniceException("Cannot release admin message lock with null cluster name");
     }
@@ -2111,7 +2111,7 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
-      // Send admin message to set backup version as current version. Child controllers will execute the admin message.
+      // Send admin message to set future version as current version. Child controllers will execute the admin message.
       RollForwardCurrentVersion rollForwardCurrentVersion =
           (RollForwardCurrentVersion) AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getNewInstance();
       rollForwardCurrentVersion.clusterName = clusterName;
@@ -2121,17 +2121,52 @@ public class VeniceParentHelixAdmin implements Admin {
       message.operationType = AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getValue();
       message.payloadUnion = rollForwardCurrentVersion;
 
-      Map<String, String> futureVersions = getFutureVersionsForMultiColos(clusterName, storeName);
-      int futureVersion = 0;
-      for (Map.Entry<String, String> entry: futureVersions.entrySet()) {
-        futureVersion = Integer.parseInt(entry.getValue());
-        if (futureVersion > 0) {
+      Map<String, String> futureVersionsBeforeRollForward = getFutureVersionsForMultiColos(clusterName, storeName);
+      int futureVersionBeforeRollForward = 0;
+      for (Map.Entry<String, String> entry: futureVersionsBeforeRollForward.entrySet()) {
+        futureVersionBeforeRollForward = Integer.parseInt(entry.getValue());
+        if (futureVersionBeforeRollForward > 0) {
           break;
         }
       }
+
+      if (futureVersionBeforeRollForward <= 0) {
+        throw new VeniceException("Roll forward failed without any future version");
+      }
+
+      LOGGER.info(
+          "Sending roll forward command to future version {} for store {} to child controllers",
+          futureVersionBeforeRollForward,
+          storeName);
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-      LOGGER.info("Truncating topic {} after rollforward", Version.composeKafkaTopic(storeName, futureVersion));
-      truncateKafkaTopic(Version.composeKafkaTopic(storeName, futureVersion));
+      LOGGER.info(
+          "Truncating topic {} after child controllers consumed the roll forward messages to not block new versions",
+          Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward));
+      truncateKafkaTopic(Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward));
+
+      // check whether the roll forward is successful in all regions
+      Map<String, Integer> currentVersionsAfterRollForward = getCurrentVersionsForMultiColos(clusterName, storeName);
+      Map<String, Integer> failedRegions = new HashMap<>();
+      for (Map.Entry<String, Integer> entry: currentVersionsAfterRollForward.entrySet()) {
+        int currentVersionAfterRollForward = entry.getValue();
+        if (currentVersionAfterRollForward != futureVersionBeforeRollForward) {
+          failedRegions.put(entry.getKey(), currentVersionAfterRollForward);
+        }
+      }
+      if (!failedRegions.isEmpty()) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Roll forward failed in regions: ");
+        for (Map.Entry<String, Integer> entry: failedRegions.entrySet()) {
+          sb.append(entry.getKey()).append(" with current version: ").append(entry.getValue()).append(",");
+        }
+        sb.append(". Roll forward will be retried until it is successful.");
+        throw new VeniceException(sb.toString());
+      } else {
+        LOGGER.info(
+            "Roll forward to future version {} is successful in all regions for store {}",
+            futureVersionBeforeRollForward,
+            storeName);
+      }
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }

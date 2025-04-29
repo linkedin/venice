@@ -6,28 +6,28 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V3_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -59,7 +59,12 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush {
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
-  private static final int TEST_TIMEOUT = 120_000;
+  private static final int TEST_TIMEOUT = 180_000;
+  private static final int OLD_VERSION = 0;
+  private static final int NEW_VERSION = 1;
+  private static final int testPartition = 0;
+  private static final String clusterName = CLUSTER_NAMES[0];
+
   private List<VeniceMultiClusterWrapper> childDatacenters;
 
   @BeforeClass
@@ -74,13 +79,14 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush {
             .numberOfClusters(NUMBER_OF_CLUSTERS)
             .numberOfParentControllers(1)
             .numberOfChildControllers(1)
-            .numberOfServers(3)
+            .numberOfServers(2)
             .numberOfRouters(1)
             .replicationFactor(2)
             .forkServer(false)
             .parentControllerProperties(controllerProps)
             .childControllerProperties(controllerProps)
             .serverProperties(serverProperties);
+
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
@@ -99,162 +105,187 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush {
    * the new version and finally verify the data in the push using a thin client.
    */
   @Test(timeOut = TEST_TIMEOUT)
-  public void testDeferredVersionSwapWithRebalancing() throws IOException {
-    File inputDir = getTempDataDirectory();
-    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100000, 100);
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("testDeferredVersionSwapWithoutTargetRegionPush");
-    Properties props =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
-    String keySchemaStr = "\"string\"";
-    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+  public void testDeferredVersionSwapWithFutureVersionSlowStateTransition() throws Exception {
+    String storeName = Utils.getUniqueString("testDeferredVersionSwap");
+    ControllerClient parentClient =
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString());
+    VeniceClusterWrapper cluster = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(clusterName);
 
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
-      createStoreForJob(
-          CLUSTER_NAMES[0],
-          keySchemaStr,
-          NAME_RECORD_V3_SCHEMA.toString(),
-          props,
-          new UpdateStoreQueryParams()).close();
+    // setup and validation
+    prepareAndPushWithDeferredSwap(storeName, 100, 100, parentClient);
+    // still serving the old version because of deferred swap
+    assertCurrentServingVersion(cluster, storeName, OLD_VERSION);
 
-      VeniceClusterWrapper veniceClusterWrapper =
-          childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(CLUSTER_NAMES[0]);
+    // stop original standby and add new server triggering rebalance
+    Instance oldStandby = stopInstance(cluster, storeName, HelixState.STANDBY);
+    cluster.addVeniceServer(new Properties());
 
-      int oldVersion = 0;
-      int newVersion = 1;
-      // Start push job with version swap
-      props.put(DEFER_VERSION_SWAP, true);
-      TestWriteUtils.runPushJob("Test push job", props);
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, newVersion),
-          parentControllerClient,
-          30,
-          TimeUnit.SECONDS);
+    // wait for new standby in EV
+    AtomicReference<Instance> newStandby = new AtomicReference<>();
+    TestUtils.waitForNonDeterministicAssertion(50, TimeUnit.SECONDS, () -> {
+      Partition partition = cluster.getLeaderVeniceController()
+          .getVeniceHelixAdmin()
+          .getHelixVeniceClusterResources(clusterName)
+          .getRoutingDataRepository()
+          .getPartitionAssignments(Version.composeKafkaTopic(storeName, NEW_VERSION))
+          .getPartition(testPartition);
+      assertNotNull(partition);
+      List<Instance> standbyList = partition.getAllInstancesByHelixState().get(HelixState.STANDBY);
+      assertEquals(standbyList.size(), 1);
+      Instance candidate = standbyList.get(0);
+      assertNotEquals(candidate, oldStandby);
+      newStandby.set(candidate);
+    });
 
-      // Check that child version status is marked as ONLINE
-      for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
-        ControllerClient childControllerClient =
-            new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
-        StoreResponse store = childControllerClient.getStore(storeName);
-        Optional<Version> version = store.getStore().getVersion(newVersion);
-        assertNotNull(version);
-        VersionStatus versionStatus = version.get().getStatus();
-        assertEquals(versionStatus, VersionStatus.ONLINE, "versionStatus should be ONLINE, but was: " + versionStatus);
-      }
+    // verify ready-to-serve immediately in CV
+    assertCompleted(cluster, storeName, testPartition, newStandby.get());
 
-      // validate that the current version is still 0 as roll forward is not yet called
-      assertEquals(
-          veniceClusterWrapper.getRandomVeniceController()
-              .getVeniceAdmin()
-              .getCurrentVersion(CLUSTER_NAMES[0], storeName),
-          oldVersion,
-          "version before roll forward should be " + oldVersion);
+    // roll forward and verify new version
+    parentClient
+        .rollForwardToFutureVersion(storeName, String.join(",", multiRegionMultiClusterWrapper.getChildRegionNames()));
+    TestUtils.waitForNonDeterministicAssertion(
+        50,
+        TimeUnit.SECONDS,
+        () -> assertCurrentServingVersion(cluster, storeName, NEW_VERSION));
 
-      // take partition 0 for testing
-      int testPartition = 0;
+    validateData(cluster, storeName, 100);
+  }
 
-      // find the current standby instance for testPartition: as the RF is 2, there should be 1 LEADER and 1 STANDBY
-      VeniceHelixAdmin veniceHelixAdmin = veniceClusterWrapper.getLeaderVeniceController().getVeniceHelixAdmin();
-      String newVersionTopic = Version.composeKafkaTopic(storeName, newVersion);
-      AtomicReference<VeniceServerWrapper> originalStandbyServer = new AtomicReference<>();
-      List<VeniceServerWrapper> servers = veniceClusterWrapper.getVeniceServers();
+  /** This test will fail the roll forward due to insufficient replicas, but eventually succeed */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDeferredVersionSwapFailureWithEventualRollForward() throws Exception {
+    String storeName = Utils.getUniqueString("testDeferredVersionSwap");
+    ControllerClient parentClient =
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString());
+    VeniceClusterWrapper cluster = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1).getClusters().get(clusterName);
 
-      // As the version would have been made online with RF - 1 as min required RF, add extra time
-      // to get the standby replica
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        Instance standbyServerInstance = veniceHelixAdmin.getHelixVeniceClusterResources(CLUSTER_NAMES[0])
-            .getRoutingDataRepository()
-            .getPartitionAssignments(newVersionTopic)
-            .getPartition(testPartition)
-            .getAllInstancesByHelixState()
-            .get(HelixState.STANDBY)
-            .get(0);
+    // setup and validation
+    prepareAndPushWithDeferredSwap(storeName, 100000, 100, parentClient);
+    // still serving the old version because of deferred swap
+    assertCurrentServingVersion(cluster, storeName, OLD_VERSION);
 
-        assertNotNull(
-            standbyServerInstance,
-            "Standby server instance should not be null for partition: " + testPartition);
+    // stop both standby and leader
+    stopInstance(cluster, storeName, HelixState.STANDBY);
+    stopInstance(cluster, storeName, HelixState.LEADER);
 
-        for (VeniceServerWrapper server: servers) {
-          if (server.getPort() == standbyServerInstance.getPort()) {
-            originalStandbyServer.set(server);
-            break;
-          }
-        }
-        assertNotNull(
-            originalStandbyServer.get(),
-            "Original standby server should not be null for partition: " + testPartition);
-      });
-
-      Instance originalStandbyServerInstance =
-          Instance.fromHostAndPort(originalStandbyServer.get().getHost(), originalStandbyServer.get().getPort());
-
-      LOGGER.info("Stopping the original standby server: {}", originalStandbyServerInstance);
-      veniceClusterWrapper.stopVeniceServer(originalStandbyServer.get().getPort());
-
-      // find the new standby instance for testPartition: as the original standby is stopped
-      AtomicReference<Instance> newStandbyInstanceFromEV = new AtomicReference<>();
-      TestUtils.waitForNonDeterministicAssertion(50, TimeUnit.SECONDS, () -> {
-        List<Instance> standbyInstanceListFromEV = veniceHelixAdmin.getHelixVeniceClusterResources(CLUSTER_NAMES[0])
-            .getRoutingDataRepository()
-            .getPartitionAssignments(newVersionTopic)
-            .getPartition(testPartition)
-            .getAllInstancesByHelixState()
-            .get(HelixState.STANDBY);
-        assertEquals(
-            standbyInstanceListFromEV.size(),
-            1,
-            "There should be only one standby instance for partition: " + testPartition + ", but found: "
-                + standbyInstanceListFromEV);
-        newStandbyInstanceFromEV.set(standbyInstanceListFromEV.get(0));
-
-        assertNotNull(
-            newStandbyInstanceFromEV.get(),
-            "New standby instance from EV should not be null for partition: " + testPartition);
-        assertFalse(
-            newStandbyInstanceFromEV.get().equals(originalStandbyServerInstance),
-            "New standby instance from EV: " + newStandbyInstanceFromEV.get()
-                + " should not be the same as the stopped original standby instance: " + originalStandbyServerInstance);
-      });
-
-      // as the newStandbyInstanceFromEV is now marked STANDBY in EV, immediately check
-      // whether it is marked ready to serve in CV
-      HelixCustomizedViewOfflinePushRepository customizedViewRepository =
-          veniceHelixAdmin.getHelixVeniceClusterResources(CLUSTER_NAMES[0]).getCustomizedViewRepository();
+    // wait until all replicas are not ready to serve
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      Partition partition = cluster.getLeaderVeniceController()
+          .getVeniceHelixAdmin()
+          .getHelixVeniceClusterResources(clusterName)
+          .getRoutingDataRepository()
+          .getPartitionAssignments(Version.composeKafkaTopic(storeName, NEW_VERSION))
+          .getPartition(testPartition);
       assertTrue(
-          customizedViewRepository.getReadyToServeInstances(newVersionTopic, 0)
-              .contains(newStandbyInstanceFromEV.get()),
-          "Ready to serve instances: " + customizedViewRepository.getReadyToServeInstances(newVersionTopic, 0)
-              + " should contain the new newStandbyInstanceFromEV: " + newStandbyInstanceFromEV.get());
+          partition == null || (partition.getAllInstancesByHelixState().get(HelixState.LEADER).isEmpty()
+              && partition.getAllInstancesByHelixState().get(HelixState.STANDBY).isEmpty()));
+    });
 
-      // roll forward to the new version
-      parentControllerClient.rollForwardToFutureVersion(
+    // attempt roll forward (expected to fail due to missing ready to serve replicas)
+    try {
+      parentClient.rollForwardToFutureVersion(
           storeName,
           String.join(",", multiRegionMultiClusterWrapper.getChildRegionNames()));
+      fail("Roll forward should have failed due to insufficient replicas");
+    } catch (Exception e) {
+      assertTrue(e.getMessage().contains("Failed to roll forward to future version"));
+    }
 
-      // validate that the current version is rolled forward to 1
-      int finalNewVersion = newVersion;
-      TestUtils.waitForNonDeterministicAssertion(50, TimeUnit.SECONDS, () -> {
-        int version = veniceClusterWrapper.getRandomVeniceController()
-            .getVeniceAdmin()
-            .getCurrentVersion(CLUSTER_NAMES[0], storeName);
-        assertEquals(version, finalNewVersion, "version should be " + finalNewVersion + ", but was: " + version);
-      });
+    // add new servers and wait for eventual success of roll forward as each child controllers will
+    // be retrying the roll forward until success
+    cluster.addVeniceServer(new Properties());
+    cluster.addVeniceServer(new Properties());
+    TestUtils.waitForNonDeterministicAssertion(
+        60,
+        TimeUnit.SECONDS,
+        () -> assertCurrentServingVersion(cluster, storeName, NEW_VERSION));
 
-      // use a thin client to verify the data in the push
-      veniceClusterWrapper.refreshAllRouterMetaData();
-      MetricsRepository metricsRepository = new MetricsRepository();
-      try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(storeName)
-              .setVeniceURL(veniceClusterWrapper.getRandomRouterURL())
-              .setMetricsRepository(metricsRepository))) {
+    validateData(cluster, storeName, 100);
+  }
 
-        for (int i = 1; i <= 100; i++) {
-          try {
-            assertNotNull(avroClient.get(Integer.toString(i)).get());
-          } catch (Exception e) {
-            throw new RuntimeException(e);
-          }
-        }
+  private void prepareAndPushWithDeferredSwap(
+      String storeName,
+      int recordCount,
+      int keyCount,
+      ControllerClient parentClient) throws IOException {
+    File inputDir = getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, recordCount, keyCount);
+
+    Properties props = IntegrationTestPushUtils
+        .defaultVPJProps(multiRegionMultiClusterWrapper, "file://" + inputDir.getAbsolutePath(), storeName);
+    props.put(DEFER_VERSION_SWAP, true);
+
+    createStoreForJob(
+        clusterName,
+        "\"string\"",
+        NAME_RECORD_V3_SCHEMA.toString(),
+        props,
+        new UpdateStoreQueryParams().setPartitionCount(1)).close();
+
+    TestWriteUtils.runPushJob("Test push job", props);
+    TestUtils.waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(storeName, NEW_VERSION),
+        parentClient,
+        30,
+        TimeUnit.SECONDS);
+
+    for (VeniceMultiClusterWrapper dc: childDatacenters) {
+      try (ControllerClient c = new ControllerClient(clusterName, dc.getControllerConnectString())) {
+        StoreResponse resp = c.getStore(storeName);
+        Optional<com.linkedin.venice.meta.Version> v = resp.getStore().getVersion(NEW_VERSION);
+        assertTrue(v.isPresent());
+        assertEquals(v.get().getStatus(), VersionStatus.ONLINE);
+      }
+    }
+  }
+
+  private void assertCurrentServingVersion(VeniceClusterWrapper cluster, String storeName, int expected) {
+    int actual = cluster.getRandomVeniceController().getVeniceAdmin().getCurrentVersion(clusterName, storeName);
+    assertEquals(actual, expected);
+  }
+
+  private Instance stopInstance(VeniceClusterWrapper cluster, String storeName, HelixState state) {
+    String topic = Version.composeKafkaTopic(storeName, NEW_VERSION);
+    Partition partition = cluster.getLeaderVeniceController()
+        .getVeniceHelixAdmin()
+        .getHelixVeniceClusterResources(clusterName)
+        .getRoutingDataRepository()
+        .getPartitionAssignments(topic)
+        .getPartition(testPartition);
+    Instance helixInst = partition.getAllInstancesByHelixState().get(state).get(0);
+    // find matching server wrapper to stop
+    for (com.linkedin.venice.integration.utils.VeniceServerWrapper server: cluster.getVeniceServers()) {
+      if (server.getPort() == helixInst.getPort()) {
+        Instance inst = Instance.fromHostAndPort(server.getHost(), server.getPort());
+        LOGGER.info("Stopping {} instance: {}", state, inst);
+        cluster.stopVeniceServer(server.getPort());
+        return inst;
+      }
+    }
+    throw new IllegalStateException("No server wrapper found for Helix instance " + helixInst);
+  }
+
+  private void assertCompleted(VeniceClusterWrapper cluster, String storeName, int partitionId, Instance inst) {
+    Partition partition = cluster.getLeaderVeniceController()
+        .getVeniceHelixAdmin()
+        .getHelixVeniceClusterResources(clusterName)
+        .getCustomizedViewRepository()
+        .getResourceAssignment()
+        .getPartition(Version.composeKafkaTopic(storeName, NEW_VERSION), partitionId);
+    List<Instance> completed = partition.getAllInstancesByExecutionStatus().get(ExecutionStatus.COMPLETED);
+    assertTrue(completed.contains(inst));
+  }
+
+  /** validate data using thin client **/
+  private void validateData(VeniceClusterWrapper cluster, String storeName, int expectedCount) throws Exception {
+    cluster.refreshAllRouterMetaData();
+    MetricsRepository metricsRepo = new MetricsRepository();
+    try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(cluster.getRandomRouterURL())
+            .setMetricsRepository(metricsRepo))) {
+      for (int i = 1; i <= expectedCount; i++) {
+        assertNotNull(client.get(Integer.toString(i)).get());
       }
     }
   }
