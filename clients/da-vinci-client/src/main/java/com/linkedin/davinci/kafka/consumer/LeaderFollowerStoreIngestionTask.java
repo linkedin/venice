@@ -18,6 +18,7 @@ import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WR
 import static java.lang.Long.max;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
@@ -3758,7 +3759,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         topicPartition,
         previousMessage.getPosition(),
         System.currentTimeMillis(),
-        divKey.getHeapSize() + valueBytes.length);
+        divKey.getKeyLength() + valueBytes.length);
     LeaderProducerCallback divCallback = createProducerCallback(
         divMessage,
         partitionConsumptionState,
@@ -3883,13 +3884,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         topicPartition,
         valueManifestContainer);
     if (valueRecord == null) {
-      // TODO: should this be pcs.getLeaderConsumedUpstreamRTOffset(brokerUrl) > 0 instead?
-      // TODO: leaderOffset > 0 indicates that this is not the first leader to be elected?
-      if (pcs.getLeaderOffset(brokerUrl, pubSubTopicRepository, false) > 0) {
+      long leaderOffset = pcs.getLeaderOffset(brokerUrl, pubSubTopicRepository, false);
+      if (leaderOffset > 0) {
         LOGGER.warn(
-            "Unable to retrieve Global RT DIV from storage engine for replica: {} brokerUrl: {}",
+            "Unable to retrieve Global RT DIV from storage engine for replica: {} brokerUrl: {} leaderOffset: {}",
             topicPartition,
-            brokerUrl);
+            brokerUrl,
+            leaderOffset);
       }
       return; // it may not exist (e.g. this is the first leader to be elected)
     }
@@ -4384,8 +4385,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  @VisibleForTesting
   KafkaDataIntegrityValidator getConsumerDiv() {
-    return consumerDiv; // mainly for testing
+    return consumerDiv;
+  }
+
+  @VisibleForTesting
+  Int2ObjectMap<String> getKafkaClusterIdToUrlMap() {
+    return kafkaClusterIdToUrlMap;
   }
 
   HeartbeatMonitoringService getHeartbeatMonitoringService() {

@@ -729,7 +729,7 @@ public class PartitionConsumptionState {
   }
 
   public long getLatestConsumedRtOffset(String brokerUrl) {
-    return latestConsumedRtOffsetMap.getOrDefault(brokerUrl, 0L);
+    return latestConsumedRtOffsetMap.getOrDefault(brokerUrl, -1L);
   }
 
   public void updateLatestProcessedUpstreamRTOffset(String kafkaUrl, long offset) {
@@ -805,6 +805,7 @@ public class PartitionConsumptionState {
   public long getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository, boolean useLcro) {
     PubSubTopic leaderTopic = getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     if (leaderTopic != null && !leaderTopic.isVersionTopic()) {
+      // consumed corresponds to messages seen by consumer, processed corresponds to messages seen by drainer
       return (useLcro) ? getLatestConsumedRtOffset(kafkaURL) : getLatestProcessedUpstreamRTOffset(kafkaURL);
     } else {
       return consumeRemotely()
