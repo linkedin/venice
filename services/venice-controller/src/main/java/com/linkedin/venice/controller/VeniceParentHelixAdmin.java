@@ -77,6 +77,7 @@ import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
+import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -242,7 +243,6 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
-import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -1684,7 +1684,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (StringUtils.isEmpty(targetedRegions)) {
       return;
     }
-    Set<String> targetedRegionSet = RegionUtils.parseRegionsFilterList(targetedRegions);
+    Set<String> targetedRegionSet = parseRegionsFilterList(targetedRegions);
     Map<String, ControllerClient> clientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     for (String region: targetedRegionSet) {
       if (!clientMap.containsKey(region)) {
@@ -1812,7 +1812,7 @@ public class VeniceParentHelixAdmin implements Admin {
       addVersion.rewindTimeInSecondsOverride = -1;
     }
     if (StringUtils.isNotEmpty(targetedRegions)) {
-      addVersion.targetedRegions = new ArrayList<>(RegionUtils.parseRegionsFilterList(targetedRegions));
+      addVersion.targetedRegions = new ArrayList<>(parseRegionsFilterList(targetedRegions));
     }
     addVersion.timestampMetadataVersionId = version.getRmdVersionId();
     addVersion.versionSwapDeferred = version.isVersionSwapDeferred();
@@ -2106,6 +2106,14 @@ public class VeniceParentHelixAdmin implements Admin {
             + "setting version on parent is not supported, since the version list could be different fabric by fabric");
   }
 
+  private boolean isRegionPartOfRegionFilter(String region, String regionFilter) {
+    if (StringUtils.isEmpty(regionFilter)) {
+      return true;
+    }
+    Set<String> regionsFilter = parseRegionsFilterList(regionFilter);
+    return regionsFilter.contains(region);
+  }
+
   @Override
   public void rollForwardToFutureVersion(String clusterName, String storeName, String regionFilter) {
     acquireAdminMessageLock(clusterName, storeName);
@@ -2121,9 +2129,13 @@ public class VeniceParentHelixAdmin implements Admin {
       message.operationType = AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getValue();
       message.payloadUnion = rollForwardCurrentVersion;
 
+      // get the future version from the interested regions which will be used to compare after roll forward
       Map<String, String> futureVersionsBeforeRollForward = getFutureVersionsForMultiColos(clusterName, storeName);
       int futureVersionBeforeRollForward = 0;
       for (Map.Entry<String, String> entry: futureVersionsBeforeRollForward.entrySet()) {
+        if (!isRegionPartOfRegionFilter(entry.getKey(), regionFilter)) {
+          continue;
+        }
         futureVersionBeforeRollForward = Integer.parseInt(entry.getValue());
         if (futureVersionBeforeRollForward > 0) {
           break;
@@ -2144,10 +2156,13 @@ public class VeniceParentHelixAdmin implements Admin {
           Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward));
       truncateKafkaTopic(Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward));
 
-      // check whether the roll forward is successful in all regions
+      // check whether the roll forward is successful in all regions in regionFilter
       Map<String, Integer> currentVersionsAfterRollForward = getCurrentVersionsForMultiColos(clusterName, storeName);
       Map<String, Integer> failedRegions = new HashMap<>();
       for (Map.Entry<String, Integer> entry: currentVersionsAfterRollForward.entrySet()) {
+        if (!isRegionPartOfRegionFilter(entry.getKey(), regionFilter)) {
+          continue;
+        }
         int currentVersionAfterRollForward = entry.getValue();
         if (currentVersionAfterRollForward != futureVersionBeforeRollForward) {
           failedRegions.put(entry.getKey(), currentVersionAfterRollForward);
@@ -3768,7 +3783,7 @@ public class VeniceParentHelixAdmin implements Admin {
     Map<String, String> extraDetails = new HashMap<>();
     Map<String, Long> extraInfoUpdateTimestamp = new HashMap<>();
     int numChildRegionsFailedToFetchStatus = 0;
-    Set<String> targetedRegionSet = RegionUtils.parseRegionsFilterList(targetedRegions);
+    Set<String> targetedRegionSet = parseRegionsFilterList(targetedRegions);
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       String region = entry.getKey();
