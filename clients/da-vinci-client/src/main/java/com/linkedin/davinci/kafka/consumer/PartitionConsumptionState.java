@@ -409,7 +409,7 @@ public class PartitionConsumptionState {
         .append(latestProcessedUpstreamRTOffsetMap)
         .append(", latestIgnoredUpstreamRTOffsetMap=")
         .append(latestIgnoredUpstreamRTOffsetMap)
-        .append(", latestRTOffsetTriedToProduceToVTMap")
+        .append(", latestRTOffsetTriedToProduceToVTMap=")
         .append(latestRTOffsetTriedToProduceToVTMap)
         .append(", offsetRecord=")
         .append(offsetRecord)
@@ -423,6 +423,8 @@ public class PartitionConsumptionState {
         .append(processedRecordSizeSinceLastSync)
         .append(", leaderFollowerState=")
         .append(leaderFollowerState)
+        .append(", consumedRemotely=")
+        .append(consumeRemotely)
         .append("}")
         .toString();
   }

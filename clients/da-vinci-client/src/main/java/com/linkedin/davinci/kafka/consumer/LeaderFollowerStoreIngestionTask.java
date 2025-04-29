@@ -977,6 +977,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      */
     final int partition = partitionConsumptionState.getPartition();
     final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+    LOGGER.info("DEBUGGING Before Promo PCS: {}", partitionConsumptionState);
     if (isNativeReplicationEnabled) {
       if (nativeReplicationSourceVersionTopicKafkaURL == null
           || nativeReplicationSourceVersionTopicKafkaURL.isEmpty()) {
@@ -999,6 +1000,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     partitionConsumptionState.setLeaderFollowerState(LEADER);
     final PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
     prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
+    LOGGER.info("DEBUGGING After Promo PCS: {}", partitionConsumptionState);
   }
 
   private boolean switchAwayFromStreamReprocessingTopic(PubSubTopic currentLeaderTopic, PubSubTopic topicSwitchTopic) {
@@ -1082,11 +1084,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionState,
         Collections.singletonMap(leaderSourceKafkaURL, upstreamStartOffset));
     LOGGER.info(
-        "{}, as a leader, started consuming from topic: {}, partition: {} with offset: {}",
+        "{}, as a leader, started consuming from topic: {}, partition: {} with offset: {}, pcs: {}",
         partitionConsumptionState.getReplicaId(),
         leaderTopic,
         partitionConsumptionState.getPartition(),
-        upstreamStartOffset);
+        upstreamStartOffset,
+        partitionConsumptionState);
   }
 
   protected void syncConsumedUpstreamRTOffsetMapIfNeeded(
@@ -1556,6 +1559,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (upstreamTopic.isRealTime()) {
             partitionConsumptionState.updateLatestProcessedUpstreamRTOffset(sourceKafkaUrl, upstreamTopicOffset);
           } else {
+            LOGGER.info(
+                "DEBUGGING: Updating upstream VT offset to: {}, PCS: {}",
+                upstreamTopicOffset,
+                partitionConsumptionState);
             partitionConsumptionState.updateLatestProcessedUpstreamVersionTopicOffset(upstreamTopicOffset);
           }
         },
