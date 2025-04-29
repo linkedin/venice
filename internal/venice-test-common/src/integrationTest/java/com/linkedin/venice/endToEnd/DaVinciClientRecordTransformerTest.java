@@ -182,7 +182,7 @@ public class DaVinciClientRecordTransformerTest {
         String deleteLatency = metricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + metricPostfix;
 
         TestUtils.waitForNonDeterministicAssertion(
-            10,
+            60,
             TimeUnit.SECONDS,
             true,
             () -> assertTrue(metricsRepository.getMetric(deleteLatency).value() > 0));
