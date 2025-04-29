@@ -26,11 +26,11 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
     deferredVersionSwapErrorSensor.record();
   }
 
-  public void recordDeferreredVersionSwapThrowableSensor() {
+  public void recordDeferredVersionSwapThrowableSensor() {
     deferredVersionSwapThrowableSensor.record();
   }
 
   public void recordDeferredVersionSwapFailedRollForwardSensor() {
-    deferredVersionSwapThrowableSensor.record();
+    deferredVersionSwapFailedRollForwardSensor.record();
   }
 }

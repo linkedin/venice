@@ -477,9 +477,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               parentStore.updateVersionStatus(targetVersionNum, VersionStatus.PARTIALLY_ONLINE);
               repository.updateStore(parentStore);
               LOGGER.info(
-                  "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {} after failing to roll forward in non target regions",
+                  "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {} after failing to roll forward in non target regions: {}",
                   targetVersionNum,
-                  storeName);
+                  storeName,
+                  nonTargetRegionsCompleted);
             }
           }
         }
@@ -488,7 +489,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         deferredVersionSwapStats.recordDeferredVersionSwapErrorSensor();
       } catch (Throwable throwable) {
         LOGGER.warn("Caught a throwable while performing deferred version swap", throwable);
-        deferredVersionSwapStats.recordDeferreredVersionSwapThrowableSensor();
+        deferredVersionSwapStats.recordDeferredVersionSwapThrowableSensor();
       }
     };
   }
