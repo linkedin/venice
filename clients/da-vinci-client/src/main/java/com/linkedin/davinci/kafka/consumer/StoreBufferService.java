@@ -156,7 +156,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
    * different naming conventions for RT (_rt) and Separate RT (_rt_sep), different drainers might be assigned while
    * the same drainer handling both topics would be more ideal for concurrency. Normalizing topic name fixes this issue.
    */
-  public int computeTopicHashCode(PubSubTopic topic) {
+  private int computeTopicHashCode(PubSubTopic topic) {
     if (topic.isSeparateRealTimeTopic()) {
       return sepRtHashCodeCache.computeIfAbsent(topic, inputTopic -> {
         String realTimeTopicName = Utils.getRealTimeTopicNameFromSeparateRealTimeTopic(inputTopic.getName());
