@@ -26,6 +26,7 @@ import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.utils.AvroSchemaUtils.isValidAvroSchema;
+import static com.linkedin.venice.utils.RegionUtils.isRegionPartOfRegionsFilterList;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.ViewUtils.ETERNAL_TOPIC_RETENTION_ENABLED;
 import static com.linkedin.venice.views.ViewUtils.LOG_COMPACTION_ENABLED;
@@ -4596,18 +4597,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
-  boolean isCurrentRegionPartOfRegionFilter(String regionFilter) {
-    if (StringUtils.isEmpty(regionFilter)) {
-      return true;
-    }
-    String currRegionName = multiClusterConfigs.getRegionName();
-    Set<String> regionsFilter = parseRegionsFilterList(regionFilter);
-    return regionsFilter.contains(currRegionName);
-  }
-
   @Override
   public void rollForwardToFutureVersion(String clusterName, String storeName, String regionFilter) {
-    if (!isCurrentRegionPartOfRegionFilter(regionFilter)) {
+    if (!isRegionPartOfRegionsFilterList(getRegionName(), regionFilter)) {
       LOGGER.info(
           "Rolling forward will be skipped for store: {} in cluster: {}, as the region filter is {}",
           storeName,

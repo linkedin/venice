@@ -77,6 +77,7 @@ import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
+import static com.linkedin.venice.utils.RegionUtils.isRegionPartOfRegionsFilterList;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
 
@@ -302,6 +303,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class VeniceParentHelixAdmin implements Admin {
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
+  private static final long SLEEP_INTERVAL_ROLL_FORWARD_CHECK_IN_MS = 1000;
+  static final long NUMBER_OF_RETRY_FOR_ROLL_FORWARD_CHECK = 5;
   private static final Logger LOGGER = LogManager.getLogger(VeniceParentHelixAdmin.class);
   // Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   static final int STORE_VERSION_RETENTION_COUNT = 5;
@@ -2106,14 +2109,6 @@ public class VeniceParentHelixAdmin implements Admin {
             + "setting version on parent is not supported, since the version list could be different fabric by fabric");
   }
 
-  private boolean isRegionPartOfRegionFilter(String region, String regionFilter) {
-    if (StringUtils.isEmpty(regionFilter)) {
-      return true;
-    }
-    Set<String> regionsFilter = parseRegionsFilterList(regionFilter);
-    return regionsFilter.contains(region);
-  }
-
   @Override
   public void rollForwardToFutureVersion(String clusterName, String storeName, String regionFilter) {
     acquireAdminMessageLock(clusterName, storeName);
@@ -2133,7 +2128,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Map<String, String> futureVersionsBeforeRollForward = getFutureVersionsForMultiColos(clusterName, storeName);
       int futureVersionBeforeRollForward = 0;
       for (Map.Entry<String, String> entry: futureVersionsBeforeRollForward.entrySet()) {
-        if (!isRegionPartOfRegionFilter(entry.getKey(), regionFilter)) {
+        if (!isRegionPartOfRegionsFilterList(entry.getKey(), regionFilter)) {
           continue;
         }
         futureVersionBeforeRollForward = Integer.parseInt(entry.getValue());
@@ -2151,22 +2146,34 @@ public class VeniceParentHelixAdmin implements Admin {
           futureVersionBeforeRollForward,
           storeName);
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+      String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
       LOGGER.info(
           "Truncating topic {} after child controllers consumed the roll forward messages to not block new versions",
-          Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward));
-      truncateKafkaTopic(Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward));
+          kafkaTopic);
+      truncateKafkaTopic(kafkaTopic);
 
-      // check whether the roll forward is successful in all regions in regionFilter
-      Map<String, Integer> currentVersionsAfterRollForward = getCurrentVersionsForMultiColos(clusterName, storeName);
+      // check whether the roll forward is successful in all regions in regionFilter.
+      // It might take a moment before all the child controllers update their current version, so add some delay before
+      // checking.
       Map<String, Integer> failedRegions = new HashMap<>();
-      for (Map.Entry<String, Integer> entry: currentVersionsAfterRollForward.entrySet()) {
-        if (!isRegionPartOfRegionFilter(entry.getKey(), regionFilter)) {
-          continue;
+      for (int retry = 0; retry < NUMBER_OF_RETRY_FOR_ROLL_FORWARD_CHECK; retry++) {
+        Map<String, Integer> currentVersionsAfterRollForward = getCurrentVersionsForMultiColos(clusterName, storeName);
+        failedRegions = new HashMap<>();
+        for (Map.Entry<String, Integer> entry: currentVersionsAfterRollForward.entrySet()) {
+          if (!isRegionPartOfRegionsFilterList(entry.getKey(), regionFilter)) {
+            continue;
+          }
+          int currentVersionAfterRollForward = entry.getValue();
+          if (currentVersionAfterRollForward != futureVersionBeforeRollForward) {
+            failedRegions.put(entry.getKey(), currentVersionAfterRollForward);
+          }
         }
-        int currentVersionAfterRollForward = entry.getValue();
-        if (currentVersionAfterRollForward != futureVersionBeforeRollForward) {
-          failedRegions.put(entry.getKey(), currentVersionAfterRollForward);
+        if (!failedRegions.isEmpty()) {
+          LOGGER.warn("Roll forward failed in regions: {}, Retrying", failedRegions);
+        } else {
+          break;
         }
+        Utils.sleep(SLEEP_INTERVAL_ROLL_FORWARD_CHECK_IN_MS);
       }
       if (!failedRegions.isEmpty()) {
         StringBuilder sb = new StringBuilder();

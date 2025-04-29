@@ -16,6 +16,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -57,6 +58,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.MaterializedView;
@@ -74,7 +76,6 @@ import java.util.Set;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
-import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
 
@@ -1046,7 +1047,7 @@ public class TestVeniceHelixAdmin {
         .thenReturn(standbyControllers);
     when(veniceHelixAdmin.getLeaderController(clusterName)).thenReturn(new Instance("3", "leaderHost", 1234));
 
-    try (MockedStatic<ControllerClient> controllerClientMockedStatic = Mockito.mockStatic(ControllerClient.class)) {
+    try (MockedStatic<ControllerClient> controllerClientMockedStatic = mockStatic(ControllerClient.class)) {
       ControllerClient client = mock(ControllerClient.class);
       controllerClientMockedStatic
           .when(() -> ControllerClient.constructClusterControllerClient(eq(clusterName), any(), any()))
@@ -1094,7 +1095,7 @@ public class TestVeniceHelixAdmin {
         .thenReturn(standbyControllers);
     when(veniceHelixAdmin.getLeaderController(clusterName)).thenReturn(new Instance("3", "leaderHost", 1234));
 
-    try (MockedStatic<ControllerClient> controllerClientMockedStatic = Mockito.mockStatic(ControllerClient.class)) {
+    try (MockedStatic<ControllerClient> controllerClientMockedStatic = mockStatic(ControllerClient.class)) {
       ControllerClient client = mock(ControllerClient.class);
       controllerClientMockedStatic
           .when(() -> ControllerClient.constructClusterControllerClient(eq(clusterName), any(), any()))
@@ -1133,9 +1134,14 @@ public class TestVeniceHelixAdmin {
   @Test
   public void testRollForwardSkipRegionFilter() {
     VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    doReturn(false).when(mockVeniceHelixAdmin).isCurrentRegionPartOfRegionFilter(anyString());
     doCallRealMethod().when(mockVeniceHelixAdmin).rollForwardToFutureVersion(anyString(), anyString(), anyString());
-    mockVeniceHelixAdmin.rollForwardToFutureVersion(clusterName, storeName, "test");
+    doReturn("test").when(mockVeniceHelixAdmin).getRegionName();
+    // mock the static utility class
+    try (MockedStatic<RegionUtils> utilities = mockStatic(RegionUtils.class)) {
+      utilities.when(() -> RegionUtils.isRegionPartOfRegionsFilterList(anyString(), anyString())).thenReturn(false);
+
+      mockVeniceHelixAdmin.rollForwardToFutureVersion(clusterName, storeName, "test");
+    }
 
     // should bail out before even checking future versions
     verify(mockVeniceHelixAdmin, never()).getOnlineFutureVersion(any(), any());
@@ -1145,13 +1151,18 @@ public class TestVeniceHelixAdmin {
   @Test
   public void testRollForwardNoFutureVersions() {
     VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    doReturn(true).when(mockVeniceHelixAdmin).isCurrentRegionPartOfRegionFilter(anyString());
     doCallRealMethod().when(mockVeniceHelixAdmin).rollForwardToFutureVersion(anyString(), anyString(), anyString());
     // pretend there is no future version
     doReturn(0).when(mockVeniceHelixAdmin).getOnlineFutureVersion(eq(clusterName), eq(storeName));
 
+    doReturn("test").when(mockVeniceHelixAdmin).getRegionName();
+    // mock the static utility class
+    try (MockedStatic<RegionUtils> utilities = mockStatic(RegionUtils.class)) {
+      utilities.when(() -> RegionUtils.isRegionPartOfRegionsFilterList(anyString(), anyString())).thenReturn(true);
+
+      mockVeniceHelixAdmin.rollForwardToFutureVersion(clusterName, storeName, "test");
+    }
     // should simply return, not throw, and never attempt a metadata update
-    mockVeniceHelixAdmin.rollForwardToFutureVersion(clusterName, storeName, "test");
     verify(mockVeniceHelixAdmin, never()).storeMetadataUpdate(any(), any(), any());
   }
 
@@ -1162,7 +1173,6 @@ public class TestVeniceHelixAdmin {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testRollForwardPartitionNotReady(boolean isPartitionReadyToServe) {
     VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    doReturn(true).when(mockVeniceHelixAdmin).isCurrentRegionPartOfRegionFilter(anyString());
     doReturn(2).when(mockVeniceHelixAdmin).getOnlineFutureVersion(clusterName, storeName);
 
     // build a fake Store whose version 2 has 2 partitions but only 1 ready replica
@@ -1196,18 +1206,23 @@ public class TestVeniceHelixAdmin {
     }).when(mockVeniceHelixAdmin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
     doCallRealMethod().when(mockVeniceHelixAdmin).rollForwardToFutureVersion(anyString(), anyString(), anyString());
 
-    try {
-      mockVeniceHelixAdmin.rollForwardToFutureVersion(clusterName, storeName, "test");
-      if (!isPartitionReadyToServe) {
-        fail("Expected VeniceException to be thrown");
+    doReturn("test").when(mockVeniceHelixAdmin).getRegionName();
+    // mock the static utility class
+    try (MockedStatic<RegionUtils> utilities = mockStatic(RegionUtils.class)) {
+      utilities.when(() -> RegionUtils.isRegionPartOfRegionsFilterList(anyString(), anyString())).thenReturn(true);
+      try {
+        mockVeniceHelixAdmin.rollForwardToFutureVersion(clusterName, storeName, "test");
+        if (!isPartitionReadyToServe) {
+          fail("Expected VeniceException to be thrown");
+        }
+      } catch (VeniceException e) {
+        if (isPartitionReadyToServe) {
+          fail("Expected VeniceException not to be thrown");
+        }
+        assertTrue(
+            e.getMessage().contains("as the following partitions do not have enough ready-to-serve instances"),
+            "Actual message: " + e.getMessage());
       }
-    } catch (VeniceException e) {
-      if (isPartitionReadyToServe) {
-        fail("Expected VeniceException not to be thrown");
-      }
-      assertTrue(
-          e.getMessage().contains("as the following partitions do not have enough ready-to-serve instances"),
-          "Actual message: " + e.getMessage());
     }
   }
 }

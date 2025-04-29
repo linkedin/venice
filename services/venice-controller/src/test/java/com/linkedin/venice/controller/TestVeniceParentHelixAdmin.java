@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static com.linkedin.venice.controller.VeniceParentHelixAdmin.NUMBER_OF_RETRY_FOR_ROLL_FORWARD_CHECK;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
@@ -3292,6 +3293,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     verify(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
     verify(adminSpy).truncateKafkaTopic(Version.composeKafkaTopic(storeName, 5));
+    verify(adminSpy, times(1)).getCurrentVersionsForMultiColos(clusterName, storeName);
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Roll forward failed in regions.*")
@@ -3315,6 +3317,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(after).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
 
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
+    verify(adminSpy, times((int) NUMBER_OF_RETRY_FOR_ROLL_FORWARD_CHECK))
+        .getCurrentVersionsForMultiColos(clusterName, storeName);
   }
 
   private Store setupForStoreViewConfigUpdateTest(String storeName) {
