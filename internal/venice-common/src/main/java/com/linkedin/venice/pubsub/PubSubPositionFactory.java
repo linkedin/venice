@@ -1,58 +1,75 @@
 package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import java.io.IOException;
+import java.nio.ByteBuffer;
 
 
 /**
- * Factory class for creating PubSubPosition objects from wire format
+ * A factory interface for creating {@link PubSubPosition} instances and resolving their associated class names.
+ * <p>
+ * Each implementation is tied to a unique position type ID and is responsible for:
+ * <ul>
+ *   <li>Deserializing a {@link PubSubPosition} from its {@link PubSubPositionWireFormat}</li>
+ *   <li>Returning the class name of the position type it handles</li>
+ * </ul>
+ * <p>
+ * Factories are used during deserialization to map a type ID to the appropriate {@link PubSubPosition} implementation.
  */
-public class PubSubPositionFactory {
-  public static final PubSubPositionFactory INSTANCE = new PubSubPositionFactory();
+public abstract class PubSubPositionFactory {
+  private final int positionTypeId;
 
   /**
-   * Converts a wire format position to a PubSubPosition
-   * @param positionWireFormat the wire format position
-   * @return concrete position object represented by the wire format
+   * Constructs a factory with the given position type ID.
+   *
+   * @param positionTypeId the unique integer identifier for the position type
    */
-  PubSubPosition convertToPosition(PubSubPositionWireFormat positionWireFormat) {
-    if (positionWireFormat == null) {
-      throw new IllegalArgumentException("Cannot deserialize null wire format position");
-    }
-
-    switch (positionWireFormat.type) {
-      case PubSubPositionType.APACHE_KAFKA_OFFSET:
-        try {
-          return new ApacheKafkaOffsetPosition(positionWireFormat.rawBytes);
-        } catch (IOException e) {
-          throw new VeniceException("Failed to deserialize Apache Kafka offset position", e);
-        }
-      default:
-        throw new IllegalArgumentException(
-            "Cannot convert to position. Unknown position type: " + positionWireFormat.type);
-    }
+  public PubSubPositionFactory(int positionTypeId) {
+    this.positionTypeId = positionTypeId;
   }
 
-  PubSubPosition convertToPosition(byte[] positionWireFormatBytes) {
-    if (positionWireFormatBytes == null) {
-      throw new IllegalArgumentException("Cannot deserialize null wire format position");
+  /**
+   * Creates a {@link PubSubPosition} instance by deserializing the provided {@link PubSubPositionWireFormat}.
+   * <p>
+   * This method validates that the type ID in the wire format matches the expected type ID for this factory.
+   * If the type ID does not match, an exception is thrown to prevent incorrect deserialization.
+   * <p>
+   * Internally, this delegates to {@link #createFromByteBuffer(ByteBuffer)} to perform the actual decoding.
+   *
+   * @param positionWireFormat the wire format containing the type ID and raw encoded bytes
+   * @return a new {@link PubSubPosition} instance reconstructed from the wire format
+   * @throws VeniceException if the type ID does not match the factory's expected type
+   */
+  public PubSubPosition createFromWireFormat(PubSubPositionWireFormat positionWireFormat) {
+    if (positionWireFormat.getType() != positionTypeId) {
+      throw new VeniceException(
+          "Position type ID mismatch: expected " + positionTypeId + ", but got " + positionWireFormat.getType());
     }
-    InternalAvroSpecificSerializer<PubSubPositionWireFormat> wireFormatSerializer =
-        AvroProtocolDefinition.PUBSUB_POSITION_WIRE_FORMAT.getSerializer();
-    PubSubPositionWireFormat wireFormat = wireFormatSerializer.deserialize(positionWireFormatBytes, null);
-    return convertToPosition(wireFormat);
+    return createFromByteBuffer(positionWireFormat.getRawBytes());
   }
 
-  public static PubSubPosition getPositionFromWireFormat(byte[] positionWireFormatBytes) {
-    return INSTANCE.convertToPosition(positionWireFormatBytes);
-  }
+  /**
+   * Deserializes a {@link PubSubPosition} from the given byte buffer.
+   *
+   * @param buffer the byte buffer containing the serialized position
+   * @return a new {@link PubSubPosition} instance
+   */
+  public abstract PubSubPosition createFromByteBuffer(ByteBuffer buffer);
 
-  public static PubSubPosition getPositionFromWireFormat(PubSubPositionWireFormat positionWireFormat) {
-    return INSTANCE.convertToPosition(positionWireFormat);
+  /**
+   * Returns the fully qualified class name of the {@link PubSubPosition} implementation handled by this factory.
+   *
+   * @return the fully qualified class name of the associated position class
+   */
+  public abstract String getPubSubPositionClassName();
+
+  /**
+   * Returns the unique position type ID associated with this factory.
+   *
+   * @return the integer type ID
+   */
+  public int getPositionTypeId() {
+    return positionTypeId;
   }
 }

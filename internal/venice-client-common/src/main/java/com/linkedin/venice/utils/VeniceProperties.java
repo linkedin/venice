@@ -2,6 +2,9 @@ package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -17,6 +20,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -467,12 +471,79 @@ public class VeniceProperties implements Serializable {
     return getMap(key);
   }
 
+  /**
+   * Retrieves a map from the configuration using the given key,
+   * where each entry is a colon-separated string (e.g., "key:value").
+   *
+   * @param key the configuration key
+   * @return an unmodifiable {@code Map<String, String>}
+   * @throws UndefinedPropertyException if the key does not exist
+   * @throws VeniceException if any entry is malformed
+   */
   public Map<String, String> getMap(String key) {
+    return Collections.unmodifiableMap(
+        parseKeyValueList(
+            key,
+            k -> k, // identity function for string keys
+            HashMap::new));
+  }
+
+  /**
+   * Retrieves a map from the configuration using the given key,
+   * where keys are expected to be integers and values are strings.
+   *
+   * @param key the configuration key
+   * @return an {@code Int2ObjectMap<String>} of parsed entries
+   * @throws UndefinedPropertyException if the key does not exist
+   * @throws VeniceException if any entry is malformed or key is not a valid integer
+   */
+  public Int2ObjectMap<String> getIntKeyedMap(String key) {
+    Int2ObjectMap<String> parsedMap = parseKeyValueList(key, strKey -> {
+      try {
+        return Integer.parseInt(strKey.trim());
+      } catch (NumberFormatException e) {
+        throw new VeniceException("Invalid integer key: " + strKey, e);
+      }
+    }, Int2ObjectOpenHashMap::new);
+    return Int2ObjectMaps.unmodifiable(parsedMap);
+  }
+
+  /**
+   * Retrieves a map from the configuration using the given key.
+   * <p>
+   * The expected format of the value is a list of strings, where each entry is a colon-separated key-value pair.
+   * Only the first colon (`:`) is used to split the key from the value, allowing the value itself to contain colons.
+   * <p>
+   * Example input for the key:
+   * <pre>
+   *   config.key = ["1:broker1.kafka.com:9092", "2:broker2.kafka.com:9093"]
+   * </pre>
+   * This would return a map:
+   * <pre>
+   *   {
+   *     "1" -> "broker1.kafka.com:9092",
+   *     "2" -> "broker2.kafka.com:9093"
+   *   }
+   * </pre>
+   * @param key         the configuration key
+   * @param keyParser   a function to convert the string key into the desired key type
+   * @param mapSupplier a supplier that provides a mutable map instance
+   * @param <K>         the key type
+   * @param <M>         the map type
+   * @return a populated map from the config
+   * @throws UndefinedPropertyException if the key is missing
+   * @throws VeniceException if any entry is malformed
+   */
+  private <K, M extends Map<K, String>> M parseKeyValueList(
+      String key,
+      Function<String, K> keyParser,
+      Supplier<M> mapSupplier) {
     if (!containsKey(key)) {
       throw new UndefinedPropertyException(key);
     }
-    List<String> keyValuePairs = this.getList(key);
-    Map<String, String> map = new HashMap<>(keyValuePairs.size());
+
+    List<String> keyValuePairs = getList(key);
+    M map = mapSupplier.get();
 
     for (String keyValuePair: keyValuePairs) {
       // One entry could have multiple ":". For example, "<ID>:<Kafka URL>:<port>". In this case, we split the String by
@@ -484,9 +555,30 @@ public class VeniceProperties implements Serializable {
       }
       String mapKey = keyValuePair.substring(0, indexOfFirstColon);
       String mapValue = keyValuePair.substring(indexOfFirstColon + 1);
-      map.put(mapKey, mapValue);
+      map.put(keyParser.apply(mapKey), mapValue);
     }
-    return Collections.unmodifiableMap(map);
+
+    return map;
+  }
+
+  /**
+   * Helper function to convert a map to a string representation.
+   * @param map The map to convert
+   * @return
+   */
+  public static String mapToString(Map<?, ?> map) {
+    if (map == null || map.isEmpty()) {
+      return "";
+    }
+
+    StringBuilder builder = new StringBuilder();
+    for (Map.Entry<?, ?> entry: map.entrySet()) {
+      if (builder.length() > 0) {
+        builder.append(',');
+      }
+      builder.append(entry.getKey()).append(':').append(entry.getValue());
+    }
+    return builder.toString();
   }
 
   public Properties toProperties() {

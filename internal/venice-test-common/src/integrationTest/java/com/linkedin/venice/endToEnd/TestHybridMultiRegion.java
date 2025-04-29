@@ -38,6 +38,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.serializer.AvroSerializer;
@@ -70,6 +71,7 @@ public class TestHybridMultiRegion {
    *                 the middle of the test, please restart them at the end of your test.
    */
   private VeniceTwoLayerMultiRegionMultiClusterWrapper sharedVenice;
+  private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
 
   /**
    * This cluster is re-used by some of the tests, in order to speed up the suite. Some other tests require
@@ -79,6 +81,7 @@ public class TestHybridMultiRegion {
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     sharedVenice = setUpCluster();
+    pubSubPositionTypeRegistry = sharedVenice.getParentKafkaBrokerWrapper().getPubSubPositionTypeRegistry();
   }
 
   @AfterClass(alwaysRun = true)
@@ -234,12 +237,12 @@ public class TestHybridMultiRegion {
       veniceWriterProperties2.put(INSTANCE_ID, writer2);
 
       try (
-          VeniceWriter<byte[], byte[], byte[]> veniceWriter1 =
-              TestUtils.getVeniceWriterFactory(veniceWriterProperties1, pubSubProducerAdapterFactory)
-                  .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build());
-          VeniceWriter<byte[], byte[], byte[]> veniceWriter2 =
-              TestUtils.getVeniceWriterFactory(veniceWriterProperties2, pubSubProducerAdapterFactory)
-                  .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build())) {
+          VeniceWriter<byte[], byte[], byte[]> veniceWriter1 = TestUtils
+              .getVeniceWriterFactory(veniceWriterProperties1, pubSubProducerAdapterFactory, pubSubPositionTypeRegistry)
+              .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build());
+          VeniceWriter<byte[], byte[], byte[]> veniceWriter2 = TestUtils
+              .getVeniceWriterFactory(veniceWriterProperties2, pubSubProducerAdapterFactory, pubSubPositionTypeRegistry)
+              .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build())) {
         veniceWriter1.broadcastStartOfPush(false, Collections.emptyMap());
 
         /**

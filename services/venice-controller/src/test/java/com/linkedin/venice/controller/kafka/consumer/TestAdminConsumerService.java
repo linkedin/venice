@@ -76,7 +76,6 @@ public class TestAdminConsumerService {
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     doReturn(mock(ZkClient.class)).when(admin).getZkClient();
     doReturn(mock(HelixAdapterSerializer.class)).when(admin).getAdapterSerializer();
-    doReturn(consumerFactory).when(admin).getPubSubConsumerAdapterFactory();
     doReturn("localhost:1234").when(admin).getKafkaBootstrapServers(true);
     doReturn(true).when(admin).isSslToKafka();
 
@@ -93,6 +92,7 @@ public class TestAdminConsumerService {
           admin,
           controllerConfig,
           metricsRepository,
+          consumerFactory,
           pubSubTopicRepository,
           pubSubMessageDeserializer);
 
@@ -105,6 +105,7 @@ public class TestAdminConsumerService {
             admin,
             controllerConfig,
             metricsRepository,
+            consumerFactory,
             pubSubTopicRepository,
             pubSubMessageDeserializer);
       } catch (Exception e) {
@@ -148,7 +149,6 @@ public class TestAdminConsumerService {
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     doReturn(mock(ZkClient.class)).when(admin).getZkClient();
     doReturn(mock(HelixAdapterSerializer.class)).when(admin).getAdapterSerializer();
-    doReturn(consumerFactory).when(admin).getPubSubConsumerAdapterFactory();
     doReturn("localhost:1234").when(admin).getKafkaBootstrapServers(true);
     doReturn(false).when(admin).isSslToKafka();
     VeniceProperties veniceProperties = mock(VeniceProperties.class);
@@ -162,8 +162,13 @@ public class TestAdminConsumerService {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
 
-    AdminConsumerService service =
-        new AdminConsumerService(admin, controllerConfig, metricsRepository, pubSubTopicRepository, deserializer);
+    AdminConsumerService service = new AdminConsumerService(
+        admin,
+        controllerConfig,
+        metricsRepository,
+        consumerFactory,
+        pubSubTopicRepository,
+        deserializer);
 
     // Access private createKafkaConsumer via reflection
     Method method = AdminConsumerService.class.getDeclaredMethod("createKafkaConsumer", String.class);

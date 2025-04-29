@@ -845,7 +845,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
     properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
-    VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(properties, pubSubProducerAdapterFactory);
+    VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(
+        properties,
+        pubSubProducerAdapterFactory,
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -862,7 +865,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getSSLAddress());
     properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
     properties.putAll(KafkaTestUtils.getLocalKafkaClientSSLConfig());
-    VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(properties, pubSubProducerAdapterFactory);
+    VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(
+        properties,
+        pubSubProducerAdapterFactory,
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
 
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -1126,7 +1132,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         compressionStrategy,
         compressionDictionaryGenerator,
         pubSubProducerAdapterFactory,
-        PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
+        PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)),
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
 
     int versionId = response.getVersion();
     waitVersion(storeName, versionId, controllerClient.get());

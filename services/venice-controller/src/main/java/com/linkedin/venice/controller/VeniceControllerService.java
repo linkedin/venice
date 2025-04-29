@@ -17,6 +17,7 @@ import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
@@ -64,7 +65,8 @@ public class VeniceControllerService extends AbstractVeniceService {
       Optional<ICProvider> icProvider,
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
       PubSubTopicRepository pubSubTopicRepository,
-      PubSubClientsFactory pubSubClientsFactory) {
+      PubSubClientsFactory pubSubClientsFactory,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     this.multiClusterConfigs = multiClusterConfigs;
 
     DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore =
@@ -92,6 +94,7 @@ public class VeniceControllerService extends AbstractVeniceService {
         icProvider,
         pubSubTopicRepository,
         pubSubClientsFactory,
+        pubSubPositionTypeRegistry,
         Arrays.asList(initRoutineForPushJobDetailsSystemStore, initRoutineForHeartbeatSystemStore));
 
     if (multiClusterConfigs.isParent()) {
@@ -179,6 +182,7 @@ public class VeniceControllerService extends AbstractVeniceService {
             internalAdmin,
             clusterConfig,
             metricsRepository,
+            pubSubClientsFactory.getConsumerAdapterFactory(),
             pubSubTopicRepository,
             pubSubMessageDeserializer);
         this.consumerServicesByClusters.put(cluster, adminConsumerService);
