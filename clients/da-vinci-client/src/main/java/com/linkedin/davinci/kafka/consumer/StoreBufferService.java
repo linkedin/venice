@@ -152,16 +152,16 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   /**
-   * {@link #getDrainerIndexForConsumerRecord} hashes topic name and partition to a drainer. The different naming
-   * convention suffixes for RT (_rt) and Separate RT (_rt_sep) means that different drainers would be assigned because
-   * the topic name is "different", when the same drainer should be used for both. Converting the topic name fixes this.
+   * {@link #getDrainerIndexForConsumerRecord} hashes the topic name and partition to determine a drainer. Due to the
+   * different naming conventions for RT (_rt) and Separate RT (_rt_sep), different drainers might be assigned while
+   * the same drainer handling both topics would be more ideal for concurrency. Normalizing topic name fixes this issue.
    */
-  public int getHashCode(PubSubTopic topic) {
+  public int computeTopicHashCode(PubSubTopic topic) {
     if (topic.isSeparateRealTimeTopic()) {
       return sepRtHashCodeCache.computeIfAbsent(topic, inputTopic -> {
-        String rtName = Utils.getRealTimeTopicNameFromSeparateRealTimeTopic(inputTopic.getName());
-        PubSubTopic convertedTopic = new PubSubTopicImpl(rtName);
-        return convertedTopic.hashCode();
+        String realTimeTopicName = Utils.getRealTimeTopicNameFromSeparateRealTimeTopic(inputTopic.getName());
+        PubSubTopic normalizedTopic = new PubSubTopicImpl(realTimeTopicName);
+        return normalizedTopic.hashCode();
       });
     }
     return topic.hashCode();
@@ -173,7 +173,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
      * {@link Integer.MAX_VALUE} / 2 + 1, which could make sure 'topicHash + consumerRecord.partition()' should be
      * positive for most time to guarantee even partition assignment.
      */
-    int topicHash = Math.abs(getHashCode(consumerRecord.getTopicPartition().getPubSubTopic()) / 2);
+    int topicHash = Math.abs(computeTopicHashCode(consumerRecord.getTopicPartition().getPubSubTopic()) / 2);
     return Math.abs((topicHash + partition) % this.drainerNum);
   }
 
