@@ -21,6 +21,7 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.VersionStatus;
 import java.util.concurrent.CompletableFuture;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -74,6 +75,7 @@ public class LeaderFollowerPartitionStateModelTest {
     NotificationContext context = mock(NotificationContext.class);
     when(message.getResourceName()).thenReturn(resourceName);
     Store store = mock(Store.class);
+    when(store.getVersionStatus(anyInt())).thenReturn(VersionStatus.STARTED);
     doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
 
     LeaderFollowerPartitionStateModel leaderFollowerPartitionStateModelSpy = spy(leaderFollowerPartitionStateModel);

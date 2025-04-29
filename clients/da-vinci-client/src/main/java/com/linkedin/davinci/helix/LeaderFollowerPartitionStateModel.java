@@ -13,6 +13,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
@@ -31,15 +32,15 @@ import org.apache.helix.participant.statemachine.Transition;
  *
  * There is only at most one leader at a time and it is elected from the follower. At present,
  * Followers and Leader behave the same in the read path. However, in the write path, leader
- * will take extra work. See {@link LeaderFollowerStoreIngestionTask}
- * for more details.
+ * will take extra work. See {@link LeaderFollowerStoreIngestionTask} for more details.
  *
  * There is an optional latch between Offline to Follower transition. The latch is only placed if the
- * version state model served is the current version. (During cluster rebalancing or SN rebouncing)
- * Since Helix rebalancer only refers to state model to determine the rebalancing time. The latch is
- * a safeguard to prevent Helix "over-rebalancing" the cluster and failing the read traffic. The
- * latch is released when ingestion has caught up the lag or the ingestion has reached the last known
- * offset of VT.
+ * version state model served is the current version or the future version but completed already.
+ * (During cluster rebalancing or SN rebouncing) Since Helix rebalancer only refers to state model
+ * to determine the rebalancing time. The latch is a safeguard to prevent Helix "over-rebalancing"
+ * the cluster and failing the read traffic for the current version or when a deferred swap rolls
+ * forward the future version. The latch is released when ingestion has caught up the lag or the
+ * ingestion has reached the last known offset of VT.
  */
 @StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = { HelixState.LEADER_STATE, HelixState.STANDBY_STATE })
 public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateModel {
@@ -91,14 +92,18 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int version = Version.parseVersionFromKafkaTopicName(resourceName);
       Store store = getStoreRepo().getStoreOrThrow(storeName);
-      boolean isRegularStoreCurrentVersion = store.getCurrentVersion() == version;
+      int currentVersion = store.getCurrentVersion();
+      boolean isCurrentVersion = currentVersion == version;
+      boolean isFutureVersionOnline =
+          currentVersion < version && store.getVersionStatus(version).equals(VersionStatus.ONLINE);
 
       /**
-       * For regular store current version, firstly create a latch, then start ingestion and wait for ingestion
-       * completion. Otherwise, if we start ingestion first, ingestion completion might be reported before latch
-       * creation, and latch will never be released until timeout, resulting in error replica.
+       * For current version and already completed future versions, firstly create a latch, then start ingestion and wait
+       * for ingestion completion to make sure that the state transition waits until this new replica finished consuming
+       * before asked to serve requests. Also, if we start ingestion first before creating the latch, ingestion completion
+       * might be reported before latch creation, and latch will never be released until timeout, resulting in error replica.
        */
-      if (isRegularStoreCurrentVersion) {
+      if (isCurrentVersion || isFutureVersionOnline) {
         notifier.startConsumption(resourceName, getPartition());
       }
       try {
@@ -110,12 +115,12 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
             LatencyUtils.getElapsedTimeFromNSToMS(startTimeForSettingUpNewStorePartitionInNs));
       } catch (Exception e) {
         logger.error("Failed to set up the new replica: {}", Utils.getReplicaId(resourceName, getPartition()), e);
-        if (isRegularStoreCurrentVersion) {
+        if (isCurrentVersion || isFutureVersionOnline) {
           notifier.stopConsumption(resourceName, getPartition());
         }
         throw e;
       }
-      if (isRegularStoreCurrentVersion) {
+      if (isCurrentVersion || isFutureVersionOnline) {
         waitConsumptionCompleted(resourceName, notifier);
       }
       heartbeatMonitoringService

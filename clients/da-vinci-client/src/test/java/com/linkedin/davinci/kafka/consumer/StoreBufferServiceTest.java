@@ -1,8 +1,11 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -33,6 +36,7 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.nio.ByteBuffer;
+import java.util.concurrent.CompletableFuture;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -166,6 +170,27 @@ public class StoreBufferServiceTest {
     bufferService.putConsumerRecord(cr, mockTask, null, partition, kafkaUrl, 0L);
     bufferService.internalDrainBufferedRecordsFromTopicPartition(pubSubTopicPartition1, 3, 50);
     bufferService.stop();
+  }
+
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testDrainBufferRecordsWhenPCSIsNull(boolean queueLeaderWrites) throws Exception {
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats, null);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    String topic = Utils.getUniqueString("test_topic") + "_v1";
+    int partition = 1;
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topic);
+    PubSubTopicPartition pubSubTopicPartition1 = new PubSubTopicPartitionImpl(pubSubTopic, partition);
+    when(mockTask.getPartitionConsumptionState(partition)).thenReturn(null);
+    when(mockTask.isGlobalRtDivEnabled()).thenReturn(false);
+    doCallRealMethod().when(mockTask).updateOffsetMetadataAndSyncOffset(any());
+    doCallRealMethod().when(mockTask).updateOffsetMetadataAndSyncOffset(any(), any());
+    bufferService.start();
+    CompletableFuture<Void> cmdFuture = bufferService.execSyncOffsetCommandAsync(pubSubTopicPartition1, mockTask);
+    bufferService.drainBufferedRecordsFromTopicPartition(pubSubTopicPartition1);
+    cmdFuture.get(SECONDS.toMillis(30), MILLISECONDS);
+    Assert.assertTrue(cmdFuture.isDone()); // Make sure the command future is done
+    bufferService.stop();
+    verify(mockTask, never()).updateOffsetMetadataAndSyncOffset(any());
   }
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")

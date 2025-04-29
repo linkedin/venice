@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
 import static org.mockito.Mockito.mock;
@@ -14,10 +15,10 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
-import java.util.function.BiConsumer;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -97,6 +98,16 @@ public class ApacheKafkaProducerConfigTest {
     props.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
     props.put("kafka.sasl.mechanism", SASL_MECHANISM);
     props.put("kafka.security.protocol", "SASL_SSL");
+    props.put("ssl.keystore.location", "/etc/kafka/secrets/kafka.keystore.jks");
+    props.put("ssl.keystore.password", "keystore-pass");
+    props.put("ssl.keystore.type", "JKS");
+    props.put("ssl.key.password", "key-pass");
+    props.put("ssl.truststore.location", "/etc/kafka/secrets/kafka.truststore.jks");
+    props.put("ssl.truststore.password", "truststore-pass");
+    props.put("ssl.truststore.type", "JKS");
+    props.put("ssl.keymanager.algorithm", "SunX509");
+    props.put("ssl.trustmanager.algorithm", "SunX509");
+    props.put("ssl.secure.random.implementation", "SHA1PRNG");
 
     PubSubProducerAdapterContext context = mock(PubSubProducerAdapterContext.class);
     when(context.getBrokerAddress()).thenReturn(null);
@@ -112,39 +123,6 @@ public class ApacheKafkaProducerConfigTest {
   @DataProvider(name = "stripPrefix")
   public static Object[][] stripPrefix() {
     return new Object[][] { { true }, { false } };
-  }
-
-  @Test(dataProvider = "stripPrefix")
-  public void testCopySaslConfiguration(boolean stripPrefix) {
-    Properties config = new Properties();
-    config.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
-    config.put("kafka.sasl.mechanism", SASL_MECHANISM);
-    config.put("kafka.security.protocol", "SASL_SSL");
-
-    testCopy(
-        stripPrefix,
-        config,
-        (input, output) -> ApacheKafkaProducerConfig
-            .copyKafkaSASLProperties(new VeniceProperties(input), output, stripPrefix));
-
-    testCopy(
-        stripPrefix,
-        config,
-        (input, output) -> ApacheKafkaProducerConfig.copyKafkaSASLProperties(input, output, stripPrefix));
-  }
-
-  private static void testCopy(boolean stripPrefix, Properties input, BiConsumer<Properties, Properties> copy) {
-    Properties output = new Properties();
-    copy.accept(input, output);
-    if (stripPrefix) {
-      assertEquals(SASL_JAAS_CONFIG, output.get("sasl.jaas.config"));
-      assertEquals(SASL_MECHANISM, output.get("sasl.mechanism"));
-      assertEquals("SASL_SSL", output.get("security.protocol"));
-    } else {
-      assertEquals(SASL_JAAS_CONFIG, output.get("kafka.sasl.jaas.config"));
-      assertEquals(SASL_MECHANISM, output.get("kafka.sasl.mechanism"));
-      assertEquals("SASL_SSL", output.get("kafka.security.protocol"));
-    }
   }
 
   @Test
@@ -201,13 +179,14 @@ public class ApacheKafkaProducerConfigTest {
   @Test
   public void testGetValidProducerProperties() {
     Properties allProps = new Properties();
-    allProps.put(ProducerConfig.MAX_BLOCK_MS_CONFIG, "1000");
-    allProps.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "2000");
+    allProps.put(KAFKA_CONFIG_PREFIX + ProducerConfig.MAX_BLOCK_MS_CONFIG, "1000");
+    allProps.put(KAFKA_CONFIG_PREFIX + ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, "2000");
     // this is common config; there are no admin specific configs
-    allProps.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+    allProps.put(KAFKA_CONFIG_PREFIX + AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
     allProps.put("bogus.kafka.config", "bogusValue");
 
-    Properties validProps = ApacheKafkaProducerConfig.getValidProducerProperties(allProps);
+    Properties validProps =
+        ApacheKafkaUtils.getValidKafkaClientProperties(new VeniceProperties(allProps), ProducerConfig.configNames());
     assertEquals(validProps.size(), 2);
     assertEquals(validProps.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG), "localhost:9092");
     assertEquals(validProps.get(ProducerConfig.MAX_BLOCK_MS_CONFIG), "1000");

@@ -358,7 +358,6 @@ public class VenicePathParser implements ExtendedResourcePathParser<VenicePath, 
       // Right now we use key num as request usage, in the future we might consider the Capacity unit.
       routerStats.getStatsByType(SINGLE_GET).recordRequestUsage(storeName, keyNum);
     }
-
     return path;
   }
 
