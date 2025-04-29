@@ -1047,7 +1047,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     final int partition = partitionConsumptionState.getPartition();
     final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     final PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
-
+    LOGGER.info("DEBUGGING Before Promo PCS: {}", partitionConsumptionState);
     /**
      * Note that this function is called after the new leader has waited for 5 minutes of inactivity on the local VT topic.
      * The new leader might NOT need to switch to remote consumption in a case where map-reduce jobs of a batch job stuck
@@ -1060,6 +1060,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
     partitionConsumptionState.setLeaderFollowerState(LEADER);
     prepareOffsetCheckpointAndStartConsumptionAsLeader(leaderTopic, partitionConsumptionState, true);
+    LOGGER.info("DEBUGGING After Promo PCS: {}", partitionConsumptionState);
   }
 
   /**
