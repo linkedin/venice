@@ -94,8 +94,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       Store store = getStoreRepo().getStoreOrThrow(storeName);
       int currentVersion = store.getCurrentVersion();
       boolean isCurrentVersion = currentVersion == version;
-      boolean isFutureVersionOnline =
-          currentVersion < version && store.getVersionStatus(version).equals(VersionStatus.ONLINE);
+      boolean isFutureVersionPushed =
+          currentVersion < version && store.getVersionStatus(version).equals(VersionStatus.PUSHED);
 
       /**
        * For current version and already completed future versions, firstly create a latch, then start ingestion and wait
@@ -103,7 +103,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
        * before asked to serve requests. Also, if we start ingestion first before creating the latch, ingestion completion
        * might be reported before latch creation, and latch will never be released until timeout, resulting in error replica.
        */
-      if (isCurrentVersion || isFutureVersionOnline) {
+      if (isCurrentVersion || isFutureVersionPushed) {
         notifier.startConsumption(resourceName, getPartition());
       }
       try {
@@ -115,12 +115,12 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
             LatencyUtils.getElapsedTimeFromNSToMS(startTimeForSettingUpNewStorePartitionInNs));
       } catch (Exception e) {
         logger.error("Failed to set up the new replica: {}", Utils.getReplicaId(resourceName, getPartition()), e);
-        if (isCurrentVersion || isFutureVersionOnline) {
+        if (isCurrentVersion || isFutureVersionPushed) {
           notifier.stopConsumption(resourceName, getPartition());
         }
         throw e;
       }
-      if (isCurrentVersion || isFutureVersionOnline) {
+      if (isCurrentVersion || isFutureVersionPushed) {
         waitConsumptionCompleted(resourceName, notifier);
       }
       heartbeatMonitoringService
