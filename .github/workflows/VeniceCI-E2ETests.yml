@@ -98,7 +98,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -193,7 +193,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -288,7 +288,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -383,7 +383,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -478,7 +478,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -573,7 +573,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -668,7 +668,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -763,7 +763,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -858,7 +858,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -953,7 +953,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -1048,7 +1048,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -1143,7 +1143,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -1238,7 +1238,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -1333,7 +1333,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -1428,7 +1428,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -1523,7 +1523,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -1618,7 +1618,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -1713,7 +1713,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -1808,7 +1808,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -1903,7 +1903,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -1998,7 +1998,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -2093,7 +2093,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -2188,7 +2188,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -2283,7 +2283,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -2378,7 +2378,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -2473,7 +2473,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -2568,7 +2568,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -2663,7 +2663,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -2758,7 +2758,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -2853,7 +2853,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
@@ -2948,7 +2948,7 @@ jobs:
           path: ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz
           retention-days: 30
       - name: Upload test results to BuildPulse for flaky test detection
-        if: github.event_name == 'push' && !cancelled()
+        if: !cancelled()
         uses: buildpulse/buildpulse-action@main
         with:
           account: 357098
