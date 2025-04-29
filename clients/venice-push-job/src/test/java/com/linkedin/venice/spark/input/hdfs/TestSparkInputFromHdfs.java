@@ -265,10 +265,6 @@ public class TestSparkInputFromHdfs {
     return config;
   }
 
-  private void writeAvroFile(File inputDir, String fileName, int start, int end) throws IOException {
-    writeAvroFile(inputDir, fileName, start, end, false);
-  }
-
   private void writeAvroFile(File inputDir, String fileName, int start, int end, boolean includeTimestamps)
       throws IOException {
     File file = new File(inputDir, fileName);
@@ -309,10 +305,6 @@ public class TestSparkInputFromHdfs {
             new BytesWritable(stringSerializer.toBytes(DEFAULT_USER_DATA_VALUE_PREFIX + i)));
       }
     }
-  }
-
-  private void verifyAvroData(PartitionReader<InternalRow> reader, int start, int end) throws IOException {
-    verifyAvroData(reader, start, end, false);
   }
 
   private void verifyAvroData(PartitionReader<InternalRow> reader, int start, int end, boolean containsTimestamp)

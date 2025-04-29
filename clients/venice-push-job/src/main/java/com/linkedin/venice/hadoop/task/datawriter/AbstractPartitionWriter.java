@@ -70,6 +70,7 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -631,8 +632,9 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     this.duplicateKeyPrinter = initDuplicateKeyPrinter(props);
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
     this.callback = new PartitionWriterProducerCallback();
-    this.valueSchema =
-        props.getString(RMD_SCHEMA_PROP, "") != "" ? new Schema.Parser().parse(props.getString(RMD_SCHEMA_PROP)) : null;
+    this.valueSchema = !Objects.equals(props.getString(RMD_SCHEMA_PROP, ""), "")
+        ? new Schema.Parser().parse(props.getString(RMD_SCHEMA_PROP))
+        : null;
     initStorageQuotaFields(props);
     /**
      * A dummy background task that reports progress every 5 minutes.
