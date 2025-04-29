@@ -5,6 +5,8 @@ import static java.util.Collections.reverseOrder;
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.toList;
 
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.utils.LockAssistedCompletableFuture;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -23,7 +25,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
@@ -69,7 +70,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   private final RecordHandler leaderRecordHandler;
   private final StoreBufferServiceStats storeBufferServiceStats;
-  private final VeniceConcurrentHashMap<PubSubTopic, Integer> sepRtHashCodeCache = new VeniceConcurrentHashMap<>();
+  private final LoadingCache<PubSubTopic, Integer> hashCodeCache;
 
   private final boolean isSorted;
 
@@ -142,6 +143,19 @@ public class StoreBufferService extends AbstractStoreBufferService {
             this::getTotalRemainingMemory,
             this::getMaxMemoryUsagePerDrainer,
             this::getMinMemoryUsagePerDrainer);
+    /*
+     * {@link #getDrainerIndexForConsumerRecord} hashes the topic name and partition to determine a drainer. Due to the
+     * different naming conventions for RT (_rt) and Separate RT (_rt_sep), different drainers might be assigned while
+     * the same drainer handling both topics would help with concurrency. Normalizing the topic name fixes this issue.
+     */
+    this.hashCodeCache = Caffeine.newBuilder().maximumSize(2000).build(topic -> {
+      if (topic.isSeparateRealTimeTopic()) {
+        String realTimeTopicName = Utils.getRealTimeTopicNameFromSeparateRealTimeTopic(topic.getName());
+        PubSubTopic normalizedTopic = new PubSubTopicImpl(realTimeTopicName);
+        return normalizedTopic.hashCode();
+      }
+      return topic.hashCode();
+    });
   }
 
   protected MemoryBoundBlockingQueue<QueueNode> getDrainerForConsumerRecord(
@@ -151,29 +165,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
     return blockingQueueArr.get(drainerIndex);
   }
 
-  /**
-   * {@link #getDrainerIndexForConsumerRecord} hashes the topic name and partition to determine a drainer. Due to the
-   * different naming conventions for RT (_rt) and Separate RT (_rt_sep), different drainers might be assigned while
-   * the same drainer handling both topics would be more ideal for concurrency. Normalizing topic name fixes this issue.
-   */
-  private int computeTopicHashCode(PubSubTopic topic) {
-    if (topic.isSeparateRealTimeTopic()) {
-      return sepRtHashCodeCache.computeIfAbsent(topic, inputTopic -> {
-        String realTimeTopicName = Utils.getRealTimeTopicNameFromSeparateRealTimeTopic(inputTopic.getName());
-        PubSubTopic normalizedTopic = new PubSubTopicImpl(realTimeTopicName);
-        return normalizedTopic.hashCode();
-      });
-    }
-    return topic.hashCode();
-  }
-
   protected int getDrainerIndexForConsumerRecord(DefaultPubSubMessage consumerRecord, int partition) {
     /**
      * This will guarantee that 'topicHash' will be a positive integer, whose maximum value is
      * {@link Integer.MAX_VALUE} / 2 + 1, which could make sure 'topicHash + consumerRecord.partition()' should be
      * positive for most time to guarantee even partition assignment.
      */
-    int topicHash = Math.abs(computeTopicHashCode(consumerRecord.getTopicPartition().getPubSubTopic()) / 2);
+    int topicHash = Math.abs(hashCodeCache.get(consumerRecord.getTopicPartition().getPubSubTopic()) / 2);
     return Math.abs((topicHash + partition) % this.drainerNum);
   }
 
