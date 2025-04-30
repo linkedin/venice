@@ -222,6 +222,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PubSubTopic realTimeTopic;
   protected final PubSubTopic separateRealTimeTopic;
   protected final String storeName;
+  protected final String storeVersionName;
   protected final boolean isSystemStore;
   private final boolean isUserSystemStore;
 
@@ -429,6 +430,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.pubSubTopicRepository = builder.getPubSubTopicRepository();
     this.versionTopic = pubSubTopicRepository.getTopic(kafkaVersionTopic);
     this.storeName = versionTopic.getStoreName();
+    this.storeVersionName = storeVersionConfig.getStoreVersionName();
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
     this.isSystemStore = VeniceSystemStoreUtils.isSystemStore(storeName);
     // if version is not hybrid, it is not possible to create pub sub realTimeTopic, users of this field should do a
@@ -553,8 +555,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long startTime = System.nanoTime();
       recordTransformer.onStartVersionIngestion(isCurrentVersion.getAsBoolean());
       LOGGER.info(
-          "DaVinciRecordTransformer onStartVersionIngestion took {} ms",
-          LatencyUtils.getElapsedTimeFromNSToMS(startTime));
+          "DaVinciRecordTransformer onStartVersionIngestion took {}ms for store version: {}",
+          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+          storeVersionName);
     } else {
       this.recordTransformerKeyDeserializer = null;
       this.recordTransformerInputValueSchema = null;
@@ -698,12 +701,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public synchronized void subscribePartition(PubSubTopicPartition topicPartition, boolean isHelixTriggeredAction) {
     throwIfNotRunning();
     int partitionNumber = topicPartition.getPartitionNumber();
-
-    // if (recordTransformer != null) {
-    // long startTime = System.nanoTime();
-    // recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
-    // LOGGER.info("DaVinciRecordTransformer onRecovery took {} ms", LatencyUtils.getElapsedTimeFromNSToMS(startTime));
-    // }
 
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
         .incrementAndGet();
@@ -2320,8 +2317,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (recordTransformer != null) {
           long startTime = System.nanoTime();
           recordTransformer.internalOnRecovery(storageEngine, partition, partitionStateSerializer, compressor);
-          LOGGER
-              .info("DaVinciRecordTransformer onRecovery took {} ms", LatencyUtils.getElapsedTimeFromNSToMS(startTime));
+          LOGGER.info(
+              "DaVinciRecordTransformer onRecovery took {}ms for replica: {}",
+              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+              Utils.getReplicaId(topic, partition));
         }
 
         // Subscribe to local version topic.
@@ -4361,8 +4360,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Store store = storeRepository.getStoreOrThrow(storeName);
       recordTransformer.onEndVersionIngestion(store.getCurrentVersion());
       LOGGER.info(
-          "DaVinciRecordTransformer onEndVersionIngestion took {} ms",
-          LatencyUtils.getElapsedTimeFromNSToMS(startTime));
+          "DaVinciRecordTransformer onEndVersionIngestion took {}ms for store version: {}",
+          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+          storeVersionName);
       Utils.closeQuietlyWithErrorLogged(this.recordTransformer);
     }
   }

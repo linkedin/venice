@@ -675,7 +675,6 @@ public class TestBootstrappingChangelogConsumer {
     for (int i = startIndex; i < endIndex; i++) {
       String key = Integer.toString(i);
       PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message = polledChangeEventsMap.get((key));
-      System.out.println(key);
       ChangeEvent<Utf8> changeEvent = message.getValue();
       int versionFromMessage = Version.parseVersionFromVersionTopicName(message.getTopicPartition().getTopicName());
       Assert.assertEquals(versionFromMessage, version);
