@@ -2153,8 +2153,7 @@ public class VeniceParentHelixAdmin implements Admin {
       truncateKafkaTopic(kafkaTopic);
 
       // check whether the roll forward is successful in all regions in regionFilter.
-      // It might take a moment before all the child controllers update their current version, so add some delay before
-      // checking.
+      // Add retries to let the child controllers finish processing the roll forward command
       Map<String, Integer> failedRegions = new HashMap<>();
       for (int retry = 0; retry < NUMBER_OF_RETRY_FOR_ROLL_FORWARD_CHECK; retry++) {
         Map<String, Integer> currentVersionsAfterRollForward = getCurrentVersionsForMultiColos(clusterName, storeName);

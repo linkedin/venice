@@ -1220,7 +1220,7 @@ public class TestVeniceHelixAdmin {
           fail("Expected VeniceException not to be thrown");
         }
         assertTrue(
-            e.getMessage().contains("partitions do not have enough ready-to-serve instances"),
+            e.getMessage().contains("do not have enough ready-to-serve instances"),
             "Actual message: " + e.getMessage());
       }
     }

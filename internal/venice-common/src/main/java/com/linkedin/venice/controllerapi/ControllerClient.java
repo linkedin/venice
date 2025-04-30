@@ -655,13 +655,7 @@ public class ControllerClient implements Closeable {
 
   public ControllerResponse rollForwardToFutureVersion(String storeName, String regionFilter) {
     QueryParams params = newParams().add(NAME, storeName).add(REGIONS_FILTER, regionFilter);
-    ControllerResponse response =
-        request(ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION, params, ControllerResponse.class);
-    if (response.isError()) {
-      throw new VeniceException(
-          "Failed to roll forward to future version for store: " + storeName + " with error: " + response.getError());
-    }
-    return response;
+    return request(ControllerRoute.ROLL_FORWARD_TO_FUTURE_VERSION, params, ControllerResponse.class);
   }
 
   public ControllerResponse rollForwardToFutureVersion(String storeName) {

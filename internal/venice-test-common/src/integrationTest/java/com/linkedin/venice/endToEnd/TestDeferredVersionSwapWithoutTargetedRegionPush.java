@@ -9,12 +9,12 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.HelixState;
@@ -22,6 +22,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
@@ -182,14 +183,12 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush {
     });
 
     // attempt roll forward (expected to fail due to missing ready to serve replicas)
-    try {
-      parentClient.rollForwardToFutureVersion(
-          storeName,
-          String.join(",", multiRegionMultiClusterWrapper.getChildRegionNames()));
-      fail("Roll forward should have failed due to insufficient replicas");
-    } catch (Exception e) {
-      assertTrue(e.getMessage().contains("Failed to roll forward to future version"));
-    }
+    ControllerResponse rollForwardResponse = parentClient
+        .rollForwardToFutureVersion(storeName, String.join(",", multiRegionMultiClusterWrapper.getChildRegionNames()));
+    assertTrue(rollForwardResponse.isError(), "Roll forward should have failed due to insufficient replicas");
+    assertTrue(
+        rollForwardResponse.getError().contains("Roll forward failed for store"),
+        "Unexpected error message: " + rollForwardResponse.getError());
 
     // add new servers and wait for eventual success of roll forward as each child controllers will
     // be retrying the roll forward until success
@@ -254,7 +253,7 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush {
         .getPartition(testPartition);
     Instance helixInst = partition.getAllInstancesByHelixState().get(state).get(0);
     // find matching server wrapper to stop
-    for (com.linkedin.venice.integration.utils.VeniceServerWrapper server: cluster.getVeniceServers()) {
+    for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       if (server.getPort() == helixInst.getPort()) {
         Instance inst = Instance.fromHostAndPort(server.getHost(), server.getPort());
         LOGGER.info("Stopping {} instance: {}", state, inst);

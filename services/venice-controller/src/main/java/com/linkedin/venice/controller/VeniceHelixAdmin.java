@@ -4601,10 +4601,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public void rollForwardToFutureVersion(String clusterName, String storeName, String regionFilter) {
     if (!isRegionPartOfRegionsFilterList(getRegionName(), regionFilter)) {
       LOGGER.info(
-          "Rolling forward will be skipped for store: {} in cluster: {}, as the region filter is {}",
+          "Rolling forward will be skipped for store: {} in cluster: {}, as the region filter {} doesn't include the current region {}",
           storeName,
           clusterName,
-          regionFilter);
+          regionFilter,
+          getRegionName());
       return;
     }
     int futureVersion = getOnlineFutureVersion(clusterName, storeName);
@@ -4628,7 +4629,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String currentVersionKafka = Version.composeKafkaTopic(storeName, futureVersion);
       HelixCustomizedViewOfflinePushRepository customizedViewRepository =
           getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
-      List<Integer> unFinishedPartitions = new ArrayList<>();
+      // Check if all partitions have enough ready-to-serve instances
       for (int partition = 0; partition < partitionCount; partition++) {
         List<Instance> readyToServeInstances;
         try {
@@ -4638,24 +4639,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         if (readyToServeInstances.size() < minActiveReplicas) {
-          unFinishedPartitions.add(partition);
+          // fail rolling forward if any partition does not have enough ready-to-serve instances
+          StringBuilder errorBuilder = new StringBuilder();
+          errorBuilder.append("Rolling forward current version ")
+              .append(previousVersion)
+              .append(" to future version: ")
+              .append(futureVersion)
+              .append(" failed for store: ")
+              .append(storeName)
+              .append(" as partition ")
+              .append(partition)
+              .append(" and probably others do not have enough ready-to-serve instances");
+          String errorMessage = errorBuilder.toString();
+          LOGGER.error(errorMessage);
+          throw new VeniceException(errorMessage);
         }
-      }
-      if (!unFinishedPartitions.isEmpty()) {
-        StringBuilder errorBuilder = new StringBuilder();
-        errorBuilder.append("Rolling forward current version ")
-            .append(previousVersion)
-            .append(" to future version: ")
-            .append(futureVersion)
-            .append(" failed for store: ")
-            .append(storeName)
-            .append(" as the following ")
-            .append(unFinishedPartitions.size())
-            .append(" partitions do not have enough ready-to-serve instances (capped at 10): ")
-            .append(unFinishedPartitions.subList(0, Math.min(10, unFinishedPartitions.size())));
-        String errorMessage = errorBuilder.toString();
-        LOGGER.error(errorMessage);
-        throw new VeniceException(errorMessage);
       }
       store.setCurrentVersion(futureVersion);
       LOGGER.info(
