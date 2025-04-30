@@ -8,7 +8,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.exceptions.ZkDataAccessException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -104,8 +104,24 @@ public class TestHelixUtils {
 
     doReturn(false).when(mockDataAccessor).update(testPath, dataUpdater, AccessOption.PERSISTENT);
 
-    Assert.assertThrows(ZkDataAccessException.class, () -> {
+    Assert.assertThrows(VeniceException.class, () -> {
       HelixUtils.compareAndUpdate(mockDataAccessor, testPath, 3, dataUpdater);
     });
+  }
+
+  @Test
+  public void testCompareAndUpdateSucceedsAfterRetries() {
+    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
+    String testPath = "/test/path";
+    DataUpdater<String> dataUpdater = mock(DataUpdater.class);
+
+    doReturn(false).doReturn(false)
+        .doReturn(true)
+        .when(mockDataAccessor)
+        .update(testPath, dataUpdater, AccessOption.PERSISTENT);
+
+    HelixUtils.compareAndUpdate(mockDataAccessor, testPath, 3, dataUpdater);
+
+    verify(mockDataAccessor, times(3)).update(testPath, dataUpdater, AccessOption.PERSISTENT);
   }
 }
