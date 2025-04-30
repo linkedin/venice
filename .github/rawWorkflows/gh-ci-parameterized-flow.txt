@@ -87,13 +87,10 @@
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
-        env:
-          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: $BUILDPULSE_ACCESS_KEY_ID
-          secret: $BUILDPULSE_SECRET_ACCESS_KEY
+          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
