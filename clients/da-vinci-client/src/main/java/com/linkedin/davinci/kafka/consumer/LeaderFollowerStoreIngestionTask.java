@@ -876,7 +876,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * a different producer host name.
      */
     long lastTimestamp = getLastConsumedMessageTimestamp(pcs.getPartition());
-    if (LatencyUtils.getElapsedTimeFromMsToMs(lastTimestamp) <= newLeaderInactiveTime) {
+    if (lastTimestamp <= 0 || LatencyUtils.getElapsedTimeFromMsToMs(lastTimestamp) <= newLeaderInactiveTime) {
       return false;
     }
 
@@ -1174,6 +1174,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private long getLastConsumedMessageTimestamp(int partition) {
     // Consumption thread would update the last consumed message timestamp for the corresponding partition.
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+    LOGGER.info(
+        "DEBUGGING: Last consumed message timestamp: {}, PCS: {}",
+        partitionConsumptionState.getLatestMessageConsumedTimestampInMs(),
+        partitionConsumptionState);
     return partitionConsumptionState.getLatestMessageConsumedTimestampInMs();
   }
 
