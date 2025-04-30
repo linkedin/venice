@@ -476,7 +476,10 @@ public class IntegrationTestPushUtils {
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     veniceWriterProperties
         .putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
-    return TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory);
+    return TestUtils.getVeniceWriterFactory(
+        veniceWriterProperties,
+        pubSubProducerAdapterFactory,
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
   }
 
   public static void verifyConsumerThreadPoolFor(

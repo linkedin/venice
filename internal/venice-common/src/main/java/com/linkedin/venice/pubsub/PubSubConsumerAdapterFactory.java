@@ -8,12 +8,20 @@ import java.io.Closeable;
 
 
 /**
- * Generic consumer factory interface.
- *
- * A pus-sub specific concrete implementation of this interface should be provided to be able to create
- * and instantiate consumers for that system.
+ * Generic factory interface for creating PubSub consumers.
+ * <p>
+ * Concrete implementations should create and configure consumers for a specific PubSub system (e.g., Kafka, Pulsar).
+ * <p>
+ * Implementations must provide a public no-arg constructor to support reflective instantiation.
  */
-public interface PubSubConsumerAdapterFactory<ADAPTER extends PubSubConsumerAdapter> extends Closeable {
+public abstract class PubSubConsumerAdapterFactory<ADAPTER extends PubSubConsumerAdapter> implements Closeable {
+  /**
+   * Constructor for PubSubConsumerAdapterFactory used mainly for reflective instantiation.
+   */
+  public PubSubConsumerAdapterFactory() {
+    // no-op
+  }
+
   /**
    *
    * @param veniceProperties            A copy of venice properties. Relevant consumer configs will be extracted from
@@ -25,11 +33,11 @@ public interface PubSubConsumerAdapterFactory<ADAPTER extends PubSubConsumerAdap
    *                                    for consumer thread.
    * @return                            Returns an instance of a consumer adapter
    */
-  ADAPTER create(
+  public abstract ADAPTER create(
       VeniceProperties veniceProperties,
       boolean isOffsetCollectionEnabled,
       PubSubMessageDeserializer pubSubMessageDeserializer,
       String consumerName);
 
-  String getName();
+  public abstract String getName();
 }

@@ -175,17 +175,8 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setRemovable(result.isRemovable());
         // Add detail reason why this instance could not be removed.
         if (!result.isRemovable()) {
-          StringBuilder msgBuilder = new StringBuilder();
-          msgBuilder.append(nodeId)
-              .append(" could not be removed from cluster: ")
-              .append(responseObject.getCluster())
-              .append(", because resource: ")
-              .append(result.getBlockingResource())
-              .append(" will ")
-              .append(result.getBlockingReason())
-              .append(" after removing this node. Details: ")
-              .append(result.getDetails());
-          String errorResponseMessage = msgBuilder.toString();
+          String errorResponseMessage = nodeId + " could not be removed from cluster: " + responseObject.getCluster()
+              + ". Reason: " + result.getFormattedMessage();
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(nodeId)) {
             LOGGER.warn(errorResponseMessage);
           }

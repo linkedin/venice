@@ -1,7 +1,5 @@
 package com.linkedin.venice.controller;
 
-import static org.mockito.Mockito.*;
-
 import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -66,7 +64,8 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         new MetricsRepository(),
         D2TestUtils.getAndStartD2Client(zkAddress),
         pubSubTopicRepository,
-        pubSubBrokerWrapper.getPubSubClientsFactory());
+        pubSubBrokerWrapper.getPubSubClientsFactory(),
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
     // Start stand by controller
     newAdmin.initStorageCluster(clusterName);
     List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
@@ -146,7 +145,8 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         new MetricsRepository(),
         D2TestUtils.getAndStartD2Client(zkAddress),
         pubSubTopicRepository,
-        pubSubBrokerWrapper.getPubSubClientsFactory());
+        pubSubBrokerWrapper.getPubSubClientsFactory(),
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
     newLeaderAdmin.initStorageCluster(clusterName);
     List<VeniceHelixAdmin> admins = new ArrayList<>();
     admins.add(veniceAdmin);
@@ -321,6 +321,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     int newAdminPort = controllerConfig.getAdminPort() + 100;
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties())
         .put("admin.port", newAdminPort)
+        .put("cluster.name", clusterName)
         .put("controller.dead.store.endpoint.enabled", true)
         .put("controller.dead.store.stats.class.name", MockDeadStoreStats.class.getName());
     VeniceProperties newControllerProps = builder.build();
@@ -331,14 +332,10 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
         new MetricsRepository(),
         D2TestUtils.getAndStartD2Client(zkAddress),
         pubSubTopicRepository,
-        pubSubBrokerWrapper.getPubSubClientsFactory()) {
-      @Override
-      public boolean isParent() {
-        return true;
-      }
-    };
+        pubSubBrokerWrapper.getPubSubClientsFactory(),
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
 
-    Assert.assertTrue(admin.deadStoreStats instanceof MockDeadStoreStats);
+    Assert.assertTrue(admin.deadStoreStatsMap.get(clusterName) instanceof MockDeadStoreStats);
   }
 
   public static class MockDeadStoreStats implements DeadStoreStats {

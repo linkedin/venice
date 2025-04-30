@@ -37,6 +37,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -113,7 +114,8 @@ class AbstractTestVeniceHelixAdmin {
         metricsRepository,
         D2TestUtils.getAndStartD2Client(zkAddress),
         pubSubTopicRepository,
-        pubSubBrokerWrapper.getPubSubClientsFactory());
+        pubSubBrokerWrapper.getPubSubClientsFactory(),
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
     veniceAdmin.initStorageCluster(clusterName);
     TopicCleanupService topicCleanupService = new TopicCleanupService(
         veniceAdmin,
@@ -164,7 +166,8 @@ class AbstractTestVeniceHelixAdmin {
         new ZkClient(zkAddress),
         new HelixAdapterSerializer(),
         3,
-        1000);
+        1000,
+        LogContext.EMPTY);
 
     MockTestStateModelFactory stateModelFactory;
 

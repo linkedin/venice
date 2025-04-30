@@ -77,6 +77,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEAR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_RESOURCE_INSTANCE_GROUP_TAG;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
@@ -212,11 +214,13 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -435,6 +439,7 @@ public class VeniceControllerClusterConfig {
   private final int minSchemaCountToKeep;
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private final PubSubClientsFactory pubSubClientsFactory;
+  private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
 
   private final PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory;
 
@@ -595,6 +600,13 @@ public class VeniceControllerClusterConfig {
   private final boolean isPreFetchDeadStoreStatsEnabled;
   private final long deadStoreStatsPreFetchIntervalInMs;
   private final VeniceProperties deadStoreStatsConfigs;
+  private final LogContext logContext;
+
+  /*
+  * Configs for admin operation version auto-detection service
+  */
+  private final boolean isProtocolVersionAutoDetectionServiceEnabled;
+  private final long protocolVersionAutoDetectionSleepMS;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -1037,6 +1049,7 @@ public class VeniceControllerClusterConfig {
     this.useDaVinciSpecificExecutionStatusForError =
         props.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
     this.pubSubClientsFactory = new PubSubClientsFactory(props);
+    this.pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(props);
     this.sourceOfTruthAdminAdapterFactory = PubSubClientsFactory.createSourceOfTruthAdminFactory(props);
     this.danglingTopicCleanupIntervalSeconds = props.getLong(CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND, -1);
     this.danglingTopicOccurrenceThresholdForCleanup =
@@ -1075,6 +1088,11 @@ public class VeniceControllerClusterConfig {
         DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING);
     this.isHybridStorePartitionCountUpdateEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
+
+    this.isProtocolVersionAutoDetectionServiceEnabled =
+        props.getBoolean(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED, false);
+    this.protocolVersionAutoDetectionSleepMS =
+        props.getLong(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS, TimeUnit.MINUTES.toMillis(10));
 
     Integer helixRebalancePreferenceEvenness =
         props.getOptionalInt(CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS).orElse(null);
@@ -1130,6 +1148,7 @@ public class VeniceControllerClusterConfig {
         props.getLong(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, TimeUnit.MINUTES.toMillis(1));
     this.deferredVersionSwapServiceEnabled = props.getBoolean(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, false);
     this.skipDeferredVersionSwapForDVCEnabled = props.getBoolean(SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED, true);
+    this.logContext = new LogContext.Builder().setRegionName(regionName).setComponentName("controller").build();
   }
 
   public VeniceProperties getProps() {
@@ -1839,6 +1858,10 @@ public class VeniceControllerClusterConfig {
     return pubSubClientsFactory;
   }
 
+  public PubSubPositionTypeRegistry getPubSubPositionTypeRegistry() {
+    return pubSubPositionTypeRegistry;
+  }
+
   public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
     return sourceOfTruthAdminAdapterFactory;
   }
@@ -1953,6 +1976,14 @@ public class VeniceControllerClusterConfig {
 
   public boolean getRealTimeTopicVersioningEnabled() {
     return isRealTimeTopicVersioningEnabled;
+  }
+
+  public boolean isProtocolVersionAutoDetectionServiceEnabled() {
+    return isProtocolVersionAutoDetectionServiceEnabled;
+  }
+
+  public long getProtocolVersionAutoDetectionSleepMS() {
+    return protocolVersionAutoDetectionSleepMS;
   }
 
   /**
@@ -2112,5 +2143,9 @@ public class VeniceControllerClusterConfig {
       throw new ConfigurationException(
           CONTROLLER_HELIX_INSTANCE_CAPACITY + " cannot be <  " + CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT);
     }
+  }
+
+  public LogContext getLogContext() {
+    return logContext;
   }
 }

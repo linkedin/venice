@@ -6,8 +6,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 
 
 public class PubSubTopicRepository {
-  LoadingCache<String, PubSubTopic> topicCache =
-      Caffeine.newBuilder().maximumSize(2000).build(topicName -> new PubSubTopicImpl(topicName));
+  LoadingCache<String, PubSubTopic> topicCache = Caffeine.newBuilder().maximumSize(2000).build(PubSubTopicImpl::new);
 
   public PubSubTopic getTopic(String topicName) {
     return topicCache.get(topicName);

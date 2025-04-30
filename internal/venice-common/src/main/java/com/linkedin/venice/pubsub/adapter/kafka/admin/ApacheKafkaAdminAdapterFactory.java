@@ -14,8 +14,15 @@ import java.io.IOException;
  * A kafka based admin client created using this factory is for managing and inspecting topics, brokers, configurations and ACLs.
  */
 
-public class ApacheKafkaAdminAdapterFactory implements PubSubAdminAdapterFactory<PubSubAdminAdapter> {
+public class ApacheKafkaAdminAdapterFactory extends PubSubAdminAdapterFactory<PubSubAdminAdapter> {
   private static final String NAME = "ApacheKafkaAdmin";
+
+  /**
+   * Constructor for ApacheKafkaAdminAdapterFactory used mainly for reflective instantiation.
+   */
+  public ApacheKafkaAdminAdapterFactory() {
+    // no-op
+  }
 
   @Override
   public PubSubAdminAdapter create(VeniceProperties veniceProperties, PubSubTopicRepository pubSubTopicRepository) {

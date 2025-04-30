@@ -56,7 +56,105 @@ public class ConfigKeys {
    */
   public static final String PUBSUB_CLIENT_CONFIG_PREFIX = PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
+  /**
+   * @deprecated Use {@link #PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS} instead.
+   * This legacy config key uses the older "pub.sub" naming convention.
+   */
+  @Deprecated
+  public static final String PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS = "pub.sub.admin.adapter.factory.class";
+
+  /**
+   * Configuration key for specifying the fully qualified class name of the PubSub admin adapter factory.
+   * This factory is responsible for creating instances of the PubSub admin adapter for the selected system.
+   */
+  public static final String PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS =
+      PUBSUB_CLIENT_CONFIG_PREFIX + "admin.adapter.factory.class";
+
+  /**
+   * @deprecated Use {@link #PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS} instead.
+   * This legacy config key uses the older "pub.sub" naming convention.
+   */
+  @Deprecated
+  public static final String PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS = "pub.sub.producer.adapter.factory.class";
+
+  /**
+   * Configuration key for specifying the fully qualified class name of the PubSub producer adapter factory.
+   * This factory is responsible for creating instances of the PubSub producer adapter.
+   */
+  public static final String PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS =
+      PUBSUB_CLIENT_CONFIG_PREFIX + "producer.adapter.factory.class";
+
+  /**
+   * @deprecated Use {@link #PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS} instead.
+   * This legacy config key uses the older "pub.sub" naming convention.
+   */
+  @Deprecated
+  public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
+
+  /**
+   * Configuration key for specifying the fully qualified class name of the PubSub consumer adapter factory.
+   * This factory is responsible for creating instances of the PubSub consumer adapter.
+   */
+  public static final String PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS =
+      PUBSUB_CLIENT_CONFIG_PREFIX + "consumer.adapter.factory.class";
+
+  /**
+   * @deprecated Use {@link #PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS} instead.
+   * This legacy config key uses the older "pub.sub" naming convention.
+   */
+  @Deprecated
+  public static final String PUB_SUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS =
+      "pub.sub.of.source.of.truth.admin.adapter.factory.class";
+
+  /**
+   * Configuration key for specifying the fully qualified class name of the source-of-truth PubSub admin adapter factory.
+   * <p>
+   * This adapter acts as the authoritative source to avoid discrepancies across multiple PubSub systems,
+   * particularly during operations like topic reconciliation and metadata resolution.
+   */
+  public static final String PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS =
+      PUBSUB_CLIENT_CONFIG_PREFIX + "source.of.truth.admin.adapter.factory.class";
+
+  /**
+   * Configuration key for specifying the address of the PubSub broker (e.g., Kafka, Pulsar).
+   * <p>
+   * This address is used by Venice components to connect to the underlying PubSub infrastructure
+   * for producing and consuming messages. The format and semantics of the address depend on the
+   * specific PubSub system being used.
+   * <p>
+   * Example values:
+   * <ul>
+   *   <li><code>localhost:9092</code> for Kafka</li>
+   *   <li><code>pulsar://broker1:6650</code> for Pulsar</li>
+   * </ul>
+   *
+   * <p><b>Note:</b> The broker address is expected to uniquely identify a PubSub cluster. If a PubSub client
+   * implementation requires additional information or a different interpretation of the broker address,
+   * it should provide and pass down a mapping from this configured address to the expected implementation-specific
+   * broker URL, address format, or connection details.
+   */
   public static final String PUBSUB_BROKER_ADDRESS = PubSubConstants.PUBSUB_BROKER_ADDRESS;
+
+  /**
+   * Configuration key for the mapping between PubSub position type IDs and their corresponding
+   * fully qualified class names.
+   * <p>
+   * This mapping is used for serializing and deserializing {@code PubSubPosition} implementations.
+   * Each type ID should uniquely identify a position class, enabling the PubSub client to resolve
+   * the correct class when handling position data.
+   * <p>
+   * The expected value is a comma-separated list of mappings in the format:
+   * <pre>
+   *   typeId1:fully.qualified.ClassName1,typeId2:fully.qualified.ClassName2,...
+   * </pre>
+   * <p>
+   * Example:
+   * <pre>
+   *   pubsub.type.id.to.position.class.name.map=1:com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition,2:com.linkedin.venice.pubsub.adapter.pulsar.PulsarPosition
+   * </pre>
+   */
+  public static final String PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP =
+      PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX + "type.id.to.position.class.name.map";
 
   public static final String KAFKA_CONFIG_PREFIX = ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
   public static final String KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
@@ -854,6 +952,10 @@ public class ConfigKeys {
       "server.adaptive.throttler.signal.idle.threshold";
   public static final String SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD =
       "server.adaptive.throttler.single.get.latency.threshold";
+  public static final String SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD =
+      "server.adaptive.throttler.multi.get.latency.threshold";
+  public static final String SERVER_ADAPTIVE_THROTTLER_READ_COMPUTE_GET_LATENCY_THRESHOLD =
+      "server.adaptive.throttler.read.compute.latency.threshold";
 
   /**
    * A list of fully-qualified class names of all stats classes that needs to be initialized in isolated ingestion process,
@@ -1099,12 +1201,6 @@ public class ConfigKeys {
    * Please check {@literal VeniceMultiKeyRoutingStrategy} to find available routing strategy.
    */
   public static final String ROUTER_MULTI_KEY_ROUTING_STRATEGY = "router.multi.key.routing.strategy";
-
-  /**
-   * The Helix virtual group field name in domain, and the allowed values: {@link com.linkedin.venice.helix.HelixInstanceConfigRepository#GROUP_FIELD_NAME_IN_DOMAIN}
-   * and {@link com.linkedin.venice.helix.HelixInstanceConfigRepository#ZONE_FIELD_NAME_IN_DOMAIN}.
-   */
-  public static final String ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN = "router.helix.virtual.group.field.in.domain";
 
   /**
    * Helix group selection strategy when Helix assisted routing is enabled.
@@ -2213,18 +2309,6 @@ public class ConfigKeys {
    */
   public static final String DIV_PRODUCER_STATE_MAX_AGE_MS = "div.producer.state.max.age.ms";
 
-  public static final String PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS = "pub.sub.admin.adapter.factory.class";
-
-  public static final String PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS = "pub.sub.producer.adapter.factory.class";
-
-  public static final String PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS = "pub.sub.consumer.adapter.factory.class";
-
-  /**
-   * Source of truth admin adapter type, mainly for avoiding topic discrepancy between multiple pub sub systems.
-   */
-  public static final String PUB_SUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS =
-      "pub.sub.of.source.of.truth.admin.adapter.factory.class";
-
   /**
    * Venice router's principal name used for ssl. Default should contain "venice-router".
    */
@@ -2583,6 +2667,20 @@ public class ConfigKeys {
    * controls the TTL of the cache per entry.
    */
   public static final String ACL_IN_MEMORY_CACHE_TTL_MS = "acl.in.memory.cache.ttl.ms";
+
+  /**
+   * Enables / disables protocol version auto-detection service in parent controller.
+   * This service is responsible for detecting the admin operation protocol version to serialize message
+   * Default value is disabled (false).
+   */
+  public static final String CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED =
+      "controller.protocol.version.auto.detection.service.enabled";
+
+  /**
+   * Specifies the sleep time for the protocol version auto-detection service between each detection attempt.
+   */
+  public static final String CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS =
+      "controller.protocol.version.auto.detection.sleep.ms";
 
   /**
    * If enabled, the controller's get dead store endpoint will be enabled.

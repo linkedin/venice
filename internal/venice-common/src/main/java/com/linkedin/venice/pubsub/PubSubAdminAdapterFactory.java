@@ -7,12 +7,21 @@ import java.io.Closeable;
 
 
 /**
- * Generic admin factory interface.
- *
- * A pus-sub specific concrete implementation of this interface should be provided to be able to create
- * and instantiate admins for that system.
+ * Generic factory interface for creating PubSub system-specific admin instances.
+ * <p>
+ * Concrete implementations of this interface are expected to provide the logic for creating
+ * and instantiating admin components tailored to a specific PubSub system (e.g., Kafka, Pulsar).
+ * <p>
+ * Implementations must provide a public no-arg constructor for reflective instantiation.
  */
-public interface PubSubAdminAdapterFactory<ADAPTER extends PubSubAdminAdapter> extends Closeable {
+public abstract class PubSubAdminAdapterFactory<ADAPTER extends PubSubAdminAdapter> implements Closeable {
+  /**
+   * Constructor for PubSubAdminAdapterFactory used mainly for reflective instantiation.
+   */
+  public PubSubAdminAdapterFactory() {
+    // no-op
+  }
+
   /**
    *
    * @param veniceProperties            A copy of venice properties. Relevant producer configs will be extracted from
@@ -21,7 +30,7 @@ public interface PubSubAdminAdapterFactory<ADAPTER extends PubSubAdminAdapter> e
    * @param pubSubTopicRepository       A repo to cache created {@link PubSubTopic}s.
    * @return                            Returns an instance of an admin adapter
    */
-  ADAPTER create(VeniceProperties veniceProperties, PubSubTopicRepository pubSubTopicRepository);
+  public abstract ADAPTER create(VeniceProperties veniceProperties, PubSubTopicRepository pubSubTopicRepository);
 
-  String getName();
+  public abstract String getName();
 }

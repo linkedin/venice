@@ -28,6 +28,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.grpc.VeniceGrpcServer;
 import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -36,6 +37,7 @@ import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.AsyncRetryingServiceDiscoveryAnnouncer;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
@@ -96,6 +98,8 @@ public class VeniceController {
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
   private final PubSubTopicRepository pubSubTopicRepository;
   private final PubSubClientsFactory pubSubClientsFactory;
+  private final LogContext logContext;
+  private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
 
   /**
    * Allocates a new {@code VeniceController} object.
@@ -145,6 +149,7 @@ public class VeniceController {
 
   public VeniceController(VeniceControllerContext ctx) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(ctx.getPropertiesList());
+    this.logContext = multiClusterConfigs.getLogContext();
     this.metricsRepository = ctx.getMetricsRepository();
     this.serviceDiscoveryAnnouncers = ctx.getServiceDiscoveryAnnouncers();
     Optional<SSLConfig> sslConfig = multiClusterConfigs.getSslConfig();
@@ -156,6 +161,7 @@ public class VeniceController {
     this.icProvider = Optional.ofNullable(ctx.getIcProvider());
     this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
     this.pubSubClientsFactory = multiClusterConfigs.getPubSubClientsFactory();
+    this.pubSubPositionTypeRegistry = multiClusterConfigs.getPubSubPositionTypeRegistry();
     long serviceDiscoveryRegistrationRetryMS = multiClusterConfigs.getServiceDiscoveryRegistrationRetryMS();
     this.asyncRetryingServiceDiscoveryAnnouncer =
         new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
@@ -192,7 +198,8 @@ public class VeniceController {
         icProvider,
         externalSupersetSchemaGenerator,
         pubSubTopicRepository,
-        pubSubClientsFactory);
+        pubSubClientsFactory,
+        pubSubPositionTypeRegistry);
     Admin admin = veniceControllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent() && !(admin instanceof VeniceParentHelixAdmin)) {
       throw new VeniceException(
@@ -323,6 +330,7 @@ public class VeniceController {
     grpcExecutor = ThreadPoolFactory.createThreadPool(
         multiClusterConfigs.getGrpcServerThreadCount(),
         CONTROLLER_GRPC_SERVER_THREAD_NAME,
+        multiClusterConfigs.getLogContext(),
         Integer.MAX_VALUE,
         BlockingQueueType.LINKED_BLOCKING_QUEUE);
 

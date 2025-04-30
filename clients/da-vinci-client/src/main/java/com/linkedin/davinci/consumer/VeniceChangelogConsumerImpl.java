@@ -43,9 +43,10 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -143,6 +144,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final String storeName;
 
   protected final PubSubConsumerAdapter pubSubConsumer;
+  protected final PubSubPositionDeserializer pubSubPositionDeserializer;
   protected final ExecutorService seekExecutorService;
 
   // This member is a map of maps in order to accommodate view topics. If the message we consume has the appropriate
@@ -162,8 +164,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
-      PubSubConsumerAdapter pubSubConsumer) {
+      PubSubConsumerAdapter pubSubConsumer,
+      PubSubPositionDeserializer pubSubPositionDeserializer) {
     this.pubSubConsumer = pubSubConsumer;
+    this.pubSubPositionDeserializer = pubSubPositionDeserializer;
     seekExecutorService = Executors.newFixedThreadPool(10);
 
     // TODO: putting the change capture case here is a little bit weird. The view abstraction should probably
@@ -1043,11 +1047,18 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
           .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
           .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);
-      if (RmdUtils.hasOffsetAdvanced(localOffset, versionSwap.getLocalHighWatermarks())) {
+      // safety checks
+      if (localOffset == null) {
+        localOffset = new ArrayList<>();
+      }
+      List<Long> highWatermarkOffsets = versionSwap.localHighWatermarks == null
+          ? new ArrayList<>()
+          : new ArrayList<>(versionSwap.getLocalHighWatermarks());
+      if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
 
-        currentVersionHighWatermarks.putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new HashMap<>());
+        currentVersionHighWatermarks.putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
         currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
-            .put(upstreamPartition, versionSwap.getLocalHighWatermarks());
+            .put(upstreamPartition, highWatermarkOffsets);
       }
       switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
       chunkAssembler.clearBuffer();

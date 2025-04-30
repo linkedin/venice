@@ -3,6 +3,7 @@ package com.linkedin.venice.integration.utils;
 import static com.linkedin.venice.utils.SslUtils.VeniceTlsConfiguration;
 
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
 import java.util.Collections;
@@ -46,6 +47,8 @@ public abstract class PubSubBrokerWrapper extends ProcessWrapper {
   public Map<String, String> getMergeableConfigs() {
     return Collections.emptyMap();
   }
+
+  public abstract PubSubPositionTypeRegistry getPubSubPositionTypeRegistry();
 
   /**
    * Returns a map of broker details for clients to connect to the broker.

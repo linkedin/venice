@@ -60,7 +60,6 @@ import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -204,6 +203,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final ScheduledExecutorService idleStoreIngestionTaskKillerExecutor;
 
+  private final VeniceWriterFactory veniceWriterFactory;
+
   public KafkaStoreIngestionService(
       StorageService storageService,
       VeniceConfigLoader veniceConfigLoader,
@@ -248,8 +249,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     veniceWriterProperties.put(PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, "true");
     producerAdapterFactory = pubSubClientsFactory.getProducerAdapterFactory();
-    VeniceWriterFactory veniceWriterFactory =
-        new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, metricsRepository);
+    this.veniceWriterFactory = new VeniceWriterFactory(
+        veniceWriterProperties,
+        producerAdapterFactory,
+        metricsRepository,
+        serverConfig.getPubSubPositionTypeRegistry());
     this.adaptiveThrottlerSignalService = adaptiveThrottlerSignalService;
     this.ingestionThrottler = new IngestionThrottler(
         isDaVinciClient,
@@ -343,6 +347,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           serverConfig.getStoreWriterBufferMemoryCapacity(),
           serverConfig.getStoreWriterBufferNotifyDelta(),
           serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
+          serverConfig.getRegionName(),
           metricsRepository,
           true);
     }
@@ -443,23 +448,25 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      */
     DiskUsage diskUsage = new DiskUsage(serverConfig.getDataBasePath(), serverConfig.getDiskFullThreshold());
 
-    VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(veniceConfigLoader);
+    VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(veniceConfigLoader, veniceWriterFactory);
 
     if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
       this.aaWCWorkLoadProcessingThreadPool = Executors.newFixedThreadPool(
           serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize(),
-          new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING"));
+          new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING", serverConfig.getRegionName()));
     } else {
       this.aaWCWorkLoadProcessingThreadPool = null;
     }
 
     this.idleStoreIngestionTaskKillerExecutor = serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds() > 0
-        ? Executors.newScheduledThreadPool(1, new DaemonThreadFactory("idle-store-ingestion-task-clean-up-thread"))
+        ? Executors.newScheduledThreadPool(
+            1,
+            new DaemonThreadFactory("idle-store-ingestion-task-clean-up-thread", serverConfig.getRegionName()))
         : null;
 
     this.aaWCIngestionStorageLookupThreadPool = Executors.newFixedThreadPool(
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize(),
-        new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP"));
+        new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP", serverConfig.getRegionName()));
     LOGGER.info(
         "Enabled a thread pool for AA/WC ingestion lookup with {} threads.",
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize());
@@ -539,8 +546,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       aggKafkaConsumerService.start();
     }
     if (participantStoreConsumptionTask != null) {
-      participantStoreConsumerExecutorService =
-          Executors.newSingleThreadExecutor(new DaemonThreadFactory("ParticipantStoreConsumptionTask"));
+      participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor(
+          new DaemonThreadFactory("ParticipantStoreConsumptionTask", serverConfig.getRegionName()));
       participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
     }
     final int idleIngestionTaskCleanupIntervalInSeconds = serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds();
@@ -833,6 +840,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   @Override
   public VeniceConfigLoader getVeniceConfigLoader() {
     return veniceConfigLoader;
+  }
+
+  @Override
+  public VeniceWriterFactory getVeniceWriterFactory() {
+    return veniceWriterFactory;
   }
 
   /**
@@ -1195,8 +1207,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   private Properties getCommonKafkaConsumerProperties(VeniceServerConfig serverConfig) {
     Properties kafkaConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
-    ApacheKafkaProducerConfig
-        .copyKafkaSASLProperties(serverConfig.getClusterProperties(), kafkaConsumerProperties, false);
     kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
     kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
     // Venice is persisting offset in local offset db.
@@ -1236,9 +1246,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap());
     }
 
-    VeniceProperties clusterProperties = serverConfigForPubSubCluster.getClusterProperties();
     Properties properties = serverConfigForPubSubCluster.getClusterProperties().getPropertiesCopy();
-    ApacheKafkaProducerConfig.copyKafkaSASLProperties(clusterProperties, properties, false);
     kafkaBootstrapUrls = serverConfigForPubSubCluster.getKafkaBootstrapServers();
     String resolvedKafkaUrl = serverConfigForPubSubCluster.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
     if (resolvedKafkaUrl != null) {

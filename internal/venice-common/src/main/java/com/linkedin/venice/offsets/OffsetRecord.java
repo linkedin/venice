@@ -7,8 +7,9 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -317,12 +318,9 @@ public class OffsetRecord {
   }
 
   public long getLatestConsumedVtOffset() {
-    try {
-      return ApacheKafkaOffsetPosition.of(this.partitionState.getLastConsumedVersionTopicPubSubPosition())
-          .getNumericOffset();
-    } catch (IOException e) {
-      throw new VeniceException(e);
-    }
+    return PubSubPositionDeserializer.DEFAULT_DESERIALIZER
+        .convertToPosition(partitionState.getLastConsumedVersionTopicPubSubPosition())
+        .getNumericOffset();
   }
 
   /**

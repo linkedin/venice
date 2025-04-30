@@ -6,6 +6,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -84,15 +85,19 @@ public class TestVenicePathParser {
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    return new VeniceVersionFinder(
-        mockMetadataRepository,
-        TestVeniceVersionFinder.getCVBasedMockedRoutingRepo(),
-        stats,
-        storeConfigRepo,
-        clusterToD2Map,
-        CLUSTER,
-        compressorFactory,
-        null);
+    VeniceVersionFinder veniceVersionFinder = spy(
+        new VeniceVersionFinder(
+            mockMetadataRepository,
+            TestVeniceVersionFinder.getCVBasedMockedRoutingRepo(),
+            stats,
+            storeConfigRepo,
+            clusterToD2Map,
+            CLUSTER,
+            compressorFactory,
+            null));
+    doReturn(true).when(veniceVersionFinder).isDecompressorReady(any(), anyString());
+    doReturn(true).when(veniceVersionFinder).isPartitionResourcesReady(anyString());
+    return veniceVersionFinder;
   }
 
   RouterStats<AggRouterHttpRequestStats> getMockedStats() {
