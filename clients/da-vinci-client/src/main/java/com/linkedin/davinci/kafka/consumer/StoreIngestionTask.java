@@ -2268,6 +2268,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
         subscribedCount++;
 
+        if (recordTransformer != null) {
+          long startTime = System.nanoTime();
+          recordTransformer.internalOnRecovery(storageEngine, partition, partitionStateSerializer, compressor);
+          LOGGER.info(
+              "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
+              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+              Utils.getReplicaId(topic, partition));
+        }
+
         // Get the last persisted Offset record from metadata service
         OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition);
 
@@ -2313,15 +2322,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             LatencyUtils.getElapsedTimeFromMsToMs(consumptionStatePrepTimeStart));
         updateLeaderTopicOnFollower(newPartitionConsumptionState);
         reportStoreVersionTopicOffsetRewindMetrics(newPartitionConsumptionState);
-
-        if (recordTransformer != null) {
-          long startTime = System.nanoTime();
-          recordTransformer.internalOnRecovery(storageEngine, partition, partitionStateSerializer, compressor);
-          LOGGER.info(
-              "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
-              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-              Utils.getReplicaId(topic, partition));
-        }
 
         // Subscribe to local version topic.
         consumerSubscribe(
