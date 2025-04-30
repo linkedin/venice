@@ -590,7 +590,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
           // case 1: partition level throw exception, then query at version level.
           if (partitionThrowable != null) {
             LOGGER.error(
-                "Failed to get partition status for store: {} version: {} partition: {}",
+                "Failed to get partition status for store: {} version: {} partition: {}, will try version-level",
                 storeName,
                 storeVersion,
                 storePartition,
@@ -613,7 +613,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
                 storeName,
                 storeVersion,
                 storePartition,
-                partitionLevelInstances);
+                partitionLevelInstances,
+                false);
           }
         } catch (Exception e) {
           byte[] errBody =
@@ -637,7 +638,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       String storeName,
       String storeVersion,
       String storePartition,
-      Map<CharSequence, Integer> instances) throws Exception {
+      Map<CharSequence, Integer> instances,
+      boolean isVersionLevelPushReportResult) throws Exception {
+    String pushReportLevelType = isVersionLevelPushReportResult ? "version" : "partition";
+
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
 
     List<String> readyToServeNodeHostNames = instances.entrySet()
@@ -649,17 +653,19 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
     if (!readyToServeNodeHostNames.isEmpty()) {
       LOGGER.info(
-          "{} ready to serve nodes were found for store {} version {} partition {}",
+          "{} ready to serve nodes were found for store {} version {} partition {} from {} level push report",
           readyToServeNodeHostNames.size(),
           storeName,
           storeVersion,
-          storePartition);
+          storePartition,
+          pushReportLevelType);
     } else {
       LOGGER.info(
-          "No ready to serve nodes found for store: {} version: {} partition: {}",
+          "No ready to serve nodes found for store: {} version: {} partition: {} from {} level push report",
           storeName,
           storeVersion,
-          storePartition);
+          storePartition,
+          pushReportLevelType);
     }
 
     response.setDiscoveryResult(readyToServeNodeHostNames);
@@ -708,7 +714,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
             storeName,
             storeVersion,
             storePartition,
-            versionLevelInstances);
+            versionLevelInstances,
+            true);
       } catch (Exception e) {
         byte[] errBody =
             (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))

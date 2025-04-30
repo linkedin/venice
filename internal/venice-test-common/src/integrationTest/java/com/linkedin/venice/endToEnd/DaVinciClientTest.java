@@ -1208,6 +1208,7 @@ public class DaVinciClientTest {
         Integer.toString(port2),
         StorageClass.DISK.toString(),
         "false",
+        "false",
         "false");
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
@@ -1258,8 +1259,8 @@ public class DaVinciClientTest {
    * For the local P2P testing, need to setup two different directories and ports for the two Da Vinci clients in order
    * to avoid conflicts.
    */
-  @Test(timeOut = 2 * TEST_TIMEOUT)
-  public void testBlobP2PTransferAmongDVC() throws Exception {
+  @Test(timeOut = 2 * TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testBlobP2PTransferAmongDVC(boolean batchPushReportEnable) throws Exception {
     String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
     String zkHosts = cluster.getZk().getAddress();
     int port1 = TestUtils.getFreePort();
@@ -1286,7 +1287,8 @@ public class DaVinciClientTest {
         Integer.toString(port2),
         StorageClass.DISK.toString(),
         "false",
-        "true");
+        "true",
+        String.valueOf(batchPushReportEnable));
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
@@ -1320,6 +1322,12 @@ public class DaVinciClientTest {
         .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
         .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
         .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+
+    if (batchPushReportEnable) {
+      // if batch push report is enabled, the peer finding expects to query at version level, but it should not affect
+      // performance.
+      configBuilder.put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, "10");
+    }
 
     VeniceProperties backendConfig2 = configBuilder.build();
     DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
@@ -1401,7 +1409,8 @@ public class DaVinciClientTest {
         Integer.toString(port2),
         storageClass,
         "false",
-        "true");
+        "true",
+        "false");
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
