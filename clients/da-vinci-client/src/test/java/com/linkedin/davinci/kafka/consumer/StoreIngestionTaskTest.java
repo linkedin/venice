@@ -5011,12 +5011,6 @@ public abstract class StoreIngestionTaskTest {
 
     // Metrics that should have been recorded
     verify(mockDaVinciRecordTransformerStats, atLeastOnce())
-        .recordOnRecoveryLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
-    verify(mockDaVinciRecordTransformerStats, atLeastOnce())
-        .recordOnStartVersionIngestionLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
-    verify(mockDaVinciRecordTransformerStats, atLeastOnce())
-        .recordOnEndVersionIngestionLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
-    verify(mockDaVinciRecordTransformerStats, atLeastOnce())
         .recordPutLatency(eq(storeNameWithoutVersionInfo), anyInt(), anyDouble(), anyLong());
 
     // Metrics that shouldn't have been recorded

@@ -222,6 +222,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PubSubTopic realTimeTopic;
   protected final PubSubTopic separateRealTimeTopic;
   protected final String storeName;
+  protected final String storeVersionName;
   protected final boolean isSystemStore;
   private final boolean isUserSystemStore;
 
@@ -429,6 +430,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.pubSubTopicRepository = builder.getPubSubTopicRepository();
     this.versionTopic = pubSubTopicRepository.getTopic(kafkaVersionTopic);
     this.storeName = versionTopic.getStoreName();
+    this.storeVersionName = storeVersionConfig.getStoreVersionName();
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
     this.isSystemStore = VeniceSystemStoreUtils.isSystemStore(storeName);
     // if version is not hybrid, it is not possible to create pub sub realTimeTopic, users of this field should do a
@@ -552,11 +554,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // before bootstrapping starts
       long startTime = System.nanoTime();
       recordTransformer.onStartVersionIngestion(isCurrentVersion.getAsBoolean());
-      daVinciRecordTransformerStats.recordOnStartVersionIngestionLatency(
-          storeName,
-          versionNumber,
+      LOGGER.info(
+          "DaVinciRecordTransformer onStartVersionIngestion took {} ms for store version: {}",
           LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-          System.currentTimeMillis());
+          storeVersionName);
     } else {
       this.recordTransformerKeyDeserializer = null;
       this.recordTransformerInputValueSchema = null;
@@ -700,16 +701,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public synchronized void subscribePartition(PubSubTopicPartition topicPartition, boolean isHelixTriggeredAction) {
     throwIfNotRunning();
     int partitionNumber = topicPartition.getPartitionNumber();
-
-    if (recordTransformer != null) {
-      long startTime = System.nanoTime();
-      recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
-      daVinciRecordTransformerStats.recordOnRecoveryLatency(
-          storeName,
-          versionNumber,
-          LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-          System.currentTimeMillis());
-    }
 
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
         .incrementAndGet();
@@ -2275,6 +2266,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Drain the buffered message by last subscription.
         storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
         subscribedCount++;
+
+        if (recordTransformer != null) {
+          long startTime = System.nanoTime();
+          recordTransformer.internalOnRecovery(storageEngine, partition, partitionStateSerializer, compressor);
+          LOGGER.info(
+              "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
+              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+              Utils.getReplicaId(topic, partition));
+        }
 
         // Get the last persisted Offset record from metadata service
         OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition);
@@ -4356,11 +4356,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long startTime = System.nanoTime();
       Store store = storeRepository.getStoreOrThrow(storeName);
       recordTransformer.onEndVersionIngestion(store.getCurrentVersion());
-      daVinciRecordTransformerStats.recordOnEndVersionIngestionLatency(
-          storeName,
-          versionNumber,
+      LOGGER.info(
+          "DaVinciRecordTransformer onEndVersionIngestion took {} ms for store version: {}",
           LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-          System.currentTimeMillis());
+          storeVersionName);
       Utils.closeQuietlyWithErrorLogged(this.recordTransformer);
     }
   }
