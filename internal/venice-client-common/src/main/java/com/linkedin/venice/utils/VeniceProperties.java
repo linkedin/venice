@@ -40,19 +40,11 @@ public class VeniceProperties implements Serializable {
   }
 
   public VeniceProperties(Properties properties) {
-    Map<String, String> tmpProps = new HashMap<>(properties.size());
-    for (Map.Entry<Object, Object> e: properties.entrySet()) {
-      tmpProps.put(e.getKey().toString(), e.getValue() == null ? null : e.getValue().toString());
-    }
-    props = Collections.unmodifiableMap(tmpProps);
+    this.props = Collections.unmodifiableMap(convertToStringMap(properties));
   }
 
-  public VeniceProperties(Map<CharSequence, CharSequence> properties) {
-    Map<String, String> tmpProps = new HashMap<>(properties.size());
-    for (Map.Entry<CharSequence, CharSequence> e: properties.entrySet()) {
-      tmpProps.put(e.getKey().toString(), e.getValue() == null ? null : e.getValue().toString());
-    }
-    props = Collections.unmodifiableMap(tmpProps);
+  public VeniceProperties(Map<String, String> properties) {
+    this.props = Collections.unmodifiableMap(new HashMap<>(properties));
   }
 
   public static VeniceProperties empty() {
@@ -593,5 +585,19 @@ public class VeniceProperties implements Serializable {
 
   public Map<String, String> getAsMap() {
     return props;
+  }
+
+  public static VeniceProperties fromCharSequenceMap(Map<CharSequence, CharSequence> properties) {
+    return new VeniceProperties(convertToStringMap(properties));
+  }
+
+  private static Map<String, String> convertToStringMap(Map<?, ?> input) {
+    Map<String, String> result = new HashMap<>(input.size());
+    for (Map.Entry<?, ?> entry: input.entrySet()) {
+      String key = entry.getKey().toString();
+      String value = entry.getValue() == null ? null : entry.getValue().toString();
+      result.put(key, value);
+    }
+    return result;
   }
 }

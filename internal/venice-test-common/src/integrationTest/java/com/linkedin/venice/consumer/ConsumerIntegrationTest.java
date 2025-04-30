@@ -194,6 +194,7 @@ public abstract class ConsumerIntegrationTest {
             .setVeniceProperties(props)
             .setPubSubMessageSerializer(pubSubMessageSerializer)
             .setBrokerAddress(cluster.getPubSubBrokerWrapper().getAddress())
+            .setPubSubPositionTypeRegistry(cluster.getPubSubBrokerWrapper().getPubSubPositionTypeRegistry())
             .build();
     return new VeniceWriterWithNewerProtocol(
         veniceWriterOptions,

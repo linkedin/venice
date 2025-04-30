@@ -2499,7 +2499,7 @@ public class VeniceParentHelixAdmin implements Admin {
         try {
           PartitionUtils.getVenicePartitioner(
               partitionerConfigRecord.partitionerClass.toString(),
-              new VeniceProperties(partitionerConfigRecord.partitionerParams),
+              VeniceProperties.fromCharSequenceMap(partitionerConfigRecord.partitionerParams),
               getKeySchema(clusterName, storeName).getSchema());
         } catch (PartitionerSchemaMismatchException e) {
           String errorMessage = errorMessagePrefix + e.getMessage();
