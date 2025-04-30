@@ -63,6 +63,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_LEADER_QUOTA_RECORDS_P
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD;
+import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_READ_COMPUTE_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
@@ -526,6 +528,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int adaptiveThrottlerSignalIdleThreshold;
   private final double adaptiveThrottlerSingleGetLatencyThreshold;
+  private final double adaptiveThrottlerMultiGetLatencyThreshold;
+  private final double adaptiveThrottlerReadComputeLatencyThreshold;
 
   private final int fastAvroFieldLimitPerMethod;
 
@@ -734,6 +738,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     adaptiveThrottlerSignalIdleThreshold = serverProperties.getInt(SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD, 10);
     adaptiveThrottlerSingleGetLatencyThreshold =
         serverProperties.getDouble(SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD, 10d);
+    adaptiveThrottlerMultiGetLatencyThreshold =
+        serverProperties.getDouble(SERVER_ADAPTIVE_THROTTLER_MULTI_GET_LATENCY_THRESHOLD, 10d);
+    adaptiveThrottlerReadComputeLatencyThreshold =
+        serverProperties.getDouble(SERVER_ADAPTIVE_THROTTLER_READ_COMPUTE_GET_LATENCY_THRESHOLD, 50d);
 
     databaseSyncBytesIntervalForTransactionalMode =
         serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024);
@@ -805,7 +813,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     routerConnectionWarmingDelayMs = serverProperties.getLong(SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS, 0);
     String sharedConsumerAssignmentStrategyStr = serverProperties.getString(
         SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY,
-        KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
+        KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
     try {
       sharedConsumerAssignmentStrategy =
           KafkaConsumerService.ConsumerAssignmentStrategy.valueOf(sharedConsumerAssignmentStrategyStr);
@@ -1636,6 +1644,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public double getAdaptiveThrottlerSingleGetLatencyThreshold() {
     return adaptiveThrottlerSingleGetLatencyThreshold;
+  }
+
+  public double getAdaptiveThrottlerMultiGetLatencyThreshold() {
+    return adaptiveThrottlerMultiGetLatencyThreshold;
+  }
+
+  public double getAdaptiveThrottlerReadComputeLatencyThreshold() {
+    return adaptiveThrottlerReadComputeLatencyThreshold;
   }
 
   public int getFastAvroFieldLimitPerMethod() {

@@ -1,9 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
-@Deprecated
-public class SITWithTWiseWithoutBufferAfterLeaderTest extends StoreIngestionTaskTest {
+public class SITWithSAwarePWiseWithoutBufferAfterLeaderTest extends StoreIngestionTaskTest {
   protected KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy() {
-    return KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
+    return KafkaConsumerService.ConsumerAssignmentStrategy.STORE_AWARE_PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
   }
 
   protected boolean isStoreWriterBufferAfterLeaderLogicEnabled() {

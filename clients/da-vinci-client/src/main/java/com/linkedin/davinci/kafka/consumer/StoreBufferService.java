@@ -251,7 +251,16 @@ public class StoreBufferService extends AbstractStoreBufferService {
       throw new VeniceException("Unsupported command type: " + cmd.getCommandType());
     }
 
-    cmd.executeSync(() -> ingestionTask.updateOffsetMetadataAndSyncOffset(pcs));
+    cmd.executeSync(() -> {
+      if (pcs == null) {
+        LOGGER.warn(
+            "PCS for topic-partition: {} is null. Skipping {} command in StoreBufferDrainer.",
+            cmd.getConsumerRecord().getTopicPartition(),
+            cmd.getCommandType());
+      } else {
+        ingestionTask.updateOffsetMetadataAndSyncOffset(pcs);
+      }
+    });
   }
 
   /**
