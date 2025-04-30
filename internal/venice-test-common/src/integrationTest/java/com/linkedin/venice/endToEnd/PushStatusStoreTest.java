@@ -355,7 +355,7 @@ public class PushStatusStoreTest {
 
       // Now let's test the async API
       CompletableFuture<Map<CharSequence, Integer>> future1 =
-          reader.getPartitionStatusAsync(storeName, 1, 0, Optional.empty(), Optional.empty());
+          reader.getPartitionOrVersionStatusAsync(storeName, 1, 0, Optional.empty(), Optional.empty(), false);
       future1.whenComplete((result, throwable) -> {
         {
           Assert.assertEquals(result.size(), 1);
@@ -364,17 +364,43 @@ public class PushStatusStoreTest {
 
       // case 2: throw exception for non-existing store
       try {
-        reader.getPartitionStatusAsync("non-existed-store-name", 1, 0, Optional.empty(), Optional.empty());
+        reader.getPartitionOrVersionStatusAsync(
+            "non-existed-store-name",
+            1,
+            0,
+            Optional.empty(),
+            Optional.empty(),
+            false);
       } catch (VeniceException e) {
         assertTrue(e.getMessage().contains("Failed to read push status of partition:1 store:non-existed-store-name"));
       }
 
-      // case 3: throw exception for non-existed version
-      try {
-        reader.getPartitionStatusAsync(storeName, 100, 0, Optional.empty(), Optional.empty());
-      } catch (VeniceException e) {
-        assertTrue(e.getMessage().contains("Failed to read push status of partition:100 store:" + storeName));
-      }
+      // case 3: query non-existed version should return empty
+      CompletableFuture<Map<CharSequence, Integer>> future3 =
+          reader.getPartitionOrVersionStatusAsync(storeName, 100, 0, Optional.empty(), Optional.empty(), false);
+      future3.whenComplete((result, throwable) -> {
+        {
+          Assert.assertEquals(result.size(), 0);
+        }
+      }).join();
+
+      // case 4: query non existed partition should return empty
+      CompletableFuture<Map<CharSequence, Integer>> future4 =
+          reader.getPartitionOrVersionStatusAsync(storeName, 100, 10000, Optional.empty(), Optional.empty(), false);
+      future4.whenComplete((result, throwable) -> {
+        {
+          Assert.assertEquals(result.size(), 0);
+        }
+      }).join();
+
+      // case 5: query version level request should be empty
+      CompletableFuture<Map<CharSequence, Integer>> future5 =
+          reader.getPartitionOrVersionStatusAsync(storeName, 1, 0, Optional.empty(), Optional.empty(), true);
+      future5.whenComplete((result, throwable) -> {
+        {
+          Assert.assertEquals(result.size(), 0);
+        }
+      }).join();
     }
   }
 

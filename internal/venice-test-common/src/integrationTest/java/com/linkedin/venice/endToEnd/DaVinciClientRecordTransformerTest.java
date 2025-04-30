@@ -618,7 +618,8 @@ public class DaVinciClientRecordTransformerTest {
         Integer.toString(port2),
         StorageClass.DISK.toString(),
         "true",
-        "true");
+        "true",
+        "false");
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
