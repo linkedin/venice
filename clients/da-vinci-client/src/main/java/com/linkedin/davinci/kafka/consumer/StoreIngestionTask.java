@@ -555,7 +555,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long startTime = System.nanoTime();
       recordTransformer.onStartVersionIngestion(isCurrentVersion.getAsBoolean());
       LOGGER.info(
-          "DaVinciRecordTransformer onStartVersionIngestion took {}ms for store version: {}",
+          "DaVinciRecordTransformer onStartVersionIngestion took {} ms for store version: {}",
           LatencyUtils.getElapsedTimeFromNSToMS(startTime),
           storeVersionName);
     } else {
@@ -2318,7 +2318,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           long startTime = System.nanoTime();
           recordTransformer.internalOnRecovery(storageEngine, partition, partitionStateSerializer, compressor);
           LOGGER.info(
-              "DaVinciRecordTransformer onRecovery took {}ms for replica: {}",
+              "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
               LatencyUtils.getElapsedTimeFromNSToMS(startTime),
               Utils.getReplicaId(topic, partition));
         }
@@ -4360,7 +4360,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Store store = storeRepository.getStoreOrThrow(storeName);
       recordTransformer.onEndVersionIngestion(store.getCurrentVersion());
       LOGGER.info(
-          "DaVinciRecordTransformer onEndVersionIngestion took {}ms for store version: {}",
+          "DaVinciRecordTransformer onEndVersionIngestion took {} ms for store version: {}",
           LatencyUtils.getElapsedTimeFromNSToMS(startTime),
           storeVersionName);
       Utils.closeQuietlyWithErrorLogged(this.recordTransformer);
