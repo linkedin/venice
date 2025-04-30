@@ -80,6 +80,7 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
@@ -292,7 +293,8 @@ public class TestUtils {
       String valueSchema,
       Stream<Map.Entry> batchData,
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
-      Map<String, String> additionalProperties) {
+      Map<String, String> additionalProperties,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     return createVersionWithBatchData(
         controllerClient,
         storeName,
@@ -301,7 +303,8 @@ public class TestUtils {
         batchData,
         HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
         pubSubProducerAdapterFactory,
-        additionalProperties);
+        additionalProperties,
+        pubSubPositionTypeRegistry);
   }
 
   public static VersionCreationResponse createVersionWithBatchData(
@@ -312,7 +315,8 @@ public class TestUtils {
       Stream<Map.Entry> batchData,
       int valueSchemaId,
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
-      Map<String, String> additionalProperties) {
+      Map<String, String> additionalProperties,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     VersionCreationResponse response = TestUtils.assertCommand(
         controllerClient.requestTopicForWrites(
             storeName,
@@ -334,7 +338,8 @@ public class TestUtils {
         batchData,
         valueSchemaId,
         pubSubProducerAdapterFactory,
-        additionalProperties);
+        additionalProperties,
+        pubSubPositionTypeRegistry);
     return response;
   }
 
@@ -345,7 +350,8 @@ public class TestUtils {
       Stream<Map.Entry> batchData,
       int valueSchemaId,
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
-      Map<String, String> additionalProperties) {
+      Map<String, String> additionalProperties,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     writeBatchData(
         response,
         keySchema,
@@ -355,7 +361,8 @@ public class TestUtils {
         CompressionStrategy.NO_OP,
         null,
         pubSubProducerAdapterFactory,
-        additionalProperties);
+        additionalProperties,
+        pubSubPositionTypeRegistry);
   }
 
   public static void writeBatchData(
@@ -367,13 +374,15 @@ public class TestUtils {
       CompressionStrategy compressionStrategy,
       Function<String, ByteBuffer> compressionDictionaryGenerator,
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
-      Map<String, String> additionalProperties) {
+      Map<String, String> additionalProperties,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, response.getKafkaBootstrapServers());
     props.setProperty(PARTITIONER_CLASS, response.getPartitionerClass());
     props.putAll(response.getPartitionerParams());
     props.putAll(additionalProperties);
-    VeniceWriterFactory writerFactory = TestUtils.getVeniceWriterFactory(props, pubSubProducerAdapterFactory);
+    VeniceWriterFactory writerFactory =
+        TestUtils.getVeniceWriterFactory(props, pubSubProducerAdapterFactory, pubSubPositionTypeRegistry);
 
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(response.getPartitionerParams());
@@ -729,10 +738,11 @@ public class TestUtils {
 
   public static VeniceWriterFactory getVeniceWriterFactory(
       Properties properties,
-      PubSubProducerAdapterFactory pubSubProducerAdapterFactory) {
+      PubSubProducerAdapterFactory pubSubProducerAdapterFactory,
+      PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     Properties factoryProperties = new Properties();
     factoryProperties.putAll(properties);
-    return new VeniceWriterFactory(factoryProperties, pubSubProducerAdapterFactory, null);
+    return new VeniceWriterFactory(factoryProperties, pubSubProducerAdapterFactory, null, pubSubPositionTypeRegistry);
   }
 
   public static Store getRandomStore() {

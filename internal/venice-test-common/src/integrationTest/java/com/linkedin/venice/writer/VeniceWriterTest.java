@@ -102,12 +102,15 @@ public class VeniceWriterTest {
     properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
 
     ExecutorService executorService = null;
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
-        TestUtils.getVeniceWriterFactory(properties, pubSubProducerAdapterFactory)
-            .createVeniceWriter(
-                new VeniceWriterOptions.Builder(topicName).setUseKafkaKeySerializer(true)
-                    .setPartitionCount(partitionCount)
-                    .build())) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils
+        .getVeniceWriterFactory(
+            properties,
+            pubSubProducerAdapterFactory,
+            pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+        .createVeniceWriter(
+            new VeniceWriterOptions.Builder(topicName).setUseKafkaKeySerializer(true)
+                .setPartitionCount(partitionCount)
+                .build())) {
       executorService = Executors.newFixedThreadPool(numberOfThreads);
       Future[] vwFutures = new Future[numberOfThreads];
       for (int i = 0; i < numberOfThreads; i++) {
@@ -185,12 +188,15 @@ public class VeniceWriterTest {
     properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
 
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
-        TestUtils.getVeniceWriterFactory(properties, pubSubProducerAdapterFactory)
-            .createVeniceWriter(
-                new VeniceWriterOptions.Builder(topicName).setUseKafkaKeySerializer(true)
-                    .setPartitionCount(partitionCount)
-                    .build())) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils
+        .getVeniceWriterFactory(
+            properties,
+            pubSubProducerAdapterFactory,
+            pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+        .createVeniceWriter(
+            new VeniceWriterOptions.Builder(topicName).setUseKafkaKeySerializer(true)
+                .setPartitionCount(partitionCount)
+                .build())) {
       ExecutorService executor = Executors.newSingleThreadExecutor();
 
       Future<?> sendMessageFuture = executor.submit(() -> {
@@ -254,12 +260,15 @@ public class VeniceWriterTest {
     properties.put(MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, 1000);
     properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
 
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
-        TestUtils.getVeniceWriterFactory(properties, pubSubProducerAdapterFactory)
-            .createVeniceWriter(
-                new VeniceWriterOptions.Builder(topicName).setUseKafkaKeySerializer(true)
-                    .setPartitionCount(partitionCount)
-                    .build())) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils
+        .getVeniceWriterFactory(
+            properties,
+            pubSubProducerAdapterFactory,
+            pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+        .createVeniceWriter(
+            new VeniceWriterOptions.Builder(topicName).setUseKafkaKeySerializer(true)
+                .setPartitionCount(partitionCount)
+                .build())) {
       Segment seg = veniceWriter.getSegment(0, false);
       seg.setStarted(false);
 

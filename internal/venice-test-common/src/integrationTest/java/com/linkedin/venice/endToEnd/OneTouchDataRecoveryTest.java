@@ -136,7 +136,8 @@ public class OneTouchDataRecoveryTest {
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
           HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID,
           pubSubProducerAdapterFactory,
-          additionalConfigs);
+          additionalConfigs,
+          multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getPubSubPositionTypeRegistry());
       JobStatusQueryResponse response = parentControllerCli
           .queryDetailedJobStatus(versionCreationResponse.getKafkaTopic(), childDatacenters.get(0).getRegionName());
       Assert.assertFalse(response.isError());

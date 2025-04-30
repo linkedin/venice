@@ -8,6 +8,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
@@ -38,6 +39,8 @@ public class VeniceChangelogConsumerClientFactory {
 
   private PubSubConsumerAdapter consumer;
 
+  private final PubSubPositionDeserializer pubSubPositionDeserializer;
+
   protected ViewClassGetter viewClassGetter;
 
   // TODO: Add PubSubConsumerFactory into the constructor, so that client can choose specific Pub Sub system's consumer.
@@ -47,6 +50,7 @@ public class VeniceChangelogConsumerClientFactory {
     this.globalChangelogClientConfig = globalChangelogClientConfig;
     this.metricsRepository = metricsRepository;
     this.viewClassGetter = getDefaultViewClassGetter();
+    this.pubSubPositionDeserializer = globalChangelogClientConfig.getPubSubPositionDeserializer();
   }
 
   protected void setD2ControllerClient(D2ControllerClient d2ControllerClient) {
@@ -107,13 +111,15 @@ public class VeniceChangelogConsumerClientFactory {
             newStoreChangelogClientConfig,
             consumer != null
                 ? consumer
-                : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
+                : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
+            pubSubPositionDeserializer);
       }
       return new VeniceAfterImageConsumerImpl(
           newStoreChangelogClientConfig,
           consumer != null
               ? consumer
-              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
+              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
+          pubSubPositionDeserializer);
     });
   }
 
@@ -148,6 +154,7 @@ public class VeniceChangelogConsumerClientFactory {
             consumer != null
                 ? consumer
                 : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
+            pubSubPositionDeserializer,
             consumerId);
       }
     });

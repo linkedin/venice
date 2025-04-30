@@ -14,10 +14,10 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -194,6 +194,7 @@ public abstract class ConsumerIntegrationTest {
             .setVeniceProperties(props)
             .setPubSubMessageSerializer(pubSubMessageSerializer)
             .setBrokerAddress(cluster.getPubSubBrokerWrapper().getAddress())
+            .setPubSubPositionTypeRegistry(cluster.getPubSubBrokerWrapper().getPubSubPositionTypeRegistry())
             .build();
     return new VeniceWriterWithNewerProtocol(
         veniceWriterOptions,

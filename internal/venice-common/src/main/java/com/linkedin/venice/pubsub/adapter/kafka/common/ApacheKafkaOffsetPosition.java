@@ -1,11 +1,12 @@
-package com.linkedin.venice.pubsub.adapter.kafka;
+package com.linkedin.venice.pubsub.adapter.kafka.common;
+
+import static com.linkedin.venice.pubsub.PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.io.ZeroCopyByteArrayOutputStream;
 import com.linkedin.venice.memory.ClassSizeEstimator;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pubsub.PubSubPositionType;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import java.io.IOException;
@@ -122,24 +123,35 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
   }
 
   /**
-   * Position wrapper is used to wrap the position type and the position value.
-   * This is used to serialize and deserialize the position object when sending and receiving it over the wire.
+   * Returns an Avro-encoded wire format representation of this position, including both
+   * the position type ID and the raw Avro-encoded bytes representing the position value.
+   * This is used to transmit {@link PubSubPosition} instances over the wire.
    *
-   * @return the position wrapper
+   * <p>Example (ApacheKafkaOffsetPosition):
+   * <pre>
+   * +-------------------------+
+   * | Avro-encoded int: type  |  (e.g., 0)
+   * +-------------------------+
+   * | Avro-encoded bytes:     |  (Avro-encoded long offset)
+   * |   rawBytes              |
+   * +-------------------------+
+   * </pre>
+   *
+   * @return the serialized {@link PubSubPositionWireFormat} containing the type and position bytes
    */
   @Override
   public PubSubPositionWireFormat getPositionWireFormat() {
-    PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
-    wireFormat.type = PubSubPositionType.APACHE_KAFKA_OFFSET;
-    // write the offset as avro serialized long
     try {
       ZeroCopyByteArrayOutputStream outputStream = new ZeroCopyByteArrayOutputStream(10);
       AvroCompatibilityHelper.newBinaryEncoder(outputStream, false, ENCODER.get()).writeLong(offset);
+
+      PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
+      wireFormat.type = APACHE_KAFKA_OFFSET_POSITION_TYPE_ID;
       wireFormat.rawBytes = outputStream.toByteBuffer();
+      return wireFormat;
     } catch (IOException e) {
       throw new VeniceException("Failed to serialize ApacheKafkaOffsetPosition", e);
     }
-    return wireFormat;
   }
 
   @Override

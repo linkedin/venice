@@ -91,6 +91,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -538,7 +539,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
    * Handles the discovery of blob transfer nodes based on store settings.
    * Retrieves host names for live DVC nodes ready to transfer blobs.
    * Only returns host names from nodes that have completed a full push and are active.
-   *
+   * Queries partition level firstly, if emtpy/fail, queries version level.
    * @return a response with a list of host names for live DVC nodes; returns an empty list if no live nodes are found or if conditions are not met
    */
   private void handleBlobDiscovery(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpRequest request) {
@@ -571,84 +572,157 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
 
     try {
-      pushStatusStoreReader
-          .getPartitionStatusAsync(
+      int versionInt = Integer.parseInt(storeVersion);
+      int partitionInt = Integer.parseInt(storePartition);
+
+      // 1. firstly, query the partition level status.
+      CompletableFuture<Map<CharSequence, Integer>> partitionStatusFuture =
+          pushStatusStoreReader.getPartitionOrVersionStatusAsync(
               storeName,
-              Integer.parseInt(storeVersion),
-              Integer.parseInt(storePartition),
+              versionInt,
+              partitionInt,
               Optional.empty(),
-              Optional.empty())
-          .whenComplete((instances, throwable) -> {
-            try {
-              if (throwable != null) {
-                LOGGER.error(
-                    "Failed to get partition status for store: {} version: {} partition: {}",
-                    storeName,
-                    storeVersion,
-                    storePartition,
-                    throwable);
+              Optional.empty(),
+              false);
+      // 2. handle the partition level response.
+      partitionStatusFuture.whenComplete((partitionLevelInstances, partitionThrowable) -> {
+        try {
+          // case 1: partition level throw exception, then query at version level.
+          if (partitionThrowable != null) {
+            LOGGER.error(
+                "Failed to get partition status for store: {} version: {} partition: {}, will try version-level",
+                storeName,
+                storeVersion,
+                storePartition,
+                partitionThrowable);
 
-                byte[] errBody =
-                    (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
-                        .getBytes();
-                setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
-                return;
-              }
+            queryVersionLevelPushStatus(ctx, storeName, storeVersion, storePartition, versionInt, partitionInt);
+          } else if (partitionLevelInstances == null || partitionLevelInstances.isEmpty()) {
+            // case 2: partition level return empty/null instances, then query at version level.
+            LOGGER.info(
+                "No partition instances found for store: {} version: {} partition: {}, will try version-level",
+                storeName,
+                storeVersion,
+                storePartition);
 
-              // Process successful response
-              BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
-
-              if (instances.isEmpty()) {
-                LOGGER.info(
-                    "No instances found for store: {} version: {} partition: {}",
-                    storeName,
-                    storeVersion,
-                    storePartition);
-              } else {
-                LOGGER.info(
-                    "{} instances were found for store {}, version {}, partition {}",
-                    instances.size(),
-                    storeName,
-                    storeVersion,
-                    storePartition);
-              }
-
-              List<String> readyToServeNodeHostNames = instances.entrySet()
-                  .stream()
-                  .filter(entry -> entry.getValue() == ExecutionStatus.COMPLETED.getValue())
-                  .map(Map.Entry::getKey)
-                  .map(CharSequence::toString)
-                  .collect(Collectors.toList());
-
-              if (!readyToServeNodeHostNames.isEmpty()) {
-                LOGGER.info(
-                    "{} ready to serve nodes were found for store {} version {} partition {}",
-                    readyToServeNodeHostNames.size(),
-                    storeName,
-                    storeVersion,
-                    storePartition);
-              } else {
-                LOGGER.info(
-                    "No ready to serve nodes found for store: {} version: {} partition: {}",
-                    storeName,
-                    storeVersion,
-                    storePartition);
-              }
-
-              response.setDiscoveryResult(readyToServeNodeHostNames);
-              setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
-            } catch (Exception e) {
-              byte[] errBody =
-                  (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
-                      .getBytes();
-              setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
-            }
-          });
+            queryVersionLevelPushStatus(ctx, storeName, storeVersion, storePartition, versionInt, partitionInt);
+          } else {
+            // case 3: partition level return instances, then check if all instances are completed.
+            extractCompleteInstancesFromPushStatusResponse(
+                ctx,
+                storeName,
+                storeVersion,
+                storePartition,
+                partitionLevelInstances,
+                false);
+          }
+        } catch (Exception e) {
+          byte[] errBody =
+              (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
+                  .getBytes();
+          setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
+        }
+      });
     } catch (Exception e) {
       byte[] errBody =
           (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition)).getBytes();
       setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
     }
+  }
+
+  /**
+   * A helper function to extract the completed instances from the push status response.
+   */
+  private void extractCompleteInstancesFromPushStatusResponse(
+      ChannelHandlerContext ctx,
+      String storeName,
+      String storeVersion,
+      String storePartition,
+      Map<CharSequence, Integer> instances,
+      boolean isVersionLevelPushReportResult) throws Exception {
+    String pushReportLevelType = isVersionLevelPushReportResult ? "version" : "partition";
+
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+
+    List<String> readyToServeNodeHostNames = instances.entrySet()
+        .stream()
+        .filter(entry -> entry.getValue() == ExecutionStatus.COMPLETED.getValue())
+        .map(Map.Entry::getKey)
+        .map(CharSequence::toString)
+        .collect(Collectors.toList());
+
+    if (!readyToServeNodeHostNames.isEmpty()) {
+      LOGGER.info(
+          "{} ready to serve nodes were found for store {} version {} partition {} from {} level push report",
+          readyToServeNodeHostNames.size(),
+          storeName,
+          storeVersion,
+          storePartition,
+          pushReportLevelType);
+    } else {
+      LOGGER.info(
+          "No ready to serve nodes found for store: {} version: {} partition: {} from {} level push report",
+          storeName,
+          storeVersion,
+          storePartition,
+          pushReportLevelType);
+    }
+
+    response.setDiscoveryResult(readyToServeNodeHostNames);
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(response), true, ctx);
+  }
+
+  /**
+   * A helper function to query the version level push status.
+   */
+  private void queryVersionLevelPushStatus(
+      ChannelHandlerContext ctx,
+      String storeName,
+      String storeVersion,
+      String storePartition,
+      int versionInt,
+      int partitionInt) {
+    // Query version-level status
+    CompletableFuture<Map<CharSequence, Integer>> versionStatusFuture =
+        pushStatusStoreReader.getPartitionOrVersionStatusAsync(
+            storeName,
+            versionInt,
+            partitionInt,
+            Optional.empty(),
+            Optional.empty(),
+            true);
+
+    versionStatusFuture.whenComplete((versionLevelInstances, throwable) -> {
+      try {
+        if (throwable != null) {
+          LOGGER.error(
+              "Failed to get version status for store: {} version: {} partition: {}",
+              storeName,
+              storeVersion,
+              storePartition,
+              throwable);
+
+          byte[] errBody =
+              (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
+                  .getBytes();
+          setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
+          return;
+        }
+
+        extractCompleteInstancesFromPushStatusResponse(
+            ctx,
+            storeName,
+            storeVersion,
+            storePartition,
+            versionLevelInstances,
+            true);
+      } catch (Exception e) {
+        byte[] errBody =
+            (String.format(REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE, storeName, storeVersion, storePartition))
+                .getBytes();
+        setupResponseAndFlush(INTERNAL_SERVER_ERROR, errBody, false, ctx);
+      }
+    });
   }
 
   private void handleResourceStateLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {

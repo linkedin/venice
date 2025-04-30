@@ -7,8 +7,15 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 
 
-public class ApacheKafkaConsumerAdapterFactory implements PubSubConsumerAdapterFactory<PubSubConsumerAdapter> {
+public class ApacheKafkaConsumerAdapterFactory extends PubSubConsumerAdapterFactory<PubSubConsumerAdapter> {
   private static final String NAME = "ApacheKafkaConsumerAdapter";
+
+  /**
+   * Constructor for ApacheKafkaConsumerAdapterFactory used mainly for reflective instantiation.
+   */
+  public ApacheKafkaConsumerAdapterFactory() {
+    // no-op
+  }
 
   @Override
   public ApacheKafkaConsumerAdapter create(

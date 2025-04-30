@@ -1,9 +1,13 @@
-package com.linkedin.venice.pubsub.api;
+package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Objects;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -18,10 +22,12 @@ import io.tehuti.metrics.MetricsRepository;
  *
  */
 public class PubSubProducerAdapterContext {
+  private static final Logger LOGGER = LogManager.getLogger(PubSubProducerAdapterContext.class);
   private final String producerName;
   private final String brokerAddress;
   private final VeniceProperties veniceProperties;
   private final PubSubSecurityProtocol securityProtocol;
+  private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final MetricsRepository metricsRepository;
   private final PubSubTopicRepository pubSubTopicRepository;
   private final boolean shouldValidateProducerConfigStrictly;
@@ -40,6 +46,7 @@ public class PubSubProducerAdapterContext {
     this.pubSubMessageSerializer = builder.pubSubMessageSerializer;
     this.isProducerCompressionEnabled = builder.isProducerCompressionEnabled;
     this.compressionType = builder.compressionType;
+    this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
   }
 
   public String getProducerName() {
@@ -74,6 +81,10 @@ public class PubSubProducerAdapterContext {
     return pubSubMessageSerializer;
   }
 
+  public PubSubPositionTypeRegistry getPubSubPositionTypeRegistry() {
+    return pubSubPositionTypeRegistry;
+  }
+
   public boolean isProducerCompressionEnabled() {
     return isProducerCompressionEnabled;
   }
@@ -87,6 +98,7 @@ public class PubSubProducerAdapterContext {
     private String brokerAddress;
     private VeniceProperties veniceProperties;
     private PubSubSecurityProtocol securityProtocol;
+    private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
     private MetricsRepository metricsRepository;
     private PubSubTopicRepository pubSubTopicRepository;
     private PubSubMessageSerializer pubSubMessageSerializer;
@@ -106,6 +118,12 @@ public class PubSubProducerAdapterContext {
 
     public Builder setVeniceProperties(VeniceProperties veniceProperties) {
       this.veniceProperties = veniceProperties;
+      return this;
+    }
+
+    public Builder setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
+      this.pubSubPositionTypeRegistry =
+          Objects.requireNonNull(pubSubPositionTypeRegistry, "PubSubPositionTypeRegistry cannot be null");
       return this;
     }
 
@@ -145,6 +163,12 @@ public class PubSubProducerAdapterContext {
     }
 
     public PubSubProducerAdapterContext build() {
+      if (pubSubPositionTypeRegistry == null) {
+        LOGGER.info(
+            "PubSubPositionMapper is not set. Using default reserved position type registry: {}",
+            PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
+        pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
+      }
       if (brokerAddress == null) {
         throw new VeniceException("Broker address must be provided to create a pub-sub producer");
       }
@@ -159,6 +183,8 @@ public class PubSubProducerAdapterContext {
       } else if (compressionType == null) {
         compressionType = "gzip";
       }
+
+      producerName = PubSubUtil.generatePubSubClientId(PubSubClientType.PRODUCER, producerName, brokerAddress);
       return new PubSubProducerAdapterContext(this);
     }
   }
