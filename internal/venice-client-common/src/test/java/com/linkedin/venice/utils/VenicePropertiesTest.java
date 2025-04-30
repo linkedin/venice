@@ -53,7 +53,7 @@ public class VenicePropertiesTest {
 
   @Test
   public void testClipAndFilterNamespaceTwoNamespaces() {
-    Map<CharSequence, CharSequence> props = new HashMap<>();
+    Map<String, String> props = new HashMap<>();
     props.put("kafka.key1", "value1");
     props.put("pubsub.kafka.key1", "value1");
     props.put("kafka.key2", "value2");
@@ -96,7 +96,7 @@ public class VenicePropertiesTest {
     props.put("database.host", "localhost");
     props.put("database.port", "5432");
 
-    VeniceProperties veniceProperties = new VeniceProperties(props);
+    VeniceProperties veniceProperties = VeniceProperties.fromCharSequenceMap(props);
 
     VeniceProperties kafkaProps = veniceProperties.clipAndFilterNamespace("kafka.");
     Properties kafkaProperties = kafkaProps.toProperties();
@@ -108,7 +108,7 @@ public class VenicePropertiesTest {
 
   @Test
   public void testClipAndFilterNamespaceNoMatchingProperties() {
-    Map<CharSequence, CharSequence> props = new HashMap<>();
+    Map<String, String> props = new HashMap<>();
     props.put("app.config.path", "/usr/local/");
     props.put("logging.level", "DEBUG");
 
@@ -122,7 +122,7 @@ public class VenicePropertiesTest {
 
   @Test
   public void testClipAndFilterNamespaceWithEmptyNamespacesSet() {
-    Map<CharSequence, CharSequence> props = new HashMap<>();
+    Map<String, String> props = new HashMap<>();
     props.put("kafka.key1", "value1");
     props.put("database.host", "localhost");
 
@@ -141,7 +141,7 @@ public class VenicePropertiesTest {
     props.put("kafka.key2", "value2");
     props.put("kafka.key3", "value3");
 
-    VeniceProperties veniceProperties = new VeniceProperties(props);
+    VeniceProperties veniceProperties = VeniceProperties.fromCharSequenceMap(props);
 
     VeniceProperties filteredProps = veniceProperties.clipAndFilterNamespace("kafka.");
     Properties resultProperties = filteredProps.toProperties();
