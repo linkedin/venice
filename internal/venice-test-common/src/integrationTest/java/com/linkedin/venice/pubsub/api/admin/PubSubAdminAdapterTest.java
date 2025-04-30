@@ -124,6 +124,7 @@ public class PubSubAdminAdapterTest {
             .create(
                 new PubSubProducerAdapterContext.Builder().setVeniceProperties(veniceProperties)
                     .setProducerName(clientId)
+                    .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
                     .build()));
   }
 

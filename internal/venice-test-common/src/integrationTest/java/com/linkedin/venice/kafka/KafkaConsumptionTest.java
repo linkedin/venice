@@ -289,6 +289,7 @@ public class KafkaConsumptionTest {
         new PubSubProducerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
             .setBrokerAddress(pubSubBrokerWrapper.getAddress())
             .setProducerName("test-producer")
+            .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
             .build();
     PubSubProducerAdapter producerAdapter =
         pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory().create(producerAdapterContext);

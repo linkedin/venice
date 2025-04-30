@@ -96,6 +96,7 @@ public class ApacheKafkaProducerAdapterITest {
     ApacheKafkaProducerConfig producerConfig = new ApacheKafkaProducerConfig(
         new PubSubProducerAdapterContext.Builder().setBrokerAddress(pubSubBrokerWrapper.getAddress())
             .setVeniceProperties(new VeniceProperties(properties))
+            .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
             .build());
     producerAdapter = new ApacheKafkaProducerAdapter(producerConfig);
   }
