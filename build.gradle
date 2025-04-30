@@ -150,7 +150,7 @@ ext.libraries = [
     xerces: 'xerces:xercesImpl:2.9.1',
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.6.3',
-    zstd: 'com.github.luben:zstd-jni:1.5.6-8 '
+    zstd: 'com.github.luben:zstd-jni:1.5.6-8'
 ]
 
 group = 'com.linkedin.venice'
