@@ -417,6 +417,15 @@ public class UtilsTest {
   }
 
   @Test
+  public void testCalculateTopicHashCode() {
+    String store = "test_store";
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    PubSubTopic rt = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(store));
+    PubSubTopic sepRt = pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(rt.getName()));
+    Assert.assertEquals(Utils.calculateTopicHashCode(rt), Utils.calculateTopicHashCode(sepRt));
+  }
+
+  @Test
   public void testGetLeaderTopicFromPubSubTopic() {
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     String store = "test_store";

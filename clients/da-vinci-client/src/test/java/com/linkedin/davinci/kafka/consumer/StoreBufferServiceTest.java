@@ -24,6 +24,7 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -36,6 +37,9 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -259,6 +263,32 @@ public class StoreBufferServiceTest {
     int avgPartitionCountPerDrainer = partitionCount / drainerNum;
     for (int i = 0; i < drainerNum; ++i) {
       Assert.assertEquals(drainerPartitionCount[i], avgPartitionCountPerDrainer);
+    }
+  }
+
+  /**
+   * Tests that {@link StoreBufferService#getDrainerIndexForConsumerRecord} assigns the same drainer index for both
+   * real-time (RT) and separate real-time (Separate RT) topics for the same partition.
+   */
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testGetDrainerIndexForConsumerRecordSeparateRt(boolean queueLeaderWrites) {
+    String baseTopicName = Utils.getUniqueString("test_topic");
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(baseTopicName));
+    PubSubTopic separateRtTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(baseTopicName));
+    List<PubSubTopic> topics = new ArrayList<>(Arrays.asList(rtTopic, separateRtTopic));
+    StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000, queueLeaderWrites, mockedStats, null);
+    for (int partition = 0; partition < 64; ++partition) {
+      int firstDrainerIndex = -1;
+      for (PubSubTopic topic: topics) {
+        PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partition);
+        DefaultPubSubMessage cr = new ImmutablePubSubMessage(key, value, topicPartition, mockPosition, 0, 0);
+        int drainerIndex = bufferService.getDrainerIndexForConsumerRecord(cr, partition);
+        if (firstDrainerIndex == -1) {
+          firstDrainerIndex = drainerIndex;
+        } else {
+          Assert.assertEquals(drainerIndex, firstDrainerIndex, "Separate RT drainer should be the same as RT drainer");
+        }
+      }
     }
   }
 
