@@ -32,7 +32,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
             serverConfig.getStoreWriterBufferMemoryCapacity(),
             serverConfig.getStoreWriterBufferNotifyDelta(),
             serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
-            serverConfig.getRegionName(),
+            serverConfig,
             metricsRepository,
             true),
         new StoreBufferService(
@@ -40,7 +40,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
             serverConfig.getStoreWriterBufferMemoryCapacity(),
             serverConfig.getStoreWriterBufferNotifyDelta(),
             serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
-            serverConfig.getRegionName(),
+            serverConfig,
             metricsRepository,
             false));
     LOGGER.info(

@@ -7,6 +7,7 @@ import static java.util.stream.Collectors.toList;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.utils.LockAssistedCompletableFuture;
 import com.linkedin.davinci.validation.PartitionTracker;
@@ -75,13 +76,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
   private volatile boolean isStarted = false;
   private final String regionName;
+  private final VeniceServerConfig serverConfig;
 
   public StoreBufferService(
       int drainerNum,
       long bufferCapacityPerDrainer,
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
-      String regionName,
+      VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
       boolean sorted) {
     this(
@@ -90,7 +92,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
         bufferNotifyDelta,
         queueLeaderWrites,
         null,
-        regionName,
+        serverConfig,
         metricsRepository,
         sorted);
   }
@@ -104,8 +106,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
       StoreBufferServiceStats stats,
-      String regionName) {
-    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, stats, regionName, null, true);
+      VeniceServerConfig serverConfig) {
+    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, stats, serverConfig, null, true);
   }
 
   /**
@@ -121,10 +123,11 @@ public class StoreBufferService extends AbstractStoreBufferService {
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
       StoreBufferServiceStats stats,
-      String regionName,
+      VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
       boolean sorted) {
-    this.regionName = regionName;
+    this.regionName = serverConfig.getRegionName();
+    this.serverConfig = serverConfig;
     this.drainerNum = drainerNum;
     this.blockingQueueArr = new ArrayList<>();
     this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
@@ -348,7 +351,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
   public boolean startInner() {
     this.executorService = Executors.newFixedThreadPool(
         drainerNum,
-        new DaemonThreadFactory(isSorted ? "Store-writer-sorted" : "Store-writer-hybrid", regionName));
+        new DaemonThreadFactory(
+            isSorted ? "Store-writer-sorted" : "Store-writer-hybrid",
+            regionName + "-VeniceServer-" + serverConfig.getListenerPort()));
 
     // Submit all the buffer drainers
     for (int cur = 0; cur < drainerNum; ++cur) {

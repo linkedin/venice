@@ -347,7 +347,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           serverConfig.getStoreWriterBufferMemoryCapacity(),
           serverConfig.getStoreWriterBufferNotifyDelta(),
           serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
-          serverConfig.getRegionName(),
+          serverConfig,
           metricsRepository,
           true);
     }

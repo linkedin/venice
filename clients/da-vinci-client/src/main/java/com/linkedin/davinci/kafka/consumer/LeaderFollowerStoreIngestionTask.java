@@ -1560,9 +1560,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             partitionConsumptionState.updateLatestProcessedUpstreamRTOffset(sourceKafkaUrl, upstreamTopicOffset);
           } else {
             LOGGER.info(
-                "DEBUGGING: Updating upstream VT offset to: {}, PCS: {}",
+                "DEBUGGING: Updating upstream VT offset to: {}, PCS: {}, Msg: {}, LPRC: {}",
                 upstreamTopicOffset,
-                partitionConsumptionState);
+                partitionConsumptionState,
+                consumerRecordWrapper,
+                leaderProducedRecordContext);
             partitionConsumptionState.updateLatestProcessedUpstreamVersionTopicOffset(upstreamTopicOffset);
           }
         },
