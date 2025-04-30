@@ -699,11 +699,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     throwIfNotRunning();
     int partitionNumber = topicPartition.getPartitionNumber();
 
-    if (recordTransformer != null) {
-      long startTime = System.nanoTime();
-      recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
-      LOGGER.info("DaVinciRecordTransformer onRecovery took {} ms", LatencyUtils.getElapsedTimeFromNSToMS(startTime));
-    }
+    // if (recordTransformer != null) {
+    // long startTime = System.nanoTime();
+    // recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
+    // LOGGER.info("DaVinciRecordTransformer onRecovery took {} ms", LatencyUtils.getElapsedTimeFromNSToMS(startTime));
+    // }
 
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
         .incrementAndGet();
@@ -2316,6 +2316,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             LatencyUtils.getElapsedTimeFromMsToMs(consumptionStatePrepTimeStart));
         updateLeaderTopicOnFollower(newPartitionConsumptionState);
         reportStoreVersionTopicOffsetRewindMetrics(newPartitionConsumptionState);
+
+        if (recordTransformer != null) {
+          long startTime = System.nanoTime();
+          recordTransformer.internalOnRecovery(storageEngine, partition, partitionStateSerializer, compressor);
+          LOGGER
+              .info("DaVinciRecordTransformer onRecovery took {} ms", LatencyUtils.getElapsedTimeFromNSToMS(startTime));
+        }
 
         // Subscribe to local version topic.
         consumerSubscribe(
