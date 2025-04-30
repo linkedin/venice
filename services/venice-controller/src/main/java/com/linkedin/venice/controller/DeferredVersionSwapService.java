@@ -192,43 +192,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   }
 
   /**
-   * Iterate through the list of given regions and checks if the specified version of the store has a davinci heartbeat in any
-   * of the regions. If there is, the store is a davinci store. If not, the store is not a davinci store
-   * @param cluster the cluster the store is in
-   * @param regions the list of regions to check for a davinci heartbeat
-   * @param storeName the name of the store
-   * @param targetVersionNum the version to check for a davinci heartbeat
-   * @return
-   */
-  private boolean isDavinciStore(String cluster, Set<String> regions, String storeName, int targetVersionNum) {
-    for (String region: regions) {
-      Version version = getVersionFromStoreInRegion(cluster, region, storeName, targetVersionNum);
-      Version previousVersion = getVersionFromStoreInRegion(cluster, region, storeName, targetVersionNum - 1);
-
-      if (version == null && previousVersion == null) {
-        continue;
-      }
-
-      if (version != null && version.getIsDavinciHeartbeatReported()) {
-        String message = "Skipping version swap for store: " + storeName + " on version: " + targetVersionNum
-            + " as there is a davinci heartbeat in region: " + region;
-        logMessageIfNotRedundant(message);
-        return true;
-      }
-
-      // Check the previous version for a dvc heartbeat if we can't find the target version number
-      if (version == null && previousVersion.getIsDavinciHeartbeatReported()) {
-        String message = "Skipping version swap for store: " + storeName + " on the previous version: "
-            + previousVersion.getNumber() + " as there is a davinci heartbeat in region: " + region;
-        logMessageIfNotRedundant(message);
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  /**
    * Roll forward to the specified version for a list of regions. Once the roll forward is done, traffic will be served from
    * that version and the version status will be updated to ONLINE or PARTIALLY_ONLINE
    * @param regions the list of regions to update the version status
@@ -446,16 +409,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               continue;
             }
 
-            // TODO remove this check once DVC delayed ingestion is completed
-            // Skip davinci stores if skip.deferred.version.swap.for.dvc.enabled is enabled
             Map<String, Integer> coloToVersions =
                 veniceParentHelixAdmin.getCurrentVersionsForMultiColos(cluster, storeName);
-            if (veniceControllerMultiClusterConfig.isSkipDeferredVersionSwapForDVCEnabled()) {
-              if (isDavinciStore(cluster, coloToVersions.keySet(), storeName, targetVersionNum)) {
-                continue;
-              }
-            }
-
             Admin.OfflinePushStatusInfo pushStatusInfo =
                 veniceParentHelixAdmin.getOffLinePushStatus(cluster, kafkaTopicName);
             HelixVeniceClusterResources resources =
