@@ -114,7 +114,7 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
       DataWriterTaskTracker dataWriterTaskTracker) {
     byte[] recordKey = veniceRecordReader.getKeyBytes(inputKey, inputValue);
     byte[] recordValue = veniceRecordReader.getValueBytes(inputKey, inputValue);
-    long recordTimestamp = timestamp;
+    Long recordTimestamp = timestamp;
     if (recordKey == null) {
       throw new VeniceException("Mapper received a empty key record");
     }

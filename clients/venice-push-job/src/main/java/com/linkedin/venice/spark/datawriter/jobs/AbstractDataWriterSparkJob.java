@@ -221,7 +221,9 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       jobConf.set(DERIVED_SCHEMA_ID_PROP, pushJobSetting.derivedSchemaId);
     }
     jobConf.set(ENABLE_WRITE_COMPUTE, pushJobSetting.enableWriteCompute);
-    jobConf.set(RMD_SCHEMA_PROP, pushJobSetting.replicationMetadataSchemaString);
+    if (pushJobSetting.replicationMetadataSchemaString != null) {
+      jobConf.set(RMD_SCHEMA_PROP, pushJobSetting.replicationMetadataSchemaString);
+    }
 
     if (!props.containsKey(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS)) {
       // If the push job plug-in doesn't specify the request timeout config, default will be infinite

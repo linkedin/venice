@@ -1907,7 +1907,7 @@ public class VenicePushJob implements AutoCloseable {
       LOGGER.error("Failed to fetch replication metadata schemas!" + replicationSchemasResponse.getError());
     } else {
       // We only need a single valid schema, so getting the first one is good enough.
-      if (replicationSchemasResponse.getSchemas().length > 0) {
+      if (replicationSchemasResponse.getSchemas() != null && replicationSchemasResponse.getSchemas().length > 0) {
         pushJobSetting.replicationMetadataSchemaString = replicationSchemasResponse.getSchemas()[0].getSchemaStr();
       } else {
         LOGGER.info("No replication schemas associated with the store!");
