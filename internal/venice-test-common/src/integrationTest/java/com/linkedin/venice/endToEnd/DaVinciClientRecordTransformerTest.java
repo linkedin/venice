@@ -91,6 +91,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
+@Test(singleThreaded = true)
 public class DaVinciClientRecordTransformerTest {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciClientRecordTransformerTest.class);
   private static final int TEST_TIMEOUT = 120_000;
