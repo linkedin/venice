@@ -244,6 +244,7 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -303,8 +304,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class VeniceParentHelixAdmin implements Admin {
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
-  private static final long SLEEP_INTERVAL_ROLL_FORWARD_CHECK_IN_MS = 1000;
-  static final long NUMBER_OF_RETRY_FOR_ROLL_FORWARD_CHECK = 5;
   private static final Logger LOGGER = LogManager.getLogger(VeniceParentHelixAdmin.class);
   // Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   static final int STORE_VERSION_RETENTION_COUNT = 5;
@@ -2155,39 +2154,31 @@ public class VeniceParentHelixAdmin implements Admin {
       // check whether the roll forward is successful in all regions in regionFilter.
       // Add retries to let the child controllers finish processing the roll forward command
       Map<String, Integer> failedRegions = new HashMap<>();
-      for (int retry = 0; retry < NUMBER_OF_RETRY_FOR_ROLL_FORWARD_CHECK; retry++) {
+      int finalFutureVersionBeforeRollForward = futureVersionBeforeRollForward;
+      RetryUtils.executeWithMaxAttempt(() -> {
         Map<String, Integer> currentVersionsAfterRollForward = getCurrentVersionsForMultiColos(clusterName, storeName);
-        failedRegions = new HashMap<>();
-        for (Map.Entry<String, Integer> entry: currentVersionsAfterRollForward.entrySet()) {
-          if (!isRegionPartOfRegionsFilterList(entry.getKey(), regionFilter)) {
-            continue;
+        failedRegions.clear();
+        currentVersionsAfterRollForward.forEach((region, currentVersion) -> {
+          if (isRegionPartOfRegionsFilterList(region, regionFilter)
+              && currentVersion < finalFutureVersionBeforeRollForward) {
+            failedRegions.put(region, currentVersion);
           }
-          int currentVersionAfterRollForward = entry.getValue();
-          if (currentVersionAfterRollForward != futureVersionBeforeRollForward) {
-            failedRegions.put(entry.getKey(), currentVersionAfterRollForward);
-          }
-        }
+        });
         if (!failedRegions.isEmpty()) {
-          LOGGER.warn("Roll forward failed in regions: {}, Retrying", failedRegions);
-        } else {
-          break;
+          StringBuilder sb = new StringBuilder();
+          sb.append("Roll forward failed in regions: ");
+          for (Map.Entry<String, Integer> entry: failedRegions.entrySet()) {
+            sb.append(entry.getKey()).append(" with current version: ").append(entry.getValue()).append(",");
+          }
+          sb.append(". Roll forward will be retried until it is successful.");
+          throw new VeniceException(sb.toString());
         }
-        Utils.sleep(SLEEP_INTERVAL_ROLL_FORWARD_CHECK_IN_MS);
-      }
-      if (!failedRegions.isEmpty()) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Roll forward failed in regions: ");
-        for (Map.Entry<String, Integer> entry: failedRegions.entrySet()) {
-          sb.append(entry.getKey()).append(" with current version: ").append(entry.getValue()).append(",");
-        }
-        sb.append(". Roll forward will be retried until it is successful.");
-        throw new VeniceException(sb.toString());
-      } else {
-        LOGGER.info(
-            "Roll forward to future version {} is successful in all regions for store {}",
-            futureVersionBeforeRollForward,
-            storeName);
-      }
+      }, 5, Duration.ofMillis(200), Arrays.asList(VeniceException.class));
+
+      LOGGER.info(
+          "Roll forward to future version {} is successful in all regions for store {}",
+          futureVersionBeforeRollForward,
+          storeName);
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
