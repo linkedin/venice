@@ -100,13 +100,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1010:
     name: IntegrationTests_1010
@@ -195,13 +198,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1020:
     name: IntegrationTests_1020
@@ -290,13 +296,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1030:
     name: IntegrationTests_1030
@@ -385,13 +394,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1040:
     name: IntegrationTests_1040
@@ -480,13 +492,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1050:
     name: IntegrationTests_1050
@@ -575,13 +590,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1060:
     name: IntegrationTests_1060
@@ -670,13 +688,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1070:
     name: IntegrationTests_1070
@@ -765,13 +786,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1080:
     name: IntegrationTests_1080
@@ -860,13 +884,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1090:
     name: IntegrationTests_1090
@@ -955,13 +982,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1100:
     name: IntegrationTests_1100
@@ -1050,13 +1080,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1110:
     name: IntegrationTests_1110
@@ -1145,13 +1178,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1120:
     name: IntegrationTests_1120
@@ -1240,13 +1276,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1130:
     name: IntegrationTests_1130
@@ -1335,13 +1374,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1200:
     name: IntegrationTests_1200
@@ -1430,13 +1472,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1210:
     name: IntegrationTests_1210
@@ -1525,13 +1570,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1220:
     name: IntegrationTests_1220
@@ -1620,13 +1668,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1230:
     name: IntegrationTests_1230
@@ -1715,13 +1766,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1240:
     name: IntegrationTests_1240
@@ -1810,13 +1864,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1250:
     name: IntegrationTests_1250
@@ -1905,13 +1962,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1260:
     name: IntegrationTests_1260
@@ -2000,13 +2060,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1270:
     name: IntegrationTests_1270
@@ -2095,13 +2158,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1280:
     name: IntegrationTests_1280
@@ -2190,13 +2256,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1400:
     name: IntegrationTests_1400
@@ -2285,13 +2354,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1410:
     name: IntegrationTests_1410
@@ -2380,13 +2452,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1420:
     name: IntegrationTests_1420
@@ -2475,13 +2550,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1430:
     name: IntegrationTests_1430
@@ -2570,13 +2648,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1440:
     name: IntegrationTests_1440
@@ -2665,13 +2746,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1500:
     name: IntegrationTests_1500
@@ -2760,13 +2844,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_1550:
     name: IntegrationTests_1550
@@ -2855,13 +2942,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   IntegrationTests_9999:
     name: IntegrationTests_9999
@@ -2950,13 +3040,16 @@ jobs:
       - name: Upload test results to BuildPulse for flaky test detection
         if: ${{ !cancelled() }}
         uses: buildpulse/buildpulse-action@main
+        env:
+          BUILDPULSE_ACCESS_KEY_ID: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
+          BUILDPULSE_SECRET_ACCESS_KEY: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
         with:
           account: 357098
           repository: 349172057
           path: |
             **/TEST-*.xml
-          key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
-          secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
+          key: $BUILDPULSE_ACCESS_KEY_ID
+          secret: $BUILDPULSE_SECRET_ACCESS_KEY
 
   E2ETestsCompletion:
     strategy:
