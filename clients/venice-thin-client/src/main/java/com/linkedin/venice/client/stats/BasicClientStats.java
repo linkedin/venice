@@ -71,8 +71,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyLatencyMetric;
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyLatencyMetric;
   private final Sensor requestKeyCountSensor;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyKeyCountMetric;
-  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyKeyCountMetric;
+  private final Sensor successRequestKeyCountSensor;
   private final Sensor successRequestRatioSensor;
   private final Sensor successRequestKeyRatioSensor;
   private final Rate requestRate = new OccurrenceRate();
@@ -185,29 +184,9 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
 
     // key count
     Rate requestKeyCountRate = new Rate();
-    // requestKeyCountSensor will be a derived metric in OTel
     requestKeyCountSensor = registerSensor("request_key_count", requestKeyCountRate, new Avg(), new Max());
-
-    healthyKeyCountMetric = MetricEntityStateThreeEnums.create(
-        BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT,
-        Arrays.asList(successRequestKeyCountRate, new Avg(), new Max()),
-        baseDimensionsMap,
-        HttpResponseStatusEnum.class,
-        HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
-    unhealthyKeyCountMetric = MetricEntityStateThreeEnums.create(
-        BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        BasicClientTehutiMetricName.FAILED_REQUEST_KEY_COUNT,
-        Arrays.asList(new Rate(), new Avg(), new Max()),
-        baseDimensionsMap,
-        HttpResponseStatusEnum.class,
-        HttpResponseStatusCodeCategory.class,
-        VeniceResponseStatusCategory.class);
+    successRequestKeyCountSensor =
+        registerSensor("success_request_key_count", successRequestKeyCountRate, new Avg(), new Max());
 
     successRequestKeyRatioSensor = registerSensor(
         new TehutiUtils.SimpleRatioStat(successRequestKeyCountRate, requestKeyCountRate, "success_request_key_ratio"));
@@ -225,29 +204,31 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     VeniceResponseStatusCategory veniceCategory = VeniceResponseStatusCategory.SUCCESS;
     healthyRequestMetric.record(1, statusEnum, httpCategory, veniceCategory);
     healthyLatencyMetric.record(latency, statusEnum, httpCategory, veniceCategory);
-    healthyKeyCountMetric.record(keyCount, statusEnum, httpCategory, veniceCategory);
   }
 
   public void emitHealthyRequestMetrics(double latency, Object value) {
     emitHealthyRequestMetrics(latency, getSuccessfulKeyCount(value));
   }
 
-  public void emitUnhealthyRequestMetrics(double latency, int keyCount, int httpStatus) {
+  public void emitUnhealthyRequestMetrics(double latency, int httpStatus) {
     recordRequest();
     HttpResponseStatusEnum statusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
     HttpResponseStatusCodeCategory httpCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
     VeniceResponseStatusCategory veniceCategory = VeniceResponseStatusCategory.FAIL;
     unhealthyRequestMetric.record(1, statusEnum, httpCategory, veniceCategory);
     unhealthyLatencyMetric.record(latency, statusEnum, httpCategory, veniceCategory);
-    unhealthyKeyCountMetric.record(keyCount, statusEnum, httpCategory, veniceCategory);
   }
 
-  public void emitUnhealthyRequestMetrics(double latency, int keyCount, Throwable throwable) {
-    emitUnhealthyRequestMetrics(latency, keyCount, getUnhealthyRequestHttpStatus(throwable));
+  public void emitUnhealthyRequestMetrics(double latency, Throwable throwable) {
+    emitUnhealthyRequestMetrics(latency, getUnhealthyRequestHttpStatus(throwable));
   }
 
   public void recordRequestKeyCount(int keyCount) {
     requestKeyCountSensor.record(keyCount);
+  }
+
+  public void recordSuccessRequestKeyCount(int successKeyCount) {
+    successRequestKeyCountSensor.record(successKeyCount);
   }
 
   protected final Rate getRequestRate() {
@@ -308,8 +289,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
    * Metric names for tehuti metrics used in this class.
    */
   public enum BasicClientTehutiMetricName implements TehutiMetricNameEnum {
-    HEALTHY_REQUEST, UNHEALTHY_REQUEST, HEALTHY_REQUEST_LATENCY, UNHEALTHY_REQUEST_LATENCY, SUCCESS_REQUEST_KEY_COUNT,
-    FAILED_REQUEST_KEY_COUNT;
+    HEALTHY_REQUEST, UNHEALTHY_REQUEST, HEALTHY_REQUEST_LATENCY, UNHEALTHY_REQUEST_LATENCY;
 
     private final String metricName;
 
@@ -343,19 +323,6 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
      */
     CALL_TIME(
         MetricType.HISTOGRAM, MetricUnit.MILLISECOND, "Latency based on all responses",
-        setOf(
-            VENICE_STORE_NAME,
-            VENICE_REQUEST_METHOD,
-            VENICE_CLIENT_TYPE,
-            HTTP_RESPONSE_STATUS_CODE,
-            HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-            VENICE_RESPONSE_STATUS_CODE_CATEGORY)
-    ),
-    /**
-     * Count of keys during response handling along with response codes
-     */
-    KEY_COUNT(
-        MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys during response handling along with response codes",
         setOf(
             VENICE_STORE_NAME,
             VENICE_REQUEST_METHOD,

@@ -29,12 +29,8 @@ public class DelegatingTrackingCallback<K, V> implements TrackingStreamingCallba
     inner.onRecordDeserialized();
   }
 
-  public void onDeserializationCompletion(
-      Optional<Exception> exception,
-      int keyCount,
-      int successKeyCount,
-      int duplicateEntryCount) {
-    inner.onDeserializationCompletion(exception, keyCount, successKeyCount, duplicateEntryCount);
+  public void onDeserializationCompletion(Optional<Exception> exception, int successKeyCount, int duplicateEntryCount) {
+    inner.onDeserializationCompletion(exception, successKeyCount, duplicateEntryCount);
   }
 
   public static <K, V> TrackingStreamingCallback<K, V> wrap(StreamingCallback<K, V> callback) {
@@ -64,7 +60,6 @@ public class DelegatingTrackingCallback<K, V> implements TrackingStreamingCallba
       @Override
       public void onDeserializationCompletion(
           Optional<Exception> exception,
-          int keyCount,
           int successKeyCount,
           int duplicateEntryCount) {
       }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import static com.linkedin.venice.client.stats.BasicClientStats.getSuccessfulKeyCount;
 import static com.linkedin.venice.client.stats.BasicClientStats.getUnhealthyRequestHttpStatus;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -96,7 +97,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     CompletableFuture<V> innerFuture = super.get(key, Optional.of(singleGetStats), startTimeInNS);
     singleGetStats.recordRequestKeyCount(1);
     CompletableFuture<V> statFuture = innerFuture
-        .handle((BiFunction<? super V, Throwable, ? extends V>) getStatCallback(singleGetStats, startTimeInNS, 1));
+        .handle((BiFunction<? super V, Throwable, ? extends V>) getStatCallback(singleGetStats, startTimeInNS));
     return AppTimeOutTrackingCompletableFuture.track(statFuture, singleGetStats);
   }
 
@@ -106,7 +107,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     CompletableFuture<byte[]> innerFuture = super.getRaw(requestPath, Optional.of(schemaReaderStats), startTimeInNS);
     schemaReaderStats.recordRequestKeyCount(1);
     CompletableFuture<byte[]> statFuture = innerFuture.handle(
-        (BiFunction<? super byte[], Throwable, ? extends byte[]>) getStatCallback(schemaReaderStats, startTimeInNS, 1));
+        (BiFunction<? super byte[], Throwable, ? extends byte[]>) getStatCallback(schemaReaderStats, startTimeInNS));
     return statFuture;
   }
 
@@ -207,14 +208,12 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     @Override
     public void onDeserializationCompletion(
         Optional<Exception> exception,
-        int keyCount,
         int successKeyCount,
         int duplicateEntryCount) {
       handleMetricTrackingForStreamingCallback(
           stats,
           preRequestTimeInNS,
           exception,
-          keyCount,
           successKeyCount,
           duplicateEntryCount);
     }
@@ -245,13 +244,9 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         preRequestTimeInNS);
   }
 
-  private static void handleUnhealthyRequest(
-      ClientStats clientStats,
-      Throwable throwable,
-      double latency,
-      int keyCount) {
+  private static void handleUnhealthyRequest(ClientStats clientStats, Throwable throwable, double latency) {
     int httpStatus = getUnhealthyRequestHttpStatus(throwable);
-    clientStats.emitUnhealthyRequestMetrics(latency, keyCount, httpStatus);
+    clientStats.emitUnhealthyRequestMetrics(latency, httpStatus);
     if (throwable instanceof VeniceClientHttpException) {
       clientStats.recordHttpRequest(httpStatus);
     }
@@ -261,16 +256,16 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       ClientStats clientStats,
       long startTimeInNS,
       Optional<Exception> exception,
-      int keyCount,
       int successKeyCnt,
       int duplicateEntryCnt) {
     double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
     if (exception.isPresent()) {
-      handleUnhealthyRequest(clientStats, exception.get(), latency, keyCount);
+      handleUnhealthyRequest(clientStats, exception.get(), latency);
     } else {
       clientStats.emitHealthyRequestMetrics(latency, successKeyCnt);
-      clientStats.recordSuccessDuplicateRequestKeyCount(duplicateEntryCnt);
     }
+    clientStats.recordSuccessRequestKeyCount(successKeyCnt);
+    clientStats.recordSuccessDuplicateRequestKeyCount(duplicateEntryCnt);
   }
 
   @Override
@@ -285,16 +280,16 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   public static <T> BiFunction<? super T, Throwable, ? extends T> getStatCallback(
       ClientStats clientStats,
-      long startTimeInNS,
-      int numKeys) {
+      long startTimeInNS) {
     return (T value, Throwable throwable) -> {
       double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
       if (throwable != null) {
-        handleUnhealthyRequest(clientStats, throwable, latency, numKeys);
+        handleUnhealthyRequest(clientStats, throwable, latency);
         handleStoreExceptionInternally(throwable);
       }
 
       clientStats.emitHealthyRequestMetrics(latency, value);
+      clientStats.recordSuccessRequestKeyCount(getSuccessfulKeyCount(value));
       return value;
     };
   }

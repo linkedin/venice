@@ -52,14 +52,13 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
 
   private static <T> CompletableFuture<T> trackRequest(
       BasicClientStats stats,
-      Supplier<CompletableFuture<T>> futureSupplier,
-      int numKeys) {
+      Supplier<CompletableFuture<T>> futureSupplier) {
     long startTimeInNS = System.nanoTime();
     CompletableFuture<T> statFuture = new CompletableFuture<>();
     try {
       return futureSupplier.get().whenComplete((v, throwable) -> {
         if (throwable != null) {
-          stats.emitUnhealthyRequestMetrics(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), numKeys, throwable);
+          stats.emitUnhealthyRequestMetrics(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), throwable);
           statFuture.completeExceptionally(throwable);
         } else {
           stats.emitHealthyRequestMetrics(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), v);
@@ -69,7 +68,6 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
     } catch (Exception e) {
       stats.emitUnhealthyRequestMetrics(
           LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS),
-          numKeys,
           HttpStatus.SC_INTERNAL_SERVER_ERROR);
       throw e;
     }
@@ -83,12 +81,20 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
   @Override
   public CompletableFuture<V> get(K key, V reusableValue) {
     clientStatsForSingleGet.recordRequestKeyCount(1);
-    return trackRequest(clientStatsForSingleGet, () -> super.get(key, reusableValue), 1);
+    return trackRequest(clientStatsForSingleGet, () -> super.get(key, reusableValue)).whenComplete((v, throwable) -> {
+      if (throwable == null && v != null) {
+        clientStatsForSingleGet.recordSuccessRequestKeyCount(1);
+      }
+    });
   }
 
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) {
     clientStatsForBatchGet.recordRequestKeyCount(keys.size());
-    return trackRequest(clientStatsForBatchGet, () -> super.batchGet(keys), keys.size());
+    return trackRequest(clientStatsForBatchGet, () -> super.batchGet(keys)).whenComplete((v, throwable) -> {
+      if (throwable == null && v != null) {
+        clientStatsForBatchGet.recordSuccessRequestKeyCount(v.size());
+      }
+    });
   }
 }

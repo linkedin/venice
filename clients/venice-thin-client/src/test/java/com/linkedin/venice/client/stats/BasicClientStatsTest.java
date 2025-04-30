@@ -101,25 +101,20 @@ public class BasicClientStatsTest {
     Metric requestMetric = metrics.get(metricPrefix + "--request.OccurrenceRate");
     Metric healthyRequestMetric = metrics.get(metricPrefix + "--healthy_request.OccurrenceRate");
     Metric healthyLatencyMetric = metrics.get(metricPrefix + "--healthy_request_latency.Avg");
-    Metric successKeyCountMetric = metrics.get(metricPrefix + "--success_request_key_count.Avg");
 
     Assert.assertTrue(requestMetric.value() > 0.0);
     Assert.assertTrue(healthyRequestMetric.value() > 0.0);
     Assert.assertEquals(healthyLatencyMetric.value(), 90.0);
-    Assert.assertEquals(successKeyCountMetric.value(), 2.0);
 
     // validate otel metrics
     Attributes expectedAttributes = getExpectedAttributes(storeName, SC_OK, VeniceResponseStatusCategory.SUCCESS);
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     Assert.assertFalse(metricsData.isEmpty(), "Metrics should not be empty");
-    Assert.assertEquals(metricsData.size(), 3, "There should be three metrics recorded");
+    Assert.assertEquals(metricsData.size(), 2, "There should be two metrics recorded");
     LongPointData callCountData = getLongPointData(metricsData, "call_count", otelPrefix);
     validateLongPointData(callCountData, 1, expectedAttributes);
     ExponentialHistogramPointData callTimeData = getExponentialHistogramPointData(metricsData, "call_time", otelPrefix);
     validateExponentialHistogramPointData(callTimeData, 90.0, 90.0, 1, 90.0, expectedAttributes);
-
-    ExponentialHistogramPointData keyCountData = getExponentialHistogramPointData(metricsData, "key_count", otelPrefix);
-    validateExponentialHistogramPointData(keyCountData, 2.0, 2.0, 1, 2.0, expectedAttributes);
   }
 
   @Test
@@ -140,35 +135,29 @@ public class BasicClientStatsTest {
     String metricPrefix = "." + storeName;
 
     int httpStatus = HttpStatus.SC_INTERNAL_SERVER_ERROR;
-    int keyCount = 2;
     double latency = 90.0;
 
-    stats.emitUnhealthyRequestMetrics(latency, keyCount, httpStatus);
+    stats.emitUnhealthyRequestMetrics(latency, httpStatus);
 
     // validate tehuti metrics
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
     Metric requestMetric = metrics.get(metricPrefix + "--request.OccurrenceRate");
     Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--unhealthy_request.OccurrenceRate");
     Metric unhealthyLatencyMetric = metrics.get(metricPrefix + "--unhealthy_request_latency.Avg");
-    Metric failedKeyCountMetric = metrics.get(metricPrefix + "--failed_request_key_count.Avg");
 
     Assert.assertTrue(requestMetric.value() > 0.0);
     Assert.assertTrue(unhealthyRequestMetric.value() > 0.0);
     Assert.assertEquals(unhealthyLatencyMetric.value(), 90.0);
-    Assert.assertEquals(failedKeyCountMetric.value(), 2.0);
 
     // validate otel metrics
     Attributes expectedAttributes = getExpectedAttributes(storeName, httpStatus, VeniceResponseStatusCategory.FAIL);
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     Assert.assertFalse(metricsData.isEmpty(), "Metrics should not be empty");
-    Assert.assertEquals(metricsData.size(), 3, "There should be three metrics recorded");
+    Assert.assertEquals(metricsData.size(), 2, "There should be two metrics recorded");
     LongPointData callCountData = getLongPointData(metricsData, "call_count", otelPrefix);
     validateLongPointData(callCountData, 1, expectedAttributes);
     ExponentialHistogramPointData callTimeData = getExponentialHistogramPointData(metricsData, "call_time", otelPrefix);
     validateExponentialHistogramPointData(callTimeData, 90.0, 90.0, 1, 90.0, expectedAttributes);
-
-    ExponentialHistogramPointData keyCountData = getExponentialHistogramPointData(metricsData, "key_count", otelPrefix);
-    validateExponentialHistogramPointData(keyCountData, 2.0, 2.0, 1, 2.0, expectedAttributes);
   }
 
   @Test
@@ -195,20 +184,6 @@ public class BasicClientStatsTest {
             MetricType.HISTOGRAM,
             MetricUnit.MILLISECOND,
             "Latency based on all responses",
-            Utils.setOf(
-                VENICE_STORE_NAME,
-                VENICE_REQUEST_METHOD,
-                VENICE_CLIENT_TYPE,
-                HTTP_RESPONSE_STATUS_CODE,
-                HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
-    expectedMetrics.put(
-        BasicClientStats.BasicClientMetricEntity.KEY_COUNT,
-        new MetricEntity(
-            "key_count",
-            MetricType.HISTOGRAM,
-            MetricUnit.NUMBER,
-            "Count of keys during response handling along with response codes",
             Utils.setOf(
                 VENICE_STORE_NAME,
                 VENICE_REQUEST_METHOD,
