@@ -54,6 +54,7 @@ import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -83,6 +84,7 @@ public class KafkaConsumptionTest {
   private TestMockTime mockTime;
   private TestMockTime remoteMockTime;
   private PubSubTopic versionTopic;
+  private Map<String, String> pubSubClientProperties;
 
   private PubSubTopic getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
@@ -123,6 +125,9 @@ public class KafkaConsumptionTest {
     remoteMockTime = new TestMockTime();
     remotePubSubBroker = ServiceFactory.getPubSubBroker(
         new PubSubBrokerConfigs.Builder().setMockTime(remoteMockTime).setRegionName("remote-pubsub").build());
+
+    pubSubClientProperties =
+        PubSubBrokerWrapper.getBrokerDetailsForClients(Arrays.asList(localPubSubBroker, remotePubSubBroker));
     remoteTopicManager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(
@@ -183,9 +188,14 @@ public class KafkaConsumptionTest {
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+
+    Properties pubSubProps = new Properties();
+    pubSubProps.putAll(pubSubClientProperties);
+    VeniceProperties veniceProperties = new VeniceProperties(pubSubProps);
+
     AggKafkaConsumerService aggKafkaConsumerService = new AggKafkaConsumerService(
         pubSubConsumerAdapterFactory,
-        k -> VeniceProperties.empty(),
+        k -> veniceProperties,
         veniceServerConfig,
         mockIngestionThrottler,
         kafkaClusterBasedRecordThrottler,
