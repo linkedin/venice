@@ -3509,12 +3509,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Version version = store.getVersion(store.getLargestUsedVersionNumber());
       int partitionCount = version != null ? version.getPartitionCount() : store.getPartitionCount();
       if (partitionCount == 0) {
-        LOGGER.error(
-            "Failed to create real time topic for user system store: {} because both store and version have partition count set to 0.",
-            storeName);
-        throw new VeniceException(
-            "Failed to create real time topic for user system store: " + storeName
-                + " because both store and version have partition count set to 0.");
+        partitionCount = VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_PARTITION_COUNT;
+        LOGGER.warn(
+            "UNEXPECTED! The partition count is set to 0 both in the store config and version config for user system store: {}. Will use the default partition count ({}) to create the RT topic.",
+            storeName,
+            partitionCount);
       }
       VeniceControllerClusterConfig clusterConfig = getControllerConfig(clusterName);
       LOGGER.info(

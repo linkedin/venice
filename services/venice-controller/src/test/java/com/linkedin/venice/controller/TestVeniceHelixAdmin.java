@@ -25,6 +25,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
@@ -400,26 +401,32 @@ public class TestVeniceHelixAdmin {
         anyBoolean());
 
     // Case 5: Store exists, it's a user system store, but real-time topic does not exist and there are no versions
-    // and store partition count is zero
+    // and store partition count is zero. In this case, we want the RT topic partition count to use the default (1).
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(veniceHelixAdmin.getControllerConfig(clusterName)).thenReturn(clusterConfig);
     doReturn(0).when(systemStore).getPartitionCount();
     doReturn(false).when(topicManager).containsTopic(any(PubSubTopic.class));
-    Exception zeroPartitionCountException = expectThrows(
-        VeniceException.class,
-        () -> veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName));
-    assertTrue(
-        zeroPartitionCountException.getMessage().contains("partition count set to 0"),
-        "Actual message: " + zeroPartitionCountException.getMessage());
+    veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName); // should not throw
+    ArgumentCaptor<Integer> partitionCountArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(topicManager, times(1)).createTopic(
+        any(PubSubTopic.class),
+        partitionCountArgumentCaptor.capture(),
+        anyInt(),
+        anyLong(),
+        anyBoolean(),
+        any(Optional.class),
+        anyBoolean());
+    assertEquals(
+        partitionCountArgumentCaptor.getValue().intValue(),
+        VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_PARTITION_COUNT);
 
     // Case 6: Store exists, it's a user system store, but real-time topic does not exist and there are no versions
     // hence create a new real-time topic should use store's partition count
-
+    Mockito.reset(topicManager);
     doReturn(false).when(topicManager).containsTopic(any(PubSubTopic.class));
     doReturn(null).when(systemStore).getVersion(anyInt());
     doReturn(5).when(systemStore).getPartitionCount();
-    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
-    when(veniceHelixAdmin.getControllerConfig(clusterName)).thenReturn(clusterConfig);
     veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName);
-    ArgumentCaptor<Integer> partitionCountArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(topicManager, times(1)).createTopic(
         any(PubSubTopic.class),
         partitionCountArgumentCaptor.capture(),

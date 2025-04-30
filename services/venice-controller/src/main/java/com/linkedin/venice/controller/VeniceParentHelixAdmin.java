@@ -4249,7 +4249,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (Objects.equals(sourceFabric, destinationFabric)) {
       throw new VeniceException(
           String.format(
-              "Source ({}) and destination ({}) cannot be the same data center",
+              "Source (%s) and destination (%s) cannot be the same data center",
               sourceFabric,
               destinationFabric));
     }
