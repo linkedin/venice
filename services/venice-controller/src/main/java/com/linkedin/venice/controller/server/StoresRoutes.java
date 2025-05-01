@@ -680,7 +680,11 @@ public class StoresRoutes extends AbstractRoute {
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         String regionFilter = request.queryParamOrDefault(REGIONS_FILTER, "");
-        admin.rollForwardToFutureVersion(clusterName, storeName, regionFilter);
+        try {
+          admin.rollForwardToFutureVersion(clusterName, storeName, regionFilter);
+        } catch (Exception e) {
+          veniceResponse.setError("Roll forward failed for store " + storeName, e);
+        }
 
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);

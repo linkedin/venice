@@ -61,6 +61,17 @@ public class RegionUtils {
   }
 
   /**
+   * A helper function to check if a region is part of the regions filter list.
+   */
+  public static boolean isRegionPartOfRegionsFilterList(String region, String regionFilter) {
+    if (StringUtils.isEmpty(regionFilter)) {
+      return true;
+    }
+    Set<String> regionsFilter = parseRegionsFilterList(regionFilter);
+    return regionsFilter.contains(region);
+  }
+
+  /**
    * A helper function to compose a region list with {@link #REGION_FILTER_LIST_SEPARATOR}.
    * This is the reverse of {@link #parseRegionsFilterList(String)}.
    * @param regions, a set of regions
