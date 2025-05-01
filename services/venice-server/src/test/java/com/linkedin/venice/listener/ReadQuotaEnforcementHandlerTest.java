@@ -13,8 +13,10 @@ import static org.mockito.Mockito.atMostOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,6 +29,7 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.ReadQuotaEnforcementHandler.QuotaEnforcementResult;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
@@ -108,7 +111,6 @@ public class ReadQuotaEnforcementHandlerTest {
         CompletableFuture.completedFuture(customizedViewRepository),
         thisNodeId,
         stats,
-        metricsRepository,
         clock);
     grpcQuotaEnforcementHandler = new GrpcReadQuotaEnforcementHandler(quotaEnforcementHandler);
     mockNextHandler = mock(VeniceServerGrpcHandler.class);
@@ -374,7 +376,6 @@ public class ReadQuotaEnforcementHandlerTest {
         CompletableFuture.completedFuture(customizedViewRepository),
         thisNodeId,
         new AggServerQuotaUsageStats(serverConfig.getClusterName(), metricsRepository),
-        metricsRepository,
         clock);
     String storeName = "testStore";
     String topic = Version.composeKafkaTopic(storeName, 1);
@@ -726,6 +727,42 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(nextVersionPa).when(customizedViewRepository).getPartitionAssignments(eq(nextTopic));
     quotaEnforcementHandler.handleStoreChanged(store);
     verify(stats, atLeastOnce()).setCurrentVersion(eq(storeName), eq(nextVersionNumber));
+  }
+
+  @Test
+  public void testFailedToInit() {
+    String storeName = Utils.getUniqueString("test-store");
+    String storeName2 = Utils.getUniqueString("test-store2");
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    Version version = mock(Version.class);
+    doReturn(topic).when(version).kafkaTopicName();
+    Store store = setUpStoreMock(storeName, 1, Collections.singletonList(version), 100, true);
+    Store quotaDisabledStore = setUpStoreMock(storeName2, 1, Collections.singletonList(version), 100, false);
+    ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
+    doReturn(store).when(mockStoreRepo).getStore(storeName);
+    doReturn(quotaDisabledStore).when(mockStoreRepo).getStore(storeName2);
+    // Throw an exception to mimic failure during init
+    doThrow(new VeniceException("Test failed to initialize read quota enforcement handler")).when(mockStoreRepo)
+        .getAllStores();
+    doReturn(RequestType.SINGLE_GET).when(routerRequest).getRequestType();
+    doReturn(storeName).when(routerRequest).getStoreName();
+    doReturn(topic).when(routerRequest).getResourceName();
+    AggServerQuotaUsageStats stats = mock(AggServerQuotaUsageStats.class);
+    ReadQuotaEnforcementHandler quotaEnforcer = new ReadQuotaEnforcementHandler(
+        serverConfig,
+        mockStoreRepo,
+        CompletableFuture.completedFuture(customizedViewRepository),
+        thisNodeId,
+        stats);
+    // Ensure init() is invoked before proceeding with the test
+    verify(mockStoreRepo, timeout(1000)).getAllStores();
+    assertEquals(quotaEnforcer.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
+    verify(stats, times(1)).recordAllowedUnintentionally(storeName, 1);
+    RouterRequest quotaDisabledRequest = mock(RouterRequest.class);
+    doReturn(storeName2).when(quotaDisabledRequest).getStoreName();
+    assertEquals(quotaEnforcer.enforceQuota(quotaDisabledRequest), QuotaEnforcementResult.ALLOWED);
+    // Only storage node quota enabled requests should record allowed unintentionally when init fails
+    verify(stats, times(1)).recordAllowedUnintentionally(storeName, 1);
   }
 
   /**

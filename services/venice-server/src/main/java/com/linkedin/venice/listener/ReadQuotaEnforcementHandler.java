@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import static com.linkedin.venice.throttle.EventThrottler.REJECT_STRATEGY;
 
+import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
@@ -25,18 +26,21 @@ import com.linkedin.venice.throttle.GuavaRateLimiter;
 import com.linkedin.venice.throttle.TokenBucket;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
 import com.linkedin.venice.throttle.VeniceRateLimiter.RateLimiterType;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.ReferenceCountUtil;
-import io.tehuti.metrics.MetricsRepository;
 import java.time.Clock;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -48,7 +52,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   private static final Logger LOGGER = LogManager.getLogger(ReadQuotaEnforcementHandler.class);
   public static final String SERVER_OVER_CAPACITY_MSG = "Server over capacity";
   public static final String INVALID_REQUEST_RESOURCE_MSG = "Invalid request resource: ";
-
+  private static final long WAIT_FOR_CUSTOMIZED_VIEW_TIMEOUT_SECONDS = 180;
+  private static final String QUOTA_ENFORCEMENT_HANDLER_NAME = "ReadQuotaEnforcementHandler";
   private final ConcurrentMap<String, VeniceRateLimiter> storeVersionRateLimiters = new VeniceConcurrentHashMap<>();
   private final ReadOnlyStoreRepository storeRepository;
   private final String thisNodeId;
@@ -68,9 +73,8 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       ReadOnlyStoreRepository storeRepository,
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       String nodeId,
-      AggServerQuotaUsageStats stats,
-      MetricsRepository metricsRepository) {
-    this(serverConfig, storeRepository, customizedViewRepository, nodeId, stats, metricsRepository, Clock.systemUTC());
+      AggServerQuotaUsageStats stats) {
+    this(serverConfig, storeRepository, customizedViewRepository, nodeId, stats, Clock.systemUTC());
   }
 
   public ReadQuotaEnforcementHandler(
@@ -79,7 +83,6 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       String nodeId,
       AggServerQuotaUsageStats stats,
-      MetricsRepository metricsRepository,
       Clock clock) {
     this.quotaEnforcementIntervalInMs = serverConfig.getQuotaEnforcementIntervalInMs();
     this.enforcementCapacityMultiple = serverConfig.getQuotaEnforcementCapacityMultiple();
@@ -97,11 +100,24 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
         clock);
     this.storeRepository = storeRepository;
     this.stats = stats;
-    customizedViewRepository.thenAccept(cv -> {
-      LOGGER.info("Initializing ReadQuotaEnforcementHandler with completed RoutingDataRepository");
-      this.customizedViewRepository = cv;
-      init();
+    ExecutorService asyncInitExecutor =
+        Executors.newSingleThreadExecutor(new DaemonThreadFactory("server-read-quota-init-thread"));
+    asyncInitExecutor.submit(() -> {
+      try {
+        this.customizedViewRepository =
+            customizedViewRepository.get(WAIT_FOR_CUSTOMIZED_VIEW_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        LOGGER.info("Initializing {} with completed RoutingDataRepository", QUOTA_ENFORCEMENT_HANDLER_NAME);
+        init();
+        LOGGER.info("{} initialization completed", QUOTA_ENFORCEMENT_HANDLER_NAME);
+      } catch (TimeoutException e) {
+        LOGGER.error(
+            "Unable to initialize {}, timed out while waiting for customized view repository",
+            ReadQuotaEnforcementHandler.class.getSimpleName());
+      } catch (Exception e) {
+        LOGGER.error("Failed to initialize {}", QUOTA_ENFORCEMENT_HANDLER_NAME, e);
+      }
     });
+    asyncInitExecutor.shutdown();
     LOGGER.info(
         "Rate limiter algorithms - storageNodeRateLimiter: {}, storeVersionRateLimiterType: {}",
         serverConfig.getStorageNodeRateLimiterType(),
@@ -219,11 +235,15 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     /*
      * If we haven't completed initialization or store does not have SN read quota enabled, allow all requests
      */
-    if (!isInitialized() || !store.isStorageNodeReadQuotaEnabled()) {
+    if (!store.isStorageNodeReadQuotaEnabled()) {
       return QuotaEnforcementResult.ALLOWED;
     }
 
     int readCapacityUnits = getRcu(request);
+    if (!isInitialized()) {
+      stats.recordAllowedUnintentionally(storeName, readCapacityUnits);
+      return QuotaEnforcementResult.ALLOWED;
+    }
 
     /*
      * First check per store version level quota; don't throttle retried request at store version level
