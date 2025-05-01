@@ -23,6 +23,8 @@ Two common scenarios are:
 2. Unknown union type
 - Admin Operation is union type. If parent controllers deploy first and produce a new admin operation, even when the child controller can deserialize the job, it would be an unknown admin operation type. The new admin operation will fail.
 
+<img src="../assets/images/ops_guide/remove_deployment_order/problem.svg" alt="Problem Statement" style="display: block; margin: 0 auto"/>
+
 # High-level Solution
 Introduce a ZooKeeper (ZK) configuration to standardize serialization. The system selects a “GOOD” version—the lowest supported version across all consumer-controllers—to ensure compatibility. 
 A detection service periodically evaluates consumer versions, updating ZK when necessary.
@@ -33,6 +35,8 @@ Key Design Updates:
 - **Version Detection Service**: Runs periodically to identify the lowest compatible version and updates ZK.
 - **New Semantic Detector**: Ensures unsupported admin operations fail fast instead of being processed incorrectly. Checks differences between schemas and flags invalid usage.
 
+<img src="../assets/images/ops_guide/remove_deployment_order/overall_design.svg" alt="High-level design" style="display: block; margin: 0 auto"/>
+
 # Solution Design
 ## New Configuration
 A new configuration, `adminOperationProtocolVersion`, will be introduced in `adminTopicMetadata` at the cluster level in ZooKeeper (ZK).
@@ -42,9 +46,12 @@ Parent controllers will retrieve this version from ZK when serializing admin ope
 ProtocolVersionAutoDetectionService runs at the cluster level, ensuring all controllers, including parent, child, and standby nodes, remain synchronized on protocol versions.
 It shares the lifecycle with HelixVeniceClusterResources, activating when a parent controller becomes a leader for one cluster, and stopping when leadership changes. 
 This service periodically checks protocol versions and updates the "GOOD" version in ZK.
+<img src="../assets/images/ops_guide/remove_deployment_order/service.svg" alt="Detection Service" style="display: block; margin: 0 auto"/>
+
 
 Process overview:
 1. Leader controllers (both parent and child) request local versions from standby controllers.
+   <img src="../assets/images/ops_guide/remove_deployment_order/broadcast.svg" alt="Broadcast request" style="display: block; margin: 0 auto"/>
 2. The leader consolidates all versions into a map, identifying the lowest supported version across all controllers and sending metadata back to leader parent controller.
 3. If the "_GOOD_" version changes and is different from the existing ZK entry, it gets updated—unless the stored version is -1 or already matches the detected version.
 
@@ -55,6 +62,8 @@ Process overview:
 
 ## New Semantic Detector
 NewSemanticDetector ensures unsupported admin operations fail fast instead of being processed incorrectly.
+
+<img src="../assets/images/ops_guide/remove_deployment_order/semantic_check.svg" alt="Problem Statement" style="display: block; margin: 0 auto"/>
 
 Detection mechanism:
 - Compares two schemas as tree structures using TraverseAndValidate (Depth-First Search).
