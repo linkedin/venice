@@ -18,6 +18,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -424,7 +425,7 @@ public class TestVeniceHelixAdmin {
 
     // Case 6: Store exists, it's a user system store, but real-time topic does not exist and there are no versions
     // hence create a new real-time topic should use store's partition count
-    Mockito.reset(topicManager);
+    reset(topicManager);
     doReturn(false).when(topicManager).containsTopic(any(PubSubTopic.class));
     doReturn(null).when(systemStore).getVersion(anyInt());
     doReturn(5).when(systemStore).getPartitionCount();
