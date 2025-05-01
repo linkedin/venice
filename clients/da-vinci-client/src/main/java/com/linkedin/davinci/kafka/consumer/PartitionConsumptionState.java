@@ -253,8 +253,8 @@ public class PartitionConsumptionState {
      * and leader will be promoted immediately.
      */
     long currentTimeInMs = System.currentTimeMillis();
-    this.latestMessageConsumedTimestampInMs = 0;
-    this.latestPolledMessageTimestampInMs = 0;
+    this.latestMessageConsumedTimestampInMs = currentTimeInMs;
+    this.latestPolledMessageTimestampInMs = currentTimeInMs;
     this.consumptionStartTimeInMs = currentTimeInMs;
 
     // Restore in-memory consumption RT upstream offset map and latest processed RT upstream offset map from the

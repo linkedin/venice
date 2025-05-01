@@ -876,7 +876,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * a different producer host name.
      */
     long lastTimestamp = getLastConsumedMessageTimestamp(pcs.getPartition());
-    if (lastTimestamp <= 0 || LatencyUtils.getElapsedTimeFromMsToMs(lastTimestamp) <= newLeaderInactiveTime) {
+    if (LatencyUtils.getElapsedTimeFromMsToMs(lastTimestamp) <= newLeaderInactiveTime) {
       return false;
     }
 
