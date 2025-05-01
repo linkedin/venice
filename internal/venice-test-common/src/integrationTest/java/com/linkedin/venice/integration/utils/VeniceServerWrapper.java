@@ -252,7 +252,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(KAFKA_READ_CYCLE_DELAY_MS, 50)
           .put(SERVER_DISK_FULL_THRESHOLD, 0.99) // Minimum free space is required in tests
           .put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterName)
-          .put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L))
+          .put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(5L))
           .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
           .put(SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE, 10)
           .put(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, true)
