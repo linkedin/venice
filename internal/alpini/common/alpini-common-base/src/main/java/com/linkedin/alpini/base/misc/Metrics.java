@@ -3,21 +3,29 @@
  */
 package com.linkedin.alpini.base.misc;
 
-import java.util.EnumMap;
-import java.util.Map;
 import javax.annotation.Nonnull;
 
 
 public class Metrics {
-  private @Nonnull Map<MetricNames, TimeValue> _metrics = new EnumMap(MetricNames.class);
+  private static final int METRIC_COUNT = MetricNames.values().length;
+  public static final long UNSET_VALUE = -1L;
+
+  private final @Nonnull long[] metricValues;
   private transient Object _path;
 
-  public Map<MetricNames, TimeValue> getMetrics() {
-    return _metrics;
+  public Metrics() {
+    this.metricValues = new long[METRIC_COUNT];
+    for (int i = 0; i < METRIC_COUNT; i++) {
+      this.metricValues[i] = UNSET_VALUE;
+    }
   }
 
-  public void setMetric(MetricNames name, TimeValue value) {
-    _metrics.put(name, value);
+  public void setMetric(MetricNames name, long value) {
+    this.metricValues[name.ordinal()] = value;
+  }
+
+  public long get(MetricNames name) {
+    return this.metricValues[name.ordinal()];
   }
 
   public void setPath(Object path) {

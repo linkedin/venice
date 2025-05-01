@@ -14,6 +14,8 @@ import io.netty.handler.codec.http2.Http2Headers;
  * An implementation of {@link BasicFullHttpResponse} which always uses a {@link Http1Headers} for
  * holding the headers. This is to aid encapsulating a Http2 request object as a Http1 object
  * which may be efficiently unwrapped before being sent.
+ *
+ * Only used in tests.
  */
 public class Http1FullResponse extends BasicFullHttpResponse {
   public Http1FullResponse(HttpRequest httpRequest, HttpResponseStatus status) {
