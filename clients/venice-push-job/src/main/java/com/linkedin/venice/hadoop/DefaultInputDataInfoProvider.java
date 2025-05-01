@@ -113,10 +113,11 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       pushJobSetting.keySchema = extractAvroSubSchema(pushJobSetting.inputDataSchema, pushJobSetting.keyField);
     } else {
       // try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
-      Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, fileStatuses[0].getPath(), false);
+      Path firstFilePath = fileStatuses[0].getPath();
+      Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, firstFilePath, false);
 
       if (!fileMetadata.containsKey(FILE_KEY_SCHEMA) || !fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
-        throw new VeniceException("Input file is a SequenceFile but not a Vson file.");
+        throw new VeniceException("Input file " + firstFilePath.getName() + " is a SequenceFile but not a Vson file.");
       }
 
       LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
