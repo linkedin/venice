@@ -38,6 +38,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.ComplexVeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -51,11 +52,18 @@ import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class MaterializedViewWriterTest {
   private static final Schema SCHEMA = AvroCompatibilityHelper.parse("\"string\"");
+  private VeniceWriterFactory veniceWriterFactory;
+
+  @BeforeMethod(alwaysRun = true)
+  public void setUp() {
+    veniceWriterFactory = mock(VeniceWriterFactory.class);
+  }
 
   @Test
   public void testViewParametersBuilder() throws JsonProcessingException {
@@ -95,7 +103,7 @@ public class MaterializedViewWriterTest {
     ViewConfig viewConfig = new ViewConfigImpl(MaterializedView.class.getCanonicalName(), viewParamsMap);
     doReturn(Collections.singletonMap(viewName, viewConfig)).when(version).getViewConfigs();
     VeniceConfigLoader props = getMockProps();
-    VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(props);
+    VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(props, veniceWriterFactory);
     VeniceViewWriter viewWriter = viewWriterFactory.buildStoreViewWriters(store, 1, SCHEMA).get(viewName);
     Assert.assertEquals(viewWriter.getViewWriterType(), VeniceViewWriter.ViewWriterType.MATERIALIZED_VIEW);
     MaterializedViewWriter materializedViewWriter = (MaterializedViewWriter) viewWriter;
@@ -123,7 +131,8 @@ public class MaterializedViewWriterTest {
     viewParamsBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
     Map<String, String> viewParamsMap = viewParamsBuilder.build();
     VeniceConfigLoader props = getMockProps();
-    MaterializedViewWriter materializedViewWriter = new MaterializedViewWriter(props, version, SCHEMA, viewParamsMap);
+    MaterializedViewWriter materializedViewWriter =
+        new MaterializedViewWriter(props, version, SCHEMA, viewParamsMap, veniceWriterFactory);
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
     KafkaKey kafkaKey = mock(KafkaKey.class);
@@ -154,7 +163,8 @@ public class MaterializedViewWriterTest {
     viewParamsBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
     Map<String, String> viewParamsMap = viewParamsBuilder.build();
     VeniceConfigLoader props = getMockProps();
-    MaterializedViewWriter materializedViewWriter = new MaterializedViewWriter(props, version, SCHEMA, viewParamsMap);
+    MaterializedViewWriter materializedViewWriter =
+        new MaterializedViewWriter(props, version, SCHEMA, viewParamsMap, veniceWriterFactory);
     ComplexVeniceWriter veniceWriter = mock(ComplexVeniceWriter.class);
     doReturn(CompletableFuture.completedFuture(null)).when(veniceWriter).forwardPut(any(), any(), anyInt(), any());
     materializedViewWriter.setVeniceWriter(veniceWriter);
@@ -187,7 +197,7 @@ public class MaterializedViewWriterTest {
     viewParamsBuilder.setPartitioner(DefaultVenicePartitioner.class.getCanonicalName());
     VeniceConfigLoader props = getMockProps();
     MaterializedViewWriter materializedViewWriter =
-        new MaterializedViewWriter(props, version, SCHEMA, viewParamsBuilder.build());
+        new MaterializedViewWriter(props, version, SCHEMA, viewParamsBuilder.build(), veniceWriterFactory);
     Assert.assertFalse(materializedViewWriter.isComplexVenicePartitioner());
     String complexViewName = "complexPartitionerView";
     MaterializedViewParameters.Builder complexViewParamsBuilder =
@@ -195,7 +205,7 @@ public class MaterializedViewWriterTest {
     complexViewParamsBuilder.setPartitionCount(6);
     complexViewParamsBuilder.setPartitioner(UnitTestComplexPartitioner.class.getCanonicalName());
     MaterializedViewWriter complexMaterializedViewWriter =
-        new MaterializedViewWriter(props, version, SCHEMA, complexViewParamsBuilder.build());
+        new MaterializedViewWriter(props, version, SCHEMA, complexViewParamsBuilder.build(), veniceWriterFactory);
     Assert.assertTrue(complexMaterializedViewWriter.isComplexVenicePartitioner());
   }
 

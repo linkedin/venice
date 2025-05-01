@@ -43,8 +43,8 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * already subscribed, this method performs no action.
    *
    * The subscription uses the provided {@link PubSubPosition} to determine the starting offset for
-   * consumption. If the position is {@link PubSubPosition#EARLIEST}, the consumer will seek to the earliest
-   * available message. If it is {@link PubSubPosition#LATEST}, the consumer will seek to the latest available
+   * consumption. If the position is {@link PubSubSymbolicPosition#EARLIEST}, the consumer will seek to the earliest
+   * available message. If it is {@link PubSubSymbolicPosition#LATEST}, the consumer will seek to the latest available
    * message. If a custom position is provided, implementations should resolve it to the corresponding offset
    * or position in the underlying pub-sub system.
    *

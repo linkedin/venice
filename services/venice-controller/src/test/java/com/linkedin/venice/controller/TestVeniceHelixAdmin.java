@@ -9,13 +9,16 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,8 +26,10 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
@@ -32,8 +37,10 @@ import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixState;
+import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
@@ -51,7 +58,9 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.MaterializedView;
@@ -69,12 +78,14 @@ import java.util.Set;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
-import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
 
 public class TestVeniceHelixAdmin {
   private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
+
+  private static final String clusterName = "test-cluster";
+  private static final String storeName = "test-store";
 
   @Test
   public void testDropResources() {
@@ -83,7 +94,6 @@ public class TestVeniceHelixAdmin {
     String storeName = "abc";
     String instance = "node_1";
     String kafkaTopic = Version.composeKafkaTopic(storeName, 1);
-    String clusterName = "venice-cluster";
     nodes.add(instance);
     Map<String, List<String>> listMap = new HashMap<>();
     List<String> partitions = new ArrayList<>(3);
@@ -216,8 +226,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testCreateOrUpdateRealTimeTopics() {
-    String clusterName = "testCluster";
-    String storeName = "testStore";
     Store store = mock(Store.class, RETURNS_DEEP_STUBS);
     when(store.getName()).thenReturn(storeName);
     Version version = mock(Version.class);
@@ -234,7 +242,7 @@ public class TestVeniceHelixAdmin {
     ArgumentCaptor<PubSubTopic> pubSubTopicArgumentCaptor = ArgumentCaptor.forClass(PubSubTopic.class);
     verify(veniceHelixAdmin, times(1))
         .createOrUpdateRealTimeTopic(eq(clusterName), eq(store), eq(version), pubSubTopicArgumentCaptor.capture());
-    assertEquals(pubSubTopicArgumentCaptor.getValue().getName(), "testStore_rt");
+    assertEquals(pubSubTopicArgumentCaptor.getValue().getName(), storeName + "_rt");
 
     // Case 2: Both regular and separate real-time topics are required
     when(version.isSeparateRealTimeTopicEnabled()).thenReturn(true);
@@ -250,8 +258,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testCreateOrUpdateRealTimeTopic() {
-    String clusterName = "testCluster";
-    String storeName = "testStore";
     int partitionCount = 10;
     Store store = mock(Store.class, RETURNS_DEEP_STUBS);
     when(store.getName()).thenReturn(storeName);
@@ -333,8 +339,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testEnsureRealTimeTopicExistsForUserSystemStores() {
-    String clusterName = "testCluster";
-    String storeName = "testStore";
     String systemStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
     int partitionCount = 10;
     Store userStore = mock(Store.class, RETURNS_DEEP_STUBS);
@@ -400,26 +404,32 @@ public class TestVeniceHelixAdmin {
         anyBoolean());
 
     // Case 5: Store exists, it's a user system store, but real-time topic does not exist and there are no versions
-    // and store partition count is zero
+    // and store partition count is zero. In this case, we want the RT topic partition count to use the default (1).
+    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(veniceHelixAdmin.getControllerConfig(clusterName)).thenReturn(clusterConfig);
     doReturn(0).when(systemStore).getPartitionCount();
     doReturn(false).when(topicManager).containsTopic(any(PubSubTopic.class));
-    Exception zeroPartitionCountException = expectThrows(
-        VeniceException.class,
-        () -> veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName));
-    assertTrue(
-        zeroPartitionCountException.getMessage().contains("partition count set to 0"),
-        "Actual message: " + zeroPartitionCountException.getMessage());
+    veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName); // should not throw
+    ArgumentCaptor<Integer> partitionCountArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(topicManager, times(1)).createTopic(
+        any(PubSubTopic.class),
+        partitionCountArgumentCaptor.capture(),
+        anyInt(),
+        anyLong(),
+        anyBoolean(),
+        any(Optional.class),
+        anyBoolean());
+    assertEquals(
+        partitionCountArgumentCaptor.getValue().intValue(),
+        VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_PARTITION_COUNT);
 
     // Case 6: Store exists, it's a user system store, but real-time topic does not exist and there are no versions
     // hence create a new real-time topic should use store's partition count
-
+    reset(topicManager);
     doReturn(false).when(topicManager).containsTopic(any(PubSubTopic.class));
     doReturn(null).when(systemStore).getVersion(anyInt());
     doReturn(5).when(systemStore).getPartitionCount();
-    VeniceControllerClusterConfig clusterConfig = mock(VeniceControllerClusterConfig.class);
-    when(veniceHelixAdmin.getControllerConfig(clusterName)).thenReturn(clusterConfig);
     veniceHelixAdmin.ensureRealTimeTopicExistsForUserSystemStores(clusterName, systemStoreName);
-    ArgumentCaptor<Integer> partitionCountArgumentCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(topicManager, times(1)).createTopic(
         any(PubSubTopic.class),
         partitionCountArgumentCaptor.capture(),
@@ -452,8 +462,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testValidateStoreSetupForRTWrites() {
-    String clusterName = "testCluster";
-    String storeName = "testStore";
     String pushJobId = "pushJob123";
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     Store store = mock(Store.class, RETURNS_DEEP_STUBS);
@@ -506,8 +514,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testValidateTopicPresenceAndState() {
-    String clusterName = "testCluster";
-    String storeName = "testStore";
     String pushJobId = "pushJob123";
     PubSubTopic topic = mock(PubSubTopic.class);
     int partitionCount = 10;
@@ -572,8 +578,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testValidateTopicForIncrementalPush() {
-    String clusterName = "testCluster";
-    String storeName = "testStore";
     String pushJobId = "pushJob123";
     int partitionCount = 10;
     Store store = mock(Store.class);
@@ -676,8 +680,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testGetReferenceHybridVersionForRealTimeWrites() {
-    String clusterName = "testCluster";
-    String storeName = "testStore";
     String pushJobId = "pushJob123";
     Store store = mock(Store.class, RETURNS_DEEP_STUBS);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
@@ -743,8 +745,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testGetIncrementalPushVersion() {
-    String clusterName = "testCluster";
-    String storeName = "testStore";
     String pushJobId = "pushJob123";
 
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
@@ -811,8 +811,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testGetReferenceVersionForStreamingWrites() {
-    String clusterName = "testCluster";
-    String storeName = "testStore";
     String pushJobId = "pushJob123";
     int partitionCount = 10;
 
@@ -822,7 +820,7 @@ public class TestVeniceHelixAdmin {
     Store store = mock(Store.class);
     Version hybridVersion = mock(Version.class);
     PubSubTopicRepository topicRepository = new PubSubTopicRepository();
-    PubSubTopic rtTopic = topicRepository.getTopic("testStore_rt");
+    PubSubTopic rtTopic = topicRepository.getTopic(storeName + "_rt");
 
     doReturn(storeName).when(store).getName();
     doReturn(storeName).when(hybridVersion).getStoreName();
@@ -906,8 +904,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testCleanupWhenPushCompleteWithViewConfigs() {
-    String clusterName = "test-cluster";
-    String storeName = "test-store";
     String viewName = "testMaterializedView";
     int versionNumber = 1;
     String versionTopicName = Version.composeKafkaTopic(storeName, versionNumber);
@@ -966,8 +962,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testGetAdminTopicMetadata() {
-    String clusterName = "test-cluster";
-    String storeName = "test-store";
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     doCallRealMethod().when(veniceHelixAdmin).getAdminTopicMetadata(clusterName, Optional.of(storeName));
     doCallRealMethod().when(veniceHelixAdmin).getAdminTopicMetadata(clusterName, Optional.empty());
@@ -999,8 +993,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testUpdateAdminTopicMetadata() {
-    String clusterName = "test-cluster";
-    String storeName = "test-store";
     long executionId = 10L;
     Long offset = 10L;
     Long upstreamOffset = 1L;
@@ -1038,7 +1030,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testGetAdminOperationVersionsFromControllers() {
-    String clusterName = "test-cluster";
     VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
@@ -1064,7 +1055,7 @@ public class TestVeniceHelixAdmin {
         .thenReturn(standbyControllers);
     when(veniceHelixAdmin.getLeaderController(clusterName)).thenReturn(new Instance("3", "leaderHost", 1234));
 
-    try (MockedStatic<ControllerClient> controllerClientMockedStatic = Mockito.mockStatic(ControllerClient.class)) {
+    try (MockedStatic<ControllerClient> controllerClientMockedStatic = mockStatic(ControllerClient.class)) {
       ControllerClient client = mock(ControllerClient.class);
       controllerClientMockedStatic
           .when(() -> ControllerClient.constructClusterControllerClient(eq(clusterName), any(), any()))
@@ -1087,7 +1078,6 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testFailedGetAdminOperationVersionsForStandbyControllers() {
-    String clusterName = "test-cluster";
     VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
@@ -1113,7 +1103,7 @@ public class TestVeniceHelixAdmin {
         .thenReturn(standbyControllers);
     when(veniceHelixAdmin.getLeaderController(clusterName)).thenReturn(new Instance("3", "leaderHost", 1234));
 
-    try (MockedStatic<ControllerClient> controllerClientMockedStatic = Mockito.mockStatic(ControllerClient.class)) {
+    try (MockedStatic<ControllerClient> controllerClientMockedStatic = mockStatic(ControllerClient.class)) {
       ControllerClient client = mock(ControllerClient.class);
       controllerClientMockedStatic
           .when(() -> ControllerClient.constructClusterControllerClient(eq(clusterName), any(), any()))
@@ -1142,10 +1132,105 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testGetControllersWithInvalidHelixState() {
-    String clusterName = "test-cluster";
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     doCallRealMethod().when(veniceHelixAdmin).getControllersByHelixState(any(), any());
 
     expectThrows(VeniceException.class, () -> veniceHelixAdmin.getControllersByHelixState(clusterName, "state"));
+  }
+
+  /** Skip if regionFilter doesn’t include this region */
+  @Test
+  public void testRollForwardSkipRegionFilter() {
+    VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(mockVeniceHelixAdmin).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    doReturn("test").when(mockVeniceHelixAdmin).getRegionName();
+    // mock the static utility class
+    try (MockedStatic<RegionUtils> utilities = mockStatic(RegionUtils.class)) {
+      utilities.when(() -> RegionUtils.isRegionPartOfRegionsFilterList(anyString(), anyString())).thenReturn(false);
+
+      mockVeniceHelixAdmin.rollForwardToFutureVersion(clusterName, storeName, "test");
+    }
+
+    // should bail out before even checking future versions
+    verify(mockVeniceHelixAdmin, never()).getOnlineFutureVersion(any(), any());
+  }
+
+  /** No future version → just return (no exception) */
+  @Test
+  public void testRollForwardNoFutureVersions() {
+    VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doCallRealMethod().when(mockVeniceHelixAdmin).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+    // pretend there is no future version
+    doReturn(0).when(mockVeniceHelixAdmin).getOnlineFutureVersion(eq(clusterName), eq(storeName));
+
+    doReturn("test").when(mockVeniceHelixAdmin).getRegionName();
+    // mock the static utility class
+    try (MockedStatic<RegionUtils> utilities = mockStatic(RegionUtils.class)) {
+      utilities.when(() -> RegionUtils.isRegionPartOfRegionsFilterList(anyString(), anyString())).thenReturn(true);
+
+      mockVeniceHelixAdmin.rollForwardToFutureVersion(clusterName, storeName, "test");
+    }
+    // should simply return, not throw, and never attempt a metadata update
+    verify(mockVeniceHelixAdmin, never()).storeMetadataUpdate(any(), any(), any());
+  }
+
+  /**
+  * isPartitionReadyToServe=>true: Future version exists and partitions are ready → success
+  * isPartitionReadyToServe=>false: Future version exists but partitions aren’t ready → exception
+  */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRollForwardPartitionNotReady(boolean isPartitionReadyToServe) {
+    VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    doReturn(2).when(mockVeniceHelixAdmin).getOnlineFutureVersion(clusterName, storeName);
+
+    // build a fake Store whose version 2 has 2 partitions but only 1 ready replica
+    Store mockStore = mock(Store.class);
+    when(mockStore.isEnableWrites()).thenReturn(true);
+    when(mockStore.getCurrentVersion()).thenReturn(1);
+
+    Version v2 = mock(Version.class);
+    when(v2.getPartitionCount()).thenReturn(2);
+    when(v2.getMinActiveReplicas()).thenReturn(isPartitionReadyToServe ? 1 : 2);
+    when(mockStore.getVersion(2)).thenReturn(v2);
+
+    // stub the repository to return only 1 ready instance per partition
+    HelixCustomizedViewOfflinePushRepository repo = mock(HelixCustomizedViewOfflinePushRepository.class);
+    when(repo.getReadyToServeInstances(anyString(), anyInt()))
+        .thenReturn(Collections.singletonList(new Instance("node1id", "node1", 1234)));
+
+    HelixVeniceClusterResources mockClusterResources = mock(HelixVeniceClusterResources.class);
+    doReturn(repo).when(mockClusterResources).getCustomizedViewRepository();
+    doReturn(mockClusterResources).when(mockVeniceHelixAdmin).getHelixVeniceClusterResources(clusterName);
+
+    RealTimeTopicSwitcher mockTopicSwitcher = mock(RealTimeTopicSwitcher.class);
+    doReturn(mockTopicSwitcher).when(mockVeniceHelixAdmin).getRealTimeTopicSwitcher();
+    doNothing().when(mockTopicSwitcher).transmitVersionSwapMessage(any(), anyInt(), anyInt());
+
+    // intercept the lambda passed to storeMetadataUpdate and run it on our mockStore
+    doAnswer(inv -> {
+      VeniceHelixAdmin.StoreMetadataOperation updater = inv.getArgument(2);
+      updater.update(mockStore);
+      return null;
+    }).when(mockVeniceHelixAdmin).storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+    doCallRealMethod().when(mockVeniceHelixAdmin).rollForwardToFutureVersion(anyString(), anyString(), anyString());
+
+    doReturn("test").when(mockVeniceHelixAdmin).getRegionName();
+    // mock the static utility class
+    try (MockedStatic<RegionUtils> utilities = mockStatic(RegionUtils.class)) {
+      utilities.when(() -> RegionUtils.isRegionPartOfRegionsFilterList(anyString(), anyString())).thenReturn(true);
+      try {
+        mockVeniceHelixAdmin.rollForwardToFutureVersion(clusterName, storeName, "test");
+        if (!isPartitionReadyToServe) {
+          fail("Expected VeniceException to be thrown");
+        }
+      } catch (VeniceException e) {
+        if (isPartitionReadyToServe) {
+          fail("Expected VeniceException not to be thrown");
+        }
+        assertTrue(
+            e.getMessage().contains("do not have enough ready-to-serve instances"),
+            "Actual message: " + e.getMessage());
+      }
+    }
   }
 }

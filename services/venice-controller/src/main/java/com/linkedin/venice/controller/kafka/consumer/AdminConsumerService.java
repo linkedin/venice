@@ -53,6 +53,7 @@ public class AdminConsumerService extends AbstractVeniceService {
       VeniceHelixAdmin admin,
       VeniceControllerClusterConfig config,
       MetricsRepository metricsRepository,
+      PubSubConsumerAdapterFactory consumerFactory,
       PubSubTopicRepository pubSubTopicRepository,
       PubSubMessageDeserializer pubSubMessageDeserializer) {
     this.config = config;
@@ -71,7 +72,7 @@ public class AdminConsumerService extends AbstractVeniceService {
       remoteKafkaServerUrl = Optional.empty();
     }
     this.localKafkaServerUrl = admin.getKafkaBootstrapServers(admin.isSslToKafka());
-    this.consumerFactory = admin.getPubSubConsumerAdapterFactory();
+    this.consumerFactory = consumerFactory;
     this.threadFactory = new DaemonThreadFactory("AdminConsumerService", logContext);
   }
 

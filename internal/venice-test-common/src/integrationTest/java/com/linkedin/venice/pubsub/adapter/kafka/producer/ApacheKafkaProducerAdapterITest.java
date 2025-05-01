@@ -20,9 +20,9 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.adapter.PubSubProducerCallbackSimpleImpl;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -96,6 +96,7 @@ public class ApacheKafkaProducerAdapterITest {
     ApacheKafkaProducerConfig producerConfig = new ApacheKafkaProducerConfig(
         new PubSubProducerAdapterContext.Builder().setBrokerAddress(pubSubBrokerWrapper.getAddress())
             .setVeniceProperties(new VeniceProperties(properties))
+            .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
             .build());
     producerAdapter = new ApacheKafkaProducerAdapter(producerConfig);
   }

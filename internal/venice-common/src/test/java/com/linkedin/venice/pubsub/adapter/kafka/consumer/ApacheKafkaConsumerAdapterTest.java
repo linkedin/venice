@@ -30,11 +30,12 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -125,7 +126,7 @@ public class ApacheKafkaConsumerAdapterTest {
     when(internalKafkaConsumer.assignment()).thenReturn(Collections.emptySet());
     doNothing().when(internalKafkaConsumer).assign(any());
 
-    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, PubSubPosition.EARLIEST);
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST);
     assertTrue(kafkaConsumerAdapter.getAssignment().contains(pubSubTopicPartition));
     verify(internalKafkaConsumer).assign(any(List.class));
     verify(internalKafkaConsumer).seekToBeginning(Collections.singletonList(topicPartition));
@@ -149,7 +150,7 @@ public class ApacheKafkaConsumerAdapterTest {
   public void testSubscribeWithLatestPubSubPosition() {
     when(internalKafkaConsumer.assignment()).thenReturn(Collections.emptySet());
 
-    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, PubSubPosition.LATEST);
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, PubSubSymbolicPosition.LATEST);
 
     assertTrue(kafkaConsumerAdapter.getAssignment().contains(pubSubTopicPartition));
     verify(internalKafkaConsumer).assign(any(List.class));
@@ -518,7 +519,7 @@ public class ApacheKafkaConsumerAdapterTest {
     doReturn(Collections.emptyMap()).when(internalKafkaConsumer)
         .beginningOffsets(Collections.singleton(topicPartition), Duration.ofMillis(500));
     position = kafkaConsumerAdapter.beginningPosition(pubSubTopicPartition, Duration.ofMillis(500));
-    assertEquals(position, PubSubPosition.EARLIEST);
+    assertEquals(position, PubSubSymbolicPosition.EARLIEST);
   }
 
   @Test
@@ -574,7 +575,7 @@ public class ApacheKafkaConsumerAdapterTest {
     doReturn(Collections.emptyMap()).when(internalKafkaConsumer)
         .endOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class));
     position = kafkaConsumerAdapter.endPosition(pubSubTopicPartition);
-    assertEquals(position, PubSubPosition.LATEST);
+    assertEquals(position, PubSubSymbolicPosition.LATEST);
   }
 
   @Test

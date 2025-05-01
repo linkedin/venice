@@ -59,4 +59,20 @@ public class TestRegionUtils {
     Assert.assertTrue(regionName.contains(TEST_DC_3));
     Assert.assertEquals(regionName.size(), 3);
   }
+
+  @Test
+  public void testIsRegionPartOfRegionsFilterList() {
+    String regionFilter = "dc-0,dc-1,dc-2";
+
+    Assert.assertTrue(RegionUtils.isRegionPartOfRegionsFilterList(TEST_DC_1, regionFilter));
+    Assert.assertTrue(RegionUtils.isRegionPartOfRegionsFilterList(TEST_DC_2, regionFilter));
+    Assert.assertTrue(RegionUtils.isRegionPartOfRegionsFilterList(TEST_DC_3, regionFilter));
+
+    Assert.assertFalse(RegionUtils.isRegionPartOfRegionsFilterList("dc-3", regionFilter));
+
+    // Test with empty filter list
+    Assert.assertTrue(RegionUtils.isRegionPartOfRegionsFilterList(TEST_DC_1, ""));
+    Assert.assertTrue(RegionUtils.isRegionPartOfRegionsFilterList(TEST_DC_2, ""));
+    Assert.assertTrue(RegionUtils.isRegionPartOfRegionsFilterList(TEST_DC_3, ""));
+  }
 }
