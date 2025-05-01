@@ -1511,26 +1511,6 @@ public class VeniceParentHelixAdmin implements Admin {
       int repushSourceVersion) {
     Store store = getStore(clusterName, storeName);
 
-    // For target region pushes with deferred swap enabled, check if we should skip target region push for dvc clients
-    // A store with dvc clients can be skipped if there is a dvc heartbeat reported for the current version and
-    // DEFERRED_VERSION_SWAP_SERVICE_WITH_DVC_CHECK_ENABLED is set to true
-    boolean isTargetRegionPushWithDeferredSwap = !StringUtils.isEmpty(targetedRegions) && versionSwapDeferred;
-    if (isTargetRegionPushWithDeferredSwap) {
-      validateTargetedRegions(targetedRegions, clusterName);
-      boolean skipTargetRegionPushForDavinci = isDavinciHeartbeatReported(clusterName, storeName)
-          && multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled();
-      if (skipTargetRegionPushForDavinci) {
-        LOGGER.info(
-            "Skip setting targetedRegions and versionSwapDeferred values for store: {} "
-                + "because isSkipDeferredVersionSwapForDVCEnabled: {} and isDavinciHeartbeatReported: {}",
-            storeName,
-            multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled(),
-            isDavinciHeartbeatReported(clusterName, storeName));
-        targetedRegions = "";
-        versionSwapDeferred = false;
-      }
-    }
-
     Optional<String> currentPushTopic =
         getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental(), Version.isPushIdRePush(pushJobId));
 
@@ -1645,31 +1625,6 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     return newVersion;
-  }
-
-  /**
-   * Checks if there is a davinci heartbeat reported in any region for the current version
-   * @param clusterName name of the cluster the store is in
-   * @param storeName name of the store to check for a davinci heartbeat
-   * @return
-   */
-  private boolean isDavinciHeartbeatReported(String clusterName, String storeName) {
-    Map<String, ControllerClient> clientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    for (String region: clientMap.keySet()) {
-      StoreInfo childStore = getStoreInChildRegion(region, clusterName, storeName);
-      Optional<Version> currentVersionInChild = childStore.getVersion(childStore.getCurrentVersion());
-      if (currentVersionInChild.isPresent()) {
-        LOGGER.info(
-            "isDavinciHeartbeatReported: {}, region: {}, storeName: {}",
-            currentVersionInChild.get().getIsDavinciHeartbeatReported(),
-            region,
-            storeName);
-        if (currentVersionInChild.get().getIsDavinciHeartbeatReported()) {
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   /**
