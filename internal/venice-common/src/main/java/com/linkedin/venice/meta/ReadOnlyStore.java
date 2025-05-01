@@ -1640,6 +1640,9 @@ public class ReadOnlyStore implements Store {
   }
 
   private static StoreETLConfig convertETLStoreConfig(ETLStoreConfig etlStoreConfig) {
+    if (etlStoreConfig == null) {
+      return null;
+    }
     StoreETLConfig storeETLConfig = new StoreETLConfig();
 
     storeETLConfig.setEtledUserProxyAccount(etlStoreConfig.getEtledUserProxyAccount());
@@ -1650,6 +1653,9 @@ public class ReadOnlyStore implements Store {
   }
 
   private static StorePartitionerConfig convertPartitionerConfig(PartitionerConfig partitionerConfig) {
+    if (partitionerConfig == null) {
+      return null;
+    }
     StorePartitionerConfig storePartitionerConfig = new StorePartitionerConfig();
 
     // Partitioner Class
