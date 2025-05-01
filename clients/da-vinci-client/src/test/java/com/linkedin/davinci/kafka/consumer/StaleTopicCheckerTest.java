@@ -4,7 +4,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.alpini.base.misc.Pair;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -67,23 +66,13 @@ public class StaleTopicCheckerTest {
       versions.add(version);
       doReturn(versions).when(store).getVersions();
 
-      // When the cache map is empty, it should check the hybrid version
-      versionMockedStatic.when(() -> Version.containsHybridVersion(versions)).thenReturn(true);
-      Assert.assertTrue(staleTopicChecker.shouldTopicExist(realtimeTopic));
-
-      // Set the cache map for the store to NOT contain hybrid version, but duration is less than the check interval
-      long lastCheckTime = System.currentTimeMillis();
-      staleTopicChecker.setHybridVersionCheckCache(store, new Pair<>(lastCheckTime, false));
-      versionMockedStatic.when(() -> Version.containsHybridVersion(versions)).thenReturn(true);
+      // When hybrid version is not present, the topic should not exist
+      versionMockedStatic.when(() -> Version.containsHybridVersion(versions)).thenReturn(false);
       Assert.assertFalse(staleTopicChecker.shouldTopicExist(realtimeTopic));
-      Assert.assertFalse(staleTopicChecker.getHybridVersionCheckCache(store).getSecond());
 
-      // Set the cache map for the store to NOT contain hybrid version, but duration is more than the check interval
-      lastCheckTime = System.currentTimeMillis() - MetadataRepoBasedStaleTopicCheckerImpl.STALE_TOPIC_CHECK_INTERVAL_MS;
-      staleTopicChecker.setHybridVersionCheckCache(store, new Pair<>(lastCheckTime, false));
+      // When hybrid version is present, the topic should exist
       versionMockedStatic.when(() -> Version.containsHybridVersion(versions)).thenReturn(true);
       Assert.assertTrue(staleTopicChecker.shouldTopicExist(realtimeTopic));
-      Assert.assertTrue(staleTopicChecker.getHybridVersionCheckCache(store).getSecond());
     }
   }
 }
