@@ -510,6 +510,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
   }
 
+  @Override
+  public synchronized void cleanupSnapshot() {
+    cleanupSnapshot(fullPathForPartitionDBSnapshot);
+  }
+
   private void checkAndThrowMemoryLimitException(RocksDBException e) {
     if (e.getMessage().contains(ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_SPACE_QUOTA)) {
       throw new MemoryLimitExhaustedException(
@@ -1041,6 +1046,28 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       throw new VeniceException(
           "Received exception during RocksDB's snapshot creation in directory " + fullPathForPartitionDBSnapshot,
           e);
+    }
+  }
+
+  /**
+   * A util method to clean up snapshot;
+   * @param fullPathForPartitionDBSnapshot
+   */
+  public static void cleanupSnapshot(String fullPathForPartitionDBSnapshot) {
+    File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
+    if (partitionSnapshotDir.exists()) {
+      LOGGER.info("Snapshot directory already exists, deleting old snapshots at {}", fullPathForPartitionDBSnapshot);
+      try {
+        FileUtils.deleteDirectory(partitionSnapshotDir);
+      } catch (IOException e) {
+        throw new VeniceException(
+            "Failed to delete the existing snapshot directory: " + fullPathForPartitionDBSnapshot,
+            e);
+      }
+    } else {
+      LOGGER.info(
+          "Snapshot directory does not exist, no need to delete old snapshots at {}",
+          fullPathForPartitionDBSnapshot);
     }
   }
 }

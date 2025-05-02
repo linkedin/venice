@@ -224,8 +224,6 @@ public class TestNettyP2PBlobTransferManager {
   @Test
   public void testSnapshotFormatNotMatch() throws IOException {
     // Preparation:
-    Mockito.doReturn(false).when(blobSnapshotManager).isStoreHybrid(anyString(), anyInt());
-
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     response.setDiscoveryResult(Collections.singletonList("localhost"));
     doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
@@ -256,9 +254,7 @@ public class TestNettyP2PBlobTransferManager {
   @Test
   public void testLocalFileTransferInBatchStore()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
-    // Preparation:
-    Mockito.doReturn(false).when(blobSnapshotManager).isStoreHybrid(anyString(), anyInt());
-
+    // Preparation
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     response.setDiscoveryResult(Collections.singletonList("localhost"));
     doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
@@ -397,7 +393,6 @@ public class TestNettyP2PBlobTransferManager {
   public void testLocalFileTransferInHybridStore()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
     // Preparation:
-    Mockito.doReturn(true).when(blobSnapshotManager).isStoreHybrid(anyString(), anyInt());
     Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();

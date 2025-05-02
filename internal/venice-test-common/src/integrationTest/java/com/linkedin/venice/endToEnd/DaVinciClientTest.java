@@ -1271,8 +1271,6 @@ public class DaVinciClientTest {
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
     String storeName = Utils.getUniqueString("test-store");
     setUpStore(storeName, paramsConsumer, properties -> {}, true);
-    LOGGER.info("Port1 is {}, Port2 is {}", port1, port2);
-    LOGGER.info("zkHosts is {}", zkHosts);
 
     // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
     ForkedJavaProcess.exec(
@@ -1342,8 +1340,8 @@ public class DaVinciClientTest {
       client2.subscribeAll().get();
 
       for (int i = 0; i < 3; i++) {
-        String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
+        String partitionPath = RocksDBUtils.composePartitionDbDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(partitionPath)));
       }
 
       for (int i = 0; i < 3; i++) {
@@ -1351,6 +1349,9 @@ public class DaVinciClientTest {
         Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
         String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
         Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
+        // path 1 (dvc1) should have snapshot which they are transfer to path 2 (dvc2)
+        String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
       }
 
       // Case 2: Restart the second Da Vinci client to see if it can re-bootstrap from the first one with retained old
@@ -1373,52 +1374,10 @@ public class DaVinciClientTest {
         Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
         String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
         Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
+        // path 1 (dvc1) should have snapshot which they are transfer to path 2 (dvc2)
+        String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
       }
-    }
-  }
-
-  /**
-   * Test to verify the snapshot generation
-   */
-  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False", timeOut = 2 * TEST_TIMEOUT)
-  public void testDVCSnapshotGeneration(boolean useDiskStorage) throws Exception {
-    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
-    String zkHosts = cluster.getZk().getAddress();
-    int port1 = TestUtils.getFreePort();
-    int port2 = TestUtils.getFreePort();
-    while (port1 == port2) {
-      port2 = TestUtils.getFreePort();
-    }
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
-    String storeName = Utils.getUniqueString("test-store");
-    setUpStore(storeName, paramsConsumer, properties -> {}, true);
-    LOGGER.info("Port1 is {}, Port2 is {}", port1, port2);
-    LOGGER.info("zkHosts is {}", zkHosts);
-
-    // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
-    String storageClass = useDiskStorage ? StorageClass.DISK.toString() : StorageClass.MEMORY_BACKED_BY_DISK.toString();
-    ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts,
-        dvcPath1,
-        storeName,
-        "100",
-        "10",
-        "false",
-        Integer.toString(port1),
-        Integer.toString(port2),
-        storageClass,
-        "false",
-        "true",
-        "false");
-
-    // Wait for the first DaVinci Client to complete ingestion
-    Thread.sleep(60000);
-
-    // verify the dvc1 snapshot is created
-    for (int i = 0; i < 3; i++) {
-      String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-      Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
     }
   }
 

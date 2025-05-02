@@ -3215,13 +3215,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     /**
-     * Generate snapshot after batch write is done.
-     */
-    if (storeVersionConfig.isBlobTransferEnabled() && serverConfig.isBlobTransferManagerEnabled()) {
-      storageEngine.createSnapshot(storagePartitionConfig);
-    }
-
-    /**
      * The checksum verification is not used after EOP, so completely reset it.
      */
     partitionConsumptionState.finalizeExpectedChecksum();
