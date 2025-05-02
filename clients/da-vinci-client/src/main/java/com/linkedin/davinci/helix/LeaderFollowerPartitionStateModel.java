@@ -94,8 +94,13 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       Store store = getStoreRepo().getStoreOrThrow(storeName);
       int currentVersion = store.getCurrentVersion();
       boolean isCurrentVersion = currentVersion == version;
-      boolean isFutureVersionPushed =
-          currentVersion < version && store.getVersionStatus(version).equals(VersionStatus.PUSHED);
+
+      // A future version is ready to serve if it's status is either PUSHED or ONLINE
+      // PUSHED is set for future versions of a target region push with deferred swap
+      // ONLINE is set for future versions of a push with deferred swap
+      boolean isFutureVersionReady =
+          currentVersion < version && (store.getVersionStatus(version).equals(VersionStatus.PUSHED)
+              || store.getVersionStatus(version).equals(VersionStatus.ONLINE));
 
       /**
        * For current version and already completed future versions, firstly create a latch, then start ingestion and wait
@@ -103,7 +108,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
        * before asked to serve requests. Also, if we start ingestion first before creating the latch, ingestion completion
        * might be reported before latch creation, and latch will never be released until timeout, resulting in error replica.
        */
-      if (isCurrentVersion || isFutureVersionPushed) {
+      if (isCurrentVersion || isFutureVersionReady) {
         notifier.startConsumption(resourceName, getPartition());
       }
       try {
@@ -115,12 +120,12 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
             LatencyUtils.getElapsedTimeFromNSToMS(startTimeForSettingUpNewStorePartitionInNs));
       } catch (Exception e) {
         logger.error("Failed to set up the new replica: {}", Utils.getReplicaId(resourceName, getPartition()), e);
-        if (isCurrentVersion || isFutureVersionPushed) {
+        if (isCurrentVersion || isFutureVersionReady) {
           notifier.stopConsumption(resourceName, getPartition());
         }
         throw e;
       }
-      if (isCurrentVersion || isFutureVersionPushed) {
+      if (isCurrentVersion || isFutureVersionReady) {
         waitConsumptionCompleted(resourceName, notifier);
       }
       heartbeatMonitoringService
