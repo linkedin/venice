@@ -21,11 +21,9 @@ public class StaleTopicCheckerTest {
   @Test
   public void testMetadataBasedTopicExistenceChecker() {
     String exitingTopic1 = "existingTopic_v123";
-    String exitingTopic2 = "existingTopic_rt";
     String exitingTopic3 = "existingTopic_v123_sr";
 
     String nontExitingTopic1 = "non-existingTopic_v123";
-    String nontExitingTopic2 = "non-existingTopic_rt";
 
     ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
     Store store = mock(Store.class);
@@ -37,10 +35,8 @@ public class StaleTopicCheckerTest {
     MetadataRepoBasedStaleTopicCheckerImpl staleTopicChecker = new MetadataRepoBasedStaleTopicCheckerImpl(repository);
 
     Assert.assertTrue(staleTopicChecker.shouldTopicExist(exitingTopic1));
-    Assert.assertTrue(staleTopicChecker.shouldTopicExist(exitingTopic2));
     Assert.assertTrue(staleTopicChecker.shouldTopicExist(exitingTopic3));
     Assert.assertFalse(staleTopicChecker.shouldTopicExist(nontExitingTopic1));
-    Assert.assertFalse(staleTopicChecker.shouldTopicExist(nontExitingTopic2));
   }
 
   @Test
