@@ -67,6 +67,7 @@ import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
 import com.linkedin.venice.spark.datawriter.writer.SparkPartitionWriterFactory;
 import com.linkedin.venice.spark.utils.SparkPartitionUtils;
 import com.linkedin.venice.spark.utils.SparkScalaUtils;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
@@ -262,7 +263,11 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
     }
 
-    populateWithPassThroughConfigs(props, jobConf::set, SPARK_DATA_WRITER_CONF_PREFIX);
+    CollectionUtils.populateWithPassThroughConfigs(
+        props,
+        jobConf::set,
+        PASS_THROUGH_CONFIG_PREFIXES,
+        SPARK_DATA_WRITER_CONF_PREFIX);
   }
 
   protected SparkSession getSparkSession() {

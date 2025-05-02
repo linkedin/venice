@@ -73,6 +73,7 @@ import com.linkedin.venice.hadoop.mapreduce.datawriter.reduce.VeniceReducer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.CounterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -219,7 +220,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     conf.setLong(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
     conf.setLong(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
 
-    populateWithPassThroughConfigs(props, jobConf::set, HADOOP_PREFIX);
+    CollectionUtils.populateWithPassThroughConfigs(props, jobConf::set, PASS_THROUGH_CONFIG_PREFIXES, HADOOP_PREFIX);
   }
 
   protected void setupInputFormatConf(JobConf jobConf, PushJobSetting pushJobSetting) {
