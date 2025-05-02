@@ -1,7 +1,6 @@
 package com.linkedin.venice;
 
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER;
-import static com.linkedin.venice.integration.utils.VeniceServerWrapper.DEFAULT_TEST_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
@@ -80,9 +79,6 @@ public class VeniceClusterInitializer implements Closeable {
 
   public VeniceClusterInitializer(String storeName, int routerPort) {
     Properties clusterConfig = new Properties();
-    clusterConfig.put(
-        ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS,
-        DEFAULT_TEST_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS);
     clusterConfig.put(ConfigKeys.ROUTER_ENABLE_SSL, false);
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(1)
