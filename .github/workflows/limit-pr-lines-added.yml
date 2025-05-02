@@ -1,4 +1,4 @@
-name: Enforce Max Lines Changed Per File
+name: Enforce Max Lines Added Per File
 
 on:
   pull_request:
@@ -10,7 +10,7 @@ on:
       - '**/*.proto'   # Monitor changes to proto schema files
 
 jobs:
-  enforce-lines-changed:
+  enforce-lines-added:
     runs-on: ubuntu-latest
 
     steps:
@@ -48,14 +48,14 @@ jobs:
           else
             echo "override=false" >> $GITHUB_OUTPUT
           fi
-      - name: Calculate Lines Changed Per File
+      - name: Calculate Lines Added Per File
         if: ${{ steps.check_override.outputs.override != 'true' }}
-        id: lines_changed_per_file
+        id: lines_added_per_file
         run: |
-          # Define the maximum allowed lines changed per file
+          # Define the maximum allowed lines added per file
           MAX_LINES=500
           MAX_TOTAL_LINES_ADDED=2000
-          TOTAL_LINED_ADDED=0
+          TOTAL_LINES_ADDED=0
           # Get the diff of the PR and process each file
           EXCEEDED=false
           JAVA_FILE=false
@@ -73,11 +73,11 @@ jobs:
             SCHEMA_FILE=true
           fi
 
-          # Calculate total lines changed for the file
-          TOTAL=$((added + removed))
-          TOTAL_LINED_ADDED=$((TOTAL_LINED_ADDED + added))
+          # Calculate total lines added for the file
+          TOTAL=$((added))
+          TOTAL_LINES_ADDED=$((TOTAL_LINES_ADDED + added))
 
-          echo "File: $file, Lines Changed: $TOTAL"
+          echo "File: $file, Lines added: $TOTAL"
 
           # Fail if there are both schema and Java file changes
           if [[ "$JAVA_FILE" == true && "$SCHEMA_FILE" == true ]]; then
@@ -87,24 +87,24 @@ jobs:
           fi
           
           if [[ "$TOTAL" -gt "$MAX_LINES" && "$JAVA_FILE" == "true" ]]; then
-            echo "File $file exceeds the maximum allowed lines changed ($TOTAL > $MAX_LINES)"
+            echo "File $file exceeds the maximum allowed lines added ($TOTAL > $MAX_LINES)"
             EXCEEDED=true
           fi
           done < <(git diff --numstat origin/main | grep -E '\.(java|avsc|proto)$')
 
           # Fail if total line added exceeds max limit
-          if [ "$TOTAL_LINED_ADDED" -gt "$MAX_TOTAL_LINES_ADDED" ]; then
-            echo "Total added lines of all files exceed the maximum allowed lines ($TOTAL_LINED_ADDED > $MAX_TOTAL_LINES_ADDED)."
+          if [ "$TOTAL_LINES_ADDED" -gt "$MAX_TOTAL_LINES_ADDED" ]; then
+            echo "Total added lines of all files exceed the maximum allowed lines ($TOTAL_LINES_ADDED > $MAX_TOTAL_LINES_ADDED)."
             exit 1
           fi
           
           # Fail if total number of lines added exceeds max limit
           if [ "$EXCEEDED" = true ]; then
-            echo "Above files exceed the maximum allowed lines changed ($MAX_LINES)."
+            echo "Above files exceed the maximum allowed lines added ($MAX_LINES)."
             exit 1
           fi
 
       - name: Notify
         if: failure()
         run: |
-          echo "One or more files in the PR exceed the maximum allowed lines changed. Please review and adjust your changes to your files."
+          echo "One or more files in the PR exceed the maximum allowed lines added. Please review and adjust your changes to your files."
