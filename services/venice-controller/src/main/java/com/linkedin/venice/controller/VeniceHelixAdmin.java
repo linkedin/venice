@@ -2885,6 +2885,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Configs from the source clusters are source of truth
             version.setStatus(STARTED);
 
+            // Do not do a target region push w/ deferred swap for store migration
+            if (version.isVersionSwapDeferred() && !StringUtils.isEmpty(version.getTargetSwapRegion())) {
+              version.setVersionSwapDeferred(false);
+              version.setTargetSwapRegion("");
+            }
+
             if (store.containsVersion(version.getNumber())) {
               throwVersionAlreadyExists(storeName, version.getNumber());
             }
