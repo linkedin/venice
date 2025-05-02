@@ -155,12 +155,7 @@ public final class HelixUtils {
         return;
       }
       attempt++;
-      if (attempt < retryCount) {
-        double retryIntervalSec = Math.pow(2, attempt - 1);
-        logHelixOperationFailure(path, "create", attempt, retryCount, retryIntervalSec);
-      } else {
-        throw new ZkDataAccessException(path, "create", retryCount);
-      }
+      handleFailedHelixOperation(path, "create", attempt, retryCount);
     }
   }
 
@@ -175,12 +170,7 @@ public final class HelixUtils {
         return;
       }
       attempt++;
-      if (attempt < retryCount) {
-        double retryIntervalSec = Math.pow(2, attempt - 1);
-        logHelixOperationFailure(path, "update", attempt, retryCount, retryIntervalSec);
-      } else {
-        throw new ZkDataAccessException(path, "set", retryCount);
-      }
+      handleFailedHelixOperation(path, "update", attempt, retryCount);
     }
   }
 
@@ -210,12 +200,7 @@ public final class HelixUtils {
       }
       attempt++;
       String path = paths.get(0).substring(0, paths.get(0).lastIndexOf('/'));
-      if (attempt < retryCount) {
-        double retryIntervalSec = Math.pow(2, attempt - 1);
-        logHelixOperationFailure(path, "updateChildren", attempt, retryCount, retryIntervalSec);
-      } else {
-        throw new ZkDataAccessException(path, "updateChildren", retryCount);
-      }
+      handleFailedHelixOperation(path, "updateChildren", attempt, retryCount);
     }
   }
 
@@ -234,12 +219,7 @@ public final class HelixUtils {
         return;
       }
       attempt++;
-      if (attempt < retryCount) {
-        double retryIntervalSec = Math.pow(2, attempt - 1);
-        logHelixOperationFailure(path, "remove", attempt, retryCount, retryIntervalSec);
-      } else {
-        throw new ZkDataAccessException(path, "remove", retryCount);
-      }
+      handleFailedHelixOperation(path, "remove", attempt, retryCount);
     }
   }
 
@@ -258,38 +238,33 @@ public final class HelixUtils {
         return;
       }
       attempt++;
-      if (attempt < retryCount) {
-        double retryIntervalSec = Math.pow(2, attempt - 1);
-        logHelixOperationFailure(path, "compare and update", attempt, retryCount, retryIntervalSec);
-      } else {
-        throw new ZkDataAccessException(path, "compare and update", retryCount);
-      }
+      handleFailedHelixOperation(path, "compare and update", attempt, retryCount);
     }
   }
 
   /**
-   * Helper method for logging Helix operation failures and sleeping for retry
+   * Helper method for logging Helix operation failures, sleeping for retry, and throwing exceptions
    *
-   * @param path             The ZooKeeper path that was being operated on
-   * @param helixOperation   The name of the Helix operation that failed
-   * @param attempt          The current attempt number
-   * @param retryCount       The maximum number of retry attempts
-   * @param retryIntervalSec The wait time in seconds before the next retry attempt
+   * @param path           The ZooKeeper path that was being operated on
+   * @param helixOperation The name of the Helix operation that failed
+   * @param attempt        The current attempt number
+   * @param retryCount     The maximum number of retry attempts
+   * @throws ZkDataAccessException if max retry attempts have been reached
    */
-  private static void logHelixOperationFailure(
-      String path,
-      String helixOperation,
-      int attempt,
-      int retryCount,
-      double retryIntervalSec) {
-    LOGGER.error(
-        "{} failed with path {} on attempt {}/{}. Will retry in {} seconds.",
-        helixOperation,
-        path,
-        attempt,
-        retryCount,
-        retryIntervalSec);
-    Utils.sleep(TimeUnit.SECONDS.toMillis((long) retryIntervalSec));
+  private static void handleFailedHelixOperation(String path, String helixOperation, int attempt, int retryCount) {
+    if (attempt < retryCount) {
+      double retryIntervalSec = Math.pow(2, attempt);
+      LOGGER.error(
+          "{} failed with path {} on attempt {}/{}. Will retry in {} seconds.",
+          helixOperation,
+          path,
+          attempt,
+          retryCount,
+          retryIntervalSec);
+      Utils.sleep(TimeUnit.SECONDS.toMillis((long) retryIntervalSec));
+    } else {
+      throw new ZkDataAccessException(path, helixOperation, retryCount);
+    }
   }
 
   /**
