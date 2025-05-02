@@ -20,23 +20,23 @@ import org.testng.annotations.Test;
 public class StaleTopicCheckerTest {
   @Test
   public void testMetadataBasedTopicExistenceChecker() {
-    String exitingTopic1 = "existingTopic_v123";
-    String exitingTopic3 = "existingTopic_v123_sr";
+    String existingTopic1 = "existingTopic_v123";
+    String existingTopic2 = "existingTopic_v123_sr";
 
-    String nontExitingTopic1 = "non-existingTopic_v123";
+    String nonExistingTopic = "non-existingTopic_v123";
 
     ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
     Store store = mock(Store.class);
     doReturn(new VersionImpl("existingTopic", 123, "existingTopic" + Version.REAL_TIME_TOPIC_SUFFIX)).when(store)
         .getVersion(123);
     doReturn(store).when(repository).getStoreOrThrow("existingTopic");
-    doThrow(new VeniceNoStoreException(nontExitingTopic1)).when(repository).getStoreOrThrow("non-existingTopic");
+    doThrow(new VeniceNoStoreException(nonExistingTopic)).when(repository).getStoreOrThrow("non-existingTopic");
     doReturn(true).when(store).isHybrid();
     MetadataRepoBasedStaleTopicCheckerImpl staleTopicChecker = new MetadataRepoBasedStaleTopicCheckerImpl(repository);
 
-    Assert.assertTrue(staleTopicChecker.shouldTopicExist(exitingTopic1));
-    Assert.assertTrue(staleTopicChecker.shouldTopicExist(exitingTopic3));
-    Assert.assertFalse(staleTopicChecker.shouldTopicExist(nontExitingTopic1));
+    Assert.assertTrue(staleTopicChecker.shouldTopicExist(existingTopic1));
+    Assert.assertTrue(staleTopicChecker.shouldTopicExist(existingTopic2));
+    Assert.assertFalse(staleTopicChecker.shouldTopicExist(nonExistingTopic));
   }
 
   @Test
