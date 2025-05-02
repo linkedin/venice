@@ -921,6 +921,46 @@ public class VenicePushJobTest {
   }
 
   /**
+   * Tests that the error message for the {@link com.linkedin.venice.PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
+   * {@link VenicePushJob#updatePushJobDetailsWithJobDetails(DataWriterTaskTracker)} uses maxRecordSizeBytes.
+   */
+  @Test(dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class)
+  public void testUpdatePushJobDetailsWithJobDetailsRecordTooLargeWithCompression(
+      boolean enableUncompressedMaxRecordSizeLimit,
+      CompressionStrategy compressionStrategy) {
+    try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), getClient())) {
+      // Setup push job settings and mocks
+      PushJobDetails pushJobDetails = vpj.getPushJobDetails();
+
+      setPushJobSettingDefaults(vpj.getPushJobSetting());
+      vpj.setInputStorageQuotaTracker(mock(InputStorageQuotaTracker.class));
+      vpj.getPushJobSetting().enableUncompressedRecordSizeLimit = enableUncompressedMaxRecordSizeLimit;
+      vpj.getPushJobSetting().storeCompressionStrategy = compressionStrategy;
+
+      final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
+      doReturn(1L).when(dataWriterTaskTracker).getRecordTooLargeFailureCount();
+      doReturn(1L).when(dataWriterTaskTracker).getUncompressedRecordTooLargeFailureCount();
+
+      // The value of chunkingEnabled should dictate the error message returned
+      final String errorMessage = vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker);
+      Assert.assertTrue(
+          errorMessage.contains("records that exceed the maximum record limit of"),
+          "Unexpected error message: " + errorMessage);
+
+      if (compressionStrategy.isCompressionEnabled()) {
+        if (enableUncompressedMaxRecordSizeLimit) {
+          Assert.assertTrue(errorMessage.contains("before compression"), "Unexpected error message: " + errorMessage);
+        } else {
+          Assert.assertTrue(errorMessage.contains("after compression"), "Unexpected error message: " + errorMessage);
+        }
+      }
+
+      final int latestCheckpoint = pushJobDetails.pushJobLatestCheckpoint;
+      Assert.assertEquals(latestCheckpoint, PushJobCheckpoints.RECORD_TOO_LARGE_FAILED.getValue());
+    }
+  }
+
+  /**
    * These are mainly for code coverage for the code paths of {@link VenicePushJob#getVeniceWriter(PushJobSetting)} and
    * {@link VenicePushJob#getVeniceWriterProperties(PushJobSetting)}.
    */

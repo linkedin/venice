@@ -79,6 +79,11 @@ public class ReporterBackedMapReduceDataWriterTaskTracker implements DataWriterT
   }
 
   @Override
+  public void trackUncompressedRecordTooLargeFailure() {
+    MRJobCounterHelper.incrUncompressedRecordTooLargeFailureCount(reporter, 1);
+  }
+
+  @Override
   public void trackRecordSentToPubSub() {
     MRJobCounterHelper.incrOutputRecordCount(reporter, 1);
   }
@@ -121,6 +126,11 @@ public class ReporterBackedMapReduceDataWriterTaskTracker implements DataWriterT
   @Override
   public long getRecordTooLargeFailureCount() {
     return MRJobCounterHelper.getRecordTooLargeFailureCount(reporter);
+  }
+
+  @Override
+  public long getUncompressedRecordTooLargeFailureCount() {
+    return MRJobCounterHelper.getUncompressedRecordTooLargeFailureCount(reporter);
   }
 
   @Override

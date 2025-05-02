@@ -11,6 +11,7 @@ import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
@@ -3260,6 +3261,62 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     veniceParentHelixAdmin.updateAdminOperationProtocolVersion(clusterName, adminProtocolVersion);
     verify(adminConsumerService, times(1)).updateAdminOperationProtocolVersion(clusterName, adminProtocolVersion);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Roll forward failed without any future version")
+  public void testRollForwardNoFutureVersions() {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+    doReturn(Collections.emptyMap()).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+    adminSpy.rollForwardToFutureVersion(clusterName, storeName, "");
+  }
+
+  @Test
+  public void testRollForwardSuccess() {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+
+    Map<String, String> future = Collections.singletonMap("r1", "5");
+    doReturn(future).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    doReturn(true).when(adminSpy).truncateKafkaTopic(Version.composeKafkaTopic(storeName, 5));
+
+    Map<String, Integer> after = Collections.singletonMap("r1", 5);
+    doReturn(after).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
+
+    adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
+
+    verify(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    verify(adminSpy).truncateKafkaTopic(Version.composeKafkaTopic(storeName, 5));
+    verify(adminSpy, times(1)).getCurrentVersionsForMultiColos(clusterName, storeName);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Roll forward failed in regions.*")
+  public void testRollForwardPartialFailure() {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+    doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
+    doNothing().when(adminSpy).releaseAdminMessageLock(clusterName, storeName);
+
+    Map<String, String> future = new HashMap<>();
+    future.put("r1", "5");
+    future.put("r2", "5");
+    doReturn(future).when(adminSpy).getFutureVersionsForMultiColos(clusterName, storeName);
+
+    doNothing().when(adminSpy)
+        .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
+    doReturn(true).when(adminSpy).truncateKafkaTopic(anyString());
+
+    Map<String, Integer> after = new HashMap<>();
+    after.put("r1", 5);
+    after.put("r2", 4); // mismatch
+    doReturn(after).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
+
+    adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
+    verify(adminSpy, times(5)).getCurrentVersionsForMultiColos(clusterName, storeName);
   }
 
   private Store setupForStoreViewConfigUpdateTest(String storeName) {

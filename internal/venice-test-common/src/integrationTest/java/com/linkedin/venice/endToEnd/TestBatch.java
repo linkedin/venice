@@ -79,6 +79,7 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -984,6 +985,51 @@ public abstract class TestBatch {
     } catch (VeniceException e) {
       final String limitStr = generateHumanReadableByteCountString(maxRecordSizeBytesForTest);
       Assert.assertTrue(e.getMessage().contains("exceed the maximum record limit of " + limitStr), e.getMessage());
+    }
+  }
+
+  /** Test that values that are too large will fail the push job despite the compression strategy. */
+  @Test(dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
+  public void testStoreWithTooLargeValuesWithCompression(
+      boolean enableUncompressedRecordSizeLimit,
+      CompressionStrategy compressionStrategy) throws Exception {
+    final int tooLargeValueSize = 5 * BYTES_PER_MB; // 5 MB
+    final int maxRecordSizeBytesForTest = 5 * BYTES_PER_MB - 1;
+
+    try {
+      testStoreWithLargeValues(properties -> {
+        properties.setProperty(
+            VeniceWriter.ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT,
+            Boolean.toString(enableUncompressedRecordSizeLimit));
+      }, storeParams -> {
+        storeParams.setChunkingEnabled(true);
+        storeParams.setMaxRecordSizeBytes(maxRecordSizeBytesForTest);
+        storeParams.setCompressionStrategy(compressionStrategy);
+      }, null, tooLargeValueSize);
+
+      // If enabled, we should have thrown an exception before this
+      Assert.assertFalse(
+          enableUncompressedRecordSizeLimit && compressionStrategy.isCompressionEnabled(),
+          "Failed to catch large record");
+    } catch (VeniceException e) {
+
+      Consumer<VeniceException> handleException = (ve) -> {
+        final String limitStr = generateHumanReadableByteCountString(maxRecordSizeBytesForTest);
+        Assert.assertTrue(ve.getMessage().contains("exceed the maximum record limit of " + limitStr), ve.getMessage());
+      };
+
+      if (enableUncompressedRecordSizeLimit) {
+        // if limit enabled, we should see an error
+        handleException.accept(e);
+      } else {
+        if (compressionStrategy.isCompressionEnabled()) {
+          // if limit disabled and compression is enabled, we should not have seen an error
+          Assert.fail("Failed to push large record with disabled enforcement", e);
+        } else {
+          // if limit is disabled and compression is disabled, we should see an error
+          handleException.accept(e);
+        }
+      }
     }
   }
 
