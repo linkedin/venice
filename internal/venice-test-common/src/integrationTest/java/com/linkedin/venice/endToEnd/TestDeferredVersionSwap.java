@@ -512,7 +512,7 @@ public class TestDeferredVersionSwap {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testMigrateStore() throws IOException {
+  public void testDeferredVersionSwapThenMigrateStore() throws IOException {
     // Do a target region push
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
