@@ -95,7 +95,7 @@ jobs:
           fi
           done < <(git diff --numstat origin/main | grep -E '\.(java|avsc|proto)$')
           
-          echo "Total lines removed: TOTAL_LINES_REMOVED"
+          echo "Total lines removed: $TOTAL_LINES_REMOVED"
 
           # Fail if total line added exceeds max limit
           if [ "$TOTAL_LINES_ADDED" -gt "$MAX_TOTAL_LINES_ADDED" ]; then
