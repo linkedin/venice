@@ -54,19 +54,13 @@ public class StaleTopicCheckerTest {
     try (MockedStatic<Version> versionMockedStatic = Mockito.mockStatic(Version.class)) {
       versionMockedStatic.when(() -> Version.isRealTimeTopic(realtimeTopic)).thenReturn(true);
       versionMockedStatic.when(() -> Version.parseStoreFromKafkaTopicName(realtimeTopic)).thenReturn("storeA");
-
-      // When store is hybrid, the topic should exist
-      doReturn(true).when(store).isHybrid();
-      Assert.assertTrue(staleTopicChecker.shouldTopicExist(realtimeTopic));
-
-      // When store is not hybrid, the topic depends on the hybrid version
       doReturn(false).when(store).isHybrid();
       List<Version> versions = new ArrayList<>();
       Version version = mock(Version.class);
       versions.add(version);
       doReturn(versions).when(store).getVersions();
 
-      // When hybrid version is not present, the topic should not exist
+      // When hybrid version is not present, the topic should not exist - for both hybrid and non-hybrid stores
       versionMockedStatic.when(() -> Version.containsHybridVersion(versions)).thenReturn(false);
       Assert.assertFalse(staleTopicChecker.shouldTopicExist(realtimeTopic));
 

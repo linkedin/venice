@@ -28,8 +28,8 @@ public class MetadataRepoBasedStaleTopicCheckerImpl implements StaleTopicChecker
           return false;
         }
       } else if (Version.isRealTimeTopic(topic)) {
-        if (!store.isHybrid() && !Version.containsHybridVersion(store.getVersions())) {
-          LOGGER.warn("Store {} is not hybrid and no hybrid version, so topic {} should not exist", storeName, topic);
+        if (!Version.containsHybridVersion(store.getVersions())) {
+          LOGGER.warn("Store {} does not have any hybrid version for real-time topic: {}", storeName, topic);
           return false;
         }
       }
