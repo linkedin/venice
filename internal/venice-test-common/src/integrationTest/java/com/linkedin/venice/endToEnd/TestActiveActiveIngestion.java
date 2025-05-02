@@ -276,6 +276,8 @@ public class TestActiveActiveIngestion {
     VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
+    // Add a marker record to make sure we have consumed to all the RT record.
+    int putWithRmdKeyIndex = 1001;
 
     try (
         VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
@@ -284,6 +286,8 @@ public class TestActiveActiveIngestion {
       runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
       // Produce a DELETE record with large timestamp
       produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
+      // Produce a PUT record with large timestamp
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, putWithRmdKeyIndex, 1000, false);
     }
 
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
@@ -291,7 +295,7 @@ public class TestActiveActiveIngestion {
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+        Assert.assertNotNull(client.get(Integer.toString(putWithRmdKeyIndex)).get());
       });
     }
 
