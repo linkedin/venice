@@ -3,6 +3,7 @@
  */
 package com.linkedin.alpini.base.misc;
 
+import java.util.Arrays;
 import javax.annotation.Nonnull;
 
 
@@ -15,9 +16,7 @@ public class Metrics {
 
   public Metrics() {
     this.metricValues = new long[METRIC_COUNT];
-    for (int i = 0; i < METRIC_COUNT; i++) {
-      this.metricValues[i] = UNSET_VALUE;
-    }
+    Arrays.fill(this.metricValues, UNSET_VALUE);
   }
 
   public void setMetric(MetricNames name, long value) {
