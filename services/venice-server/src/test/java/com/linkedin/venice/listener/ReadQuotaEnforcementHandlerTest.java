@@ -53,6 +53,7 @@ import com.linkedin.venice.stats.ServerReadQuotaUsageStats;
 import com.linkedin.venice.throttle.GuavaRateLimiter;
 import com.linkedin.venice.throttle.TokenBucket;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -233,7 +234,7 @@ public class ReadQuotaEnforcementHandlerTest {
     when(routerRequest.isRetryRequest()).thenReturn(false);
     when(storeRepository.getStore(storeName)).thenReturn(store);
     when(store.isStorageNodeReadQuotaEnabled()).thenReturn(true);
-    assertTrue(quotaEnforcementHandler.isInitialized());
+    TestUtils.waitForNonDeterministicAssertion(10, SECONDS, () -> assertTrue(quotaEnforcementHandler.isInitialized()));
     VeniceRateLimiter veniceRateLimiter = mock(VeniceRateLimiter.class);
     quotaEnforcementHandler.setStoreVersionRateLimiter(resourceName, veniceRateLimiter);
     when(veniceRateLimiter.tryAcquirePermit(1)).thenReturn(false);
@@ -278,7 +279,7 @@ public class ReadQuotaEnforcementHandlerTest {
     when(routerRequest.isRetryRequest()).thenReturn(false);
     when(storeRepository.getStore(storeName)).thenReturn(store);
     when(store.isStorageNodeReadQuotaEnabled()).thenReturn(true);
-    assertTrue(quotaEnforcementHandler.isInitialized());
+    TestUtils.waitForNonDeterministicAssertion(10, SECONDS, () -> assertTrue(quotaEnforcementHandler.isInitialized()));
     assertNull(quotaEnforcementHandler.getStoreVersionRateLimiter(resourceName));
     VeniceRateLimiter storageNodeRateLimiter = mock(VeniceRateLimiter.class);
     quotaEnforcementHandler.setStorageNodeRateLimiter(storageNodeRateLimiter);
@@ -320,7 +321,7 @@ public class ReadQuotaEnforcementHandlerTest {
     when(routerRequest.isRetryRequest()).thenReturn(false);
     when(storeRepository.getStore(storeName)).thenReturn(store);
     when(store.isStorageNodeReadQuotaEnabled()).thenReturn(true);
-    assertTrue(quotaEnforcementHandler.isInitialized());
+    TestUtils.waitForNonDeterministicAssertion(10, SECONDS, () -> assertTrue(quotaEnforcementHandler.isInitialized()));
     VeniceRateLimiter veniceRateLimiter = mock(VeniceRateLimiter.class);
     when(veniceRateLimiter.tryAcquirePermit(1)).thenReturn(true);
     quotaEnforcementHandler.setStoreVersionRateLimiter(resourceName, veniceRateLimiter);
@@ -776,6 +777,7 @@ public class ReadQuotaEnforcementHandlerTest {
    * @param refillTimeMs  The length of the refill interval
    */
   void runTest(String resourceName, long capacity, long refillAmount, long refillTimeMs) {
+    TestUtils.waitForNonDeterministicAssertion(10, SECONDS, () -> assertTrue(quotaEnforcementHandler.isInitialized()));
     AtomicInteger allowed = new AtomicInteger(0);
     AtomicInteger blocked = new AtomicInteger(0);
 
