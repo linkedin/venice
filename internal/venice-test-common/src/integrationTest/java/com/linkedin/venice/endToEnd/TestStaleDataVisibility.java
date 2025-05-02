@@ -4,7 +4,6 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -55,7 +54,6 @@ public class TestStaleDataVisibility {
   @BeforeClass
   public void setUp() {
     Properties serverProperties = new Properties();
-    serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
             .numberOfClusters(NUMBER_OF_CLUSTERS)
