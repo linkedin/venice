@@ -301,7 +301,7 @@ public class CreateVersionTest {
     doReturn(true).when(admin).isParent();
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(any(), any(), anyBoolean());
     doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
-    doReturn("default-src.region.io").when(admin).getKafkaBootstrapServers(anyBoolean());
+    doReturn("default-src.region.io").when(admin).getLocalPubSubBrokerAddress();
     doReturn(emergencySrcRegion).when(admin).getEmergencySourceRegion(CLUSTER_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);

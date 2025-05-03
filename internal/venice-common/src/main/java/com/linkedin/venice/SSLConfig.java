@@ -16,7 +16,6 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
-import org.apache.kafka.common.config.SslConfigs;
 
 
 public class SSLConfig {
@@ -49,25 +48,6 @@ public class SSLConfig {
     sslSecureRandomImplementation = veniceProperties.getString(SSL_SECURE_RANDOM_IMPLEMENTATION);
     sslNeedsClientCert = veniceProperties.getBoolean(SSL_NEEDS_CLIENT_CERT, false);
     controllerSSLEnabled = veniceProperties.getBoolean(CONTROLLER_SSL_ENABLED, DEFAULT_CONTROLLER_SSL_ENABLED);
-  }
-
-  /**
-   * @return An instance of {@link Properties} for Kafka clients.
-   */
-  public Properties getKafkaSSLConfig() {
-    Properties kafkaSSLConfig = new Properties();
-    kafkaSSLConfig.setProperty(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, sslKeyStoreLocation);
-    kafkaSSLConfig.setProperty(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, sslKeyStorePassword);
-    kafkaSSLConfig.setProperty(SslConfigs.SSL_KEYSTORE_TYPE_CONFIG, sslKeyStoreType);
-    kafkaSSLConfig.setProperty(SslConfigs.SSL_KEY_PASSWORD_CONFIG, sslKeyPassword);
-    kafkaSSLConfig.setProperty(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, sslTrustStoreLocation);
-    kafkaSSLConfig.setProperty(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, sslTrustStorePassword);
-    kafkaSSLConfig.setProperty(SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG, sslTrustStoreType);
-    kafkaSSLConfig.setProperty(SslConfigs.SSL_KEYMANAGER_ALGORITHM_CONFIG, sslKeyManagerAlgorithm);
-    kafkaSSLConfig.setProperty(SslConfigs.SSL_TRUSTMANAGER_ALGORITHM_CONFIG, sslTrustManagerAlgorithm);
-    kafkaSSLConfig.setProperty(SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG, sslSecureRandomImplementation);
-
-    return kafkaSSLConfig;
   }
 
   /**
@@ -121,5 +101,25 @@ public class SSLConfig {
 
   public boolean isControllerSSLEnabled() {
     return controllerSSLEnabled;
+  }
+
+  public String getSslKeyStoreType() {
+    return sslKeyStoreType;
+  }
+
+  public String getSslKeyPassword() {
+    return sslKeyPassword;
+  }
+
+  public String getSslKeyManagerAlgorithm() {
+    return sslKeyManagerAlgorithm;
+  }
+
+  public String getSslTrustManagerAlgorithm() {
+    return sslTrustManagerAlgorithm;
+  }
+
+  public String getSslSecureRandomImplementation() {
+    return sslSecureRandomImplementation;
   }
 }

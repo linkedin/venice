@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
@@ -101,16 +102,16 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getControllerClusterReplica();
   }
 
-  public String getKafkaBootstrapServers() {
-    return getCommonConfig().getKafkaBootstrapServers();
+  public String getLocalPubSubBrokerAddress() {
+    return getCommonConfig().getLocalPubSubBrokerAddress();
   }
 
-  public String getSslKafkaBootstrapServers() {
-    return getCommonConfig().getSslKafkaBootstrapServers();
+  public PubSubSecurityProtocol getPubSubSecurityProtocol() {
+    return getCommonConfig().getPubSubSecurityProtocol();
   }
 
-  public boolean isSslToKafka() {
-    return getCommonConfig().isSslToKafka();
+  public VeniceProperties getPropertiesForPubSubClients() {
+    return getCommonConfig().getPropertiesForPubSubClients();
   }
 
   public Optional<SSLConfig> getSslConfig() {

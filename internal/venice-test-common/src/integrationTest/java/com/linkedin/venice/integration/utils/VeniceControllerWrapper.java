@@ -29,9 +29,8 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_REPLICA_FACTOR;
 import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
-import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST;
-import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
@@ -45,8 +44,6 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
@@ -185,6 +182,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
             .put(MULTI_REGION, options.isMultiRegion())
             .put(KAFKA_REPLICATION_FACTOR, 1)
+            .put(KAFKA_LINGER_MS, 0)
             .put(ADMIN_TOPIC_REPLICATION_FACTOR, 1)
             .put(CONTROLLER_NAME, "venice-controller") // Why is this configurable?
             .put(DEFAULT_REPLICA_FACTOR, options.getReplicationFactor())
@@ -200,11 +198,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO)
             .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(clusterToD2))
             .put(CLUSTER_TO_SERVER_D2, TestUtils.getClusterToD2String(clusterToServerD2))
-            .put(SSL_TO_KAFKA_LEGACY, options.isSslToKafka())
-            .put(SSL_KAFKA_BOOTSTRAP_SERVERS, options.getKafkaBroker().getSSLAddress())
-            .put(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, false)
-            .put(ENABLE_HYBRID_PUSH_SSL_WHITELIST, false)
-            .put(KAFKA_BOOTSTRAP_SERVERS, options.getKafkaBroker().getAddress())
             .put(OFFLINE_JOB_START_TIMEOUT_MS, 120_000)
             // To speed up topic cleanup
             .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)
@@ -235,8 +228,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         }
 
         if (options.isSslToKafka()) {
+          builder.put(KAFKA_BOOTSTRAP_SERVERS, options.getKafkaBroker().getSSLAddress());
           builder.put(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name());
           builder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
+        } else {
+          builder.put(KAFKA_BOOTSTRAP_SERVERS, options.getKafkaBroker().getAddress());
+          builder.put(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name());
         }
 
         String fabricAllowList;
@@ -278,14 +275,13 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             }
             builder.put(CHILD_CLUSTER_URL_PREFIX + dcName, childController.getControllerUrl());
             if (options.isParent()) {
-              builder.put(
-                  CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + dcName,
-                  childController.getKafkaBootstrapServers(options.isSslToKafka()));
+              builder
+                  .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + dcName, childController.getPubSubBootstrapServers());
               LOGGER.info(
                   "ControllerConfig: {}.{} KafkaUrl: {}",
                   CHILD_DATA_CENTER_KAFKA_URL_PREFIX,
                   dcName,
-                  childController.getKafkaBootstrapServers(options.isSslToKafka()));
+                  childController.getPubSubBootstrapServers());
             }
           }
         } else {
@@ -438,10 +434,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     return "https://" + getHost() + ":" + getSecurePort();
   }
 
-  public String getKafkaBootstrapServers(boolean sslToKafka) {
-    if (sslToKafka) {
-      return configs.get(0).getString(SSL_KAFKA_BOOTSTRAP_SERVERS);
-    }
+  public String getPubSubBootstrapServers() {
     return configs.get(0).getString(KAFKA_BOOTSTRAP_SERVERS);
   }
 

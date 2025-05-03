@@ -7,21 +7,26 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_DELETION_S
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.function.Function;
 
 
 /**
  * A context object that contains all the dependencies needed by {@link TopicManager}.
  */
 public class TopicManagerContext {
-  private final PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory;
-  private final PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
+  private final PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> pubSubAdminAdapterFactory;
+  private final PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
   private final PubSubTopicRepository pubSubTopicRepository;
   private final MetricsRepository metricsRepository;
-  private final PubSubPropertiesSupplier pubSubPropertiesSupplier;
+  private final VeniceProperties veniceProperties;
+  private final Function<String, String> pubSubBrokerUrlResolver;
+  private final Function<String, PubSubSecurityProtocol> pubSubSecurityProtocolResolver;
   private final long pubSubOperationTimeoutMs;
   private final long topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
@@ -37,7 +42,9 @@ public class TopicManagerContext {
     this.pubSubConsumerAdapterFactory = builder.pubSubConsumerAdapterFactory;
     this.pubSubTopicRepository = builder.pubSubTopicRepository;
     this.metricsRepository = builder.metricsRepository;
-    this.pubSubPropertiesSupplier = builder.pubSubPropertiesSupplier;
+    this.veniceProperties = builder.veniceProperties;
+    this.pubSubBrokerUrlResolver = builder.pubSubBrokerUrlResolver;
+    this.pubSubSecurityProtocolResolver = builder.pubSubSecurityProtocolResolver;
     this.topicOffsetCheckIntervalMs = builder.topicOffsetCheckIntervalMs;
     this.topicMetadataFetcherConsumerPoolSize = builder.topicMetadataFetcherConsumerPoolSize;
     this.topicMetadataFetcherThreadPoolSize = builder.topicMetadataFetcherThreadPoolSize;
@@ -55,11 +62,11 @@ public class TopicManagerContext {
     return topicMinLogCompactionLagMs;
   }
 
-  public PubSubAdminAdapterFactory<PubSubAdminAdapter> getPubSubAdminAdapterFactory() {
+  public PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> getPubSubAdminAdapterFactory() {
     return pubSubAdminAdapterFactory;
   }
 
-  public PubSubConsumerAdapterFactory<PubSubConsumerAdapter> getPubSubConsumerAdapterFactory() {
+  public PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> getPubSubConsumerAdapterFactory() {
     return pubSubConsumerAdapterFactory;
   }
 
@@ -71,12 +78,8 @@ public class TopicManagerContext {
     return metricsRepository;
   }
 
-  public PubSubPropertiesSupplier getPubSubPropertiesSupplier() {
-    return pubSubPropertiesSupplier;
-  }
-
-  public VeniceProperties getPubSubProperties(String pubSubBootstrapServers) {
-    return pubSubPropertiesSupplier.get(pubSubBootstrapServers);
+  public VeniceProperties getVeniceProperties() {
+    return veniceProperties;
   }
 
   public long getTopicOffsetCheckIntervalMs() {
@@ -91,8 +94,12 @@ public class TopicManagerContext {
     return topicMetadataFetcherThreadPoolSize;
   }
 
-  public interface PubSubPropertiesSupplier {
-    VeniceProperties get(String pubSubBootstrapServers);
+  public Function<String, String> getPubSubBrokerUrlResolver() {
+    return pubSubBrokerUrlResolver;
+  }
+
+  public Function<String, PubSubSecurityProtocol> getPubSubSecurityProtocolResolver() {
+    return pubSubSecurityProtocolResolver;
   }
 
   @Override
@@ -107,11 +114,13 @@ public class TopicManagerContext {
   }
 
   public static class Builder {
-    private PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory;
-    private PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
+    private PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> pubSubAdminAdapterFactory;
+    private PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
     private PubSubTopicRepository pubSubTopicRepository;
     private MetricsRepository metricsRepository;
-    private PubSubPropertiesSupplier pubSubPropertiesSupplier;
+    private VeniceProperties veniceProperties;
+    private Function<String, String> pubSubBrokerUrlResolver;
+    private Function<String, PubSubSecurityProtocol> pubSubSecurityProtocolResolver;
     private long pubSubOperationTimeoutMs = PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
     private long topicDeletionStatusPollIntervalMs = PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
     private long topicMinLogCompactionLagMs = DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
@@ -135,13 +144,13 @@ public class TopicManagerContext {
     }
 
     public Builder setPubSubAdminAdapterFactory(
-        PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory) {
+        PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> pubSubAdminAdapterFactory) {
       this.pubSubAdminAdapterFactory = pubSubAdminAdapterFactory;
       return this;
     }
 
     public Builder setPubSubConsumerAdapterFactory(
-        PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory) {
+        PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> pubSubConsumerAdapterFactory) {
       this.pubSubConsumerAdapterFactory = pubSubConsumerAdapterFactory;
       return this;
     }
@@ -153,11 +162,6 @@ public class TopicManagerContext {
 
     public Builder setMetricsRepository(MetricsRepository metricsRepository) {
       this.metricsRepository = metricsRepository;
-      return this;
-    }
-
-    public Builder setPubSubPropertiesSupplier(PubSubPropertiesSupplier pubSubPropertiesSupplier) {
-      this.pubSubPropertiesSupplier = pubSubPropertiesSupplier;
       return this;
     }
 
@@ -176,6 +180,22 @@ public class TopicManagerContext {
       return this;
     }
 
+    public Builder setVeniceProperties(VeniceProperties veniceProperties) {
+      this.veniceProperties = veniceProperties;
+      return this;
+    }
+
+    public Builder setPubSubBrokerUrlResolver(Function<String, String> pubSubBrokerUrlResolver) {
+      this.pubSubBrokerUrlResolver = pubSubBrokerUrlResolver;
+      return this;
+    }
+
+    public Builder setPubSubSecurityProtocolResolver(
+        Function<String, PubSubSecurityProtocol> pubSubSecurityProtocolResolver) {
+      this.pubSubSecurityProtocolResolver = pubSubSecurityProtocolResolver;
+      return this;
+    }
+
     public void verify() {
       if (pubSubAdminAdapterFactory == null) {
         throw new IllegalArgumentException("pubSubAdminAdapterFactory cannot be null");
@@ -189,8 +209,8 @@ public class TopicManagerContext {
         throw new IllegalArgumentException("pubSubTopicRepository cannot be null");
       }
 
-      if (pubSubPropertiesSupplier == null) {
-        throw new IllegalArgumentException("pubSubPropertiesSupplier cannot be null");
+      if (veniceProperties == null) {
+        throw new IllegalArgumentException("veniceProperties cannot be null");
       }
 
       if (pubSubOperationTimeoutMs <= 0) {
@@ -211,6 +231,15 @@ public class TopicManagerContext {
 
       if (topicMetadataFetcherThreadPoolSize <= 0) {
         throw new IllegalArgumentException("topicMetadataFetcherThreadPoolSize must be positive");
+      }
+
+      if (pubSubBrokerUrlResolver == null) {
+        pubSubBrokerUrlResolver = Function.identity();
+      }
+
+      if (pubSubSecurityProtocolResolver == null) {
+        pubSubSecurityProtocolResolver =
+            inputBrokerAddress -> PubSubUtil.getPubSubSecurityProtocolOrDefault(veniceProperties);
       }
     }
 

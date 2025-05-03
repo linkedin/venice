@@ -1,11 +1,13 @@
 package com.linkedin.venice.pubsub.manager;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -20,13 +22,18 @@ public class TopicManagerRepository implements Closeable {
   private final Map<String, TopicManager> topicManagers = new VeniceConcurrentHashMap<>();
   private final TopicManagerContext topicManagerContext;
   private final String localPubSubAddress;
+  private final Function<String, String> pubSubBrokerUrlResolver;
 
   public TopicManagerRepository(TopicManagerContext topicManagerContext, String localPubSubAddress) {
     this.topicManagerContext = Objects.requireNonNull(topicManagerContext, "topicManagerContext cannot be null");
-    this.localPubSubAddress = Objects.requireNonNull(localPubSubAddress, "localPubSubAddress cannot be null");
+    this.pubSubBrokerUrlResolver = Objects
+        .requireNonNull(topicManagerContext.getPubSubBrokerUrlResolver(), "pubSubBrokerUrlResolver cannot be null");
+    this.localPubSubAddress =
+        Objects.requireNonNull(pubSubBrokerUrlResolver.apply(localPubSubAddress), "localPubSubAddress cannot be null");
   }
 
   // added in order to help with testing; visibility is package-private for testing purposes
+  @VisibleForTesting
   TopicManager createTopicManager(String pubSubAddress) {
     return new TopicManager(pubSubAddress, topicManagerContext);
   }
@@ -39,7 +46,8 @@ public class TopicManagerRepository implements Closeable {
   }
 
   public TopicManager getTopicManager(String pubSubAddress) {
-    return topicManagers.computeIfAbsent(pubSubAddress, this::createTopicManager);
+    String resolvedPubSubAddress = pubSubBrokerUrlResolver.apply(pubSubAddress);
+    return topicManagers.computeIfAbsent(resolvedPubSubAddress, this::createTopicManager);
   }
 
   Collection<TopicManager> getAllTopicManagers() {

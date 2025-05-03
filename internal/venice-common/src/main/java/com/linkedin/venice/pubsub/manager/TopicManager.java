@@ -20,15 +20,16 @@ import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.S
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConstants;
-import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -70,7 +71,7 @@ public class TopicManager implements Closeable {
   private final PubSubTopicRepository pubSubTopicRepository;
   private final TopicManagerStats stats;
   private final TopicMetadataFetcher topicMetadataFetcher;
-  private AtomicBoolean isClosed = new AtomicBoolean(false);
+  private final AtomicBoolean isClosed = new AtomicBoolean(false);
 
   // TODO: Consider moving this cache to TopicMetadataFetcher
   // It's expensive to grab the topic config over and over again, and it changes infrequently.
@@ -86,7 +87,12 @@ public class TopicManager implements Closeable {
     this.stats = new TopicManagerStats(context.getMetricsRepository(), pubSubClusterAddress);
     this.pubSubTopicRepository = context.getPubSubTopicRepository();
     this.pubSubAdminAdapter = context.getPubSubAdminAdapterFactory()
-        .create(context.getPubSubProperties(pubSubClusterAddress), pubSubTopicRepository);
+        .create(
+            new PubSubAdminAdapterContext.Builder().setPubSubBrokerAddress(pubSubClusterAddress)
+                .setVeniceProperties(context.getVeniceProperties())
+                .setPubSubSecurityProtocol(context.getPubSubSecurityProtocolResolver().apply(pubSubClusterAddress))
+                .setPubSubTopicRepository(pubSubTopicRepository)
+                .build());
     this.topicMetadataFetcher = new TopicMetadataFetcher(pubSubClusterAddress, context, stats, pubSubAdminAdapter);
     this.logger.info(
         "Created a topic manager for the pubsub cluster address: {} with context: {}",

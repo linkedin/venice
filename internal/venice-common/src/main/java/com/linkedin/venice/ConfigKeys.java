@@ -1,7 +1,7 @@
 package com.linkedin.venice;
 
+import com.linkedin.venice.annotation.UnderDevelopment;
 import com.linkedin.venice.pubsub.PubSubConstants;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 
 
@@ -54,6 +54,7 @@ public class ConfigKeys {
    *   <li>WarpStream: {@code "pubsub.warpstream.bucket.url"}</li>
    * </ul>
    */
+  @UnderDevelopment
   public static final String PUBSUB_CLIENT_CONFIG_PREFIX = PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
   /**
@@ -158,6 +159,7 @@ public class ConfigKeys {
 
   public static final String KAFKA_CONFIG_PREFIX = ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
   public static final String KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
+  @Deprecated
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.SSL_KAFKA_BOOTSTRAP_SERVERS;
   public static final String KAFKA_LINGER_MS = ApacheKafkaProducerConfig.KAFKA_LINGER_MS;
   public static final String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS =
@@ -165,18 +167,6 @@ public class ConfigKeys {
   public static final String KAFKA_PRODUCER_RETRIES_CONFIG = ApacheKafkaProducerConfig.KAFKA_PRODUCER_RETRIES_CONFIG;
   public static final String KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS =
       ApacheKafkaProducerConfig.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
-
-  public static final String KAFKA_CLIENT_ID_CONFIG = ApacheKafkaConsumerConfig.KAFKA_CLIENT_ID_CONFIG;
-  public static final String KAFKA_GROUP_ID_CONFIG = ApacheKafkaConsumerConfig.KAFKA_GROUP_ID_CONFIG;
-  public static final String KAFKA_AUTO_OFFSET_RESET_CONFIG = ApacheKafkaConsumerConfig.KAFKA_AUTO_OFFSET_RESET_CONFIG;
-  public static final String KAFKA_ENABLE_AUTO_COMMIT_CONFIG =
-      ApacheKafkaConsumerConfig.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
-  public static final String KAFKA_FETCH_MIN_BYTES_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MIN_BYTES_CONFIG;
-  public static final String KAFKA_FETCH_MAX_BYTES_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MAX_BYTES_CONFIG;
-  public static final String KAFKA_MAX_POLL_RECORDS_CONFIG = ApacheKafkaConsumerConfig.KAFKA_MAX_POLL_RECORDS_CONFIG;
-  public static final String KAFKA_FETCH_MAX_WAIT_MS_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MAX_WAIT_MS_CONFIG;
-  public static final String KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG =
-      ApacheKafkaConsumerConfig.KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG;
 
   public static final String KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC =
       "kafka.admin.get.topic.config.max.retry.sec";
@@ -234,6 +224,7 @@ public class ConfigKeys {
 
   // Kafka security protocol
   public static final String KAFKA_SECURITY_PROTOCOL = "security.protocol";
+  public static final String PUBSUB_SECURITY_PROTOCOL = PUBSUB_CLIENT_CONFIG_PREFIX + KAFKA_SECURITY_PROTOCOL;
 
   /**
    * Number of PubSub consumer clients to be used per topic manager for fetching metadata.
@@ -340,10 +331,11 @@ public class ConfigKeys {
   public static final String REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS = "refresh.interval.for.zk.reconnect.ms";
   public static final String KAFKA_READ_CYCLE_DELAY_MS = "kafka.read.cycle.delay.ms";
   public static final String KAFKA_EMPTY_POLL_SLEEP_MS = "kafka.empty.poll.sleep.ms";
-  public static final String KAFKA_FETCH_MIN_SIZE_PER_SEC = "kafka.fetch.min.size.per.sec";
-  public static final String KAFKA_FETCH_MAX_SIZE_PER_SEC = "kafka.fetch.max.size.per.sec";
+
   public static final String KAFKA_FETCH_MAX_WAIT_TIME_MS = "kafka.fetch.max.wait.time.ms";
   public static final String KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC = "kafka.fetch.partition.max.size.per.sec";
+  public static final String PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS =
+      PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS;
 
   // Controller specific configs
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
@@ -785,15 +777,6 @@ public class ConfigKeys {
    * Server quota enforcement capacity multiple.
    */
   public static final String SERVER_QUOTA_ENFORCEMENT_CAPACITY_MULTIPLE = "server.quota.enforcement.capacity.multiple";
-
-  /**
-   * This config is used to control the maximum records returned by every poll request.
-   * So far, Store Ingestion is throttling per poll, so if the configured value is too big,
-   * the throttling could be inaccurate and it may impact GC as well.
-   *
-   * We should try to avoid too many long-lasting objects in JVM to minimize GC overhead.
-   */
-  public static final String SERVER_KAFKA_MAX_POLL_RECORDS = "server.kafka.max.poll.records";
 
   /**
    * This config is used to control how many times PubSub consumer would retry polling during ingestion
@@ -1545,34 +1528,6 @@ public class ConfigKeys {
    * TODO: it will be moved to Store metadata if we allow stores have various storage engine types.
    */
   public static final String STORAGE_ENGINE_OVERHEAD_RATIO = "storage.engine.overhead.ratio";
-
-  // go/inclusivecode deprecated(alias="enable.offline.push.ssl.allowlist")
-  @Deprecated
-  public static final String ENABLE_OFFLINE_PUSH_SSL_WHITELIST = "enable.offline.push.ssl.whitelist";
-  /**
-   * The switcher to enable/disable the allowlist of ssl offline pushes. If we disable the allowlist here, depends on
-   * the config "SSL_TO_KAFKA", all pushes will be secured by SSL or none of pushes will be secured by SSL.
-   */
-  public static final String ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST = "enable.offline.push.ssl.allowlist";
-
-  // go/inclusivecode deprecated(alias="enable.hybrid.push.ssl.allowlist")
-  @Deprecated
-  public static final String ENABLE_HYBRID_PUSH_SSL_WHITELIST = "enable.hybrid.push.ssl.whitelist";
-  /**
-   * The switcher to enable/disable the allowlist of ssl hybrid pushes including both batch and near-line pushes for
-   * that store. If we disable the allowlist here, depends on the config "SSL_TO_KAFKA", all pushes will be secured by
-   * SSL or none of pushes will be secured by SSL.
-   */
-  public static final String ENABLE_HYBRID_PUSH_SSL_ALLOWLIST = "enable.hybrid.push.ssl.allowlist";
-
-  // go/inclusivecode deprecated(alias="push.ssl.allowlist")
-  @Deprecated
-  public static final String PUSH_SSL_WHITELIST = "push.ssl.whitelist";
-
-  /**
-   * Allowlist of stores which are allowed to push data with SSL.
-   */
-  public static final String PUSH_SSL_ALLOWLIST = "push.ssl.allowlist";
 
   /**
    * Whether to block storage requests on the non-ssl port.  Will still allow metadata requests on the non-ssl port

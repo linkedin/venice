@@ -8,10 +8,10 @@ import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.ReporterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -53,14 +53,16 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
 
   protected Map<PubSubTopicPartition, Long> getLatestOffsets(JobConf config) {
     VeniceProperties consumerProperties = KafkaInputUtils.getConsumerProperties(config);
-    TopicManagerContext topicManagerContext =
-        new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> consumerProperties)
-            .setPubSubTopicRepository(pubSubTopicRepository)
-            .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
-            .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
-            .setTopicMetadataFetcherThreadPoolSize(1)
-            .setTopicMetadataFetcherConsumerPoolSize(1)
-            .build();
+    PubSubClientsFactory pubSubClientsFactory = new PubSubClientsFactory(consumerProperties);
+    TopicManagerContext topicManagerContext = new TopicManagerContext.Builder().setVeniceProperties(consumerProperties)
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
+        .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
+        .setPubSubSecurityProtocolResolver(
+            brokerUrl -> PubSubUtil.getPubSubSecurityProtocolOrDefault(consumerProperties))
+        .setTopicMetadataFetcherThreadPoolSize(1)
+        .setTopicMetadataFetcherConsumerPoolSize(1)
+        .build();
     try (TopicManager topicManager =
         new TopicManagerRepository(topicManagerContext, config.get(KAFKA_INPUT_BROKER_URL)).getLocalTopicManager()) {
       PubSubTopic topic = pubSubTopicRepository.getTopic(config.get(KAFKA_INPUT_TOPIC));

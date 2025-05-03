@@ -1081,11 +1081,11 @@ public class Utils {
   }
 
   public static String getReplicaId(String topic, int partition) {
-    return topic + "-" + partition;
+    return (topic + "-" + partition).intern();
   }
 
   public static String getReplicaId(PubSubTopic topic, int partition) {
-    return topic + "-" + partition;
+    return getReplicaId(topic.getName(), partition);
   }
 
   /**

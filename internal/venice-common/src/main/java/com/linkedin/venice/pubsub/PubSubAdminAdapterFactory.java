@@ -1,8 +1,6 @@
 package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Closeable;
 
 
@@ -24,13 +22,10 @@ public abstract class PubSubAdminAdapterFactory<ADAPTER extends PubSubAdminAdapt
 
   /**
    *
-   * @param veniceProperties            A copy of venice properties. Relevant producer configs will be extracted from
-   *                                    veniceProperties using prefix matching. For example, to construct kafka producer
-   *                                    configs that start with "kafka." prefix will be used.
-   * @param pubSubTopicRepository       A repo to cache created {@link PubSubTopic}s.
+   * @param context                     Context for creating the admin adapter.
    * @return                            Returns an instance of an admin adapter
    */
-  public abstract ADAPTER create(VeniceProperties veniceProperties, PubSubTopicRepository pubSubTopicRepository);
+  public abstract ADAPTER create(PubSubAdminAdapterContext context);
 
   public abstract String getName();
 }

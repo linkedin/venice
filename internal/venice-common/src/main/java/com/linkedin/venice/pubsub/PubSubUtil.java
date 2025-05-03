@@ -1,29 +1,40 @@
 package com.linkedin.venice.pubsub;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
+import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 
 
 public final class PubSubUtil {
-  public static String getPubSubBrokerAddress(Properties properties) {
+  public static String getPubSubBrokerAddressOrFail(VeniceProperties properties) {
+    String pubSubBrokerAddress = properties.getStringWithAlternative(PUBSUB_BROKER_ADDRESS, KAFKA_BOOTSTRAP_SERVERS);
+    if (pubSubBrokerAddress == null) {
+      throw new IllegalArgumentException(
+          "Missing required broker address. Please specify either '" + KAFKA_BOOTSTRAP_SERVERS + "' or '"
+              + PUBSUB_BROKER_ADDRESS + "' in the configuration.");
+    }
+    return pubSubBrokerAddress;
+  }
+
+  public static String getPubSubBrokerAddressOrFail(Properties properties) {
     String brokerAddress = properties.getProperty(PUBSUB_BROKER_ADDRESS);
     if (brokerAddress == null) {
       brokerAddress = properties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     }
+    if (brokerAddress == null) {
+      throw new IllegalArgumentException(
+          "Missing required broker address. Please specify either '" + KAFKA_BOOTSTRAP_SERVERS + "' or '"
+              + PUBSUB_BROKER_ADDRESS + "' in the configuration.");
+    }
     return brokerAddress;
-  }
-
-  public static String getPubSubBrokerAddress(VeniceProperties properties) {
-    return properties.getStringWithAlternative(PUBSUB_BROKER_ADDRESS, KAFKA_BOOTSTRAP_SERVERS);
-  }
-
-  public static String getPubSubBrokerAddressWithDefault(VeniceProperties properties, String defaultValue) {
-    return properties.getStringWithAlternative(PUBSUB_BROKER_ADDRESS, KAFKA_BOOTSTRAP_SERVERS, defaultValue);
   }
 
   public static Properties addPubSubBrokerAddress(Properties properties, String brokerAddress) {
@@ -86,5 +97,15 @@ public final class PubSubUtil {
       throw new IllegalArgumentException("Adapter config prefix must not be null or empty and must end with '.'");
     }
     return PUBSUB_CLIENT_CONFIG_PREFIX + adapterConfigPrefix + pubSubClientType.name().toLowerCase() + ".";
+  }
+
+  public static PubSubSecurityProtocol getPubSubSecurityProtocolOrDefault(VeniceProperties properties) {
+    String securityProtocol =
+        properties.getStringWithAlternative(KAFKA_SECURITY_PROTOCOL, PUBSUB_SECURITY_PROTOCOL, null);
+    if (securityProtocol == null) {
+      securityProtocol =
+          properties.getString(KAFKA_CONFIG_PREFIX + KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name());
+    }
+    return PubSubSecurityProtocol.forName(securityProtocol);
   }
 }

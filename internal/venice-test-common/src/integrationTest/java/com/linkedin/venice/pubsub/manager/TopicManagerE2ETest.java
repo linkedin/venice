@@ -12,8 +12,10 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -96,15 +98,29 @@ public class TopicManagerE2ETest {
         () -> pubSubClientsFactory.getProducerAdapterFactory()
             .create(
                 new PubSubProducerAdapterContext.Builder().setVeniceProperties(veniceProperties)
-                    .setBrokerAddress(pubSubBrokerWrapper.getAddress())
+                    .setPubSubBrokerAddress(pubSubBrokerWrapper.getAddress())
                     .setProducerName(clientId)
                     .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
                     .build()));
-    pubSubAdminAdapterLazy =
-        Lazy.of(() -> pubSubClientsFactory.getAdminAdapterFactory().create(veniceProperties, pubSubTopicRepository));
+    pubSubAdminAdapterLazy = Lazy.of(
+        () -> pubSubClientsFactory.getAdminAdapterFactory()
+            .create(
+                new PubSubAdminAdapterContext.Builder().setVeniceProperties(veniceProperties)
+                    .setPubSubBrokerAddress(pubSubBrokerWrapper.getAddress())
+                    .setAdminClientName(clientId)
+                    .setPubSubTopicRepository(pubSubTopicRepository)
+                    .setMetricsRepository(new MetricsRepository())
+                    .build()));
     pubSubConsumerAdapterLazy = Lazy.of(
         () -> pubSubClientsFactory.getConsumerAdapterFactory()
-            .create(veniceProperties, false, pubSubMessageDeserializer, clientId));
+            .create(
+                new PubSubConsumerAdapterContext.Builder().setVeniceProperties(veniceProperties)
+                    .setPubSubBrokerAddress(pubSubBrokerWrapper.getAddress())
+                    .setPubSubTopicRepository(pubSubTopicRepository)
+                    .setPubSubMessageDeserializer(pubSubMessageDeserializer)
+                    .setConsumerName(clientId)
+                    .setIsOffsetCollectionEnabled(false)
+                    .build()));
 
     metricsRepository = new MetricsRepository();
     topicManagerContextBuilder = new TopicManagerContext.Builder().setPubSubTopicRepository(pubSubTopicRepository)
@@ -112,7 +128,6 @@ public class TopicManagerE2ETest {
         .setTopicMetadataFetcherConsumerPoolSize(2)
         .setTopicMetadataFetcherThreadPoolSize(6)
         .setTopicOffsetCheckIntervalMs(100)
-        .setPubSubPropertiesSupplier(k -> veniceProperties)
         .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
         .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory());
 

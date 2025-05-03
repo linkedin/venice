@@ -1,7 +1,6 @@
-package com.linkedin.venice.pubsub;
+package com.linkedin.venice.pubsub.api;
 
-import com.linkedin.venice.pubsub.api.PubSubTopic;
-import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 
 
 public class PubSubTopicPartitionInfo {

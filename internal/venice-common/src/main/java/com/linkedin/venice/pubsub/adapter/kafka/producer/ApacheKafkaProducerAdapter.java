@@ -59,6 +59,7 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
     this.producerConfig = cfg;
     this.producer = producer;
     this.messageSerializer = cfg.getPubSubMessageSerializer();
+    LOGGER.info("Created ApacheKafkaProducerAdapter with config: {}", cfg);
   }
 
   /**

@@ -24,9 +24,9 @@ import org.apache.logging.log4j.Logger;
 public class PubSubProducerAdapterContext {
   private static final Logger LOGGER = LogManager.getLogger(PubSubProducerAdapterContext.class);
   private final String producerName;
-  private final String brokerAddress;
+  private final String pubSubBrokerAddress;
   private final VeniceProperties veniceProperties;
-  private final PubSubSecurityProtocol securityProtocol;
+  private final PubSubSecurityProtocol pubSubSecurityProtocol;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final MetricsRepository metricsRepository;
   private final PubSubTopicRepository pubSubTopicRepository;
@@ -37,9 +37,9 @@ public class PubSubProducerAdapterContext {
 
   private PubSubProducerAdapterContext(Builder builder) {
     this.producerName = builder.producerName;
-    this.brokerAddress = builder.brokerAddress;
+    this.pubSubBrokerAddress = builder.pubSubBrokerAddress;
     this.veniceProperties = builder.veniceProperties;
-    this.securityProtocol = builder.securityProtocol;
+    this.pubSubSecurityProtocol = builder.pubSubSecurityProtocol;
     this.metricsRepository = builder.metricsRepository;
     this.pubSubTopicRepository = builder.pubSubTopicRepository;
     this.shouldValidateProducerConfigStrictly = builder.shouldValidateProducerConfigStrictly;
@@ -53,16 +53,16 @@ public class PubSubProducerAdapterContext {
     return producerName;
   }
 
-  public String getBrokerAddress() {
-    return brokerAddress;
+  public String getPubSubBrokerAddress() {
+    return pubSubBrokerAddress;
   }
 
   public VeniceProperties getVeniceProperties() {
     return veniceProperties;
   }
 
-  public PubSubSecurityProtocol getSecurityProtocol() {
-    return securityProtocol;
+  public PubSubSecurityProtocol getPubSubSecurityProtocol() {
+    return pubSubSecurityProtocol;
   }
 
   public MetricsRepository getMetricsRepository() {
@@ -95,9 +95,9 @@ public class PubSubProducerAdapterContext {
 
   public static class Builder {
     private String producerName;
-    private String brokerAddress;
+    private String pubSubBrokerAddress;
     private VeniceProperties veniceProperties;
-    private PubSubSecurityProtocol securityProtocol;
+    private PubSubSecurityProtocol pubSubSecurityProtocol;
     private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
     private MetricsRepository metricsRepository;
     private PubSubTopicRepository pubSubTopicRepository;
@@ -111,8 +111,8 @@ public class PubSubProducerAdapterContext {
       return this;
     }
 
-    public Builder setBrokerAddress(String brokerAddress) {
-      this.brokerAddress = brokerAddress;
+    public Builder setPubSubBrokerAddress(String pubSubBrokerAddress) {
+      this.pubSubBrokerAddress = pubSubBrokerAddress;
       return this;
     }
 
@@ -127,8 +127,8 @@ public class PubSubProducerAdapterContext {
       return this;
     }
 
-    public Builder setSecurityProtocol(PubSubSecurityProtocol securityProtocol) {
-      this.securityProtocol = securityProtocol;
+    public Builder setPubSubSecurityProtocol(PubSubSecurityProtocol pubSubSecurityProtocol) {
+      this.pubSubSecurityProtocol = pubSubSecurityProtocol;
       return this;
     }
 
@@ -169,7 +169,7 @@ public class PubSubProducerAdapterContext {
             PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
         pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
       }
-      if (brokerAddress == null) {
+      if (pubSubBrokerAddress == null) {
         throw new VeniceException("Broker address must be provided to create a pub-sub producer");
       }
       if (veniceProperties == null) {
@@ -183,8 +183,12 @@ public class PubSubProducerAdapterContext {
       } else if (compressionType == null) {
         compressionType = "gzip";
       }
+      if (pubSubSecurityProtocol == null) {
+        pubSubSecurityProtocol = PubSubUtil.getPubSubSecurityProtocolOrDefault(veniceProperties);
+        // throw new VeniceException("PubSubSecurityProtocol must be provided to create a pub-sub producer");
+      }
 
-      producerName = PubSubUtil.generatePubSubClientId(PubSubClientType.PRODUCER, producerName, brokerAddress);
+      producerName = PubSubUtil.generatePubSubClientId(PubSubClientType.PRODUCER, producerName, pubSubBrokerAddress);
       return new PubSubProducerAdapterContext(this);
     }
   }

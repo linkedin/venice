@@ -1,8 +1,6 @@
 package com.linkedin.venice.pubsub.api.consumer;
 
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_CHECK_TOPIC_EXISTENCE;
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_POSITION_RESET_STRATEGY;
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_POSITION_RESET_STRATEGY_DEFAULT_VALUE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -14,12 +12,12 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
-import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
@@ -28,7 +26,9 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
@@ -113,18 +113,31 @@ public class PubSubConsumerAdapterTest {
     pubSubProperties.putAll(pubSubBrokerWrapper.getAdditionalConfig());
     pubSubProperties.putAll(pubSubBrokerWrapper.getMergeableConfigs());
     VeniceProperties veniceProperties = new VeniceProperties(pubSubProperties);
-    pubSubConsumerAdapter = pubSubClientsFactory.getConsumerAdapterFactory()
-        .create(veniceProperties, false, pubSubMessageDeserializer, clientId);
+
+    PubSubConsumerAdapterContext consumerContext =
+        new PubSubConsumerAdapterContext.Builder().setPubSubBrokerAddress(pubSubBrokerWrapper.getAddress())
+            .setVeniceProperties(veniceProperties)
+            .setIsOffsetCollectionEnabled(false)
+            .setPubSubMessageDeserializer(pubSubMessageDeserializer)
+            .setConsumerName(clientId)
+            .build();
+    pubSubConsumerAdapter = pubSubClientsFactory.getConsumerAdapterFactory().create(consumerContext);
     pubSubProducerAdapterLazy = Lazy.of(
         () -> pubSubClientsFactory.getProducerAdapterFactory()
             .create(
                 new PubSubProducerAdapterContext.Builder().setVeniceProperties(veniceProperties)
                     .setProducerName(clientId)
-                    .setBrokerAddress(pubSubBrokerWrapper.getAddress())
+                    .setPubSubBrokerAddress(pubSubBrokerWrapper.getAddress())
                     .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
                     .build()));
-    pubSubAdminAdapterLazy =
-        Lazy.of(() -> pubSubClientsFactory.getAdminAdapterFactory().create(veniceProperties, pubSubTopicRepository));
+    pubSubAdminAdapterLazy = Lazy.of(
+        () -> pubSubClientsFactory.getAdminAdapterFactory()
+            .create(
+                new PubSubAdminAdapterContext.Builder().setVeniceProperties(veniceProperties)
+                    .setPubSubBrokerAddress(pubSubBrokerWrapper.getAddress())
+                    .setAdminClientName(clientId)
+                    .setPubSubTopicRepository(pubSubTopicRepository)
+                    .build()));
   }
 
   protected Properties getPubSubProperties() {
@@ -134,8 +147,6 @@ public class PubSubConsumerAdapterTest {
         PubSubConstants.PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS,
         String.valueOf(PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS));
     properties.setProperty(PUBSUB_CONSUMER_CHECK_TOPIC_EXISTENCE, "true");
-    properties
-        .setProperty(PUBSUB_CONSUMER_POSITION_RESET_STRATEGY, PUBSUB_CONSUMER_POSITION_RESET_STRATEGY_DEFAULT_VALUE);
     return properties;
   }
 

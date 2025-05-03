@@ -37,13 +37,13 @@ public class TestKafkaInputFormat {
   private static final String KAFKA_MESSAGE_VALUE_PREFIX = "value_";
 
   private PubSubBrokerWrapper pubSubBrokerWrapper;
-  private TopicManager manager;
+  private TopicManager topicManager;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
-    manager =
+    topicManager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(
                 PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
@@ -56,13 +56,13 @@ public class TestKafkaInputFormat {
 
   @AfterClass
   public void cleanUp() throws IOException {
-    manager.close();
+    topicManager.close();
     pubSubBrokerWrapper.close();
   }
 
   public PubSubTopic getTopic(int numRecord, int numPartition) {
     PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueString("test_kafka_input_format") + "_v1");
-    manager.createTopic(topic, numPartition, 1, true);
+    topicManager.createTopic(topic, numPartition, 1, true);
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
         pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
     VeniceWriterFactory veniceWriterFactory =

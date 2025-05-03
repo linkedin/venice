@@ -16,7 +16,6 @@ import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdap
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
@@ -91,11 +90,7 @@ public class PubSubClientsFactoryTest {
 
   protected static class TestPubSubConsumerAdapterFactory extends PubSubConsumerAdapterFactory {
     @Override
-    public PubSubConsumerAdapter create(
-        VeniceProperties veniceProperties,
-        boolean isOffsetCollectionEnabled,
-        PubSubMessageDeserializer pubSubMessageDeserializer,
-        String consumerName) {
+    public PubSubConsumerAdapter create(PubSubConsumerAdapterContext context) {
       return null;
     }
 
@@ -129,7 +124,7 @@ public class PubSubClientsFactoryTest {
 
   protected static class TestPubSubAdminAdapterFactory extends PubSubAdminAdapterFactory {
     @Override
-    public PubSubAdminAdapter create(VeniceProperties veniceProperties, PubSubTopicRepository pubSubTopicRepository) {
+    public PubSubAdminAdapter create(PubSubAdminAdapterContext context) {
       return null;
     }
 

@@ -82,6 +82,8 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceServerResponse;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -107,7 +109,6 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueSize;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
@@ -163,6 +164,8 @@ public class StorageReadRequestHandlerTest {
       runnable.run();
     }
   }
+
+  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   private final ChannelHandlerContext context = mock(ChannelHandlerContext.class);
   private final ArgumentCaptor<Object> argumentCaptor = ArgumentCaptor.forClass(Object.class);
@@ -547,8 +550,7 @@ public class StorageReadRequestHandlerTest {
     // Mock the AdminResponse from ingestion task
     AdminResponse expectedAdminResponse = new AdminResponse();
     PartitionConsumptionState state = new PartitionConsumptionState(
-        Utils.getReplicaId(topic, expectedPartitionId),
-        expectedPartitionId,
+        new PubSubTopicPartitionImpl(TOPIC_REPOSITORY.getTopic(topic), expectedPartitionId),
         new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()),
         false);
     expectedAdminResponse.addPartitionConsumptionState(state);

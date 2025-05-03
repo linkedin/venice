@@ -7,10 +7,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_OTHER_URLS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_EMPTY_POLL_SLEEP_MS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_SIZE_PER_SEC;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_WAIT_TIME_MS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MIN_SIZE_PER_SEC;
-import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_BYTES_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_TIME_WINDOW_MS;
@@ -19,16 +15,18 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_UNORDERED_RECORDS
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_CYCLE_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Utils;
@@ -46,7 +44,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -60,7 +57,6 @@ public class VeniceClusterConfig {
   private final String clusterName;
   private final String zookeeperAddress;
   private final PersistenceType persistenceType;
-  private final String kafkaBootstrapServers;
   private final long kafkaFetchQuotaTimeWindow;
   private final long kafkaFetchQuotaBytesPerSecond;
   private final long kafkaFetchQuotaRecordPerSecond;
@@ -70,11 +66,8 @@ public class VeniceClusterConfig {
   private final long refreshIntervalForZkReconnectInMs;
   private final long kafkaReadCycleDelayMs;
   private final long kafkaEmptyPollSleepMs;
-  private final long kafkaFetchMinSizePerSecond;
-  private final long kafkaFetchMaxSizePerSecond;
-  private final long kafkaFetchMaxTimeMS;
-  private final long kafkaFetchPartitionMaxSizePerSecond;
   private final String regionName;
+  private final boolean shouldUseHighThroughputDefaultsForPubSubProducer;
 
   /**
    * TODO: Encapsulate all these mappings into a "PubSubServiceRepo" which can hand out "PubSubService" objects
@@ -91,10 +84,12 @@ public class VeniceClusterConfig {
 
   private final VeniceProperties clusterProperties;
 
-  private final PubSubSecurityProtocol kafkaSecurityProtocol;
   private final Map<String, PubSubSecurityProtocol> kafkaBootstrapUrlToSecurityProtocol;
   private final Optional<SSLConfig> sslConfig;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
+  protected final Function<String, PubSubSecurityProtocol> pubSubSecurityProtocolResolver;
+  protected final String localPubSubBrokerAddress;
+  protected final PubSubSecurityProtocol pubSubSecurityProtocol;
 
   public VeniceClusterConfig(VeniceProperties clusterProps, Map<String, Map<String, String>> kafkaClusterMap)
       throws ConfigurationException {
@@ -107,7 +102,8 @@ public class VeniceClusterConfig {
     } catch (UndefinedPropertyException ex) {
       throw new ConfigurationException("persistence type undefined", ex);
     }
-    String baseKafkaBootstrapServers = clusterProps.getString(KAFKA_BOOTSTRAP_SERVERS);
+    String baseKafkaBootstrapServers =
+        clusterProps.getStringWithAlternative(PUBSUB_BROKER_ADDRESS, KAFKA_BOOTSTRAP_SERVERS);
     if (baseKafkaBootstrapServers == null || baseKafkaBootstrapServers.isEmpty()) {
       throw new ConfigurationException("kafkaBootstrapServers can't be empty");
     }
@@ -126,23 +122,11 @@ public class VeniceClusterConfig {
         clusterProps.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, TimeUnit.SECONDS.toMillis(10));
     this.kafkaReadCycleDelayMs = clusterProps.getLong(KAFKA_READ_CYCLE_DELAY_MS, 1000);
     this.kafkaEmptyPollSleepMs = clusterProps.getLong(KAFKA_EMPTY_POLL_SLEEP_MS, 0);
-    // get fetching related from config or use the kafka default values.
-    this.kafkaFetchMinSizePerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_MIN_SIZE_PER_SEC, 1);
-    this.kafkaFetchMaxSizePerSecond =
-        clusterProps.getSizeInBytes(KAFKA_FETCH_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_FETCH_MAX_BYTES);
-    this.kafkaFetchMaxTimeMS = clusterProps.getLong(KAFKA_FETCH_MAX_WAIT_TIME_MS, 500);
-    this.kafkaFetchPartitionMaxSizePerSecond = clusterProps
-        .getSizeInBytes(KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_MAX_PARTITION_FETCH_BYTES);
+    this.shouldUseHighThroughputDefaultsForPubSubProducer =
+        clusterProps.getBoolean(ConfigKeys.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, true);
 
     this.regionName = RegionUtils.getLocalRegionName(clusterProps, false);
     LOGGER.info("Final region name for this node: {}", this.regionName);
-
-    String kafkaSecurityProtocolString =
-        clusterProps.getString(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name());
-    if (!ApacheKafkaUtils.isKafkaProtocolValid(kafkaSecurityProtocolString)) {
-      throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocolString);
-    }
-    this.kafkaSecurityProtocol = PubSubSecurityProtocol.forName(kafkaSecurityProtocolString);
 
     Int2ObjectMap<String> tmpKafkaClusterIdToUrlMap = new Int2ObjectOpenHashMap<>();
     Object2IntMap<String> tmpKafkaClusterUrlToIdMap = new Object2IntOpenHashMap<>();
@@ -230,8 +214,10 @@ public class VeniceClusterConfig {
     this.kafkaClusterUrlResolver = this.kafkaClusterIdToUrlMap.size() == this.kafkaClusterUrlToIdMap.size()
         ? Utils::resolveKafkaUrlForSepTopic
         : url -> Utils.resolveKafkaUrlForSepTopic(kafkaUrlResolution.getOrDefault(url, url));
-    this.kafkaBootstrapServers = this.kafkaClusterUrlResolver.apply(baseKafkaBootstrapServers);
-    if (this.kafkaBootstrapServers == null || this.kafkaBootstrapServers.isEmpty()) {
+    this.localPubSubBrokerAddress = this.kafkaClusterUrlResolver.apply(baseKafkaBootstrapServers);
+    if (this.localPubSubBrokerAddress == null || this.localPubSubBrokerAddress.isEmpty()) {
+      LOGGER
+          .error("PubSub bootstrap address can't be empty. Local bootstrap address: {}", this.localPubSubBrokerAddress);
       throw new ConfigurationException("kafkaBootstrapServers can't be empty");
     }
 
@@ -242,22 +228,46 @@ public class VeniceClusterConfig {
     }
     this.kafkaClusterUrlToAliasMap = Collections.unmodifiableMap(tmpKafkaClusterUrlToAliasMap);
 
-    if (!ApacheKafkaUtils.isKafkaProtocolValid(kafkaSecurityProtocolString)) {
-      throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocolString);
+    this.pubSubSecurityProtocol = PubSubSecurityProtocol.forName(
+        clusterProps.getStringWithAlternative(
+            KAFKA_SECURITY_PROTOCOL,
+            PUBSUB_SECURITY_PROTOCOL,
+            PubSubSecurityProtocol.PLAINTEXT.name()));
+    this.pubSubSecurityProtocolResolver = inputPubSubAddress -> kafkaBootstrapUrlToSecurityProtocol
+        .getOrDefault(inputPubSubAddress, pubSubSecurityProtocol);
+
+    PubSubSecurityProtocol resolvedPubSubSecurityProtocolForLocalAddress =
+        pubSubSecurityProtocolResolver.apply(localPubSubBrokerAddress);
+    if (resolvedPubSubSecurityProtocolForLocalAddress != pubSubSecurityProtocol) {
+      LOGGER.error(
+          "The security protocol for the local PubSub broker address {} is {} but the default security protocol is {}",
+          localPubSubBrokerAddress,
+          resolvedPubSubSecurityProtocolForLocalAddress,
+          pubSubSecurityProtocol);
+      throw new ConfigurationException(
+          "The security protocol for the local PubSub broker address is different from the default security protocol");
     }
-    if (ApacheKafkaUtils.isKafkaSSLProtocol(kafkaSecurityProtocolString)
-        || kafkaBootstrapUrlToSecurityProtocol.containsValue(PubSubSecurityProtocol.SSL)) {
+
+    /**
+     * If the security protocol is SSL or SASL_SSL for any of the PubSub URLs, we need to load the SSL config.
+     * Otherwise, we don't need to load the SSL config.
+     */
+    if (PubSubSecurityProtocol.isSslProtocol(pubSubSecurityProtocol)
+        || kafkaBootstrapUrlToSecurityProtocol.containsValue(PubSubSecurityProtocol.SSL)
+        || kafkaBootstrapUrlToSecurityProtocol.containsValue(PubSubSecurityProtocol.SASL_SSL)) {
       this.sslConfig = Optional.of(new SSLConfig(clusterProps));
     } else {
       this.sslConfig = Optional.empty();
     }
 
     LOGGER.info(
-        "Derived kafka cluster mapping: kafkaClusterIdToUrlMap: {}, kafkaClusterUrlToIdMap: {}, kafkaClusterIdToAliasMap: {}, kafkaClusterAliasToIdMap: {}",
+        "Derived kafka cluster mapping: kafkaClusterIdToUrlMap: {}, kafkaClusterUrlToIdMap: {}, kafkaClusterIdToAliasMap: {}, kafkaClusterAliasToIdMap: {}, kafkaUrlResolution: {}, kafkaBootstrapUrlToSecurityProtocol: {}",
         tmpKafkaClusterIdToUrlMap,
         tmpKafkaClusterUrlToIdMap,
         tmpKafkaClusterIdToAliasMap,
-        tmpKafkaClusterAliasToIdMap);
+        tmpKafkaClusterAliasToIdMap,
+        kafkaUrlResolution,
+        kafkaBootstrapUrlToSecurityProtocol);
     this.clusterProperties = clusterProps;
     this.kafkaClusterMap = kafkaClusterMap;
   }
@@ -274,13 +284,16 @@ public class VeniceClusterConfig {
     return persistenceType;
   }
 
-  public String getKafkaBootstrapServers() {
-    return kafkaBootstrapServers;
+  public String getLocalPubSubBrokerAddress() {
+    return localPubSubBrokerAddress;
   }
 
-  public PubSubSecurityProtocol getKafkaSecurityProtocol(String kafkaBootstrapUrl) {
-    PubSubSecurityProtocol clusterSpecificSecurityProtocol = kafkaBootstrapUrlToSecurityProtocol.get(kafkaBootstrapUrl);
-    return clusterSpecificSecurityProtocol == null ? kafkaSecurityProtocol : clusterSpecificSecurityProtocol;
+  public Function<String, PubSubSecurityProtocol> getPubSubSecurityProtocolResolver() {
+    return pubSubSecurityProtocolResolver;
+  }
+
+  public PubSubSecurityProtocol getPubSubSecurityProtocol() {
+    return pubSubSecurityProtocol;
   }
 
   public Optional<SSLConfig> getSslConfig() {
@@ -301,22 +314,6 @@ public class VeniceClusterConfig {
 
   public long getKafkaEmptyPollSleepMs() {
     return kafkaEmptyPollSleepMs;
-  }
-
-  public long getKafkaFetchMinSizePerSecond() {
-    return kafkaFetchMinSizePerSecond;
-  }
-
-  public long getKafkaFetchMaxSizePerSecond() {
-    return kafkaFetchMaxSizePerSecond;
-  }
-
-  public long getKafkaFetchMaxTimeMS() {
-    return kafkaFetchMaxTimeMS;
-  }
-
-  public long getKafkaFetchPartitionMaxSizePerSecond() {
-    return kafkaFetchPartitionMaxSizePerSecond;
   }
 
   public long getKafkaFetchQuotaTimeWindow() {
@@ -404,5 +401,9 @@ public class VeniceClusterConfig {
     }
     String originalAlias = alias.substring(0, alias.length() - Utils.SEPARATE_TOPIC_SUFFIX.length());
     return kafkaClusterAliasToIdMap.getInt(originalAlias);
+  }
+
+  public boolean shouldUseHighThroughputDefaultsForPubSubProducer() {
+    return shouldUseHighThroughputDefaultsForPubSubProducer;
   }
 }

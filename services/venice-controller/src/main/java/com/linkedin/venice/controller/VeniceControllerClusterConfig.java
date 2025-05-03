@@ -114,11 +114,7 @@ import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE;
-import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_ALLOWLIST;
-import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_INCREMENTAL_PUSH_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
-import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST;
-import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTIAL_UPDATE_FOR_HYBRID_ACTIVE_ACTIVE_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTIAL_UPDATE_FOR_HYBRID_NON_ACTIVE_ACTIVE_USER_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_PARTITION_COUNT_ROUND_UP;
@@ -135,7 +131,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_LOG_COMPACTION_FOR_HYBRID_STO
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
@@ -167,8 +162,6 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCH
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.PUSH_SSL_ALLOWLIST;
-import static com.linkedin.venice.ConfigKeys.PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
@@ -177,8 +170,6 @@ import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
 import static com.linkedin.venice.ConfigKeys.REPUSH_ORCHESTRATOR_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVICE_DISCOVERY_REGISTRATION_RETRY_MS;
 import static com.linkedin.venice.ConfigKeys.SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
@@ -226,7 +217,6 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -257,11 +247,14 @@ public class VeniceControllerClusterConfig {
   private final String clusterName;
   private final String zkAddress;
   private final String controllerName;
+  private final String localPubSubBrokerAddress;
+  private final PubSubSecurityProtocol pubSubSecurityProtocol;
   private final String adminHostname;
   private final int adminPort;
   private final int adminSecurePort;
   private final int adminGrpcPort;
   private final int adminSecureGrpcPort;
+
   private final int controllerClusterReplica;
   // Name of the Helix cluster for controllers
   private final String controllerClusterName;
@@ -460,19 +453,14 @@ public class VeniceControllerClusterConfig {
   private final long offLineJobWaitTimeInMilliseconds;
   private final Map<String, String> clusterToD2Map;
   private final Map<String, String> clusterToServerD2Map;
-  private final boolean sslToKafka;
   private final int helixSendMessageTimeoutMilliseconds;
   private final int adminTopicReplicationFactor;
 
-  private final String kafkaSecurityProtocol;
   // SSL related config
   private final Optional<SSLConfig> sslConfig;
   private final String sslFactoryClassName;
   private final int refreshAttemptsForZkReconnect;
   private final long refreshIntervalForZkReconnectInMs;
-  private final boolean enableOfflinePushSSLAllowlist;
-  private final boolean enableNearlinePushSSLAllowlist;
-  private final List<String> pushSSLAllowlist;
 
   private final String nativeReplicationSourceFabricAsDefaultForBatchOnly;
   private final String nativeReplicationSourceFabricAsDefaultForHybrid;
@@ -507,13 +495,6 @@ public class VeniceControllerClusterConfig {
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
    */
   private final long delayToRebalanceMS;
-
-  /**
-   * kafka Bootstrap Urls . IF there is more than one url, they are separated by commas
-   */
-  private final String kafkaBootstrapServers;
-
-  private final String sslKafkaBootStrapServers;
 
   /**
    * Number of replicas for each kafka topic. It can be different from the Venice Storage Node replication factor,
@@ -600,6 +581,7 @@ public class VeniceControllerClusterConfig {
   private final boolean isPreFetchDeadStoreStatsEnabled;
   private final long deadStoreStatsPreFetchIntervalInMs;
   private final VeniceProperties deadStoreStatsConfigs;
+  private final VeniceProperties pubSubClientProperties;
   private final LogContext logContext;
 
   /*
@@ -613,6 +595,9 @@ public class VeniceControllerClusterConfig {
     this.clusterName = props.getString(CLUSTER_NAME);
     this.zkAddress = props.getString(ZOOKEEPER_ADDRESS);
     this.controllerName = props.getString(CONTROLLER_NAME);
+    this.localPubSubBrokerAddress = props.getString(KAFKA_BOOTSTRAP_SERVERS);
+    this.pubSubSecurityProtocol = PubSubSecurityProtocol
+        .forName(props.getString(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name()));
     this.kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
     this.kafkaReplicationFactorRTTopics = props.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
     this.minInSyncReplicas = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS);
@@ -622,7 +607,6 @@ public class VeniceControllerClusterConfig {
     this.replicationFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
     this.minNumberOfPartitions = props.getInt(DEFAULT_NUMBER_OF_PARTITION);
     this.minNumberOfPartitionsForHybrid = props.getInt(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, minNumberOfPartitions);
-    this.kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
     this.partitionSize = props.getSizeInBytes(DEFAULT_PARTITION_SIZE);
     this.maxNumberOfPartitions = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
     this.partitionCountRoundUpEnabled = props.getBoolean(ENABLE_PARTITION_COUNT_ROUND_UP, false);
@@ -671,15 +655,7 @@ public class VeniceControllerClusterConfig {
 
     this.clusterToD2Map = props.getMap(CLUSTER_TO_D2);
     this.clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2, Collections.emptyMap());
-    this.sslToKafka = props.getBooleanWithAlternative(KAFKA_OVER_SSL, SSL_TO_KAFKA_LEGACY, false);
-    // In case ssl to kafka is enabled, ssl kafka broker list is a mandatory field
-    this.sslKafkaBootStrapServers = sslToKafka ? props.getString(SSL_KAFKA_BOOTSTRAP_SERVERS) : null;
     this.helixSendMessageTimeoutMilliseconds = props.getInt(HELIX_SEND_MESSAGE_TIMEOUT_MS, 10000);
-
-    this.kafkaSecurityProtocol = props.getString(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name());
-    if (!ApacheKafkaUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
-      throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);
-    }
     if (doesControllerNeedsSslConfig()) {
       this.sslConfig = Optional.of(new SSLConfig(props));
     } else {
@@ -689,17 +665,6 @@ public class VeniceControllerClusterConfig {
     this.refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     this.refreshIntervalForZkReconnectInMs =
         props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, TimeUnit.SECONDS.toMillis(10));
-    this.enableOfflinePushSSLAllowlist = props.getBooleanWithAlternative(
-        ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST,
-        // go/inclusivecode deferred(Reference will be removed when clients have migrated)
-        ENABLE_OFFLINE_PUSH_SSL_WHITELIST,
-        true);
-    this.enableNearlinePushSSLAllowlist = props.getBooleanWithAlternative(
-        ENABLE_HYBRID_PUSH_SSL_ALLOWLIST,
-        // go/inclusivecode deferred(Reference will be removed when clients have migrated)
-        ENABLE_HYBRID_PUSH_SSL_WHITELIST,
-        true);
-    this.pushSSLAllowlist = props.getListWithAlternative(PUSH_SSL_ALLOWLIST, PUSH_SSL_WHITELIST, new ArrayList<>());
     this.helixRebalanceAlg = props.getString(HELIX_REBALANCE_ALG, CrushRebalanceStrategy.class.getName());
     this.adminTopicReplicationFactor = props.getInt(ADMIN_TOPIC_REPLICATION_FACTOR, 3);
     if (adminTopicReplicationFactor < 1) {
@@ -1149,6 +1114,12 @@ public class VeniceControllerClusterConfig {
     this.deferredVersionSwapServiceEnabled = props.getBoolean(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, false);
     this.skipDeferredVersionSwapForDVCEnabled = props.getBoolean(SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED, true);
     this.logContext = new LogContext.Builder().setRegionName(regionName).setComponentName("controller").build();
+    this.pubSubClientProperties = extractPropertiesForPubSubClients(props);
+    LOGGER.info(
+        "### Region: {} will use local pubsub broker address: {} with pubsub security protocol: {}",
+        regionName,
+        localPubSubBrokerAddress,
+        pubSubSecurityProtocol);
   }
 
   public VeniceProperties getProps() {
@@ -1165,7 +1136,7 @@ public class VeniceControllerClusterConfig {
 
   private boolean doesControllerNeedsSslConfig() {
     final boolean controllerSslEnabled = props.getBoolean(CONTROLLER_SSL_ENABLED, DEFAULT_CONTROLLER_SSL_ENABLED);
-    final boolean kafkaNeedsSsl = ApacheKafkaUtils.isKafkaSSLProtocol(kafkaSecurityProtocol);
+    final boolean kafkaNeedsSsl = ApacheKafkaUtils.isKafkaSSLProtocol(pubSubSecurityProtocol);
 
     return controllerSslEnabled || kafkaNeedsSsl;
   }
@@ -1251,10 +1222,18 @@ public class VeniceControllerClusterConfig {
   }
 
   /**
-   * @return kafka Bootstrap Urls. If there is more than one url, they are separated by commas.
+   * @return PubSub Bootstrap address.
    */
-  public String getKafkaBootstrapServers() {
-    return kafkaBootstrapServers;
+  public String getLocalPubSubBrokerAddress() {
+    return localPubSubBrokerAddress;
+  }
+
+  public PubSubSecurityProtocol getPubSubSecurityProtocol() {
+    return pubSubSecurityProtocol;
+  }
+
+  public VeniceProperties getPropertiesForPubSubClients() {
+    return pubSubClientProperties;
   }
 
   public Map<String, String> getClusterToD2Map() {
@@ -1265,20 +1244,8 @@ public class VeniceControllerClusterConfig {
     return clusterToServerD2Map;
   }
 
-  public boolean isSslToKafka() {
-    return sslToKafka;
-  }
-
-  public String getSslKafkaBootstrapServers() {
-    return sslKafkaBootStrapServers;
-  }
-
   public int getHelixSendMessageTimeoutMs() {
     return helixSendMessageTimeoutMilliseconds;
-  }
-
-  public String getKafkaSecurityProtocol() {
-    return kafkaSecurityProtocol;
   }
 
   public Optional<SSLConfig> getSslConfig() {
@@ -1295,18 +1262,6 @@ public class VeniceControllerClusterConfig {
 
   public long getRefreshIntervalForZkReconnectInMs() {
     return refreshIntervalForZkReconnectInMs;
-  }
-
-  public boolean isEnableOfflinePushSSLAllowlist() {
-    return enableOfflinePushSSLAllowlist;
-  }
-
-  public List<String> getPushSSLAllowlist() {
-    return pushSSLAllowlist;
-  }
-
-  public boolean isEnableNearlinePushSSLAllowlist() {
-    return enableNearlinePushSSLAllowlist;
   }
 
   public String getHelixRebalanceAlg() {
@@ -2147,5 +2102,15 @@ public class VeniceControllerClusterConfig {
 
   public LogContext getLogContext() {
     return logContext;
+  }
+
+  private VeniceProperties extractPropertiesForPubSubClients(VeniceProperties controllerProps) {
+    Properties properties = controllerProps.getPropertiesCopy();
+    properties.remove(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+    properties.remove(ConfigKeys.PUBSUB_BROKER_ADDRESS);
+    properties.remove(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS);
+    properties.remove(ConfigKeys.KAFKA_SECURITY_PROTOCOL);
+    properties.remove(ConfigKeys.PUBSUB_SECURITY_PROTOCOL);
+    return new VeniceProperties(properties);
   }
 }

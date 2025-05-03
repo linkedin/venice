@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -20,6 +21,7 @@ public class TopicManagerRepositoryTest {
   public void testGetTopicManagerIsCreatedIfNotExists() {
     // Use spy to return dummy TopicManager form createTopicManager
     TopicManagerContext topicManagerContext = mock(TopicManagerContext.class);
+    when(topicManagerContext.getPubSubBrokerUrlResolver()).thenReturn(address -> address);
     String localPubSubAddress = "local.example.com:9092";
     String remotePubSubAddress = "remote.example.com:9092";
 

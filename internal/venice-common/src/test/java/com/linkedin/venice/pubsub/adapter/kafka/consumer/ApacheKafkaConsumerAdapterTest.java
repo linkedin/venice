@@ -27,8 +27,8 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -38,6 +38,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -93,7 +94,15 @@ public class ApacheKafkaConsumerAdapterTest {
     internalKafkaConsumer = mock(Consumer.class);
     pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
     topicPartitionsOffsetsTracker = mock(TopicPartitionsOffsetsTracker.class);
-    apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(new VeniceProperties(new Properties()), "testConsumer");
+    String kafkaBrokerAddr = "localhost:9092";
+    PubSubConsumerAdapterContext context =
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(new Properties()))
+            .setPubSubBrokerAddress(kafkaBrokerAddr)
+            .setConsumerName("testConsumer")
+            .setPubSubMessageDeserializer(pubSubMessageDeserializer)
+            .setIsOffsetCollectionEnabled(false)
+            .build();
+    apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(context);
     kafkaConsumerAdapter = new ApacheKafkaConsumerAdapter(
         internalKafkaConsumer,
         apacheKafkaConsumerConfig,

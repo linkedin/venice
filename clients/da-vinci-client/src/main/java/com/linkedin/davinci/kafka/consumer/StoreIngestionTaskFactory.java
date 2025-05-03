@@ -28,7 +28,6 @@ import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
@@ -50,42 +49,42 @@ public class StoreIngestionTaskFactory {
       StorageService storageService,
       Store store,
       Version version,
-      Properties kafkaConsumerProperties,
       BooleanSupplier isCurrentVersion,
       VeniceStoreVersionConfig storeConfig,
       int partitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerConfig recordTransformerConfig,
-      Lazy<ZKHelixAdmin> zkHelixAdmin) {
+      Lazy<ZKHelixAdmin> zkHelixAdmin,
+      String localPubSubBrokerAddress) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
           storageService,
           builder,
           store,
           version,
-          kafkaConsumerProperties,
           isCurrentVersion,
           storeConfig,
           partitionId,
           isIsolatedIngestion,
           cacheBackend,
           recordTransformerConfig,
-          zkHelixAdmin);
+          zkHelixAdmin,
+          localPubSubBrokerAddress);
     }
     return new LeaderFollowerStoreIngestionTask(
         storageService,
         builder,
         store,
         version,
-        kafkaConsumerProperties,
         isCurrentVersion,
         storeConfig,
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
         recordTransformerConfig,
-        zkHelixAdmin);
+        zkHelixAdmin,
+        localPubSubBrokerAddress);
   }
 
   /**

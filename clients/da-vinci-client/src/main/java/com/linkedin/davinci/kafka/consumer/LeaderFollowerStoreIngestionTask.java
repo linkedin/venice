@@ -114,7 +114,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -226,20 +225,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       StoreIngestionTaskFactory.Builder builder,
       Store store,
       Version version,
-      Properties kafkaConsumerProperties,
       BooleanSupplier isCurrentVersion,
       VeniceStoreVersionConfig storeConfig,
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerConfig recordTransformerConfig,
-      Lazy<ZKHelixAdmin> zkHelixAdmin) {
+      Lazy<ZKHelixAdmin> zkHelixAdmin,
+      String localPubSubBrokerAddress) {
     super(
         storageService,
         builder,
         store,
         version,
-        kafkaConsumerProperties,
         isCurrentVersion,
         storeConfig,
         errorPartitionId,
@@ -247,7 +245,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         cacheBackend,
         recordTransformerConfig,
         builder.getLeaderFollowerNotifiers(),
-        zkHelixAdmin);
+        zkHelixAdmin,
+        localPubSubBrokerAddress);
     this.version = version;
     this.heartbeatMonitoringService = builder.getHeartbeatMonitoringService();
     /**

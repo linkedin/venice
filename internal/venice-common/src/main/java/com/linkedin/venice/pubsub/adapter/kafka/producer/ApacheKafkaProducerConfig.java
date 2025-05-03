@@ -6,13 +6,20 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_PRODUCER_USE_HIG
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPositionFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.logging.log4j.LogManager;
@@ -29,7 +36,8 @@ public class ApacheKafkaProducerConfig {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaProducerConfig.class);
 
   /**
-   * Legacy Kafka configs are using only kafka prefix. But now we are using pubsub.kafka prefix for all Kafka configs.
+   * Legacy Kafka configs are using only kafka prefix. But eventually we are using pubsub.kafka.producer prefix for
+   * all Kafka producer configs.
    */
   public static final String KAFKA_CONFIG_PREFIX = "kafka.";
   public static final String PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX = PUBSUB_CLIENT_CONFIG_PREFIX + KAFKA_CONFIG_PREFIX;
@@ -45,6 +53,7 @@ public class ApacheKafkaProducerConfig {
       KAFKA_CONFIG_PREFIX + ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG;
   public static final String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS =
       KAFKA_CONFIG_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG;
+  @Deprecated
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl." + KAFKA_BOOTSTRAP_SERVERS;
 
   protected static final String KAFKA_POSITION_FACTORY_CLASS_NAME = ApacheKafkaOffsetPositionFactory.class.getName();
@@ -64,18 +73,34 @@ public class ApacheKafkaProducerConfig {
   public static final String DEFAULT_KAFKA_BATCH_SIZE = "524288";
   public static final String DEFAULT_KAFKA_LINGER_MS = "1000";
 
+  /**
+   * Use the following prefix to get the producer properties from the {@link VeniceProperties} object.
+   */
+  private static final String PUBSUB_KAFKA_PRODUCER_CONFIG_PREFIX =
+      PubSubUtil.getPubSubProducerConfigPrefix(KAFKA_CONFIG_PREFIX);
+  public static final Set<String> KAFKA_PRODUCER_CONFIG_PREFIXES = Collections.unmodifiableSet(
+      new HashSet<>(
+          Arrays.asList(KAFKA_CONFIG_PREFIX, PUBSUB_KAFKA_PRODUCER_CONFIG_PREFIX, PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX)));
+
   private final Properties producerProperties;
   private final PubSubMessageSerializer pubSubMessageSerializer;
 
   public ApacheKafkaProducerConfig(PubSubProducerAdapterContext context) {
-    String brokerAddress = Objects.requireNonNull(context.getBrokerAddress(), "Broker address cannot be null");
-    VeniceProperties allVeniceProperties = context.getVeniceProperties();
+    String brokerAddress = Objects.requireNonNull(context.getPubSubBrokerAddress(), "Broker address cannot be null");
     validateKafkaPositionType(context.getPubSubPositionTypeRegistry());
 
+    VeniceProperties allVeniceProperties = context.getVeniceProperties();
+
     this.pubSubMessageSerializer = context.getPubSubMessageSerializer();
-    this.producerProperties =
-        ApacheKafkaUtils.getValidKafkaClientProperties(allVeniceProperties, ProducerConfig.configNames());
+    this.producerProperties = ApacheKafkaUtils.getValidKafkaClientProperties(
+        allVeniceProperties,
+        context.getPubSubSecurityProtocol(),
+        ProducerConfig.configNames(),
+        KAFKA_PRODUCER_CONFIG_PREFIXES);
+    this.producerProperties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
     validateAndUpdateProperties(this.producerProperties, context.shouldValidateProducerConfigStrictly());
+    this.producerProperties.put(ProducerConfig.CLIENT_ID_CONFIG, context.getProducerName());
+
     if (allVeniceProperties.getBoolean(PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, false)) {
       addHighThroughputDefaults();
     }
@@ -89,6 +114,14 @@ public class ApacheKafkaProducerConfig {
     // Do not remove the following configurations unless you fully understand the implications.
     producerProperties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
     producerProperties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
+  }
+
+  @Override
+  public String toString() {
+    return "ApacheKafkaProducerConfig{brokerAddress="
+        + producerProperties.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG) + ", securityProtocol="
+        + producerProperties.get(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG) + ", clientId="
+        + producerProperties.get(ConsumerConfig.CLIENT_ID_CONFIG) + " }";
   }
 
   /**

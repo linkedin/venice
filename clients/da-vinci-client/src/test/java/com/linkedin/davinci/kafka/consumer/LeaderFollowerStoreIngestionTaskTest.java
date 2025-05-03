@@ -77,7 +77,6 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -97,12 +96,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
   private ConsumerAction mockConsumerAction;
   private StorageService mockStorageService;
   private StoreBufferService mockStoreBufferService;
-  private Properties mockProperties;
   private BooleanSupplier mockBooleanSupplier;
   private VeniceStoreVersionConfig mockVeniceStoreVersionConfig;
 
   private VeniceViewWriterFactory mockVeniceViewWriterFactory;
   private HostLevelIngestionStats hostLevelIngestionStats;
+  private String localPubSubBrokerAddress = "localhost:1234";
 
   @Test
   public void testCheckWhetherToCloseUnusedVeniceWriter() {
@@ -238,7 +237,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
     mockPartitionConsumptionState = mock(PartitionConsumptionState.class);
     mockConsumerAction = mock(ConsumerAction.class);
 
-    mockProperties = new Properties();
     mockBooleanSupplier = mock(BooleanSupplier.class);
     mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     String versionTopic = version.kafkaTopicName();
@@ -250,14 +248,14 @@ public class LeaderFollowerStoreIngestionTaskTest {
             builder,
             mockStore,
             version,
-            mockProperties,
             mockBooleanSupplier,
             mockVeniceStoreVersionConfig,
             0,
             false,
             Optional.empty(),
             null,
-            null));
+            null,
+            localPubSubBrokerAddress));
 
     leaderFollowerStoreIngestionTask.addPartitionConsumptionState(0, mockPartitionConsumptionState);
   }

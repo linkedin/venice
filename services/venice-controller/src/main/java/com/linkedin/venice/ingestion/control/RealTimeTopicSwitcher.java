@@ -7,7 +7,6 @@ import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.TOPIC_SWITCH;
 import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_REPLICATION_FACTOR;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -64,10 +63,7 @@ public class RealTimeTopicSwitcher {
     this.veniceWriterFactory = veniceWriterFactory;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.timer = new SystemTime();
-    this.destKafkaBootstrapServers =
-        veniceProperties.getBooleanWithAlternative(ConfigKeys.KAFKA_OVER_SSL, ConfigKeys.SSL_TO_KAFKA_LEGACY, false)
-            ? veniceProperties.getString(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS)
-            : veniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+    this.destKafkaBootstrapServers = topicManager.getPubSubClusterAddress();
     this.kafkaReplicationFactor = veniceProperties.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
     this.kafkaReplicationFactorForRTTopics =
         veniceProperties.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);

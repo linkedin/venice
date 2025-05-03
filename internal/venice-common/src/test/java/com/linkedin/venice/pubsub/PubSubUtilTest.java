@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
@@ -16,11 +17,11 @@ public class PubSubUtilTest {
   public void testGetPubSubBrokerAddressFromProperties() {
     Properties props = new Properties();
     props.setProperty(PUBSUB_BROKER_ADDRESS, "localhost:9090");
-    assertEquals(PubSubUtil.getPubSubBrokerAddress(props), "localhost:9090");
+    assertEquals(PubSubUtil.getPubSubBrokerAddressOrFail(props), "localhost:9090");
 
     props.clear();
     props.setProperty(KAFKA_BOOTSTRAP_SERVERS, "localhost:9090");
-    assertEquals(PubSubUtil.getPubSubBrokerAddress(props), "localhost:9090");
+    assertEquals(PubSubUtil.getPubSubBrokerAddressOrFail(props), "localhost:9090");
   }
 
   @Test
@@ -28,20 +29,22 @@ public class PubSubUtilTest {
     Properties props = new Properties();
     props.setProperty(PUBSUB_BROKER_ADDRESS, "localhost:9090");
     VeniceProperties veniceProps = new VeniceProperties(props);
-    assertEquals(PubSubUtil.getPubSubBrokerAddress(veniceProps), "localhost:9090");
+    assertEquals(PubSubUtil.getPubSubBrokerAddressOrFail(veniceProps), "localhost:9090");
 
     props.clear();
     props.setProperty(KAFKA_BOOTSTRAP_SERVERS, "localhost:9090");
     veniceProps = new VeniceProperties(props);
-    assertEquals(PubSubUtil.getPubSubBrokerAddress(veniceProps), "localhost:9090");
+    assertEquals(PubSubUtil.getPubSubBrokerAddressOrFail(veniceProps), "localhost:9090");
   }
 
   @Test
   public void testGetPubSubBrokerAddressWithDefaultWithDefault() {
     Properties props = new Properties();
     VeniceProperties veniceProps = new VeniceProperties(props);
-    String result = PubSubUtil.getPubSubBrokerAddressWithDefault(veniceProps, "default://broker");
-    assertEquals(result, "default://broker");
+    Exception exception = expectThrows(IllegalArgumentException.class, () -> {
+      PubSubUtil.getPubSubBrokerAddressOrFail(veniceProps);
+    });
+    assertTrue(exception.getMessage().contains("Missing required broker address"));
   }
 
   @Test

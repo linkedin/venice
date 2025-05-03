@@ -3,6 +3,7 @@ package com.linkedin.venice.writer;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -30,6 +31,7 @@ public class VeniceWriterOptions {
   private final int maxRecordSizeBytes;
   // Set this field if you want to use different broker address than the local broker address
   private final String brokerAddress;
+  private final PubSubSecurityProtocol pubSubSecurityProtocol;
   private final boolean producerCompressionEnabled;
   private final int producerCount;
   private final int producerThreadCount;
@@ -37,6 +39,10 @@ public class VeniceWriterOptions {
 
   public String getBrokerAddress() {
     return brokerAddress;
+  }
+
+  public PubSubSecurityProtocol getPubSubSecurityProtocol() {
+    return pubSubSecurityProtocol;
   }
 
   public String getTopicName() {
@@ -111,6 +117,7 @@ public class VeniceWriterOptions {
     rmdChunkingEnabled = builder.rmdChunkingEnabled;
     maxRecordSizeBytes = builder.maxRecordSizeBytes;
     brokerAddress = builder.brokerAddress;
+    pubSubSecurityProtocol = builder.pubSubSecurityProtocol;
     producerCompressionEnabled = builder.producerCompressionEnabled;
     producerCount = builder.producerCount;
     producerThreadCount = builder.producerThreadCount;
@@ -125,6 +132,9 @@ public class VeniceWriterOptions {
         .append(", ")
         .append("brokerAddress:")
         .append(brokerAddress)
+        .append(", ")
+        .append("PubSubSecurityProtocol:")
+        .append(pubSubSecurityProtocol)
         .append(", ")
         .append("chunkingEnabled:")
         .append(chunkingEnabled)
@@ -169,6 +179,7 @@ public class VeniceWriterOptions {
     private boolean rmdChunkingEnabled; // default false
     private int maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE; // default -1
     private String brokerAddress = null; // default null
+    private PubSubSecurityProtocol pubSubSecurityProtocol;
     private boolean producerCompressionEnabled = true;
     private int producerCount = 1;
     private int producerThreadCount = 1;
@@ -202,6 +213,11 @@ public class VeniceWriterOptions {
 
     public Builder setBrokerAddress(String brokerAddress) {
       this.brokerAddress = brokerAddress;
+      return this;
+    }
+
+    public Builder setPubSubSecurityProtocol(PubSubSecurityProtocol pubSubSecurityProtocol) {
+      this.pubSubSecurityProtocol = pubSubSecurityProtocol;
       return this;
     }
 

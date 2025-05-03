@@ -4053,11 +4053,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getKafkaBootstrapServers(boolean)
+   * @see Admin#getLocalPubSubBrokerAddress()
    */
   @Override
-  public String getKafkaBootstrapServers(boolean isSSL) {
-    return getVeniceHelixAdmin().getKafkaBootstrapServers(isSSL);
+  public String getLocalPubSubBrokerAddress() {
+    return getVeniceHelixAdmin().getLocalPubSubBrokerAddress();
   }
 
   @Override
@@ -4093,14 +4093,6 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public boolean isSSLEnabledForPush(String clusterName, String storeName) {
     return getVeniceHelixAdmin().isSSLEnabledForPush(clusterName, storeName);
-  }
-
-  /**
-   * @see VeniceHelixAdmin#isSslToKafka()
-   */
-  @Override
-  public boolean isSslToKafka() {
-    return getVeniceHelixAdmin().isSslToKafka();
   }
 
   /**
@@ -4602,11 +4594,6 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public VeniceWriterFactory getVeniceWriterFactory() {
     return getVeniceHelixAdmin().getVeniceWriterFactory();
-  }
-
-  @Override
-  public VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress) {
-    return getVeniceHelixAdmin().getPubSubSSLProperties(pubSubBrokerAddress);
   }
 
   /**

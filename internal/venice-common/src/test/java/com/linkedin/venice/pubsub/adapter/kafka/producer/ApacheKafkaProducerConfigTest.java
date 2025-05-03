@@ -3,12 +3,13 @@ package com.linkedin.venice.pubsub.adapter.kafka.producer;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_POSITION_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_PRODUCER_CONFIG_PREFIXES;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
@@ -17,6 +18,7 @@ import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.apache.kafka.clients.admin.AdminClientConfig;
@@ -40,7 +42,7 @@ public class ApacheKafkaProducerConfigTest {
   public void testConfiguratorThrowsAnExceptionWhenBrokerAddressIsMissing() {
     VeniceProperties veniceProperties = VeniceProperties.empty();
     PubSubProducerAdapterContext context = mock(PubSubProducerAdapterContext.class);
-    when(context.getBrokerAddress()).thenReturn(null);
+    when(context.getPubSubBrokerAddress()).thenReturn(null);
     when(context.getVeniceProperties()).thenReturn(veniceProperties);
     when(context.shouldValidateProducerConfigStrictly()).thenReturn(true);
     Exception e = expectThrows(NullPointerException.class, () -> new ApacheKafkaProducerConfig(context));
@@ -53,21 +55,27 @@ public class ApacheKafkaProducerConfigTest {
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, KAFKA_BROKER_ADDR);
     PubSubProducerAdapterContext context = mock(PubSubProducerAdapterContext.class);
-    when(context.getBrokerAddress()).thenReturn(null);
+    when(context.getPubSubBrokerAddress()).thenReturn(null);
+    when(context.getProducerName()).thenReturn(PRODUCER_NAME);
     when(context.getVeniceProperties()).thenReturn(new VeniceProperties(props));
     when(context.shouldValidateProducerConfigStrictly()).thenReturn(true);
     when(context.getProducerName()).thenReturn(PRODUCER_NAME);
-    Exception e = expectThrows(NullPointerException.class, () -> new ApacheKafkaProducerConfig(context));
-    assertTrue(e.getMessage().contains("Broker address cannot be null"));
+    when(context.getPubSubSecurityProtocol()).thenReturn(PubSubSecurityProtocol.PLAINTEXT);
+    ApacheKafkaProducerConfig producerConfig = new ApacheKafkaProducerConfig(context);
+    assertNotNull(producerConfig);
+    assertEquals(producerConfig.getBrokerAddress(), KAFKA_BROKER_ADDR);
+    assertTrue(producerConfig.getProducerProperties().containsKey(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG));
+    assertTrue(producerConfig.getProducerProperties().containsKey(ProducerConfig.CLIENT_ID_CONFIG));
 
     String brokerAddress = "target.broker.com:8181";
     PubSubProducerAdapterContext context1 = mock(PubSubProducerAdapterContext.class);
-    when(context1.getBrokerAddress()).thenReturn(brokerAddress);
+    when(context1.getPubSubBrokerAddress()).thenReturn(brokerAddress);
     when(context1.getVeniceProperties()).thenReturn(new VeniceProperties(props));
     when(context1.shouldValidateProducerConfigStrictly()).thenReturn(true);
     when(context1.getProducerName()).thenReturn(PRODUCER_NAME);
     when(context1.getPubSubPositionTypeRegistry())
         .thenReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
+    when(context.getPubSubSecurityProtocol()).thenReturn(PubSubSecurityProtocol.PLAINTEXT);
     ApacheKafkaProducerConfig producerConfig1 = new ApacheKafkaProducerConfig(context1);
     // broker address from props should be used
     assertEquals(producerConfig1.getBrokerAddress(), brokerAddress);
@@ -79,7 +87,6 @@ public class ApacheKafkaProducerConfigTest {
   public void testSaslConfiguration() {
     // broker address from props should be used
     Properties props = new Properties();
-    props.put(SSL_TO_KAFKA_LEGACY, true);
     props.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
     props.put("kafka.sasl.mechanism", SASL_MECHANISM);
     props.put("kafka.security.protocol", "SASL_SSL");
@@ -95,12 +102,13 @@ public class ApacheKafkaProducerConfigTest {
     props.put("ssl.secure.random.implementation", "SHA1PRNG");
 
     PubSubProducerAdapterContext context = mock(PubSubProducerAdapterContext.class);
-    when(context.getBrokerAddress()).thenReturn("ssl.kafka.broker.com:8182");
+    when(context.getPubSubBrokerAddress()).thenReturn("ssl.kafka.broker.com:8182");
     when(context.getVeniceProperties()).thenReturn(new VeniceProperties(props));
     when(context.shouldValidateProducerConfigStrictly()).thenReturn(true);
     when(context.getProducerName()).thenReturn(PRODUCER_NAME);
     when(context.getPubSubPositionTypeRegistry())
         .thenReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
+    when(context.getPubSubSecurityProtocol()).thenReturn(PubSubSecurityProtocol.SASL_SSL);
     ApacheKafkaProducerConfig apacheKafkaProducerConfig = new ApacheKafkaProducerConfig(context);
     Properties producerProperties = apacheKafkaProducerConfig.getProducerProperties();
     assertEquals(SASL_JAAS_CONFIG, producerProperties.get("sasl.jaas.config"));
@@ -119,7 +127,7 @@ public class ApacheKafkaProducerConfigTest {
 
     // should not set batch size and linger ms if high throughput defaults are not enabled
     context = new PubSubProducerAdapterContext.Builder().setVeniceProperties(VeniceProperties.empty())
-        .setBrokerAddress(KAFKA_BROKER_ADDR)
+        .setPubSubBrokerAddress(KAFKA_BROKER_ADDR)
         .setShouldValidateProducerConfigStrictly(false)
         .setProducerName(PRODUCER_NAME)
         .build();
@@ -134,7 +142,7 @@ public class ApacheKafkaProducerConfigTest {
     // set
     veniceProperties.put(PubSubConstants.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, "true");
     context = new PubSubProducerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(veniceProperties))
-        .setBrokerAddress(KAFKA_BROKER_ADDR)
+        .setPubSubBrokerAddress(KAFKA_BROKER_ADDR)
         .setShouldValidateProducerConfigStrictly(false)
         .setProducerName(PRODUCER_NAME)
         .build();
@@ -152,7 +160,7 @@ public class ApacheKafkaProducerConfigTest {
     veniceProperties.put(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX + ProducerConfig.BATCH_SIZE_CONFIG, "55");
     veniceProperties.put(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX + ProducerConfig.LINGER_MS_CONFIG, "66");
     context = new PubSubProducerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(veniceProperties))
-        .setBrokerAddress(KAFKA_BROKER_ADDR)
+        .setPubSubBrokerAddress(KAFKA_BROKER_ADDR)
         .setShouldValidateProducerConfigStrictly(false)
         .setProducerName(PRODUCER_NAME)
         .build();
@@ -173,9 +181,12 @@ public class ApacheKafkaProducerConfigTest {
     allProps.put(KAFKA_CONFIG_PREFIX + AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
     allProps.put("bogus.kafka.config", "bogusValue");
 
-    Properties validProps =
-        ApacheKafkaUtils.getValidKafkaClientProperties(new VeniceProperties(allProps), ProducerConfig.configNames());
-    assertEquals(validProps.size(), 2);
+    Properties validProps = ApacheKafkaUtils.getValidKafkaClientProperties(
+        new VeniceProperties(allProps),
+        PubSubSecurityProtocol.PLAINTEXT,
+        ProducerConfig.configNames(),
+        KAFKA_PRODUCER_CONFIG_PREFIXES);
+    assertEquals(validProps.size(), 3);
     assertEquals(validProps.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG), "localhost:9092");
     assertEquals(validProps.get(ProducerConfig.MAX_BLOCK_MS_CONFIG), "1000");
   }
@@ -190,7 +201,7 @@ public class ApacheKafkaProducerConfigTest {
   public void testKeyAndValueSerializerConfigConsistency() {
     PubSubProducerAdapterContext context =
         new PubSubProducerAdapterContext.Builder().setVeniceProperties(VeniceProperties.empty())
-            .setBrokerAddress(KAFKA_BROKER_ADDR)
+            .setPubSubBrokerAddress(KAFKA_BROKER_ADDR)
             .setShouldValidateProducerConfigStrictly(false)
             .setProducerName(PRODUCER_NAME)
             .build();
@@ -219,7 +230,7 @@ public class ApacheKafkaProducerConfigTest {
     PubSubPositionTypeRegistry mockedPositionTypeRegistry = mock(PubSubPositionTypeRegistry.class);
     PubSubProducerAdapterContext context =
         new PubSubProducerAdapterContext.Builder().setVeniceProperties(VeniceProperties.empty())
-            .setBrokerAddress(KAFKA_BROKER_ADDR)
+            .setPubSubBrokerAddress(KAFKA_BROKER_ADDR)
             .setShouldValidateProducerConfigStrictly(false)
             .setProducerName(PRODUCER_NAME)
             .setPubSubPositionTypeRegistry(mockedPositionTypeRegistry)

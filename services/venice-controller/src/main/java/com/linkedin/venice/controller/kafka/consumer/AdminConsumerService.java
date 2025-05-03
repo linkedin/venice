@@ -1,15 +1,12 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_AUTO_OFFSET_RESET_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
-
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -17,19 +14,20 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.ThreadFactory;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
  * One consumer service for one cluster.
  */
 public class AdminConsumerService extends AbstractVeniceService {
+  private static final Logger LOGGER = LogManager.getLogger(AdminConsumerService.class);
   private static final long WAITING_TIME_FOR_STOP_IN_MS = 5000;
 
   private final VeniceControllerClusterConfig config;
@@ -53,7 +51,7 @@ public class AdminConsumerService extends AbstractVeniceService {
       VeniceHelixAdmin admin,
       VeniceControllerClusterConfig config,
       MetricsRepository metricsRepository,
-      PubSubConsumerAdapterFactory consumerFactory,
+      PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> consumerFactory,
       PubSubTopicRepository pubSubTopicRepository,
       PubSubMessageDeserializer pubSubMessageDeserializer) {
     this.config = config;
@@ -71,7 +69,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     } else {
       remoteKafkaServerUrl = Optional.empty();
     }
-    this.localKafkaServerUrl = admin.getKafkaBootstrapServers(admin.isSslToKafka());
+    this.localKafkaServerUrl = admin.getLocalPubSubBrokerAddress();
     this.consumerFactory = consumerFactory;
     this.threadFactory = new DaemonThreadFactory("AdminConsumerService", logContext);
   }
@@ -102,7 +100,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   private AdminConsumptionTask getAdminConsumptionTaskForCluster(String clusterName) {
     return new AdminConsumptionTask(
         clusterName,
-        createKafkaConsumer(clusterName),
+        createPubSubConsumer(clusterName),
         this.remoteConsumptionEnabled,
         remoteKafkaServerUrl,
         admin,
@@ -230,22 +228,25 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
   }
 
-  private PubSubConsumerAdapter createKafkaConsumer(String clusterName) {
+  private PubSubConsumerAdapter createPubSubConsumer(String clusterName) {
+    // Ensure that a remote broker address is provided when remote consumption is enabled
+    if (remoteConsumptionEnabled && !remoteKafkaServerUrl.isPresent()) {
+      throw new VeniceException(
+          "Remote consumption is enabled, but no remote PubSub broker address is provided for cluster: " + clusterName);
+    }
     String pubSubServerUrl = remoteConsumptionEnabled ? remoteKafkaServerUrl.get() : localKafkaServerUrl;
-    Properties kafkaConsumerProperties = admin.getPubSubSSLProperties(pubSubServerUrl).toProperties();
-    /**
-     * {@link KAFKA_CLIENT_ID_CONFIG} can be used to identify different consumers while checking Kafka related metrics.
-     */
-    kafkaConsumerProperties
-        .setProperty(KAFKA_CLIENT_ID_CONFIG, (logContext != null ? logContext + "--" : "") + clusterName);
-    kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
-    /**
-     * Reason to disable auto_commit
-     * 1. {@link AdminConsumptionTask} is persisting {@link com.linkedin.venice.offsets.OffsetRecord} in Zookeeper.
-     */
-    kafkaConsumerProperties.setProperty(KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
-    return consumerFactory
-        .create(new VeniceProperties(kafkaConsumerProperties), false, pubSubMessageDeserializer, clusterName);
+    PubSubConsumerAdapterContext context =
+        new PubSubConsumerAdapterContext.Builder().setPubSubBrokerAddress(pubSubServerUrl)
+            .setPubSubSecurityProtocol(config.getPubSubSecurityProtocol())
+            .setVeniceProperties(config.getPropertiesForPubSubClients())
+            .setConsumerName((logContext != null ? logContext + "--" : "") + clusterName)
+            .setMetricsRepository(metricsRepository)
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .setIsOffsetCollectionEnabled(false)
+            .setPubSubMessageDeserializer(pubSubMessageDeserializer)
+            .build();
+    LOGGER.info("Creating PubSub consumer for cluster: {} with broker address: {}", clusterName, pubSubServerUrl);
+    return consumerFactory.create(context);
   }
 
   // For testing only.

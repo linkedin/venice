@@ -12,7 +12,10 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.mockito.ArgumentMatcher;
@@ -24,12 +27,15 @@ import org.testng.annotations.Test;
 
 @Test
 public class StorageUtilizationManagerTest {
+  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
+  private final static String STORE_NAME = "TestTopic";
+  private final static int STORE_VERSION = 1;
+  private final static PubSubTopic TOPIC =
+      TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(STORE_NAME, STORE_VERSION));
+
   private final static long storeQuotaInBytes = 100L;
   private final static long newStoreQuotaInBytes = 200L;
   private final static int storePartitionCount = 10;
-  private final static String storeName = "TestTopic";
-  private final static String topic = Version.composeKafkaTopic(storeName, 1);
-  private final static int storeVersion = Version.parseVersionFromKafkaTopicName(topic);
 
   private ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   private AbstractStorageEngine storageEngine;
@@ -51,22 +57,22 @@ public class StorageUtilizationManagerTest {
     partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
     for (int i = 1; i <= storePartitionCount; i++) {
-      PartitionConsumptionState pcs =
-          new PartitionConsumptionState(Utils.getReplicaId(topic, i), i, mock(OffsetRecord.class), true);
+      PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(TOPIC, i);
+      PartitionConsumptionState pcs = new PartitionConsumptionState(topicPartition, mock(OffsetRecord.class), true);
       partitionConsumptionStateMap.put(i, pcs);
     }
 
-    when(store.getName()).thenReturn(storeName);
+    when(store.getName()).thenReturn(STORE_NAME);
     when(store.getStorageQuotaInByte()).thenReturn(storeQuotaInBytes);
     when(store.getPartitionCount()).thenReturn(storePartitionCount);
-    when(store.getVersion(storeVersion)).thenReturn(version);
+    when(store.getVersion(STORE_VERSION)).thenReturn(version);
     when(store.isHybridStoreDiskQuotaEnabled()).thenReturn(true);
     when(version.getStatus()).thenReturn(VersionStatus.STARTED);
 
     quotaEnforcer = new StorageUtilizationManager(
         storageEngine,
         store,
-        topic,
+        TOPIC.getName(),
         storePartitionCount,
         partitionConsumptionStateMap,
         true,

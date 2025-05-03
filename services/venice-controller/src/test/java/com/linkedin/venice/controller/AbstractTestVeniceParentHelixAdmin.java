@@ -193,7 +193,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(KAFKA_REPLICA_FACTOR).when(config).getKafkaReplicationFactor();
     doReturn(KAFKA_REPLICA_FACTOR).when(config).getAdminTopicReplicationFactor();
     doReturn(10000).when(config).getParentControllerWaitingTimeForConsumptionMs();
-    doReturn("fake_kafka_bootstrap_servers").when(config).getKafkaBootstrapServers();
+    doReturn("fake_kafka_bootstrap_servers").when(config).getLocalPubSubBrokerAddress();
     // PushJobStatusStore and participant message store are disabled in this unit test by default because many
     // tests are using verify(veniceWriter).put(...) which could be unpredictable with async setup enabled.
     doReturn("").when(config).getPushJobStatusStoreClusterName();

@@ -1,8 +1,8 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -14,6 +14,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -63,17 +64,15 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
   private final ApacheKafkaConsumerConfig config;
 
-  ApacheKafkaConsumerAdapter(
-      ApacheKafkaConsumerConfig config,
-      PubSubMessageDeserializer pubSubMessageDeserializer,
-      boolean isKafkaConsumerOffsetCollectionEnabled) {
+  ApacheKafkaConsumerAdapter(ApacheKafkaConsumerConfig config) {
     this(
         new KafkaConsumer<>(config.getConsumerProperties()),
         config,
-        pubSubMessageDeserializer,
-        isKafkaConsumerOffsetCollectionEnabled ? new TopicPartitionsOffsetsTracker() : null);
+        config.getPubSubMessageDeserializer(),
+        config.getOffsetsTracker());
   }
 
+  @VisibleForTesting
   ApacheKafkaConsumerAdapter(
       Consumer<byte[], byte[]> consumer,
       ApacheKafkaConsumerConfig apacheKafkaConsumerConfig,

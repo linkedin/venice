@@ -1,11 +1,7 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
-import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
 import static com.linkedin.venice.exceptions.VeniceNoStoreException.DOES_NOT_EXISTS;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
@@ -164,10 +160,10 @@ import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
-import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -298,7 +294,6 @@ import org.apache.helix.participant.StateMachineEngine;
 import org.apache.helix.zookeeper.datamodel.ZNRecord;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.http.HttpStatus;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import spark.utils.Assert;
@@ -348,8 +343,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final String controllerClusterName;
   private final int controllerClusterReplica;
   private final String controllerName;
-  private final String kafkaBootstrapServers;
-  private final String kafkaSSLBootstrapServers;
+  private final String localPubSubBrokerAddress;
   private final Map<String, AdminConsumerService> adminConsumerServices = new ConcurrentHashMap<>();
 
   private static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
@@ -502,8 +496,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminHostname(), multiClusterConfigs.getAdminPort());
     this.controllerClusterName = multiClusterConfigs.getControllerClusterName();
     this.controllerClusterReplica = multiClusterConfigs.getControllerClusterReplica();
-    this.kafkaBootstrapServers = multiClusterConfigs.getKafkaBootstrapServers();
-    this.kafkaSSLBootstrapServers = multiClusterConfigs.getSslKafkaBootstrapServers();
+    this.localPubSubBrokerAddress = multiClusterConfigs.getLocalPubSubBrokerAddress();
     this.deprecatedJobTopicRetentionMs = multiClusterConfigs.getDeprecatedJobTopicRetentionMs();
     this.fatalDataValidationFailureRetentionMs = multiClusterConfigs.getFatalDataValidationFailureRetentionMs();
     this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
@@ -551,16 +544,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.adapterSerializer = new HelixAdapterSerializer();
 
     TopicManagerContext topicManagerContext =
-        new TopicManagerContext.Builder().setPubSubTopicRepository(pubSubTopicRepository)
-            .setMetricsRepository(metricsRepository)
-            .setPubSubPropertiesSupplier(this::getPubSubSSLPropertiesFromControllerConfig)
+        new TopicManagerContext.Builder().setVeniceProperties(multiClusterConfigs.getPropertiesForPubSubClients())
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubSecurityProtocolResolver(inputBrokerAddress -> multiClusterConfigs.getPubSubSecurityProtocol())
             .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
             .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
             .setTopicMetadataFetcherConsumerPoolSize(commonConfig.getTopicManagerMetadataFetcherConsumerPoolSize())
             .setTopicMetadataFetcherThreadPoolSize(commonConfig.getTopicManagerMetadataFetcherThreadPoolSize())
+            .setMetricsRepository(metricsRepository)
             .build();
-    this.topicManagerRepository =
-        new TopicManagerRepository(topicManagerContext, getKafkaBootstrapServers(isSslToKafka()));
+    this.topicManagerRepository = new TopicManagerRepository(topicManagerContext, getLocalPubSubBrokerAddress());
 
     this.allowlistAccessor = new ZkAllowlistAccessor(zkClient, adapterSerializer);
     this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
@@ -780,32 +773,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
 
     pushJobUserErrorCheckpoints = commonConfig.getPushJobUserErrorCheckpoints();
-  }
-
-  private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {
-    VeniceControllerClusterConfig controllerConfig = multiClusterConfigs.getCommonConfig();
-
-    VeniceProperties originalPros = controllerConfig.getProps();
-    Properties clonedProperties = originalPros.toProperties();
-    if (originalPros.getBooleanWithAlternative(KAFKA_OVER_SSL, SSL_TO_KAFKA_LEGACY, false)) {
-      clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
-    } else {
-      clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
-    }
-    controllerConfig = new VeniceControllerClusterConfig(new VeniceProperties(clonedProperties));
-    Properties properties = multiClusterConfigs.getCommonConfig().getProps().getPropertiesCopy();
-    if (ApacheKafkaUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
-      Optional<SSLConfig> sslConfig = controllerConfig.getSslConfig();
-      if (!sslConfig.isPresent()) {
-        throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
-      }
-      properties.putAll(sslConfig.get().getKafkaSSLConfig());
-      properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, controllerConfig.getKafkaSecurityProtocol());
-      properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, controllerConfig.getSslKafkaBootstrapServers());
-    } else {
-      properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, controllerConfig.getKafkaBootstrapServers());
-    }
-    return new VeniceProperties(properties);
   }
 
   public void startInstanceMonitor(String clusterName) {
@@ -2444,7 +2411,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (remoteKafkaBootstrapServers != null) {
             version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
           } else {
-            version.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
+            version.setPushStreamSourceAddress(getLocalPubSubBrokerAddress());
           }
         }
         /**
@@ -2942,7 +2909,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     targetedRegions);
                 sourceKafkaBootstrapServers = getNativeReplicationKafkaBootstrapServerAddress(sourceFabric);
                 if (sourceKafkaBootstrapServers == null) {
-                  sourceKafkaBootstrapServers = getKafkaBootstrapServers(isSslToKafka());
+                  sourceKafkaBootstrapServers = getLocalPubSubBrokerAddress();
                 }
                 version.setPushStreamSourceAddress(sourceKafkaBootstrapServers);
                 version.setNativeReplicationSourceFabric(sourceFabric);
@@ -2982,7 +2949,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
              *  local VT to determine whether there is any ongoing offline push.
              */
             if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()
-                && !version.getPushStreamSourceAddress().equals(getKafkaBootstrapServers(isSslToKafka()))) {
+                && !version.getPushStreamSourceAddress().equals(getLocalPubSubBrokerAddress())) {
               if (sourceKafkaBootstrapServers == null) {
                 throw new VeniceException(
                     "Parent controller should know the source Kafka bootstrap server url for store: " + storeName
@@ -3032,7 +2999,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   // Produce directly into one of the child fabric
                   vwOptionsBuilder.setBrokerAddress(version.getPushStreamSourceAddress());
                 } else {
-                  vwOptionsBuilder.setBrokerAddress(getKafkaBootstrapServers(isSslToKafka()));
+                  vwOptionsBuilder.setBrokerAddress(getLocalPubSubBrokerAddress());
                 }
                 veniceWriter = getVeniceWriterFactory().createVeniceWriter(vwOptionsBuilder.build());
                 veniceWriter.broadcastStartOfPush(
@@ -3044,7 +3011,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 if (pushType.isStreamReprocessing()) {
                   // Send TS message to version topic to inform leader to switch to the stream reprocessing topic
                   veniceWriter.broadcastTopicSwitch(
-                      Collections.singletonList(getKafkaBootstrapServers(isSslToKafka())),
+                      Collections.singletonList(getLocalPubSubBrokerAddress()),
                       Version.composeStreamReprocessingTopic(version.getStoreName(), version.getNumber()),
                       -1L, // -1 indicates rewinding from the beginning of the source topic
                       new HashMap<>());
@@ -3767,7 +3734,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public RepushInfo getRepushInfo(String clusterName, String storeName, Optional<String> fabricName) {
     Store store = getStore(clusterName, storeName);
-    boolean isSSL = isSSLEnabledForPush(clusterName, storeName);
     String systemSchemaClusterName = multiClusterConfigs.getSystemSchemaClusterName();
     VeniceControllerClusterConfig systemSchemaClusterConfig =
         multiClusterConfigs.getControllerConfig(systemSchemaClusterName);
@@ -3777,7 +3743,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Version version = store.getVersionOrThrow(currentVersionNumber);
     return RepushInfo.createRepushInfo(
         version,
-        getKafkaBootstrapServers(isSSL),
+        getLocalPubSubBrokerAddress(),
         systemSchemaClusterD2Service,
         systemSchemaClusterD2ZkHost);
   }
@@ -7020,15 +6986,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getKafkaBootstrapServers(boolean)
+   * @see Admin#getLocalPubSubBrokerAddress()
    */
   @Override
-  public String getKafkaBootstrapServers(boolean isSSL) {
-    if (isSSL) {
-      return kafkaSSLBootstrapServers;
-    } else {
-      return kafkaBootstrapServers;
-    }
+  public String getLocalPubSubBrokerAddress() {
+    return localPubSubBrokerAddress;
   }
 
   @Override
@@ -7109,45 +7071,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return null;
   }
 
-  /**
-   * @see Admin#isSSLEnabledForPush(String, String)
-   */
-  @Override
-  public boolean isSSLEnabledForPush(String clusterName, String storeName) {
-    if (isSslToKafka()) {
-      Store store = getStore(clusterName, storeName);
-      if (store == null) {
-        throw new VeniceNoStoreException(storeName);
-      }
-      if (store.isHybrid()) {
-        if (multiClusterConfigs.getCommonConfig().isEnableNearlinePushSSLAllowlist()
-            && (!multiClusterConfigs.getCommonConfig().getPushSSLAllowlist().contains(storeName))) {
-          // allowlist is enabled but the given store is not in that list, so ssl is not enabled for this store.
-          return false;
-        }
-      } else {
-        if (multiClusterConfigs.getCommonConfig().isEnableOfflinePushSSLAllowlist()
-            && (!multiClusterConfigs.getCommonConfig().getPushSSLAllowlist().contains(storeName))) {
-          // allowlist is enabled but the given store is not in that list, so ssl is not enabled for this store.
-          return false;
-        }
-      }
-      // allowlist is not enabled, or allowlist is enabled and the given store is in that list, so ssl is enabled for
-      // this store for push.
-      return true;
-    } else {
-      return false;
-    }
+  public boolean isSslToKafka() {
+    return multiClusterConfigs.getPubSubSecurityProtocol() == PubSubSecurityProtocol.SSL;
   }
 
-  /**
-   * Test if ssl is enabled to Kafka.
-   * @see ConfigKeys#SSL_TO_KAFKA_LEGACY
-   * @see ConfigKeys#KAFKA_OVER_SSL
-   */
   @Override
-  public boolean isSslToKafka() {
-    return this.multiClusterConfigs.isSslToKafka();
+  public boolean isSSLEnabledForPush(String clusterName, String storeName) {
+    return multiClusterConfigs.getPubSubSecurityProtocol() == PubSubSecurityProtocol.SSL
+        || multiClusterConfigs.getPubSubSecurityProtocol() == PubSubSecurityProtocol.SASL_SSL;
   }
 
   TopicManagerRepository getTopicManagerRepository() {
@@ -7909,11 +7840,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   public VeniceWriterFactory getVeniceWriterFactory() {
     return veniceWriterFactory;
-  }
-
-  @Override
-  public VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress) {
-    return this.getPubSubSSLPropertiesFromControllerConfig(pubSubBrokerAddress);
   }
 
   // public for testing purpose

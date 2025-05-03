@@ -1,9 +1,9 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
+import static com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig.KAFKA_CONSUMER_PREFIXES;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
-import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
+import static com.linkedin.venice.pubsub.api.PubSubSecurityProtocol.SASL_SSL;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
 import static org.testng.Assert.assertEquals;
@@ -12,8 +12,10 @@ import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.apache.kafka.clients.admin.AdminClientConfig;
@@ -33,9 +35,7 @@ public class ApacheKafkaConsumerConfigTest {
   @Test
   public void testSaslConfiguration() {
     Properties props = new Properties();
-    props.put(SSL_TO_KAFKA_LEGACY, true);
     props.put(KAFKA_BOOTSTRAP_SERVERS, KAFKA_BROKER_ADDR);
-    props.put(SSL_KAFKA_BOOTSTRAP_SERVERS, "ssl.kafka.broker.com:8182");
     props.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
     props.put("kafka.sasl.mechanism", SASL_MECHANISM);
     props.put("kafka.security.protocol", "SASL_SSL");
@@ -49,11 +49,15 @@ public class ApacheKafkaConsumerConfigTest {
     props.put("ssl.keymanager.algorithm", "SunX509");
     props.put("ssl.trustmanager.algorithm", "SunX509");
     props.put("ssl.secure.random.implementation", "SHA1PRNG");
-    ApacheKafkaConsumerConfig consumerConfig = new ApacheKafkaConsumerConfig(new VeniceProperties(props), null);
+    PubSubConsumerAdapterContext context =
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(props))
+            .setConsumerName("test")
+            .build();
+    ApacheKafkaConsumerConfig consumerConfig = new ApacheKafkaConsumerConfig(context);
     Properties consumerProps = consumerConfig.getConsumerProperties();
     assertEquals(SASL_JAAS_CONFIG, consumerProps.get("sasl.jaas.config"));
     assertEquals(SASL_MECHANISM, consumerProps.get("sasl.mechanism"));
-    assertEquals("SASL_SSL", consumerProps.get("security.protocol"));
+    assertEquals(consumerProps.get("security.protocol"), SASL_SSL.name());
   }
 
   @Test
@@ -66,9 +70,12 @@ public class ApacheKafkaConsumerConfigTest {
     allProps.put(KAFKA_CONFIG_PREFIX + "bogus.kafka.config", "bogusValue");
     allProps.put("bogus.kafka.config.2", "bogusValue.2");
 
-    Properties validProps =
-        ApacheKafkaUtils.getValidKafkaClientProperties(new VeniceProperties(allProps), ConsumerConfig.configNames());
-    assertEquals(validProps.size(), 2);
+    Properties validProps = ApacheKafkaUtils.getValidKafkaClientProperties(
+        new VeniceProperties(allProps),
+        PubSubSecurityProtocol.PLAINTEXT,
+        ConsumerConfig.configNames(),
+        KAFKA_CONSUMER_PREFIXES);
+    assertEquals(validProps.size(), 3);
     assertEquals(validProps.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG), "localhost:9092");
     assertEquals(validProps.get(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG), "2000");
   }
@@ -76,8 +83,12 @@ public class ApacheKafkaConsumerConfigTest {
   @Test
   public void testDefaultsValuesAreUsedIfConfigIsNotProvided() {
     Properties props = new Properties();
-    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig =
-        new ApacheKafkaConsumerConfig(new VeniceProperties(props), "test");
+    PubSubConsumerAdapterContext context =
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(props))
+            .setConsumerName("test")
+            .setPubSubBrokerAddress(KAFKA_BROKER_ADDR)
+            .build();
+    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(context);
     Properties consumerProps = apacheKafkaConsumerConfig.getConsumerProperties();
     assertNotNull(consumerProps);
     assertTrue(consumerProps.containsKey(ConsumerConfig.RECEIVE_BUFFER_CONFIG));
@@ -86,7 +97,11 @@ public class ApacheKafkaConsumerConfigTest {
         ApacheKafkaConsumerConfig.DEFAULT_RECEIVE_BUFFER_SIZE);
 
     props.put(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX + ConsumerConfig.RECEIVE_BUFFER_CONFIG, "98765");
-    apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(new VeniceProperties(props), "test");
+    context = new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(props))
+        .setConsumerName("test")
+        .setPubSubBrokerAddress(KAFKA_BROKER_ADDR)
+        .build();
+    apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(context);
     consumerProps = apacheKafkaConsumerConfig.getConsumerProperties();
     assertNotNull(consumerProps);
     assertTrue(consumerProps.containsKey(ConsumerConfig.RECEIVE_BUFFER_CONFIG));
@@ -102,8 +117,12 @@ public class ApacheKafkaConsumerConfigTest {
   @Test
   public void testKeyAndValueDeserializerConfigConsistency() {
     Properties props = new Properties();
-    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig =
-        new ApacheKafkaConsumerConfig(new VeniceProperties(props), "test");
+    PubSubConsumerAdapterContext context =
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(props))
+            .setConsumerName("test")
+            .setPubSubBrokerAddress(KAFKA_BROKER_ADDR)
+            .build();
+    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(context);
     Properties consumerProps = apacheKafkaConsumerConfig.getConsumerProperties();
     assertNotNull(consumerProps);
 

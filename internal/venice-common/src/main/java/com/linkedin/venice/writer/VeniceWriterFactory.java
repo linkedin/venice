@@ -1,9 +1,6 @@
 package com.linkedin.venice.writer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
-import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.VisibleForTesting;
@@ -97,11 +94,15 @@ public class VeniceWriterFactory {
     PubSubProducerAdapterContext.Builder producerContext =
         new PubSubProducerAdapterContext.Builder().setVeniceProperties(props)
             .setProducerName(options.getTopicName())
-            .setBrokerAddress(targetBrokerAddress)
+            .setPubSubBrokerAddress(targetBrokerAddress)
             .setMetricsRepository(metricsRepository)
             .setPubSubMessageSerializer(options.getPubSubMessageSerializer())
             .setProducerCompressionEnabled(options.isProducerCompressionEnabled())
             .setPubSubPositionTypeRegistry(pubSubPositionTypeRegistry);
+
+    if (options.getPubSubSecurityProtocol() != null) {
+      producerContext.setPubSubSecurityProtocol(options.getPubSubSecurityProtocol());
+    }
 
     Supplier<PubSubProducerAdapter> producerAdapterSupplier =
         () -> producerAdapterFactory.create(producerContext.build());
@@ -139,9 +140,7 @@ public class VeniceWriterFactory {
    *
    * The lookup follows these steps:
    * 1. If the `PUBSUB_BROKER_ADDRESS` property is set, it is returned immediately.
-   * 2. If SSL to Kafka is enabled (determined by `SSL_TO_KAFKA_LEGACY` or `KAFKA_OVER_SSL`),
-   *    the method verifies that `SSL_KAFKA_BOOTSTRAP_SERVERS` is set and returns it.
-   * 3. Otherwise, the method ensures that `KAFKA_BOOTSTRAP_SERVERS` is defined and returns it.
+   * 2. Otherwise, the method ensures that `KAFKA_BOOTSTRAP_SERVERS` is defined and returns it.
    *
    * @param veniceProperties The properties containing broker configuration details.
    * @return The resolved broker address.
@@ -150,10 +149,6 @@ public class VeniceWriterFactory {
   private String lookupBrokerAddress(VeniceProperties veniceProperties) {
     if (veniceProperties.containsKey(ConfigKeys.PUBSUB_BROKER_ADDRESS)) {
       return veniceProperties.getString(ConfigKeys.PUBSUB_BROKER_ADDRESS);
-    }
-    if (Boolean.parseBoolean(veniceProperties.getStringWithAlternative(SSL_TO_KAFKA_LEGACY, KAFKA_OVER_SSL, "false"))) {
-      checkProperty(veniceProperties, SSL_KAFKA_BOOTSTRAP_SERVERS);
-      return veniceProperties.getString(SSL_KAFKA_BOOTSTRAP_SERVERS);
     }
     checkProperty(veniceProperties, KAFKA_BOOTSTRAP_SERVERS);
     return veniceProperties.getString(KAFKA_BOOTSTRAP_SERVERS);

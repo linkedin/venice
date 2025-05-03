@@ -22,4 +22,8 @@ public enum PubSubSecurityProtocol {
   public static PubSubSecurityProtocol forName(String name) {
     return PubSubSecurityProtocol.valueOf(name.toUpperCase(Locale.ROOT));
   }
+
+  public static boolean isSslProtocol(PubSubSecurityProtocol protocol) {
+    return protocol == SSL || protocol == SASL_SSL;
+  }
 }

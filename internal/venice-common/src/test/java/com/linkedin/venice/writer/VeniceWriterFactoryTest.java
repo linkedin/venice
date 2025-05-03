@@ -38,7 +38,7 @@ public class VeniceWriterFactoryTest {
     try (VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
         new VeniceWriterOptions.Builder("store_v1").setBrokerAddress("kafka:9898").setPartitionCount(1).build())) {
       PubSubProducerAdapterContext capturedProducerCtx = producerCtxCaptor.getValue();
-      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getBrokerAddress());
+      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getPubSubBrokerAddress());
       assertNotNull(veniceWriter);
       String capturedBrokerAddr = veniceWriter.getDestination();
       assertNotNull(capturedBrokerAddr);
@@ -68,7 +68,7 @@ public class VeniceWriterFactoryTest {
             .build())) {
 
       PubSubProducerAdapterContext capturedProducerCtx = producerCtxCaptor.getValue();
-      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getBrokerAddress());
+      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getPubSubBrokerAddress());
       assertNotNull(veniceWriter);
       String capturedBrokerAddr = veniceWriter.getDestination();
       assertNotNull(capturedBrokerAddr);
@@ -91,7 +91,7 @@ public class VeniceWriterFactoryTest {
             .setProducerThreadCount(3)
             .build())) {
       PubSubProducerAdapterContext capturedProducerCtx = producerCtxCaptor.getValue();
-      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getBrokerAddress());
+      when(producerAdapterMock.getBrokerAddress()).thenReturn(capturedProducerCtx.getPubSubBrokerAddress());
       assertNotNull(veniceWriter);
 
       String capturedBrokerAddr = veniceWriter.getDestination();

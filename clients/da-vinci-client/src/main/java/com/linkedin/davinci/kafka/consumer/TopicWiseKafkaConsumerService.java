@@ -4,6 +4,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -12,7 +13,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -35,15 +35,14 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
   private final Logger LOGGER;
 
   TopicWiseKafkaConsumerService(
+      final String pubSubBrokerAddress,
       final ConsumerPoolType poolType,
-      final PubSubConsumerAdapterFactory consumerFactory,
-      final Properties consumerProperties,
+      final PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> consumerFactory,
       final long readCycleDelayMs,
       final int numOfConsumersPerKafkaCluster,
       final IngestionThrottler ingestionThrottler,
       final KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
-      final String kafkaClusterAlias,
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
       final StaleTopicChecker staleTopicChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
@@ -55,15 +54,14 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
       final boolean isUnregisterMetricForDeletedStoreEnabled,
       VeniceServerConfig veniceServerConfig) {
     super(
+        pubSubBrokerAddress,
         poolType,
         consumerFactory,
-        consumerProperties,
         readCycleDelayMs,
         numOfConsumersPerKafkaCluster,
         ingestionThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
-        kafkaClusterAlias,
         sharedConsumerNonExistingTopicCleanupDelayMS,
         staleTopicChecker,
         liveConfigBasedKafkaThrottlingEnabled,

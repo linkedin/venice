@@ -4,6 +4,7 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 
+import com.linkedin.venice.pubsub.SimplePubSubProduceResultImpl;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;

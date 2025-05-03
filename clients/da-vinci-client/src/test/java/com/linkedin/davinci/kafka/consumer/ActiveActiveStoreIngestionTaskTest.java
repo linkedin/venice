@@ -245,26 +245,26 @@ public class ActiveActiveStoreIngestionTaskTest {
     mockVersion.setHybridStoreConfig(hybridStoreConfig);
     store.setVersions(Collections.singletonList(mockVersion));
 
-    Properties kafkaConsumerProperties = new Properties();
-    kafkaConsumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, BOOTSTRAP_SERVER);
-    kafkaConsumerProperties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
-    kafkaConsumerProperties.put(ZOOKEEPER_ADDRESS, BOOTSTRAP_SERVER);
+    Properties properties = new Properties();
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, BOOTSTRAP_SERVER);
+    properties.put(CLUSTER_NAME, TEST_CLUSTER_NAME);
+    properties.put(ZOOKEEPER_ADDRESS, BOOTSTRAP_SERVER);
     VeniceStoreVersionConfig storeVersionConfig =
-        new VeniceStoreVersionConfig(STORE_NAME + "_v1", new VeniceProperties(kafkaConsumerProperties));
+        new VeniceStoreVersionConfig(STORE_NAME + "_v1", new VeniceProperties(properties));
     int port = 123;
     ActiveActiveStoreIngestionTask ingestionTask = new ActiveActiveStoreIngestionTask(
         storageService,
         builder,
         store,
         mockVersion,
-        kafkaConsumerProperties,
         () -> true,
         storeVersionConfig,
         1,
         false,
         Optional.empty(),
         null,
-        null);
+        null,
+        BOOTSTRAP_SERVER);
 
     PartitionConsumptionState badPartitionConsumptionState = mock(PartitionConsumptionState.class);
     when(badPartitionConsumptionState.hasLagCaughtUp()).thenReturn(true);

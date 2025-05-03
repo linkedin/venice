@@ -342,8 +342,7 @@ public class StoresRoutes extends AbstractRoute {
           storeInfo.setMaxRecordSizeBytes(admin.getDefaultMaxRecordSizeBytes());
         }
         storeInfo.setColoToCurrentVersions(admin.getCurrentVersionsForMultiColos(clusterName, storeName));
-        boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
-        storeInfo.setKafkaBrokerUrl(admin.getKafkaBootstrapServers(isSSL));
+        storeInfo.setKafkaBrokerUrl(admin.getLocalPubSubBrokerAddress());
 
         veniceResponse.setStore(storeInfo);
       }

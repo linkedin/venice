@@ -14,6 +14,7 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.GRPC_SERVER_WORKER_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_CYCLE_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
@@ -26,6 +27,7 @@ import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
@@ -223,6 +225,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           featureProperties.getProperty(
               GRPC_SERVER_WORKER_THREAD_COUNT,
               Integer.toString(Runtime.getRuntime().availableProcessors())));
+      boolean shouldUseHighThroughputDefaultsForProducer =
+          Boolean.parseBoolean(featureProperties.getProperty(PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, "false"));
       ClientConfig consumerClientConfig = (ClientConfig) featureProperties.get(CLIENT_CONFIG_FOR_CONSUMER);
 
       /** Create config directory under {@link dataDirectory} */
@@ -239,6 +243,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       int listenPort = TestUtils.getFreePort();
       PropertyBuilder serverPropsBuilder = new PropertyBuilder().put(LISTENER_PORT, listenPort)
           .put(ADMIN_PORT, TestUtils.getFreePort())
+          .put(KAFKA_LINGER_MS, 0)
           .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
           .put(LOCAL_REGION_NAME, regionName)
           .put(ENABLE_SERVER_ALLOW_LIST, enableServerAllowlist)
@@ -269,6 +274,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(
               PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS,
               pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory().getClass().getName())
+          .put(PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, shouldUseHighThroughputDefaultsForProducer)
           .put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000)
           .put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, 5000)
           .put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true)

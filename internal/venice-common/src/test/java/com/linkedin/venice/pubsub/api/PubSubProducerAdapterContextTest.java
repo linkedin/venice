@@ -19,9 +19,9 @@ public class PubSubProducerAdapterContextTest {
   @Test
   public void testValidContextBuild() {
     PubSubProducerAdapterContext context = new PubSubProducerAdapterContext.Builder().setProducerName("test-producer")
-        .setBrokerAddress("localhost:9092")
+        .setPubSubBrokerAddress("localhost:9092")
         .setVeniceProperties(VeniceProperties.empty())
-        .setSecurityProtocol(PubSubSecurityProtocol.SSL)
+        .setPubSubSecurityProtocol(PubSubSecurityProtocol.SSL)
         .setMetricsRepository(new MetricsRepository())
         .setPubSubTopicRepository(new PubSubTopicRepository())
         .setShouldValidateProducerConfigStrictly(false)
@@ -31,7 +31,7 @@ public class PubSubProducerAdapterContextTest {
         .build();
 
     assertTrue(context.getProducerName().contains("test-producer"));
-    assertEquals(context.getBrokerAddress(), "localhost:9092");
+    assertEquals(context.getPubSubBrokerAddress(), "localhost:9092");
     assertEquals(context.getCompressionType(), "none");
     assertFalse(context.isProducerCompressionEnabled());
   }
@@ -47,7 +47,7 @@ public class PubSubProducerAdapterContextTest {
   @Test
   public void testDefaultValuesAreSet() {
     PubSubProducerAdapterContext context =
-        new PubSubProducerAdapterContext.Builder().setBrokerAddress("localhost:9092").build();
+        new PubSubProducerAdapterContext.Builder().setPubSubBrokerAddress("localhost:9092").build();
 
     assertNotNull(context.getVeniceProperties());
     assertNotNull(context.getPubSubMessageSerializer());
@@ -56,7 +56,7 @@ public class PubSubProducerAdapterContextTest {
     assertNull(context.getMetricsRepository());
     assertNull(context.getPubSubTopicRepository());
     assertTrue(context.shouldValidateProducerConfigStrictly());
-    assertNull(context.getSecurityProtocol());
+    assertEquals(context.getPubSubSecurityProtocol(), PubSubSecurityProtocol.PLAINTEXT);
     assertNotNull(context.getProducerName());
   }
 }

@@ -1,21 +1,21 @@
 package com.linkedin.davinci.consumer;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
+
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ViewConfig;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
@@ -25,8 +25,6 @@ import org.apache.commons.lang.StringUtils;
 
 
 public class VeniceChangelogConsumerClientFactory {
-  private static final PubSubConsumerAdapterFactory kafkaConsumerAdapterFactory =
-      new ApacheKafkaConsumerAdapterFactory();
   private final Map<String, VeniceChangelogConsumer> storeClientMap = new VeniceConcurrentHashMap<>();
   private final Map<String, BootstrappingVeniceChangelogConsumer> storeBootstrappingClientMap =
       new VeniceConcurrentHashMap<>();
@@ -43,7 +41,6 @@ public class VeniceChangelogConsumerClientFactory {
 
   protected ViewClassGetter viewClassGetter;
 
-  // TODO: Add PubSubConsumerFactory into the constructor, so that client can choose specific Pub Sub system's consumer.
   public VeniceChangelogConsumerClientFactory(
       ChangelogClientConfig globalChangelogClientConfig,
       MetricsRepository metricsRepository) {
@@ -215,12 +212,17 @@ public class VeniceChangelogConsumerClientFactory {
   }
 
   static PubSubConsumerAdapter getConsumer(Properties consumerProps, String consumerName) {
-    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
-        new OptimizedKafkaValueSerializer(),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    return kafkaConsumerAdapterFactory
-        .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, consumerName);
+    VeniceProperties veniceProperties = new VeniceProperties(consumerProps);
+    String pubSubBrokerAddress =
+        veniceProperties.getStringWithAlternative(PUBSUB_BROKER_ADDRESS, KAFKA_BOOTSTRAP_SERVERS);
+    PubSubConsumerAdapterContext context =
+        new PubSubConsumerAdapterContext.Builder().setPubSubBrokerAddress(pubSubBrokerAddress)
+            .setVeniceProperties(veniceProperties)
+            .setIsOffsetCollectionEnabled(false)
+            .setPubSubMessageDeserializer(PubSubMessageDeserializer.getOptimizedInstance())
+            .setConsumerName(consumerName)
+            .build();
+    return PubSubClientsFactory.createConsumerFactory(veniceProperties).create(context);
   }
 
   private String getViewClass(String storeName, String viewName, D2ControllerClient d2ControllerClient, int retries) {
