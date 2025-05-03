@@ -63,7 +63,7 @@ public class PubSubClientsFactoryTest {
       Class<?> expectedConsumer,
       Class<?> expectedAdmin) {
     VeniceProperties veniceProps = new VeniceProperties(props);
-    PubSubClientsFactory<?, ?, ?> factory = PubSubClientsFactory.fromVeniceProperties(veniceProps);
+    PubSubClientsFactory factory = new PubSubClientsFactory(veniceProps);
 
     PubSubProducerAdapterFactory producerFactory = factory.getProducerAdapterFactory();
     assertNotNull(producerFactory);

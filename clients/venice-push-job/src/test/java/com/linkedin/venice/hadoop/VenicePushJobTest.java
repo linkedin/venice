@@ -338,7 +338,7 @@ public class VenicePushJobTest {
   }
 
   private VenicePushJob getSpyVenicePushJob(Properties props, ControllerClient client) {
-    Properties baseProps = TestWriteUtils.defaultVPJProps(TEST_URL, TEST_PATH, TEST_STORE, new HashMap<>());
+    Properties baseProps = TestWriteUtils.defaultVPJProps(TEST_URL, TEST_PATH, TEST_STORE, Collections.emptyMap());
     return getSpyVenicePushJobInternal(baseProps, props, client);
   }
 
@@ -351,7 +351,7 @@ public class VenicePushJobTest {
         TEST_CHILD_CONTROLLER_D2_SERVICE,
         TEST_PATH,
         TEST_STORE,
-        new HashMap<>());
+        Collections.emptyMap());
     return getSpyVenicePushJobInternal(baseProps, props, client);
   }
 
@@ -364,7 +364,7 @@ public class VenicePushJobTest {
         TEST_CHILD_CONTROLLER_D2_SERVICE,
         TEST_PATH,
         TEST_STORE,
-        new HashMap<>());
+        Collections.emptyMap());
     return getSpyVenicePushJobInternal(baseProps, props, client);
   }
 

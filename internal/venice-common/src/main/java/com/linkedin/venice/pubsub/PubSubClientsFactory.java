@@ -26,47 +26,43 @@ import org.apache.logging.log4j.Logger;
  *
  * This will be passed as one of the arguments to the component which depends on the pub-sub APIs.
  */
-public class PubSubClientsFactory<P extends PubSubProducerAdapter, C extends PubSubConsumerAdapter, A extends PubSubAdminAdapter> {
+public class PubSubClientsFactory {
   private static final Logger LOGGER = LogManager.getLogger(PubSubClientsFactory.class);
 
   private enum FactoryType {
     PRODUCER, CONSUMER, ADMIN
   }
 
-  private final PubSubProducerAdapterFactory<P> producerAdapterFactory;
-  private final PubSubConsumerAdapterFactory<C> consumerAdapterFactory;
-  private final PubSubAdminAdapterFactory<A> adminAdapterFactory;
+  private final PubSubProducerAdapterFactory producerAdapterFactory;
+  private final PubSubConsumerAdapterFactory consumerAdapterFactory;
+  private final PubSubAdminAdapterFactory adminAdapterFactory;
 
   public PubSubClientsFactory(
-      PubSubProducerAdapterFactory<P> producerAdapterFactory,
-      PubSubConsumerAdapterFactory<C> consumerAdapterFactory,
-      PubSubAdminAdapterFactory<A> adminAdapterFactory) {
+      PubSubProducerAdapterFactory producerAdapterFactory,
+      PubSubConsumerAdapterFactory consumerAdapterFactory,
+      PubSubAdminAdapterFactory adminAdapterFactory) {
     this.producerAdapterFactory = producerAdapterFactory;
     this.consumerAdapterFactory = consumerAdapterFactory;
     this.adminAdapterFactory = adminAdapterFactory;
   }
 
-  public static PubSubClientsFactory<? extends PubSubProducerAdapter, ? extends PubSubConsumerAdapter, ? extends PubSubAdminAdapter> fromVeniceProperties(
-      VeniceProperties properties) {
-    return new PubSubClientsFactory<>(
-        createProducerFactory(properties),
-        createConsumerFactory(properties),
-        createAdminFactory(properties));
+  public PubSubClientsFactory(VeniceProperties properties) {
+    this(createProducerFactory(properties), createConsumerFactory(properties), createAdminFactory(properties));
   }
 
-  public PubSubProducerAdapterFactory<P> getProducerAdapterFactory() {
+  public PubSubProducerAdapterFactory getProducerAdapterFactory() {
     return producerAdapterFactory;
   }
 
-  public PubSubConsumerAdapterFactory<C> getConsumerAdapterFactory() {
+  public PubSubConsumerAdapterFactory getConsumerAdapterFactory() {
     return consumerAdapterFactory;
   }
 
-  public PubSubAdminAdapterFactory<A> getAdminAdapterFactory() {
+  public PubSubAdminAdapterFactory getAdminAdapterFactory() {
     return adminAdapterFactory;
   }
 
-  public static PubSubProducerAdapterFactory<? extends PubSubProducerAdapter> createProducerFactory(
+  public static PubSubProducerAdapterFactory<PubSubProducerAdapter> createProducerFactory(
       VeniceProperties veniceProperties) {
     return createFactory(
         veniceProperties,
@@ -76,7 +72,7 @@ public class PubSubClientsFactory<P extends PubSubProducerAdapter, C extends Pub
         FactoryType.PRODUCER);
   }
 
-  public static PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> createConsumerFactory(
+  public static PubSubConsumerAdapterFactory<PubSubConsumerAdapter> createConsumerFactory(
       VeniceProperties veniceProperties) {
     return createFactory(
         veniceProperties,
@@ -86,8 +82,7 @@ public class PubSubClientsFactory<P extends PubSubProducerAdapter, C extends Pub
         FactoryType.CONSUMER);
   }
 
-  public static PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> createAdminFactory(
-      VeniceProperties veniceProperties) {
+  public static PubSubAdminAdapterFactory<PubSubAdminAdapter> createAdminFactory(VeniceProperties veniceProperties) {
     return createFactory(
         veniceProperties,
         PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS,

@@ -17,8 +17,8 @@ import io.tehuti.metrics.MetricsRepository;
  * A context object that contains all the dependencies needed by {@link TopicManager}.
  */
 public class TopicManagerContext {
-  private final PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> pubSubAdminAdapterFactory;
-  private final PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
+  private final PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory;
+  private final PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
   private final PubSubTopicRepository pubSubTopicRepository;
   private final MetricsRepository metricsRepository;
   private final PubSubPropertiesSupplier pubSubPropertiesSupplier;
@@ -55,11 +55,11 @@ public class TopicManagerContext {
     return topicMinLogCompactionLagMs;
   }
 
-  public PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> getPubSubAdminAdapterFactory() {
+  public PubSubAdminAdapterFactory<PubSubAdminAdapter> getPubSubAdminAdapterFactory() {
     return pubSubAdminAdapterFactory;
   }
 
-  public PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> getPubSubConsumerAdapterFactory() {
+  public PubSubConsumerAdapterFactory<PubSubConsumerAdapter> getPubSubConsumerAdapterFactory() {
     return pubSubConsumerAdapterFactory;
   }
 
@@ -107,8 +107,8 @@ public class TopicManagerContext {
   }
 
   public static class Builder {
-    private PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> pubSubAdminAdapterFactory;
-    private PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
+    private PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory;
+    private PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
     private PubSubTopicRepository pubSubTopicRepository;
     private MetricsRepository metricsRepository;
     private PubSubPropertiesSupplier pubSubPropertiesSupplier;
@@ -135,13 +135,13 @@ public class TopicManagerContext {
     }
 
     public Builder setPubSubAdminAdapterFactory(
-        PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> pubSubAdminAdapterFactory) {
+        PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory) {
       this.pubSubAdminAdapterFactory = pubSubAdminAdapterFactory;
       return this;
     }
 
     public Builder setPubSubConsumerAdapterFactory(
-        PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> pubSubConsumerAdapterFactory) {
+        PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory) {
       this.pubSubConsumerAdapterFactory = pubSubConsumerAdapterFactory;
       return this;
     }

@@ -11,9 +11,7 @@ import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
@@ -54,13 +52,11 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
 
   protected Map<PubSubTopicPartition, Long> getLatestOffsets(JobConf config) {
     VeniceProperties consumerProperties = KafkaInputUtils.getConsumerProperties(config);
-    PubSubClientsFactory<? extends PubSubProducerAdapter, ? extends PubSubConsumerAdapter, ? extends PubSubAdminAdapter> pubSubClientsFactory =
-        PubSubClientsFactory.fromVeniceProperties(consumerProperties);
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> consumerProperties)
             .setPubSubTopicRepository(pubSubTopicRepository)
-            .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
-            .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
+            .setPubSubAdminAdapterFactory(PubSubClientsFactory.createAdminFactory(consumerProperties))
+            .setPubSubConsumerAdapterFactory(PubSubClientsFactory.createConsumerFactory(consumerProperties))
             .setTopicMetadataFetcherThreadPoolSize(1)
             .setTopicMetadataFetcherConsumerPoolSize(1)
             .build();

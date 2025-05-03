@@ -38,8 +38,7 @@ public class DictionaryUtils {
   }
 
   public static ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
-    PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> pubSubConsumerAdapterFactory =
-        PubSubClientsFactory.createConsumerFactory(props);
+    PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = PubSubClientsFactory.createConsumerFactory(props);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
         new KafkaValueSerializer(),

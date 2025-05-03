@@ -23,6 +23,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -88,20 +89,20 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   private boolean ownedConsumer = true;
 
   public KafkaInputRecordReader(InputSplit split, JobConf job, DataWriterTaskTracker taskTracker) {
-    this(
-        split,
-        job,
-        taskTracker,
-        PubSubClientsFactory.createConsumerFactory(KafkaInputUtils.getConsumerProperties(job))
-            .create(
-                KafkaInputUtils.getConsumerProperties(job),
-                false,
-                new PubSubMessageDeserializer(
-                    KafkaInputUtils.getKafkaValueSerializer(job),
-                    new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-                    new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
-                null),
-        PUBSUB_TOPIC_REPOSITORY);
+    this(split, job, taskTracker, createConsumer(job), PUBSUB_TOPIC_REPOSITORY);
+  }
+
+  private static PubSubConsumerAdapter createConsumer(JobConf job) {
+    VeniceProperties consumerProps = KafkaInputUtils.getConsumerProperties(job);
+    return PubSubClientsFactory.createConsumerFactory(consumerProps)
+        .create(
+            consumerProps,
+            false,
+            new PubSubMessageDeserializer(
+                KafkaInputUtils.getKafkaValueSerializer(job),
+                new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+                new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
+            null);
   }
 
   public KafkaInputRecordReader(

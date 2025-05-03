@@ -49,7 +49,7 @@ public class VeniceWriterFactory {
 
   public VeniceWriterFactory(
       Properties properties,
-      PubSubProducerAdapterFactory<? extends PubSubProducerAdapter> producerAdapterFactory,
+      PubSubProducerAdapterFactory producerAdapterFactory,
       MetricsRepository metricsRepository,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
     this.metricsRepository = metricsRepository;
