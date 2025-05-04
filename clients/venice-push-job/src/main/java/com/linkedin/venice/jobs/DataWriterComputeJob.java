@@ -5,8 +5,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -37,6 +39,51 @@ public abstract class DataWriterComputeJob implements ComputeJob {
 
   private Status jobStatus = Status.NOT_STARTED;
   private Throwable failureReason = null;
+
+  /**
+   * Override the configs following the rules:
+   * <ul>
+   *   <li>Pass-through the properties whose names start with the prefixes defined in `passThroughConfigPrefix`.</li>
+   *   <li>Pass-through the properties whose names starts with the prefix defined by another special property {@link CollectionUtils#PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY}.</li>
+   *   <li>Override the properties that are specified with a particular `overridePrefix`.</li>
+   * </ul>
+   **/
+  public static void populateWithPassThroughConfigs(
+      VeniceProperties props,
+      CollectionUtils.ConfigSetter configSetter,
+      List<String> passThroughConfigPrefix,
+      String overridePrefix) {
+    List<String> additionalPassThroughConfigPrefixes =
+        new ArrayList<>(props.getList(CollectionUtils.PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY, new ArrayList<>()));
+    additionalPassThroughConfigPrefixes.removeAll(passThroughConfigPrefix);
+
+    for (String configKey: props.keySet()) {
+      String lowerCaseConfigKey = configKey.toLowerCase();
+
+      if (overridePrefix != null && lowerCaseConfigKey.startsWith(overridePrefix)) {
+        String overrideKey = configKey.substring(overridePrefix.length());
+        configSetter.set(overrideKey, props.getString(configKey));
+      }
+
+      for (String prefix: passThroughConfigPrefix) {
+        if (lowerCaseConfigKey.startsWith(prefix)) {
+          configSetter.set(configKey, props.getString(configKey));
+          break;
+        }
+      }
+
+      for (String prefix: additionalPassThroughConfigPrefixes) {
+        if (lowerCaseConfigKey.startsWith(prefix)) {
+          configSetter.set(configKey, props.getString(configKey));
+          break;
+        }
+      }
+    }
+  }
+
+  public static void populateWithPassThroughConfigs(VeniceProperties props, CollectionUtils.ConfigSetter configSetter) {
+    populateWithPassThroughConfigs(props, configSetter, Collections.emptyList(), null);
+  }
 
   public abstract DataWriterTaskTracker getTaskTracker();
 
