@@ -1,7 +1,7 @@
 package com.linkedin.venice.jobs;
 
+import static com.linkedin.venice.ConfigKeys.PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY;
 import static com.linkedin.venice.jobs.DataWriterComputeJob.PASS_THROUGH_CONFIG_PREFIXES;
-import static com.linkedin.venice.utils.CollectionUtils.PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 

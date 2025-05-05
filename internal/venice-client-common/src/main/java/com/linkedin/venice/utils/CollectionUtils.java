@@ -20,8 +20,6 @@ import javax.annotation.Nonnull;
 
 
 public class CollectionUtils {
-  public static final String PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY = "pass.through.config.prefixes.list";
-
   /**
    * A manual implementation of list equality.
    *
@@ -217,10 +215,5 @@ public class CollectionUtils {
       values.forEachRemaining(this::add);
       return self();
     }
-  }
-
-  @FunctionalInterface
-  public interface ConfigSetter {
-    void set(String key, String value);
   }
 }
