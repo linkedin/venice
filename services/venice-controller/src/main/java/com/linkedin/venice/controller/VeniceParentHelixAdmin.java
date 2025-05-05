@@ -72,7 +72,11 @@ import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
-import static com.linkedin.venice.meta.VersionStatus.*;
+import static com.linkedin.venice.meta.VersionStatus.ERROR;
+import static com.linkedin.venice.meta.VersionStatus.KILLED;
+import static com.linkedin.venice.meta.VersionStatus.ONLINE;
+import static com.linkedin.venice.meta.VersionStatus.PUSHED;
+import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 import static com.linkedin.venice.utils.RegionUtils.isRegionPartOfRegionsFilterList;

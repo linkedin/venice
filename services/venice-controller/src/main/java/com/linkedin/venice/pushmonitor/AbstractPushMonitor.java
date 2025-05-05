@@ -1211,7 +1211,7 @@ public abstract class AbstractPushMonitor
                 "Swapping to version {} for store {} in region {} during "
                     + (isNormalPush ? "normal push" : "target region push with deferred version swap"),
                 versionNumber,
-                store.getName(),
+                storeName,
                 regionName,
                 isTargetRegionPushWithDeferredSwap,
                 isNormalPush);
@@ -1222,13 +1222,20 @@ public abstract class AbstractPushMonitor
             LOGGER.info(
                 "Version swap is deferred for store {} on version {} in region {} because "
                     + (isDeferredSwap ? "deferred version swap is enabled" : "it is not in the target regions"),
-                store.getName(),
+                storeName,
                 versionNumber,
                 regionName);
 
-            // For target region push w/ deferred version swap, mark status as PUSHED as it will be marked ONLINE after
-            // roll forward
-            if (!isDeferredSwap) {
+            // For non target region in a target region push w/ deferred version swap, mark status as PUSHED as it will
+            // be marked ONLINE after roll forward
+            boolean isVersionSwapDeferredInNonTargetRegion =
+                !targetRegions.isEmpty() && !targetRegions.contains(regionName) && version.isVersionSwapDeferred();
+            if (!isVersionSwapDeferredInNonTargetRegion) {
+              LOGGER.info(
+                  "Marking version status as PUSHED for version: {} in store: {} during a target region push w/ deferred swap"
+                      + "because it is a non target region",
+                  versionNumber,
+                  storeName);
               store.updateVersionStatus(versionNumber, VersionStatus.PUSHED);
             }
           }

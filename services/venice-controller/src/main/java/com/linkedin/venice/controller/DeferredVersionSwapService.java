@@ -22,6 +22,7 @@ import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -360,14 +361,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       logMessageIfNotRedundant(message);
       store.updateVersionStatus(targetVersionNum, PARTIALLY_ONLINE);
       repository.updateStore(store);
-      return new HashSet<>();
+      return Collections.emptySet();
     } else if ((failedNonTargetRegions.size() + completedNonTargetRegions.size()) != nonTargetRegions.size()) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
           + "as push is not in terminal status in all non target regions. Completed non target regions: "
           + completedNonTargetRegions + ", failed non target regions: " + failedNonTargetRegions
           + ", non target regions: " + nonTargetRegions;
       logMessageIfNotRedundant(message);
-      return new HashSet<>();
+      return Collections.emptySet();
     }
 
     return completedNonTargetRegions;
