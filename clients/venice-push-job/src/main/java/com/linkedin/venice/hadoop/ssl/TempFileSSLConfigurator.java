@@ -10,7 +10,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTMANAGER_ALGORITHM;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
-import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
@@ -38,8 +38,8 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
   public Properties setupSSLConfig(Properties props, Credentials userCredentials) {
     Properties properties = new Properties();
     properties.putAll(props);
-    if (properties.containsKey(KAFKA_SECURITY_PROTOCOL)
-        && properties.getProperty(KAFKA_SECURITY_PROTOCOL).toLowerCase().equals("ssl")) {
+    if (properties.containsKey(PUBSUB_SECURITY_PROTOCOL_LEGACY)
+        && properties.getProperty(PUBSUB_SECURITY_PROTOCOL_LEGACY).toLowerCase().equals("ssl")) {
       LOGGER.info("Start setting up the ssl properties.");
       try {
         // Setup keystore certification

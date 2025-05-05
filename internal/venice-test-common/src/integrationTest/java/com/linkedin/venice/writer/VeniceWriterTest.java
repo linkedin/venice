@@ -18,6 +18,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -127,8 +128,14 @@ public class VeniceWriterTest {
         kafkaValueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    try (PubSubConsumerAdapter consumer = pubSubConsumerAdapterFactory
-        .create(new VeniceProperties(properties), false, pubSubDeserializer, pubSubBrokerWrapper.getAddress())) {
+    try (PubSubConsumerAdapter consumer = pubSubConsumerAdapterFactory.create(
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
+            .setPubSubMessageDeserializer(pubSubDeserializer)
+            .setPubSubBrokerAddress(pubSubBrokerWrapper.getAddress())
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+            .setIsOffsetCollectionEnabled(false)
+            .build())) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
       consumer.subscribe(pubSubTopicPartition, -1);
       int lastSeenSequenceNumber = -1;

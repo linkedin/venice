@@ -1,6 +1,6 @@
 package com.linkedin.venice.pubsub.adapter.kafka;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_SECURITY_PROTOCOL_WITH_PREFIX;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX;
@@ -118,8 +118,8 @@ public class ApacheKafkaUtils {
    * @return whether Kafka SSL is enabled or not0
    */
   private static boolean validateAndCopyKafkaSSLConfig(VeniceProperties veniceProperties, Properties properties) {
-    String kafkaProtocol =
-        veniceProperties.getStringWithAlternative(KAFKA_SECURITY_PROTOCOL, KAFKA_SECURITY_PROTOCOL_WITH_PREFIX, null);
+    String kafkaProtocol = veniceProperties
+        .getStringWithAlternative(PUBSUB_SECURITY_PROTOCOL_LEGACY, KAFKA_SECURITY_PROTOCOL_WITH_PREFIX, null);
 
     if (kafkaProtocol == null) {
       // No security protocol specified

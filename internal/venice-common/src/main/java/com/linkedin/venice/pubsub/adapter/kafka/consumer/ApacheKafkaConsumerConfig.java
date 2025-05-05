@@ -1,14 +1,17 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_POSITION_RESET_STRATEGY;
-import static com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils.generateClientId;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
+import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.Properties;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.logging.log4j.LogManager;
@@ -44,37 +47,33 @@ public class ApacheKafkaConsumerConfig {
   private final int topicQueryRetryIntervalMs;
   private final Duration defaultApiTimeout;
   private final boolean shouldCheckTopicExistenceBeforeConsuming;
+  private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
+  private final PubSubMessageDeserializer pubSubMessageDeserializer;
+  private final TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker;
 
-  ApacheKafkaConsumerConfig(VeniceProperties veniceProperties, String consumerName) {
+  ApacheKafkaConsumerConfig(PubSubConsumerAdapterContext context) {
+    VeniceProperties veniceProperties = context.getVeniceProperties();
     this.consumerProperties =
         ApacheKafkaUtils.getValidKafkaClientProperties(veniceProperties, ConsumerConfig.configNames());
-    consumerProperties.put(
-        ConsumerConfig.CLIENT_ID_CONFIG,
-        generateClientId(consumerName, consumerProperties.getProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG)));
-
-    if (!consumerProperties.containsKey(ConsumerConfig.RECEIVE_BUFFER_CONFIG)) {
-      consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, DEFAULT_RECEIVE_BUFFER_SIZE);
-    }
-
-    if (!consumerProperties.containsKey(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG)
-        && veniceProperties.containsKey(PUBSUB_CONSUMER_POSITION_RESET_STRATEGY)) {
-      consumerProperties.put(
-          ConsumerConfig.AUTO_OFFSET_RESET_CONFIG,
-          veniceProperties.getString(PUBSUB_CONSUMER_POSITION_RESET_STRATEGY));
-    }
-
-    // Do not change the default value of the following two configs unless you know what you are doing.
-    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    this.consumerProperties.putIfAbsent(ConsumerConfig.RECEIVE_BUFFER_CONFIG, DEFAULT_RECEIVE_BUFFER_SIZE);
 
     // Timeout for consumer APIs which do not have explicit timeout parameter AND have potential to get blocked;
     // When this is not specified, Kafka consumer will use default value of 1 minute.
-
     int defaultApiTimeoutInMs = veniceProperties.getInt(
         PubSubConstants.PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS,
         PubSubConstants.PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_DEFAULT_VALUE);
     defaultApiTimeout = Duration.ofMillis(defaultApiTimeoutInMs);
     consumerProperties.put(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, defaultApiTimeoutInMs);
+
+    // Override the broker address after filtering the properties to ensure that we use the correct broker address.
+    consumerProperties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, context.getPubSubSecurityProtocol().name());
+    consumerProperties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, context.getPubSubBrokerAddress());
+    consumerProperties.put(ConsumerConfig.CLIENT_ID_CONFIG, context.getConsumerName());
+    // Do not change the default value of the following two configs unless you know what you are doing.
+    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    consumerProperties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+    consumerProperties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
     // Number of times to retry poll() upon failure
     consumerPollRetryTimes = veniceProperties.getInt(
@@ -98,14 +97,24 @@ public class ApacheKafkaConsumerConfig {
         PubSubConstants.PUBSUB_CONSUMER_CHECK_TOPIC_EXISTENCE,
         PubSubConstants.PUBSUB_CONSUMER_CHECK_TOPIC_EXISTENCE_DEFAULT_VALUE);
 
+    pubSubPositionTypeRegistry = context.getPubSubPositionTypeRegistry();
+    pubSubMessageDeserializer = context.getPubSubMessageDeserializer();
+
+    if (context.isOffsetCollectionEnabled()) {
+      topicPartitionsOffsetsTracker = new TopicPartitionsOffsetsTracker();
+    } else {
+      topicPartitionsOffsetsTracker = null;
+    }
+
     LOGGER.debug("Created ApacheKafkaConsumerConfig: {} - consumerProperties: {}", this, consumerProperties);
   }
 
   @Override
   public String toString() {
     return "ApacheKafkaConsumerConfig{brokerAddress=" + consumerProperties.get(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG)
-        + ", consumerPollRetryTimes=" + consumerPollRetryTimes + ", consumerPollRetryBackoffMs="
-        + consumerPollRetryBackoffMs + "}";
+        + ", securityProtocol=" + consumerProperties.get(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG) + ", clientId="
+        + consumerProperties.get(ConsumerConfig.CLIENT_ID_CONFIG) + ", consumerPollRetryTimes=" + consumerPollRetryTimes
+        + ", consumerPollRetryBackoffMs=" + consumerPollRetryBackoffMs + "}";
   }
 
   Properties getConsumerProperties() {
@@ -134,5 +143,17 @@ public class ApacheKafkaConsumerConfig {
 
   boolean shouldCheckTopicExistenceBeforeConsuming() {
     return shouldCheckTopicExistenceBeforeConsuming;
+  }
+
+  PubSubPositionTypeRegistry getPubSubPositionTypeRegistry() {
+    return pubSubPositionTypeRegistry;
+  }
+
+  PubSubMessageDeserializer getPubSubMessageDeserializer() {
+    return pubSubMessageDeserializer;
+  }
+
+  TopicPartitionsOffsetsTracker getTopicPartitionsOffsetsTracker() {
+    return topicPartitionsOffsetsTracker;
   }
 }

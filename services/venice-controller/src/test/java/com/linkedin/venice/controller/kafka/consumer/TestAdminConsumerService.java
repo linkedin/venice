@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
@@ -8,13 +9,11 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -26,10 +25,12 @@ import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -40,8 +41,8 @@ import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Method;
 import java.util.Collections;
-import java.util.Properties;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -118,7 +119,7 @@ public class TestAdminConsumerService {
   }
 
   @Test
-  public void testCreateKafkaConsumerWithExpectedKafkaProperties() throws Exception {
+  public void testCreatePubSubConsumerWithExpectedPubSubProperties() throws Exception {
     MetricsRepository metricsRepository = new MetricsRepository();
 
     String clusterName = "clusterName";
@@ -138,23 +139,21 @@ public class TestAdminConsumerService {
         .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + region, "blah")
         .put(CHILD_CLUSTER_ALLOWLIST, clusterName)
         .put(LOCAL_REGION_NAME, region)
+        .put(PUBSUB_SECURITY_PROTOCOL_LEGACY, PubSubSecurityProtocol.PLAINTEXT.name())
         .put(SslUtils.getVeniceLocalSslProperties())
         .build();
     VeniceControllerClusterConfig controllerConfig = new VeniceControllerClusterConfig(props);
 
     PubSubConsumerAdapterFactory consumerFactory = mock(PubSubConsumerAdapterFactory.class);
     PubSubConsumerAdapter mockConsumer = mock(PubSubConsumerAdapter.class);
-    when(consumerFactory.create(any(), eq(false), any(), eq(clusterName))).thenReturn(mockConsumer);
+    when(consumerFactory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(mockConsumer);
 
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     doReturn(mock(ZkClient.class)).when(admin).getZkClient();
     doReturn(mock(HelixAdapterSerializer.class)).when(admin).getAdapterSerializer();
     doReturn("localhost:1234").when(admin).getKafkaBootstrapServers(true);
     doReturn(false).when(admin).isSslToKafka();
-    VeniceProperties veniceProperties = mock(VeniceProperties.class);
-    Properties pubSubProperties = new Properties();
-    when(veniceProperties.toProperties()).thenReturn(pubSubProperties);
-    when(admin.getPubSubSSLProperties(anyString())).thenReturn(veniceProperties);
+    when(admin.getPubSubSSLProperties(anyString())).thenReturn(props);
 
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     PubSubMessageDeserializer deserializer = new PubSubMessageDeserializer(
@@ -171,15 +170,19 @@ public class TestAdminConsumerService {
         deserializer);
 
     // Access private createKafkaConsumer via reflection
-    Method method = AdminConsumerService.class.getDeclaredMethod("createKafkaConsumer", String.class);
+    Method method = AdminConsumerService.class.getDeclaredMethod("createPubSubConsumer", String.class);
     method.setAccessible(true);
     PubSubConsumerAdapter result = (PubSubConsumerAdapter) method.invoke(service, clusterName);
 
     assertNotNull(result);
-    verify(admin).getPubSubSSLProperties(anyString());
-    verify(consumerFactory).create(any(VeniceProperties.class), eq(false), eq(deserializer), eq(clusterName));
-    String clientId = pubSubProperties.getProperty(KAFKA_CLIENT_ID_CONFIG);
-    assertNotNull(clientId, "Client ID should not be null");
-    assertTrue(clientId.contains(controllerConfig.getLogContext().toString()), "Got: " + clientId);
+    // capture arg passed to factory
+    ArgumentCaptor<PubSubConsumerAdapterContext> contextCaptor =
+        ArgumentCaptor.forClass(PubSubConsumerAdapterContext.class);
+    verify(consumerFactory).create(contextCaptor.capture());
+    PubSubConsumerAdapterContext context = contextCaptor.getValue();
+    assertNotNull(context);
+    assertTrue(
+        context.getConsumerName().contains(controllerConfig.getLogContext().toString()),
+        "Got: " + context.getConsumerName());
   }
 }

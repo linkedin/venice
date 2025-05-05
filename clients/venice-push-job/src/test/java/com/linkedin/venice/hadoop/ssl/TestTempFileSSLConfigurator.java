@@ -59,7 +59,7 @@ public class TestTempFileSSLConfigurator {
     properties.put(SSL_TRUST_STORE_PROPERTY_NAME, "linkedin.truststore");
     properties.put(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, "linkedin.keystorepassword");
     properties.put(SSL_KEY_PASSWORD_PROPERTY_NAME, "linkedin.keypassword");
-    properties.put(ConfigKeys.KAFKA_SECURITY_PROTOCOL, "ssl");
+    properties.put(ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY, "ssl");
 
     String testCertStr = "test123";
     byte[] testCert = testCertStr.getBytes();

@@ -39,7 +39,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
-import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -95,7 +94,6 @@ public class VeniceChangelogConsumerImplTest {
   private PubSubPosition mockPubSubPosition;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final Schema valueSchema = AvroCompatibilityHelper.parse("\"string\"");
-  private final PubSubPositionDeserializer pubSubPositionDeserializer = PubSubPositionDeserializer.DEFAULT_DESERIALIZER;
 
   @BeforeMethod
   public void setUp() {
@@ -157,7 +155,7 @@ public class VeniceChangelogConsumerImplTest {
     ChangelogClientConfig changelogClientConfig =
         getChangelogClientConfig(d2ControllerClient).setViewName("changeCaptureView").setIsBeforeImageView(true);
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
-        new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockPubSubConsumer, pubSubPositionDeserializer);
+        new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
 
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
@@ -242,8 +240,7 @@ public class VeniceChangelogConsumerImplTest {
     VeniceAfterImageConsumerImpl<String, Utf8> veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(
         changelogClientConfig,
         mockPubSubConsumer,
-        Lazy.of(() -> mockInternalSeekConsumer),
-        pubSubPositionDeserializer);
+        Lazy.of(() -> mockInternalSeekConsumer));
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
     Version mockVersion = new VersionImpl(storeName, 1, "foo");
@@ -460,7 +457,7 @@ public class VeniceChangelogConsumerImplTest {
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
     ChangelogClientConfig changelogClientConfig = getChangelogClientConfig(d2ControllerClient).setViewName("");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
-        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer, pubSubPositionDeserializer);
+        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
 
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
@@ -533,7 +530,7 @@ public class VeniceChangelogConsumerImplTest {
             .setViewName("");
     changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
-        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer, pubSubPositionDeserializer);
+        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
 
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
@@ -631,7 +628,7 @@ public class VeniceChangelogConsumerImplTest {
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
     ChangelogClientConfig changelogClientConfig = getChangelogClientConfig(d2ControllerClient).setViewName("");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
-        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer, pubSubPositionDeserializer);
+        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
 
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
