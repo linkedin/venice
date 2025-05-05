@@ -17,7 +17,6 @@ import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Properties;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -61,10 +60,6 @@ public class PubSubClientsFactory {
 
   public PubSubAdminAdapterFactory getAdminAdapterFactory() {
     return adminAdapterFactory;
-  }
-
-  public static PubSubProducerAdapterFactory<PubSubProducerAdapter> createProducerFactory(Properties properties) {
-    return createProducerFactory(new VeniceProperties(properties));
   }
 
   public static PubSubProducerAdapterFactory<PubSubProducerAdapter> createProducerFactory(
