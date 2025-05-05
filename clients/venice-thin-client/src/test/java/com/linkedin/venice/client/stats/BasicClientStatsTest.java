@@ -1,7 +1,10 @@
 package com.linkedin.venice.client.stats;
 
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_METRIC_PREFIX;
+import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_SERVICE_NAME;
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
@@ -19,7 +22,6 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
@@ -32,8 +34,6 @@ import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
-import io.tehuti.metrics.MetricConfig;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -47,7 +47,8 @@ public class BasicClientStatsTest {
   @Test
   public void testMetricPrefix() {
     String storeName = "test_store";
-    MetricsRepository metricsRepository1 = new MetricsRepository();
+    VeniceMetricsRepository metricsRepository1 =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
     // Without prefix
     ClientConfig config1 = new ClientConfig(storeName);
     BasicClientStats.getClientStats(metricsRepository1, storeName, SINGLE_GET, config1);
@@ -60,7 +61,8 @@ public class BasicClientStatsTest {
 
     // With prefix
     String prefix = "test_prefix";
-    MetricsRepository metricsRepository2 = new MetricsRepository();
+    VeniceMetricsRepository metricsRepository2 =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
     ClientConfig config2 = new ClientConfig(storeName).setStatsPrefix(prefix);
     BasicClientStats.getClientStats(metricsRepository2, storeName, SINGLE_GET, config2);
     // Check metric name
@@ -76,13 +78,8 @@ public class BasicClientStatsTest {
     String storeName = "test_store";
     String otelPrefix = "test_prefix";
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
-    VeniceMetricsConfig metricsConfig = new VeniceMetricsConfig.Builder().setEmitOtelMetrics(true)
-        .setMetricPrefix(otelPrefix)
-        .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-        .setMetricEntities(CLIENT_METRIC_ENTITIES)
-        .setTehutiMetricConfig(new MetricConfig())
-        .build();
-    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(metricsConfig);
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepository(storeName, otelPrefix, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
     BasicClientStats stats =
         BasicClientStats.getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName));
 
@@ -119,13 +116,8 @@ public class BasicClientStatsTest {
     String storeName = "test_store";
     String otelPrefix = "test_prefix";
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
-    VeniceMetricsConfig metricsConfig = new VeniceMetricsConfig.Builder().setEmitOtelMetrics(true)
-        .setMetricPrefix(otelPrefix)
-        .setOtelAdditionalMetricsReader(inMemoryMetricReader)
-        .setMetricEntities(CLIENT_METRIC_ENTITIES)
-        .setTehutiMetricConfig(new MetricConfig())
-        .build();
-    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(metricsConfig);
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepository(storeName, otelPrefix, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
     BasicClientStats stats =
         BasicClientStats.getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName));
 

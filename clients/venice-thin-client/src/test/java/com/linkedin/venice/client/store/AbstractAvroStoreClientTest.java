@@ -2,7 +2,11 @@ package com.linkedin.venice.client.store;
 
 import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
 import static com.linkedin.venice.client.schema.RouterBackedSchemaReader.TYPE_KEY_SCHEMA;
+import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_METRIC_PREFIX;
+import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_SERVICE_NAME;
 import static com.linkedin.venice.client.store.AbstractAvroStoreClient.TYPE_STORAGE;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -29,9 +33,9 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -256,7 +260,8 @@ public class AbstractAvroStoreClientTest {
         storeName,
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor());
-    MetricsRepository metricsRepository = new MetricsRepository();
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
     ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
     ClientStats streamingStats =
         ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING, null);
@@ -325,7 +330,8 @@ public class AbstractAvroStoreClientTest {
         storeName,
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor());
-    MetricsRepository metricsRepository = new MetricsRepository();
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
     ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
     ClientStats streamingStats =
         ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING, null);

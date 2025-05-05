@@ -1,6 +1,7 @@
 package com.linkedin.venice.stats;
 
 import com.linkedin.venice.stats.metrics.MetricEntity;
+import io.opentelemetry.sdk.metrics.export.MetricReader;
 import io.tehuti.metrics.JmxReporter;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
@@ -68,6 +69,37 @@ public class VeniceMetricsRepository extends MetricsRepository implements Closea
             .extractAndSetOtelConfigs(configs)
             .build());
     metricsRepository.addReporter(new JmxReporter(serviceName));
+    return metricsRepository;
+  }
+
+  public static VeniceMetricsRepository getVeniceMetricsRepository(
+      String serviceName,
+      String metricPrefix,
+      Collection<MetricEntity> metricEntities,
+      boolean emitOtelMetrics) {
+    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(serviceName)
+            .setMetricPrefix(metricPrefix)
+            .setMetricEntities(metricEntities)
+            .setEmitOtelMetrics(emitOtelMetrics)
+            .build());
+    metricsRepository.addReporter(new JmxReporter(serviceName));
+    return metricsRepository;
+  }
+
+  public static VeniceMetricsRepository getVeniceMetricsRepository(
+      String serviceName,
+      String metricPrefix,
+      Collection<MetricEntity> metricEntities,
+      boolean emitOtelMetrics,
+      MetricReader additionalMetricReader) {
+    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(serviceName)
+            .setMetricPrefix(metricPrefix)
+            .setMetricEntities(metricEntities)
+            .setEmitOtelMetrics(emitOtelMetrics)
+            .setOtelAdditionalMetricsReader(additionalMetricReader)
+            .build());
     return metricsRepository;
   }
 }

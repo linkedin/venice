@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
 import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_METRIC_PREFIX;
 import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_SERVICE_NAME;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
@@ -71,7 +72,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
@@ -927,13 +927,8 @@ public abstract class TestBatch {
 
     veniceCluster.refreshAllRouterMetaData();
 
-    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setServiceName(THIN_CLIENT_SERVICE_NAME)
-            .setMetricPrefix(THIN_CLIENT_METRIC_PREFIX)
-            .setEmitOtelMetrics(true)
-            .setMetricEntities(CLIENT_METRIC_ENTITIES)
-            .build());
-
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
     try (
         AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName)

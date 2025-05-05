@@ -1,12 +1,16 @@
 package com.linkedin.venice.fastclient;
 
 import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
+import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.KEY_SCHEMA;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.REPLICA1_NAME;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.REPLICA2_NAME;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.getMockR2Client;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader;
+import static com.linkedin.venice.fastclient.stats.FastClientStats.FAST_CLIENT_METRIC_PREFIX;
+import static com.linkedin.venice.fastclient.stats.FastClientStats.FAST_CLIENT_SERVICE_NAME;
 import static com.linkedin.venice.schema.Utils.loadSchemaFileAsString;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
@@ -44,11 +48,11 @@ import com.linkedin.venice.router.exception.VeniceKeyCountLimitException;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.Metric;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -176,7 +180,8 @@ public class DispatchingAvroGenericStoreClientTest {
                     .setRoutingRequestDefaultTimeoutMS(routingRequestDefaultTimeOutMS)
                     .setRoutingPendingRequestCounterInstanceBlockThreshold(1)
                     .build()));
-    MetricsRepository metricsRepository = new MetricsRepository();
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepository(FAST_CLIENT_SERVICE_NAME, FAST_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
     metrics = metricsRepository.metrics();
 
     clientConfigBuilder.setMetricsRepository(metricsRepository);

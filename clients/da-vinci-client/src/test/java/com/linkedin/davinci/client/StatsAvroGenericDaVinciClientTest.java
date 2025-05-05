@@ -1,5 +1,9 @@
 package com.linkedin.davinci.client;
 
+import static com.linkedin.davinci.client.StatsAvroGenericDaVinciClient.DAVINCI_CLIENT_METRIC_PREFIX;
+import static com.linkedin.davinci.client.StatsAvroGenericDaVinciClient.DAVINCI_CLIENT_SERVICE_NAME;
+import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
@@ -9,9 +13,9 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.DataProviderUtils;
 import io.tehuti.Metric;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -37,7 +41,11 @@ public class StatsAvroGenericDaVinciClientTest {
         .thenThrow(new RuntimeException("mock_exception_by_function_directly"));
     when(mockClient.getStoreName()).thenReturn(storeName);
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(
+        DAVINCI_CLIENT_SERVICE_NAME,
+        DAVINCI_CLIENT_METRIC_PREFIX,
+        CLIENT_METRIC_ENTITIES,
+        true);
     StatsAvroGenericDaVinciClient statsClient = new StatsAvroGenericDaVinciClient(
         mockClient,
         new ClientConfig(storeName).setMetricsRepository(metricsRepository));
@@ -85,7 +93,11 @@ public class StatsAvroGenericDaVinciClientTest {
     doCallRealMethod().when(mockClient).batchGet(any());
     doCallRealMethod().when(mockClient).streamingBatchGet(any(), any());
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(
+        DAVINCI_CLIENT_SERVICE_NAME,
+        DAVINCI_CLIENT_METRIC_PREFIX,
+        CLIENT_METRIC_ENTITIES,
+        true);
     StatsAvroGenericDaVinciClient statsClient = new StatsAvroGenericDaVinciClient(
         mockClient,
         new ClientConfig(storeName).setMetricsRepository(metricsRepository));

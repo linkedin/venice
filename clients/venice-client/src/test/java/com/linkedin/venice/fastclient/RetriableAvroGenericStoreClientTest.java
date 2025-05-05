@@ -1,7 +1,11 @@
 package com.linkedin.venice.fastclient;
 
 import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
+import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.fastclient.stats.FastClientStats.FAST_CLIENT_METRIC_PREFIX;
+import static com.linkedin.venice.fastclient.stats.FastClientStats.FAST_CLIENT_SERVICE_NAME;
 import static com.linkedin.venice.schema.Utils.loadSchemaFileAsString;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
@@ -615,7 +619,8 @@ public class RetriableAvroGenericStoreClientTest {
   @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testGetWithoutTriggeringLongTailRetry(boolean batchGet, boolean keyNotFound)
       throws ExecutionException, InterruptedException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfigBuilder.setMetricsRepository(
+        getVeniceMetricsRepository(FAST_CLIENT_SERVICE_NAME, FAST_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true));
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(
@@ -642,7 +647,8 @@ public class RetriableAvroGenericStoreClientTest {
   @Test(dataProvider = "FastClient-RequestTypes", timeOut = TEST_TIMEOUT)
   public void testGetWithTriggeringLongTailRetryAndOriginalWins(RequestType requestType)
       throws ExecutionException, InterruptedException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfigBuilder.setMetricsRepository(
+        getVeniceMetricsRepository(FAST_CLIENT_SERVICE_NAME, FAST_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true));
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(
@@ -677,7 +683,8 @@ public class RetriableAvroGenericStoreClientTest {
       RequestType requestType,
       boolean keyNotFound,
       boolean noReplicaFound) throws ExecutionException, InterruptedException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfigBuilder.setMetricsRepository(
+        getVeniceMetricsRepository(FAST_CLIENT_SERVICE_NAME, FAST_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true));
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(
@@ -710,7 +717,8 @@ public class RetriableAvroGenericStoreClientTest {
   @Test(dataProvider = "FastClient-RequestTypes", timeOut = TEST_TIMEOUT)
   public void testGetWithTriggeringErrorRetryAndRetryWins(RequestType requestType)
       throws ExecutionException, InterruptedException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfigBuilder.setMetricsRepository(
+        getVeniceMetricsRepository(FAST_CLIENT_SERVICE_NAME, FAST_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true));
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(true, 0, false, LONG_TAIL_RETRY_THRESHOLD_IN_MS, false, false, clientConfig),
@@ -736,7 +744,8 @@ public class RetriableAvroGenericStoreClientTest {
   @Test(dataProvider = "FastClient-RequestTypes", timeOut = TEST_TIMEOUT)
   public void testGetWithTriggeringLongTailRetryAndRetryFails(RequestType requestType)
       throws ExecutionException, InterruptedException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfigBuilder.setMetricsRepository(
+        getVeniceMetricsRepository(FAST_CLIENT_SERVICE_NAME, FAST_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true));
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(false, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, false, false, clientConfig),
@@ -762,7 +771,8 @@ public class RetriableAvroGenericStoreClientTest {
   @Test(dataProvider = "FastClient-RequestTypes", timeOut = TEST_TIMEOUT)
   public void testGetWithTriggeringLongTailRetryAndBothFailsV1(RequestType requestType)
       throws InterruptedException, ExecutionException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfigBuilder.setMetricsRepository(
+        getVeniceMetricsRepository(FAST_CLIENT_SERVICE_NAME, FAST_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true));
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(true, 10 * LONG_TAIL_RETRY_THRESHOLD_IN_MS, true, 0, false, false, clientConfig),
@@ -794,7 +804,8 @@ public class RetriableAvroGenericStoreClientTest {
   @Test(dataProvider = "FastClient-RequestTypes", timeOut = TEST_TIMEOUT)
   public void testGetWithTriggeringLongTailRetryAndBothFailsV2(RequestType requestType)
       throws InterruptedException, ExecutionException {
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfigBuilder.setMetricsRepository(
+        getVeniceMetricsRepository(FAST_CLIENT_SERVICE_NAME, FAST_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true));
     clientConfig = clientConfigBuilder.build();
     retriableClient = new RetriableAvroGenericStoreClient<>(
         prepareDispatchingClient(true, 0, true, 0, false, false, clientConfig),

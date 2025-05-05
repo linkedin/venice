@@ -1,6 +1,10 @@
 package com.linkedin.venice.client.store;
 
 import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
+import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_METRIC_PREFIX;
+import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_SERVICE_NAME;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
@@ -23,11 +27,11 @@ import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.Metric;
-import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -208,7 +212,8 @@ public class StatTrackingStoreClientTest {
 
     doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
 
-    MetricsRepository repository = new MetricsRepository();
+    VeniceMetricsRepository repository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
 
     StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(
         mockStoreClient,
@@ -239,7 +244,8 @@ public class StatTrackingStoreClientTest {
       keySet.add(keyPrefix + i);
     }
 
-    MetricsRepository repository = new MetricsRepository();
+    VeniceMetricsRepository repository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
 
     InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(
         mock(TransportClient.class),
@@ -282,7 +288,8 @@ public class StatTrackingStoreClientTest {
       keySet.add(keyPrefix + i);
     }
 
-    MetricsRepository repository = new MetricsRepository();
+    VeniceMetricsRepository repository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
 
     InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(
         mock(TransportClient.class),
@@ -308,7 +315,8 @@ public class StatTrackingStoreClientTest {
       keySet.add(keyPrefix + i);
     }
 
-    MetricsRepository repository = new MetricsRepository();
+    VeniceMetricsRepository repository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
 
     InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(
         mock(TransportClient.class),
@@ -339,7 +347,8 @@ public class StatTrackingStoreClientTest {
       keySet.add(keyPrefix + i);
     }
 
-    MetricsRepository repository = new MetricsRepository();
+    VeniceMetricsRepository repository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
 
     InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(
         mock(TransportClient.class),
@@ -366,7 +375,8 @@ public class StatTrackingStoreClientTest {
         new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
     doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
 
-    MetricsRepository repository = new MetricsRepository();
+    VeniceMetricsRepository repository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
 
     StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(
         mockStoreClient,
@@ -399,7 +409,8 @@ public class StatTrackingStoreClientTest {
         new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
     doReturn(mockInnerFuture).when(mockStoreClient).batchGet(any());
 
-    MetricsRepository repository = new MetricsRepository();
+    VeniceMetricsRepository repository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
 
     InternalAvroStoreClient innerClient = new MultiGetStreamTestWithExceptionStoreClient(
         mock(TransportClient.class),
@@ -495,7 +506,8 @@ public class StatTrackingStoreClientTest {
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor());
 
-    MetricsRepository repository = new MetricsRepository();
+    VeniceMetricsRepository repository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
     StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(
         storeClient,
         ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
@@ -550,7 +562,8 @@ public class StatTrackingStoreClientTest {
         Collections.emptyMap(),
         true,
         false);
-    MetricsRepository repository = new MetricsRepository();
+    VeniceMetricsRepository repository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
     StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(
         innerClient,
         ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
@@ -594,7 +607,8 @@ public class StatTrackingStoreClientTest {
         false,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
         new VeniceClientHttpException(500));
-    MetricsRepository repository = new MetricsRepository();
+    VeniceMetricsRepository repository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
     StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(
         innerClient,
         ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
@@ -670,7 +684,8 @@ public class StatTrackingStoreClientTest {
         false,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
         new VeniceClientHttpException(500));
-    MetricsRepository repository = new MetricsRepository();
+    VeniceMetricsRepository repository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
     StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(
         innerClient,
         ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
@@ -743,7 +758,8 @@ public class StatTrackingStoreClientTest {
         false,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor(),
         new VeniceClientHttpException(500));
-    MetricsRepository repository = new MetricsRepository();
+    VeniceMetricsRepository repository =
+        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
     StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(
         innerClient,
         ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
