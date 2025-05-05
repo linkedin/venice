@@ -32,6 +32,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private String veniceURL;
   private String statsPrefix;
   private Class<T> specificValueClass = null;
+  private Schema specificValueSchema = null;
   private boolean isVsonClient = false;
 
   // D2 specific settings
@@ -98,6 +99,7 @@ public class ClientConfig<T extends SpecificRecord> {
         .setStoreName(config.getStoreName())
         .setVeniceURL(config.getVeniceURL())
         .setSpecificValueClass(config.getSpecificValueClass())
+        .setSpecificValueSchema(config.getSpecificValueSchema())
         .setVsonClient(config.isVsonClient())
 
         // D2 specific settings
@@ -188,6 +190,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setStatsPrefix(String statsPrefix) {
     this.statsPrefix = statsPrefix;
+    return this;
+  }
+
+  public Schema getSpecificValueSchema() {
+    return specificValueSchema;
+  }
+
+  public ClientConfig<T> setSpecificValueSchema(Schema specificValueSchema) {
+    this.specificValueSchema = specificValueSchema;
     return this;
   }
 

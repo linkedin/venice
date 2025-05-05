@@ -8,6 +8,7 @@ import com.linkedin.venice.schema.SchemaReader;
 import java.util.Objects;
 import java.util.Properties;
 import javax.annotation.Nonnull;
+import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 
 
@@ -240,6 +241,11 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public ChangelogClientConfig setSpecificValueSchema(Schema specificValueSchema) {
+    this.innerClientConfig.setSpecificValueSchema(specificValueSchema);
+    return this;
+  }
+
   public ChangelogClientConfig setShouldSkipFailedToAssembleRecords(boolean skipFailedToAssembleRecords) {
     this.skipFailedToAssembleRecords = skipFailedToAssembleRecords;
     return this;
@@ -271,7 +277,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setIsExperimentalClientEnabled(config.isExperimentalClientEnabled())
         .setMaxBufferSize(config.getMaxBufferSize())
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
-        .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords());
+        .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords())
+        .setInnerClientConfig(config.getInnerClientConfig());
     return newConfig;
   }
 
@@ -310,6 +317,11 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
    */
   public ChangelogClientConfig setMaxBufferSize(int maxBufferSize) {
     this.maxBufferSize = maxBufferSize;
+    return this;
+  }
+
+  private ChangelogClientConfig setInnerClientConfig(ClientConfig<T> innerClientConfig) {
+    this.innerClientConfig = innerClientConfig;
     return this;
   }
 }
