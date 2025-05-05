@@ -2753,6 +2753,6 @@ public class ConfigKeys {
    * The threshold in ms to consider a subscribed topic partition problematic without a new message polled since it was
    * subscribed.
    */
-  public static final String SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_MS =
-      "server.consumer.poll.tracker.stale.threshold.ms";
+  public static final String SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS =
+      "server.consumer.poll.tracker.stale.threshold.in.seconds";
 }

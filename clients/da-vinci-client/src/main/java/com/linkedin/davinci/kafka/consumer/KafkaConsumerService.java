@@ -91,9 +91,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       new RedundantExceptionFilter(8 * 1024 * 1024 * 4, TimeUnit.MINUTES.toMillis(10));
   private final VeniceServerConfig serverConfig;
-  private final ExecutorService consumerPollTrackerTaskExecutor;
   protected final ConsumerPollTracker consumerPollTracker;
-  private final ConsumerPollTrackerReportingTask consumerPollTrackerReportingTask;
 
   /**
    * @param statsOverride injection of stats, for test purposes
@@ -129,7 +127,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     String consumerNamePrefix = "venice-shared-consumer-for-" + kafkaUrl + '-' + poolType.getStatSuffix();
     threadFactory = new RandomAccessDaemonThreadFactory(consumerNamePrefix, serverConfig.getRegionName());
     consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, threadFactory);
-    consumerPollTrackerTaskExecutor = Executors.newSingleThreadExecutor();
     this.consumerToConsumptionTask = new IndexedHashMap<>(numOfConsumersPerKafkaCluster);
     this.aggStats = statsOverride != null
         ? statsOverride
@@ -147,11 +144,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             .setIsOffsetCollectionEnabled(isKafkaConsumerOffsetCollectionEnabled)
             .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry());
     this.consumerPollTracker = new ConsumerPollTracker(time);
-    this.consumerPollTrackerReportingTask = new ConsumerPollTrackerReportingTask(
-        consumerPollTracker,
-        time,
-        serverConfig.getConsumerPollTrackerStaleThresholdMs(),
-        LOGGER);
     for (int i = 0; i < numOfConsumersPerKafkaCluster; ++i) {
       /**
        * We need to assign a unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
@@ -329,15 +321,12 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   public boolean startInner() {
     consumerToConsumptionTask.values().forEach(consumerExecutor::submit);
     consumerExecutor.shutdown();
-    consumerPollTrackerTaskExecutor.submit(consumerPollTrackerReportingTask);
     LOGGER.info("KafkaConsumerService started for {}", kafkaUrl);
     return true;
   }
 
   @Override
   public void stopInner() throws Exception {
-    consumerPollTrackerReportingTask.stop();
-    consumerPollTrackerTaskExecutor.shutdownNow();
     consumerToConsumptionTask.values().forEach(ConsumptionTask::stop);
     long beginningTime = System.currentTimeMillis();
     boolean gracefulShutdownSuccess = consumerExecutor.awaitTermination(SHUTDOWN_TIMEOUT_IN_SECOND, TimeUnit.SECONDS);
@@ -467,8 +456,13 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
        */
       consumptionTask.setDataReceiver(topicPartition, consumedDataReceiver);
       consumer.subscribe(consumedDataReceiver.destinationIdentifier(), topicPartition, lastReadOffset);
-      consumerPollTracker.recordActivity(topicPartition);
+      consumerPollTracker.recordSubscribed(topicPartition);
     }
+  }
+
+  @Override
+  public Map<PubSubTopicPartition, Long> getStaleTopicPartitions(long thresholdTimestamp) {
+    return consumerPollTracker.getStaleTopicPartitions(thresholdTimestamp);
   }
 
   interface KCSConstructor {

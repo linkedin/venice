@@ -169,7 +169,7 @@ class ConsumptionTask implements Runnable {
               topicPartitionMessages = entry.getValue();
 
               // Per-poll bookkeeping
-              consumerPollTracker.recordActivity(pubSubTopicPartition);
+              consumerPollTracker.recordMessageReceived(pubSubTopicPartition);
               msgCount = topicPartitionMessages.size();
               polledPubSubMessagesCount += msgCount;
               payloadSizePerTopicPartition = 0;
