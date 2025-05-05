@@ -5,7 +5,6 @@ import static com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator.
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -288,7 +287,8 @@ public class AggKafkaConsumerServiceTest {
     when(mockStaleTopicPartition.getTopicName()).thenReturn(staleTopicName);
     when(mockStaleTopicPartition.getPartitionNumber()).thenReturn(0);
     staleTopicPartitions.put(mockStaleTopicPartition, 0L);
-    when(goodConsumerService.getStaleTopicPartitions(anyLong())).thenReturn(staleTopicPartitions);
+    long expectedStaleTimeMs = 20000L;
+    when(goodConsumerService.getStaleTopicPartitions(expectedStaleTimeMs - 10000L)).thenReturn(staleTopicPartitions);
 
     Consumer<String> killIngestionTaskRunnable = mock(Consumer.class);
     Runnable repairRunnable = getDetectAndRepairRunnable(
@@ -298,7 +298,6 @@ public class AggKafkaConsumerServiceTest {
         versionTopicStoreIngestionTaskMapping,
         stuckConsumerRepairStats,
         killIngestionTaskRunnable);
-    long expectedStaleTimeMs = 20000L;
     when(time.getMilliseconds()).thenReturn(expectedStaleTimeMs);
     repairRunnable.run();
     verify(goodConsumerService).getMaxElapsedTimeMSSinceLastPollInConsumerPool();
