@@ -261,31 +261,38 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         }
       }
 
-      StringBuilder stringBuilder = new StringBuilder();
-      long now = time.getMilliseconds();
-      // Detect and log any subscribed topic partitions that are not polling records
-      for (Map.Entry<String, AbstractKafkaConsumerService> consumerService: kafkaServerToConsumerServiceMap
-          .entrySet()) {
-        Map<PubSubTopicPartition, Long> staleTopicPartitions =
-            consumerService.getValue().getStaleTopicPartitions(consumerPollTrackerStaleThresholdMs);
-        if (!staleTopicPartitions.isEmpty()) {
-          stringBuilder.append(CONSUMER_POLL_WARNING_MESSAGE_PREFIX);
-          stringBuilder.append(consumerService.getKey());
-          for (Map.Entry<PubSubTopicPartition, Long> staleTopicPartition: staleTopicPartitions.entrySet()) {
-            stringBuilder.append("\n topic: ");
-            stringBuilder.append(staleTopicPartition.getKey().getTopicName());
-            stringBuilder.append(" partition: ");
-            stringBuilder.append(staleTopicPartition.getKey().getPartitionNumber());
-            stringBuilder.append(" stale for: ");
-            stringBuilder.append(now - staleTopicPartition.getValue());
-            stringBuilder.append("ms");
-          }
-          logger.warn(stringBuilder.toString());
-          // clear the StringBuilder to be reused for next reporting cycle
-          stringBuilder.setLength(0);
-        }
-      }
+      reportStaleTopicPartitions(logger, time, kafkaServerToConsumerServiceMap, consumerPollTrackerStaleThresholdMs);
     };
+  }
+
+  private static void reportStaleTopicPartitions(
+      Logger logger,
+      Time time,
+      Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap,
+      long consumerPollTrackerStaleThresholdMs) {
+    StringBuilder stringBuilder = new StringBuilder();
+    long now = time.getMilliseconds();
+    // Detect and log any subscribed topic partitions that are not polling records
+    for (Map.Entry<String, AbstractKafkaConsumerService> consumerService: kafkaServerToConsumerServiceMap.entrySet()) {
+      Map<PubSubTopicPartition, Long> staleTopicPartitions =
+          consumerService.getValue().getStaleTopicPartitions(now - consumerPollTrackerStaleThresholdMs);
+      if (!staleTopicPartitions.isEmpty()) {
+        stringBuilder.append(CONSUMER_POLL_WARNING_MESSAGE_PREFIX);
+        stringBuilder.append(consumerService.getKey());
+        for (Map.Entry<PubSubTopicPartition, Long> staleTopicPartition: staleTopicPartitions.entrySet()) {
+          stringBuilder.append("\n topic: ");
+          stringBuilder.append(staleTopicPartition.getKey().getTopicName());
+          stringBuilder.append(" partition: ");
+          stringBuilder.append(staleTopicPartition.getKey().getPartitionNumber());
+          stringBuilder.append(" stale for: ");
+          stringBuilder.append(now - staleTopicPartition.getValue());
+          stringBuilder.append("ms");
+        }
+        logger.warn(stringBuilder.toString());
+        // clear the StringBuilder to be reused for next reporting cycle
+        stringBuilder.setLength(0);
+      }
+    }
   }
 
   /**
