@@ -4,11 +4,8 @@ import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_EN
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
-import static com.linkedin.venice.stats.dimensions.VeniceClientType.FAST_CLIENT;
-import static com.linkedin.venice.stats.dimensions.VeniceClientType.THIN_CLIENT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLIENT_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -53,7 +50,7 @@ public class BasicClientStatsTest {
     MetricsRepository metricsRepository1 = new MetricsRepository();
     // Without prefix
     ClientConfig config1 = new ClientConfig(storeName);
-    BasicClientStats.getClientStats(metricsRepository1, storeName, SINGLE_GET, config1, THIN_CLIENT);
+    BasicClientStats.getClientStats(metricsRepository1, storeName, SINGLE_GET, config1);
     // Check metric name
     assertTrue(metricsRepository1.metrics().size() > 0);
     String metricPrefix1 = "." + storeName;
@@ -65,7 +62,7 @@ public class BasicClientStatsTest {
     String prefix = "test_prefix";
     MetricsRepository metricsRepository2 = new MetricsRepository();
     ClientConfig config2 = new ClientConfig(storeName).setStatsPrefix(prefix);
-    BasicClientStats.getClientStats(metricsRepository2, storeName, SINGLE_GET, config2, FAST_CLIENT);
+    BasicClientStats.getClientStats(metricsRepository2, storeName, SINGLE_GET, config2);
     // Check metric name
     assertTrue(metricsRepository2.metrics().size() > 0);
     String metricPrefix2 = "." + prefix + "_" + storeName;
@@ -86,8 +83,8 @@ public class BasicClientStatsTest {
         .setTehutiMetricConfig(new MetricConfig())
         .build();
     VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(metricsConfig);
-    BasicClientStats stats = BasicClientStats
-        .getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName), THIN_CLIENT);
+    BasicClientStats stats =
+        BasicClientStats.getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName));
 
     String metricPrefix = "." + storeName;
 
@@ -129,8 +126,8 @@ public class BasicClientStatsTest {
         .setTehutiMetricConfig(new MetricConfig())
         .build();
     VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(metricsConfig);
-    BasicClientStats stats = BasicClientStats
-        .getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName), THIN_CLIENT);
+    BasicClientStats stats =
+        BasicClientStats.getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName));
 
     String metricPrefix = "." + storeName;
 
@@ -173,7 +170,6 @@ public class BasicClientStatsTest {
             Utils.setOf(
                 VENICE_STORE_NAME,
                 VENICE_REQUEST_METHOD,
-                VENICE_CLIENT_TYPE,
                 HTTP_RESPONSE_STATUS_CODE,
                 HTTP_RESPONSE_STATUS_CODE_CATEGORY,
                 VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
@@ -187,7 +183,6 @@ public class BasicClientStatsTest {
             Utils.setOf(
                 VENICE_STORE_NAME,
                 VENICE_REQUEST_METHOD,
-                VENICE_CLIENT_TYPE,
                 HTTP_RESPONSE_STATUS_CODE,
                 HTTP_RESPONSE_STATUS_CODE_CATEGORY,
                 VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
@@ -251,7 +246,6 @@ public class BasicClientStatsTest {
     return Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
-        .put(VENICE_CLIENT_TYPE.getDimensionNameInDefaultFormat(), THIN_CLIENT.getDimensionValue())
         .put(
             HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(),
             transformIntToHttpResponseStatusEnum(httpStatus).getDimensionValue())

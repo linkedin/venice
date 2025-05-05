@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.davinci.client.StatsAvroGenericDaVinciClient.DAVINCI_CLIENT_METRIC_PREFIX;
 import static com.linkedin.davinci.client.StatsAvroGenericDaVinciClient.DAVINCI_CLIENT_SERVICE_NAME;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_LATENCY;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
@@ -41,7 +42,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTI
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
-import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_PREFIX;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -294,7 +294,7 @@ public class DaVinciClientTest {
 
     MetricsRepository metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setServiceName(DAVINCI_CLIENT_SERVICE_NAME)
-            .setMetricPrefix(CLIENT_METRIC_PREFIX)
+            .setMetricPrefix(DAVINCI_CLIENT_METRIC_PREFIX)
             .setEmitOtelMetrics(true)
             .setMetricEntities(CLIENT_METRIC_ENTITIES)
             .build());

@@ -1,11 +1,9 @@
 package com.linkedin.venice.client.stats;
 
-import static com.linkedin.venice.client.stats.BasicClientStats.getSuccessfulKeyCount;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLIENT_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -23,7 +21,6 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
-import com.linkedin.venice.stats.dimensions.VeniceClientType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
@@ -52,8 +49,6 @@ import org.apache.http.HttpStatus;
  * by thin, fast and DaVinci clients.
  */
 public class BasicClientStats extends AbstractVeniceHttpStats {
-  public static final String CLIENT_SERVICE_NAME = "venice-client";
-  public static final String CLIENT_METRIC_PREFIX = "client";
   public static final Collection<MetricEntity> CLIENT_METRIC_ENTITIES = Collections.unmodifiableList(
       Arrays.stream(BasicClientMetricEntity.values())
           .map(BasicClientMetricEntity::getMetricEntity)
@@ -83,18 +78,13 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       MetricsRepository metricsRepository,
       String storeName,
       RequestType requestType,
-      ClientConfig clientConfig,
-      VeniceClientType clientType) {
+      ClientConfig clientConfig) {
     String prefix = clientConfig == null ? null : clientConfig.getStatsPrefix();
     String metricName = prefix == null || prefix.isEmpty() ? storeName : prefix + "." + storeName;
-    return new BasicClientStats(metricsRepository, metricName, requestType, clientType);
+    return new BasicClientStats(metricsRepository, metricName, requestType);
   }
 
-  protected BasicClientStats(
-      MetricsRepository metricsRepository,
-      String storeName,
-      RequestType requestType,
-      VeniceClientType clientType) {
+  protected BasicClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
     super(
         storeName.startsWith(SYSTEM_STORE_NAME_PREFIX) ? dummySystemStoreMetricRepo : metricsRepository,
         storeName,
@@ -109,7 +99,6 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         baseDimensionsMap = new HashMap<>();
         baseDimensionsMap.put(VENICE_STORE_NAME, storeName);
         baseDimensionsMap.put(VENICE_REQUEST_METHOD, requestType.getDimensionValue());
-        baseDimensionsMap.put(VENICE_CLIENT_TYPE, clientType.getDimensionValue());
       } else {
         otelRepository = null;
         baseDimensionsMap = null;
@@ -313,7 +302,6 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         setOf(
             VENICE_STORE_NAME,
             VENICE_REQUEST_METHOD,
-            VENICE_CLIENT_TYPE,
             HTTP_RESPONSE_STATUS_CODE,
             HTTP_RESPONSE_STATUS_CODE_CATEGORY,
             VENICE_RESPONSE_STATUS_CODE_CATEGORY)
@@ -326,7 +314,6 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         setOf(
             VENICE_STORE_NAME,
             VENICE_REQUEST_METHOD,
-            VENICE_CLIENT_TYPE,
             HTTP_RESPONSE_STATUS_CODE,
             HTTP_RESPONSE_STATUS_CODE_CATEGORY,
             VENICE_RESPONSE_STATUS_CODE_CATEGORY)

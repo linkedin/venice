@@ -4,7 +4,6 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.stats.dimensions.VeniceClientType;
 import com.linkedin.venice.utils.LatencyUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
@@ -27,6 +26,7 @@ import org.apache.http.HttpStatus;
  */
 public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDaVinciClient<K, V> {
   public static final String DAVINCI_CLIENT_SERVICE_NAME = "davinci-client";
+  public static final String DAVINCI_CLIENT_METRIC_PREFIX = "davinci_client";
   private final BasicClientStats clientStatsForSingleGet;
   private final BasicClientStats clientStatsForBatchGet;
 
@@ -36,18 +36,10 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
     if (metricsRepository == null) {
       throw new VeniceClientException("MetricsRepository shouldn't be null");
     }
-    this.clientStatsForSingleGet = BasicClientStats.getClientStats(
-        metricsRepository,
-        clientConfig.getStoreName(),
-        RequestType.SINGLE_GET,
-        clientConfig,
-        VeniceClientType.DA_VINCI_CLIENT);
-    this.clientStatsForBatchGet = BasicClientStats.getClientStats(
-        metricsRepository,
-        clientConfig.getStoreName(),
-        RequestType.MULTI_GET,
-        clientConfig,
-        VeniceClientType.DA_VINCI_CLIENT);
+    this.clientStatsForSingleGet = BasicClientStats
+        .getClientStats(metricsRepository, clientConfig.getStoreName(), RequestType.SINGLE_GET, clientConfig);
+    this.clientStatsForBatchGet = BasicClientStats
+        .getClientStats(metricsRepository, clientConfig.getStoreName(), RequestType.MULTI_GET, clientConfig);
   }
 
   private static <T> CompletableFuture<T> trackRequest(

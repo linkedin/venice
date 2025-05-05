@@ -15,7 +15,6 @@ import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.TehutiUtils;
-import com.linkedin.venice.stats.dimensions.VeniceClientType;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -53,42 +52,27 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     super(innerStoreClient);
     MetricsRepository metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
         .orElse(TehutiUtils.getMetricsRepository(STAT_VENICE_CLIENT_NAME));
-    this.singleGetStats = ClientStats.getClientStats(
-        metricsRepository,
-        innerStoreClient.getStoreName(),
-        RequestType.SINGLE_GET,
-        clientConfig,
-        VeniceClientType.THIN_CLIENT);
-    this.multiGetStats = ClientStats.getClientStats(
-        metricsRepository,
-        innerStoreClient.getStoreName(),
-        RequestType.MULTI_GET,
-        clientConfig,
-        VeniceClientType.THIN_CLIENT);
+    this.singleGetStats = ClientStats
+        .getClientStats(metricsRepository, innerStoreClient.getStoreName(), RequestType.SINGLE_GET, clientConfig);
+    this.multiGetStats = ClientStats
+        .getClientStats(metricsRepository, innerStoreClient.getStoreName(), RequestType.MULTI_GET, clientConfig);
     this.multiGetStreamingStats = ClientStats.getClientStats(
         metricsRepository,
         innerStoreClient.getStoreName(),
         RequestType.MULTI_GET_STREAMING,
-        clientConfig,
-        VeniceClientType.THIN_CLIENT);
+        clientConfig);
     this.schemaReaderStats = ClientStats.getClientStats(
         metricsRepository,
         innerStoreClient.getStoreName() + "_" + STAT_SCHEMA_READER,
         RequestType.SINGLE_GET,
-        clientConfig,
-        VeniceClientType.THIN_CLIENT);
-    this.computeStats = ClientStats.getClientStats(
-        metricsRepository,
-        innerStoreClient.getStoreName(),
-        RequestType.COMPUTE,
-        clientConfig,
-        VeniceClientType.THIN_CLIENT);
+        clientConfig);
+    this.computeStats = ClientStats
+        .getClientStats(metricsRepository, innerStoreClient.getStoreName(), RequestType.COMPUTE, clientConfig);
     this.computeStreamingStats = ClientStats.getClientStats(
         metricsRepository,
         innerStoreClient.getStoreName(),
         RequestType.COMPUTE_STREAMING,
-        clientConfig,
-        VeniceClientType.THIN_CLIENT);
+        clientConfig);
   }
 
   @Override

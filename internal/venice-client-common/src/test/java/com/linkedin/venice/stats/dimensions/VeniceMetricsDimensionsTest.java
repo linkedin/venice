@@ -37,9 +37,6 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REQUEST_RETRY_ABORT_REASON:
           assertEquals(dimension.getDimensionName(format), "venice.request.retry_abort_reason");
           break;
-        case VENICE_CLIENT_TYPE:
-          assertEquals(dimension.getDimensionName(format), "venice.client.type");
-          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -75,9 +72,6 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REQUEST_RETRY_ABORT_REASON:
           assertEquals(dimension.getDimensionName(format), "venice.request.retryAbortReason");
           break;
-        case VENICE_CLIENT_TYPE:
-          assertEquals(dimension.getDimensionName(format), "venice.client.type");
-          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -112,9 +106,6 @@ public class VeniceMetricsDimensionsTest {
           break;
         case VENICE_REQUEST_RETRY_ABORT_REASON:
           assertEquals(dimension.getDimensionName(format), "Venice.Request.RetryAbortReason");
-          break;
-        case VENICE_CLIENT_TYPE:
-          assertEquals(dimension.getDimensionName(format), "Venice.Client.Type");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);

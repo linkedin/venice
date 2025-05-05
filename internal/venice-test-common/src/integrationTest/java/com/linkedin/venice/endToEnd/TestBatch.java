@@ -4,7 +4,7 @@ import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECOR
 import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECORD_SIZE_RATIO;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
-import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_PREFIX;
+import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_METRIC_PREFIX;
 import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_SERVICE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
@@ -929,7 +929,7 @@ public abstract class TestBatch {
 
     VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setServiceName(THIN_CLIENT_SERVICE_NAME)
-            .setMetricPrefix(CLIENT_METRIC_PREFIX)
+            .setMetricPrefix(THIN_CLIENT_METRIC_PREFIX)
             .setEmitOtelMetrics(true)
             .setMetricEntities(CLIENT_METRIC_ENTITIES)
             .build());

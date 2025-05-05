@@ -29,7 +29,6 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import com.linkedin.venice.stats.dimensions.VeniceClientType;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
@@ -258,14 +257,9 @@ public class AbstractAvroStoreClientTest {
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     MetricsRepository metricsRepository = new MetricsRepository();
-    ClientStats stats = ClientStats
-        .getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null, VeniceClientType.THIN_CLIENT);
-    ClientStats streamingStats = ClientStats.getClientStats(
-        metricsRepository,
-        storeName,
-        RequestType.COMPUTE_STREAMING,
-        null,
-        VeniceClientType.THIN_CLIENT);
+    ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
+    ClientStats streamingStats =
+        ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING, null);
     CompletableFuture<Map<String, ComputeGenericRecord>> computeFuture =
         storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
             .project("int_field")
@@ -332,14 +326,9 @@ public class AbstractAvroStoreClientTest {
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     MetricsRepository metricsRepository = new MetricsRepository();
-    ClientStats stats = ClientStats
-        .getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null, VeniceClientType.THIN_CLIENT);
-    ClientStats streamingStats = ClientStats.getClientStats(
-        metricsRepository,
-        storeName,
-        RequestType.COMPUTE_STREAMING,
-        null,
-        VeniceClientType.THIN_CLIENT);
+    ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
+    ClientStats streamingStats =
+        ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING, null);
     CompletableFuture<Map<String, ComputeGenericRecord>> computeFuture =
         storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
             .project("int_field")

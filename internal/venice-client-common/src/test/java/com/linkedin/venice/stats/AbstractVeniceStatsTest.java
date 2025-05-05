@@ -13,7 +13,6 @@ import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.stats.dimensions.VeniceClientType;
 import com.linkedin.venice.utils.SystemTime;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MeasurableStat;
@@ -110,19 +109,14 @@ public class AbstractVeniceStatsTest {
     MetricsRepository metricsRepository1 = new MetricsRepository();
     // Without prefix
     ClientConfig config1 = new ClientConfig(storeName);
-    BasicClientStats
-        .getClientStats(metricsRepository1, storeName, RequestType.SINGLE_GET, config1, VeniceClientType.THIN_CLIENT);
+    BasicClientStats.getClientStats(metricsRepository1, storeName, RequestType.SINGLE_GET, config1);
     // Check metric name
     assertTrue(metricsRepository1.metrics().size() > 0);
 
     String prefix = "venice_system_store_meta_store_abc";
     ClientConfig config2 = new ClientConfig(storeName).setStatsPrefix(prefix);
-    ClientStats clientStats = ClientStats.getClientStats(
-        new MetricsRepository(),
-        storeName,
-        RequestType.SINGLE_GET,
-        config2,
-        VeniceClientType.THIN_CLIENT);
+    ClientStats clientStats =
+        ClientStats.getClientStats(new MetricsRepository(), storeName, RequestType.SINGLE_GET, config2);
     clientStats.recordRequestRetryCount();
   }
 

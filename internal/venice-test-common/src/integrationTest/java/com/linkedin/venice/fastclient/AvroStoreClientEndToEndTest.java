@@ -1,7 +1,7 @@
 package com.linkedin.venice.fastclient;
 
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
-import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_PREFIX;
+import static com.linkedin.venice.fastclient.stats.FastClientStats.FAST_CLIENT_METRIC_PREFIX;
 import static com.linkedin.venice.fastclient.stats.FastClientStats.FAST_CLIENT_SERVICE_NAME;
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 import static org.testng.Assert.assertEquals;
@@ -65,7 +65,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
     VeniceMetricsRepository metricsRepositoryForGenericClient = new VeniceMetricsRepository(
         new VeniceMetricsConfig.Builder().setServiceName(FAST_CLIENT_SERVICE_NAME)
-            .setMetricPrefix(CLIENT_METRIC_PREFIX)
+            .setMetricPrefix(FAST_CLIENT_METRIC_PREFIX)
             .setEmitOtelMetrics(true)
             .setMetricEntities(CLIENT_METRIC_ENTITIES)
             .build());
