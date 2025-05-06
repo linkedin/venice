@@ -348,7 +348,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       // When a push is killed or errored out, the topic may have been cleaned up or controller is temporarily
       // unreachable so we will allow upto 5 retries before marking it as failed
       if (version == null) {
-        int attemptedRetries = fetchNonTargetRegionStoreRetryCounter.compute(kafkaTopicName, (k, v) -> {
+        String regionKafkaTopicName = nonTargetRegion + "_" + kafkaTopicName;
+        int attemptedRetries = fetchNonTargetRegionStoreRetryCounter.compute(regionKafkaTopicName, (k, v) -> {
           if (v == null) {
             return 1;
           }
@@ -357,6 +358,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
         if (attemptedRetries == maxFetchNonTargetRegionStoreRetryCounter) {
           failedNonTargetRegions.add(nonTargetRegion);
+          fetchNonTargetRegionStoreRetryCounter.remove(regionKafkaTopicName);
         }
 
         continue;
