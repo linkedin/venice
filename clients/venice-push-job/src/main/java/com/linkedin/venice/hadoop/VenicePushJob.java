@@ -660,7 +660,8 @@ public class VenicePushJob implements AutoCloseable {
    */
   public void run() {
     ScheduledExecutorService timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
-    long bootstrapToOnlineTimeoutInHours = pushJobSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
+    long bootstrapToOnlineTimeoutInHours =
+        getPushJobSetting().storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
     Future<?> timeoutFuture = timeoutExecutor.schedule(() -> {
       LOGGER.error("Timeout reached. Stopping the job.");
       cancel();
@@ -2602,7 +2603,7 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void killDataWriterJob() {
+  void killDataWriterJob() {
     if (dataWriterComputeJob == null) {
       LOGGER.warn("No op to kill a null data writer job");
       return;

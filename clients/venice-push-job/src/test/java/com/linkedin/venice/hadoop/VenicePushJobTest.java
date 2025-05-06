@@ -38,6 +38,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
@@ -266,6 +267,40 @@ public class VenicePushJobTest {
     try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
+    }
+  }
+
+  /**
+   * Test that VenicePushJob.cancel() is called after bootstrapToOnlineTimeoutInHours is reached.
+   * UNKNOWN status is returned for pollStatusUntilComplete() to stall the job until cancel() can be called.
+   */
+  @Test
+  public void testPushJobTimeout() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    ControllerClient client = getClient();
+    JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
+    doReturn("UNKNOWN").when(response).getStatus();
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
+    doReturn(response).when(client).killOfflinePushJob(anyString());
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      pushJobSetting.jobStatusInUnknownStateTimeoutMs = 100; // give some time for the timeout to run on the executor
+      StoreInfo storeInfo = new StoreInfo();
+      storeInfo.setBootstrapToOnlineTimeoutInHours(0);
+      pushJobSetting.storeResponse = new StoreResponse();
+      pushJobSetting.storeResponse.setStore(storeInfo);
+      skipVPJValidation(pushJob);
+      try {
+        pushJob.run();
+        fail("Test should fail because pollStatusUntilComplete() never saw COMPLETE status, but doesn't.");
+      } catch (VeniceException e) {
+        Assert.assertTrue(e.getMessage().contains("push job is still in unknown state."));
+      }
+      verify(pushJob, atLeast(1)).cancel();
+      verify(pushJob, atLeast(1)).killDataWriterJob();
     }
   }
 
