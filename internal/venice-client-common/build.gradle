@@ -30,6 +30,11 @@ dependencies {
   api libraries.jacksonAnnotations
   api libraries.tehuti
   api libraries.xerces // d2Client brings in an old version of xerces
+  api libraries.opentelemetryApi
+  implementation libraries.opentelemetrySdk
+  implementation libraries.opentelemetryExporterLogging
+  implementation libraries.opentelemetryExporterOtlp
+  implementation libraries.opentelemetryExporterCommon
 
   implementation libraries.avroUtilFastserde
   implementation libraries.classgraph
@@ -40,11 +45,6 @@ dependencies {
   implementation libraries.log4j2api
   implementation libraries.zstd
   implementation libraries.conscrypt
-  implementation libraries.opentelemetryApi
-  implementation libraries.opentelemetrySdk
-  implementation libraries.opentelemetryExporterLogging
-  implementation libraries.opentelemetryExporterOtlp
-  implementation libraries.opentelemetryExporterCommon
 
   testImplementation project(':internal:venice-test-common')
   testImplementation project(':clients:venice-thin-client')

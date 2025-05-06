@@ -50,10 +50,10 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
     try {
       return futureSupplier.get().whenComplete((v, throwable) -> {
         if (throwable != null) {
-          stats.emitUnhealthyRequestMetrics(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), throwable);
+          stats.emitUnhealthyRequestMetricsForDavinciClient(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
           statFuture.completeExceptionally(throwable);
         } else {
-          stats.emitHealthyRequestMetrics(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS), v);
+          stats.emitHealthyRequestMetricsForDavinciClient(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
           statFuture.complete(v);
         }
       });

@@ -29,11 +29,13 @@ import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.sdk.metrics.data.ExponentialHistogramPointData;
 import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -75,78 +77,103 @@ public class BasicClientStatsTest {
 
   @Test
   public void testEmitHealthyMetrics() {
-    String storeName = "test_store";
-    String otelPrefix = "test_prefix";
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
-    VeniceMetricsRepository metricsRepository =
-        getVeniceMetricsRepository(storeName, otelPrefix, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
-    BasicClientStats stats =
-        BasicClientStats.getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName));
+    BasicClientStats stats = createStats(inMemoryMetricReader);
+    stats.emitHealthyRequestMetrics(90.0, 2);
 
-    String metricPrefix = "." + storeName;
+    validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", true, 90.0);
+    validateOtelMetrics(
+        inMemoryMetricReader,
+        "test_store",
+        SC_OK,
+        VeniceResponseStatusCategory.SUCCESS,
+        90.0,
+        "test_prefix");
+  }
 
-    int keyCount = 2;
-    double latency = 90.0;
+  @Test
+  public void testEmitHealthyRequestMetricsForDavinciClient() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    BasicClientStats stats = createStats(inMemoryMetricReader);
+    stats.emitHealthyRequestMetricsForDavinciClient(90.0);
 
-    stats.emitHealthyRequestMetrics(latency, keyCount);
-
-    // validate tehuti metrics
-    Map<String, ? extends Metric> metrics = metricsRepository.metrics();
-    Metric requestMetric = metrics.get(metricPrefix + "--request.OccurrenceRate");
-    Metric healthyRequestMetric = metrics.get(metricPrefix + "--healthy_request.OccurrenceRate");
-    Metric healthyLatencyMetric = metrics.get(metricPrefix + "--healthy_request_latency.Avg");
-
-    Assert.assertTrue(requestMetric.value() > 0.0);
-    Assert.assertTrue(healthyRequestMetric.value() > 0.0);
-    Assert.assertEquals(healthyLatencyMetric.value(), 90.0);
-
-    // validate otel metrics
-    Attributes expectedAttributes = getExpectedAttributes(storeName, SC_OK, VeniceResponseStatusCategory.SUCCESS);
-    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
-    Assert.assertFalse(metricsData.isEmpty(), "Metrics should not be empty");
-    Assert.assertEquals(metricsData.size(), 2, "There should be two metrics recorded");
-    LongPointData callCountData = getLongPointData(metricsData, "call_count", otelPrefix);
-    validateLongPointData(callCountData, 1, expectedAttributes);
-    ExponentialHistogramPointData callTimeData = getExponentialHistogramPointData(metricsData, "call_time", otelPrefix);
-    validateExponentialHistogramPointData(callTimeData, 90.0, 90.0, 1, 90.0, expectedAttributes);
+    validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", true, 90.0);
+    validateOtelMetrics(inMemoryMetricReader, "test_store", VeniceResponseStatusCategory.SUCCESS, 90.0, "test_prefix");
   }
 
   @Test
   public void testEmitUnhealthyMetrics() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    BasicClientStats stats = createStats(inMemoryMetricReader);
+    stats.emitUnhealthyRequestMetrics(90.0, HttpStatus.SC_INTERNAL_SERVER_ERROR);
+
+    validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", false, 90.0);
+    validateOtelMetrics(
+        inMemoryMetricReader,
+        "test_store",
+        HttpStatus.SC_INTERNAL_SERVER_ERROR,
+        VeniceResponseStatusCategory.FAIL,
+        90.0,
+        "test_prefix");
+  }
+
+  @Test
+  public void testEmitUnhealthyMetricsForDavinciClient() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    BasicClientStats stats = createStats(inMemoryMetricReader);
+    stats.emitUnhealthyRequestMetricsForDavinciClient(90.0);
+
+    validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", false, 90.0);
+    validateOtelMetrics(inMemoryMetricReader, "test_store", VeniceResponseStatusCategory.FAIL, 90.0, "test_prefix");
+  }
+
+  private BasicClientStats createStats(InMemoryMetricReader inMemoryMetricReader) {
     String storeName = "test_store";
     String otelPrefix = "test_prefix";
-    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     VeniceMetricsRepository metricsRepository =
         getVeniceMetricsRepository(storeName, otelPrefix, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
-    BasicClientStats stats =
-        BasicClientStats.getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName));
+    return BasicClientStats.getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName));
+  }
 
-    String metricPrefix = "." + storeName;
-
-    int httpStatus = HttpStatus.SC_INTERNAL_SERVER_ERROR;
-    double latency = 90.0;
-
-    stats.emitUnhealthyRequestMetrics(latency, httpStatus);
-
-    // validate tehuti metrics
+  private void validateTehutiMetrics(
+      MetricsRepository metricsRepository,
+      String metricPrefix,
+      boolean healthy,
+      double expectedLatency) {
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
-    Metric requestMetric = metrics.get(metricPrefix + "--request.OccurrenceRate");
-    Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--unhealthy_request.OccurrenceRate");
-    Metric unhealthyLatencyMetric = metrics.get(metricPrefix + "--unhealthy_request_latency.Avg");
+    Assert.assertTrue(metrics.get(metricPrefix + "--request.OccurrenceRate").value() > 0.0);
 
-    Assert.assertTrue(requestMetric.value() > 0.0);
-    Assert.assertTrue(unhealthyRequestMetric.value() > 0.0);
-    Assert.assertEquals(unhealthyLatencyMetric.value(), 90.0);
+    String type = healthy ? "healthy" : "unhealthy";
+    Assert.assertTrue(metrics.get(metricPrefix + "--" + type + "_request.OccurrenceRate").value() > 0.0);
+    Assert.assertEquals(metrics.get(metricPrefix + "--" + type + "_request_latency.Avg").value(), expectedLatency);
+  }
 
-    // validate otel metrics
-    Attributes expectedAttributes = getExpectedAttributes(storeName, httpStatus, VeniceResponseStatusCategory.FAIL);
+  private void validateOtelMetrics(
+      InMemoryMetricReader inMemoryMetricReader,
+      String storeName,
+      int httpStatus,
+      VeniceResponseStatusCategory category,
+      double latency,
+      String otelPrefix) {
+    Attributes expectedAttributes = getExpectedAttributes(storeName, httpStatus, category);
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
-    Assert.assertFalse(metricsData.isEmpty(), "Metrics should not be empty");
-    Assert.assertEquals(metricsData.size(), 2, "There should be two metrics recorded");
+    Assert.assertFalse(metricsData.isEmpty());
+
     LongPointData callCountData = getLongPointData(metricsData, "call_count", otelPrefix);
     validateLongPointData(callCountData, 1, expectedAttributes);
+
     ExponentialHistogramPointData callTimeData = getExponentialHistogramPointData(metricsData, "call_time", otelPrefix);
-    validateExponentialHistogramPointData(callTimeData, 90.0, 90.0, 1, 90.0, expectedAttributes);
+    validateExponentialHistogramPointData(callTimeData, latency, latency, 1, latency, expectedAttributes);
+  }
+
+  private void validateOtelMetrics(
+      InMemoryMetricReader inMemoryMetricReader,
+      String storeName,
+      VeniceResponseStatusCategory category,
+      double latency,
+      String otelPrefix) {
+    // Overload for Davinci client where httpStatus is not applicable
+    validateOtelMetrics(inMemoryMetricReader, storeName, -1, category, latency, otelPrefix);
   }
 
   @Test
@@ -178,6 +205,22 @@ public class BasicClientStatsTest {
                 HTTP_RESPONSE_STATUS_CODE,
                 HTTP_RESPONSE_STATUS_CODE_CATEGORY,
                 VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    expectedMetrics.put(
+        BasicClientStats.BasicClientMetricEntity.CALL_COUNT_DVC,
+        new MetricEntity(
+            "call_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of all DaVinci Client requests",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    expectedMetrics.put(
+        BasicClientStats.BasicClientMetricEntity.CALL_TIME_DVC,
+        new MetricEntity(
+            "call_time",
+            MetricType.HISTOGRAM,
+            MetricUnit.MILLISECOND,
+            "Latency for all DaVinci Client responses",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
 
     for (BasicClientStats.BasicClientMetricEntity metric: BasicClientStats.BasicClientMetricEntity.values()) {
       MetricEntity actual = metric.getMetricEntity();
@@ -235,18 +278,21 @@ public class BasicClientStatsTest {
       String storeName,
       int httpStatus,
       VeniceResponseStatusCategory veniceStatusCategory) {
-    return Attributes.builder()
+    AttributesBuilder builder = Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
         .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
         .put(
-            HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(),
-            transformIntToHttpResponseStatusEnum(httpStatus).getDimensionValue())
-        .put(
-            HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
-            getVeniceHttpResponseStatusCodeCategory(httpStatus).getDimensionValue())
-        .put(
             VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
-            veniceStatusCategory.getDimensionValue())
-        .build();
+            veniceStatusCategory.getDimensionValue());
+    if (httpStatus > -1) {
+      builder
+          .put(
+              HTTP_RESPONSE_STATUS_CODE.getDimensionNameInDefaultFormat(),
+              transformIntToHttpResponseStatusEnum(httpStatus).getDimensionValue())
+          .put(
+              HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+              getVeniceHttpResponseStatusCodeCategory(httpStatus).getDimensionValue());
+    }
+    return builder.build();
   }
 }
