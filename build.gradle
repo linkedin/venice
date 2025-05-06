@@ -130,7 +130,7 @@ ext.libraries = [
     pulsarIoCommon: "${pulsarGroup}:pulsar-io-common:${pulsarVersion}",
     r2: "com.linkedin.pegasus:r2:${pegasusVersion}",
     restliCommon: "com.linkedin.pegasus:restli-common:${pegasusVersion}",
-    rocksdbjni: 'org.rocksdb:rocksdbjni:9.10.0',
+    rocksdbjni: 'org.rocksdb:rocksdbjni:8.8.1',
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
     beamSdk: 'org.apache.beam:beam-sdks-java-core:2.60.0',
     beamExtensionAvro: 'org.apache.beam:beam-sdks-java-extensions-avro:2.60.0',
