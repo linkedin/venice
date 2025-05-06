@@ -22,13 +22,15 @@ public enum VersionStatus implements VeniceEnumValue {
   STARTED(1),
 
   /**
-   * Version has been pushed to venice and ingestion is complete. Intermediate status after a push job succeeds in all child regions
-   * before DeferredVersionSwapService flips the status to ONLINE. This status only exists in the parent
+   * Version has been pushed to venice and ingestion is complete.
+   * For the child version status, this means that servers have finished ingesting this version, but DVC clients have not ingested this version yet.
+   * For the parent version status, this is an intermediate status after a push job succeeds in all child regions
+   * before DeferredVersionSwapService flips the status to ONLINE.
    */
   PUSHED(2),
 
   /**
-   * Version is serving read requests
+   * Version is serving read requests and DVC clients can ingest this version
    */
   ONLINE(3),
 

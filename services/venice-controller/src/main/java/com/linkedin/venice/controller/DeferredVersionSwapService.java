@@ -23,6 +23,7 @@ import com.linkedin.venice.utils.RegionUtils;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +58,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(DeferredVersionSwapService.class);
   private Cache<String, Map<String, Long>> storePushCompletionTimeCache =
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
+  private HashMap<String, Integer> fetchNonTargetRegionStoreRetryCounter = new HashMap<>();
+  private static final int maxFetchNonTargetRegionStoreRetryCounter = 5;
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -334,16 +337,28 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       ReadWriteStoreRepository repository,
       Store store,
       int targetVersionNum,
-      String clusterName) {
+      String clusterName,
+      String kafkaTopicName) {
 
     Set<String> completedNonTargetRegions = new HashSet<>();
     Set<String> failedNonTargetRegions = new HashSet<>();
     for (String nonTargetRegion: nonTargetRegions) {
       Version version = getVersionFromStoreInRegion(clusterName, nonTargetRegion, store.getName(), targetVersionNum);
 
-      // When a push is killed or errored out, the topic may have been cleaned up
+      // When a push is killed or errored out, the topic may have been cleaned up or controller is temporarily
+      // unreachable so we will allow upto 5 retries before marking it as failed
       if (version == null) {
-        failedNonTargetRegions.add(nonTargetRegion);
+        int attemptedRetries = fetchNonTargetRegionStoreRetryCounter.compute(kafkaTopicName, (k, v) -> {
+          if (v == null) {
+            return 1;
+          }
+          return v + 1;
+        });
+
+        if (attemptedRetries == maxFetchNonTargetRegionStoreRetryCounter) {
+          failedNonTargetRegions.add(nonTargetRegion);
+        }
+
         continue;
       }
 
@@ -436,8 +451,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             }
 
             // Get eligible non target regions to roll forward in
-            Set<String> nonTargetRegionsCompleted =
-                getRegionsToRollForward(remainingRegions, repository, parentStore, targetVersionNum, cluster);
+            Set<String> nonTargetRegionsCompleted = getRegionsToRollForward(
+                remainingRegions,
+                repository,
+                parentStore,
+                targetVersionNum,
+                cluster,
+                kafkaTopicName);
             if (nonTargetRegionsCompleted.isEmpty()) {
               continue;
             }

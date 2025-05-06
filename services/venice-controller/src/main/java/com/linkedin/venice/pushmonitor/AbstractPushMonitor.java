@@ -1230,7 +1230,7 @@ public abstract class AbstractPushMonitor
             // be marked ONLINE after roll forward
             boolean isVersionSwapDeferredInNonTargetRegion =
                 !targetRegions.isEmpty() && !targetRegions.contains(regionName) && version.isVersionSwapDeferred();
-            if (!isVersionSwapDeferredInNonTargetRegion) {
+            if (isVersionSwapDeferredInNonTargetRegion) {
               LOGGER.info(
                   "Marking version status as PUSHED for version: {} in store: {} during a target region push w/ deferred swap"
                       + "because it is a non target region",
