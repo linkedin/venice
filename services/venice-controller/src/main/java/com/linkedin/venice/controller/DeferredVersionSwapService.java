@@ -364,7 +364,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         continue;
       }
 
-      if (!regionKafkaTopicName.isEmpty()) {
+      if (!StringUtils.isEmpty(regionKafkaTopicName)) {
         fetchNonTargetRegionStoreRetryCounter.remove(regionKafkaTopicName);
       }
 
