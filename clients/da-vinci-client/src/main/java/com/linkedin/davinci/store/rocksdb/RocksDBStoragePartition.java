@@ -393,7 +393,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     options.setKeepLogFileNum(rocksDBServerConfig.getMaxLogFileNum());
     options.setMaxLogFileSize(rocksDBServerConfig.getMaxLogFileSize());
 
-    if (rocksDBServerConfig.isPutReuseByteBufferEnabled()) {
+    if (rocksDBServerConfig.isEmitDuplicateKeyMetricEnabled()) {
       keyStatistics = new Statistics();
       options.setStatistics(keyStatistics);
     } else {
