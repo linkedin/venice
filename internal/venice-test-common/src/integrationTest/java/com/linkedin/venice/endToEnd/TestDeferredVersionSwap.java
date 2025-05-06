@@ -13,7 +13,6 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -543,21 +542,13 @@ public class TestDeferredVersionSwap {
         throw new RuntimeException(e);
       }
 
-      // Complete store migration in all regions
-      for (VeniceMultiClusterWrapper childDatacenter: multiRegionMultiClusterWrapper.getChildRegions()) {
-        ControllerClient childControllerClient =
-            new ControllerClient(srcClusterName, childDatacenter.getControllerConnectString());
-        String[] completeMigration =
-            { "--complete-migration", "--url", parentControllerURLs, "--store", storeName, "--cluster-src",
-                srcClusterName, "--cluster-dest", destClusterName, "--fabric", childDatacenter.getRegionName() };
-
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          AdminTool.main(completeMigration);
-
-          ControllerResponse discoveryResponse = childControllerClient.discoverCluster(storeName);
-          Assert.assertEquals(discoveryResponse.getCluster(), destClusterName);
-        });
-      }
+      // Complete migrations in all regions
+      StoreMigrationTestUtil.completeMigration(
+          parentControllerURLs,
+          storeName,
+          srcClusterName,
+          destClusterName,
+          multiRegionMultiClusterWrapper.getChildRegionNames());
 
       // Check that the destCluster is now the discovery point
       try (ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerURLs)) {
