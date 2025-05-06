@@ -826,12 +826,16 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return rocksDBSstFileWriter.sync();
   }
 
-  public long getDuplicateKeyCount() {
+  public long getDuplicateKeyCountEstimate() {
     if (keyStatistics != null) {
       return keyStatistics.getTickerCount(COMPACTION_KEY_DROP_NEWER_ENTRY)
           + keyStatistics.getTickerCount(COMPACTION_KEY_DROP_USER);
     }
     return -1;
+  }
+
+  public long getKeyCountEstimate() throws RocksDBException {
+    return rocksDB.getLongProperty("rocksdb.estimate-num-keys");
   }
 
   public void deleteFilesInDirectory(String fullPath) {

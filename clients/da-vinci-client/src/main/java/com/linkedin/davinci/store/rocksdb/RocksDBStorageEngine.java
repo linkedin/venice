@@ -150,7 +150,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     }
   }
 
-  public long getDuplicateKeyCount() {
+  public long getDuplicateKeyCountEstimate() {
     Set<Integer> partitionIds = super.getPartitionIds();
     long duplicateCount = 0;
     for (int i: partitionIds) {
@@ -161,9 +161,25 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
         LOGGER.warn("Could not find partition {} for store {}", i, super.getStoreVersionName());
         continue;
       }
-      duplicateCount += partition.getDuplicateKeyCount();
+      duplicateCount += partition.getDuplicateKeyCountEstimate();
     }
     return duplicateCount;
+  }
+
+  public long getKeyCountEstimate() {
+    Set<Integer> partitionIds = super.getPartitionIds();
+    long keyCount = 0;
+
+    for (int i: partitionIds) {
+      RocksDBStoragePartition partition;
+      try {
+        partition = (RocksDBStoragePartition) super.getPartitionOrThrow(i);
+        keyCount += partition.getKeyCountEstimate();
+      } catch (Exception e) {
+        LOGGER.warn("Could not find partition {} for store {}", i, super.getStoreVersionName());
+      }
+    }
+    return keyCount;
   }
 
   @Override

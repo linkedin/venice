@@ -766,7 +766,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     throw new UnsupportedOperationException("Method not supported for storage engine");
   }
 
-  public long getDuplicateKeyCount() {
+  public long getDuplicateKeyCountEstimate() {
+    return -1;
+  }
+
+  public long getKeyCountEstimate() {
     return -1;
   }
 }
