@@ -254,6 +254,16 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     reducerDetectExceededQuotaInConfig(1024, 1024, 1024); // Exceed
   }
 
+  @Test
+  public void testLocalMapReduceFramework() {
+    VeniceReducer reducer = new VeniceReducer();
+    reducer.setHadoopJobClientProvider(mock(HadoopJobClientProvider.class));
+    Configuration jobConfig = getDefaultJobConfiguration(100);
+    jobConfig.setLong(STORAGE_QUOTA_PROP, 1);
+    reducer.configure(new JobConf(jobConfig));
+    Assert.assertFalse(reducer.getExceedQuotaFlag());
+  }
+
   private void reducerDetectExceededQuotaInConfig(
       long totalKeySizeInBytes,
       long totalValueSizeInBytes,
