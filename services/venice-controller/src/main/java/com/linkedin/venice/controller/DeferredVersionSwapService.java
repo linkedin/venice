@@ -301,8 +301,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Admin.OfflinePushStatusInfo pushStatusInfo,
       ReadWriteStoreRepository repository,
       Store store,
-      int targetVersionNum,
-      String kafkaTopicName) {
+      int targetVersionNum) {
     int numCompletedTargetRegions =
         getRegionsWithPushStatusCount(targetRegions, pushStatusInfo, ExecutionStatus.COMPLETED);
     int numFailedTargetRegions = getRegionsWithPushStatusCount(targetRegions, pushStatusInfo, ExecutionStatus.ERROR);
@@ -347,8 +346,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
       // When a push is killed or errored out, the topic may have been cleaned up or controller is temporarily
       // unreachable so we will allow upto 5 retries before marking it as failed
+      String regionKafkaTopicName = nonTargetRegion + "_" + kafkaTopicName;
       if (version == null) {
-        String regionKafkaTopicName = nonTargetRegion + "_" + kafkaTopicName;
         int attemptedRetries = fetchNonTargetRegionStoreRetryCounter.compute(regionKafkaTopicName, (k, v) -> {
           if (v == null) {
             return 1;
@@ -363,6 +362,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
         continue;
       }
+      fetchNonTargetRegionStoreRetryCounter.remove(regionKafkaTopicName);
 
       if (version.getStatus().equals(VersionStatus.PUSHED)) {
         completedNonTargetRegions.add(nonTargetRegion);
@@ -371,10 +371,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       }
     }
 
-    if (failedNonTargetRegions.size() == nonTargetRegions.size()) {
+    if (failedNonTargetRegions.equals(nonTargetRegions)) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
-          + "as push failed in all non target regions. Failed non target regions: " + failedNonTargetRegions
-          + ", non target regions: " + nonTargetRegions;
+          + "as push failed in all non target regions. Failed non target regions: " + failedNonTargetRegions;
       logMessageIfNotRedundant(message);
       store.updateVersionStatus(targetVersionNum, PARTIALLY_ONLINE);
       repository.updateStore(store);
@@ -446,8 +445,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   pushStatusInfo,
                   repository,
                   parentStore,
-                  targetVersionNum,
-                  kafkaTopicName)) {
+                  targetVersionNum)) {
                 continue;
               }
             }
