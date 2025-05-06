@@ -56,10 +56,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
       new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
   private static final Logger LOGGER = LogManager.getLogger(DeferredVersionSwapService.class);
+  private static final int MAX_FETCH_STORE_FETCH_RETRY_LIMIT = 5;
   private Cache<String, Map<String, Long>> storePushCompletionTimeCache =
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
-  private HashMap<String, Integer> fetchNonTargetRegionStoreRetryCounter = new HashMap<>();
-  private static final int maxFetchNonTargetRegionStoreRetryCounter = 5;
+  private Map<String, Integer> fetchNonTargetRegionStoreRetryCountMap = new HashMap<>();
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -349,23 +349,23 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String regionKafkaTopicName = null;
       if (version == null) {
         regionKafkaTopicName = nonTargetRegion + "_" + kafkaTopicName;
-        int attemptedRetries = fetchNonTargetRegionStoreRetryCounter.compute(regionKafkaTopicName, (k, v) -> {
+        int attemptedRetries = fetchNonTargetRegionStoreRetryCountMap.compute(regionKafkaTopicName, (k, v) -> {
           if (v == null) {
             return 1;
           }
           return v + 1;
         });
 
-        if (attemptedRetries == maxFetchNonTargetRegionStoreRetryCounter) {
+        if (attemptedRetries == MAX_FETCH_STORE_FETCH_RETRY_LIMIT) {
           failedNonTargetRegions.add(nonTargetRegion);
-          fetchNonTargetRegionStoreRetryCounter.remove(regionKafkaTopicName);
+          fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
         }
 
         continue;
       }
 
       if (!StringUtils.isEmpty(regionKafkaTopicName)) {
-        fetchNonTargetRegionStoreRetryCounter.remove(regionKafkaTopicName);
+        fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
       }
 
       if (version.getStatus().equals(VersionStatus.PUSHED)) {
