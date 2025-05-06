@@ -164,6 +164,10 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
@@ -655,6 +659,22 @@ public class VenicePushJob implements AutoCloseable {
    * @throws VeniceException
    */
   public void run() {
+    ScheduledExecutorService timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
+    long bootstrapToOnlineTimeoutInHours = pushJobSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
+    Future<?> timeoutFuture = timeoutExecutor.schedule(() -> {
+      LOGGER.error("Timeout reached. Stopping the job.");
+      cancel();
+    }, bootstrapToOnlineTimeoutInHours, TimeUnit.HOURS);
+
+    try {
+      runPushJob();
+    } finally {
+      timeoutFuture.cancel(true);
+      timeoutExecutor.shutdown();
+    }
+  }
+
+  private void runPushJob() {
     try {
       Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
           pushJobSetting.enableSSL,
@@ -2541,7 +2561,8 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * A cancel method for graceful cancellation of the running Job to be invoked as a result of user actions.
+   * A cancel method for graceful cancellation of the running Job to be invoked as a result of user actions or due to
+   * the job exceeding bootstrapToOnlineTimeoutInHours.
    *
    * @throws Exception
    */
@@ -2668,7 +2689,6 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   public static void main(String[] args) {
-
     if (args.length != 1) {
       Utils.exit("USAGE: java -jar venice-push-job-all.jar <VPJ_config_file_path>");
     }
