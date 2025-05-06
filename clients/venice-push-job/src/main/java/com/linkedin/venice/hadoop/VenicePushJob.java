@@ -164,7 +164,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
@@ -2306,7 +2305,6 @@ public class VenicePushJob implements AutoCloseable {
      * no more than {@link DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS}.
      */
     long unknownStateStartTimeMs = 0;
-    long pollStartTimeMs = System.currentTimeMillis();
 
     String topicToMonitor = getTopicToMonitor(pushJobSetting);
 
@@ -2375,14 +2373,6 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info("Successfully pushed {} to all the regions", pushJobSetting.topic);
         }
         return;
-      }
-      long bootstrapToOnlineTimeoutInHours =
-          VenicePushJob.this.pushJobSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
-      long durationMs = LatencyUtils.getElapsedTimeFromMsToMs(pollStartTimeMs);
-      if (durationMs > TimeUnit.HOURS.toMillis(bootstrapToOnlineTimeoutInHours)) {
-        throw new VeniceException(
-            "Failing push-job for store " + VenicePushJob.this.pushJobSetting.storeResponse.getName()
-                + " which is still running after " + TimeUnit.MILLISECONDS.toHours(durationMs) + " hours.");
       }
       if (!overallStatus.equals(ExecutionStatus.UNKNOWN)) {
         unknownStateStartTimeMs = 0;
