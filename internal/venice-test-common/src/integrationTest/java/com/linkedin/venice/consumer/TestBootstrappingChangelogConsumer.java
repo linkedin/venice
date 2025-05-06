@@ -268,7 +268,8 @@ public class TestBootstrappingChangelogConsumer {
   @Test(timeOut = TEST_TIMEOUT * 3, priority = 3)
   public void testVeniceChangelogConsumerDaVinciRecordTransformerImpl() throws Exception {
     String storeName = Utils.getUniqueString("store");
-    String inputDirPath = setUpStore(storeName, false);
+    boolean useSpecificRecord = false;
+    String inputDirPath = setUpStore(storeName, useSpecificRecord);
     Map<String, String> samzaConfig = getSamzaProducerConfig(clusterWrapper, storeName, Version.PushType.STREAM);
     VeniceSystemFactory factory = new VeniceSystemFactory();
 
@@ -304,7 +305,7 @@ public class TestBootstrappingChangelogConsumer {
           factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
         veniceProducer.start();
         // Run Samza job to send PUT and DELETE requests.
-        runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, false);
+        runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, useSpecificRecord);
         // Produce a DELETE record with large timestamp
         sendStreamingRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
       }
@@ -409,7 +410,8 @@ public class TestBootstrappingChangelogConsumer {
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
   public void testBlobTransferVeniceChangelogConsumerDaVinciRecordTransformerImpl() throws Exception {
     String storeName = Utils.getUniqueString("store");
-    String inputDirPath1 = setUpStore(storeName, false);
+    boolean useSpecificRecord = false;
+    String inputDirPath1 = setUpStore(storeName, useSpecificRecord);
     String inputDirPath2 = Utils.getTempDataDirectory().getAbsolutePath();
     Map<String, String> samzaConfig = getSamzaProducerConfig(clusterWrapper, storeName, Version.PushType.STREAM);
     VeniceSystemFactory factory = new VeniceSystemFactory();
@@ -467,7 +469,7 @@ public class TestBootstrappingChangelogConsumer {
           factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
         veniceProducer.start();
         // Run Samza job to send PUT and DELETE requests.
-        runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, true);
+        runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, useSpecificRecord);
       }
 
       // Spin up a DVRT CDC instance and wait for it to consume everything, then perform blob transfer
@@ -529,7 +531,8 @@ public class TestBootstrappingChangelogConsumer {
   @Test(timeOut = TEST_TIMEOUT, priority = 3)
   public void testSpecificRecordVeniceChangelogConsumerDaVinciRecordTransformerImpl() throws Exception {
     String storeName = Utils.getUniqueString("store");
-    String inputDirPath = setUpStore(storeName, true);
+    boolean useSpecificRecord = true;
+    String inputDirPath = setUpStore(storeName, useSpecificRecord);
     Map<String, String> samzaConfig = getSamzaProducerConfig(clusterWrapper, storeName, Version.PushType.STREAM);
     VeniceSystemFactory factory = new VeniceSystemFactory();
 
@@ -565,7 +568,7 @@ public class TestBootstrappingChangelogConsumer {
           factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
         veniceProducer.start();
         // Run Samza job to send PUT and DELETE requests.
-        runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, true);
+        runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, useSpecificRecord);
       }
 
       bootstrappingVeniceChangelogConsumerList.get(0).start().get();
@@ -700,13 +703,12 @@ public class TestBootstrappingChangelogConsumer {
     Schema recordSchema;
     String valueSchemaStr;
     if (useSpecificRecord) {
-      Schema recordSchema1 =
+      Schema tempRecordSchema =
           new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(TestChangelogValue.SCHEMA$).build();
-      // recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
       recordSchema = writeSimpleAvroFile(
           inputDir,
-          recordSchema1,
-          i -> renderNameRecord(recordSchema1, i),
+          tempRecordSchema,
+          i -> renderNameRecord(tempRecordSchema, i),
           DEFAULT_USER_DATA_RECORD_COUNT);
       valueSchemaStr = TestChangelogValue.SCHEMA$.toString();
     } else {
@@ -714,7 +716,6 @@ public class TestBootstrappingChangelogConsumer {
       valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     }
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
-    ;
 
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setHybridRewindSeconds(500)
         .setHybridOffsetLagThreshold(8)
@@ -868,8 +869,8 @@ public class TestBootstrappingChangelogConsumer {
       Assert.assertNull(changeEvent.getPreviousValue());
 
       TestChangelogValue value = changeEvent.getCurrentValue();
-      Assert.assertEquals(value.firstName, "first_name_" + i);
-      Assert.assertEquals(value.lastName, "last_name_" + i);
+      Assert.assertEquals(value.firstName.toString(), "first_name_stream_" + i);
+      Assert.assertEquals(value.lastName.toString(), "last_name_stream_" + i);
     }
   }
 

@@ -65,7 +65,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   // A buffer of messages that will be returned to the user
   private final BlockingQueue<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages;
   // Determines what version per partition is currently serving
-  private final ConcurrentHashMap<Integer, Integer> partitionToVersionToServe;
+  private final Map<Integer, Integer> partitionToVersionToServe;
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   // CachingDaVinciClientFactory used instead of DaVinciClientFactory, so we have the ability to close down the client
   private final CachingDaVinciClientFactory daVinciClientFactory;

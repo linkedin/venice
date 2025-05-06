@@ -48,6 +48,13 @@ public class DaVinciRecordTransformerConfig {
   }
 
   /**
+   * @return Whether this is a specific client
+   */
+  public boolean isSpecificClient() {
+    return outputValueClass != null;
+  }
+
+  /**
    * @return {@link #outputValueSchema}
    */
   public Schema getOutputValueSchema() {
