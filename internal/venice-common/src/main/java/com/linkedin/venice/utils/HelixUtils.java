@@ -253,7 +253,7 @@ public final class HelixUtils {
    */
   private static void handleFailedHelixOperation(String path, String helixOperation, int attempt, int retryCount) {
     if (attempt < retryCount) {
-      double retryIntervalSec = Math.pow(2, attempt);
+      long retryIntervalSec = (long) Math.pow(2, attempt);
       LOGGER.error(
           "{} failed with path {} on attempt {}/{}. Will retry in {} seconds.",
           helixOperation,
@@ -261,7 +261,7 @@ public final class HelixUtils {
           attempt,
           retryCount,
           retryIntervalSec);
-      Utils.sleep(TimeUnit.SECONDS.toMillis((long) retryIntervalSec));
+      Utils.sleep(TimeUnit.SECONDS.toMillis(retryIntervalSec));
     } else {
       throw new ZkDataAccessException(path, helixOperation, retryCount);
     }
