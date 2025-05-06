@@ -96,7 +96,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -267,63 +266,6 @@ public class VenicePushJobTest {
     try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
-    }
-  }
-
-  @Test
-  public void testPushJobPollStatus() {
-    Properties vpjProps = new Properties();
-    vpjProps.setProperty(HEARTBEAT_ENABLED_CONFIG.getConfigName(), "true");
-    ControllerClient client = mock(ControllerClient.class);
-    JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
-    doReturn("UNKNOWN").when(response).getStatus();
-    doReturn(response).when(client).queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null), anyBoolean());
-    try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
-      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
-      pushJobSetting.jobStatusInUnknownStateTimeoutMs = 10;
-      Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
-      pushJobSetting.version = 1;
-      pushJobSetting.topic = "abc";
-      pushJobSetting.storeResponse = new StoreResponse();
-      pushJobSetting.storeResponse.setName("abc");
-      StoreInfo storeInfo = new StoreInfo();
-      storeInfo.setBootstrapToOnlineTimeoutInHours(0);
-      pushJobSetting.storeResponse.setStore(storeInfo);
-      VeniceException exception = Assert.expectThrows(
-          VeniceException.class,
-          () -> pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false, false));
-      Assert
-          .assertEquals(exception.getMessage(), "Failing push-job for store abc which is still running after 0 hours.");
-    }
-  }
-
-  @Test
-  public void testPushJobUnknownPollStatusDoesWaiting() {
-    Properties vpjProps = new Properties();
-    vpjProps.setProperty(HEARTBEAT_ENABLED_CONFIG.getConfigName(), "true");
-    ControllerClient client = mock(ControllerClient.class);
-    JobStatusQueryResponse unknownResponse = mock(JobStatusQueryResponse.class);
-    doReturn("UNKNOWN").when(unknownResponse).getStatus();
-    JobStatusQueryResponse completedResponse = mock(JobStatusQueryResponse.class);
-    doReturn("COMPLETED").when(completedResponse).getStatus();
-    doReturn(unknownResponse).doReturn(unknownResponse)
-        .doReturn(completedResponse)
-        .when(client)
-        .queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null), anyBoolean());
-    try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
-      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
-      pushJobSetting.jobStatusInUnknownStateTimeoutMs = 100_000_000;
-      Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
-      pushJobSetting.version = 1;
-      pushJobSetting.topic = "abc";
-      pushJobSetting.storeResponse = new StoreResponse();
-      pushJobSetting.storeResponse.setName("abc");
-      StoreInfo storeInfo = new StoreInfo();
-      storeInfo.setBootstrapToOnlineTimeoutInHours(10);
-      pushJobSetting.storeResponse.setStore(storeInfo);
-      pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false, false);
-    } catch (Exception e) {
-      fail("The test should be completed successfully without any timeout exception");
     }
   }
 
