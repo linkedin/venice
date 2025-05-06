@@ -1,6 +1,8 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
+import static org.rocksdb.TickerType.COMPACTION_KEY_DROP_NEWER_ENTRY;
+import static org.rocksdb.TickerType.COMPACTION_KEY_DROP_USER;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -142,6 +144,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final boolean readWriteLeaderForRMDCF;
 
   private final Optional<Statistics> aggStatistics;
+  private Statistics keyStatistics;
+
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
   private Optional<Supplier<byte[]>> expectedChecksumSupplier;
@@ -389,7 +393,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     options.setKeepLogFileNum(rocksDBServerConfig.getMaxLogFileNum());
     options.setMaxLogFileSize(rocksDBServerConfig.getMaxLogFileSize());
 
-    aggStatistics.ifPresent(options::setStatistics);
+    if (rocksDBServerConfig.isPutReuseByteBufferEnabled()) {
+      keyStatistics = new Statistics();
+      options.setStatistics(keyStatistics);
+    } else {
+      aggStatistics.ifPresent(options::setStatistics);
+    }
 
     if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
       PlainTableConfig tableConfig = new PlainTableConfig();
@@ -815,6 +824,14 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       return Collections.emptyMap();
     }
     return rocksDBSstFileWriter.sync();
+  }
+
+  public long getDuplicateKeyCount() {
+    if (keyStatistics != null) {
+      return keyStatistics.getTickerCount(COMPACTION_KEY_DROP_NEWER_ENTRY)
+          + keyStatistics.getTickerCount(COMPACTION_KEY_DROP_USER);
+    }
+    return -1;
   }
 
   public void deleteFilesInDirectory(String fullPath) {

@@ -765,4 +765,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   public AbstractStorageIterator getIterator(int partitionId) {
     throw new UnsupportedOperationException("Method not supported for storage engine");
   }
+
+  public long getDuplicateKeyCount() {
+    return -1;
+  }
 }

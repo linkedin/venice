@@ -152,6 +152,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final LongAdderRateGauge batchProcessingRequestRecordsSensor;
   private final Sensor batchProcessingRequestLatencySensor;
   private final LongAdderRateGauge batchProcessingRequestErrorSensor;
+  private final Sensor totalDuplicateKeyCount;
 
   /**
    * @param totalStats the total stats singleton instance, or null if we are constructing the total stats
@@ -169,7 +170,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
     this.totalBytesConsumedRate =
         registerOnlyTotalRate("bytes_consumed", totalStats, () -> totalStats.totalBytesConsumedRate, time);
-
     this.totalRecordsConsumedRate =
         registerOnlyTotalRate("records_consumed", totalStats, () -> totalStats.totalRecordsConsumedRate, time);
 
@@ -508,11 +508,21 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         totalStats,
         () -> totalStats.batchProcessingRequestLatencySensor,
         avgAndMax());
+    this.totalDuplicateKeyCount = registerOnlyTotalSensor(
+        "duplicate_key_count",
+        totalStats,
+        () -> totalStats.totalDuplicateKeyCount,
+        avgAndMax());
+
   }
 
   /** Record a host-level byte consumption rate across all store versions */
   public void recordTotalBytesConsumed(long bytes) {
     totalBytesConsumedRate.record(bytes);
+  }
+
+  public void recordTotalDuplicateKeys(long bytes) {
+    totalDuplicateKeyCount.record(bytes);
   }
 
   /** Record a host-level record consumption rate across all store versions */

@@ -150,6 +150,22 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     }
   }
 
+  public long getDuplicateKeyCount() {
+    Set<Integer> partitionIds = super.getPartitionIds();
+    long duplicateCount = 0;
+    for (int i: partitionIds) {
+      RocksDBStoragePartition partition;
+      try {
+        partition = (RocksDBStoragePartition) super.getPartitionOrThrow(i);
+      } catch (VeniceException e) {
+        LOGGER.warn("Could not find partition {} for store {}", i, super.getStoreVersionName());
+        continue;
+      }
+      duplicateCount += partition.getDuplicateKeyCount();
+    }
+    return duplicateCount;
+  }
+
   @Override
   public void drop() {
     super.drop();
