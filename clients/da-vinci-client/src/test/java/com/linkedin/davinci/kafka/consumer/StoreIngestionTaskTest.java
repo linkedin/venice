@@ -4888,7 +4888,7 @@ public abstract class StoreIngestionTaskTest {
     heartBeatFuture.complete(null);
     PubSubTopicPartition pubSubTopicPartition0 = new PubSubTopicPartitionImpl(pubsubTopic, 0);
     PubSubTopicPartition pubSubTopicPartition1 = new PubSubTopicPartitionImpl(pubsubTopic, 1);
-    PubSubTopic sepRTtopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName));
+    PubSubTopic sepRTtopic = pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(storeName));
     PubSubTopicPartition pubSubTopicPartition1sep = new PubSubTopicPartitionImpl(sepRTtopic, 1);
 
     // all succeeded
@@ -5584,7 +5584,7 @@ public abstract class StoreIngestionTaskTest {
     value.payloadUnion = new Put();
     value.messageType = MessageType.PUT.getValue();
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic("testStore", 1));
-    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic("testStore"));
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic("testStore", 1));
 
     PubSubTopicPartition versionTopicPartition = new PubSubTopicPartitionImpl(versionTopic, PARTITION_FOO);
     PubSubTopicPartition rtPartition = new PubSubTopicPartitionImpl(rtTopic, PARTITION_FOO);
