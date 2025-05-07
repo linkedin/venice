@@ -793,4 +793,74 @@ public class TestDeferredVersionSwap {
 
     client1.close();
   }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDeferredVersionSwapWithManualRollForward() throws IOException {
+    File inputDir = getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
+    // Setup job properties
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("testDeferredVersionSwapWithManualRollForward");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = "\"string\"";
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
+    storeParms.setTargetRegionSwapWaitTime(1);
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
+      createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
+
+      // Start push job with target region push enabled
+      props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+      TestWriteUtils.runPushJob("Test push job", props);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      // Version should only be swapped in the target region
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+        Map<String, Integer> coloVersions =
+            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+        coloVersions.forEach((colo, version) -> {
+          if (colo.equals(REGION3)) {
+            Assert.assertEquals((int) version, 1);
+          } else {
+            Assert.assertEquals((int) version, 0);
+          }
+        });
+      });
+
+      String nonTargetRegions = REGION1 + "," + REGION2;
+      parentControllerClient.rollForwardToFutureVersion(storeName, nonTargetRegions);
+
+      // Version should be swapped in all regions
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Map<String, Integer> coloVersions =
+            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+        coloVersions.forEach((colo, version) -> {
+          Assert.assertEquals((int) version, 1);
+        });
+      });
+
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+        StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ONLINE);
+      });
+
+      // Check that child version status is marked as ONLINE if it didn't fail
+      for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+        ControllerClient childControllerClient =
+            new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
+        StoreResponse store = childControllerClient.getStore(storeName);
+        Optional<Version> version = store.getStore().getVersion(1);
+        assertNotNull(version);
+        assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
+      }
+    }
+  }
 }
