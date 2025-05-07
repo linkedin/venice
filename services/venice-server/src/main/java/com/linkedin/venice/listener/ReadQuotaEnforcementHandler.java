@@ -552,22 +552,27 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     return stats;
   }
 
+  // For unit testing only
   void setInitialized(boolean initialized) {
     this.initialized = initialized;
   }
 
+  // For unit testing only
   void setInitializedVolatile(boolean initializedVolatile) {
     this.initializedVolatile = initializedVolatile;
   }
 
+  // For unit testing only
   VeniceRateLimiter getStoreVersionRateLimiter(String storeVersion) {
     return storeVersionRateLimiters.get(storeVersion);
   }
 
+  // For unit testing only
   void setStoreVersionRateLimiter(String storeVersion, VeniceRateLimiter rateLimiter) {
     storeVersionRateLimiters.put(storeVersion, rateLimiter);
   }
 
+  // For unit testing only
   void setStorageNodeRateLimiter(VeniceRateLimiter rateLimiter) {
     storageNodeRateLimiter = rateLimiter;
   }

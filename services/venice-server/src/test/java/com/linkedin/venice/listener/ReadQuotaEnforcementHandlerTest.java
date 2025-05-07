@@ -84,7 +84,7 @@ public class ReadQuotaEnforcementHandlerTest {
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   private ReadQuotaEnforcementHandler quotaEnforcementHandler;
   private GrpcReadQuotaEnforcementHandler grpcQuotaEnforcementHandler;
-  private AggServerQuotaUsageStats stats;
+  private AggServerQuotaUsageStats mockAggStats;
 
   private MetricsRepository metricsRepository;
   private RouterRequest routerRequest;
@@ -100,24 +100,35 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(currentTime).when(clock).millis();
     storeRepository = mock(ReadOnlyStoreRepository.class);
     customizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
-    stats = mock(AggServerQuotaUsageStats.class);
+    mockAggStats = mock(AggServerQuotaUsageStats.class);
     metricsRepository = new MetricsRepository();
     serverConfig = mock(VeniceServerConfig.class);
     when(serverConfig.getQuotaEnforcementIntervalInMs()).thenReturn(10000);
     when(serverConfig.getQuotaEnforcementCapacityMultiple()).thenReturn(5);
     doReturn(nodeCapacity).when(serverConfig).getNodeCapacityInRcu();
+    routerRequest = mock(RouterRequest.class);
+    // Reset the handlers to ensure we don't accidentally use handlers initialized in previous test
+    quotaEnforcementHandler = null;
+    grpcQuotaEnforcementHandler = null;
+  }
+
+  private void initializeQuotaEnforcementHandlers() {
+    initializeQuotaEnforcementHandlers(mockAggStats);
+  }
+
+  private void initializeQuotaEnforcementHandlers(AggServerQuotaUsageStats aggStats) {
     quotaEnforcementHandler = new ReadQuotaEnforcementHandler(
         serverConfig,
         storeRepository,
         CompletableFuture.completedFuture(customizedViewRepository),
         thisNodeId,
-        stats,
+        aggStats,
         clock);
     grpcQuotaEnforcementHandler = new GrpcReadQuotaEnforcementHandler(quotaEnforcementHandler);
     mockNextHandler = mock(VeniceServerGrpcHandler.class);
     grpcQuotaEnforcementHandler.addNextHandler(mockNextHandler);
     doNothing().when(mockNextHandler).processRequest(any());
-    routerRequest = mock(RouterRequest.class);
+    TestUtils.waitForNonDeterministicAssertion(10, SECONDS, () -> assertTrue(quotaEnforcementHandler.isInitialized()));
   }
 
   @DataProvider(name = "Test-Quota-EnforcementHandler-Enable-Grpc")
@@ -130,10 +141,11 @@ public class ReadQuotaEnforcementHandlerTest {
     String storeName = "test_store";
     when(routerRequest.getStoreName()).thenReturn(storeName);
     when(storeRepository.getStore(storeName)).thenReturn(null);
+    initializeQuotaEnforcementHandlers();
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.BAD_REQUEST);
 
-    verify(stats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
-    verify(stats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
+    verify(mockAggStats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
+    verify(mockAggStats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
 
     // for Netty handler
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -158,6 +170,7 @@ public class ReadQuotaEnforcementHandlerTest {
 
   @Test
   public void testEnforceQuotaDuringInitialization() {
+    initializeQuotaEnforcementHandlers();
     quotaEnforcementHandler.setInitialized(false);
     quotaEnforcementHandler.setInitializedVolatile(false);
     assertFalse(quotaEnforcementHandler.isInitialized());
@@ -167,8 +180,8 @@ public class ReadQuotaEnforcementHandlerTest {
     when(storeRepository.getStore(storeName)).thenReturn(store);
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
 
-    verify(stats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
-    verify(stats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
+    verify(mockAggStats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
+    verify(mockAggStats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
 
     // for Netty handler
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -197,10 +210,11 @@ public class ReadQuotaEnforcementHandlerTest {
     when(routerRequest.getStoreName()).thenReturn(storeName);
     when(storeRepository.getStore(storeName)).thenReturn(store);
     when(store.isStorageNodeReadQuotaEnabled()).thenReturn(false);
+    initializeQuotaEnforcementHandlers();
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
 
-    verify(stats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
-    verify(stats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
+    verify(mockAggStats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
+    verify(mockAggStats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
 
     // for Netty handler
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -234,14 +248,14 @@ public class ReadQuotaEnforcementHandlerTest {
     when(routerRequest.isRetryRequest()).thenReturn(false);
     when(storeRepository.getStore(storeName)).thenReturn(store);
     when(store.isStorageNodeReadQuotaEnabled()).thenReturn(true);
-    TestUtils.waitForNonDeterministicAssertion(10, SECONDS, () -> assertTrue(quotaEnforcementHandler.isInitialized()));
     VeniceRateLimiter veniceRateLimiter = mock(VeniceRateLimiter.class);
-    quotaEnforcementHandler.setStoreVersionRateLimiter(resourceName, veniceRateLimiter);
     when(veniceRateLimiter.tryAcquirePermit(1)).thenReturn(false);
+    initializeQuotaEnforcementHandlers();
+    quotaEnforcementHandler.setStoreVersionRateLimiter(resourceName, veniceRateLimiter);
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.REJECTED);
 
-    verify(stats).recordRejected(eq(storeName), eq(version), eq(1L));
-    verify(stats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
+    verify(mockAggStats).recordRejected(eq(storeName), eq(version), eq(1L));
+    verify(mockAggStats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
 
     // for Netty handler
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -264,7 +278,7 @@ public class ReadQuotaEnforcementHandlerTest {
     // Case 2: If request is a retry request, it should be allowed
     when(routerRequest.isRetryRequest()).thenReturn(true);
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
-    verify(stats).recordAllowed(eq(storeName), eq(version), eq(1L));
+    verify(mockAggStats).recordAllowed(eq(storeName), eq(version), eq(1L));
   }
 
   @Test
@@ -279,15 +293,15 @@ public class ReadQuotaEnforcementHandlerTest {
     when(routerRequest.isRetryRequest()).thenReturn(false);
     when(storeRepository.getStore(storeName)).thenReturn(store);
     when(store.isStorageNodeReadQuotaEnabled()).thenReturn(true);
-    TestUtils.waitForNonDeterministicAssertion(10, SECONDS, () -> assertTrue(quotaEnforcementHandler.isInitialized()));
+    initializeQuotaEnforcementHandlers();
     assertNull(quotaEnforcementHandler.getStoreVersionRateLimiter(resourceName));
     VeniceRateLimiter storageNodeRateLimiter = mock(VeniceRateLimiter.class);
     quotaEnforcementHandler.setStorageNodeRateLimiter(storageNodeRateLimiter);
     when(storageNodeRateLimiter.tryAcquirePermit(1)).thenReturn(false);
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.OVER_CAPACITY);
 
-    verify(stats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
-    verify(stats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
+    verify(mockAggStats, never()).recordAllowed(eq(storeName), anyInt(), eq(1L));
+    verify(mockAggStats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
 
     // for Netty handler
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -321,7 +335,7 @@ public class ReadQuotaEnforcementHandlerTest {
     when(routerRequest.isRetryRequest()).thenReturn(false);
     when(storeRepository.getStore(storeName)).thenReturn(store);
     when(store.isStorageNodeReadQuotaEnabled()).thenReturn(true);
-    TestUtils.waitForNonDeterministicAssertion(10, SECONDS, () -> assertTrue(quotaEnforcementHandler.isInitialized()));
+    initializeQuotaEnforcementHandlers();
     VeniceRateLimiter veniceRateLimiter = mock(VeniceRateLimiter.class);
     when(veniceRateLimiter.tryAcquirePermit(1)).thenReturn(true);
     quotaEnforcementHandler.setStoreVersionRateLimiter(resourceName, veniceRateLimiter);
@@ -330,8 +344,8 @@ public class ReadQuotaEnforcementHandlerTest {
     quotaEnforcementHandler.setStorageNodeRateLimiter(storageNodeRateLimiter);
     assertEquals(quotaEnforcementHandler.enforceQuota(routerRequest), QuotaEnforcementResult.ALLOWED);
 
-    verify(stats).recordAllowed(eq(storeName), eq(version), eq(1L));
-    verify(stats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
+    verify(mockAggStats).recordAllowed(eq(storeName), eq(version), eq(1L));
+    verify(mockAggStats, never()).recordRejected(eq(storeName), anyInt(), eq(1L));
 
     // for Netty handler
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
@@ -370,14 +384,6 @@ public class ReadQuotaEnforcementHandlerTest {
 
   @Test
   public void testInitWithPreExistingResource() {
-    // Do initialize the quota enforcement handler with a real stats for this test
-    quotaEnforcementHandler = new ReadQuotaEnforcementHandler(
-        serverConfig,
-        storeRepository,
-        CompletableFuture.completedFuture(customizedViewRepository),
-        thisNodeId,
-        new AggServerQuotaUsageStats(serverConfig.getClusterName(), metricsRepository),
-        clock);
     String storeName = "testStore";
     String topic = Version.composeKafkaTopic(storeName, 1);
     Version version = mock(Version.class);
@@ -391,25 +397,38 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(0).when(partition).getId();
     PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
     doReturn(pa).when(customizedViewRepository).getPartitionAssignments(topic);
-    quotaEnforcementHandler.init();
+    // Do initialize the quota enforcement handler with a real stats for this test
+    initializeQuotaEnforcementHandlers(new AggServerQuotaUsageStats(serverConfig.getClusterName(), metricsRepository));
 
-    verify(storeRepository, atLeastOnce()).registerStoreDataChangedListener(any());
-    verify(customizedViewRepository, atLeastOnce()).subscribeRoutingDataChange(eq(topic), any());
+    verify(storeRepository, atLeastOnce()).registerStoreDataChangedListener(quotaEnforcementHandler);
+    verify(customizedViewRepository, atLeastOnce()).subscribeRoutingDataChange(topic, quotaEnforcementHandler);
     Assert.assertEquals(quotaEnforcementHandler.getStats().getStoreStats(storeName).getCurrentVersion(), 1);
     Assert.assertEquals(quotaEnforcementHandler.getStats().getStoreStats(storeName).getBackupVersion(), 0);
   }
 
   /**
-   * Test enforcement of the node-level capacity when there is no store-level quota
+   * Test enforcement of the node-level capacity when store-level quota is still allowing
    */
   @Test
   public void testQuotaEnforcementHandlerAtNodeLevel() {
-    Store store = mock(Store.class);
-    doReturn(true).when(store).isStorageNodeReadQuotaEnabled();
-    doReturn(store).when(storeRepository).getStore(any());
+    String storeName = "dummyStore";
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    Version version = mock(Version.class);
+    doReturn(topic).when(version).kafkaTopicName();
+    Store store = setUpStoreMock(storeName, 1, Collections.singletonList(version), 1000000, true);
+    doReturn(store).when(storeRepository).getStore(storeName);
+    doReturn(Collections.singletonList(store)).when(storeRepository).getAllStores();
+
+    Instance thisInstance = mock(Instance.class);
+    doReturn(thisNodeId).when(thisInstance).getNodeId();
+    Partition partition = setUpPartitionMock(topic, thisInstance, true, 0);
+    doReturn(0).when(partition).getId();
+    PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
+    doReturn(pa).when(customizedViewRepository).getPartitionAssignments(topic);
+    initializeQuotaEnforcementHandlers();
 
     runTest(
-        "dummyStore_v1",
+        topic,
         nodeCapacity * 5 * 10, // default multiple is 5, times 10 second interval
         nodeCapacity * 10, // default refill interval is 10 seconds
         MILLISECONDS.convert(10, SECONDS)); // default 10 second interval
@@ -437,6 +456,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(storeReadQuota).when(store).getReadQuotaInCU();
     doReturn(store).when(storeRepository).getStore(any());
 
+    initializeQuotaEnforcementHandlers();
     quotaEnforcementHandler.onCustomizedViewChange(pa);
 
     runTest(topic, storeReadQuota * 5 * 10, storeReadQuota * 10, 10000);
@@ -475,6 +495,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(storeReadQuota).when(store).getReadQuotaInCU();
     doReturn(store).when(storeRepository).getStore(any());
 
+    initializeQuotaEnforcementHandlers();
     quotaEnforcementHandler.onCustomizedViewChange(pa);
 
     runTest(topic, storeReadQuota / 2 * 5 * 10, storeReadQuota / 2 * 10, 10000);
@@ -489,6 +510,7 @@ public class ReadQuotaEnforcementHandlerTest {
     RouterRequest request = mock(RouterRequest.class);
     doReturn(invalidStoreName).when(request).getStoreName();
     ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+    initializeQuotaEnforcementHandlers();
     quotaEnforcementHandler.channelRead0(ctx, request);
     ArgumentCaptor<Object> responseCaptor = ArgumentCaptor.forClass(Object.class);
     verify(ctx).writeAndFlush(responseCaptor.capture());
@@ -501,8 +523,8 @@ public class ReadQuotaEnforcementHandlerTest {
   public void testReadQuotaOnVersionChange() {
     String storeName = Utils.getUniqueString("test-store");
     ServerReadQuotaUsageStats storeStats = mock(ServerReadQuotaUsageStats.class);
-    doReturn(storeStats).when(stats).getStoreStats(storeName);
-    doReturn(storeStats).when(stats).getNullableStoreStats(storeName);
+    doReturn(storeStats).when(mockAggStats).getStoreStats(storeName);
+    doReturn(storeStats).when(mockAggStats).getNullableStoreStats(storeName);
     int currentVersion = 1;
     String topic = Version.composeKafkaTopic(storeName, currentVersion);
     String nextTopic = Version.composeKafkaTopic(storeName, currentVersion + 1);
@@ -538,6 +560,7 @@ public class ReadQuotaEnforcementHandlerTest {
         storeAfterVersionBump,
         storeAfterQuotaBumpAndBackupDeletion);
 
+    initializeQuotaEnforcementHandlers();
     quotaEnforcementHandler.handleStoreChanged(store);
     Assert.assertTrue(quotaEnforcementHandler.getActiveStoreVersions().contains(topic));
     Assert.assertTrue(quotaEnforcementHandler.getActiveStoreVersions().contains(nextTopic));
@@ -546,7 +569,7 @@ public class ReadQuotaEnforcementHandlerTest {
     int newCurrentVersion = currentVersion + 1;
     Assert.assertTrue(quotaEnforcementHandler.getActiveStoreVersions().contains(topic));
     Assert.assertTrue(quotaEnforcementHandler.getActiveStoreVersions().contains(nextTopic));
-    verify(stats, atLeastOnce()).setCurrentVersion(eq(storeName), eq(newCurrentVersion));
+    verify(mockAggStats, atLeastOnce()).setCurrentVersion(eq(storeName), eq(newCurrentVersion));
 
     AtomicInteger allowed = new AtomicInteger(0);
     AtomicInteger blocked = new AtomicInteger(0);
@@ -561,23 +584,23 @@ public class ReadQuotaEnforcementHandlerTest {
     }
     assertEquals(allowed.get(), capacity);
     assertEquals(blocked.get(), 0);
-    verify(stats, times((int) capacity)).recordAllowed(eq(storeName), eq(newCurrentVersion), anyLong());
-    verify(stats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
-    verify(stats, never()).recordRejected(eq(storeName), anyInt(), anyLong());
+    verify(mockAggStats, times((int) capacity)).recordAllowed(eq(storeName), eq(newCurrentVersion), anyLong());
+    verify(mockAggStats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(mockAggStats, never()).recordRejected(eq(storeName), anyInt(), anyLong());
 
     quotaEnforcementHandler.channelRead0(ctx, request);
     assertEquals(allowed.get(), capacity);
     assertEquals(blocked.get(), 1);
-    verify(stats, times((int) capacity)).recordAllowed(eq(storeName), eq(newCurrentVersion), anyLong());
-    verify(stats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
-    verify(stats, times(1)).recordRejected(eq(storeName), eq(newCurrentVersion), anyLong());
+    verify(mockAggStats, times((int) capacity)).recordAllowed(eq(storeName), eq(newCurrentVersion), anyLong());
+    verify(mockAggStats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(mockAggStats, times(1)).recordRejected(eq(storeName), eq(newCurrentVersion), anyLong());
 
     quotaEnforcementHandler.channelRead0(ctx, oldVersionRequest);
     assertEquals(allowed.get(), capacity + 1);
     assertEquals(blocked.get(), 1);
-    verify(stats, atMostOnce()).recordAllowed(eq(storeName), eq(currentVersion), anyLong());
-    verify(stats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
-    verify(stats, never()).recordRejected(eq(storeName), eq(currentVersion), anyLong());
+    verify(mockAggStats, atMostOnce()).recordAllowed(eq(storeName), eq(currentVersion), anyLong());
+    verify(mockAggStats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(mockAggStats, never()).recordRejected(eq(storeName), eq(currentVersion), anyLong());
 
     quotaEnforcementHandler.handleStoreChanged(storeAfterQuotaBumpAndBackupDeletion);
     Assert.assertFalse(quotaEnforcementHandler.getActiveStoreVersions().contains(topic));
@@ -591,9 +614,10 @@ public class ReadQuotaEnforcementHandlerTest {
     assertEquals(allowed.get(), expectedAllowedCount);
     assertEquals(blocked.get(), 1);
     // one of the allowed request was towards the old current (backup) version
-    verify(stats, times(expectedAllowedCount - 1)).recordAllowed(eq(storeName), eq(newCurrentVersion), anyLong());
-    verify(stats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
-    verify(stats, times(1)).recordRejected(eq(storeName), eq(newCurrentVersion), anyLong());
+    verify(mockAggStats, times(expectedAllowedCount - 1))
+        .recordAllowed(eq(storeName), eq(newCurrentVersion), anyLong());
+    verify(mockAggStats, never()).recordAllowedUnintentionally(eq(storeName), anyLong());
+    verify(mockAggStats, times(1)).recordRejected(eq(storeName), eq(newCurrentVersion), anyLong());
     quotaEnforcementHandler.onRoutingDataDeleted(nextTopic);
     verify(storeStats, atLeastOnce()).removeVersion(eq(currentVersion + 1));
   }
@@ -627,6 +651,7 @@ public class ReadQuotaEnforcementHandlerTest {
         setUpStoreMock(quotaDisabledStoreName, 1, Collections.emptyList(), storeReadQuota, false);
     doReturn(store).when(storeRepository).getStore(eq(quotaEnabledStoreName));
     doReturn(quotaDisabledStore).when(storeRepository).getStore(eq(quotaDisabledStoreName));
+    initializeQuotaEnforcementHandlers();
 
     quotaEnforcementHandler.onCustomizedViewChange(pa);
 
@@ -675,11 +700,11 @@ public class ReadQuotaEnforcementHandlerTest {
 
     Instance thisInstance = mock(Instance.class);
     doReturn(thisNodeId).when(thisInstance).getNodeId();
-
     Partition partition = setUpPartitionMock(topic, thisInstance, true, 0);
     doReturn(0).when(partition).getId();
-
     PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
+    doReturn(pa).when(customizedViewRepository).getPartitionAssignments(topic);
+    initializeQuotaEnforcementHandlers();
 
     quotaEnforcementHandler.onCustomizedViewChange(pa);
 
@@ -705,8 +730,9 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(thisNodeId).when(thisInstance).getNodeId();
     Partition partition = setUpPartitionMock(topic, thisInstance, true, 0);
     PartitionAssignment pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
+    initializeQuotaEnforcementHandlers();
     quotaEnforcementHandler.onCustomizedViewChange(pa);
-    verify(stats, atMostOnce()).setNodeQuotaResponsibility(eq(storeName), eq(currentVersion), eq(10L));
+    verify(mockAggStats, atMostOnce()).setNodeQuotaResponsibility(eq(storeName), eq(currentVersion), eq(10L));
     Instance instance2 = mock(Instance.class);
     doReturn("node2").when(instance2).getNodeId();
     Partition nextVersionPartition = setUpPartitionMock(topic, Arrays.asList(thisInstance, instance2), true, 0);
@@ -714,20 +740,20 @@ public class ReadQuotaEnforcementHandlerTest {
         setUpPartitionAssignmentMock(nextTopic, Collections.singletonList(nextVersionPartition));
     quotaEnforcementHandler.onCustomizedViewChange(nextVersionPa);
     // Partition assignment change for the next version should not change store stats node responsibility
-    verify(stats, never()).setNodeQuotaResponsibility(eq(storeName), eq(currentVersion), eq(5L));
-    verify(stats, atMostOnce()).setNodeQuotaResponsibility(eq(storeName), eq(nextVersionNumber), eq(10L));
+    verify(mockAggStats, never()).setNodeQuotaResponsibility(eq(storeName), eq(currentVersion), eq(5L));
+    verify(mockAggStats, atMostOnce()).setNodeQuotaResponsibility(eq(storeName), eq(nextVersionNumber), eq(10L));
     Instance instance3 = mock(Instance.class);
     doReturn("node3").when(instance3).getNodeId();
     partition = setUpPartitionMock(topic, Arrays.asList(thisInstance, instance2, instance3), true, 0);
     pa = setUpPartitionAssignmentMock(topic, Collections.singletonList(partition));
     quotaEnforcementHandler.onCustomizedViewChange(pa);
     // Partition assignment change for the current version should change store stats node responsibility
-    verify(stats, atMostOnce()).setNodeQuotaResponsibility(eq(storeName), eq(currentVersion), eq(4L));
+    verify(mockAggStats, atMostOnce()).setNodeQuotaResponsibility(eq(storeName), eq(currentVersion), eq(4L));
     doReturn(nextVersionNumber).when(store).getCurrentVersion();
     doReturn(pa).when(customizedViewRepository).getPartitionAssignments(eq(topic));
     doReturn(nextVersionPa).when(customizedViewRepository).getPartitionAssignments(eq(nextTopic));
     quotaEnforcementHandler.handleStoreChanged(store);
-    verify(stats, atLeastOnce()).setCurrentVersion(eq(storeName), eq(nextVersionNumber));
+    verify(mockAggStats, atLeastOnce()).setCurrentVersion(eq(storeName), eq(nextVersionNumber));
   }
 
   @Test
@@ -777,7 +803,6 @@ public class ReadQuotaEnforcementHandlerTest {
    * @param refillTimeMs  The length of the refill interval
    */
   void runTest(String resourceName, long capacity, long refillAmount, long refillTimeMs) {
-    TestUtils.waitForNonDeterministicAssertion(10, SECONDS, () -> assertTrue(quotaEnforcementHandler.isInitialized()));
     AtomicInteger allowed = new AtomicInteger(0);
     AtomicInteger blocked = new AtomicInteger(0);
 
