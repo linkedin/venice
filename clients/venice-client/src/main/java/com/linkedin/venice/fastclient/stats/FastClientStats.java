@@ -1,5 +1,7 @@
 package com.linkedin.venice.fastclient.stats;
 
+import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
+
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.Metric;
@@ -17,9 +19,6 @@ import java.util.stream.IntStream;
 
 
 public class FastClientStats extends com.linkedin.venice.client.stats.ClientStats {
-  public static final String FAST_CLIENT_SERVICE_NAME = "venice-fast-client";
-  public static final String FAST_CLIENT_METRIC_PREFIX = "fast_client";
-
   private final String storeName;
 
   private final Sensor noAvailableReplicaRequestCountSensor;
@@ -51,7 +50,7 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   }
 
   private FastClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
-    super(metricsRepository, storeName, requestType);
+    super(metricsRepository, storeName, requestType, FAST_CLIENT);
 
     this.storeName = storeName;
     this.noAvailableReplicaRequestCountSensor =

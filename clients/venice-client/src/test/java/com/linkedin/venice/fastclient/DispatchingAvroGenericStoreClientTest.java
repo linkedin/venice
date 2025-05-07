@@ -7,9 +7,8 @@ import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.REPLICA2_NAME;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.getMockR2Client;
 import static com.linkedin.venice.fastclient.meta.RequestBasedMetadataTestUtils.getMockRouterBackedSchemaReader;
-import static com.linkedin.venice.fastclient.stats.FastClientStats.FAST_CLIENT_METRIC_PREFIX;
-import static com.linkedin.venice.fastclient.stats.FastClientStats.FAST_CLIENT_SERVICE_NAME;
 import static com.linkedin.venice.schema.Utils.loadSchemaFileAsString;
+import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -181,7 +180,7 @@ public class DispatchingAvroGenericStoreClientTest {
                     .setRoutingPendingRequestCounterInstanceBlockThreshold(1)
                     .build()));
     VeniceMetricsRepository metricsRepository =
-        getVeniceMetricsRepository(FAST_CLIENT_SERVICE_NAME, FAST_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
+        getVeniceMetricsRepository(FAST_CLIENT.getName(), FAST_CLIENT.getMetricsPrefix(), CLIENT_METRIC_ENTITIES, true);
     metrics = metricsRepository.metrics();
 
     clientConfigBuilder.setMetricsRepository(metricsRepository);

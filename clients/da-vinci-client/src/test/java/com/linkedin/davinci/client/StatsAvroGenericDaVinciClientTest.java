@@ -1,8 +1,7 @@
 package com.linkedin.davinci.client;
 
-import static com.linkedin.davinci.client.StatsAvroGenericDaVinciClient.DAVINCI_CLIENT_METRIC_PREFIX;
-import static com.linkedin.davinci.client.StatsAvroGenericDaVinciClient.DAVINCI_CLIENT_SERVICE_NAME;
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -42,8 +41,8 @@ public class StatsAvroGenericDaVinciClientTest {
     when(mockClient.getStoreName()).thenReturn(storeName);
 
     VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(
-        DAVINCI_CLIENT_SERVICE_NAME,
-        DAVINCI_CLIENT_METRIC_PREFIX,
+        DAVINCI_CLIENT.getName(),
+        DAVINCI_CLIENT.getMetricsPrefix(),
         CLIENT_METRIC_ENTITIES,
         true);
     StatsAvroGenericDaVinciClient statsClient = new StatsAvroGenericDaVinciClient(
@@ -94,8 +93,8 @@ public class StatsAvroGenericDaVinciClientTest {
     doCallRealMethod().when(mockClient).streamingBatchGet(any(), any());
 
     VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(
-        DAVINCI_CLIENT_SERVICE_NAME,
-        DAVINCI_CLIENT_METRIC_PREFIX,
+        DAVINCI_CLIENT.getName(),
+        DAVINCI_CLIENT.getMetricsPrefix(),
         CLIENT_METRIC_ENTITIES,
         true);
     StatsAvroGenericDaVinciClient statsClient = new StatsAvroGenericDaVinciClient(

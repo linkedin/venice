@@ -4,8 +4,7 @@ import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECOR
 import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RECORD_SIZE_RATIO;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
-import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_METRIC_PREFIX;
-import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_SERVICE_NAME;
+import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
@@ -928,7 +927,7 @@ public abstract class TestBatch {
     veniceCluster.refreshAllRouterMetaData();
 
     VeniceMetricsRepository metricsRepository =
-        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
+        getVeniceMetricsRepository(THIN_CLIENT.getName(), THIN_CLIENT.getMetricsPrefix(), CLIENT_METRIC_ENTITIES, true);
     try (
         AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName)

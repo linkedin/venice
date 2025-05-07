@@ -1,6 +1,6 @@
 package com.linkedin.davinci.client.factory;
 
-import static com.linkedin.davinci.client.StatsAvroGenericDaVinciClient.DAVINCI_CLIENT_SERVICE_NAME;
+import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.AvroGenericDaVinciClient;
@@ -390,7 +390,7 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
 
     DaVinciClient client;
     if (config.isIsolated()) {
-      String statsPrefix = DAVINCI_CLIENT_SERVICE_NAME + "-" + isolatedClients.size();
+      String statsPrefix = DAVINCI_CLIENT.getName() + "-" + isolatedClients.size();
       clientConfig.setStatsPrefix(statsPrefix);
       client = clientConstructor.apply(config, clientConfig, backendConfig, managedClients, icProvider);
       isolatedClients.add(client);

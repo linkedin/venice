@@ -1,7 +1,5 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.davinci.client.StatsAvroGenericDaVinciClient.DAVINCI_CLIENT_METRIC_PREFIX;
-import static com.linkedin.davinci.client.StatsAvroGenericDaVinciClient.DAVINCI_CLIENT_SERVICE_NAME;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_LATENCY;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
@@ -45,6 +43,7 @@ import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_EN
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
+import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
@@ -293,8 +292,8 @@ public class DaVinciClientTest {
         .build();
 
     MetricsRepository metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setServiceName(DAVINCI_CLIENT_SERVICE_NAME)
-            .setMetricPrefix(DAVINCI_CLIENT_METRIC_PREFIX)
+        new VeniceMetricsConfig.Builder().setServiceName(DAVINCI_CLIENT.getName())
+            .setMetricPrefix(DAVINCI_CLIENT.getMetricsPrefix())
             .setEmitOtelMetrics(true)
             .setMetricEntities(CLIENT_METRIC_ENTITIES)
             .build());

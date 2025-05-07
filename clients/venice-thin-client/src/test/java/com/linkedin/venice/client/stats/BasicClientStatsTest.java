@@ -1,9 +1,9 @@
 package com.linkedin.venice.client.stats;
 
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
-import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_METRIC_PREFIX;
-import static com.linkedin.venice.client.stats.ClientStats.THIN_CLIENT_SERVICE_NAME;
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
+import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
+import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
@@ -22,6 +22,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
@@ -50,10 +51,10 @@ public class BasicClientStatsTest {
   public void testMetricPrefix() {
     String storeName = "test_store";
     VeniceMetricsRepository metricsRepository1 =
-        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
+        getVeniceMetricsRepository(THIN_CLIENT.getName(), THIN_CLIENT.getMetricsPrefix(), CLIENT_METRIC_ENTITIES, true);
     // Without prefix
     ClientConfig config1 = new ClientConfig(storeName);
-    BasicClientStats.getClientStats(metricsRepository1, storeName, SINGLE_GET, config1);
+    BasicClientStats.getClientStats(metricsRepository1, storeName, SINGLE_GET, config1, ClientType.THIN_CLIENT);
     // Check metric name
     assertTrue(metricsRepository1.metrics().size() > 0);
     String metricPrefix1 = "." + storeName;
@@ -64,9 +65,9 @@ public class BasicClientStatsTest {
     // With prefix
     String prefix = "test_prefix";
     VeniceMetricsRepository metricsRepository2 =
-        getVeniceMetricsRepository(THIN_CLIENT_SERVICE_NAME, THIN_CLIENT_METRIC_PREFIX, CLIENT_METRIC_ENTITIES, true);
+        getVeniceMetricsRepository(THIN_CLIENT.getName(), THIN_CLIENT.getMetricsPrefix(), CLIENT_METRIC_ENTITIES, true);
     ClientConfig config2 = new ClientConfig(storeName).setStatsPrefix(prefix);
-    BasicClientStats.getClientStats(metricsRepository2, storeName, SINGLE_GET, config2);
+    BasicClientStats.getClientStats(metricsRepository2, storeName, SINGLE_GET, config2, ClientType.THIN_CLIENT);
     // Check metric name
     assertTrue(metricsRepository2.metrics().size() > 0);
     String metricPrefix2 = "." + prefix + "_" + storeName;
@@ -78,7 +79,7 @@ public class BasicClientStatsTest {
   @Test
   public void testEmitHealthyMetrics() {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
-    BasicClientStats stats = createStats(inMemoryMetricReader);
+    BasicClientStats stats = createStats(inMemoryMetricReader, THIN_CLIENT);
     stats.emitHealthyRequestMetrics(90.0, 2);
 
     validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", true, 90.0);
@@ -94,7 +95,7 @@ public class BasicClientStatsTest {
   @Test
   public void testEmitHealthyRequestMetricsForDavinciClient() {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
-    BasicClientStats stats = createStats(inMemoryMetricReader);
+    BasicClientStats stats = createStats(inMemoryMetricReader, DAVINCI_CLIENT);
     stats.emitHealthyRequestMetricsForDavinciClient(90.0);
 
     validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", true, 90.0);
@@ -102,9 +103,18 @@ public class BasicClientStatsTest {
   }
 
   @Test
+  public void testEmitHealthyRequestMetricsForDavinciClientWithWrongClientType() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    BasicClientStats stats = createStats(inMemoryMetricReader, THIN_CLIENT);
+    stats.emitHealthyRequestMetricsForDavinciClient(90.0);
+    Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+    Assert.assertFalse(metrics.get(".test_store--request.OccurrenceRate").value() > 0.0);
+  }
+
+  @Test
   public void testEmitUnhealthyMetrics() {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
-    BasicClientStats stats = createStats(inMemoryMetricReader);
+    BasicClientStats stats = createStats(inMemoryMetricReader, THIN_CLIENT);
     stats.emitUnhealthyRequestMetrics(90.0, HttpStatus.SC_INTERNAL_SERVER_ERROR);
 
     validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", false, 90.0);
@@ -120,19 +130,29 @@ public class BasicClientStatsTest {
   @Test
   public void testEmitUnhealthyMetricsForDavinciClient() {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
-    BasicClientStats stats = createStats(inMemoryMetricReader);
+    BasicClientStats stats = createStats(inMemoryMetricReader, DAVINCI_CLIENT);
     stats.emitUnhealthyRequestMetricsForDavinciClient(90.0);
 
     validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", false, 90.0);
     validateOtelMetrics(inMemoryMetricReader, "test_store", VeniceResponseStatusCategory.FAIL, 90.0, "test_prefix");
   }
 
-  private BasicClientStats createStats(InMemoryMetricReader inMemoryMetricReader) {
+  @Test
+  public void testEmitUnhealthyRequestMetricsForDavinciClientWithWrongClientType() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    BasicClientStats stats = createStats(inMemoryMetricReader, THIN_CLIENT);
+    stats.emitUnhealthyRequestMetricsForDavinciClient(90.0);
+    Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+    Assert.assertFalse(metrics.get(".test_store--request.OccurrenceRate").value() > 0.0);
+  }
+
+  private BasicClientStats createStats(InMemoryMetricReader inMemoryMetricReader, ClientType clientType) {
     String storeName = "test_store";
     String otelPrefix = "test_prefix";
     VeniceMetricsRepository metricsRepository =
         getVeniceMetricsRepository(storeName, otelPrefix, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
-    return BasicClientStats.getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName));
+    return BasicClientStats
+        .getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName), clientType);
   }
 
   private void validateTehutiMetrics(
