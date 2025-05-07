@@ -238,7 +238,7 @@ public final class HelixUtils {
         return;
       }
       attempt++;
-      handleFailedHelixOperation(path, "compare and update", attempt, retryCount);
+      handleFailedHelixOperation(path, "compareAndUpdate", attempt, retryCount);
     }
   }
 
