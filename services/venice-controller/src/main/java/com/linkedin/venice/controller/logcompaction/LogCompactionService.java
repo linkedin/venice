@@ -4,9 +4,12 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
+import io.tehuti.metrics.MetricsRepository;
+import java.util.Map;
 import com.linkedin.venice.utils.LogContext;
 import java.util.Set;
 import java.util.concurrent.Executors;
@@ -38,12 +41,26 @@ public class LogCompactionService extends AbstractVeniceService {
   private final Admin admin;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   final ScheduledExecutorService executor;
+  private Map<String, LogCompactionStats> statsPerClusterMap; // TODO: map
 
-  public LogCompactionService(Admin admin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
+  public LogCompactionService(
+      Admin admin,
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository) {
     this.admin = admin;
     this.multiClusterConfigs = multiClusterConfigs;
+    this.statsPerClusterMap = createStatsPerClusterMap(multiClusterConfigs, metricsRepository);
 
     executor = Executors.newScheduledThreadPool(multiClusterConfigs.getLogCompactionThreadCount());
+  }
+
+  private Map<String, LogCompactionStats> createStatsPerClusterMap(
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository) {
+    for (String clusterName: multiClusterConfigs.getClusters()) {
+      statsPerClusterMap.put(clusterName, new LogCompactionStats(metricsRepository, clusterName));
+    }
+    return statsPerClusterMap;
   }
 
   @Override
