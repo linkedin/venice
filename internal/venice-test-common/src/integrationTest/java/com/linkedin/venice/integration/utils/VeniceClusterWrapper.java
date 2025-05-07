@@ -123,6 +123,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   // cluster. e.g. controllers in a multi cluster wrapper.
   private String externalControllerDiscoveryURL = "";
 
+  public static final String CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING_IN_TESTS = "false";
+
   private static final List<AvroProtocolDefinition> CLUSTER_LEADER_INITIALIZATION_ROUTINES = Arrays.asList(
       AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
       AvroProtocolDefinition.PARTITION_STATE,
@@ -177,6 +179,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     Map<Integer, VeniceServerWrapper> veniceServerWrappers = new HashMap<>();
     Map<Integer, VeniceRouterWrapper> veniceRouterWrappers = new HashMap<>();
     Map<String, String> nettyServerToGrpcAddress = new HashMap<>();
+    if (!options.getExtraProperties().containsKey(CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING)) {
+      options.getExtraProperties()
+          .setProperty(
+              CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
+              CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING_IN_TESTS);
+    }
 
     Map<String, String> clusterToD2;
     if (options.getClusterToD2() == null || options.getClusterToD2().isEmpty()) {

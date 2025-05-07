@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABR
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.AGGREGATE_REAL_TIME_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_OTHER_URLS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
@@ -83,6 +84,9 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
      */
     Properties defaultParentControllerProps = new Properties();
     defaultParentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
+    defaultParentControllerProps.setProperty(
+        CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
+        VeniceClusterWrapper.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING_IN_TESTS);
 
     ZkServerWrapper zkServer = null;
     PubSubBrokerWrapper parentPubSubBrokerWrapper = null;
