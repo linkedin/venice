@@ -2,6 +2,7 @@ package com.linkedin.venice.meta;
 
 import static com.linkedin.venice.meta.Version.VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -37,9 +38,19 @@ public class TestVersion {
         goodTopic + " should parse as a valid store-version topic");
 
     String badTopic = "__consumer_offsets";
-    Assert.assertFalse(
+    assertFalse(
         Version.isVersionTopicOrStreamReprocessingTopic(badTopic),
         badTopic + " must not parse as a valid store-version topic");
+
+    String badTopic2 = "myStore_v1_rt";
+    assertFalse(
+        Version.isVersionTopicOrStreamReprocessingTopic(badTopic2),
+        badTopic2 + " must not parse as a valid store-version topic");
+
+    String badTopic3 = "myStore_v1_rt_sep";
+    assertFalse(
+        Version.isVersionTopicOrStreamReprocessingTopic(badTopic3),
+        badTopic3 + " must not parse as a valid store-version topic");
   }
 
   @Test
@@ -73,20 +84,35 @@ public class TestVersion {
   @Test
   public void testParseStoreFromRealTimeTopic() {
     String validRealTimeTopic = "abc_rt";
+    String validSeparateRealTimeTopic = Utils.getSeparateRealTimeTopicName(validRealTimeTopic);
     assertEquals(Version.parseStoreFromRealTimeTopic(validRealTimeTopic), "abc");
+    assertEquals(Version.parseStoreFromRealTimeTopic(validSeparateRealTimeTopic), "abc");
 
     String validRealTimeTopic2 = Utils.composeRealTimeTopic("abc", 1);
+    String validSeparateRealTimeTopic2 = Utils.getSeparateRealTimeTopicName(validRealTimeTopic2);
     assertEquals(Version.parseStoreFromRealTimeTopic(validRealTimeTopic2), "abc");
+    assertEquals(Version.parseStoreFromRealTimeTopic(validSeparateRealTimeTopic2), "abc");
 
     String validRealTimeTopic3 = Utils.composeRealTimeTopic("abc_v", 1);
+    String validSeparateRealTimeTopic3 = Utils.getSeparateRealTimeTopicName(validRealTimeTopic3);
     assertEquals(Version.parseStoreFromRealTimeTopic(validRealTimeTopic3), "abc_v");
+    assertEquals(Version.parseStoreFromRealTimeTopic(validSeparateRealTimeTopic3), "abc_v");
 
     String validRealTimeTopic4 = Utils.composeRealTimeTopic("abc_v1", 1);
+    String validSeparateRealTimeTopic4 = Utils.getSeparateRealTimeTopicName(validRealTimeTopic4);
     assertEquals(Version.parseStoreFromRealTimeTopic(validRealTimeTopic4), "abc_v1");
+    assertEquals(Version.parseStoreFromRealTimeTopic(validSeparateRealTimeTopic4), "abc_v1");
 
     String invalidRealTimeTopic = "abc";
     try {
       Version.parseStoreFromRealTimeTopic(invalidRealTimeTopic);
+      Assert.fail("VeniceException should be thrown for invalid real-time topic");
+    } catch (VeniceException e) {
+
+    }
+    String invalidSeparateRealTimeTopic = Utils.getSeparateRealTimeTopicName(invalidRealTimeTopic);
+    try {
+      Version.parseStoreFromRealTimeTopic(invalidSeparateRealTimeTopic);
       Assert.fail("VeniceException should be thrown for invalid real-time topic");
     } catch (VeniceException e) {
 
@@ -99,39 +125,55 @@ public class TestVersion {
     } catch (VeniceException e) {
 
     }
+
+    String invalidSeparateRealTimeTopic2 = Utils.getSeparateRealTimeTopicName("_v1_rt");
+    try {
+      Version.parseStoreFromRealTimeTopic(invalidSeparateRealTimeTopic2);
+      Assert.fail("VeniceException should be thrown for invalid real-time topic");
+    } catch (VeniceException e) {
+
+    }
   }
 
   @Test
   public void testIsTopic() {
     String topic = "abc_rt";
-    Assert.assertFalse(Version.isVersionTopic(topic));
+    assertFalse(Version.isVersionTopic(topic));
     assertTrue(Version.isRealTimeTopic(topic));
     topic = "abc";
-    Assert.assertFalse(Version.isVersionTopic(topic));
+    assertFalse(Version.isVersionTopic(topic));
     topic = "abc_v12df";
-    Assert.assertFalse(Version.isVersionTopic(topic));
+    assertFalse(Version.isVersionTopic(topic));
     topic = "abc_v123";
     assertTrue(Version.isVersionTopic(topic));
-    Assert.assertFalse(Version.isRealTimeTopic(topic));
+    assertFalse(Version.isRealTimeTopic(topic));
     assertTrue(Version.isVersionTopicOrStreamReprocessingTopic(topic));
     topic = "abc_v123_sr";
-    Assert.assertFalse(Version.isVersionTopic(topic));
+    assertFalse(Version.isVersionTopic(topic));
     assertTrue(Version.isStreamReprocessingTopic(topic));
     assertTrue(Version.isVersionTopicOrStreamReprocessingTopic(topic));
     topic = "abc_v12ab3_sr";
-    Assert.assertFalse(Version.isVersionTopic(topic));
-    Assert.assertFalse(Version.isStreamReprocessingTopic(topic));
-    Assert.assertFalse(Version.isVersionTopicOrStreamReprocessingTopic(topic));
+    assertFalse(Version.isVersionTopic(topic));
+    assertFalse(Version.isStreamReprocessingTopic(topic));
+    assertFalse(Version.isVersionTopicOrStreamReprocessingTopic(topic));
     topic = "abc_v_sr";
-    Assert.assertFalse(Version.isVersionTopic(topic));
-    Assert.assertFalse(Version.isStreamReprocessingTopic(topic));
-    Assert.assertFalse(Version.isVersionTopicOrStreamReprocessingTopic(topic));
+    assertFalse(Version.isVersionTopic(topic));
+    assertFalse(Version.isStreamReprocessingTopic(topic));
+    assertFalse(Version.isVersionTopicOrStreamReprocessingTopic(topic));
+
+    topic = "abc_rt_v1";
+    assertFalse(Version.isVersionTopic(topic));
+    assertTrue(Version.isRealTimeTopic(topic));
+
+    topic = "abc_rt_v1_sep";
+    assertFalse(Version.isVersionTopic(topic));
+    assertTrue(Version.isRealTimeTopic(topic));
   }
 
   @Test
   public void testIsATopicThatIsVersioned() {
     String topic = "abc_rt";
-    Assert.assertFalse(Version.isATopicThatIsVersioned(topic));
+    assertFalse(Version.isATopicThatIsVersioned(topic));
     topic = "abc_v1_sr";
     assertTrue(Version.isATopicThatIsVersioned(topic));
     topic = "abc_v1";
@@ -140,6 +182,26 @@ public class TestVersion {
     assertTrue(Version.isATopicThatIsVersioned(topic));
     String pushId = VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX + System.currentTimeMillis();
     assertTrue(Version.isPushIdTTLRePush(pushId));
+
+    // where is this method used ???? abora
+    topic = "abc_rt_v1";
+    assertFalse(Version.isATopicThatIsVersioned(topic));
+
+    topic = "abc_v1_rt_sep";
+    assertFalse(Version.isATopicThatIsVersioned(topic));
+
+    // from storeName_v1_rt to storeName_rt_v1
+    // from storeName_v1_rt_sep to storeName_rt_v1_sep
+
+  }
+
+  @Test
+  public void testRemoveRTVersionSuffix() {
+    String topic = "store_rt_v1";
+    Assert.assertEquals(Version.removeRTVersionSuffix(topic), "store_rt");
+
+    topic = "store_rt";
+    Assert.assertEquals(Version.removeRTVersionSuffix(topic), "store_rt");
   }
 
   @Test
@@ -177,7 +239,7 @@ public class TestVersion {
       if (status == VersionStatus.KILLED) {
         assertTrue(VersionStatus.isVersionKilled(status));
       } else {
-        Assert.assertFalse(VersionStatus.isVersionKilled(status));
+        assertFalse(VersionStatus.isVersionKilled(status));
       }
     }
   }
