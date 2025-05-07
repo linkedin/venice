@@ -172,6 +172,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
   private VeniceProperties props;
   private long telemetryMessageInterval;
+  private boolean enableUncompressedRecordSizeLimit;
   private DuplicateKeyPrinter duplicateKeyPrinter;
   private Exception sendException = null;
 
@@ -297,7 +298,9 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     if (this.hasRecordTooLargeFailure) {
       return true;
     }
-    final boolean hasRecordTooLargeFailure = dataWriterTaskTracker.getRecordTooLargeFailureCount() > 0;
+    final boolean hasRecordTooLargeFailure = (dataWriterTaskTracker.getRecordTooLargeFailureCount() > 0
+        || (dataWriterTaskTracker.getUncompressedRecordTooLargeFailureCount() > 0
+            && this.enableUncompressedRecordSizeLimit));
     if (hasRecordTooLargeFailure) {
       this.hasRecordTooLargeFailure = true;
     }
@@ -590,6 +593,8 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     this.enableWriteCompute = (props.containsKey(ENABLE_WRITE_COMPUTE)) && props.getBoolean(ENABLE_WRITE_COMPUTE);
     this.duplicateKeyPrinter = initDuplicateKeyPrinter(props);
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
+    this.enableUncompressedRecordSizeLimit =
+        props.getBoolean(VeniceWriter.ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT, false);
     this.callback = new PartitionWriterProducerCallback();
     initStorageQuotaFields(props);
     /**

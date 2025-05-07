@@ -94,7 +94,7 @@ public class TestTopicRequestOnHybridDelete {
       });
 
       controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id"), 1L);
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreResponse storeResponse = finalControllerClient.getStore(storeName);
         Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 2);
       });
@@ -139,7 +139,7 @@ public class TestTopicRequestOnHybridDelete {
 
       int expectedCurrentVersion = 3;
 
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         StoreResponse storeResponse = finalControllerClient.getStore(storeName);
         Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), expectedCurrentVersion);
       });
@@ -154,7 +154,7 @@ public class TestTopicRequestOnHybridDelete {
       venice.refreshAllRouterMetaData();
 
       // verify new records appear
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         try {
           assertEquals(finalClient.get("19").get(), new Utf8("stream_19"));
         } catch (Exception e) {

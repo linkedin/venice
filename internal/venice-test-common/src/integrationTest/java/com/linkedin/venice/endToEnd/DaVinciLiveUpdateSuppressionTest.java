@@ -1,7 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static org.testng.Assert.assertEquals;
@@ -44,8 +43,6 @@ import java.util.Properties;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
@@ -56,7 +53,6 @@ import org.testng.annotations.Test;
  * Create this class to isolate the live update suppression test as it could lead to unknown writer creation failure.
  */
 public class DaVinciLiveUpdateSuppressionTest {
-  private static final Logger LOGGER = LogManager.getLogger(DaVinciLiveUpdateSuppressionTest.class);
   private static final int KEY_COUNT = 10;
   private static final int TEST_TIMEOUT = 120_000; // ms
   private VeniceClusterWrapper cluster;
@@ -66,7 +62,6 @@ public class DaVinciLiveUpdateSuppressionTest {
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
-    clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
         .numberOfRouters(1)

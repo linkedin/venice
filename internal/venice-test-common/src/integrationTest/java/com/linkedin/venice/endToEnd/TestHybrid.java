@@ -14,7 +14,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS;
@@ -203,7 +202,6 @@ public class TestHybrid {
       throws Exception {
     LOGGER.info("About to create VeniceClusterWrapper");
     Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
     if (chunkingEnabled) {
       // We exercise chunking by setting the servers' max size arbitrarily low. For now, since the RT topic
       // does not support chunking, and write compute is not merged yet, there is no other way to make the
@@ -487,7 +485,6 @@ public class TestHybrid {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
     extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
 
     SystemProducer veniceBatchProducer = null;
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
@@ -546,8 +543,7 @@ public class TestHybrid {
         // while running in L/F model, we try to stop the original SN; let Helix elect a new leader and push some extra
         // data here. This is for testing "pass-through" mode is working properly
         // wait a little time to make sure the leader has re-produced all existing messages
-        long waitTime = TimeUnit.SECONDS.toMillis(
-            Integer.parseInt(extraProperties.getProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS)) + 2);
+        long waitTime = TimeUnit.SECONDS.toMillis(8);
         Utils.sleep(waitTime);
 
         String resourceName = Version.composeKafkaTopic(storeName, 1);
@@ -637,8 +633,7 @@ public class TestHybrid {
           /**
            * Leader would wait for 5 seconds before switching to real-time topic.
            */
-          long extraWaitTime = TimeUnit.SECONDS
-              .toMillis(Long.parseLong(extraProperties.getProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS)));
+          long extraWaitTime = TimeUnit.SECONDS.toMillis(5);
           long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(3);
           LOGGER.info("normalTimeForConsuming: {} ms; extraWaitTime: {} ms", normalTimeForConsuming, extraWaitTime);
           Utils.sleep(normalTimeForConsuming + extraWaitTime);
@@ -747,7 +742,6 @@ public class TestHybrid {
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testLeaderHonorLastTopicSwitchMessage() throws Exception {
     Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(10L));
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
         .numberOfRouters(1)
@@ -988,8 +982,6 @@ public class TestHybrid {
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testHybridMultipleVersions() throws Exception {
-    final Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     final int partitionCount = 2;
     final int keyCount = 10;
     VeniceClusterWrapper cluster = sharedVenice;
@@ -1246,9 +1238,6 @@ public class TestHybrid {
   @Test(dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class, timeOut = 60
       * Time.MS_PER_SECOND)
   public void testDuplicatedMessagesWontBePersisted(CompressionStrategy compressionStrategy) throws Exception {
-    Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
-
     SystemProducer veniceProducer = null;
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
     VeniceClusterWrapper venice = sharedVenice;
@@ -1444,9 +1433,6 @@ public class TestHybrid {
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testVersionSwapDeferredWithHybrid() throws Exception {
-    Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
-
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
     VeniceClusterWrapper venice = sharedVenice;
     LOGGER.info("Finished creating VeniceClusterWrapper");
@@ -1523,9 +1509,6 @@ public class TestHybrid {
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testHybridDIVEnhancement() throws Exception {
-    Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
-
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
     VeniceClusterWrapper venice = sharedVenice;
     LOGGER.info("Finished creating VeniceClusterWrapper");
@@ -1716,7 +1699,6 @@ public class TestHybrid {
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testLeaderShouldCalculateRewindDuringPromotion() {
     final Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(20L));
     final int partitionCount = 1;
     final int keyCount = 10;
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
@@ -1843,7 +1825,6 @@ public class TestHybrid {
     // Add Venice Server
     Properties serverProperties = new Properties();
     serverProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
-    serverProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");

@@ -88,15 +88,6 @@ public final class Futures {
                 .toArray(CompletableFuture[]::new)));
   }
 
-  public static Future<?> anyOf(Future<?>... futures) {
-    return asNettyFuture(
-        CompletableFuture.anyOf(
-            Stream.of(futures)
-                .filter(Objects::nonNull)
-                .map(Futures::asCompletableFuture)
-                .toArray(CompletableFuture[]::new)));
-  }
-
   public static <V> BiConsumer<V, Throwable> complete(@Nonnull Promise<V> promise) {
     return complete(promise, Futures::defaultDisposal);
   }
@@ -110,53 +101,6 @@ public final class Futures {
       } else {
         if (!promise.tryFailure(ex)) {
           logException(promise, ex);
-        }
-      }
-    };
-  }
-
-  public static <V> BiConsumer<Future<V>, Throwable> completeFuture(@Nonnull Promise<V> promise) {
-    return (result, ex) -> {
-      if (ex == null) {
-        if (result != null) {
-          result.addListener(listener(promise));
-        } else {
-          LOG.warn("unexpected null future", new NullPointerException());
-        }
-      } else {
-        if (!promise.tryFailure(ex)) {
-          logException(promise, ex);
-        }
-      }
-    };
-  }
-
-  public static <T, V> FutureListener<T> voidListener(@Nonnull Promise<V> promise) {
-    return f -> {
-      if (f.isSuccess()) {
-        promise.trySuccess(null);
-      } else {
-        if (!promise.tryFailure(f.cause())) {
-          logException(promise, f.cause());
-        }
-      }
-    };
-  }
-
-  public static <V> FutureListener<V> listener(@Nonnull Promise<V> promise) {
-    return listener(promise, Futures::defaultDisposal);
-  }
-
-  public static <V> FutureListener<V> listener(@Nonnull Promise<V> promise, @Nonnull Consumer<V> dispose) {
-    return f -> {
-      if (f.isSuccess()) {
-        V value = f.getNow();
-        if (!promise.trySuccess(value)) {
-          dispose.accept(value);
-        }
-      } else {
-        if (!promise.tryFailure(f.cause())) {
-          logException(promise, f.cause());
         }
       }
     };

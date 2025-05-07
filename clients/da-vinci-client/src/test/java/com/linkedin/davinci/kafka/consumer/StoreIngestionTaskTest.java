@@ -5857,6 +5857,7 @@ public abstract class StoreIngestionTaskTest {
       PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
       final int P = PARTITION_BAR;
       when(pcs.getPartition()).thenReturn(P);
+      when(pcs.isHybrid()).thenReturn(true);
 
       // Case 1: Latch was not created or released, so reportIfCatchUpVersionTopicOffset() shouldn't do anything
       when(pcs.isEndOfPushReceived()).thenReturn(true);
