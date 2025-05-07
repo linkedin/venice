@@ -77,6 +77,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang.StringUtils;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
@@ -1115,7 +1116,7 @@ public abstract class AbstractPushMonitorTest {
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
     HybridStoreConfig hybridStoreConfig =
         new HybridStoreConfigImpl(1, 1, 1, DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
-    Store store = prepareMockStore(topic, VersionStatus.STARTED, viewConfigMap, hybridStoreConfig);
+    Store store = prepareMockStore(topic, VersionStatus.STARTED, viewConfigMap, hybridStoreConfig, "");
     VeniceView veniceView = ViewUtils.getVeniceView(
         viewConfig.getViewClassName(),
         new Properties(),
@@ -1168,7 +1169,8 @@ public abstract class AbstractPushMonitorTest {
       String topic,
       VersionStatus status,
       Map<String, ViewConfig> viewConfigMap,
-      HybridStoreConfig hybridStoreConfig) {
+      HybridStoreConfig hybridStoreConfig,
+      String targetRegions) {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
@@ -1177,6 +1179,11 @@ public abstract class AbstractPushMonitorTest {
     if (hybridStoreConfig != null) {
       version.setHybridStoreConfig(hybridStoreConfig);
     }
+    if (!StringUtils.isEmpty(targetRegions)) {
+      store.setTargetSwapRegion(targetRegions);
+      version.setVersionSwapDeferred(true);
+      version.setTargetSwapRegion(targetRegions);
+    }
     version.setStatus(status);
     store.addVersion(version);
     doReturn(store).when(mockStoreRepo).getStore(storeName);
@@ -1184,7 +1191,7 @@ public abstract class AbstractPushMonitorTest {
   }
 
   protected Store prepareMockStore(String topic, VersionStatus status) {
-    return prepareMockStore(topic, status, Collections.emptyMap(), null);
+    return prepareMockStore(topic, status, Collections.emptyMap(), null, "");
   }
 
   protected Store prepareMockStore(String topic) {
