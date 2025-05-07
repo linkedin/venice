@@ -2885,6 +2885,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Configs from the source clusters are source of truth
             version.setStatus(STARTED);
 
+            // Do not do a target region push w/ deferred swap for store migration. Setting the following two configs
+            // will enable target region push w/ deferred swap and this is not desirable as the version will never be
+            // swapped in the non target regions for store migration as the DeferredVersionSwapService relies on parent
+            // version status to coordinate the version swap
+            if (version.isVersionSwapDeferred() && !StringUtils.isEmpty(version.getTargetSwapRegion())) {
+              version.setVersionSwapDeferred(false);
+              version.setTargetSwapRegion("");
+            }
+
             if (store.containsVersion(version.getNumber())) {
               throwVersionAlreadyExists(storeName, version.getNumber());
             }
