@@ -13,36 +13,36 @@ import java.util.HashMap;
 import java.util.Map;
 
 
-public class LogCompactionServiceStats {
+public class LogCompactionStats {
   private final MetricsRepository metricsRepository;
   private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Attributes baseAttributes;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
-  public LogCompactionServiceStats(MetricsRepository metricsRepository, String clusterName) {
+  public LogCompactionStats(MetricsRepository metricsRepository, String clusterName) {
     this.metricsRepository = metricsRepository;
     if (metricsRepository instanceof VeniceMetricsRepository) {
       VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
       VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
       emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
       if (emitOpenTelemetryMetrics) {
-        otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
-        baseDimensionsMap = new HashMap<>();
-        baseDimensionsMap.put(VENICE_CLUSTER_NAME, clusterName);
+        this.otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
+        this.baseDimensionsMap = new HashMap<>();
+        this.baseDimensionsMap.put(VENICE_CLUSTER_NAME, clusterName);
         AttributesBuilder baseAttributesBuilder = Attributes.builder();
-        baseAttributesBuilder.put(otelRepository.getDimensionName(VENICE_CLUSTER_NAME), clusterName);
-        baseAttributes = baseAttributesBuilder.build();
+        baseAttributesBuilder.put(this.otelRepository.getDimensionName(VENICE_CLUSTER_NAME), clusterName);
+        this.baseAttributes = baseAttributesBuilder.build();
       } else {
-        otelRepository = null;
-        baseAttributes = null;
-        baseDimensionsMap = null;
+        this.otelRepository = null;
+        this.baseAttributes = null;
+        this.baseDimensionsMap = null;
       }
     } else {
-      emitOpenTelemetryMetrics = false;
-      otelRepository = null;
-      baseAttributes = null;
-      baseDimensionsMap = null;
+      this.emitOpenTelemetryMetrics = false;
+      this.otelRepository = null;
+      this.baseAttributes = null;
+      this.baseDimensionsMap = null;
     }
   }
 }
