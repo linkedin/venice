@@ -262,7 +262,7 @@ public class VeniceController {
   private Optional<LogCompactionService> createLogCompactionService() {
     if (multiClusterConfigs.isLogCompactionSchedulingEnabled()) {
       Admin admin = controllerService.getVeniceHelixAdmin();
-      return Optional.of(new LogCompactionService(admin, multiClusterConfigs));
+      return Optional.of(new LogCompactionService(admin, multiClusterConfigs, metricsRepository));
     }
     return Optional.empty();
   }
