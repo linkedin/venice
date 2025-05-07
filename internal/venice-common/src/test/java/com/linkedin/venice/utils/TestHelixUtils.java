@@ -11,6 +11,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.apache.helix.AccessOption;
@@ -20,10 +21,22 @@ import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.model.CloudConfig;
 import org.apache.helix.zookeeper.zkclient.DataUpdater;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class TestHelixUtils {
+  private final String TEST_PATH = "/test/path";
+  private final String TEST_DATA = "testData";
+  private static final int TEST_RETRY_COUNT = 3;
+  private ZkBaseDataAccessor<String> mockDataAccessor;
+  private DataUpdater<String> dataUpdater;
+
+  private final List<String> TEST_PATH_LIST = Arrays.asList("/test/path/child1", "/test/path/child2");
+  private final List<String> TEST_DATA_LIST = Arrays.asList("data1", "data2");
+  private final boolean[] SUCCESS_RESULTS = new boolean[] { true, true };
+  private final boolean[] FAILED_RESULTS = new boolean[] { true, false };
+
   @Test
   public void parsesHostnameFromInstanceName() {
     Instance instance1 = HelixUtils.getInstanceFromHelixInstanceName("host_1234");
@@ -83,222 +96,158 @@ public class TestHelixUtils {
             ""));
   }
 
+  @BeforeMethod
+  public void setUp() {
+    mockDataAccessor = mock(ZkBaseDataAccessor.class);
+    dataUpdater = mock(DataUpdater.class);
+  }
+
   @Test
   public void testCreate() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    String testPath = "/test/path";
-    String testData = "testData";
+    doReturn(true).when(mockDataAccessor).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
 
-    doReturn(true).when(mockDataAccessor).create(testPath, testData, AccessOption.PERSISTENT);
+    HelixUtils.create(mockDataAccessor, TEST_PATH, TEST_DATA, TEST_RETRY_COUNT);
 
-    HelixUtils.create(mockDataAccessor, testPath, testData, 3);
-
-    verify(mockDataAccessor, times(1)).create(testPath, testData, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(1)).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
   }
 
   @Test
   public void testCreateFailsAfterRetries() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    String testPath = "/test/path";
-    String testData = "testData";
-
-    doReturn(false).when(mockDataAccessor).create(testPath, testData, AccessOption.PERSISTENT);
+    doReturn(false).when(mockDataAccessor).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
 
     Assert.assertThrows(VeniceException.class, () -> {
-      HelixUtils.create(mockDataAccessor, testPath, testData, 3);
+      HelixUtils.create(mockDataAccessor, TEST_PATH, TEST_DATA, TEST_RETRY_COUNT);
     });
   }
 
   @Test
   public void testCreateSucceedsAfterRetries() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    String testPath = "/test/path";
-    String testData = "testData";
-
     doReturn(false).doReturn(false)
         .doReturn(true)
         .when(mockDataAccessor)
-        .create(testPath, testData, AccessOption.PERSISTENT);
+        .create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
 
-    HelixUtils.create(mockDataAccessor, testPath, testData, 3);
+    HelixUtils.create(mockDataAccessor, TEST_PATH, TEST_DATA, TEST_RETRY_COUNT);
 
-    verify(mockDataAccessor, times(3)).create(testPath, testData, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(TEST_RETRY_COUNT)).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
   }
 
   @Test
   public void testUpdate() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    String testPath = "/test/path";
-    String testData = "testData";
+    doReturn(true).when(mockDataAccessor).set(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
 
-    doReturn(true).when(mockDataAccessor).set(testPath, testData, AccessOption.PERSISTENT);
+    HelixUtils.update(mockDataAccessor, TEST_PATH, TEST_DATA, TEST_RETRY_COUNT);
 
-    HelixUtils.update(mockDataAccessor, testPath, testData, 3);
-
-    verify(mockDataAccessor, times(1)).set(testPath, testData, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(1)).set(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
   }
 
   @Test
   public void testUpdateFailsAfterRetries() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    String testPath = "/test/path";
-    String testData = "testData";
-
-    doReturn(false).when(mockDataAccessor).set(testPath, testData, AccessOption.PERSISTENT);
+    doReturn(false).when(mockDataAccessor).set(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
 
     Assert.assertThrows(VeniceException.class, () -> {
-      HelixUtils.update(mockDataAccessor, testPath, testData, 3);
+      HelixUtils.update(mockDataAccessor, TEST_PATH, TEST_DATA, TEST_RETRY_COUNT);
     });
   }
 
   @Test
   public void testUpdateSucceedsAfterRetries() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    String testPath = "/test/path";
-    String testData = "testData";
-
     doReturn(false).doReturn(false)
         .doReturn(true)
         .when(mockDataAccessor)
-        .set(testPath, testData, AccessOption.PERSISTENT);
+        .set(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
 
-    HelixUtils.update(mockDataAccessor, testPath, testData, 3);
+    HelixUtils.update(mockDataAccessor, TEST_PATH, TEST_DATA, TEST_RETRY_COUNT);
 
-    verify(mockDataAccessor, times(3)).set(testPath, testData, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(TEST_RETRY_COUNT)).set(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
   }
 
   @Test
   public void testUpdateChildren() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    List<String> paths = new ArrayList<>();
-    paths.add("/test/path/child1");
-    paths.add("/test/path/child2");
-    List<String> data = new ArrayList<>();
-    data.add("data1");
-    data.add("data2");
+    boolean[] SUCCESS_RESULTS = new boolean[] { true, true };
+    doReturn(SUCCESS_RESULTS).when(mockDataAccessor)
+        .setChildren(TEST_PATH_LIST, TEST_DATA_LIST, AccessOption.PERSISTENT);
 
-    boolean[] successResults = new boolean[] { true, true };
-    doReturn(successResults).when(mockDataAccessor).setChildren(paths, data, AccessOption.PERSISTENT);
+    HelixUtils.updateChildren(mockDataAccessor, TEST_PATH_LIST, TEST_DATA_LIST, TEST_RETRY_COUNT);
 
-    HelixUtils.updateChildren(mockDataAccessor, paths, data, 3);
-
-    verify(mockDataAccessor, times(1)).setChildren(paths, data, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(1)).setChildren(TEST_PATH_LIST, TEST_DATA_LIST, AccessOption.PERSISTENT);
   }
 
   @Test
   public void testUpdateChildrenFailsAfterRetries() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    List<String> paths = new ArrayList<>();
-    paths.add("/test/path/child1");
-    paths.add("/test/path/child2");
-    List<String> data = new ArrayList<>();
-    data.add("data1");
-    data.add("data2");
-
-    boolean[] failedResults = new boolean[] { true, false };
-    doReturn(failedResults).when(mockDataAccessor).setChildren(paths, data, AccessOption.PERSISTENT);
+    doReturn(FAILED_RESULTS).when(mockDataAccessor)
+        .setChildren(TEST_PATH_LIST, TEST_DATA_LIST, AccessOption.PERSISTENT);
 
     Assert.assertThrows(VeniceException.class, () -> {
-      HelixUtils.updateChildren(mockDataAccessor, paths, data, 3);
+      HelixUtils.updateChildren(mockDataAccessor, TEST_PATH_LIST, TEST_DATA_LIST, TEST_RETRY_COUNT);
     });
   }
 
   @Test
   public void testUpdateChildrenSucceedsAfterRetries() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    List<String> paths = new ArrayList<>();
-    paths.add("/test/path/child1");
-    paths.add("/test/path/child2");
-    List<String> data = new ArrayList<>();
-    data.add("data1");
-    data.add("data2");
-
-    boolean[] successResults = new boolean[] { true, true };
-    boolean[] failedResults = new boolean[] { true, false };
-
-    doReturn(failedResults).doReturn(failedResults)
-        .doReturn(successResults)
+    doReturn(FAILED_RESULTS).doReturn(FAILED_RESULTS)
+        .doReturn(SUCCESS_RESULTS)
         .when(mockDataAccessor)
-        .setChildren(paths, data, AccessOption.PERSISTENT);
+        .setChildren(TEST_PATH_LIST, TEST_DATA_LIST, AccessOption.PERSISTENT);
 
-    HelixUtils.updateChildren(mockDataAccessor, paths, data, 3);
+    HelixUtils.updateChildren(mockDataAccessor, TEST_PATH_LIST, TEST_DATA_LIST, TEST_RETRY_COUNT);
 
-    verify(mockDataAccessor, times(3)).setChildren(paths, data, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(TEST_RETRY_COUNT))
+        .setChildren(TEST_PATH_LIST, TEST_DATA_LIST, AccessOption.PERSISTENT);
   }
 
   @Test
   public void testRemove() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    String testPath = "/test/path";
+    doReturn(true).when(mockDataAccessor).remove(TEST_PATH, AccessOption.PERSISTENT);
 
-    doReturn(true).when(mockDataAccessor).remove(testPath, AccessOption.PERSISTENT);
+    HelixUtils.remove(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT);
 
-    HelixUtils.remove(mockDataAccessor, testPath, 3);
-
-    verify(mockDataAccessor, times(1)).remove(testPath, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(1)).remove(TEST_PATH, AccessOption.PERSISTENT);
   }
 
   @Test
   public void testRemoveFailsAfterRetries() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    String testPath = "/test/path";
-
-    doReturn(false).when(mockDataAccessor).remove(testPath, AccessOption.PERSISTENT);
+    doReturn(false).when(mockDataAccessor).remove(TEST_PATH, AccessOption.PERSISTENT);
 
     Assert.assertThrows(VeniceException.class, () -> {
-      HelixUtils.remove(mockDataAccessor, testPath, 3);
+      HelixUtils.remove(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT);
     });
   }
 
   @Test
   public void testRemoveSucceedsAfterRetries() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    String testPath = "/test/path";
+    doReturn(false).doReturn(false).doReturn(true).when(mockDataAccessor).remove(TEST_PATH, AccessOption.PERSISTENT);
 
-    doReturn(false).doReturn(false).doReturn(true).when(mockDataAccessor).remove(testPath, AccessOption.PERSISTENT);
-
-    HelixUtils.remove(mockDataAccessor, testPath, 3);
+    HelixUtils.remove(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT);
   }
 
   @Test
   public void testCompareAndUpdate() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    String testPath = "/test/path";
-    DataUpdater<String> dataUpdater = mock(DataUpdater.class);
+    doReturn(true).when(mockDataAccessor).update(TEST_PATH, dataUpdater, AccessOption.PERSISTENT);
 
-    doReturn(true).when(mockDataAccessor).update(testPath, dataUpdater, AccessOption.PERSISTENT);
+    HelixUtils.compareAndUpdate(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT, dataUpdater);
 
-    HelixUtils.compareAndUpdate(mockDataAccessor, testPath, 3, dataUpdater);
-
-    verify(mockDataAccessor, times(1)).update(testPath, dataUpdater, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(1)).update(TEST_PATH, dataUpdater, AccessOption.PERSISTENT);
   }
 
   @Test
   public void testCompareAndUpdateFailsAfterRetries() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    String testPath = "/test/path";
-    DataUpdater<String> dataUpdater = mock(DataUpdater.class);
-
-    doReturn(false).when(mockDataAccessor).update(testPath, dataUpdater, AccessOption.PERSISTENT);
+    doReturn(false).when(mockDataAccessor).update(TEST_PATH, dataUpdater, AccessOption.PERSISTENT);
 
     Assert.assertThrows(VeniceException.class, () -> {
-      HelixUtils.compareAndUpdate(mockDataAccessor, testPath, 3, dataUpdater);
+      HelixUtils.compareAndUpdate(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT, dataUpdater);
     });
   }
 
   @Test
   public void testCompareAndUpdateSucceedsAfterRetries() {
-    ZkBaseDataAccessor<String> mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    String testPath = "/test/path";
-    DataUpdater<String> dataUpdater = mock(DataUpdater.class);
-
     doReturn(false).doReturn(false)
         .doReturn(true)
         .when(mockDataAccessor)
-        .update(testPath, dataUpdater, AccessOption.PERSISTENT);
+        .update(TEST_PATH, dataUpdater, AccessOption.PERSISTENT);
 
-    HelixUtils.compareAndUpdate(mockDataAccessor, testPath, 3, dataUpdater);
+    HelixUtils.compareAndUpdate(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT, dataUpdater);
 
-    verify(mockDataAccessor, times(3)).update(testPath, dataUpdater, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(TEST_RETRY_COUNT)).update(TEST_PATH, dataUpdater, AccessOption.PERSISTENT);
   }
 }
