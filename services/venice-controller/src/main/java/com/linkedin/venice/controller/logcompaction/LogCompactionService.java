@@ -4,9 +4,12 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
+import io.tehuti.metrics.MetricsRepository;
+import java.util.Map;
 import com.linkedin.venice.utils.LogContext;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -38,12 +41,14 @@ public class LogCompactionService extends AbstractVeniceService {
   private final String clusterName;
   private final VeniceControllerClusterConfig clusterConfigs;
   final ScheduledExecutorService executor;
+  private LogCompactionStats stats; // TODO: map
 
-  public LogCompactionService(Admin admin, String clusterName, VeniceControllerClusterConfig clusterConfigs) {
+  public LogCompactionService(Admin admin, String clusterName, VeniceControllerClusterConfig clusterConfigs, MetricsRepository metricsRepository) {
     this.admin = admin;
     this.clusterName = clusterName;
 
     this.clusterConfigs = clusterConfigs;
+    this.stats = new LogCompactionStats(metricsRepository, clusterName);
 
     executor = Executors.newScheduledThreadPool(clusterConfigs.getLogCompactionThreadCount());
   }
