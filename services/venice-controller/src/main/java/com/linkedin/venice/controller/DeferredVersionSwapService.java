@@ -256,10 +256,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     // The store is eligible for a version swap if its push job is in terminal status. For a target region
     // push, the parent version status is set to PUSHED in getOfflinePushStatus when this happens or KILLED if the push
     // failed. PUSHED represents when a push successfully completes in all regions and KILLED represents when a push
-    // fails in
-    // 1+ regions. KILLED is still eligible for a version swap because some non target regions may have succeeded, and
-    // we
-    // need to perform a version swap for those regions
+    // fails in 1+ regions. KILLED is still eligible for a version swap because some non target regions may have
+    // succeeded,
+    // and we need to perform a version swap for those regions
     if (targetVersion.getStatus() != VersionStatus.PUSHED && targetVersion.getStatus() != VersionStatus.KILLED) {
       return false;
     }
@@ -341,6 +340,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
     Set<String> completedNonTargetRegions = new HashSet<>();
     Set<String> failedNonTargetRegions = new HashSet<>();
+    Set<String> rolledForwardNonTargetRegions = new HashSet<>();
     for (String nonTargetRegion: nonTargetRegions) {
       Version version = getVersionFromStoreInRegion(clusterName, nonTargetRegion, store.getName(), targetVersionNum);
 
@@ -372,6 +372,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         completedNonTargetRegions.add(nonTargetRegion);
       } else if (version.getStatus().equals(ERROR) || version.getStatus().equals(VersionStatus.KILLED)) {
         failedNonTargetRegions.add(nonTargetRegion);
+      } else if (version.getStatus().equals(ONLINE)) {
+        rolledForwardNonTargetRegions.add(nonTargetRegion);
       }
     }
 
@@ -382,12 +384,19 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       store.updateVersionStatus(targetVersionNum, PARTIALLY_ONLINE);
       repository.updateStore(store);
       return Collections.emptySet();
-    } else if ((failedNonTargetRegions.size() + completedNonTargetRegions.size()) != nonTargetRegions.size()) {
+    } else if ((failedNonTargetRegions.size() + completedNonTargetRegions.size()
+        + rolledForwardNonTargetRegions.size()) != nonTargetRegions.size()) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
           + "as push is not in terminal status in all non target regions. Completed non target regions: "
           + completedNonTargetRegions + ", failed non target regions: " + failedNonTargetRegions
           + ", non target regions: " + nonTargetRegions;
       logMessageIfNotRedundant(message);
+      return Collections.emptySet();
+    } else if (rolledForwardNonTargetRegions.equals(nonTargetRegions)) {
+      LOGGER
+          .info("Marking parent status as ONLINE as non target regions already rolled forward in: {}", kafkaTopicName);
+      store.updateVersionStatus(targetVersionNum, ONLINE);
+      repository.updateStore(store);
       return Collections.emptySet();
     }
 
