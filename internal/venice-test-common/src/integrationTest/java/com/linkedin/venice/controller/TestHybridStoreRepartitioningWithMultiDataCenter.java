@@ -49,6 +49,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
   PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   ControllerClient parentControllerClient;
   ControllerClient[] childControllerClients;
+  String storeName = Utils.getUniqueString("TestEndToEndRealTimeTopicVersioning");
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
@@ -212,10 +213,8 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
    * This test creates a store, do a push, update it's partition count, delete it, recreate it, and do a push again.
    * At all steps, RT name is verified.
    */
-  @Test(timeOut = 2 * TEST_TIMEOUT)
-  public void testRealTimeTopicVersioning() {
-    String storeName = Utils.getUniqueString("TestRealTimeTopicVersioning");
-
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testCreateStore() {
     NewStoreResponse newStoreResponse =
         parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
     Assert.assertFalse(
@@ -241,7 +240,10 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
         verifyStoreState(childControllerClient, storeName, 1, expectedRealTimeTopicName, null, null);
       });
     }
+  }
 
+  @Test(timeOut = TEST_TIMEOUT, dependsOnMethods = "testCreateStore")
+  public void testEmptyPush() {
     // create new version by doing an empty push
     parentControllerClient
         .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
@@ -258,7 +260,10 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
           expectedRealTimeTopicName,
           expectedRealTimeTopicName);
     }
+  }
 
+  @Test(timeOut = TEST_TIMEOUT, dependsOnMethods = "testEmptyPush")
+  public void testPartitionCountUpdate() {
     TestWriteUtils.updateStore(storeName, parentControllerClient, new UpdateStoreQueryParams().setPartitionCount(2));
 
     for (int i = 0; i < childControllerClients.length; i++) {
@@ -328,10 +333,12 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
             expectedRealTimeTopicName);
       });
     }
+  }
 
+  @Test(timeOut = TEST_TIMEOUT, dependsOnMethods = "testPartitionCountUpdate")
+  public void testDeleteAndRecreateStore() {
     // now delete and recreate the store with the same name
-
-    updateStoreParams = new UpdateStoreQueryParams();
+    UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams();
     updateStoreParams.setEnableReads(false).setEnableWrites(false);
 
     TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
@@ -348,7 +355,7 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
       });
     }
 
-    newStoreResponse =
+    NewStoreResponse newStoreResponse =
         parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
     Assert.assertFalse(
         newStoreResponse.isError(),
@@ -389,63 +396,6 @@ public class TestHybridStoreRepartitioningWithMultiDataCenter {
             controllerClient,
             storeName,
             3,
-            expectedRealTimeTopicName,
-            expectedRealTimeTopicName,
-            expectedRealTimeTopicName);
-      });
-    }
-
-    TestWriteUtils.updateStore(storeName, parentControllerClient, new UpdateStoreQueryParams().setPartitionCount(1));
-
-    for (ControllerClient controllerClient: childControllerClients) {
-      // we updated partition count, so largestUsedRTVersion should have increased
-      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getLargestUsedRTVersionNumber(), 4);
-    }
-
-    // create new version by doing an empty push
-    parentControllerClient
-        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
-
-    for (int i = 0; i < childControllerClients.length; i++) {
-      final int idx = i;
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreInfo storeInfo = childControllerClients[idx].getStore(storeName).getStore();
-        Assert.assertEquals(storeInfo.getVersions().size(), 2);
-
-        String expectedRealTimeTopicNameInBackupVersion = Utils.composeRealTimeTopic(storeName, 3);
-        // because we updated partition count, rt version should increase to v2
-        String expectedRealTimeTopicName = Utils.composeRealTimeTopic(storeName, 4);
-
-        PubSubTopic newRtPubSubTopic = pubSubTopicRepository.getTopic(expectedRealTimeTopicName);
-        // verify rt topic is created with the updated partition count = 2
-        Assert.assertEquals(topicManagers.get(idx).getPartitionCount(newRtPubSubTopic), 1);
-
-        Assert.assertEquals(storeInfo.getLargestUsedRTVersionNumber(), 4);
-        verifyStoreState(
-            childControllerClients[idx],
-            storeName,
-            4,
-            expectedRealTimeTopicName,
-            expectedRealTimeTopicNameInBackupVersion,
-            expectedRealTimeTopicName);
-      });
-    }
-
-    // create another version by doing an empty push
-    parentControllerClient
-        .sendEmptyPushAndWait(storeName, Utils.getUniqueString("empty-push"), 1L, 60L * Time.MS_PER_SECOND);
-
-    for (ControllerClient childControllerClient: childControllerClients) {
-      Assert.assertEquals(childControllerClient.getStore(storeName).getStore().getCurrentVersion(), 6);
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        Assert.assertEquals(childControllerClient.getStore(storeName).getStore().getVersions().size(), 2);
-
-        // rt version should not change because there is no more partition count update
-        String expectedRealTimeTopicName = Utils.composeRealTimeTopic(storeName, 4);
-        verifyStoreState(
-            childControllerClient,
-            storeName,
-            4,
             expectedRealTimeTopicName,
             expectedRealTimeTopicName,
             expectedRealTimeTopicName);

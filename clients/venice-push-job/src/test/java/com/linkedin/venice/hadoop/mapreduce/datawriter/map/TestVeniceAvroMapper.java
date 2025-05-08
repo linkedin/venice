@@ -21,6 +21,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -462,6 +463,28 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
           eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
           anyLong());
     }
+  }
+
+  @Test
+  public void testMapMaxRecordSizeBytesLimit() throws IOException {
+    final String keyFieldValue = "key_field_value";
+    final String valueFieldValue = "value_field_value";
+    AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, valueFieldValue);
+    OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
+    Reporter mockReporter = createMockReporterWithCount(1L);
+
+    try (VeniceAvroMapper mapper = getMapper(0, 0, mapperJobConfig -> {
+      mapperJobConfig.set(VeniceWriter.MAX_RECORD_SIZE_BYTES, "0");
+      mapperJobConfig.set(VeniceWriter.ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT, "true");
+    })) {
+      mapper.map(wrapper, NullWritable.get(), output, mockReporter);
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.UNCOMPRESSED_RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.UNCOMPRESSED_RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME.getCounterName()),
+          anyLong());
+    }
+
   }
 
   private AvroWrapper<IndexedRecord> getAvroWrapper(String keyFieldValue, String valueFieldValue) {

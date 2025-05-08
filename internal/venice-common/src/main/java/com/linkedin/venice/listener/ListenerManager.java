@@ -28,10 +28,10 @@ public class ListenerManager<T> {
 
   private static final Logger LOGGER = LogManager.getLogger(ListenerManager.class);
 
-  public ListenerManager() {
+  public ListenerManager(Object logContext) {
     listenerMap = new ConcurrentHashMap<>();
     // TODO maybe we can share the thread pool with other use-cases.
-    threadPool = Executors.newFixedThreadPool(threadCount, new DaemonThreadFactory("Venice-controller"));
+    threadPool = Executors.newFixedThreadPool(threadCount, new DaemonThreadFactory("Venice-controller", logContext));
   }
 
   public synchronized void subscribe(String key, T listener) {

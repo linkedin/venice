@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 
 import com.linkedin.venice.AdminTool;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
@@ -56,7 +55,6 @@ public class TestFabricBuildout {
     Properties childControllerProperties = new Properties();
     childControllerProperties.setProperty(ALLOW_CLUSTER_WIPE, "true");
     Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
             .numberOfClusters(NUMBER_OF_CLUSTERS)

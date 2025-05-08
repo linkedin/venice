@@ -2,6 +2,7 @@ package com.linkedin.davinci.consumer;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import java.io.ByteArrayInputStream;
@@ -22,9 +23,10 @@ public class VeniceChangeCoordinate implements Externalizable {
   private String topic;
   private Integer partition;
   private PubSubPosition pubSubPosition;
+  private transient PubSubPositionDeserializer pubSubPositionDeserializer;
 
   public VeniceChangeCoordinate() {
-    // Empty constructor is public
+    // Empty constructor is public for Externalizable
   }
 
   @Override
@@ -77,6 +79,10 @@ public class VeniceChangeCoordinate implements Externalizable {
     return pubSubPosition;
   }
 
+  protected void setPubSubPositionDeserializer(PubSubPositionDeserializer pubSubPositionDeserializer) {
+    this.pubSubPositionDeserializer = pubSubPositionDeserializer;
+  }
+
   protected VeniceChangeCoordinate(String topic, PubSubPosition pubSubPosition, Integer partition) {
     this.partition = partition;
     this.topic = topic;
@@ -94,12 +100,14 @@ public class VeniceChangeCoordinate implements Externalizable {
     }
   }
 
-  public static VeniceChangeCoordinate decodeStringAndConvertToVeniceChangeCoordinate(String offsetString)
-      throws IOException, ClassNotFoundException {
+  public static VeniceChangeCoordinate decodeStringAndConvertToVeniceChangeCoordinate(
+      PubSubPositionDeserializer deserializer,
+      String offsetString) throws IOException, ClassNotFoundException {
     byte[] newData = Base64.getDecoder().decode(offsetString);
     ByteArrayInputStream inMemoryInputStream = new ByteArrayInputStream(newData);
     ObjectInputStream objectInputStream = new ObjectInputStream(inMemoryInputStream);
     VeniceChangeCoordinate restoredCoordinate = new VeniceChangeCoordinate();
+    restoredCoordinate.setPubSubPositionDeserializer(deserializer);
     restoredCoordinate.readExternal(objectInputStream);
     return restoredCoordinate;
   }

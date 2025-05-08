@@ -9,6 +9,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import javax.annotation.Nullable;
 
 
 public final class ThreadPoolFactory {
@@ -20,13 +21,22 @@ public final class ThreadPoolFactory {
       String threadNamePrefix,
       int capacity,
       BlockingQueueType blockingQueueType) {
+    return createThreadPool(threadCount, threadNamePrefix, null, capacity, blockingQueueType);
+  }
+
+  public static ThreadPoolExecutor createThreadPool(
+      int threadCount,
+      String threadNamePrefix,
+      @Nullable Object logContext,
+      int capacity,
+      BlockingQueueType blockingQueueType) {
     ThreadPoolExecutor executor = new ThreadPoolExecutor(
         threadCount,
         threadCount,
         0,
         TimeUnit.MILLISECONDS,
         getExecutionQueue(capacity, blockingQueueType),
-        new DaemonThreadFactory(threadNamePrefix));
+        new DaemonThreadFactory(threadNamePrefix, logContext));
     /**
      * When the capacity is fully saturated, the scheduled task will be executed in the caller thread.
      * We will leverage this policy to propagate the back pressure to the caller, so that no more tasks will be

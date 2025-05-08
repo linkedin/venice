@@ -80,6 +80,7 @@
       <Class name="com.linkedin.venice.controller.server.VeniceControllerAccessManagerTest"/>
       <Class name="com.linkedin.venice.sql.SQLUtilsTest"/>
       <Class name="com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterTest"/>
+      <Class name="com.linkedin.venice.utils.LogContextTest"/>
     </Or>
   </Match>
   <Match>

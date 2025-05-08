@@ -362,7 +362,7 @@ public class VeniceServer {
         });
 
     CompletableFuture<HelixInstanceConfigRepository> helixInstanceFuture = managerFuture.thenApply(manager -> {
-      HelixInstanceConfigRepository helixData = new HelixInstanceConfigRepository(manager, false);
+      HelixInstanceConfigRepository helixData = new HelixInstanceConfigRepository(manager);
       helixData.refresh();
       return helixData;
     });

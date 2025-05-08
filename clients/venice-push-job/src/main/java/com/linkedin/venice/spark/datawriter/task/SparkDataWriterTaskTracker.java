@@ -56,6 +56,11 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   }
 
   @Override
+  public void trackUncompressedRecordTooLargeFailure() {
+    accumulators.uncompressedRecordTooLargeFailureCounter.add(1);
+  }
+
+  @Override
   public void trackRecordSentToPubSub() {
     accumulators.outputRecordCounter.add(1);
   }
@@ -113,6 +118,11 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   @Override
   public long getRecordTooLargeFailureCount() {
     return accumulators.recordTooLargeFailureCounter.value();
+  }
+
+  @Override
+  public long getUncompressedRecordTooLargeFailureCount() {
+    return accumulators.uncompressedRecordTooLargeFailureCounter.value();
   }
 
   @Override

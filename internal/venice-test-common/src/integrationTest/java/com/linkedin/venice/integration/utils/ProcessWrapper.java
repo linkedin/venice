@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.File;
@@ -125,7 +126,7 @@ public abstract class ProcessWrapper implements Closeable {
        */
       Thread startThread = new Thread(() -> {
         // Setup component tag for logging
-        ThreadContext.put("component", getComponentTagForLogging());
+        ThreadContext.put(LogContext.LOG_CONTEXT_KEY, getComponentTagForLogging());
         try {
           internalStart();
         } catch (Exception e) {

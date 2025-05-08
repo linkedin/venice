@@ -1,6 +1,7 @@
 package com.linkedin.venice.stats.dimensions;
 
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpStatusClass;
 
 
 /**
@@ -24,6 +25,14 @@ public enum HttpResponseStatusCodeCategory implements VeniceDimensionInterface {
 
     try {
       return HttpResponseStatusCodeCategory.valueOf(statusCode.codeClass().name());
+    } catch (IllegalArgumentException e) {
+      return UNKNOWN;
+    }
+  }
+
+  public static HttpResponseStatusCodeCategory getVeniceHttpResponseStatusCodeCategory(int statusCode) {
+    try {
+      return HttpResponseStatusCodeCategory.valueOf(HttpStatusClass.valueOf(statusCode).name());
     } catch (IllegalArgumentException e) {
       return UNKNOWN;
     }

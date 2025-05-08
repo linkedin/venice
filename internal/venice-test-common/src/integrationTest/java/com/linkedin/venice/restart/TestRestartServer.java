@@ -1,7 +1,5 @@
 package com.linkedin.venice.restart;
 
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
-
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
@@ -15,7 +13,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.Metric;
-import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -30,11 +27,8 @@ public class TestRestartServer {
   @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
-    Properties clusterConfig = new Properties();
-    clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfServers(REPLICATION_FACTOR)
         .replicationFactor(REPLICATION_FACTOR)
-        .extraProperties(clusterConfig)
         .build();
     cluster = ServiceFactory.getVeniceCluster(options);
   }

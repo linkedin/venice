@@ -1640,6 +1640,9 @@ public class ReadOnlyStore implements Store {
   }
 
   private static StoreETLConfig convertETLStoreConfig(ETLStoreConfig etlStoreConfig) {
+    if (etlStoreConfig == null) {
+      return null;
+    }
     StoreETLConfig storeETLConfig = new StoreETLConfig();
 
     storeETLConfig.setEtledUserProxyAccount(etlStoreConfig.getEtledUserProxyAccount());
@@ -1650,6 +1653,9 @@ public class ReadOnlyStore implements Store {
   }
 
   private static StorePartitionerConfig convertPartitionerConfig(PartitionerConfig partitionerConfig) {
+    if (partitionerConfig == null) {
+      return null;
+    }
     StorePartitionerConfig storePartitionerConfig = new StorePartitionerConfig();
 
     // Partitioner Class
@@ -1753,7 +1759,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());
     storeVersion.setActiveActiveReplicationEnabled(version.isActiveActiveReplicationEnabled());
     storeVersion.setTimestampMetadataVersionId(version.getRmdVersionId());
-    storeVersion.setDataRecoveryConfig((DataRecoveryConfig) version.getDataRecoveryVersionConfig());
+    storeVersion.setDataRecoveryConfig(convertDataRecoveryVersionConfig(version.getDataRecoveryVersionConfig()));
     storeVersion.setDeferVersionSwap(version.isVersionSwapDeferred());
     storeVersion.setRepushSourceVersion(version.getRepushSourceVersion());
     storeVersion.setTargetSwapRegion(version.getTargetSwapRegion());
@@ -1763,6 +1769,20 @@ public class ReadOnlyStore implements Store {
     storeVersion.setViews(convertViewConfigsStringMap(version.getViewConfigs()));
 
     return storeVersion;
+  }
+
+  private static DataRecoveryConfig convertDataRecoveryVersionConfig(
+      DataRecoveryVersionConfig dataRecoveryVersionConfig) {
+    if (dataRecoveryVersionConfig == null) {
+      return null;
+    }
+    DataRecoveryConfig dataRecoveryConfig = new DataRecoveryConfig();
+
+    dataRecoveryConfig.setDataRecoverySourceFabric(dataRecoveryVersionConfig.getDataRecoverySourceFabric());
+    dataRecoveryConfig.setIsDataRecoveryComplete(dataRecoveryConfig.getIsDataRecoveryComplete());
+    dataRecoveryConfig.setDataRecoverySourceVersionNumber(dataRecoveryConfig.getDataRecoverySourceVersionNumber());
+
+    return dataRecoveryConfig;
   }
 
   private static Map<CharSequence, SystemStoreProperties> convertSystemStores(

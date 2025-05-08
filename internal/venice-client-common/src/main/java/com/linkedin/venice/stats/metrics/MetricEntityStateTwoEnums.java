@@ -1,7 +1,5 @@
 package com.linkedin.venice.stats.metrics;
 
-import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.REDUNDANT_LOG_FILTER;
-
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -11,6 +9,7 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import javax.annotation.Nonnull;
 
 
 /**
@@ -41,7 +40,7 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
   }
 
   /** should not be called directly, call {@link #create} instead */
-  public MetricEntityStateTwoEnums(
+  private MetricEntityStateTwoEnums(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       TehutiSensorRegistrationFunction registerTehutiSensorFn,
@@ -138,24 +137,12 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
     return attributes;
   }
 
-  public void record(long value, E1 dimension1, E2 dimension2) {
-    try {
-      super.record(value, getAttributes(dimension1, dimension2));
-    } catch (IllegalArgumentException e) {
-      if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
-        LOGGER.error("Error recording metric: ", e);
-      }
-    }
+  public void record(long value, @Nonnull E1 dimension1, @Nonnull E2 dimension2) {
+    super.record(value, getAttributes(dimension1, dimension2));
   }
 
-  public void record(double value, E1 dimension1, E2 dimension2) {
-    try {
-      super.record(value, getAttributes(dimension1, dimension2));
-    } catch (IllegalArgumentException e) {
-      if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
-        LOGGER.error("Error recording metric: ", e);
-      }
-    }
+  public void record(double value, @Nonnull E1 dimension1, @Nonnull E2 dimension2) {
+    super.record(value, getAttributes(dimension1, dimension2));
   }
 
   /** visible for testing */

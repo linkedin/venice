@@ -2,9 +2,6 @@ package com.linkedin.davinci.stats;
 
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_ERROR_COUNT;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_LATENCY;
-import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY;
-import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_RECOVERY_LATENCY;
-import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_ERROR_COUNT;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_LATENCY;
 import static com.linkedin.venice.stats.StatsErrorCode.NULL_INGESTION_STATS;
@@ -33,15 +30,6 @@ public class DaVinciRecordTransformerStatsReporter extends AbstractVeniceStatsRe
     // Latency sensors
     registerLatencySensor(RECORD_TRANSFORMER_PUT_LATENCY, DaVinciRecordTransformerStats::getPutLatencySensor);
     registerLatencySensor(RECORD_TRANSFORMER_DELETE_LATENCY, DaVinciRecordTransformerStats::getDeleteLatencySensor);
-    registerLatencySensor(
-        RECORD_TRANSFORMER_ON_RECOVERY_LATENCY,
-        DaVinciRecordTransformerStats::getOnRecoveryLatencySensor);
-    registerLatencySensor(
-        RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY,
-        DaVinciRecordTransformerStats::getOnStartVersionIngestionLatencySensor);
-    registerLatencySensor(
-        RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY,
-        DaVinciRecordTransformerStats::getOnEndVersionIngestionLatencySensor);
 
     // Count sensors
     registerSensor(

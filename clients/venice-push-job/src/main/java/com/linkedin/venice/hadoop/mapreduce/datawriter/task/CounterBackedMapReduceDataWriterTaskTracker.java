@@ -51,6 +51,11 @@ public class CounterBackedMapReduceDataWriterTaskTracker implements DataWriterTa
   }
 
   @Override
+  public long getUncompressedRecordTooLargeFailureCount() {
+    return MRJobCounterHelper.getUncompressedRecordTooLargeFailureCount(counters);
+  }
+
+  @Override
   public long getWriteAclAuthorizationFailureCount() {
     return MRJobCounterHelper.getWriteAclAuthorizationFailureCount(counters);
   }

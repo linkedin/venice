@@ -10,6 +10,7 @@ import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricConfig;
@@ -531,6 +532,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
     @Override
     public void run() {
+      LogContext.setRegionLogContext(localRegionName);
       while (!Thread.interrupted()) {
         try {
           heartbeatMonitoringServiceStats.recordLoggerHeartbeat();

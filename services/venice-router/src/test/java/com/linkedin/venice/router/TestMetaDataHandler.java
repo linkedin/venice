@@ -1556,15 +1556,27 @@ public class TestMetaDataHandler {
     String storeVersion = "3";
     String storePartition = "30";
 
-    // Set up empty map for instance results from PushStatusStore
+    // Set up empty map for instance results from PushStatusStore when query partition level status
     Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
         .when(pushStatusStoreReader)
-        .getPartitionStatusAsync(
+        .getPartitionOrVersionStatusAsync(
             storeName,
             Integer.parseInt(storeVersion),
             Integer.parseInt(storePartition),
             Optional.empty(),
-            Optional.empty());
+            Optional.empty(),
+            false);
+
+    // Set up empty map for instance results from PushStatusStore when query version level status
+    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
+        .when(pushStatusStoreReader)
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            Integer.parseInt(storeVersion),
+            Integer.parseInt(storePartition),
+            Optional.empty(),
+            Optional.empty(),
+            true);
 
     Store store = Mockito.mock(Store.class);
     Mockito.doReturn(store).when(storeRepository).getStore(storeName);
@@ -1617,7 +1629,24 @@ public class TestMetaDataHandler {
 
     Mockito.doThrow(new VeniceException("exception"))
         .when(pushStatusStoreReader)
-        .getPartitionStatus(storeName, storeVersion, storePartition, Optional.empty());
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            storePartition,
+            Optional.empty(),
+            Optional.empty(),
+            false);
+
+    // Set up empty map for instance results from PushStatusStore when query version level status
+    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
+        .when(pushStatusStoreReader)
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            storePartition,
+            Optional.empty(),
+            Optional.empty(),
+            true);
 
     String requestUri = String.format(
         "http://myRouterHost:4567/%s?store_name=%s&store_version=%s&store_partition=%s",
@@ -1676,7 +1705,23 @@ public class TestMetaDataHandler {
 
     Mockito.doReturn(instanceResultsFromPushStatusStoreFuture)
         .when(pushStatusStoreReader)
-        .getPartitionStatusAsync(storeName, storeVersion, storePartition, Optional.empty(), Optional.empty());
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            storePartition,
+            Optional.empty(),
+            Optional.empty(),
+            false);
+
+    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
+        .when(pushStatusStoreReader)
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            storePartition,
+            Optional.empty(),
+            Optional.empty(),
+            true);
 
     instanceHealth.forEach((instance, isLive) -> {
       Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance);
@@ -1748,12 +1793,23 @@ public class TestMetaDataHandler {
 
     Mockito.doReturn(instanceResultsFromPushStatusStoreFuture)
         .when(pushStatusStoreReader)
-        .getPartitionStatusAsync(
+        .getPartitionOrVersionStatusAsync(
             storeName,
             Integer.valueOf(storeVersion),
             Integer.valueOf(storePartition),
             Optional.empty(),
-            Optional.empty());
+            Optional.empty(),
+            false);
+
+    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
+        .when(pushStatusStoreReader)
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            Integer.valueOf(storePartition),
+            Optional.empty(),
+            Optional.empty(),
+            true);
 
     instanceHealth.forEach((instance, isLive) -> {
       Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance);
@@ -1784,6 +1840,95 @@ public class TestMetaDataHandler {
     BlobPeersDiscoveryResponse blobDiscoveryResponse =
         OBJECT_MAPPER.readValue(response.content().array(), BlobPeersDiscoveryResponse.class);
     List<String> hostNames = blobDiscoveryResponse.getDiscoveryResult();
+
+    Assert.assertEquals(hostNames, expectedResult);
+    Assert.assertEquals(response.status(), HttpResponseStatus.OK);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), JSON);
+  }
+
+  @Test
+  public void testHandleBlobDiscoveryLiveNodesWhenQueryVersionLevel() throws IOException {
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
+
+    String storeName = "store_name";
+    int storeVersion = 1;
+    int storePartition = 30;
+
+    Map<CharSequence, Integer> instanceResultsFromPushStatusStore = new HashMap<CharSequence, Integer>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", ExecutionStatus.COMPLETED.getValue());
+        put("ltx1-test1.prod.linkedin.com_137", ExecutionStatus.NOT_CREATED.getValue());
+        put("ltx1-test2.prod.linkedin.com_137", ExecutionStatus.COMPLETED.getValue());
+      }
+    };
+
+    CompletableFuture<Map<CharSequence, Integer>> instanceResultsFromPushStatusStoreFuture =
+        CompletableFuture.completedFuture(instanceResultsFromPushStatusStore);
+
+    Map<String, Boolean> instanceHealth = new HashMap<String, Boolean>() {
+      {
+        put("ltx1-test.prod.linkedin.com_137", true);
+        put("ltx1-test1.prod.linkedin.com_137", false);
+        put("ltx1-test2.prod.linkedin.com_137", true);
+      }
+    };
+
+    List<String> expectedResult = Arrays.asList("ltx1-test.prod.linkedin.com_137", "ltx1-test2.prod.linkedin.com_137");
+
+    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
+        .when(pushStatusStoreReader)
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            storePartition,
+            Optional.empty(),
+            Optional.empty(),
+            false);
+
+    Mockito.doReturn(instanceResultsFromPushStatusStoreFuture)
+        .when(pushStatusStoreReader)
+        .getPartitionOrVersionStatusAsync(
+            storeName,
+            storeVersion,
+            storePartition,
+            Optional.empty(),
+            Optional.empty(),
+            true);
+
+    instanceHealth.forEach((instance, isLive) -> {
+      Mockito.doReturn(isLive).when(pushStatusStoreReader).isInstanceAlive(storeName, instance);
+    });
+
+    Store store = Mockito.mock(Store.class);
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+    Mockito.doReturn(true).when(store).isBlobTransferEnabled();
+    Mockito.doReturn(false).when(store).isHybrid();
+
+    String requestUri = String.format(
+        "http://myRouterHost:4567/%s?store_name=%s&store_version=%s&store_partition=%s",
+        TYPE_BLOB_DISCOVERY,
+        storeName,
+        storeVersion,
+        storePartition);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        requestUri,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        Collections.emptyMap(),
+        storeRepository,
+        pushStatusStoreReader);
+
+    BlobPeersDiscoveryResponse blobDiscoveryResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), BlobPeersDiscoveryResponse.class);
+    List<String> hostNames = blobDiscoveryResponse.getDiscoveryResult();
+
+    Collections.sort(hostNames);
+    Collections.sort(expectedResult);
 
     Assert.assertEquals(hostNames, expectedResult);
     Assert.assertEquals(response.status(), HttpResponseStatus.OK);

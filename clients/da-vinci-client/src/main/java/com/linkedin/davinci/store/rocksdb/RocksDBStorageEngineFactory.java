@@ -141,18 +141,20 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvFlushPoolSize(), Priority.HIGH);
     this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvCompactionPoolSize(), Priority.LOW);
 
-    long cacheBytesNeeded =
-        rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes() + (rocksDBServerConfig.isUseSeparateRMDCacheEnabled()
-            ? rocksDBServerConfig.getRocksDBRMDBlockCacheSizeInBytes()
-            : 0);
+    if (!rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
+      long cacheBytesNeeded =
+          rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes() + (rocksDBServerConfig.isUseSeparateRMDCacheEnabled()
+              ? rocksDBServerConfig.getRocksDBRMDBlockCacheSizeInBytes()
+              : 0);
 
-    long systemMemorySize = getOSMemorySize();
-    if (systemMemorySize > 0
-        && (systemMemorySize * rocksDBServerConfig.getRocksdbBlockCacheMemoryLimit() < cacheBytesNeeded)) {
-      throw new RuntimeException(
-          "Cannot setup rocksdb instance with block-cache size "
-              + generateHumanReadableByteCountString(cacheBytesNeeded) + ". System memory : "
-              + generateHumanReadableByteCountString(systemMemorySize));
+      long systemMemorySize = getOSMemorySize();
+      if (systemMemorySize > 0
+          && (systemMemorySize * rocksDBServerConfig.getRocksdbBlockCacheMemoryLimit() < cacheBytesNeeded)) {
+        throw new RuntimeException(
+            "Cannot setup rocksdb instance with block-cache size "
+                + generateHumanReadableByteCountString(cacheBytesNeeded) + ". System memory : "
+                + generateHumanReadableByteCountString(systemMemorySize));
+      }
     }
     // Shared cache across all the RocksDB databases
     if (RocksDBBlockCacheImplementations.CLOCK.equals(rocksDBServerConfig.getRocksDBBlockCacheImplementation())) {

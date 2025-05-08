@@ -1,7 +1,7 @@
 package com.linkedin.davinci.consumer;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;

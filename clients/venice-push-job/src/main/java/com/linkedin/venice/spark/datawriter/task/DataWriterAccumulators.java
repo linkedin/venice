@@ -23,6 +23,7 @@ public class DataWriterAccumulators implements Serializable {
   public final LongAccumulator duplicateKeyWithIdenticalValueCounter;
   public final LongAccumulator writeAclAuthorizationFailureCounter;
   public final LongAccumulator recordTooLargeFailureCounter;
+  public final LongAccumulator uncompressedRecordTooLargeFailureCounter;
   public final LongAccumulator duplicateKeyWithDistinctValueCounter;
   public final LongAccumulator partitionWriterCloseCounter;
   public final LongAccumulator repushTtlFilteredRecordCounter;
@@ -41,6 +42,7 @@ public class DataWriterAccumulators implements Serializable {
     repushTtlFilteredRecordCounter = sparkContext.longAccumulator("Repush TTL Filtered Records");
     writeAclAuthorizationFailureCounter = sparkContext.longAccumulator("ACL Authorization Failures");
     recordTooLargeFailureCounter = sparkContext.longAccumulator("Record Too Large Failures");
+    uncompressedRecordTooLargeFailureCounter = sparkContext.longAccumulator("Uncompressed Record Too Large Failures");
     duplicateKeyWithIdenticalValueCounter = sparkContext.longAccumulator("Duplicate Key With Identical Value");
     duplicateKeyWithDistinctValueCounter = sparkContext.longAccumulator("Duplicate Key With Distinct Value");
   }

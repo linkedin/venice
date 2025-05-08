@@ -70,7 +70,7 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
@@ -374,7 +374,7 @@ public class ActiveActiveStoreIngestionTaskTest {
             .build();
     VeniceWriter<byte[], byte[], byte[]> writer =
         new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
-    when(ingestionTask.isTransientRecordBufferUsed()).thenReturn(true);
+    when(ingestionTask.isTransientRecordBufferUsed(any())).thenReturn(true);
     when(ingestionTask.getVeniceWriter(any())).thenReturn(Lazy.of(() -> writer));
     StringBuilder stringBuilder = new StringBuilder();
     for (int i = 0; i < 50000; i++) {

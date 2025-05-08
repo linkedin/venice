@@ -35,6 +35,7 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -69,6 +70,7 @@ public class TestBlobDiscovery {
   String storeName2;
   private VeniceMultiClusterWrapper multiClusterVenice;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+  private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   D2Client daVinciD2;
 
   /**
@@ -94,6 +96,8 @@ public class TestBlobDiscovery {
             .parentControllerProperties(props);
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
+    pubSubPositionTypeRegistry =
+        multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getPubSubPositionTypeRegistry();
 
     multiClusterVenice = multiRegionMultiClusterWrapper.getChildRegions().get(0);
     String[] clusterNames = multiClusterVenice.getClusterNames();
@@ -138,7 +142,8 @@ public class TestBlobDiscovery {
           INT_VALUE_SCHEMA,
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, 0)),
           pubSubProducerAdapterFactory,
-          additionalPubSubProperties);
+          additionalPubSubProperties,
+          pubSubPositionTypeRegistry);
 
       // Verify the data can be ingested by classical Venice before proceeding.
       TestUtils.waitForNonDeterministicPushCompletion(
@@ -168,7 +173,8 @@ public class TestBlobDiscovery {
           INT_VALUE_SCHEMA,
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, 0)),
           pubSubProducerAdapterFactory,
-          additionalPubSubProperties);
+          additionalPubSubProperties,
+          pubSubPositionTypeRegistry);
 
       // Verify the data can be ingested by classical Venice before proceeding.
       TestUtils.waitForNonDeterministicPushCompletion(

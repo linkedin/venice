@@ -20,7 +20,6 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PO
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
@@ -116,7 +115,6 @@ public class TestBootstrappingChangelogConsumer {
     Utils.thisIsLocalhost();
 
     Properties clusterConfig = new Properties();
-    clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1);
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
     clusterConfig.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
@@ -259,7 +257,7 @@ public class TestBootstrappingChangelogConsumer {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 2, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT * 3, priority = 3)
   public void testVeniceChangelogConsumerDaVinciRecordTransformerImpl() throws Exception {
     String storeName = Utils.getUniqueString("store");
     String inputDirPath = setUpStore(storeName);
@@ -284,7 +282,10 @@ public class TestBootstrappingChangelogConsumer {
               .setControllerRequestRetryCount(3)
               .setBootstrapFileSystemPath(inputDirPath)
               .setIsExperimentalClientEnabled(true)
-              .setD2Client(d2Client);
+              .setD2Client(d2Client)
+              // Setting the max buffer size to a low threshold to ensure puts to the buffer get blocked and drained
+              // correctly during regular operation and restarts
+              .setMaxBufferSize(10);
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
           new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
       List<BootstrappingVeniceChangelogConsumer<Utf8, Utf8>> bootstrappingVeniceChangelogConsumerList =
@@ -371,6 +372,27 @@ public class TestBootstrappingChangelogConsumer {
           polledChangeEventsMap,
           polledChangeEventsList,
           bootstrappingVeniceChangelogConsumerList);
+
+      // Test restart
+      polledChangeEventsList.clear();
+      polledChangeEventsMap.clear();
+      bootstrappingVeniceChangelogConsumerList.get(0).stop();
+      bootstrappingVeniceChangelogConsumerList.get(0).start().get();
+
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        pollChangeEventsFromChangeCaptureConsumer(
+            polledChangeEventsMap,
+            polledChangeEventsList,
+            bootstrappingVeniceChangelogConsumerList);
+        // 40 near-line put events, but one of them overwrites a key from batch push.
+        // Also, Deletes won't show up on restart when scanning RocksDB.
+        int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 39;
+        Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
+        verifyPut(polledChangeEventsMap, 100, 110, 3);
+        verifyPut(polledChangeEventsMap, 120, 130, 3);
+        verifyPut(polledChangeEventsMap, 140, 150, 3);
+        verifyPut(polledChangeEventsMap, 160, 170, 3);
+      });
 
       cleanUpStoreAndVerify(storeName);
     }

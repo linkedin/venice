@@ -219,26 +219,8 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     conf.setLong(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
     conf.setLong(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
 
-    /**
-     * Override the configs following the rules:
-     * <ul>
-     *   <li>Pass-through the properties whose names start with the prefixes defined in {@link PASS_THROUGH_CONFIG_PREFIXES}.</li>
-     *   <li>Override the properties that are specified with the {@link HADOOP_PREFIX} prefix.</li>
-     * </ul>
-     **/
-    for (String configKey: props.keySet()) {
-      String lowerCaseConfigKey = configKey.toLowerCase();
-      if (lowerCaseConfigKey.startsWith(HADOOP_PREFIX)) {
-        String overrideKey = configKey.substring(HADOOP_PREFIX.length());
-        jobConf.set(overrideKey, props.getString(configKey));
-      }
-      for (String prefix: PASS_THROUGH_CONFIG_PREFIXES) {
-        if (lowerCaseConfigKey.startsWith(prefix)) {
-          jobConf.set(configKey, props.getString(configKey));
-          break;
-        }
-      }
-    }
+    DataWriterComputeJob
+        .populateWithPassThroughConfigs(props, jobConf::set, PASS_THROUGH_CONFIG_PREFIXES, HADOOP_PREFIX);
   }
 
   protected void setupInputFormatConf(JobConf jobConf, PushJobSetting pushJobSetting) {

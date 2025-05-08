@@ -10,6 +10,8 @@ import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.r2.transport.common.TransportClientFactory;
+import com.linkedin.r2.transport.http.client.HttpClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -933,6 +935,16 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   private D2Client getStartedD2Client(String d2ZkHost) {
+    /**
+     * Create {@link HttpClientFactory} with {@link com.linkedin.r2.transport.http.client.HttpClientFactory#_usePipelineV2} enabled,
+     * so that it can use the right clients when H2 is enabled.
+     *
+     * TODO: leverage the internal factory to create a proper D2 Client, so that it can follow the default global config.
+     */
+    final Map<String, TransportClientFactory> clientFactories = new HashMap<>();
+    TransportClientFactory transportClientFactory = new HttpClientFactory.Builder().setUsePipelineV2(true).build();
+    clientFactories.put("http", transportClientFactory);
+    clientFactories.put("https", transportClientFactory);
     D2ClientEnvelope d2ClientEnvelope = d2ZkHostToClientEnvelopeMap.computeIfAbsent(d2ZkHost, zkHost -> {
       String fsBasePath = Utils.getUniqueTempPath("d2");
       D2Client d2Client = new D2ClientBuilder().setZkHosts(d2ZkHost)
@@ -941,6 +953,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
           .setSSLParameters(sslFactory.map(SSLFactory::getSSLParameters).orElse(null))
           .setFsBasePath(fsBasePath)
           .setEnableSaveUriDataOnDisk(true)
+          .setClientFactories(clientFactories)
+          .setRestOverStream(true)
           .build();
       D2ClientUtils.startClient(d2Client);
       return new D2ClientEnvelope(d2Client, fsBasePath);

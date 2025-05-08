@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -315,6 +316,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private class StoreBackupVersionCleanupTask implements Runnable {
     @Override
     public void run() {
+      LogContext.setStructuredLogContext(multiClusterConfig.getLogContext());
       boolean interruptReceived = false;
       while (!stop.get()) {
         try {

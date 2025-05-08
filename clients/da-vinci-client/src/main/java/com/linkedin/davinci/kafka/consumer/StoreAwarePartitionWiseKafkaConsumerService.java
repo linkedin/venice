@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
@@ -50,7 +51,8 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
       final AggKafkaConsumerServiceStats stats,
       final boolean isKafkaConsumerOffsetCollectionEnabled,
       final ReadOnlyStoreRepository metadataRepository,
-      final boolean isUnregisterMetricForDeletedStoreEnabled) {
+      final boolean isUnregisterMetricForDeletedStoreEnabled,
+      VeniceServerConfig veniceServerConfig) {
     super(
         poolType,
         consumerFactory,
@@ -70,7 +72,8 @@ public class StoreAwarePartitionWiseKafkaConsumerService extends PartitionWiseKa
         isKafkaConsumerOffsetCollectionEnabled,
         metadataRepository,
         isUnregisterMetricForDeletedStoreEnabled,
-        StoreAwarePartitionWiseKafkaConsumerService.class.toString());
+        StoreAwarePartitionWiseKafkaConsumerService.class.toString(),
+        veniceServerConfig);
   }
 
   @Override

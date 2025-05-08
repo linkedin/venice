@@ -8,7 +8,6 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
@@ -30,7 +29,6 @@ import org.apache.avro.generic.GenericRecord;
  * This writer has its own {@link VeniceWriter}.
  */
 public class MaterializedViewWriter extends VeniceViewWriter {
-  private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
   private final MaterializedView internalView;
   private final String materializedViewTopicName;
   private Lazy<ComplexVeniceWriter> veniceWriter;
@@ -39,16 +37,14 @@ public class MaterializedViewWriter extends VeniceViewWriter {
       VeniceConfigLoader props,
       Version version,
       Schema keySchema,
-      Map<String, String> extraViewParameters) {
-    super(props, version, keySchema, extraViewParameters);
-    pubSubProducerAdapterFactory = props.getVeniceServerConfig().getPubSubClientsFactory().getProducerAdapterFactory();
+      Map<String, String> extraViewParameters,
+      VeniceWriterFactory veniceWriterFactory) {
+    super(props, version, keySchema, extraViewParameters, veniceWriterFactory);
     internalView =
         new MaterializedView(props.getCombinedProperties().toProperties(), version.getStoreName(), extraViewParameters);
     materializedViewTopicName =
         internalView.getTopicNamesAndConfigsForVersion(version.getNumber()).keySet().stream().findAny().get();
-    this.veniceWriter = Lazy.of(
-        () -> new VeniceWriterFactory(props.getCombinedProperties().toProperties(), pubSubProducerAdapterFactory, null)
-            .createComplexVeniceWriter(buildWriterOptions()));
+    this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createComplexVeniceWriter(buildWriterOptions()));
   }
 
   /**

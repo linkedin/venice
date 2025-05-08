@@ -10,6 +10,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -59,6 +60,7 @@ public class SystemStoreRepairTask implements Runnable {
 
   @Override
   public void run() {
+    LogContext.setStructuredLogContext(getParentAdmin().getLogContext());
     for (String clusterName: getParentAdmin().getClustersLeaderOf()) {
       if (!getClusterToSystemStoreHealthCheckStatsMap().containsKey(clusterName)) {
         continue;

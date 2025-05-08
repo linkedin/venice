@@ -1,5 +1,7 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -14,6 +16,8 @@ import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
@@ -58,7 +62,12 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       MetricsRepository thinClientMetricsRepository,
       Optional<AvroGenericStoreClient> vsonThinClient,
       StoreMetadataFetchMode storeMetadataFetchMode) throws Exception {
-    MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
+    VeniceMetricsRepository metricsRepositoryForGenericClient = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(FAST_CLIENT.getName())
+            .setMetricPrefix(FAST_CLIENT.getMetricsPrefix())
+            .setEmitOtelMetrics(true)
+            .setMetricEntities(CLIENT_METRIC_ENTITIES)
+            .build());
     AvroGenericStoreClient<String, GenericRecord> genericFastClient = null;
     AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
     boolean batchGet = requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING;

@@ -20,6 +20,7 @@ import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.httpclient.VeniceMetaDataRequest;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -97,14 +98,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
     @Override
     public void handleStoreCreated(Store store) {
-      dictionaryDownloadCandidates.addAll(
-          store.getVersions()
-              .stream()
-              .filter(
-                  version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                      && version.getStatus() == VersionStatus.ONLINE)
-              .map(Version::kafkaTopicName)
-              .collect(Collectors.toList()));
+      queueDictionaryDownloadOfFutureAndCurrentVersions(store);
     }
 
     @Override
@@ -114,25 +108,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
     @Override
     public void handleStoreChanged(Store store) {
-      List<Version> versions = store.getVersions();
-
-      // For new versions, download dictionary.
-      dictionaryDownloadCandidates.addAll(
-          versions.stream()
-              .filter(
-                  version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                      && version.getStatus() == VersionStatus.ONLINE)
-              .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
-              .map(Version::kafkaTopicName)
-              .collect(Collectors.toList()));
-
-      // For versions that went into non ONLINE states, delete dictionary.
-      versions.stream()
-          .filter(
-              version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                  && version.getStatus() != VersionStatus.ONLINE)
-          .forEach(
-              version -> handleVersionRetirement(version.kafkaTopicName(), "Version status " + version.getStatus()));
+      queueDictionaryDownloadOfFutureAndCurrentVersions(store);
 
       // For versions that have been retired, delete dictionary.
       for (String topic: downloadingDictionaryFutures.keySet()) {
@@ -141,6 +117,17 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
           handleVersionRetirement(topic, "Version retired");
         }
       }
+    }
+
+    // download dictionary of future & current store versions
+    private void queueDictionaryDownloadOfFutureAndCurrentVersions(Store store) {
+      dictionaryDownloadCandidates.addAll(
+          store.getVersions()
+              .stream()
+              .filter(version -> shouldDownloadDictionaryForVersion(version))
+              .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
+              .map(Version::kafkaTopicName)
+              .collect(Collectors.toList()));
     }
   };
 
@@ -236,6 +223,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     CompletableFuture<PortableHttpResponse> responseFuture = new CompletableFuture<>();
 
     return CompletableFuture.supplyAsync(() -> {
+      long dictionaryDownloadStartTime = System.currentTimeMillis();
       storageNodeClient.sendRequest(request, responseFuture);
       VeniceException exception = null;
       try {
@@ -247,6 +235,10 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
               "Dictionary download for resource: " + kafkaTopic + " from: " + instanceUrl
                   + " returned unexpected response.");
         } else {
+          LOGGER.info(
+              "Dictionary downloaded successfully for resource: {} took: {} ms",
+              kafkaTopic,
+              LatencyUtils.getElapsedTimeFromMsToMs(dictionaryDownloadStartTime));
           return dictionary;
         }
       } catch (InterruptedException e) {
@@ -268,7 +260,8 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     }, executor);
   }
 
-  private byte[] getDictionaryFromResponse(PortableHttpResponse response, String instanceUrl) {
+  // protected for testing
+  protected byte[] getDictionaryFromResponse(PortableHttpResponse response, String instanceUrl) {
     try {
       int code = response.getStatusCode();
       if (code != SC_OK) {
@@ -320,7 +313,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
         .flatMap(store -> store.getVersions().stream())
         .filter(
             version -> version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
-                && version.getStatus() == VersionStatus.ONLINE)
+                && shouldDownloadDictionaryForVersion(version))
         .filter(version -> !downloadingDictionaryFutures.containsKey(version.kafkaTopicName()))
         .map(Version::kafkaTopicName)
         .collect(Collectors.toList());
@@ -424,7 +417,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
 
   private void initCompressorFromDictionary(Version version, byte[] dictionary) {
     String kafkaTopic = version.kafkaTopicName();
-    if (version.getStatus() != VersionStatus.ONLINE || !downloadingDictionaryFutures.containsKey(kafkaTopic)) {
+    if (!shouldDownloadDictionaryForVersion(version) || !downloadingDictionaryFutures.containsKey(kafkaTopic)) {
       // Nothing to do since version was retired.
       return;
     }
@@ -446,6 +439,11 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     dictionaryDownloadCandidates.remove(kafkaTopic);
     fetchDelayTimeinMsMap.remove(kafkaTopic);
     compressorFactory.removeVersionSpecificCompressor(kafkaTopic);
+  }
+
+  private boolean shouldDownloadDictionaryForVersion(Version version) {
+    return version.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT
+        && (version.getStatus() == VersionStatus.ONLINE || version.getStatus() == VersionStatus.STARTED);
   }
 
   @Override

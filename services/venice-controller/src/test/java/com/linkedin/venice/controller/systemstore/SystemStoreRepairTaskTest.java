@@ -17,6 +17,7 @@ import com.linkedin.venice.controller.stats.SystemStoreHealthCheckStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -42,6 +43,7 @@ public class SystemStoreRepairTaskTest {
     VeniceParentHelixAdmin parentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     List<String> leaderClusterList = Arrays.asList("venice-1", "venice-3");
     doReturn(leaderClusterList).when(parentHelixAdmin).getClustersLeaderOf();
+    doReturn(LogContext.EMPTY).when(parentHelixAdmin).getLogContext();
     doReturn(parentHelixAdmin).when(systemStoreRepairTask).getParentAdmin();
 
     doCallRealMethod().when(systemStoreRepairTask).run();

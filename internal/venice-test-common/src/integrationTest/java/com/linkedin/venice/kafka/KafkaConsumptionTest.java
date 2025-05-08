@@ -32,11 +32,11 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -54,6 +54,7 @@ import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -83,6 +84,7 @@ public class KafkaConsumptionTest {
   private TestMockTime mockTime;
   private TestMockTime remoteMockTime;
   private PubSubTopic versionTopic;
+  private Map<String, String> pubSubClientProperties;
 
   private PubSubTopic getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
@@ -123,6 +125,9 @@ public class KafkaConsumptionTest {
     remoteMockTime = new TestMockTime();
     remotePubSubBroker = ServiceFactory.getPubSubBroker(
         new PubSubBrokerConfigs.Builder().setMockTime(remoteMockTime).setRegionName("remote-pubsub").build());
+
+    pubSubClientProperties =
+        PubSubBrokerWrapper.getBrokerDetailsForClients(Arrays.asList(localPubSubBroker, remotePubSubBroker));
     remoteTopicManager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(
@@ -145,8 +150,9 @@ public class KafkaConsumptionTest {
     remotePubSubBroker.close();
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = 10 * Time.MS_PER_SECOND)
-  public void testLocalAndRemoteConsumption(boolean isTopicWiseSharedConsumerAssignmentStrategy)
+  @Test(dataProvider = "sharedConsumerStrategy", dataProviderClass = DataProviderUtils.class, timeOut = 10
+      * Time.MS_PER_SECOND)
+  public void testLocalAndRemoteConsumption(KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerStrategy)
       throws ExecutionException, InterruptedException {
     // Prepare Aggregate Kafka Consumer Service.
     IngestionThrottler mockIngestionThrottler = mock(IngestionThrottler.class);
@@ -162,15 +168,7 @@ public class KafkaConsumptionTest {
     doReturn(true).when(veniceServerConfig).isLiveConfigBasedKafkaThrottlingEnabled();
     doReturn(KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT).when(veniceServerConfig)
         .getConsumerPoolStrategyType();
-    if (isTopicWiseSharedConsumerAssignmentStrategy) {
-      doReturn(KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY)
-          .when(veniceServerConfig)
-          .getSharedConsumerAssignmentStrategy();
-    } else {
-      doReturn(KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY)
-          .when(veniceServerConfig)
-          .getSharedConsumerAssignmentStrategy();
-    }
+    doReturn(sharedConsumerStrategy).when(veniceServerConfig).getSharedConsumerAssignmentStrategy();
 
     String localKafkaUrl = localPubSubBroker.getAddress();
     String remoteKafkaUrl = remotePubSubBroker.getAddress();
@@ -190,9 +188,10 @@ public class KafkaConsumptionTest {
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+
     AggKafkaConsumerService aggKafkaConsumerService = new AggKafkaConsumerService(
         pubSubConsumerAdapterFactory,
-        k -> VeniceProperties.empty(),
+        k -> new VeniceProperties(pubSubClientProperties),
         veniceServerConfig,
         mockIngestionThrottler,
         kafkaClusterBasedRecordThrottler,
@@ -296,6 +295,7 @@ public class KafkaConsumptionTest {
         new PubSubProducerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
             .setBrokerAddress(pubSubBrokerWrapper.getAddress())
             .setProducerName("test-producer")
+            .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
             .build();
     PubSubProducerAdapter producerAdapter =
         pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory().create(producerAdapterContext);

@@ -2,6 +2,7 @@ package com.linkedin.venice.utils;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
@@ -40,6 +41,10 @@ public class PartitionUtils {
           storePartitionCount,
           storeName);
       return storePartitionCount;
+    }
+
+    if (VeniceSystemStoreUtils.isUserSystemStore(storeName)) {
+      return VeniceSystemStoreUtils.DEFAULT_USER_SYSTEM_STORE_PARTITION_COUNT;
     }
 
     if (storageQuota == Store.UNLIMITED_STORAGE_QUOTA) {

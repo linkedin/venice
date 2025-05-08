@@ -55,7 +55,7 @@ public class ServiceFactory {
   private static final String ULIMIT;
   private static final String VM_ARGS;
   // System property key for the fully qualified class name of the PubSubBrokerFactory implementation
-  private static final String PUBSUB_BROKER_FACTORY_FQCN = "pubSubBrokerFactory";
+  protected static final String PUBSUB_BROKER_FACTORY_FQCN = "pubSubBrokerFactory";
   // PubSubBrokerFactory implementation to use for tests
   private static final PubSubBrokerFactory<PubSubBrokerWrapper> PUBSUB_BROKER_FACTORY;
   private static final PubSubBrokerConfigs PUBSUB_BROKER_EMPTY_CONFIGS =

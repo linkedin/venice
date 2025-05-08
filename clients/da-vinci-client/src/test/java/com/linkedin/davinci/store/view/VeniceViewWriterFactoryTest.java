@@ -12,6 +12,7 @@ import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.ChangeCaptureView;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import java.util.Collections;
@@ -52,7 +53,9 @@ public class VeniceViewWriterFactoryTest {
     Mockito.when(mockStore.getVersionOrThrow(1)).thenReturn(version);
     Mockito.when(mockStore.getName()).thenReturn(TEST_STORE);
 
-    VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(mockVeniceConfigLoader);
+    VeniceWriterFactory mockVeniceWriterFactory = Mockito.mock(VeniceWriterFactory.class);
+    VeniceViewWriterFactory viewWriterFactory =
+        new VeniceViewWriterFactory(mockVeniceConfigLoader, mockVeniceWriterFactory);
     Map<String, VeniceViewWriter> viewWriterMap = viewWriterFactory.buildStoreViewWriters(mockStore, 1, SCHEMA);
 
     Assert.assertTrue(viewWriterMap.get("view1") instanceof ChangeCaptureViewWriter);

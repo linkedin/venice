@@ -9,8 +9,8 @@ import org.apache.logging.log4j.Logger;
 
 
 public class MetadataRepoBasedStaleTopicCheckerImpl implements StaleTopicChecker {
-  private final ReadOnlyStoreRepository readOnlyStoreRepository;
   private static final Logger LOGGER = LogManager.getLogger(MetadataRepoBasedStaleTopicCheckerImpl.class);
+  private final ReadOnlyStoreRepository readOnlyStoreRepository;
 
   public MetadataRepoBasedStaleTopicCheckerImpl(ReadOnlyStoreRepository readOnlyStoreRepository) {
     this.readOnlyStoreRepository = readOnlyStoreRepository;
@@ -28,8 +28,8 @@ public class MetadataRepoBasedStaleTopicCheckerImpl implements StaleTopicChecker
           return false;
         }
       } else if (Version.isRealTimeTopic(topic)) {
-        if (!store.isHybrid()) {
-          LOGGER.warn("Store {} is not hybrid currently, but found real-time topic {}", storeName, topic);
+        if (!Version.containsHybridVersion(store.getVersions())) {
+          LOGGER.warn("Store {} does not have any hybrid version for real-time topic: {}", storeName, topic);
           return false;
         }
       }

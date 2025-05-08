@@ -148,7 +148,6 @@ public class TestAdminOperationWithPreviousVersion {
     parentControllerProperties.setProperty(ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING, "false");
 
     Properties serverProperties = new Properties();
-    serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)

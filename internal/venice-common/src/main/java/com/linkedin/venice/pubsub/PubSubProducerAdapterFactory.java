@@ -1,35 +1,30 @@
 package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Closeable;
 
 
 /**
- * Generic producer factory interface.
- *
- * A pus-sub specific concrete implementation of this interface should be provided to be able to create
- * and instantiate producers for that system.
+ * Generic factory interface for creating PubSub producers.
+ * <p>
+ * Concrete implementations should create and configure producers for a specific PubSub system (e.g., Kafka, Pulsar).
+ * <p>
+ * Implementations must provide a public no-arg constructor to support reflective instantiation.
  */
-public interface PubSubProducerAdapterFactory<ADAPTER extends PubSubProducerAdapter> extends Closeable {
+public abstract class PubSubProducerAdapterFactory<ADAPTER extends PubSubProducerAdapter> implements Closeable {
   /**
-   *
-   * @param veniceProperties     A copy of venice properties. Relevant producer configs will be extracted from
-   *                             veniceProperties using prefix matching. For example, to construct kafka producer
-   *                             configs that start with "kafka." prefix will be used.
-   * @param producerName         Name of the producer. If not null, it will be used to set the context
-   *                             for producer thread.
-   * @param targetBrokerAddress  Broker address to use when creating a producer.
-   *                             If this value is null, local broker address present in veniceProperties will be used.
-   * @return                     Returns an instance of a producer adapter
+   * Constructor for PubSubProducerAdapterFactory used mainly for reflective instantiation.
    */
-  @Deprecated
-  ADAPTER create(VeniceProperties veniceProperties, String producerName, String targetBrokerAddress);
-
-  default ADAPTER create(PubSubProducerAdapterContext context) {
-    return create(context.getVeniceProperties(), context.getProducerName(), context.getBrokerAddress());
+  public PubSubProducerAdapterFactory() {
+    // no-op
   }
 
-  String getName();
+  /**
+   * Creates a producer adapter using the provided context.
+   * @param context A context object that contains all the necessary information to create a producer adapter.
+   * @return Returns an instance of a producer adapter
+   */
+  public abstract ADAPTER create(PubSubProducerAdapterContext context);
+
+  public abstract String getName();
 }

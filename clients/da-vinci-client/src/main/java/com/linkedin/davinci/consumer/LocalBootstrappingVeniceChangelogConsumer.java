@@ -1,5 +1,6 @@
 package com.linkedin.davinci.consumer;
 
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 
 
@@ -16,7 +17,8 @@ public class LocalBootstrappingVeniceChangelogConsumer<K, V>
   public LocalBootstrappingVeniceChangelogConsumer(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer,
+      PubSubPositionDeserializer pubSubPositionDeserializer,
       String consumerId) {
-    super(changelogClientConfig, pubSubConsumer, consumerId);
+    super(changelogClientConfig, pubSubConsumer, pubSubPositionDeserializer, consumerId);
   }
 }

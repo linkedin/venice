@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_UNUSED_SCHEMA_CLEANUP_IN
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
@@ -55,12 +54,10 @@ public class TestUnusedValueSchemaCleanup {
     controllerProps.put(DEFAULT_PARTITION_SIZE, 10);
     controllerProps
         .setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
-    // controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     controllerProps.put(CONTROLLER_UNUSED_SCHEMA_CLEANUP_INTERVAL_SECONDS, 10);
     controllerProps.put(CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP, 1);
     controllerProps.put(CONTROLLER_UNUSED_VALUE_SCHEMA_CLEANUP_ENABLED, true);
     Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)

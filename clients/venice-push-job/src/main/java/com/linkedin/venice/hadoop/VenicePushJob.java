@@ -172,7 +172,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.mapred.RunningJob;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -225,7 +224,6 @@ public class VenicePushJob implements AutoCloseable {
   private ControllerClient controllerClient;
   private ControllerClient kmeSchemaSystemStoreControllerClient;
   private ControllerClient livenessHeartbeatStoreControllerClient;
-  private RunningJob runningJob;
 
   private DataWriterComputeJob dataWriterComputeJob = null;
 
@@ -362,6 +360,8 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
+    pushJobSettingToReturn.enableUncompressedRecordSizeLimit =
+        props.getBoolean(VeniceWriter.ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT, false);
 
     if (pushJobSettingToReturn.repushTTLEnabled && !pushJobSettingToReturn.isSourceKafka) {
       throw new VeniceException("Repush with TTL is only supported while using Kafka Input Format");
@@ -393,6 +393,11 @@ public class VenicePushJob implements AutoCloseable {
     if (pushJobSettingToReturn.isIncrementalPush && (pushJobSettingToReturn.isTargetedRegionPushEnabled
         || pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled)) {
       throw new VeniceException("Incremental push is not supported while using targeted region push mode");
+    }
+
+    if (pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled && pushJobSettingToReturn.deferVersionSwap) {
+      throw new VeniceException(
+          "Target region push with deferred swap and deferred swap cannot be enabled at the same time");
     }
 
     // If target region push with deferred version swap is enabled, enable deferVersionSwap
@@ -1535,13 +1540,12 @@ public class VenicePushJob implements AutoCloseable {
     if (inputStorageQuotaTracker.exceedQuota(totalInputDataSizeInBytes)) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.QUOTA_EXCEEDED);
       Long storeQuota = inputStorageQuotaTracker.getStoreStorageQuota();
-      String errorMessage = String.format(
+      return String.format(
           "Storage quota exceeded. Store quota %s, Input data size %s."
               + " Please request at least %s additional quota.",
           generateHumanReadableByteCountString(storeQuota),
           generateHumanReadableByteCountString(totalInputDataSizeInBytes),
           generateHumanReadableByteCountString(totalInputDataSizeInBytes - storeQuota));
-      return errorMessage;
     }
     // Write ACL failed
     final long writeAclFailureCount = dataWriterTaskTracker.getWriteAclAuthorizationFailureCount();
@@ -1555,14 +1559,15 @@ public class VenicePushJob implements AutoCloseable {
       final long duplicateKeyWithDistinctValueCount = dataWriterTaskTracker.getDuplicateKeyWithDistinctValueCount();
       if (duplicateKeyWithDistinctValueCount > 0) {
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DUP_KEY_WITH_DIFF_VALUE);
-        String errorMessage = String.format(
+        return String.format(
             "Input data has at least %d keys that appear more than once but have different values",
             duplicateKeyWithDistinctValueCount);
-        return errorMessage;
       }
     }
     // Record too large
-    final long recordTooLargeFailureCount = dataWriterTaskTracker.getRecordTooLargeFailureCount();
+    final long recordTooLargeFailureCount = this.pushJobSetting.enableUncompressedRecordSizeLimit
+        ? dataWriterTaskTracker.getUncompressedRecordTooLargeFailureCount()
+        : dataWriterTaskTracker.getRecordTooLargeFailureCount();
     if (recordTooLargeFailureCount > 0) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.RECORD_TOO_LARGE_FAILED);
 
@@ -1571,13 +1576,28 @@ public class VenicePushJob implements AutoCloseable {
       final int recordSizeLimit = (pushJobDetails.chunkingEnabled)
           ? getVeniceWriter(pushJobSetting).getMaxRecordSizeBytes()
           : getVeniceWriter(pushJobSetting).getMaxSizeForUserPayloadPerMessageInBytes();
-      final String errorMessage = String.format(
-          "Input data has at least %d records that exceed the maximum record limit of %s",
+
+      return String.format(
+          "Input data has at least %d records that exceed the maximum record limit of %s%s",
           recordTooLargeFailureCount,
-          generateHumanReadableByteCountString(recordSizeLimit));
-      return errorMessage;
+          generateHumanReadableByteCountString(recordSizeLimit),
+          formatRecordTooLargeCompressionStatus());
     }
     return null;
+  }
+
+  /* Helper function to format part of the record too large compression status */
+  private String formatRecordTooLargeCompressionStatus() {
+    if (this.pushJobSetting.storeCompressionStrategy != null
+        && this.pushJobSetting.storeCompressionStrategy.isCompressionEnabled()) {
+      if (this.pushJobSetting.enableUncompressedRecordSizeLimit) {
+        return " before compression";
+      } else {
+        return " after compression";
+      }
+    }
+
+    return "";
   }
 
   /** Transform per colo {@link ExecutionStatus} to per colo {@link PushJobDetailsStatus} */
@@ -2177,6 +2197,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private Properties createVeniceWriterProperties(String kafkaUrl, boolean sslToKafka) {
     Properties veniceWriterProperties = new Properties();
+    DataWriterComputeJob.populateWithPassThroughConfigs(props, veniceWriterProperties::setProperty);
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
     if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)) { /* Writer uses default if not specified */
@@ -2520,7 +2541,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private void killJob(PushJobSetting pushJobSetting, ControllerClient controllerClient) {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
-    killComputeJob();
+    killDataWriterJob();
     if (!pushJobSetting.isIncrementalPush) {
       final int maxRetryAttempt = 10;
       int currentRetryAttempt = 0;
@@ -2540,35 +2561,6 @@ public class VenicePushJob implements AutoCloseable {
             c -> c.killOfflinePushJob(pushJobSetting.topic));
         LOGGER.info("Offline push job has been killed, topic: {}", pushJobSetting.topic);
       }
-    }
-  }
-
-  private void killComputeJob() {
-    killMRJob();
-    killDataWriterJob();
-  }
-
-  private void killMRJob() {
-    if (runningJob == null) {
-      LOGGER.warn("No op to kill a null running job");
-      return;
-    }
-    try {
-      if (runningJob.isComplete()) {
-        LOGGER.warn(
-            "No op to kill a completed job with name {} and ID {}",
-            runningJob.getJobName(),
-            runningJob.getID().getId());
-        return;
-      }
-      runningJob.killJob();
-    } catch (Exception ex) {
-      // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws an exception or not.
-      LOGGER.info(
-          "Received exception while killing map-reduce job with name {} and ID {}",
-          runningJob.getJobName(),
-          runningJob.getID().getId(),
-          ex);
     }
   }
 

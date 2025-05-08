@@ -55,14 +55,14 @@ public class LeaderProducerCallbackTest {
     inMemoryLogAppender.start();
     LoggerContext ctx = ((LoggerContext) LogManager.getContext(false));
     Configuration config = ctx.getConfiguration();
-    doReturn(true).when(ingestionTaskMock).isTransientRecordBufferUsed();
+    doReturn(true).when(ingestionTaskMock).isTransientRecordBufferUsed(any());
     doReturn(null).when(partitionConsumptionStateMock).getTransientRecord(any());
     doReturn(true).when(partitionConsumptionStateMock).isEndOfPushReceived();
     doReturn(mock(KafkaKey.class)).when(sourceConsumerRecordMock).getKey();
 
     try {
       config.addLoggerAppender(
-          (org.apache.logging.log4j.core.Logger) LogManager.getLogger(LeaderFollowerStoreIngestionTask.class),
+          (org.apache.logging.log4j.core.Logger) LogManager.getLogger(LeaderProducerCallback.class),
           inMemoryLogAppender);
 
       LeaderProducerCallback leaderProducerCallback = new LeaderProducerCallback(

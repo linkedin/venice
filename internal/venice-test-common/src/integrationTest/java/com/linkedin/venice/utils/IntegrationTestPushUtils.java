@@ -98,14 +98,19 @@ public class IntegrationTestPushUtils {
         VeniceControllerWrapper.PARENT_D2_SERVICE_NAME,
         VeniceControllerWrapper.D2_SERVICE_NAME,
         inputDirPath,
-        storeName);
+        storeName,
+        veniceCluster.getPubSubClientProperties());
   }
 
   public static Properties defaultVPJPropsWithoutD2Routing(
       VeniceClusterWrapper veniceCluster,
       String inputDirPath,
       String storeName) {
-    return TestWriteUtils.defaultVPJProps(veniceCluster.getAllControllersURLs(), inputDirPath, storeName);
+    return TestWriteUtils.defaultVPJProps(
+        veniceCluster.getAllControllersURLs(),
+        inputDirPath,
+        storeName,
+        veniceCluster.getPubSubClientProperties());
   }
 
   public static Properties defaultVPJProps(
@@ -121,7 +126,8 @@ public class IntegrationTestPushUtils {
         VeniceControllerWrapper.PARENT_D2_SERVICE_NAME,
         VeniceControllerWrapper.D2_SERVICE_NAME,
         inputDirPath,
-        storeName);
+        storeName,
+        veniceMultiCluster.getPubSubClientProperties());
   }
 
   public static Properties defaultVPJProps(
@@ -144,7 +150,8 @@ public class IntegrationTestPushUtils {
         VeniceControllerWrapper.PARENT_D2_SERVICE_NAME,
         VeniceControllerWrapper.D2_SERVICE_NAME,
         inputDirPath,
-        storeName);
+        storeName,
+        multiRegionMultiClusterWrapper.getPubSubClientProperties());
   }
 
   public static Properties sslVPJProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
@@ -476,7 +483,10 @@ public class IntegrationTestPushUtils {
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     veniceWriterProperties
         .putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
-    return TestUtils.getVeniceWriterFactory(veniceWriterProperties, pubSubProducerAdapterFactory);
+    return TestUtils.getVeniceWriterFactory(
+        veniceWriterProperties,
+        pubSubProducerAdapterFactory,
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
   }
 
   public static void verifyConsumerThreadPoolFor(

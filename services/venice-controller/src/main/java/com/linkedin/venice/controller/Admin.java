@@ -27,7 +27,6 @@ import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -46,6 +45,7 @@ import com.linkedin.venice.system.store.MetaStoreReader;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -674,8 +674,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
   VeniceWriterFactory getVeniceWriterFactory();
 
-  PubSubConsumerAdapterFactory getPubSubConsumerAdapterFactory();
-
   VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress);
 
   void close();
@@ -1043,4 +1041,6 @@ public interface Admin extends AutoCloseable, Closeable {
   HelixVeniceClusterResources getHelixVeniceClusterResources(String cluster);
 
   PubSubTopicRepository getPubSubTopicRepository();
+
+  LogContext getLogContext();
 }

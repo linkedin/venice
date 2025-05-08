@@ -235,7 +235,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
       // Initialize the ongoing client warming executor
       this.clientConnWarmingExecutor = Executors.newFixedThreadPool(
           routerConfig.getHttpasyncclientConnectionWarmingExecutorThreadNum(),
-          new DaemonThreadFactory(CONNECTION_WARMING_THREAD_PREFIX));
+          new DaemonThreadFactory(CONNECTION_WARMING_THREAD_PREFIX, routerConfig.getRegionName()));
       this.connectionWarmingLowWaterMark = routerConfig.getHttpasyncclientConnectionWarmingLowWaterMark();
       if (connectionWarmingLowWaterMark > maxConnPerRoutePerClient) {
         throw new VeniceException(
@@ -270,8 +270,9 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient {
        * This is for one-time use during start, and we would like to warm up the connections to all the instances
        * as fast as possible.
        */
-      ExecutorService clientConnectionWarmingExecutorDuringStart =
-          Executors.newFixedThreadPool(instanceNum, new DaemonThreadFactory(CONNECTION_WARMING_THREAD_PREFIX));
+      ExecutorService clientConnectionWarmingExecutorDuringStart = Executors.newFixedThreadPool(
+          instanceNum,
+          new DaemonThreadFactory(CONNECTION_WARMING_THREAD_PREFIX, routerConfig.getRegionName()));
 
       List<CompletableFuture<?>> futureList = new ArrayList<>(instanceNum);
       nodeIdToClientMap.forEach((nodeId, clientWithConnManager) -> {

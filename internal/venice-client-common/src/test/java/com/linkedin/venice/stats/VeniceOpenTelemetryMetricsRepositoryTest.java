@@ -149,7 +149,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           .build();
 
       MetricEntityState metricEntityState =
-          new MetricEntityStateBase(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes);
+          MetricEntityStateBase.create(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes);
       metricEntityState.setOtelMetric(instrument);
 
       Attributes attributes = Attributes.builder().put("key", "value").build();
@@ -257,5 +257,22 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
 
     when(mockMetricsConfig.useOtelExponentialHistogram()).thenReturn(false);
     new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
+  }
+
+  @Test
+  public void testGetMetricPrefix() {
+    String metricPrefix = metricsRepository.getMetricPrefix();
+    assertNotNull(metricPrefix, "Metric prefix should not be null");
+    assertEquals(metricPrefix, "venice.test_prefix", "Metric prefix should match the configured value");
+
+    MetricEntity metricEntity = MetricEntity.createInternalMetricEntityWithoutDimensions(
+        "test_metric",
+        MetricType.COUNTER,
+        MetricUnit.NUMBER,
+        "Test metric",
+        "test_custom_prefix");
+    metricPrefix = metricsRepository.getMetricPrefix(metricEntity);
+    assertNotNull(metricPrefix, "Metric prefix should not be null");
+    assertEquals(metricPrefix, "venice.test_custom_prefix", "Metric prefix should match the configured value");
   }
 }

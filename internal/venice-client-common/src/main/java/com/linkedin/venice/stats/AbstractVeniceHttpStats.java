@@ -15,7 +15,7 @@ public abstract class AbstractVeniceHttpStats extends AbstractVeniceStats {
     this.requestType = requestType;
   }
 
-  protected RequestType getRequestType() {
+  public RequestType getRequestType() {
     return this.requestType;
   }
 

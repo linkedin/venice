@@ -4,12 +4,14 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.BasicClientStats;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.utils.LatencyUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
+import org.apache.http.HttpStatus;
 
 
 /**
@@ -33,10 +35,18 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
     if (metricsRepository == null) {
       throw new VeniceClientException("MetricsRepository shouldn't be null");
     }
-    this.clientStatsForSingleGet = BasicClientStats
-        .getClientStats(metricsRepository, clientConfig.getStoreName(), RequestType.SINGLE_GET, clientConfig);
-    this.clientStatsForBatchGet = BasicClientStats
-        .getClientStats(metricsRepository, clientConfig.getStoreName(), RequestType.MULTI_GET, clientConfig);
+    this.clientStatsForSingleGet = BasicClientStats.getClientStats(
+        metricsRepository,
+        clientConfig.getStoreName(),
+        RequestType.SINGLE_GET,
+        clientConfig,
+        ClientType.DAVINCI_CLIENT);
+    this.clientStatsForBatchGet = BasicClientStats.getClientStats(
+        metricsRepository,
+        clientConfig.getStoreName(),
+        RequestType.MULTI_GET,
+        clientConfig,
+        ClientType.DAVINCI_CLIENT);
   }
 
   private static <T> CompletableFuture<T> trackRequest(
@@ -47,16 +57,17 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
     try {
       return futureSupplier.get().whenComplete((v, throwable) -> {
         if (throwable != null) {
-          stats.recordUnhealthyRequest();
+          stats.emitUnhealthyRequestMetricsForDavinciClient(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
           statFuture.completeExceptionally(throwable);
         } else {
-          stats.recordHealthyRequest();
-          stats.recordHealthyLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
+          stats.emitHealthyRequestMetricsForDavinciClient(LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS));
           statFuture.complete(v);
         }
       });
     } catch (Exception e) {
-      stats.recordUnhealthyRequest();
+      stats.emitUnhealthyRequestMetrics(
+          LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS),
+          HttpStatus.SC_INTERNAL_SERVER_ERROR);
       throw e;
     }
   }
@@ -85,5 +96,4 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
       }
     });
   }
-
 }

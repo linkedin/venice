@@ -21,7 +21,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class LeaderProducerCallback implements ChunkAwareCallback {
-  private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
+  private static final Logger LOGGER = LogManager.getLogger(LeaderProducerCallback.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
   private static final Runnable NO_OP = () -> {};
@@ -89,7 +89,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       long currentTimeForMetricsMs = System.currentTimeMillis();
       /**
        * performs some sanity checks for chunks.
-       * key may be null in case of producing control messages with direct api's like
+       * key may be null in case of producing control messages with direct APIs like
        * {@link VeniceWriter#SendControlMessage} or {@link VeniceWriter#asyncSendControlMessage}
        */
       if (chunkedValueManifest != null) {
@@ -138,7 +138,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
         leaderProducedRecordContext.setKeyBytes(key);
       }
       int producedRecordNum = 0;
-      int producedRecordSize = 0;
+      long producedRecordSize = 0;
       // produce to drainer buffer service for further processing.
       try {
         /**
@@ -247,18 +247,21 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
     this.rmdChunks = rmdChunks;
     this.oldValueManifest = oldValueManifest;
     this.oldRmdManifest = oldRmdManifest;
-    if (getPartitionConsumptionState() == null) {
+
+    // We access the PCS via this getter for unit test mocking purposes...
+    PartitionConsumptionState pcs = getPartitionConsumptionState();
+    if (pcs == null) {
       LOGGER.error("PartitionConsumptionState is missing in chunk producer callback");
       return;
     }
-    // TransientRecord map is indexed by non-chunked key.
-    if (getIngestionTask().isTransientRecordBufferUsed()) {
+    if (getIngestionTask().isTransientRecordBufferUsed(pcs)) {
       PartitionConsumptionState.TransientRecord record =
-          getPartitionConsumptionState().getTransientRecord(getSourceConsumerRecord().getKey().getKey());
+          // TransientRecord map is indexed by non-chunked key.
+          pcs.getTransientRecord(getSourceConsumerRecord().getKey().getKey());
       if (record != null) {
         record.setValueManifest(chunkedValueManifest);
         record.setRmdManifest(chunkedRmdManifest);
-      } else if (partitionConsumptionState.isEndOfPushReceived()) {
+      } else {
         String msg = "Transient record is missing when trying to update value/RMD manifest for resource: "
             + Utils.getReplicaId(ingestionTask.getKafkaVersionTopic(), partition);
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
@@ -268,7 +271,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
     }
   }
 
-  private void recordProducerStats(int producedRecordSize, int producedRecordNum) {
+  private void recordProducerStats(long producedRecordSize, int producedRecordNum) {
     ingestionTask.getVersionIngestionStats()
         .recordLeaderProduced(
             ingestionTask.getStoreName(),

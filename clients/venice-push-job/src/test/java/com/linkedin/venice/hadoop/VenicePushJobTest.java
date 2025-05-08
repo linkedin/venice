@@ -10,6 +10,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
@@ -337,7 +338,7 @@ public class VenicePushJobTest {
   }
 
   private VenicePushJob getSpyVenicePushJob(Properties props, ControllerClient client) {
-    Properties baseProps = TestWriteUtils.defaultVPJProps(TEST_URL, TEST_PATH, TEST_STORE);
+    Properties baseProps = TestWriteUtils.defaultVPJProps(TEST_URL, TEST_PATH, TEST_STORE, Collections.emptyMap());
     return getSpyVenicePushJobInternal(baseProps, props, client);
   }
 
@@ -349,7 +350,8 @@ public class VenicePushJobTest {
         null,
         TEST_CHILD_CONTROLLER_D2_SERVICE,
         TEST_PATH,
-        TEST_STORE);
+        TEST_STORE,
+        Collections.emptyMap());
     return getSpyVenicePushJobInternal(baseProps, props, client);
   }
 
@@ -361,7 +363,8 @@ public class VenicePushJobTest {
         TEST_PARENT_CONTROLLER_D2_SERVICE,
         TEST_CHILD_CONTROLLER_D2_SERVICE,
         TEST_PATH,
-        TEST_STORE);
+        TEST_STORE,
+        Collections.emptyMap());
     return getSpyVenicePushJobInternal(baseProps, props, client);
   }
 
@@ -920,6 +923,46 @@ public class VenicePushJobTest {
   }
 
   /**
+   * Tests that the error message for the {@link com.linkedin.venice.PushJobCheckpoints#RECORD_TOO_LARGE_FAILED} code path of
+   * {@link VenicePushJob#updatePushJobDetailsWithJobDetails(DataWriterTaskTracker)} uses maxRecordSizeBytes.
+   */
+  @Test(dataProvider = "Boolean-Compression", dataProviderClass = DataProviderUtils.class)
+  public void testUpdatePushJobDetailsWithJobDetailsRecordTooLargeWithCompression(
+      boolean enableUncompressedMaxRecordSizeLimit,
+      CompressionStrategy compressionStrategy) {
+    try (final VenicePushJob vpj = getSpyVenicePushJob(getVpjRequiredProperties(), getClient())) {
+      // Setup push job settings and mocks
+      PushJobDetails pushJobDetails = vpj.getPushJobDetails();
+
+      setPushJobSettingDefaults(vpj.getPushJobSetting());
+      vpj.setInputStorageQuotaTracker(mock(InputStorageQuotaTracker.class));
+      vpj.getPushJobSetting().enableUncompressedRecordSizeLimit = enableUncompressedMaxRecordSizeLimit;
+      vpj.getPushJobSetting().storeCompressionStrategy = compressionStrategy;
+
+      final DataWriterTaskTracker dataWriterTaskTracker = mock(DataWriterTaskTracker.class);
+      doReturn(1L).when(dataWriterTaskTracker).getRecordTooLargeFailureCount();
+      doReturn(1L).when(dataWriterTaskTracker).getUncompressedRecordTooLargeFailureCount();
+
+      // The value of chunkingEnabled should dictate the error message returned
+      final String errorMessage = vpj.updatePushJobDetailsWithJobDetails(dataWriterTaskTracker);
+      Assert.assertTrue(
+          errorMessage.contains("records that exceed the maximum record limit of"),
+          "Unexpected error message: " + errorMessage);
+
+      if (compressionStrategy.isCompressionEnabled()) {
+        if (enableUncompressedMaxRecordSizeLimit) {
+          Assert.assertTrue(errorMessage.contains("before compression"), "Unexpected error message: " + errorMessage);
+        } else {
+          Assert.assertTrue(errorMessage.contains("after compression"), "Unexpected error message: " + errorMessage);
+        }
+      }
+
+      final int latestCheckpoint = pushJobDetails.pushJobLatestCheckpoint;
+      Assert.assertEquals(latestCheckpoint, PushJobCheckpoints.RECORD_TOO_LARGE_FAILED.getValue());
+    }
+  }
+
+  /**
    * These are mainly for code coverage for the code paths of {@link VenicePushJob#getVeniceWriter(PushJobSetting)} and
    * {@link VenicePushJob#getVeniceWriterProperties(PushJobSetting)}.
    */
@@ -1032,6 +1075,17 @@ public class VenicePushJobTest {
       fail("Test should fail, but doesn't.");
     } catch (VeniceException e) {
       assertEquals(e.getMessage(), "Incremental push is not supported while using targeted region push mode");
+    }
+
+    props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+    props.put(DEFER_VERSION_SWAP, true);
+    props.put(INCREMENTAL_PUSH, false);
+    try (VenicePushJob pushJob = new VenicePushJob(PUSH_JOB_ID, props)) {
+      fail("Test should fail, but doesn't.");
+    } catch (VeniceException e) {
+      assertEquals(
+          e.getMessage(),
+          "Target region push with deferred swap and deferred swap cannot be enabled at the same time");
     }
   }
 

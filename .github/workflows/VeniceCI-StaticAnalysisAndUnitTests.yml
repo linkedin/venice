@@ -25,6 +25,12 @@ jobs:
       matrix:
         jdk: [17]
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      checks: write
+      pull-requests: write
+      issues: write
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

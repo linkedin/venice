@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -45,6 +46,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
 
   private Runnable getRunnableForSchemaCleanup() {
     return () -> {
+      LogContext.setStructuredLogContext(multiClusterConfig.getLogContext());
       if (stop) {
         return;
       }

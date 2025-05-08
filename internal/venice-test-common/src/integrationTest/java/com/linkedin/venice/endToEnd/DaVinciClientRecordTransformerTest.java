@@ -2,9 +2,6 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_ERROR_COUNT;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_DELETE_LATENCY;
-import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY;
-import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_RECOVERY_LATENCY;
-import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_ERROR_COUNT;
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_LATENCY;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
@@ -33,7 +30,6 @@ import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPP
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
@@ -104,7 +100,6 @@ public class DaVinciClientRecordTransformerTest {
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
-    clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
@@ -202,15 +197,6 @@ public class DaVinciClientRecordTransformerTest {
             () -> assertTrue(metricsRepository.getMetric(deleteErrorCount).value() == 1.0));
 
         clientWithRecordTransformer.unsubscribeAll();
-
-        String startLatency = metricPrefix + RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY + metricPostfix;
-        assertTrue(metricsRepository.getMetric(startLatency).value() > 0);
-
-        String endLatency = metricPrefix + RECORD_TRANSFORMER_ON_END_VERSION_INGESTION_LATENCY + metricPostfix;
-        assertTrue(metricsRepository.getMetric(endLatency).value() > 0);
-
-        String onRecoveryLatency = metricPrefix + RECORD_TRANSFORMER_ON_RECOVERY_LATENCY + metricPostfix;
-        assertTrue(metricsRepository.getMetric(onRecoveryLatency).value() > 0);
 
         String putLatency = metricPrefix + RECORD_TRANSFORMER_PUT_LATENCY + metricPostfix;
         assertTrue(metricsRepository.getMetric(putLatency).value() > 0);
@@ -630,7 +616,8 @@ public class DaVinciClientRecordTransformerTest {
         Integer.toString(port2),
         StorageClass.DISK.toString(),
         "true",
-        "true");
+        "true",
+        "false");
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);

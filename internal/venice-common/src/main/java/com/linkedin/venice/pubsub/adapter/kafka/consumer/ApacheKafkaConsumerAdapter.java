@@ -3,14 +3,15 @@ package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -103,7 +104,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     subscribe(
         pubSubTopicPartition,
         (lastReadOffset <= OffsetRecord.LOWEST_OFFSET)
-            ? PubSubPosition.EARLIEST
+            ? PubSubSymbolicPosition.EARLIEST
             : new ApacheKafkaOffsetPosition(lastReadOffset));
   }
 
@@ -112,8 +113,8 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    * subscribed, this method performs no action.
    *
    * The subscription uses the provided {@link PubSubPosition} to determine the starting offset for consumption.
-   * If the position is {@link PubSubPosition#EARLIEST}, the consumer will seek to the earliest available message.
-   * If it is {@link PubSubPosition#LATEST}, the consumer will seek to the latest offset. If an instance of
+   * If the position is {@link PubSubSymbolicPosition#EARLIEST}, the consumer will seek to the earliest available message.
+   * If it is {@link PubSubSymbolicPosition#LATEST}, the consumer will seek to the latest offset. If an instance of
    * {@link ApacheKafkaOffsetPosition} is provided, the consumer will seek to the specified offset plus one.
    *
    * @param pubSubTopicPartition the topic-partition to subscribe to
@@ -130,7 +131,8 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
           .error("Failed to subscribe to topic-partition: {} because last read position is null", pubSubTopicPartition);
       throw new IllegalArgumentException("Last read position cannot be null");
     }
-    if (lastReadPubSubPosition != PubSubPosition.EARLIEST && lastReadPubSubPosition != PubSubPosition.LATEST
+    if (lastReadPubSubPosition != PubSubSymbolicPosition.EARLIEST
+        && lastReadPubSubPosition != PubSubSymbolicPosition.LATEST
         && !(lastReadPubSubPosition instanceof ApacheKafkaOffsetPosition)) {
       LOGGER.error(
           "Failed to subscribe to topic-partition: {} because last read position type: {} is not supported with consumer type: {}",
@@ -159,12 +161,12 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     kafkaConsumer.assign(topicPartitionList);
 
     String logMessage;
-    if (lastReadPubSubPosition == PubSubPosition.EARLIEST) {
+    if (lastReadPubSubPosition == PubSubSymbolicPosition.EARLIEST) {
       kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
-      logMessage = PubSubPosition.EARLIEST.toString();
-    } else if (lastReadPubSubPosition == PubSubPosition.LATEST) {
+      logMessage = PubSubSymbolicPosition.EARLIEST.toString();
+    } else if (lastReadPubSubPosition == PubSubSymbolicPosition.LATEST) {
       kafkaConsumer.seekToEnd(Collections.singletonList(topicPartition));
-      logMessage = PubSubPosition.LATEST.toString();
+      logMessage = PubSubSymbolicPosition.LATEST.toString();
     } else {
       ApacheKafkaOffsetPosition kafkaOffsetPosition = (ApacheKafkaOffsetPosition) lastReadPubSubPosition;
       long consumptionStartOffset = kafkaOffsetPosition.getOffset() + 1;
@@ -514,7 +516,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   @Override
   public PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
     Long beginningOffset = beginningOffset(pubSubTopicPartition, timeout);
-    return beginningOffset != null ? new ApacheKafkaOffsetPosition(beginningOffset) : PubSubPosition.EARLIEST;
+    return beginningOffset != null ? new ApacheKafkaOffsetPosition(beginningOffset) : PubSubSymbolicPosition.EARLIEST;
   }
 
   @Override
@@ -550,7 +552,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     Map<PubSubTopicPartition, PubSubPosition> pubSubTopicPartitionOffsetMap = new HashMap<>(endOffsets.size());
     for (Map.Entry<PubSubTopicPartition, Long> entry: endOffsets.entrySet()) {
       PubSubPosition endPosition =
-          entry.getValue() != null ? new ApacheKafkaOffsetPosition(entry.getValue()) : PubSubPosition.LATEST;
+          entry.getValue() != null ? new ApacheKafkaOffsetPosition(entry.getValue()) : PubSubSymbolicPosition.LATEST;
       pubSubTopicPartitionOffsetMap.put(entry.getKey(), endPosition);
     }
     return pubSubTopicPartitionOffsetMap;
@@ -579,7 +581,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   @Override
   public PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition) {
     Long endOffset = endOffset(pubSubTopicPartition);
-    return endOffset != null ? new ApacheKafkaOffsetPosition(endOffset) : PubSubPosition.LATEST;
+    return endOffset != null ? new ApacheKafkaOffsetPosition(endOffset) : PubSubSymbolicPosition.LATEST;
   }
 
   /**

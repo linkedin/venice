@@ -17,6 +17,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
@@ -177,6 +178,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   private class TopicCleanupTask implements Runnable {
     @Override
     public void run() {
+      LogContext.setStructuredLogContext(multiClusterConfigs.getLogContext());
       while (!stop.get()) {
         try {
           Thread.sleep(sleepIntervalBetweenTopicListFetchMs);
@@ -433,7 +435,7 @@ public class TopicCleanupService extends AbstractVeniceService {
           String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
           Store store = admin.getStore(clusterDiscovered, storeName);
           LOGGER.warn("Find topic discrepancy case: {}", pubSubTopic);
-          if (!isStillValidRealtimeTopic(pubSubTopic, store) || !isStillValidVersionTopic(pubSubTopic, store)) {
+          if (!isStillValidPubSubTopic(pubSubTopic, store)) {
             if (checkIfDanglingTopicConsistentlyFound(pubSubTopic)) {
               LOGGER.warn("Will remove consistently found dangling topic {}.", pubSubTopic);
               topicsToCleanup.add(pubSubTopic);
@@ -455,25 +457,17 @@ public class TopicCleanupService extends AbstractVeniceService {
     return topicsToCleanup;
   }
 
-  private boolean isStillValidRealtimeTopic(PubSubTopic pubSubTopic, Store store) {
-    if (pubSubTopic.isRealTime() && !store.isHybrid()) {
-      for (Version version: store.getVersions()) {
-        if (version.getHybridStoreConfig() != null) {
-          break;
-        }
-      }
-      return false;
-    }
-    return true;
-  }
-
-  private boolean isStillValidVersionTopic(PubSubTopic pubSubTopic, Store store) {
+  /**
+   * Check if the given topic is still valid based on its type and associated store metadata.
+   */
+  private boolean isStillValidPubSubTopic(PubSubTopic pubSubTopic, Store store) {
     if (pubSubTopic.isVersionTopicOrStreamReprocessingTopic() || pubSubTopic.isViewTopic()) {
       int versionNum = Version.parseVersionFromKafkaTopicName(pubSubTopic.getName());
-      if (!store.containsVersion(versionNum)) {
-        return false;
-      }
+      return store.containsVersion(versionNum);
+    } else if (pubSubTopic.isRealTime()) {
+      return Version.containsHybridVersion(store.getVersions());
     }
+
     return true;
   }
 

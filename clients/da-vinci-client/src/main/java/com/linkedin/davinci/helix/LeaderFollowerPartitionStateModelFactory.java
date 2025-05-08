@@ -7,6 +7,7 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LogContext;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 
@@ -47,6 +48,7 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
 
   @Override
   public LeaderFollowerPartitionStateModel createNewStateModel(String resourceName, String partitionName) {
+    LogContext.setRegionLogContext(getConfigService().getVeniceServerConfig().getRegionName());
     logger.info("Creating LeaderFollowerParticipantModel handler for partition: {}", partitionName);
     return new LeaderFollowerPartitionStateModel(
         getIngestionBackend(),

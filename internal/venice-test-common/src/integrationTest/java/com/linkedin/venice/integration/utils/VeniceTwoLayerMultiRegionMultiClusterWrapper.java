@@ -51,11 +51,13 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
   private final String[] clusterNames;
   private final ZkServerWrapper zkServerWrapper;
   private final PubSubBrokerWrapper parentPubSubBrokerWrapper;
+  private final Map<String, String> pubSubBrokerDetails;
 
   VeniceTwoLayerMultiRegionMultiClusterWrapper(
       File dataDirectory,
       ZkServerWrapper zkServerWrapper,
       PubSubBrokerWrapper parentPubSubBrokerWrapper,
+      Map<String, String> pubSubBrokerDetails,
       List<VeniceMultiClusterWrapper> childRegions,
       List<VeniceControllerWrapper> parentControllers,
       String parentRegionName,
@@ -63,6 +65,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
     this.parentPubSubBrokerWrapper = parentPubSubBrokerWrapper;
+    this.pubSubBrokerDetails = pubSubBrokerDetails;
     this.parentControllers = parentControllers;
     this.childRegions = childRegions;
     this.parentRegionName = parentRegionName;
@@ -248,6 +251,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           null,
           finalZkServer,
           finalParentKafka,
+          pubSubBrokerProps,
           multiClusters,
           parentControllers,
           parentRegionName,
@@ -480,5 +484,9 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
         }
       }
     }
+  }
+
+  public Map<String, String> getPubSubClientProperties() {
+    return pubSubBrokerDetails;
   }
 }

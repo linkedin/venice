@@ -16,9 +16,13 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.utils.RetryUtils;
 import java.io.Closeable;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 
@@ -31,6 +35,9 @@ import java.util.Optional;
  *   3. Initiate the data recovery by recreating the version, kafka topic and Helix resources accordingly.
  */
 public class DataRecoveryManager implements Closeable {
+  public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES =
+      Collections.singletonList(VeniceNoStoreException.class);
+
   private final VeniceHelixAdmin veniceAdmin;
   private final Optional<ICProvider> icProvider;
   private final PubSubTopicRepository pubSubTopicRepository;
@@ -56,6 +63,16 @@ public class DataRecoveryManager implements Closeable {
         .replaceFirst("data-recovery\\(.*\\)", String.format("%s(%s)", prefix, LocalDateTime.now(ZoneOffset.UTC)));
   }
 
+  private Store getStore(String clusterName, String storeName) {
+    return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+      Store store = veniceAdmin.getStore(clusterName, storeName);
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName, clusterName);
+      }
+      return store;
+    }, 5, Duration.ofMillis(100), Duration.ofMillis(200), Duration.ofSeconds(10), RETRY_FAILURE_TYPES);
+  }
+
   /**
    * Initiate data recovery process by recreating the version, kafka topic, and Helix resources accordingly.
    */
@@ -66,10 +83,7 @@ public class DataRecoveryManager implements Closeable {
       String sourceFabric,
       boolean copyAllVersionConfigs,
       Version sourceFabricVersion) {
-    Store store = veniceAdmin.getStore(clusterName, storeName);
-    if (store == null) {
-      throw new VeniceNoStoreException(storeName, clusterName);
-    }
+    Store store = getStore(clusterName, storeName);
     int srcFabricVersionNumber = sourceFabricVersion.getNumber();
     if (srcFabricVersionNumber != version) {
       sourceFabricVersion.setNumber(version);
@@ -111,7 +125,7 @@ public class DataRecoveryManager implements Closeable {
       String destinationFabric,
       int versionNumber) {
     verifyStoreIsCapableOfDataRecovery(clusterName, storeName);
-    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Store store = getStore(clusterName, storeName);
     String topic = Version.composeKafkaTopic(storeName, versionNumber);
     if (store.getCurrentVersion() == versionNumber) {
       if (!veniceAdmin.isClusterWipeAllowed(clusterName)) {
@@ -132,7 +146,7 @@ public class DataRecoveryManager implements Closeable {
   }
 
   private void verifyStoreIsCapableOfDataRecovery(String clusterName, String storeName) {
-    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Store store = getStore(clusterName, storeName);
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
@@ -149,7 +163,7 @@ public class DataRecoveryManager implements Closeable {
    */
   public void verifyStoreVersionIsReadyForDataRecovery(String clusterName, String storeName, int versionNumber) {
     verifyStoreIsCapableOfDataRecovery(clusterName, storeName);
-    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Store store = getStore(clusterName, storeName);
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }

@@ -15,7 +15,6 @@ import com.linkedin.alpini.base.misc.Http2TooManyStreamsException;
 import com.linkedin.alpini.base.misc.MetricNames;
 import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.base.misc.Time;
-import com.linkedin.alpini.base.misc.TimeValue;
 import com.linkedin.alpini.netty4.misc.Http2Utils;
 import com.linkedin.alpini.router.api.HostHealthMonitor;
 import com.linkedin.alpini.router.api.ResourcePath;
@@ -43,7 +42,6 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
-import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 
 
@@ -95,9 +93,9 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
     return _scatterGatherHelper;
   }
 
-  public static void setMetric(Metrics metric, @Nonnull MetricNames metricName, @Nonnull Supplier<TimeValue> supplier) {
+  public static void setMetric(Metrics metric, @Nonnull MetricNames metricName, long value) {
     if (metric != null) {
-      metric.setMetric(metricName, supplier.get());
+      metric.setMetric(metricName, value);
     }
   }
 
@@ -288,14 +286,8 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
     // TODO : Uncomment once we figure out why determining log level takes time.
     // LOG.debug("[{}] scatter {}", request.getRequestId(), scatter);
 
-    setMetric(
-        m,
-        MetricNames.ROUTER_PARSE_URI,
-        () -> new TimeValue(afterParseUri - beforeParseUri, TimeUnit.NANOSECONDS));
-    setMetric(
-        m,
-        MetricNames.ROUTER_ROUTING_TIME,
-        () -> new TimeValue(afterScatter - beforeScatter, TimeUnit.NANOSECONDS));
+    setMetric(m, MetricNames.ROUTER_PARSE_URI, afterParseUri - beforeParseUri);
+    setMetric(m, MetricNames.ROUTER_ROUTING_TIME, afterScatter - beforeScatter);
 
     boolean retryableRequest = !longTailMilliseconds.isDone() || longTailMilliseconds.isSuccess();
 
@@ -485,14 +477,8 @@ public abstract class ScatterGatherRequestHandlerImpl<H, P extends ResourcePath<
         CANCEL_EXECUTOR.get().execute(timeoutCancel);
         long now = Time.nanoTime();
 
-        setMetric(
-            m,
-            MetricNames.ROUTER_SERVER_TIME,
-            () -> new TimeValue(now - arrivalNanoseconds, TimeUnit.NANOSECONDS));
-        setMetric(
-            m,
-            MetricNames.ROUTER_RESPONSE_WAIT_TIME,
-            () -> new TimeValue(now - responseWaitStartNanos, TimeUnit.NANOSECONDS));
+        setMetric(m, MetricNames.ROUTER_SERVER_TIME, now - arrivalNanoseconds);
+        setMetric(m, MetricNames.ROUTER_RESPONSE_WAIT_TIME, now - responseWaitStartNanos);
 
         if (response.isDone()) {
           LOG.debug("[{}] response discarded", req.getRequestId());

@@ -19,6 +19,7 @@ import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroFileIterator
 import com.linkedin.venice.hadoop.input.recordreader.avro.VeniceAvroRecordReader;
 import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonFileIterator;
 import com.linkedin.venice.hadoop.input.recordreader.vson.VeniceVsonRecordReader;
+import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
@@ -81,28 +82,21 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
 
     if (fileStatuses == null || fileStatuses.length == 0) {
-      throw new RuntimeException("No data found at source path: " + srcPath);
+      throw new VeniceException("No data found at source path: " + srcPath);
     }
 
     if (pushJobSetting.isZstdDictCreationRequired) {
       initZstdConfig(fileStatuses.length);
     }
 
-    // try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
-    Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, fileStatuses[0].getPath(), false);
-    if (fileMetadata.containsKey(FILE_KEY_SCHEMA) && fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
-      pushJobSetting.isAvro = false;
-      pushJobSetting.vsonInputKeySchemaString = fileMetadata.get(FILE_KEY_SCHEMA);
-      pushJobSetting.vsonInputKeySchema = VsonSchema.parse(pushJobSetting.vsonInputKeySchemaString);
-      pushJobSetting.vsonInputValueSchemaString = fileMetadata.get(FILE_VALUE_SCHEMA);
-      pushJobSetting.vsonInputValueSchema = VsonSchema.parse(pushJobSetting.vsonInputValueSchemaString);
-    }
     // Check the first file type prior to check schema consistency to make sure a schema can be obtained from it.
     if (fileStatuses[0].isDirectory()) {
       throw new VeniceException(
           "Input directory: " + fileStatuses[0].getPath().getParent().getName() + " should not have sub directory: "
               + fileStatuses[0].getPath().getName());
     }
+
+    pushJobSetting.isAvro = !HadoopUtils.isSequenceFile(fs, fileStatuses[0].getPath());
 
     final AtomicLong inputFileDataSize = new AtomicLong(0);
     if (pushJobSetting.isAvro) {
@@ -118,7 +112,21 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       pushJobSetting.inputDataSchemaString = pushJobSetting.inputDataSchema.toString();
       pushJobSetting.keySchema = extractAvroSubSchema(pushJobSetting.inputDataSchema, pushJobSetting.keyField);
     } else {
+      // try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
+      Path firstFilePath = fileStatuses[0].getPath();
+      Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, firstFilePath, false);
+
+      if (!fileMetadata.containsKey(FILE_KEY_SCHEMA) || !fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
+        throw new VeniceException("Input file " + firstFilePath.getName() + " is a SequenceFile but not a Vson file.");
+      }
+
       LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
+
+      pushJobSetting.vsonInputKeySchemaString = fileMetadata.get(FILE_KEY_SCHEMA);
+      pushJobSetting.vsonInputKeySchema = VsonSchema.parse(pushJobSetting.vsonInputKeySchemaString);
+      pushJobSetting.vsonInputValueSchemaString = fileMetadata.get(FILE_VALUE_SCHEMA);
+      pushJobSetting.vsonInputValueSchema = VsonSchema.parse(pushJobSetting.vsonInputValueSchemaString);
+
       // key / value fields are optional for Vson input
       pushJobSetting.keyField = props.getString(KEY_FIELD_PROP, "");
       pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, "");
@@ -247,7 +255,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       try (VeniceVsonFileIterator fileIterator = new VeniceVsonFileIterator(fs, path, recordReader)) {
         InputDataInfoProvider.loadZstdTrainingSamples(fileIterator, pushJobZstdConfig);
       } catch (IOException e) {
-        LOGGER.error(e);
+        throw new VeniceException(e);
       }
     }
     return recordReader.getMetadataMap();

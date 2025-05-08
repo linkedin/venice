@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import java.util.Set;
@@ -55,6 +56,7 @@ public class DisabledPartitionEnablerService extends AbstractVeniceService {
   private class DisabledPartitionEnablerTask implements Runnable {
     @Override
     public void run() {
+      LogContext.setStructuredLogContext(multiClusterConfig.getLogContext());
       while (!stop.get()) {
         try {
           time.sleep(sleepInterval);

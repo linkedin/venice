@@ -7,6 +7,7 @@ import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LogContext;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -79,6 +80,7 @@ public class LogCompactionService extends AbstractVeniceService {
 
     @Override
     public void run() {
+      LogContext.setStructuredLogContext(multiClusterConfigs.getLogContext());
       try {
         compactStoresInClusters();
       } catch (Throwable e) {

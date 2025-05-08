@@ -2,8 +2,10 @@ package com.linkedin.venice.stats.metrics;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.metrics.MetricEntity.createInternalMetricEntityWithoutDimensions;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import org.testng.Assert;
@@ -50,5 +52,36 @@ public class MetricEntityTest {
         MetricUnit.MILLISECOND,
         "test empty dimension list",
         new HashSet<>());
+  }
+
+  @Test
+  public void testCreateInternalMetricEntityWithoutDimensions() {
+    MetricEntity metricEntity = createInternalMetricEntityWithoutDimensions(
+        "testMetric",
+        MetricType.COUNTER,
+        MetricUnit.MILLISECOND,
+        "test createInternalMetricEntityWithoutDimensions",
+        "test");
+
+    Assert.assertEquals(metricEntity.getMetricName(), "testMetric", "Metric name should match");
+    Assert.assertEquals(metricEntity.getMetricType(), MetricType.COUNTER, "Metric type should match");
+    Assert.assertEquals(metricEntity.getUnit(), MetricUnit.MILLISECOND, "Metric unit should match");
+    Assert.assertEquals(
+        metricEntity.getDescription(),
+        "test createInternalMetricEntityWithoutDimensions",
+        "Description should match");
+    Assert.assertEquals(metricEntity.getDimensionsList(), Collections.EMPTY_SET, "Dimensions list should be empty");
+    Assert.assertEquals(metricEntity.getCustomMetricPrefix(), "test", "Custom metric prefix should match");
+
+    try {
+      createInternalMetricEntityWithoutDimensions(
+          "testMetric",
+          MetricType.COUNTER,
+          MetricUnit.MILLISECOND,
+          "test createInternalMetricEntityWithoutDimensions",
+          "venice.test");
+    } catch (IllegalArgumentException e) {
+      Assert.assertTrue(e.getMessage().startsWith("Custom prefix should not start with venice"), e.getMessage());
+    }
   }
 }

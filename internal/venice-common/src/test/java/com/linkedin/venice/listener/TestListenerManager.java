@@ -3,6 +3,7 @@ package com.linkedin.venice.listener;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
@@ -11,7 +12,8 @@ import org.testng.annotations.Test;
 
 
 public class TestListenerManager {
-  private ListenerManager<RoutingDataRepository.RoutingDataChangedListener> manager = new ListenerManager<>();
+  private ListenerManager<RoutingDataRepository.RoutingDataChangedListener> manager =
+      new ListenerManager<>(LogContext.EMPTY);
   private final static int TEST_TIME_OUT = 500;
 
   @Test

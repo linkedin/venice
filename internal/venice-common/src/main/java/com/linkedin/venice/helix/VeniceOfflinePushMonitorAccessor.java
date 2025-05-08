@@ -12,6 +12,7 @@ import com.linkedin.venice.pushmonitor.PartitionStatusListener;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -69,8 +70,12 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
   private final long refreshIntervalForZkReconnectInMs;
 
-  public VeniceOfflinePushMonitorAccessor(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapter) {
-    this(clusterName, zkClient, adapter, DEFAULT_ZK_REFRESH_ATTEMPTS, DEFAULT_ZK_REFRESH_INTERVAL);
+  public VeniceOfflinePushMonitorAccessor(
+      String clusterName,
+      ZkClient zkClient,
+      HelixAdapterSerializer adapter,
+      LogContext logContext) {
+    this(clusterName, zkClient, adapter, DEFAULT_ZK_REFRESH_ATTEMPTS, DEFAULT_ZK_REFRESH_INTERVAL, logContext);
   }
 
   public VeniceOfflinePushMonitorAccessor(
@@ -78,7 +83,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       ZkClient zkClient,
       HelixAdapterSerializer adapter,
       int refreshAttemptsForZkReconnect,
-      long refreshIntervalForZkReconnectInMs) {
+      long refreshIntervalForZkReconnectInMs,
+      Object logContext) {
     this.clusterName = clusterName;
     this.offlinePushStatusParentPath = getOfflinePushStatuesParentPath();
     this.zkClient = zkClient;
@@ -86,8 +92,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     this.zkClient.setZkSerializer(adapter);
     this.offlinePushStatusAccessor = new ZkBaseDataAccessor<>(zkClient);
     this.partitionStatusAccessor = new ZkBaseDataAccessor<>(zkClient);
-    this.listenerManager = new ListenerManager<>();
-    this.partitionStatusZkListener = new PartitionStatusZkListener();
+    this.listenerManager = new ListenerManager<>(logContext);
+    this.partitionStatusZkListener = new PartitionStatusZkListener(logContext);
     this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
     this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
   }
@@ -98,14 +104,15 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   public VeniceOfflinePushMonitorAccessor(
       String clusterName,
       ZkBaseDataAccessor<OfflinePushStatus> offlinePushStatusAccessor,
-      ZkBaseDataAccessor<PartitionStatus> partitionStatusAccessor) {
+      ZkBaseDataAccessor<PartitionStatus> partitionStatusAccessor,
+      LogContext logContext) {
     this.clusterName = clusterName;
     this.offlinePushStatusAccessor = offlinePushStatusAccessor;
     this.partitionStatusAccessor = partitionStatusAccessor;
     this.offlinePushStatusParentPath = getOfflinePushStatuesParentPath();
     this.zkClient = null;
-    this.listenerManager = new ListenerManager<>();
-    this.partitionStatusZkListener = new PartitionStatusZkListener();
+    this.listenerManager = new ListenerManager<>(logContext);
+    this.partitionStatusZkListener = new PartitionStatusZkListener(logContext);
     this.refreshAttemptsForZkReconnect = DEFAULT_ZK_REFRESH_ATTEMPTS;
     this.refreshIntervalForZkReconnectInMs = DEFAULT_ZK_REFRESH_INTERVAL;
   }
@@ -480,8 +487,15 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
    * change event and broadcast this event to Venice subscriber.
    */
   private class PartitionStatusZkListener implements IZkDataListener {
+    private final Object logContext;
+
+    PartitionStatusZkListener(Object logContext) {
+      this.logContext = logContext;
+    }
+
     @Override
     public void handleDataChange(String dataPath, Object data) throws Exception {
+      LogContext.setLogContext(logContext);
       if (!(data instanceof PartitionStatus)) {
         throw new VeniceException("Invalid notification, changed data is not:" + PartitionStatus.class.getName());
       }
@@ -494,6 +508,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
           LOGGER.error("Error when invoking callback function for partition status change", e);
         }
       });
+      LogContext.clearLogContext();
     }
 
     @Override

@@ -12,6 +12,7 @@ import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -40,7 +41,13 @@ public class HelixOfflinePushMonitorAccessorTest {
     zk = ServiceFactory.getZkServer();
     String zkAddress = zk.getAddress();
     zkClient = ZkClientFactory.newZkClient(zkAddress);
-    accessor = new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer(), 1, 0);
+    accessor = new VeniceOfflinePushMonitorAccessor(
+        clusterName,
+        zkClient,
+        new HelixAdapterSerializer(),
+        1,
+        0,
+        LogContext.EMPTY);
   }
 
   @AfterMethod

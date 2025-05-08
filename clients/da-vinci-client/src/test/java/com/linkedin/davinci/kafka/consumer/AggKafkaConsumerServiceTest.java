@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.davinci.kafka.consumer.KafkaConsumerService.ConsumerAssignmentStrategy.TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
+import static com.linkedin.davinci.kafka.consumer.KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.any;
@@ -85,7 +85,8 @@ public class AggKafkaConsumerServiceTest {
     when(serverConfig.getConsumerPoolStrategyType()).thenReturn(DEFAULT);
     when(serverConfig.getConsumerPoolSizePerKafkaCluster()).thenReturn(5);
     when(serverConfig.isUnregisterMetricForDeletedStoreEnabled()).thenReturn(Boolean.FALSE);
-    when(serverConfig.getSharedConsumerAssignmentStrategy()).thenReturn(TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY);
+    when(serverConfig.getSharedConsumerAssignmentStrategy())
+        .thenReturn(PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY);
     Sensor dummySensor = mock(Sensor.class);
     when(metricsRepository.sensor(anyString(), any())).thenReturn(dummySensor);
     PubSubConsumerAdapter adapter = mock(PubSubConsumerAdapter.class);

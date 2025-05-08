@@ -2,6 +2,7 @@ package com.linkedin.venice.client.stats;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -15,7 +16,6 @@ import java.util.Map;
 
 
 public class ClientStats extends BasicClientStats {
-  private final Sensor unhealthyRequestLatencySensor;
   private final Map<Integer, Sensor> httpStatusSensorMap = new VeniceConcurrentHashMap<>();
   private final Sensor requestRetryCountSensor;
   private final Sensor successRequestDuplicateKeyCountSensor;
@@ -43,14 +43,19 @@ public class ClientStats extends BasicClientStats {
       MetricsRepository metricsRepository,
       String storeName,
       RequestType requestType,
-      ClientConfig clientConfig) {
+      ClientConfig clientConfig,
+      ClientType clientType) {
     String prefix = clientConfig == null ? null : clientConfig.getStatsPrefix();
     String metricName = prefix == null || prefix.isEmpty() ? storeName : prefix + "." + storeName;
-    return new ClientStats(metricsRepository, metricName, requestType);
+    return new ClientStats(metricsRepository, metricName, requestType, clientType);
   }
 
-  protected ClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
-    super(metricsRepository, storeName, requestType);
+  protected ClientStats(
+      MetricsRepository metricsRepository,
+      String storeName,
+      RequestType requestType,
+      ClientType clientType) {
+    super(metricsRepository, storeName, requestType, clientType);
 
     /**
      * Check java doc of function: {@link TehutiUtils.RatioStat} to understand why choosing {@link Rate} instead of
@@ -59,7 +64,7 @@ public class ClientStats extends BasicClientStats {
     Rate requestRetryCountRate = new OccurrenceRate();
 
     requestRetryCountSensor = registerSensor("request_retry_count", requestRetryCountRate);
-    unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg());
+
     successRequestDuplicateKeyCountSensor = registerSensor("success_request_duplicate_key_count", new Rate());
     /**
      * The time it took to serialize the request, to be sent to the router. This is done in a blocking fashion
@@ -122,10 +127,6 @@ public class ClientStats extends BasicClientStats {
     httpStatusSensorMap
         .computeIfAbsent(httpStatus, status -> registerSensor("http_" + httpStatus + "_request", new OccurrenceRate()))
         .record();
-  }
-
-  public void recordUnhealthyLatency(double latency) {
-    unhealthyRequestLatencySensor.record(latency);
   }
 
   public void recordRequestRetryCount() {

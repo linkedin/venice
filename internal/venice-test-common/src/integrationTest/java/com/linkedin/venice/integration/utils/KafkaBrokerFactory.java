@@ -2,8 +2,10 @@ package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.integration.utils.ProcessWrapper.DEFAULT_HOST_NAME;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
@@ -12,8 +14,10 @@ import com.linkedin.venice.utils.SslUtils.VeniceTlsConfiguration;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -28,6 +32,20 @@ import scala.collection.JavaConverters;
 import scala.collection.Seq;
 
 
+/**
+ * Factory class for creating and configuring embedded Kafka brokers.
+ * <p>
+ * This class encapsulates the logic for instantiating a Kafka server instance,
+ * applying the necessary configuration, and preparing it for use—typically in
+ * test or local development environments.
+ * <p>
+ * It is referenced via the system property {@link ServiceFactory#PUBSUB_BROKER_FACTORY_FQCN}
+ * to enable tests to run with Kafka-based PubSub clients.
+ * Example usage:
+ * <pre>
+ *   System.getProperty("pubSubBrokerFactory", "com.linkedin.venice.integration.utils.KafkaBrokerFactory");
+ * </pre>
+ */
 class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.KafkaBrokerWrapper> {
   private static final Logger LOGGER = LogManager.getLogger(ServiceFactory.class);
   // Class-level state and APIs
@@ -256,6 +274,18 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
     @Override
     public String getPubSubClusterName() {
       return pubSubClusterName;
+    }
+
+    @Override
+    public Map<String, String> getAdditionalConfig() {
+      return Collections.singletonMap(
+          ConfigKeys.PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP,
+          VeniceProperties.mapToString(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_ID_TO_CLASS_NAME_MAP));
+    }
+
+    @Override
+    public PubSubPositionTypeRegistry getPubSubPositionTypeRegistry() {
+      return PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
     }
   }
 }

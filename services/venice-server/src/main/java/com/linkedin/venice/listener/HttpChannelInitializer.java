@@ -146,8 +146,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           storeMetadataRepository,
           customizedViewRepository,
           nodeId,
-          quotaUsageStats,
-          metricsRepository);
+          quotaUsageStats);
     } else {
       this.quotaEnforcer = null;
     }

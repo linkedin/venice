@@ -257,7 +257,8 @@ public class TestDaVinciRequestBasedMetaRepository {
           TestWriteUtils.defaultVPJProps(
               clusterWrapper.getVeniceControllers().get(0).getControllerUrl(),
               dataDirPath,
-              storeName));
+              storeName,
+              clusterWrapper.getPubSubClientProperties()));
       controllerClients.put(storeName, controllerClient);
     } else {
       controllerClient = controllerClients.get(storeName);
@@ -268,8 +269,11 @@ public class TestDaVinciRequestBasedMetaRepository {
       Assert.assertFalse(schemaResponse.isError(), schemaResponse.getError());
     }
 
-    Properties props =
-        TestWriteUtils.defaultVPJProps(controllerClient.getLeaderControllerUrl(), dataDirPath, storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(
+        controllerClient.getLeaderControllerUrl(),
+        dataDirPath,
+        storeName,
+        clusterWrapper.getPubSubClientProperties());
     TestWriteUtils.runPushJob(storeName + "_" + Utils.getUniqueString("push_job"), props);
   }
 
