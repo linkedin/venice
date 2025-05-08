@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
@@ -13,15 +14,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 
-public class LogCompactionStats {
-  private final MetricsRepository metricsRepository;
+public class LogCompactionStats extends AbstractVeniceStats {
   private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final Attributes baseAttributes;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   public LogCompactionStats(MetricsRepository metricsRepository, String clusterName) {
-    this.metricsRepository = metricsRepository;
+    super(metricsRepository, "LogCompactionStats");
     if (metricsRepository instanceof VeniceMetricsRepository) {
       VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
       VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
