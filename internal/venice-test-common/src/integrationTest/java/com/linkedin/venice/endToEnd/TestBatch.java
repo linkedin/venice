@@ -926,8 +926,7 @@ public abstract class TestBatch {
 
     veniceCluster.refreshAllRouterMetaData();
 
-    VeniceMetricsRepository metricsRepository =
-        getVeniceMetricsRepository(THIN_CLIENT.getName(), THIN_CLIENT.getMetricsPrefix(), CLIENT_METRIC_ENTITIES, true);
+    VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true);
     try (
         AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName)

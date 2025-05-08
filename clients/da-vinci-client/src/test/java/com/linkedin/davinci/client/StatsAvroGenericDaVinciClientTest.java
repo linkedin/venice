@@ -40,11 +40,8 @@ public class StatsAvroGenericDaVinciClientTest {
         .thenThrow(new RuntimeException("mock_exception_by_function_directly"));
     when(mockClient.getStoreName()).thenReturn(storeName);
 
-    VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(
-        DAVINCI_CLIENT.getName(),
-        DAVINCI_CLIENT.getMetricsPrefix(),
-        CLIENT_METRIC_ENTITIES,
-        true);
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepository(DAVINCI_CLIENT, CLIENT_METRIC_ENTITIES, true);
     StatsAvroGenericDaVinciClient statsClient = new StatsAvroGenericDaVinciClient(
         mockClient,
         new ClientConfig(storeName).setMetricsRepository(metricsRepository));
@@ -92,11 +89,8 @@ public class StatsAvroGenericDaVinciClientTest {
     doCallRealMethod().when(mockClient).batchGet(any());
     doCallRealMethod().when(mockClient).streamingBatchGet(any(), any());
 
-    VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(
-        DAVINCI_CLIENT.getName(),
-        DAVINCI_CLIENT.getMetricsPrefix(),
-        CLIENT_METRIC_ENTITIES,
-        true);
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepository(DAVINCI_CLIENT, CLIENT_METRIC_ENTITIES, true);
     StatsAvroGenericDaVinciClient statsClient = new StatsAvroGenericDaVinciClient(
         mockClient,
         new ClientConfig(storeName).setMetricsRepository(metricsRepository));

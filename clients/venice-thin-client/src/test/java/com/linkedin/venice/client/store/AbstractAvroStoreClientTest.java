@@ -260,8 +260,7 @@ public class AbstractAvroStoreClientTest {
         storeName,
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor());
-    VeniceMetricsRepository metricsRepository =
-        getVeniceMetricsRepository(THIN_CLIENT.getName(), THIN_CLIENT.getMetricsPrefix(), CLIENT_METRIC_ENTITIES, true);
+    VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true);
     ClientStats stats =
         ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null, ClientType.THIN_CLIENT);
     ClientStats streamingStats = ClientStats
@@ -331,8 +330,7 @@ public class AbstractAvroStoreClientTest {
         storeName,
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor());
-    VeniceMetricsRepository metricsRepository =
-        getVeniceMetricsRepository(THIN_CLIENT.getName(), THIN_CLIENT.getMetricsPrefix(), CLIENT_METRIC_ENTITIES, true);
+    VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true);
     ClientStats stats =
         ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null, ClientType.THIN_CLIENT);
     ClientStats streamingStats = ClientStats

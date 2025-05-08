@@ -50,8 +50,7 @@ public class BasicClientStatsTest {
   @Test
   public void testMetricPrefix() {
     String storeName = "test_store";
-    VeniceMetricsRepository metricsRepository1 =
-        getVeniceMetricsRepository(THIN_CLIENT.getName(), THIN_CLIENT.getMetricsPrefix(), CLIENT_METRIC_ENTITIES, true);
+    VeniceMetricsRepository metricsRepository1 = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true);
     // Without prefix
     ClientConfig config1 = new ClientConfig(storeName);
     BasicClientStats.getClientStats(metricsRepository1, storeName, SINGLE_GET, config1, ClientType.THIN_CLIENT);
@@ -64,8 +63,7 @@ public class BasicClientStatsTest {
 
     // With prefix
     String prefix = "test_prefix";
-    VeniceMetricsRepository metricsRepository2 =
-        getVeniceMetricsRepository(THIN_CLIENT.getName(), THIN_CLIENT.getMetricsPrefix(), CLIENT_METRIC_ENTITIES, true);
+    VeniceMetricsRepository metricsRepository2 = getVeniceMetricsRepository(THIN_CLIENT, CLIENT_METRIC_ENTITIES, true);
     ClientConfig config2 = new ClientConfig(storeName).setStatsPrefix(prefix);
     BasicClientStats.getClientStats(metricsRepository2, storeName, SINGLE_GET, config2, ClientType.THIN_CLIENT);
     // Check metric name
@@ -89,7 +87,7 @@ public class BasicClientStatsTest {
         SC_OK,
         VeniceResponseStatusCategory.SUCCESS,
         90.0,
-        "test_prefix");
+        THIN_CLIENT.getMetricsPrefix());
   }
 
   @Test
@@ -99,7 +97,12 @@ public class BasicClientStatsTest {
     stats.emitHealthyRequestMetricsForDavinciClient(90.0);
 
     validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", true, 90.0);
-    validateOtelMetrics(inMemoryMetricReader, "test_store", VeniceResponseStatusCategory.SUCCESS, 90.0, "test_prefix");
+    validateOtelMetrics(
+        inMemoryMetricReader,
+        "test_store",
+        VeniceResponseStatusCategory.SUCCESS,
+        90.0,
+        DAVINCI_CLIENT.getMetricsPrefix());
   }
 
   @Test
@@ -124,7 +127,7 @@ public class BasicClientStatsTest {
         HttpStatus.SC_INTERNAL_SERVER_ERROR,
         VeniceResponseStatusCategory.FAIL,
         90.0,
-        "test_prefix");
+        THIN_CLIENT.getMetricsPrefix());
   }
 
   @Test
@@ -134,7 +137,12 @@ public class BasicClientStatsTest {
     stats.emitUnhealthyRequestMetricsForDavinciClient(90.0);
 
     validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", false, 90.0);
-    validateOtelMetrics(inMemoryMetricReader, "test_store", VeniceResponseStatusCategory.FAIL, 90.0, "test_prefix");
+    validateOtelMetrics(
+        inMemoryMetricReader,
+        "test_store",
+        VeniceResponseStatusCategory.FAIL,
+        90.0,
+        DAVINCI_CLIENT.getMetricsPrefix());
   }
 
   @Test
@@ -148,9 +156,8 @@ public class BasicClientStatsTest {
 
   private BasicClientStats createStats(InMemoryMetricReader inMemoryMetricReader, ClientType clientType) {
     String storeName = "test_store";
-    String otelPrefix = "test_prefix";
     VeniceMetricsRepository metricsRepository =
-        getVeniceMetricsRepository(storeName, otelPrefix, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
+        getVeniceMetricsRepository(clientType, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
     return BasicClientStats
         .getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName), clientType);
   }

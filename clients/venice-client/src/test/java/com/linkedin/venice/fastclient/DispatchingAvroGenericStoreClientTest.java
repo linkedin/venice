@@ -179,8 +179,7 @@ public class DispatchingAvroGenericStoreClientTest {
                     .setRoutingRequestDefaultTimeoutMS(routingRequestDefaultTimeOutMS)
                     .setRoutingPendingRequestCounterInstanceBlockThreshold(1)
                     .build()));
-    VeniceMetricsRepository metricsRepository =
-        getVeniceMetricsRepository(FAST_CLIENT.getName(), FAST_CLIENT.getMetricsPrefix(), CLIENT_METRIC_ENTITIES, true);
+    VeniceMetricsRepository metricsRepository = getVeniceMetricsRepository(FAST_CLIENT, CLIENT_METRIC_ENTITIES, true);
     metrics = metricsRepository.metrics();
 
     clientConfigBuilder.setMetricsRepository(metricsRepository);

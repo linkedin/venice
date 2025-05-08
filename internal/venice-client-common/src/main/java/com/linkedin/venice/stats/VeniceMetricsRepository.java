@@ -73,33 +73,30 @@ public class VeniceMetricsRepository extends MetricsRepository implements Closea
   }
 
   public static VeniceMetricsRepository getVeniceMetricsRepository(
-      String serviceName,
-      String metricPrefix,
+      ClientType clientType,
       Collection<MetricEntity> metricEntities,
       boolean emitOtelMetrics) {
     VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setServiceName(serviceName)
-            .setMetricPrefix(metricPrefix)
+        new VeniceMetricsConfig.Builder().setServiceName(clientType.getName())
+            .setMetricPrefix(clientType.getMetricsPrefix())
             .setMetricEntities(metricEntities)
             .setEmitOtelMetrics(emitOtelMetrics)
             .build());
-    metricsRepository.addReporter(new JmxReporter(serviceName));
+    metricsRepository.addReporter(new JmxReporter(clientType.getName()));
     return metricsRepository;
   }
 
   public static VeniceMetricsRepository getVeniceMetricsRepository(
-      String serviceName,
-      String metricPrefix,
+      ClientType clientType,
       Collection<MetricEntity> metricEntities,
       boolean emitOtelMetrics,
       MetricReader additionalMetricReader) {
-    VeniceMetricsRepository metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setServiceName(serviceName)
-            .setMetricPrefix(metricPrefix)
+    return new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(clientType.getName())
+            .setMetricPrefix(clientType.getMetricsPrefix())
             .setMetricEntities(metricEntities)
             .setEmitOtelMetrics(emitOtelMetrics)
             .setOtelAdditionalMetricsReader(additionalMetricReader)
             .build());
-    return metricsRepository;
   }
 }
