@@ -405,6 +405,7 @@ public class StorageNodeComputeTest {
     if (compressionStrategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
       ZstdDictTrainer trainer = new ZstdDictTrainer(200 * BYTES_PER_MB, 100 * BYTES_PER_KB);
       for (byte[] value: values) {
+        trainer.addSample(value);
       }
 
       // Not using trainSamplesDirect since we need byte[] to create compressor.
