@@ -2731,4 +2731,7 @@ public class ConfigKeys {
       "server.idle.ingestion.task.cleanup.interval.in.seconds";
 
   public static final String PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY = "pass.through.config.prefixes.list";
+
+  public static final String SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK =
+      "server.use.heartbeat.lag.for.ready.to.serve.check";
 }
