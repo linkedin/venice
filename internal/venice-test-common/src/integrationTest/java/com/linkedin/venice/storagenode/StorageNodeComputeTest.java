@@ -177,7 +177,7 @@ public class StorageNodeComputeTest {
     Assert.assertFalse(newVersion.isError(), "Error creation new version: " + newVersion.getError());
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
-    int keyCount = 10;
+    int keyCount = 11;
     String keyPrefix = "key_";
     String valuePrefix = "value_";
 
