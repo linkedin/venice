@@ -1909,6 +1909,10 @@ public class VenicePushJob implements AutoCloseable {
       // We only need a single valid schema, so getting the first one is good enough.
       if (replicationSchemasResponse.getSchemas() != null && replicationSchemasResponse.getSchemas().length > 0) {
         pushJobSetting.replicationMetadataSchemaString = replicationSchemasResponse.getSchemas()[0].getSchemaStr();
+        LOGGER.info(
+            "Retrieved and using schema with id: {}, and string: {}",
+            replicationSchemasResponse.getSchemas()[0].getId(),
+            pushJobSetting.replicationMetadataSchemaString);
       } else {
         LOGGER.info("No replication schemas associated with the store!");
       }

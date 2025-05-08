@@ -124,7 +124,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       // key / value fields are optional for Vson input
       pushJobSetting.keyField = props.getString(KEY_FIELD_PROP, "");
       pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, "");
-      pushJobSetting.timestampField = props.getString(TIMESTAMP_FIELD_PROP, "null");
+      pushJobSetting.timestampField = props.getString(TIMESTAMP_FIELD_PROP, "");
 
       Pair<VsonSchema, VsonSchema> vsonSchema = checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize);
 
