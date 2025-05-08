@@ -1,6 +1,6 @@
 package com.linkedin.davinci.validation;
 
-import static com.linkedin.davinci.validation.PubSubDataIntegrityValidator.DISABLED;
+import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
 
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;

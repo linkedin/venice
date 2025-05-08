@@ -26,8 +26,8 @@ import org.apache.logging.log4j.Logger;
  * 3. Whether data within a segment is corrupted (CORRUPT);
  * 4. Whether producers have produced duplicate messages, which is fine and expected due to producer retries (DUPLICATE).
  */
-public class PubSubDataIntegrityValidator {
-  private static final Logger LOGGER = LogManager.getLogger(PubSubDataIntegrityValidator.class);
+public class DataIntegrityValidator {
+  private static final Logger LOGGER = LogManager.getLogger(DataIntegrityValidator.class);
   public static final long DISABLED = -1;
   private final long logCompactionDelayInMs;
   private final long maxAgeInMs;
@@ -35,7 +35,7 @@ public class PubSubDataIntegrityValidator {
   protected final SparseConcurrentList<PartitionTracker> partitionTrackers = new SparseConcurrentList<>();
   protected final IntFunction<PartitionTracker> partitionTrackerCreator;
 
-  public PubSubDataIntegrityValidator(String topicName) {
+  public DataIntegrityValidator(String topicName) {
     this(topicName, DISABLED, DISABLED);
   }
 
@@ -44,16 +44,16 @@ public class PubSubDataIntegrityValidator {
    *
    * TODO: Open source the ETL or make it stop depending on an exotic open source API
    */
-  public PubSubDataIntegrityValidator(String topicName, long logCompactionDelayInMs) {
+  public DataIntegrityValidator(String topicName, long logCompactionDelayInMs) {
     this(topicName, logCompactionDelayInMs, DISABLED);
   }
 
-  public PubSubDataIntegrityValidator(String topicName, long logCompactionDelayInMs, long maxAgeInMs) {
+  public DataIntegrityValidator(String topicName, long logCompactionDelayInMs, long maxAgeInMs) {
     this.logCompactionDelayInMs = logCompactionDelayInMs;
     this.maxAgeInMs = maxAgeInMs;
     this.partitionTrackerCreator = p -> new PartitionTracker(topicName, p);
     LOGGER.info(
-        "Initialized PubSubDataIntegrityValidator with topicName: {}, maxAgeInMs: {}, logCompactionDelayInMs: {}",
+        "Initialized DataIntegrityValidator with topicName: {}, maxAgeInMs: {}, logCompactionDelayInMs: {}",
         topicName,
         maxAgeInMs,
         logCompactionDelayInMs);
@@ -118,7 +118,7 @@ public class PubSubDataIntegrityValidator {
     }
   }
 
-  public void cloneVtProducerStates(int partition, PubSubDataIntegrityValidator newValidator) {
+  public void cloneVtProducerStates(int partition, DataIntegrityValidator newValidator) {
     PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
     registerPartition(partition).cloneVtProducerStates(destPartitionTracker);
   }

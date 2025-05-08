@@ -48,8 +48,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class PubSubDataIntegrityValidatorTest {
-  private static final Logger LOGGER = LogManager.getLogger(PubSubDataIntegrityValidatorTest.class);
+public class DataIntegrityValidatorTest {
+  private static final Logger LOGGER = LogManager.getLogger(DataIntegrityValidatorTest.class);
   private static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @Test(dataProvider = "CheckpointingSupported-CheckSum-Types", dataProviderClass = DataProviderUtils.class)
@@ -57,8 +57,8 @@ public class PubSubDataIntegrityValidatorTest {
     final long maxAgeInMs = 1000;
     Time time = new TestMockTime();
     String topicName = Utils.getUniqueString("TestStore") + "_v1";
-    PubSubDataIntegrityValidator validator =
-        new PubSubDataIntegrityValidator(topicName, PubSubDataIntegrityValidator.DISABLED, maxAgeInMs);
+    DataIntegrityValidator validator =
+        new DataIntegrityValidator(topicName, DataIntegrityValidator.DISABLED, maxAgeInMs);
     PubSubTopicPartition topicPartition0 = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 0);
     PubSubTopicPartition topicPartition1 = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 1);
     long offsetForPartition0 = 0;
@@ -114,7 +114,7 @@ public class PubSubDataIntegrityValidatorTest {
     /**
      * Start writing into the same partition with another producer GUID. In effect, this will bump up the highest
      * timestamp of that partition, which will make the first producer eligible for getting cleared, but it will not
-     * be cleared yet, since {@link PubSubDataIntegrityValidator#clearExpiredState(int, LongSupplier)} will not have
+     * be cleared yet, since {@link DataIntegrityValidator#clearExpiredState(int, LongSupplier)} will not have
      * been called.
      */
     DefaultPubSubMessage p0g1record0 = buildSoSRecord(
@@ -171,7 +171,7 @@ public class PubSubDataIntegrityValidatorTest {
   public void testStatelessDIV() {
     String topicName = Utils.getUniqueString("TestStore") + "_v1";
     long logCompactionLagInMs = TimeUnit.HOURS.toMillis(24); // 24 hours
-    PubSubDataIntegrityValidator statelessDiv = new PubSubDataIntegrityValidator(topicName, logCompactionLagInMs);
+    DataIntegrityValidator statelessDiv = new DataIntegrityValidator(topicName, logCompactionLagInMs);
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 1);
 
     /**
