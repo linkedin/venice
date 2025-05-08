@@ -26,16 +26,16 @@ import org.testng.annotations.Test;
 
 
 public class TestHelixUtils {
-  private final String TEST_PATH = "/test/path";
-  private final String TEST_DATA = "testData";
+  private static final String TEST_PATH = "/test/path";
+  private static final String TEST_DATA = "testData";
   private static final int TEST_RETRY_COUNT = 3;
   private ZkBaseDataAccessor<String> mockDataAccessor;
   private DataUpdater<String> dataUpdater;
 
-  private final List<String> TEST_PATH_LIST = Arrays.asList("/test/path/child1", "/test/path/child2");
-  private final List<String> TEST_DATA_LIST = Arrays.asList("data1", "data2");
-  private final boolean[] SUCCESS_RESULTS = new boolean[] { true, true };
-  private final boolean[] FAILED_RESULTS = new boolean[] { true, false };
+  private static final List<String> TEST_PATH_LIST = Arrays.asList("/test/path/child1", "/test/path/child2");
+  private static final List<String> TEST_DATA_LIST = Arrays.asList("data1", "data2");
+  private static final boolean[] SUCCESS_RESULTS = new boolean[] { true, true };
+  private static final boolean[] FAILED_RESULTS = new boolean[] { true, false };
 
   @Test
   public void parsesHostnameFromInstanceName() {
