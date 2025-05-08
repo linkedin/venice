@@ -62,7 +62,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private Cache<String, Map<String, Long>> storePushCompletionTimeCache =
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
   private Map<String, Integer> fetchNonTargetRegionStoreRetryCountMap = new HashMap<>();
-  private Set<String> stalledVersionSwapList = new HashSet<>();
+  private Set<String> stalledVersionSwapSet = new HashSet<>();
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -222,20 +222,20 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         targetVersionNum);
     veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, storeName, regionsToRollForward);
 
-    if (stalledVersionSwapList.contains(storeName)) {
-      stalledVersionSwapList.remove(storeName);
+    if (stalledVersionSwapSet.contains(storeName)) {
+      stalledVersionSwapSet.remove(storeName);
       deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(-1.0);
     }
 
     // Update parent version status after roll forward, so we don't check this store version again
     // If push was successful (version status is PUSHED), the parent version is marked as ONLINE
     // if push was successful in some regions (version status is KILLED), the parent version is marked PARTIALLY_ONLINE
+    long totalVersionSwapTimeInMinutes =
+        TimeUnit.MILLISECONDS.toMinutes(LatencyUtils.getElapsedTimeFromMsToMs(targetVersion.getCreatedTime()));
     if (targetVersion.getStatus() == VersionStatus.PUSHED) {
       store.updateVersionStatus(targetVersionNum, ONLINE);
       repository.updateStore(store);
 
-      long totalVersionSwapTimeInMinutes =
-          TimeUnit.MILLISECONDS.toMinutes(LatencyUtils.getElapsedTimeFromMsToMs(targetVersion.getCreatedTime()));
       LOGGER.info(
           "Updated parent version status to ONLINE for version: {} in store: {} for version created in: {}."
               + "Version swap took {} minutes from push completion to version swap",
@@ -246,9 +246,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       store.updateVersionStatus(targetVersionNum, VersionStatus.PARTIALLY_ONLINE);
       repository.updateStore(store);
       LOGGER.info(
-          "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {}",
+          "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {},"
+              + "Version swap took {} minutes from push completion to version swap",
           targetVersionNum,
-          storeName);
+          storeName,
+          totalVersionSwapTimeInMinutes);
     }
   }
 
@@ -356,7 +358,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
 
     // If we already emitted a metric for this store already, do not emit it again
-    if (stalledVersionSwapList.contains(store.getName())) {
+    if (stalledVersionSwapSet.contains(store.getName())) {
       return;
     }
 
@@ -373,7 +375,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         String message = "Store: " + store.getName() + "has not swapped to the target version: " + targetVersionNum
             + " and the wait time: " + store.getTargetSwapRegionWaitTime() + " has passed";
         logMessageIfNotRedundant(message);
-        stalledVersionSwapList.add(store.getName());
+        stalledVersionSwapSet.add(store.getName());
         deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(1.0);
       }
     }
