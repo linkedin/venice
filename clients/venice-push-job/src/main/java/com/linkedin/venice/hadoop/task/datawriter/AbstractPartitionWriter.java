@@ -192,7 +192,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
   private VeniceWriter<byte[], byte[], byte[]> mainWriter = null;
   private ComplexVeniceWriter[] childWriters = null;
   private int valueSchemaId = -1;
-  private Schema valueSchema = null;
+  private Schema rmdSchema = null;
   private int derivedValueSchemaId = -1;
   private boolean enableWriteCompute = false;
 
@@ -251,7 +251,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           (timeOfLastReduceFunctionStartInNS - timeOfLastReduceFunctionEndInNS);
     }
     if (key.length > 0 && (!hasReportedFailure(dataWriterTaskTracker, this.isDuplicateKeyAllowed))) {
-      VeniceWriterMessage message = extract(key, values, timestampIterator, valueSchema, dataWriterTaskTracker);
+      VeniceWriterMessage message = extract(key, values, timestampIterator, rmdSchema, dataWriterTaskTracker);
       if (message != null) {
         try {
           sendMessageToKafka(dataWriterTaskTracker, message.getConsumer());
@@ -632,7 +632,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     this.duplicateKeyPrinter = initDuplicateKeyPrinter(props);
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
     this.callback = new PartitionWriterProducerCallback();
-    this.valueSchema = !Objects.equals(props.getString(RMD_SCHEMA_PROP, ""), "")
+    this.rmdSchema = !Objects.equals(props.getString(RMD_SCHEMA_PROP, ""), "")
         ? new Schema.Parser().parse(props.getString(RMD_SCHEMA_PROP))
         : null;
     initStorageQuotaFields(props);

@@ -12,10 +12,14 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.spark.sql.Row;
 
 
 public class SparkPartitionWriter extends AbstractPartitionWriter {
+  private static final Logger LOGGER = LogManager.getLogger(SparkPartitionWriter.class);
+
   private final SparkDataWriterTaskTracker dataWriterTaskTracker;
 
   public SparkPartitionWriter(Properties jobProperties, DataWriterAccumulators accumulators) {
@@ -43,6 +47,9 @@ public class SparkPartitionWriter extends AbstractPartitionWriter {
         logicalTimestamp = row.getAs(TIMESTAMP_COLUMN_NAME);
       } catch (IllegalArgumentException e) {
         // Ignore if timestamp is not present
+      } catch (ClassCastException e) {
+        LOGGER.error("Passed timestamp column is not of type long!!!");
+        throw e;
       }
 
       if (!Arrays.equals(incomingKey, key)) {
