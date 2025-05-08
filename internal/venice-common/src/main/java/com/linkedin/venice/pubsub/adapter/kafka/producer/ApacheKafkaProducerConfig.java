@@ -6,12 +6,17 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_PRODUCER_USE_HIG
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPositionFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
@@ -33,6 +38,15 @@ public class ApacheKafkaProducerConfig {
    */
   public static final String KAFKA_CONFIG_PREFIX = "kafka.";
   public static final String PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX = PUBSUB_CLIENT_CONFIG_PREFIX + KAFKA_CONFIG_PREFIX;
+
+  /**
+   * Use the following prefix to get the producer properties from the {@link VeniceProperties} object.
+   */
+  private static final String PUBSUB_KAFKA_PRODUCER_CONFIG_PREFIX =
+      PubSubUtil.getPubSubProducerConfigPrefix(KAFKA_CONFIG_PREFIX);
+  public static final Set<String> KAFKA_PRODUCER_CONFIG_PREFIXES = Collections.unmodifiableSet(
+      new HashSet<>(
+          Arrays.asList(KAFKA_CONFIG_PREFIX, PUBSUB_KAFKA_PRODUCER_CONFIG_PREFIX, PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX)));
 
   public static final String KAFKA_SECURITY_PROTOCOL_WITH_PREFIX =
       KAFKA_CONFIG_PREFIX + CommonClientConfigs.SECURITY_PROTOCOL_CONFIG;
@@ -71,10 +85,12 @@ public class ApacheKafkaProducerConfig {
     String brokerAddress = Objects.requireNonNull(context.getBrokerAddress(), "Broker address cannot be null");
     VeniceProperties allVeniceProperties = context.getVeniceProperties();
     validateKafkaPositionType(context.getPubSubPositionTypeRegistry());
-
     this.pubSubMessageSerializer = context.getPubSubMessageSerializer();
-    this.producerProperties =
-        ApacheKafkaUtils.getValidKafkaClientProperties(allVeniceProperties, ProducerConfig.configNames());
+    this.producerProperties = ApacheKafkaUtils.getValidKafkaClientProperties(
+        allVeniceProperties,
+        context.getPubSubSecurityProtocol(),
+        ProducerConfig.configNames(),
+        KAFKA_PRODUCER_CONFIG_PREFIXES);
     validateAndUpdateProperties(this.producerProperties, context.shouldValidateProducerConfigStrictly());
     if (allVeniceProperties.getBoolean(PUBSUB_PRODUCER_USE_HIGH_THROUGHPUT_DEFAULTS, false)) {
       addHighThroughputDefaults();

@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka;
 
 import static com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils.KAFKA_SSL_MANDATORY_CONFIGS;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_PRODUCER_CONFIG_PREFIXES;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
@@ -11,6 +12,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -100,10 +102,12 @@ public class ApacheKafkaUtilsTest {
     config.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
     config.put("kafka.sasl.mechanism", SASL_MECHANISM);
     KAFKA_SSL_MANDATORY_CONFIGS.forEach(configName -> config.put(configName, configName + "DefaultValue"));
-    config.put("security.protocol", "SASL_SSL");
     VeniceProperties veniceProperties = new VeniceProperties(config);
-    Properties filteredConfig =
-        ApacheKafkaUtils.getValidKafkaClientProperties(veniceProperties, ProducerConfig.configNames());
+    Properties filteredConfig = ApacheKafkaUtils.getValidKafkaClientProperties(
+        veniceProperties,
+        PubSubSecurityProtocol.SASL_SSL,
+        ProducerConfig.configNames(),
+        KAFKA_PRODUCER_CONFIG_PREFIXES);
     assertEquals(filteredConfig.get("sasl.jaas.config"), SASL_JAAS_CONFIG);
     assertEquals(filteredConfig.get("sasl.mechanism"), SASL_MECHANISM);
     assertEquals(filteredConfig.get("security.protocol"), "SASL_SSL");

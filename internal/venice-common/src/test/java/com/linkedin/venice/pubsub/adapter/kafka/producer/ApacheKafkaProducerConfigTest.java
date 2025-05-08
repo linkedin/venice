@@ -3,6 +3,7 @@ package com.linkedin.venice.pubsub.adapter.kafka.producer;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_POSITION_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_PRODUCER_CONFIG_PREFIXES;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.SSL_TO_KAFKA_LEGACY;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -17,6 +18,7 @@ import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.apache.kafka.clients.admin.AdminClientConfig;
@@ -68,6 +70,7 @@ public class ApacheKafkaProducerConfigTest {
     when(context1.getProducerName()).thenReturn(PRODUCER_NAME);
     when(context1.getPubSubPositionTypeRegistry())
         .thenReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
+    when(context1.getPubSubSecurityProtocol()).thenReturn(PubSubSecurityProtocol.PLAINTEXT);
     ApacheKafkaProducerConfig producerConfig1 = new ApacheKafkaProducerConfig(context1);
     // broker address from props should be used
     assertEquals(producerConfig1.getBrokerAddress(), brokerAddress);
@@ -82,7 +85,6 @@ public class ApacheKafkaProducerConfigTest {
     props.put(SSL_TO_KAFKA_LEGACY, true);
     props.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
     props.put("kafka.sasl.mechanism", SASL_MECHANISM);
-    props.put("kafka.security.protocol", "SASL_SSL");
     props.put("ssl.keystore.location", "/etc/kafka/secrets/kafka.keystore.jks");
     props.put("ssl.keystore.password", "keystore-pass");
     props.put("ssl.keystore.type", "JKS");
@@ -101,6 +103,7 @@ public class ApacheKafkaProducerConfigTest {
     when(context.getProducerName()).thenReturn(PRODUCER_NAME);
     when(context.getPubSubPositionTypeRegistry())
         .thenReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
+    when(context.getPubSubSecurityProtocol()).thenReturn(PubSubSecurityProtocol.SASL_SSL);
     ApacheKafkaProducerConfig apacheKafkaProducerConfig = new ApacheKafkaProducerConfig(context);
     Properties producerProperties = apacheKafkaProducerConfig.getProducerProperties();
     assertEquals(SASL_JAAS_CONFIG, producerProperties.get("sasl.jaas.config"));
@@ -173,9 +176,12 @@ public class ApacheKafkaProducerConfigTest {
     allProps.put(KAFKA_CONFIG_PREFIX + AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
     allProps.put("bogus.kafka.config", "bogusValue");
 
-    Properties validProps =
-        ApacheKafkaUtils.getValidKafkaClientProperties(new VeniceProperties(allProps), ProducerConfig.configNames());
-    assertEquals(validProps.size(), 2);
+    Properties validProps = ApacheKafkaUtils.getValidKafkaClientProperties(
+        new VeniceProperties(allProps),
+        PubSubSecurityProtocol.PLAINTEXT,
+        ProducerConfig.configNames(),
+        KAFKA_PRODUCER_CONFIG_PREFIXES);
+    assertEquals(validProps.size(), 3);
     assertEquals(validProps.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG), "localhost:9092");
     assertEquals(validProps.get(ProducerConfig.MAX_BLOCK_MS_CONFIG), "1000");
   }

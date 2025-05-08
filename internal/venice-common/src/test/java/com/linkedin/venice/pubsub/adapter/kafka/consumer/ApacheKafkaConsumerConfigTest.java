@@ -16,6 +16,7 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.apache.kafka.clients.admin.AdminClientConfig;
@@ -71,9 +72,12 @@ public class ApacheKafkaConsumerConfigTest {
     allProps.put(KAFKA_CONFIG_PREFIX + "bogus.kafka.config", "bogusValue");
     allProps.put("bogus.kafka.config.2", "bogusValue.2");
 
-    Properties validProps =
-        ApacheKafkaUtils.getValidKafkaClientProperties(new VeniceProperties(allProps), ConsumerConfig.configNames());
-    assertEquals(validProps.size(), 2);
+    Properties validProps = ApacheKafkaUtils.getValidKafkaClientProperties(
+        new VeniceProperties(allProps),
+        PubSubSecurityProtocol.PLAINTEXT,
+        ConsumerConfig.configNames(),
+        ApacheKafkaConsumerConfig.KAFKA_CONSUMER_CONFIG_PREFIXES);
+    assertEquals(validProps.size(), 3);
     assertEquals(validProps.get(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG), "localhost:9092");
     assertEquals(validProps.get(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG), "2000");
   }

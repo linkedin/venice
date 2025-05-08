@@ -1,16 +1,22 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX;
 
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Properties;
+import java.util.Set;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
@@ -40,6 +46,15 @@ public class ApacheKafkaConsumerConfig {
   public static final String KAFKA_GROUP_ID_CONFIG = KAFKA_CONFIG_PREFIX + ConsumerConfig.GROUP_ID_CONFIG;
   public static final int DEFAULT_RECEIVE_BUFFER_SIZE = 1024 * 1024;
 
+  /**
+   * Use the following prefix to get the consumer properties from the {@link VeniceProperties} object.
+   */
+  private static final String PUBSUB_KAFKA_CONSUMER_CONFIG_PREFIX =
+      PubSubUtil.getPubSubConsumerConfigPrefix(KAFKA_CONFIG_PREFIX);
+  protected static final Set<String> KAFKA_CONSUMER_CONFIG_PREFIXES = Collections.unmodifiableSet(
+      new HashSet<>(
+          Arrays.asList(KAFKA_CONFIG_PREFIX, PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX, PUBSUB_KAFKA_CONSUMER_CONFIG_PREFIX)));
+
   private final Properties consumerProperties;
   private final int consumerPollRetryTimes;
   private final int consumerPollRetryBackoffMs;
@@ -53,8 +68,11 @@ public class ApacheKafkaConsumerConfig {
 
   ApacheKafkaConsumerConfig(PubSubConsumerAdapterContext context) {
     VeniceProperties veniceProperties = context.getVeniceProperties();
-    this.consumerProperties =
-        ApacheKafkaUtils.getValidKafkaClientProperties(veniceProperties, ConsumerConfig.configNames());
+    this.consumerProperties = ApacheKafkaUtils.getValidKafkaClientProperties(
+        veniceProperties,
+        context.getPubSubSecurityProtocol(),
+        ConsumerConfig.configNames(),
+        KAFKA_CONSUMER_CONFIG_PREFIXES);
     this.consumerProperties.putIfAbsent(ConsumerConfig.RECEIVE_BUFFER_CONFIG, DEFAULT_RECEIVE_BUFFER_SIZE);
 
     // Timeout for consumer APIs which do not have explicit timeout parameter AND have potential to get blocked;
@@ -66,7 +84,6 @@ public class ApacheKafkaConsumerConfig {
     consumerProperties.put(ConsumerConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, defaultApiTimeoutInMs);
 
     // Override the broker address after filtering the properties to ensure that we use the correct broker address.
-    consumerProperties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, context.getPubSubSecurityProtocol().name());
     consumerProperties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, context.getPubSubBrokerAddress());
     consumerProperties.put(ConsumerConfig.CLIENT_ID_CONFIG, context.getConsumerName());
     // Do not change the default value of the following two configs unless you know what you are doing.
