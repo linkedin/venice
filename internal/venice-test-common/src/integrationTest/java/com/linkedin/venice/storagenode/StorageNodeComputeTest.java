@@ -229,7 +229,7 @@ public class StorageNodeComputeTest {
              */
             .get(2, TimeUnit.SECONDS);
 
-        Assert.assertEquals(computeResult.size(), 10);
+        Assert.assertEquals(computeResult.size(), keyCount);
 
         computeResult.forEach((key, value) -> {
           int keyIdx = getKeyIndex(key, keyPrefix);
@@ -405,7 +405,6 @@ public class StorageNodeComputeTest {
     if (compressionStrategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
       ZstdDictTrainer trainer = new ZstdDictTrainer(200 * BYTES_PER_MB, 100 * BYTES_PER_KB);
       for (byte[] value: values) {
-        trainer.addSample(value);
       }
 
       // Not using trainSamplesDirect since we need byte[] to create compressor.
