@@ -16,6 +16,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -337,6 +338,47 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
           heartbeatLagMonitorAction.getTrigger(),
           e);
     }
+  }
+
+  /**
+   * Get maximum heartbeat lag from all regions for a given LEADER replica.
+   * @return Max leader heartbeat lag, or Long.MAX_VALUE if any region's heartbeat is unknown.
+   */
+  public long getReplicaLeaderHeartbeatLag(String storeName, int version, int partitionId) {
+    Map<String, HeartbeatTimeStampEntry> replicaTimestampMap =
+        getLeaderHeartbeatTimeStamps().getOrDefault(storeName, Collections.emptyMap())
+            .getOrDefault(version, Collections.emptyMap())
+            .getOrDefault(partitionId, Collections.emptyMap());
+    if (replicaTimestampMap.isEmpty()) {
+      return Long.MAX_VALUE;
+    }
+    long minTimestamp = Long.MAX_VALUE;
+    for (Map.Entry<String, HeartbeatTimeStampEntry> entry: replicaTimestampMap.entrySet()) {
+      if (!entry.getValue().consumedFromUpstream) {
+        return Long.MAX_VALUE;
+      }
+      minTimestamp = Math.min(minTimestamp, entry.getValue().timestamp);
+    }
+    return System.currentTimeMillis() - minTimestamp;
+  }
+
+  /**
+   * Get maximum heartbeat lag from local region for a given FOLLOWER replica.
+   * @return Follower heartbeat lag, or Long.MAX_VALUE if local region's heartbeat is unknown.
+   */
+  public long getReplicaFollowerHeartbeatLag(String storeName, int version, int partitionId) {
+    HeartbeatTimeStampEntry followerReplicaTimestamp =
+        getFollowerHeartbeatTimeStamps().getOrDefault(storeName, Collections.emptyMap())
+            .getOrDefault(version, Collections.emptyMap())
+            .getOrDefault(partitionId, Collections.emptyMap())
+            .get(localRegionName);
+    if (followerReplicaTimestamp == null) {
+      return Long.MAX_VALUE;
+    }
+    if (!followerReplicaTimestamp.consumedFromUpstream) {
+      return Long.MAX_VALUE;
+    }
+    return System.currentTimeMillis() - followerReplicaTimestamp.timestamp;
   }
 
   ReadOnlyStoreRepository getMetadataRepository() {

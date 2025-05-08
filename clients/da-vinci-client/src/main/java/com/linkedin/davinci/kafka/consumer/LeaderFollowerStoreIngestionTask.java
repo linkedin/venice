@@ -27,7 +27,6 @@ import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
-import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -186,8 +185,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final Set<String> nativeReplicationSourceVersionTopicKafkaURLSingletonSet;
   private final VeniceWriterFactory veniceWriterFactory;
 
-  private final HeartbeatMonitoringService heartbeatMonitoringService;
-
   /**
    * N.B.:
    *    With L/F+native replication and many Leader partitions getting assigned to a single SN this {@link VeniceWriter}
@@ -249,7 +246,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         builder.getLeaderFollowerNotifiers(),
         zkHelixAdmin);
     this.version = version;
-    this.heartbeatMonitoringService = builder.getHeartbeatMonitoringService();
     /**
      * We are going to apply fast leader failover for per user store system store since it is time sensitive, and if the
      * split-brain problem happens in prod, we could design a way to periodically produce snapshot to the meta system
@@ -1816,6 +1812,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  @Override
+  protected long measureHybridHeartbeatLag(PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
+    int partition = partitionConsumptionState.getPartition();
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+      return getHeartbeatMonitoringService().getReplicaLeaderHeartbeatLag(storeName, versionNumber, partition);
+    } else {
+      return getHeartbeatMonitoringService().getReplicaFollowerHeartbeatLag(storeName, versionNumber, partition);
+    }
+  }
+
   protected long measureRTOffsetLagForMultiRegions(
       Set<String> sourceRealTimeTopicKafkaURLs,
       PartitionConsumptionState partitionConsumptionState,
@@ -2283,13 +2289,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
       String kafkaUrl) {
-    if (heartbeatMonitoringService == null) {
+    if (getHeartbeatMonitoringService() == null) {
       // Not enabled!
       return;
     }
 
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      heartbeatMonitoringService.recordLeaderHeartbeat(
+      getHeartbeatMonitoringService().recordLeaderHeartbeat(
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
@@ -2297,7 +2303,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           consumerRecord.getValue().producerMetadata.messageTimestamp,
           partitionConsumptionState.isComplete());
     } else {
-      heartbeatMonitoringService.recordFollowerHeartbeat(
+      getHeartbeatMonitoringService().recordFollowerHeartbeat(
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
@@ -4392,10 +4398,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @VisibleForTesting
   Int2ObjectMap<String> getKafkaClusterIdToUrlMap() {
     return kafkaClusterIdToUrlMap;
-  }
-
-  HeartbeatMonitoringService getHeartbeatMonitoringService() {
-    return heartbeatMonitoringService;
   }
 
   // Package private for unit test
