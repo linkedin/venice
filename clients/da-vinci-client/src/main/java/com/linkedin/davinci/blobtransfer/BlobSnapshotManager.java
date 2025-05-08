@@ -8,7 +8,6 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -20,7 +19,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.logging.log4j.LogManager;
@@ -37,6 +35,7 @@ public class BlobSnapshotManager {
       AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
   private final static int DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN = 30;
   public final static int DEFAULT_MAX_CONCURRENT_USERS = 5;
+  public final static int DEFAULT_SNAPSHOT_CLEANUP_INTERVAL_IN_HOURS = 2;
 
   // A map to keep track of the number of hosts using a snapshot for a particular topic and partition, use to restrict
   // concurrent user count
@@ -54,18 +53,12 @@ public class BlobSnapshotManager {
   // Locks for coordinating access to each snapshot
   // Example: <topicName, <partitionId, lock>>
   private VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<Integer, ReentrantLock>> snapshotAccessLocks;
-  // Flags to track cleanup operations in progress
-  // Example: <topicName, <partitionId, isCleanupInProgress>>
-  private VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<Integer, AtomicBoolean>> cleanupInProgress;
-  // Flags to track creation operations in progress
-  // Example: <topicName, <partitionId, isCreationInProgress>>
-  private VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<Integer, AtomicBoolean>> creationInProgress;
 
-  private final ReadOnlyStoreRepository readOnlyStoreRepository;
   private final StorageEngineRepository storageEngineRepository;
   private final StorageMetadataService storageMetadataService;
   private final int maxConcurrentUsers;
   private final long snapshotRetentionTimeInMillis;
+  private final int snapshotCleanupIntervalInHours;
   private final BlobTransferUtils.BlobTransferTableFormat blobTransferTableFormat;
   private final ScheduledExecutorService snapshotCleanupScheduler;
 
@@ -73,26 +66,24 @@ public class BlobSnapshotManager {
    * Constructor for the BlobSnapshotManager
    */
   public BlobSnapshotManager(
-      ReadOnlyStoreRepository readOnlyStoreRepository,
       StorageEngineRepository storageEngineRepository,
       StorageMetadataService storageMetadataService,
       int maxConcurrentUsers,
       int snapshotRetentionTimeInMin,
-      BlobTransferUtils.BlobTransferTableFormat transferTableFormat) {
-    this.readOnlyStoreRepository = readOnlyStoreRepository;
+      BlobTransferUtils.BlobTransferTableFormat transferTableFormat,
+      int snapshotCleanupIntervalInHours) {
     this.storageEngineRepository = storageEngineRepository;
     this.storageMetadataService = storageMetadataService;
     this.maxConcurrentUsers = maxConcurrentUsers;
     this.snapshotRetentionTimeInMillis = TimeUnit.MINUTES.toMillis(snapshotRetentionTimeInMin);
     this.blobTransferTableFormat = transferTableFormat;
+    this.snapshotCleanupIntervalInHours = snapshotCleanupIntervalInHours;
 
     this.concurrentSnapshotUsers = new VeniceConcurrentHashMap<>();
     this.snapshotTimestamps = new VeniceConcurrentHashMap<>();
     this.snapshotMetadataRecords = new VeniceConcurrentHashMap<>();
 
     this.snapshotAccessLocks = new VeniceConcurrentHashMap<>();
-    this.cleanupInProgress = new VeniceConcurrentHashMap<>();
-    this.creationInProgress = new VeniceConcurrentHashMap<>();
 
     this.snapshotCleanupScheduler = Executors
         .newSingleThreadScheduledExecutor(new DaemonThreadFactory("Venice-BlobTransfer-Snapshot-Cleanup-Scheduler"));
@@ -106,27 +97,25 @@ public class BlobSnapshotManager {
    */
   @VisibleForTesting
   public BlobSnapshotManager(
-      ReadOnlyStoreRepository readOnlyStoreRepository,
       StorageEngineRepository storageEngineRepository,
       StorageMetadataService storageMetadataService) {
     this(
-        readOnlyStoreRepository,
         storageEngineRepository,
         storageMetadataService,
         DEFAULT_MAX_CONCURRENT_USERS,
         DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN,
-        BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE);
+        BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
+        DEFAULT_SNAPSHOT_CLEANUP_INTERVAL_IN_HOURS);
   }
 
   /**
    * Get the transfer metadata for a particular payload
    * 1. throttle the request if many concurrent users.
-   * 2. check if any cleanup or recreate operations are in progress, if yes, throw an exception
-   * 3. check snapshot staleness
-   *     3.1. if stale:
-   *            3.1.1. if it does not have active users: recreate the snapshot and metadata, then return the metadata
-   *            3.1.2. if it has active users: no need to recreate the snapshot, throw an exception to let the client move to next candidate.
-   *     3.2. if not stale, directly return the metadata
+   * 2. check snapshot staleness
+   *     2.1. if stale:
+   *            2.1.1. if it does not have active users: recreate the snapshot and metadata, then return the metadata
+   *            2.1.2. if it has active users: no need to recreate the snapshot, throw an exception to let the client move to next candidate.
+   *     2.2. if not stale, directly return the metadata
    *
    * @param payload the blob transfer payload
    * @return the need transfer metadata to client
@@ -149,30 +138,14 @@ public class BlobSnapshotManager {
 
     ReentrantLock lock = getSnapshotLock(topicName, partitionId);
     try (AutoCloseableLock ignored = AutoCloseableLock.of(lock)) {
-      // 2. check if any cleanup or recreate is in progress
-      if (isCleanupInProgress(topicName, partitionId) || isCreationInProgress(topicName, partitionId)) {
-        String errorMessage = String.format(
-            "Cleanup/Creation in progress for topic %s partition %d, cannot access snapshot at this time",
-            topicName,
-            partitionId);
-        throw new VeniceException(errorMessage);
-      }
-
       boolean havingActiveUsers = getConcurrentSnapshotUsers(topicName, partitionId) > 0;
       boolean isSnapshotStale = isSnapshotStale(topicName, partitionId);
       increaseConcurrentUserCount(topicName, partitionId);
 
-      // 3. check if the snapshot is stale and need to be recreated
+      // 2. check if the snapshot is stale and need to be recreated
       if (isSnapshotStale) {
         if (!havingActiveUsers) {
-          if (!isCreationInProgress(topicName, partitionId) && !isCleanupInProgress(topicName, partitionId)) {
-            try {
-              setCreationInProgress(topicName, partitionId, true);
-              recreateSnapshotAndMetadata(payload);
-            } finally {
-              setCreationInProgress(topicName, partitionId, false);
-            }
-          }
+          recreateSnapshotAndMetadata(payload);
         } else {
           String errorMessage = String.format(
               "Snapshot for topic %s partition %d is still in use by others, can not recreate snapshot for new transfer request.",
@@ -182,16 +155,12 @@ public class BlobSnapshotManager {
           throw new VeniceException(errorMessage);
         }
       } else {
-        LOGGER.debug(
+        LOGGER.info(
             "Snapshot for topic {} partition {} is not stale, skip creating new snapshot. ",
             topicName,
             partitionId);
       }
       return snapshotMetadataRecords.get(topicName).get(partitionId);
-    } catch (Exception e) {
-      throw new VeniceException(
-          String.format("Failed to get transfer metadata for topic %s partition %d", topicName, partitionId),
-          e);
     }
   }
 
@@ -384,9 +353,8 @@ public class BlobSnapshotManager {
    * Get the lock for a particular topic and partition
    */
   private ReentrantLock getSnapshotLock(String topicName, int partitionId) {
-    snapshotAccessLocks.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
-    snapshotAccessLocks.get(topicName).putIfAbsent(partitionId, new ReentrantLock());
-    return snapshotAccessLocks.get(topicName).get(partitionId);
+    return snapshotAccessLocks.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partitionId, p -> new ReentrantLock());
   }
 
   /**
@@ -397,44 +365,6 @@ public class BlobSnapshotManager {
     snapshotMetadataRecords.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>());
     concurrentSnapshotUsers.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>())
         .computeIfAbsent(partitionId, k -> new AtomicInteger(0));
-    cleanupInProgress.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>())
-        .computeIfAbsent(partitionId, k -> new AtomicBoolean(false));
-    creationInProgress.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>())
-        .computeIfAbsent(partitionId, k -> new AtomicBoolean(false));
-  }
-
-  /**
-   * Check if cleanup is in progress for per topic per partition
-   */
-  private boolean isCleanupInProgress(String topicName, int partitionId) {
-    return cleanupInProgress.containsKey(topicName) && cleanupInProgress.get(topicName).containsKey(partitionId)
-        && cleanupInProgress.get(topicName).get(partitionId).get();
-  }
-
-  /**
-   * Check if creation is in progress for per topic per partition
-   */
-  private boolean isCreationInProgress(String topicName, int partitionId) {
-    return creationInProgress.containsKey(topicName) && creationInProgress.get(topicName).containsKey(partitionId)
-        && creationInProgress.get(topicName).get(partitionId).get();
-  }
-
-  /**
-   * Mark cleanup as in progress or completed for per topic per partition
-   */
-  private void setCleanupInProgress(String topicName, int partitionId, boolean inProgress) {
-    cleanupInProgress.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>())
-        .computeIfAbsent(partitionId, k -> new AtomicBoolean(false))
-        .set(inProgress);
-  }
-
-  /**
-   * Mark creation as in progress or completed for per topic per partition
-   */
-  private void setCreationInProgress(String topicName, int partitionId, boolean inProgress) {
-    creationInProgress.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>())
-        .computeIfAbsent(partitionId, k -> new AtomicBoolean(false))
-        .set(inProgress);
   }
 
   /**
@@ -443,10 +373,8 @@ public class BlobSnapshotManager {
   public void cleanupOutOfRetentionSnapshot(String topicName, int partitionId) {
     ReentrantLock lock = getSnapshotLock(topicName, partitionId);
     try (AutoCloseableLock ignored = AutoCloseableLock.of(lock)) {
-      setCleanupInProgress(topicName, partitionId, true);
 
-      if (getConcurrentSnapshotUsers(topicName, partitionId) > 0 || !isSnapshotStale(topicName, partitionId)
-          || isCreationInProgress(topicName, partitionId)) {
+      if (getConcurrentSnapshotUsers(topicName, partitionId) > 0 || !isSnapshotStale(topicName, partitionId)) {
         return;
       }
 
@@ -470,8 +398,6 @@ public class BlobSnapshotManager {
       LOGGER.info("Successfully cleaned up snapshot for topic {} partition {}", topicName, partitionId);
     } catch (Exception e) {
       LOGGER.error("Failed to clean up snapshot for topic {} partition {}", topicName, partitionId, e);
-    } finally {
-      setCleanupInProgress(topicName, partitionId, false);
     }
   }
 
@@ -507,7 +433,7 @@ public class BlobSnapshotManager {
           }
         }
         LOGGER.info("Finished cleaning up stale snapshots for all topics and partitions");
-      }, 0, 1, TimeUnit.DAYS);
+      }, 0, snapshotCleanupIntervalInHours, TimeUnit.HOURS);
     }
   }
 
@@ -516,8 +442,6 @@ public class BlobSnapshotManager {
     snapshotTimestamps.clear();
     snapshotMetadataRecords.clear();
     snapshotAccessLocks.clear();
-    cleanupInProgress.clear();
-    creationInProgress.clear();
 
     if (snapshotCleanupScheduler != null) {
       snapshotCleanupScheduler.shutdown();

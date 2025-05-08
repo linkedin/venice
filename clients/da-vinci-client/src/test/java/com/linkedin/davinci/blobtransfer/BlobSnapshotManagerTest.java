@@ -67,7 +67,7 @@ public class BlobSnapshotManagerTest {
     when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+        spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
     doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
@@ -88,7 +88,7 @@ public class BlobSnapshotManagerTest {
     when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+        spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
     doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
@@ -120,7 +120,7 @@ public class BlobSnapshotManagerTest {
     when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+        spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
     doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
@@ -164,7 +164,7 @@ public class BlobSnapshotManagerTest {
     when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+        spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
     doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
@@ -205,7 +205,7 @@ public class BlobSnapshotManagerTest {
     when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+        spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
     doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
@@ -249,7 +249,7 @@ public class BlobSnapshotManagerTest {
     when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
 
     BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+        spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
     doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
@@ -273,5 +273,80 @@ public class BlobSnapshotManagerTest {
           PARTITION_ID);
       Assert.assertEquals(e.getMessage(), errorMessage);
     }
+  }
+
+  /**
+   * test not cleanup snapshot while the snapshot is still in use
+   */
+  @Test
+  public void testNotCleanupSnapshotWhileServingBlobTransferRequest() {
+    // Prepare
+    Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
+    when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+
+    // set the snapshot retention time to 0
+    BlobSnapshotManager blobSnapshotManager = spy(
+        new BlobSnapshotManager(
+            storageEngineRepository,
+            storageMetadataService,
+            5,
+            0,
+            BlobTransferTableFormat.BLOCK_BASED_TABLE,
+            2));
+    doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
+
+    AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
+    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
+    Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
+    Mockito.doNothing().when(storagePartition).createSnapshot();
+    Mockito.doNothing().when(blobSnapshotManager).cleanupSnapshot(TOPIC_NAME, PARTITION_ID);
+
+    blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+    // Mock there is a cleanup, but it should be not executed due to there is a snapshot user
+    blobSnapshotManager.cleanupOutOfRetentionSnapshot(TOPIC_NAME, PARTITION_ID);
+
+    // verify that the cleanup is not executed
+    verify(blobSnapshotManager, times(0)).cleanupSnapshot(TOPIC_NAME, PARTITION_ID);
+  }
+
+  /**
+   * test while deleting snapshot, a new request arrived, it should recreate the snapshot after the cleanup.
+   */
+  @Test
+  public void testServeBlobTransferRequestWhileDeletingSnapshot() {
+    // Prepare
+    Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
+    when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+
+    BlobSnapshotManager blobSnapshotManager =
+        spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
+    doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
+    Mockito.doNothing().when(blobSnapshotManager).cleanupSnapshot(TOPIC_NAME, PARTITION_ID);
+
+    AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
+    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
+    Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
+    Mockito.doNothing().when(storagePartition).createSnapshot();
+
+    // Mock there is a cleanup.
+    blobSnapshotManager.cleanupOutOfRetentionSnapshot(TOPIC_NAME, PARTITION_ID);
+    // A new request arrived
+    blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+
+    // verify that the cleanup is executed and snapshot is recreated
+    verify(blobSnapshotManager, times(1)).cleanupSnapshot(TOPIC_NAME, PARTITION_ID);
+    verify(blobSnapshotManager, times(1)).createSnapshot(TOPIC_NAME, PARTITION_ID);
   }
 }

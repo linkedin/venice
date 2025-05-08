@@ -113,8 +113,7 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.when(configLoader.getCombinedProperties()).thenReturn(veniceProperties);
     aclHandler = createAclHandler(configLoader);
 
-    blobSnapshotManager =
-        Mockito.spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+    blobSnapshotManager = Mockito.spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
 
     server = new P2PBlobTransferService(
         port,
