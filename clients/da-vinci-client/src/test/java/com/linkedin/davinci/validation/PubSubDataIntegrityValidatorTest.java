@@ -48,19 +48,19 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class KafkaDataIntegrityValidatorTest {
-  private static final Logger LOGGER = LogManager.getLogger(KafkaDataIntegrityValidatorTest.class);
+public class PubSubDataIntegrityValidatorTest {
+  private static final Logger LOGGER = LogManager.getLogger(PubSubDataIntegrityValidatorTest.class);
   private static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @Test(dataProvider = "CheckpointingSupported-CheckSum-Types", dataProviderClass = DataProviderUtils.class)
   public void testClearExpiredState(CheckSumType checkSumType) throws InterruptedException {
     final long maxAgeInMs = 1000;
     Time time = new TestMockTime();
-    String kafkaTopic = Utils.getUniqueString("TestStore") + "_v1";
-    KafkaDataIntegrityValidator validator =
-        new KafkaDataIntegrityValidator(kafkaTopic, KafkaDataIntegrityValidator.DISABLED, maxAgeInMs);
-    PubSubTopicPartition topicPartition0 = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(kafkaTopic), 0);
-    PubSubTopicPartition topicPartition1 = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(kafkaTopic), 1);
+    String topicName = Utils.getUniqueString("TestStore") + "_v1";
+    PubSubDataIntegrityValidator validator =
+        new PubSubDataIntegrityValidator(topicName, PubSubDataIntegrityValidator.DISABLED, maxAgeInMs);
+    PubSubTopicPartition topicPartition0 = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 0);
+    PubSubTopicPartition topicPartition1 = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 1);
     long offsetForPartition0 = 0;
     long offsetForPartition1 = 0;
     int seqNumberForPartition0Guid1 = 1;
@@ -114,7 +114,7 @@ public class KafkaDataIntegrityValidatorTest {
     /**
      * Start writing into the same partition with another producer GUID. In effect, this will bump up the highest
      * timestamp of that partition, which will make the first producer eligible for getting cleared, but it will not
-     * be cleared yet, since {@link KafkaDataIntegrityValidator#clearExpiredState(int, LongSupplier)} will not have
+     * be cleared yet, since {@link PubSubDataIntegrityValidator#clearExpiredState(int, LongSupplier)} will not have
      * been called.
      */
     DefaultPubSubMessage p0g1record0 = buildSoSRecord(
@@ -169,11 +169,10 @@ public class KafkaDataIntegrityValidatorTest {
 
   @Test
   public void testStatelessDIV() {
-    String kafkaTopic = Utils.getUniqueString("TestStore") + "_v1";
-    long kafkaLogCompactionLagInMs = TimeUnit.HOURS.toMillis(24); // 24 hours
-    KafkaDataIntegrityValidator stateLessDIVValidator =
-        new KafkaDataIntegrityValidator(kafkaTopic, kafkaLogCompactionLagInMs);
-    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(kafkaTopic), 1);
+    String topicName = Utils.getUniqueString("TestStore") + "_v1";
+    long logCompactionLagInMs = TimeUnit.HOURS.toMillis(24); // 24 hours
+    PubSubDataIntegrityValidator statelessDiv = new PubSubDataIntegrityValidator(topicName, logCompactionLagInMs);
+    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 1);
 
     /**
      * Create a record that starts in the middle of a segment with sequence number 100 and the broken timestamp for this
@@ -189,7 +188,7 @@ public class KafkaDataIntegrityValidatorTest {
         System.currentTimeMillis() - TimeUnit.HOURS.toMillis(28));
 
     // Stateless DIV will allow a segment starts in the middle
-    stateLessDIVValidator.checkMissingMessage(record, Optional.empty());
+    statelessDiv.checkMissingMessage(record, Optional.empty());
 
     /**
      * Create a record with sequence number 101 in the same segment and the broken timestamp for this record is 27 hours
@@ -202,7 +201,7 @@ public class KafkaDataIntegrityValidatorTest {
         0,
         101,
         System.currentTimeMillis() - TimeUnit.HOURS.toMillis(27));
-    stateLessDIVValidator.checkMissingMessage(record2, Optional.empty());
+    statelessDiv.checkMissingMessage(record2, Optional.empty());
 
     /**
      * Create a record with sequence number 103 in the same segment and the broken timestamp for this record is 20 hours
@@ -216,12 +215,12 @@ public class KafkaDataIntegrityValidatorTest {
         0,
         103,
         System.currentTimeMillis() - TimeUnit.HOURS.toMillis(20));
-    stateLessDIVValidator.checkMissingMessage(record3, Optional.empty());
+    statelessDiv.checkMissingMessage(record3, Optional.empty());
 
     /**
      * Create a record with sequence number 105 in the same segment and the broken timestamp for this record is 10 hours
      * ago; there is a gap between sequence number 103 and 105; MISSING_MESSAGE exception should be thrown this time
-     * because the previous message for the same segment is fresh (20 hours ago), Kafka log compaction hasn't started
+     * because the previous message for the same segment is fresh (20 hours ago), log compaction hasn't started
      * yet, so missing message is not expected
      */
     DefaultPubSubMessage record4 = buildPutRecord(
@@ -231,9 +230,7 @@ public class KafkaDataIntegrityValidatorTest {
         0,
         105,
         System.currentTimeMillis() - TimeUnit.HOURS.toMillis(10));
-    Assert.assertThrows(
-        MissingDataException.class,
-        () -> stateLessDIVValidator.checkMissingMessage(record4, Optional.empty()));
+    Assert.assertThrows(MissingDataException.class, () -> statelessDiv.checkMissingMessage(record4, Optional.empty()));
 
     PartitionTracker.DIVErrorMetricCallback errorMetricCallback = mock(PartitionTracker.DIVErrorMetricCallback.class);
 
@@ -249,7 +246,7 @@ public class KafkaDataIntegrityValidatorTest {
         System.currentTimeMillis() - TimeUnit.HOURS.toMillis(10));
     Assert.assertThrows(
         MissingDataException.class,
-        () -> stateLessDIVValidator.checkMissingMessage(record5, Optional.of(errorMetricCallback)));
+        () -> statelessDiv.checkMissingMessage(record5, Optional.of(errorMetricCallback)));
     verify(errorMetricCallback, times(1)).execute(any());
   }
 

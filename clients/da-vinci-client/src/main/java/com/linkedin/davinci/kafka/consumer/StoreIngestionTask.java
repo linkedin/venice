@@ -8,7 +8,7 @@ import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
-import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
+import static com.linkedin.davinci.validation.PubSubDataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
@@ -47,8 +47,8 @@ import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.davinci.utils.InMemoryChunkAssembler;
-import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
+import com.linkedin.davinci.validation.PubSubDataIntegrityValidator;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -265,7 +265,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * {@link #syncOffset(String, PartitionConsumptionState)}
    * NOTE: consumerDiv will be used in place of this when {@link #isGlobalRtDivEnabled()} is true.
    */
-  private final KafkaDataIntegrityValidator drainerDiv;
+  private final PubSubDataIntegrityValidator drainerDiv;
   /**
    * The consumer and drainer DIV must remain separate. Since the consumer is always ahead of the drainer, the consumer
    * would be validating data ahead of the actual persisted data on the drainer.
@@ -278,7 +278,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * NOTE: When {@link #isGlobalRtDivEnabled()} is enabled, this will be used by leaders to produce Global RT DIV state
    * to local VT. This will also be used to send DIV snapshots to the drainer to persist the VT + RT DIV on-disk.
    */
-  protected final KafkaDataIntegrityValidator consumerDiv;
+  protected final PubSubDataIntegrityValidator consumerDiv;
   /** Map of broker URL to the total bytes consumed by ConsumptionTask since the last Global RT DIV sync */
   // TODO: clear it out when the sync is done
   protected final VeniceConcurrentHashMap<String, Long> consumedBytesSinceLastSync;
@@ -461,9 +461,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           Math.max(producerStateMaxAgeMs, version.getHybridStoreConfig().getRewindTimeInSeconds() * Time.MS_PER_SECOND);
     }
     // Could be accessed from multiple threads since there are multiple worker threads.
-    this.drainerDiv = new KafkaDataIntegrityValidator(this.kafkaVersionTopic, DISABLED, producerStateMaxAgeMs);
+    this.drainerDiv = new PubSubDataIntegrityValidator(this.kafkaVersionTopic, DISABLED, producerStateMaxAgeMs);
     // Could be accessed from multiple threads since there are multiple worker threads.
-    this.consumerDiv = new KafkaDataIntegrityValidator(kafkaVersionTopic);
+    this.consumerDiv = new PubSubDataIntegrityValidator(kafkaVersionTopic);
     this.consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
@@ -1874,7 +1874,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void updateOffsetMetadataAndSyncOffset(
-      KafkaDataIntegrityValidator div,
+      PubSubDataIntegrityValidator div,
       @Nonnull PartitionConsumptionState pcs) {
     /**
      * Offset metadata and producer states must be updated at the same time in OffsetRecord; otherwise, one checkpoint
@@ -3620,7 +3620,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    **/
   protected void validateMessage(
       PartitionTracker.TopicType type,
-      KafkaDataIntegrityValidator validator,
+      PubSubDataIntegrityValidator validator,
       DefaultPubSubMessage consumerRecord,
       boolean endOfPushReceived,
       PartitionConsumptionState partitionConsumptionState,
@@ -3706,7 +3706,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * like leaders in LeaderFollowerStoreIngestionTask should never access the DIV validator in drainer, because messages
    * consumption in leader is ahead of drainer, leaders and drainers are processing messages at different paces.
    */
-  protected void cloneDrainerDivProducerStates(int partition, KafkaDataIntegrityValidator validator) {
+  protected void cloneDrainerDivProducerStates(int partition, PubSubDataIntegrityValidator validator) {
     this.drainerDiv.cloneVtProducerStates(partition, validator);
   }
 
@@ -4931,7 +4931,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /** When Global RT DIV is enabled the ConsumptionTask's DIV is exclusively used to validate data integrity. */
-  KafkaDataIntegrityValidator getDataIntegrityValidator() {
+  PubSubDataIntegrityValidator getDataIntegrityValidator() {
     return (isGlobalRtDivEnabled()) ? consumerDiv : drainerDiv;
   }
 
