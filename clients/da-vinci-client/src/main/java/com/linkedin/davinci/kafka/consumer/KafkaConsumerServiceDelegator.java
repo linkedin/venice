@@ -9,6 +9,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -235,6 +236,27 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
           pubSubTopicPartition);
       return Collections.emptyMap();
     }
+  }
+
+  @Override
+  public Map<PubSubTopicPartition, Long> getStaleTopicPartitions(long thresholdTimestamp) {
+    Map<PubSubTopicPartition, Long> consolidatedMap = new HashMap<>();
+    for (KafkaConsumerService kafkaConsumerService: consumerServices) {
+      Map<PubSubTopicPartition, Long> staleTopicPartitions =
+          kafkaConsumerService.getStaleTopicPartitions(thresholdTimestamp);
+      for (Map.Entry<PubSubTopicPartition, Long> entry: staleTopicPartitions.entrySet()) {
+        if (consolidatedMap.containsKey(entry.getKey())) {
+          // Keep the entry with older timestamp.
+          long subscribeTimestamp = consolidatedMap.get(entry.getKey());
+          if (entry.getValue() < subscribeTimestamp) {
+            consolidatedMap.put(entry.getKey(), entry.getValue());
+          }
+        } else {
+          consolidatedMap.put(entry.getKey(), entry.getValue());
+        }
+      }
+    }
+    return consolidatedMap;
   }
 
   @Override
