@@ -10,6 +10,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
@@ -116,7 +117,13 @@ public class PubSubAdminAdapterTest {
     properties.putAll(pubSubBrokerWrapper.getMergeableConfigs());
     VeniceProperties veniceProperties = new VeniceProperties(properties);
 
-    pubSubAdminAdapter = pubSubClientsFactory.getAdminAdapterFactory().create(veniceProperties, pubSubTopicRepository);
+    pubSubAdminAdapter = pubSubClientsFactory.getAdminAdapterFactory()
+        .create(
+            new PubSubAdminAdapterContext.Builder().setAdminClientName(clientId)
+                .setVeniceProperties(veniceProperties)
+                .setPubSubTopicRepository(pubSubTopicRepository)
+                .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+                .build());
     pubSubConsumerAdapterLazy = Lazy.of(
         () -> pubSubClientsFactory.getConsumerAdapterFactory()
             .create(

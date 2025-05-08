@@ -14,6 +14,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
@@ -131,8 +132,14 @@ public class PubSubConsumerAdapterTest {
                     .setBrokerAddress(pubSubBrokerWrapper.getAddress())
                     .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
                     .build()));
-    pubSubAdminAdapterLazy =
-        Lazy.of(() -> pubSubClientsFactory.getAdminAdapterFactory().create(veniceProperties, pubSubTopicRepository));
+    pubSubAdminAdapterLazy = Lazy.of(
+        () -> pubSubClientsFactory.getAdminAdapterFactory()
+            .create(
+                new PubSubAdminAdapterContext.Builder().setAdminClientName(clientId)
+                    .setVeniceProperties(veniceProperties)
+                    .setPubSubTopicRepository(pubSubTopicRepository)
+                    .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties))
+                    .build()));
   }
 
   protected Properties getPubSubProperties() {

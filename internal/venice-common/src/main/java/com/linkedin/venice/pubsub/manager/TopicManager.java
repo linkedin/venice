@@ -20,6 +20,7 @@ import static com.linkedin.venice.pubsub.manager.TopicManagerStats.SENSOR_TYPE.S
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -86,7 +87,13 @@ public class TopicManager implements Closeable {
     this.stats = new TopicManagerStats(context.getMetricsRepository(), pubSubClusterAddress);
     this.pubSubTopicRepository = context.getPubSubTopicRepository();
     this.pubSubAdminAdapter = context.getPubSubAdminAdapterFactory()
-        .create(context.getPubSubProperties(pubSubClusterAddress), pubSubTopicRepository);
+        .create(
+            new PubSubAdminAdapterContext.Builder().setPubSubTopicRepository(context.getPubSubTopicRepository())
+                .setPubSubPositionTypeRegistry(context.getPubSubPositionTypeRegistry())
+                .setMetricsRepository(context.getMetricsRepository())
+                .setVeniceProperties(context.getPubSubProperties(pubSubClusterAddress))
+                .setAdminClientName("TM")
+                .build());
     this.topicMetadataFetcher = new TopicMetadataFetcher(pubSubClusterAddress, context, stats, pubSubAdminAdapter);
     this.logger.info(
         "Created a topic manager for the pubsub cluster address: {} with context: {}",
