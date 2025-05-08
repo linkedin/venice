@@ -41,7 +41,7 @@ public class TestStringRecordTransformer extends DaVinciRecordTransformer<Intege
   @Override
   public void processDelete(Lazy<Integer> key, int partitionId) {
     delete(key.get());
-  };
+  }
 
   private String convertUtf8ToString(Object valueObj) {
     String valueStr;

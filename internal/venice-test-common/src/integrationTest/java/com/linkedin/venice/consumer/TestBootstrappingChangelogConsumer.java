@@ -32,7 +32,6 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRe
 import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_PASSWORD;
 import static com.linkedin.venice.utils.TestWriteUtils.DEFAULT_USER_DATA_RECORD_COUNT;
-import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.renderNameRecord;
@@ -482,7 +481,8 @@ public class TestBootstrappingChangelogConsumer {
           storeName,
           Integer.toString(port2),
           Integer.toString(port1),
-          Integer.toString(DEFAULT_USER_DATA_RECORD_COUNT + 20));
+          Integer.toString(DEFAULT_USER_DATA_RECORD_COUNT + 20),
+          Boolean.toString(useSpecificRecord));
       Thread.sleep(30000);
 
       bootstrappingVeniceChangelogConsumerList.get(0).start().get();
@@ -555,7 +555,7 @@ public class TestBootstrappingChangelogConsumer {
               .setBootstrapFileSystemPath(inputDirPath)
               .setIsExperimentalClientEnabled(true)
               .setSpecificValue(TestChangelogValue.class)
-              .setSpecificValueSchema(NAME_RECORD_V1_SCHEMA)
+              .setSpecificValueSchema(TestChangelogValue.SCHEMA$)
               .setD2Client(d2Client);
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
           new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
@@ -610,21 +610,151 @@ public class TestBootstrappingChangelogConsumer {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testSpecificRecordBlobTransferVeniceChangelogConsumerDaVinciRecordTransformerImpl() throws Exception {
+    String storeName = Utils.getUniqueString("store");
+    boolean useSpecificRecord = true;
+    String inputDirPath1 = setUpStore(storeName, useSpecificRecord);
+    String inputDirPath2 = Utils.getTempDataDirectory().getAbsolutePath();
+    Map<String, String> samzaConfig = getSamzaProducerConfig(clusterWrapper, storeName, Version.PushType.STREAM);
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    int port1 = TestUtils.getFreePort();
+    int port2 = TestUtils.getFreePort();
+    while (port1 == port2) {
+      port2 = TestUtils.getFreePort();
+    }
+
+    try (PubSubBrokerWrapper localKafka = ServiceFactory.getPubSubBroker(
+        new PubSubBrokerConfigs.Builder().setZkWrapper(clusterWrapper.getZk())
+            .setMockTime(testMockTime)
+            .setRegionName(REGION_NAME)
+            .build())) {
+      String localKafkaUrl = localKafka.getAddress();
+      Properties consumerProperties = new Properties();
+      consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+      consumerProperties.put(CLUSTER_NAME, clusterName);
+      consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
+      consumerProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
+      consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port1);
+      consumerProperties.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port2);
+      consumerProperties.put(BLOB_TRANSFER_SSL_ENABLED, true);
+      consumerProperties.put(BLOB_TRANSFER_ACL_ENABLED, true);
+
+      String keyStorePath = SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS);
+      consumerProperties.put(SSL_KEYSTORE_TYPE, "JKS");
+      consumerProperties.put(SSL_KEYSTORE_LOCATION, keyStorePath);
+      consumerProperties.put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD);
+      consumerProperties.put(SSL_TRUSTSTORE_TYPE, "JKS");
+      consumerProperties.put(SSL_TRUSTSTORE_LOCATION, keyStorePath);
+      consumerProperties.put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD);
+      consumerProperties.put(SSL_KEY_PASSWORD, LOCAL_PASSWORD);
+      consumerProperties.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
+      consumerProperties.put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
+      consumerProperties.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+
+      ChangelogClientConfig globalChangelogClientConfig =
+          new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+              .setControllerD2ServiceName(D2_SERVICE_NAME)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+              .setLocalD2ZkHosts(zkAddress)
+              .setControllerRequestRetryCount(3)
+              .setBootstrapFileSystemPath(inputDirPath1)
+              .setD2Client(d2Client)
+              .setIsExperimentalClientEnabled(true)
+              .setSpecificValue(TestChangelogValue.class)
+              .setSpecificValueSchema(TestChangelogValue.SCHEMA$);
+
+      VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+          new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+      List<BootstrappingVeniceChangelogConsumer<Utf8, TestChangelogValue>> bootstrappingVeniceChangelogConsumerList =
+          Collections.singletonList(
+              veniceChangelogConsumerClientFactory
+                  .getBootstrappingChangelogConsumer(storeName, Integer.toString(0), TestChangelogValue.class));
+
+      try (VeniceSystemProducer veniceProducer =
+          factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+        veniceProducer.start();
+        // Run Samza job to send PUT and DELETE requests.
+        runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, useSpecificRecord);
+      }
+
+      // Spin up a DVRT CDC instance and wait for it to consume everything, then perform blob transfer
+      ForkedJavaProcess.exec(
+          ChangelogConsumerDaVinciRecordTransformerUserApp.class,
+          inputDirPath2,
+          zkAddress,
+          localKafkaUrl,
+          clusterName,
+          storeName,
+          Integer.toString(port2),
+          Integer.toString(port1),
+          Integer.toString(DEFAULT_USER_DATA_RECORD_COUNT + 20),
+          Boolean.toString(useSpecificRecord));
+      Thread.sleep(30000);
+
+      bootstrappingVeniceChangelogConsumerList.get(0).start().get();
+
+      // Verify snapshots exists
+      for (int i = 0; i < PARTITION_COUNT; i++) {
+        String snapshotPath = RocksDBUtils.composeSnapshotDir(inputDirPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
+      }
+
+      Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsMap =
+          new HashMap<>();
+      List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsList =
+          new ArrayList<>();
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        pollChangeEventsFromSpecificChangeCaptureConsumer(
+            polledChangeEventsMap,
+            polledChangeEventsList,
+            bootstrappingVeniceChangelogConsumerList);
+        // 20 changes in near-line. 10 puts, 10 deletes. But one of the puts overwrites a key from batch push, and the
+        // 10 deletes are against non-existant keys. So there should only be 109 events total
+        int expectedRecordCount = DEFAULT_USER_DATA_RECORD_COUNT + 9;
+        Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
+        verifySpecificPut(polledChangeEventsMap, 100, 110, 1);
+      });
+      polledChangeEventsList.clear();
+      polledChangeEventsMap.clear();
+
+      // Since nothing is produced, so no changed events generated.
+      verifyNoSpecificRecordsProduced(
+          polledChangeEventsMap,
+          polledChangeEventsList,
+          bootstrappingVeniceChangelogConsumerList);
+
+      runSpecificNearlineJobAndVerifyConsumption(
+          120,
+          storeName,
+          1,
+          polledChangeEventsMap,
+          polledChangeEventsList,
+          bootstrappingVeniceChangelogConsumerList);
+
+      // Since nothing is produced, so no changed events generated.
+      verifyNoSpecificRecordsProduced(
+          polledChangeEventsMap,
+          polledChangeEventsList,
+          bootstrappingVeniceChangelogConsumerList);
+
+      cleanUpStoreAndVerify(storeName);
+    }
+  }
+
   private void pollChangeEventsFromChangeCaptureConsumerToList(
       List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
-      VeniceChangelogConsumer veniceChangelogConsumer) {
+      VeniceChangelogConsumer<Utf8, Utf8> veniceChangelogConsumer) {
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
         veniceChangelogConsumer.poll(1000);
-    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      polledChangeEvents.add(pubSubMessage);
-    }
+    polledChangeEvents.addAll(pubSubMessages);
   }
 
   private void pollChangeEventsFromChangeCaptureConsumer(
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> keyToMessageMap,
       List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledMessageList,
       List<BootstrappingVeniceChangelogConsumer<Utf8, Utf8>> bootstrappingVeniceChangelogConsumerList) {
-    for (BootstrappingVeniceChangelogConsumer bootstrappingVeniceChangelogConsumer: bootstrappingVeniceChangelogConsumerList) {
+    for (BootstrappingVeniceChangelogConsumer<Utf8, Utf8> bootstrappingVeniceChangelogConsumer: bootstrappingVeniceChangelogConsumerList) {
       Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
           bootstrappingVeniceChangelogConsumer.poll(1000);
       for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
@@ -639,7 +769,7 @@ public class TestBootstrappingChangelogConsumer {
       Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> keyToMessageMap,
       List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
       List<BootstrappingVeniceChangelogConsumer<Utf8, TestChangelogValue>> bootstrappingVeniceChangelogConsumerList) {
-    for (BootstrappingVeniceChangelogConsumer bootstrappingVeniceChangelogConsumer: bootstrappingVeniceChangelogConsumerList) {
+    for (BootstrappingVeniceChangelogConsumer<Utf8, TestChangelogValue> bootstrappingVeniceChangelogConsumer: bootstrappingVeniceChangelogConsumerList) {
       Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
           bootstrappingVeniceChangelogConsumer.poll(1000);
       for (PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
