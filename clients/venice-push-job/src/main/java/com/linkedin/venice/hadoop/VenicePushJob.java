@@ -2197,6 +2197,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private Properties createVeniceWriterProperties(String kafkaUrl, boolean sslToKafka) {
     Properties veniceWriterProperties = new Properties();
+    DataWriterComputeJob.populateWithPassThroughConfigs(props, veniceWriterProperties::setProperty);
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     veniceWriterProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, -1);
     if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)) { /* Writer uses default if not specified */

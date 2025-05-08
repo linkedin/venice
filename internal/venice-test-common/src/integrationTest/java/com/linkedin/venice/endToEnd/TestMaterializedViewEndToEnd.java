@@ -133,8 +133,11 @@ public class TestMaterializedViewEndToEnd {
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props =
-        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        multiRegionMultiClusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)
@@ -172,8 +175,11 @@ public class TestMaterializedViewEndToEnd {
       validateViewTopicAndVersionTopic(viewTopicName, versionTopicName, 6, 3, 100);
 
       // A re-push should succeed
-      Properties rePushProps =
-          TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+      Properties rePushProps = TestWriteUtils.defaultVPJProps(
+          parentControllers.get(0).getControllerUrl(),
+          inputDirPath,
+          storeName,
+          multiRegionMultiClusterWrapper.getPubSubClientProperties());
       rePushProps.setProperty(SOURCE_KAFKA, "true");
       rePushProps.setProperty(KAFKA_INPUT_BROKER_URL, childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
       TestWriteUtils.runPushJob("Run push job", rePushProps);
@@ -191,8 +197,11 @@ public class TestMaterializedViewEndToEnd {
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("batchStore");
-    Properties props =
-        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        multiRegionMultiClusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)
@@ -263,8 +272,11 @@ public class TestMaterializedViewEndToEnd {
       File newPushInputDir = getTempDataDirectory();
       TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(newPushInputDir, 200);
       String newPushInputDirPath = "file:" + newPushInputDir.getAbsolutePath();
-      Properties newPushProps =
-          TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), newPushInputDirPath, storeName);
+      Properties newPushProps = TestWriteUtils.defaultVPJProps(
+          parentControllers.get(0).getControllerUrl(),
+          newPushInputDirPath,
+          storeName,
+          multiRegionMultiClusterWrapper.getPubSubClientProperties());
       TestWriteUtils.runPushJob("Run another push job", newPushProps);
       TestUtils.waitForNonDeterministicAssertion(
           10,
@@ -320,8 +332,11 @@ public class TestMaterializedViewEndToEnd {
         TestWriteUtils.writeSimpleAvroFileWithCustomSize(inputDir, numberOfRecords, minValueSize, maxValueSize);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("largeValueBatchStore");
-    Properties props =
-        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        multiRegionMultiClusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)
@@ -391,8 +406,11 @@ public class TestMaterializedViewEndToEnd {
         TestWriteUtils.writeSimpleAvroFileWithCustomSize(inputDir, numberOfRecords, minValueSize, maxValueSize);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("largeValueBatchStore");
-    Properties props =
-        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        multiRegionMultiClusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(false)
@@ -463,8 +481,11 @@ public class TestMaterializedViewEndToEnd {
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV2Schema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("complexPartitionStore");
-    Properties props =
-        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        multiRegionMultiClusterWrapper.getPubSubClientProperties());
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     // Use an A/A W/C enabled store to verify correct partitioning after partial update is applied.
@@ -538,8 +559,11 @@ public class TestMaterializedViewEndToEnd {
       });
     }
     // A re-push should succeed
-    Properties rePushProps =
-        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties rePushProps = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        multiRegionMultiClusterWrapper.getPubSubClientProperties());
     rePushProps.setProperty(SOURCE_KAFKA, "true");
     rePushProps.setProperty(KAFKA_INPUT_BROKER_URL, childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
     TestWriteUtils.runPushJob("Run push job", rePushProps);

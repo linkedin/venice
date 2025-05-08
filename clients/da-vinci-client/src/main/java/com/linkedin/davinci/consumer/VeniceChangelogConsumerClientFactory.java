@@ -7,9 +7,8 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ViewConfig;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -25,8 +24,6 @@ import org.apache.commons.lang.StringUtils;
 
 
 public class VeniceChangelogConsumerClientFactory {
-  private static final PubSubConsumerAdapterFactory kafkaConsumerAdapterFactory =
-      new ApacheKafkaConsumerAdapterFactory();
   private final Map<String, VeniceChangelogConsumer> storeClientMap = new VeniceConcurrentHashMap<>();
   private final Map<String, BootstrappingVeniceChangelogConsumer> storeBootstrappingClientMap =
       new VeniceConcurrentHashMap<>();
@@ -219,8 +216,9 @@ public class VeniceChangelogConsumerClientFactory {
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    return kafkaConsumerAdapterFactory
-        .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, consumerName);
+    VeniceProperties veniceProperties = new VeniceProperties(consumerProps);
+    return PubSubClientsFactory.createConsumerFactory(veniceProperties)
+        .create(veniceProperties, false, pubSubMessageDeserializer, consumerName);
   }
 
   private String getViewClass(String storeName, String viewName, D2ControllerClient d2ControllerClient, int retries) {
