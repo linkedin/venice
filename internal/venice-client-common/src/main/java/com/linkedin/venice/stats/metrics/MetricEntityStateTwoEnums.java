@@ -40,7 +40,7 @@ public class MetricEntityStateTwoEnums<E1 extends Enum<E1> & VeniceDimensionInte
   }
 
   /** should not be called directly, call {@link #create} instead */
-  public MetricEntityStateTwoEnums(
+  private MetricEntityStateTwoEnums(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       TehutiSensorRegistrationFunction registerTehutiSensorFn,

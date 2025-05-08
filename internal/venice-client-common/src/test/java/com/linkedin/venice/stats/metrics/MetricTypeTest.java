@@ -74,14 +74,11 @@ public class MetricTypeTest {
             RequestType.MULTI_GET_STREAMING.getDimensionValue())
         .build();
     MetricEntityStateBase metricEntityStateBaseCounter =
-        new MetricEntityStateBase(metricEntityCounter, otelMetricsRepository, baseDimensionsMap, baseAttributes);
+        MetricEntityStateBase.create(metricEntityCounter, otelMetricsRepository, baseDimensionsMap, baseAttributes);
     MetricEntityStateBase metricEntityStateBaseHistogram =
-        new MetricEntityStateBase(metricEntityHistogram, otelMetricsRepository, baseDimensionsMap, baseAttributes);
-    MetricEntityStateBase metricEntityStateBaseMinMaxCountSumAggregations = new MetricEntityStateBase(
-        metricEntityMinMaxCountSumAggregations,
-        otelMetricsRepository,
-        baseDimensionsMap,
-        baseAttributes);
+        MetricEntityStateBase.create(metricEntityHistogram, otelMetricsRepository, baseDimensionsMap, baseAttributes);
+    MetricEntityStateBase metricEntityStateBaseMinMaxCountSumAggregations = MetricEntityStateBase
+        .create(metricEntityMinMaxCountSumAggregations, otelMetricsRepository, baseDimensionsMap, baseAttributes);
 
     // Record values for the metric
     int[] values = { 10, 20, 30, 40, 50 }; // total 150
