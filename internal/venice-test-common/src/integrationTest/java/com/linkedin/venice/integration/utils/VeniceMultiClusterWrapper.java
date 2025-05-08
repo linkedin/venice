@@ -27,6 +27,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   private final Map<Integer, VeniceControllerWrapper> controllers;
   private final ZkServerWrapper zkServerWrapper;
   private final PubSubBrokerWrapper pubSubBrokerWrapper;
+  private final Map<String, String> pubBrokerDetails;
   private final Map<String, String> clusterToD2;
   private final D2Client clientConfigD2Client;
   private final String regionName;
@@ -35,6 +36,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       File dataDirectory,
       ZkServerWrapper zkServerWrapper,
       PubSubBrokerWrapper pubSubBrokerWrapper,
+      Map<String, String> pubBrokerDetails,
       Map<String, VeniceClusterWrapper> clusters,
       Map<Integer, VeniceControllerWrapper> controllers,
       Map<String, String> clusterToD2,
@@ -43,6 +45,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
     this.pubSubBrokerWrapper = pubSubBrokerWrapper;
+    this.pubBrokerDetails = pubBrokerDetails;
     this.controllers = controllers;
     this.clusters = clusters;
     this.clusterToD2 = clusterToD2;
@@ -176,6 +179,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
           null,
           finalZkServerWrapper,
           finalPubSubBrokerWrapper,
+          pubBrokerDetails,
           clusterWrapperMap,
           controllerMap,
           clusterToD2,
@@ -312,5 +316,9 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
   public String getRegionName() {
     return regionName;
+  }
+
+  public Map<String, String> getPubSubClientProperties() {
+    return pubBrokerDetails;
   }
 }

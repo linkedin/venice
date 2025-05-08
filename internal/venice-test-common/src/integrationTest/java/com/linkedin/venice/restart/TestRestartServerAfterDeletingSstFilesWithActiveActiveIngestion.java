@@ -20,7 +20,6 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.rocksdb.ReplicationMetadataRocksDBStoragePartition;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngine;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -115,7 +114,6 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
     String stringSchemaStr = "\"string\"";
     serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
     Properties serverProperties = new Properties();
-    serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     serverProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
     serverProperties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);

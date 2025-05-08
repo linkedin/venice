@@ -3,7 +3,6 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -42,7 +41,6 @@ public class TestStoreGraveyardCleanupService {
   @BeforeClass
   public void setUp() {
     Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
 
     Properties parentControllerProperties = new Properties();
     parentControllerProperties.put(CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED, "true");

@@ -1,6 +1,5 @@
 package com.linkedin.venice.endToEnd;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
@@ -58,7 +57,6 @@ public class TestMultiDataCenterAdminOperations {
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties serverProperties = new Properties();
-    serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
             .numberOfClusters(NUMBER_OF_CLUSTERS)

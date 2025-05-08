@@ -16,7 +16,7 @@ import com.linkedin.venice.hadoop.PushJobZstdConfig;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
@@ -205,16 +205,19 @@ public class KafkaInputDictTrainer {
     int currentPartition = 0;
     long totalSampledRecordCnt = 0;
 
+    VeniceProperties veniceProperties = KafkaInputUtils.getConsumerProperties(jobConf);
+
     // Reuse the same Kafka Consumer across all partitions avoid log flooding
     PubSubConsumerAdapter reusedConsumer = reusedConsumerOptional.orElseGet(
-        () -> new ApacheKafkaConsumerAdapterFactory().create(
-            KafkaInputUtils.getConsumerProperties(jobConf),
-            false,
-            new PubSubMessageDeserializer(
-                KafkaInputUtils.getKafkaValueSerializer(jobConf),
-                new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-                new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
-            null));
+        () -> PubSubClientsFactory.createConsumerFactory(veniceProperties)
+            .create(
+                veniceProperties,
+                false,
+                new PubSubMessageDeserializer(
+                    KafkaInputUtils.getKafkaValueSerializer(jobConf),
+                    new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+                    new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
+                null));
     try {
       for (InputSplit split: splits) {
         long currentFilledSize = 0;

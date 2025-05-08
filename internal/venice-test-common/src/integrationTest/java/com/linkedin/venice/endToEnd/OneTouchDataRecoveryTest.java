@@ -1,6 +1,5 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -57,7 +56,6 @@ public class OneTouchDataRecoveryTest {
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)

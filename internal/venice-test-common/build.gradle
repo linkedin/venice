@@ -109,6 +109,7 @@ dependencies {
   implementation libraries.spark
   implementation libraries.testng
   implementation libraries.zstd
+  implementation libraries.openTelemetryTestSdk
 
   implementation (libraries.mapreduceClientJobClient) {
     exclude group: 'org.apache.avro'

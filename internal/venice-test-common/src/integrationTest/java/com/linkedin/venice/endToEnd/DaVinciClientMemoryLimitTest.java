@@ -17,7 +17,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
@@ -93,7 +92,6 @@ public class DaVinciClientMemoryLimitTest {
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
-    clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 10L);
     // To allow more times for DaVinci clients to report status
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS, 15);
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)

@@ -36,7 +36,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.kafka.common.config.SslConfigs;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
 
@@ -45,9 +45,11 @@ public class EndToEndKafkaWithSASLTest {
   private PubSubBrokerWrapper pubSubBrokerWrapper;
   private VeniceClusterWrapper veniceCluster;
 
-  @AfterClass(alwaysRun = true)
+  @AfterMethod(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(veniceCluster);
+    Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper);
+    Utils.closeQuietlyWithErrorLogged(zkServer);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
