@@ -11,6 +11,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -98,7 +99,7 @@ public class PubSubPositionTypeRegistry {
 
   private final Object2IntMap<String> factoryClassNameToTypeIdMap;
   private final Int2ObjectMap<String> typeIdToFactoryClassNameMap;
-  private final Int2ObjectMap<PubSubPositionFactory> typeIdToFactoryMap;
+  private final Map<Integer, PubSubPositionFactory> typeIdToFactoryMap = new VeniceConcurrentHashMap<>();
 
   /**
    * Constructs a {@link PubSubPositionTypeRegistry} by merging the provided type ID to class name map
@@ -120,7 +121,6 @@ public class PubSubPositionTypeRegistry {
     Int2ObjectMap<String> mergedMap = mergeAndValidateTypes(userProvidedMap);
     this.typeIdToFactoryClassNameMap = Int2ObjectMaps.unmodifiable(mergedMap);
     this.factoryClassNameToTypeIdMap = Object2IntMaps.unmodifiable(buildClassNameToTypeIdMap(mergedMap));
-    this.typeIdToFactoryMap = Int2ObjectMaps.unmodifiable(instantiateFactories(mergedMap));
     LOGGER.info(
         "PubSub position type registry initialized with {} entries: {}",
         factoryClassNameToTypeIdMap.size(),
@@ -175,14 +175,24 @@ public class PubSubPositionTypeRegistry {
    * @return the fully qualified class name, or throws an exception if the type ID is not found
    */
   public PubSubPositionFactory getFactoryByTypeId(int typeId) {
-    if (!typeIdToFactoryClassNameMap.containsKey(typeId)) {
+    String className = typeIdToFactoryClassNameMap.get(typeId);
+    if (className == null) {
       LOGGER.error(
           "PubSub position type ID not found: {}. Valid type IDs: {}",
           typeId,
           typeIdToFactoryClassNameMap.keySet());
       throw new VeniceException("PubSub position type ID not found: " + typeId);
     }
-    return typeIdToFactoryMap.get(typeId);
+
+    return typeIdToFactoryMap.computeIfAbsent(typeId, id -> {
+      try {
+        return ReflectUtils
+            .callConstructor(ReflectUtils.loadClass(className), new Class<?>[] { int.class }, new Object[] { id });
+      } catch (Exception e) {
+        LOGGER.error("Failed to lazily create factory for class name: {} (type ID: {}).", className, id, e);
+        throw new VeniceException("Failed to lazily create factory for " + className + " (ID " + id + ")", e);
+      }
+    });
   }
 
   /**
@@ -261,27 +271,5 @@ public class PubSubPositionTypeRegistry {
       classNameToTypeId.put(className, typeId);
     }
     return classNameToTypeId;
-  }
-
-  private static Int2ObjectMap<PubSubPositionFactory> instantiateFactories(Int2ObjectMap<String> typeIdToClassMap) {
-    Int2ObjectMap<PubSubPositionFactory> factories = new Int2ObjectOpenHashMap<>(typeIdToClassMap.size());
-    for (Map.Entry<Integer, String> entry: typeIdToClassMap.int2ObjectEntrySet()) {
-      int typeId = entry.getKey();
-      String className = entry.getValue();
-      try {
-        PubSubPositionFactory factory = ReflectUtils
-            .callConstructor(ReflectUtils.loadClass(className), new Class<?>[] { int.class }, new Object[] { typeId });
-        factories.put(typeId, factory);
-      } catch (Exception e) {
-        LOGGER.error(
-            "Failed to create factory for class name: {} (type ID: {}). Mapping: {} cannot be used.",
-            className,
-            typeId,
-            typeIdToClassMap,
-            e);
-        throw new VeniceException("Failed to create factory for " + className + " (ID " + typeId + ")", e);
-      }
-    }
-    return factories;
   }
 }

@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.vpj.VenicePushJobConstants;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -55,6 +56,8 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
   private final AtomicReference<byte[]> processedKey = new AtomicReference<>();
   private final AtomicReference<byte[]> processedValue = new AtomicReference<>();
   private boolean firstRecord = true;
+  private boolean enableUncompressedMaxRecordSizeLimit = false;
+  private int maxRecordSizeBytes = VeniceWriter.UNLIMITED_MAX_RECORD_SIZE;
 
   protected final void processRecord(
       INPUT_KEY inputKey,
@@ -117,6 +120,15 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     // both key and value are not null: Record uncompressed Key and value lengths
     dataWriterTaskTracker.trackKeySize(recordKey.length);
     dataWriterTaskTracker.trackUncompressedValueSize(recordValue.length);
+
+    // check record size before compression
+    if (this.maxRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE
+        && recordKey.length + recordValue.length > this.maxRecordSizeBytes) {
+      dataWriterTaskTracker.trackUncompressedRecordTooLargeFailure();
+      if (this.enableUncompressedMaxRecordSizeLimit) {
+        return false;
+      }
+    }
 
     // Compress and save the details based on the configured compression strategy: This should not fail
     byte[] finalRecordValue;
@@ -189,6 +201,11 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     // init compressor array
     this.compressors = new VeniceCompressor[CompressionStrategy.getCompressionStrategyTypesArrayLength()];
     setupCompression(props);
+
+    // max record size bytes
+    this.enableUncompressedMaxRecordSizeLimit =
+        props.getBoolean(VeniceWriter.ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT, false);
+    props.getOptionalInt(VeniceWriter.MAX_RECORD_SIZE_BYTES).ifPresent(i -> this.maxRecordSizeBytes = i);
   }
 
   /**

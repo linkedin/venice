@@ -12,6 +12,8 @@ import io.netty.util.AsciiString;
  * An implementation of {@link BasicHttpResponse} which always uses a {@link Http1Headers} for
  * holding the headers. This is to aid encapsulating a Http2 request object as a Http1 object
  * which may be efficiently unwrapped before being sent.
+ *
+ * Only used in tests.
  */
 public class Http1Response extends BasicHttpResponse {
   static final AsciiString X_HTTP_STATUS_REASON = AsciiString.cached("x-http-status-reason");

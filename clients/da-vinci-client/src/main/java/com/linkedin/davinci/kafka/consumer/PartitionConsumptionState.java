@@ -26,6 +26,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -235,6 +236,8 @@ public class PartitionConsumptionState {
   // veniceWriterLazyRef could be set and get in different threads, mark it volatile.
   private volatile Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef;
 
+  private BooleanSupplier isCurrentVersion;
+
   public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.replicaId = replicaId;
     this.partition = partition;
@@ -294,6 +297,10 @@ public class PartitionConsumptionState {
     this.lastVTProduceCallFuture = lastVTProduceCallFuture;
   }
 
+  public void setCurrentVersionSupplier(BooleanSupplier isCurrentVersion) {
+    this.isCurrentVersion = isCurrentVersion;
+  }
+
   public OffsetRecord getOffsetRecord() {
     return this.offsetRecord;
   }
@@ -323,6 +330,10 @@ public class PartitionConsumptionState {
       this.lagCaughtUp = true;
       this.lagCaughtUpTimeInMs = System.currentTimeMillis();
     }
+  }
+
+  public boolean isCurrentVersion() {
+    return isCurrentVersion.getAsBoolean();
   }
 
   public boolean hasLagCaughtUp() {

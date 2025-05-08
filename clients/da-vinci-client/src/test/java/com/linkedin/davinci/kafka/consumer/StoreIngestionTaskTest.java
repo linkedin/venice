@@ -110,7 +110,7 @@ import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
-import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -5662,7 +5662,7 @@ public abstract class StoreIngestionTaskTest {
     GlobalRtDivState globalRtDivState = mock(GlobalRtDivState.class);
     doReturn(globalRtDivState).when(valueRecord).get(any());
     doReturn(valueRecord).when(ingestionTask).readStoredValueRecord(any(), any(), anyInt(), any(), any());
-    KafkaDataIntegrityValidator consumerDiv = mock(KafkaDataIntegrityValidator.class);
+    DataIntegrityValidator consumerDiv = mock(DataIntegrityValidator.class);
     doReturn(consumerDiv).when(ingestionTask).getConsumerDiv();
     Int2ObjectMap<String> brokerIdToUrlMap = new Int2ObjectOpenHashMap<>();
     brokerIdToUrlMap.put(0, "localhost:1234");
@@ -5857,6 +5857,7 @@ public abstract class StoreIngestionTaskTest {
       PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
       final int P = PARTITION_BAR;
       when(pcs.getPartition()).thenReturn(P);
+      when(pcs.isHybrid()).thenReturn(true);
 
       // Case 1: Latch was not created or released, so reportIfCatchUpVersionTopicOffset() shouldn't do anything
       when(pcs.isEndOfPushReceived()).thenReturn(true);

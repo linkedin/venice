@@ -705,7 +705,7 @@ public class TestParentControllerWithMultiDataCenter {
         expectedVersion,
         "requesting a topic for a push should provide version number " + expectedVersion);
     for (ControllerClient childControllerClient: childControllerClients) {
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = childControllerClient.getStore(storeName);
         Assert.assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();

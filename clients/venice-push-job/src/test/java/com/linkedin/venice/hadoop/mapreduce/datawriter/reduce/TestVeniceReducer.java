@@ -313,6 +313,12 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
 
     when(
         mockReporter.getCounter(
+            MRJobCounterHelper.UNCOMPRESSED_RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME.getGroupName(),
+            MRJobCounterHelper.UNCOMPRESSED_RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME.getCounterName()))
+                .thenReturn(zeroCounters);
+
+    when(
+        mockReporter.getCounter(
             MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME.getGroupName(),
             MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME.getCounterName()))
                 .thenReturn(nonZeroCounters);
