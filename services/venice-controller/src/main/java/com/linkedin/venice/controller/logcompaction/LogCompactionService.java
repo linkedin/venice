@@ -42,8 +42,7 @@ public class LogCompactionService extends AbstractVeniceService {
   private final Admin admin;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   final ScheduledExecutorService executor;
-  private final MetricsRepository metricsRepository;
-  private Map<String, LogCompactionStats> statsPerClusterMap;
+  private final Map<String, LogCompactionStats> statsMap;
 
   public LogCompactionService(
       Admin admin,
@@ -51,8 +50,12 @@ public class LogCompactionService extends AbstractVeniceService {
       MetricsRepository metricsRepository) {
     this.admin = admin;
     this.multiClusterConfigs = multiClusterConfigs;
-    this.metricsRepository = metricsRepository;
-    this.statsPerClusterMap = new HashMap<>();
+    this.statsMap = new HashMap<>();
+    for (String clusterName: multiClusterConfigs.getClusters()) {
+      if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()) {
+        statsMap.put(clusterName, new LogCompactionStats(metricsRepository, clusterName));
+      }
+    }
 
     executor = Executors.newScheduledThreadPool(multiClusterConfigs.getLogCompactionThreadCount());
   }
