@@ -433,15 +433,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
-  /**
-   * Create snapshot for the given partition
-   * @param storagePartitionConfig
-   */
-  public synchronized void createSnapshot(StoragePartitionConfig storagePartitionConfig) {
-    AbstractStoragePartition partition = getPartitionOrThrow(storagePartitionConfig.getPartitionId());
-    partition.createSnapshot();
-  }
-
   private void executeWithSafeGuard(int partitionId, Runnable runnable) {
     executeWithSafeGuard(partitionId, () -> {
       runnable.run();

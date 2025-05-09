@@ -2,6 +2,7 @@ package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
 
+import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -157,6 +158,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final List<ColumnFamilyHandle> columnFamilyHandleList = new ArrayList<>();
   protected final List<ColumnFamilyDescriptor> columnFamilyDescriptors = new ArrayList<>();
   private RocksDBSstFileWriter rocksDBSstFileWriter = null;
+
+  private BlobTransferUtils.BlobTransferSnapshotCreationListener blobTransferSnapshotCreationListener;
 
   protected RocksDBStoragePartition(
       StoragePartitionConfig storagePartitionConfig,
@@ -508,9 +511,20 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public synchronized void createSnapshot() {
-    if (blobTransferEnabled) {
-      createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
+  public void addPartitionSnapshotListener(BlobTransferUtils.BlobTransferSnapshotCreationListener listener) {
+    this.blobTransferSnapshotCreationListener = listener;
+  }
+
+  @Override
+  public synchronized void notifySnapshotCreationListener() {
+    if (blobTransferEnabled && blobTransferSnapshotCreationListener != null) {
+      try {
+        // 1. Notify the listener about the snapshot creation event, to flush the data to disk, sync offset and create
+        // snapshot.
+        blobTransferSnapshotCreationListener.syncOffsetAndCreateSnapshot(storeNameAndVersion, partitionId);
+      } catch (Exception e) {
+        throw new VeniceException("Failed to create snapshot for replica: " + replicaId, e);
+      }
     }
   }
 
@@ -1026,10 +1040,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   /**
-   * util method to create a snapshot
+   * A method to create a snapshot
    * It will check the snapshot directory and delete it if it exists, then generate a new snapshot
    */
-  public static void createSnapshot(RocksDB rocksDB, String fullPathForPartitionDBSnapshot) {
+  @Override
+  public void createSnapshot(String fullPathForPartitionDBSnapshot) {
     LOGGER.info("Creating snapshot in directory: {}", fullPathForPartitionDBSnapshot);
 
     // clean up the snapshot directory if it exists

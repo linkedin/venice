@@ -174,7 +174,7 @@ public class BlobSnapshotManager {
       // 1. get the snapshot metadata before recreating the snapshot
       BlobTransferPartitionMetadata metadataBeforeRecreateSnapshot = prepareMetadata(blobTransferRequest);
       // 2. recreate the snapshot
-      createSnapshot(topicName, partitionId);
+      requestCreateSnapshotForPartition(topicName, partitionId);
 
       // update the snapshot timestamp to reflect the latest snapshot creation time
       snapshotTimestamps.get(topicName).put(partitionId, System.currentTimeMillis());
@@ -295,11 +295,11 @@ public class BlobSnapshotManager {
   /**
    * Create a snapshot for a particular partition
    */
-  public void createSnapshot(String kafkaVersionTopic, int partitionId) {
+  public void requestCreateSnapshotForPartition(String kafkaVersionTopic, int partitionId) {
     AbstractStorageEngine storageEngine =
         Objects.requireNonNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
     AbstractStoragePartition partition = storageEngine.getPartitionOrThrow(partitionId);
-    partition.createSnapshot();
+    partition.notifySnapshotCreationListener();
   }
 
   /**
