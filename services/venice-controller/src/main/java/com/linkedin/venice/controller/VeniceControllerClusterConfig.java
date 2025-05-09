@@ -162,7 +162,6 @@ import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PARTITION_COUNT_ROUND_UP_SIZE;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_CONSUMER_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_TOPIC_MANAGER_METADATA_FETCHER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_FAILURE_CHECKPOINTS_TO_DEFINE_USER_ERROR;
@@ -215,8 +214,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
-import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.HelixUtils;
@@ -464,7 +462,7 @@ public class VeniceControllerClusterConfig {
   private final int helixSendMessageTimeoutMilliseconds;
   private final int adminTopicReplicationFactor;
 
-  private final String kafkaSecurityProtocol;
+  private final String pubSubSecurityProtocol;
   // SSL related config
   private final Optional<SSLConfig> sslConfig;
   private final String sslFactoryClassName;
@@ -675,12 +673,7 @@ public class VeniceControllerClusterConfig {
     // In case ssl to kafka is enabled, ssl kafka broker list is a mandatory field
     this.sslKafkaBootStrapServers = sslToKafka ? props.getString(SSL_KAFKA_BOOTSTRAP_SERVERS) : null;
     this.helixSendMessageTimeoutMilliseconds = props.getInt(HELIX_SEND_MESSAGE_TIMEOUT_MS, 10000);
-
-    this.kafkaSecurityProtocol =
-        props.getString(PUBSUB_SECURITY_PROTOCOL_LEGACY, PubSubSecurityProtocol.PLAINTEXT.name());
-    if (!ApacheKafkaUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
-      throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);
-    }
+    this.pubSubSecurityProtocol = PubSubUtil.getPubSubSecurityProtocolOrDefault(props).name();
     if (doesControllerNeedsSslConfig()) {
       this.sslConfig = Optional.of(new SSLConfig(props));
     } else {
@@ -1166,7 +1159,7 @@ public class VeniceControllerClusterConfig {
 
   private boolean doesControllerNeedsSslConfig() {
     final boolean controllerSslEnabled = props.getBoolean(CONTROLLER_SSL_ENABLED, DEFAULT_CONTROLLER_SSL_ENABLED);
-    final boolean kafkaNeedsSsl = ApacheKafkaUtils.isKafkaSSLProtocol(kafkaSecurityProtocol);
+    final boolean kafkaNeedsSsl = PubSubUtil.isPubSubSslProtocol(pubSubSecurityProtocol);
 
     return controllerSslEnabled || kafkaNeedsSsl;
   }
@@ -1278,8 +1271,8 @@ public class VeniceControllerClusterConfig {
     return helixSendMessageTimeoutMilliseconds;
   }
 
-  public String getKafkaSecurityProtocol() {
-    return kafkaSecurityProtocol;
+  public String getPubSubSecurityProtocol() {
+    return pubSubSecurityProtocol;
   }
 
   public Optional<SSLConfig> getSslConfig() {

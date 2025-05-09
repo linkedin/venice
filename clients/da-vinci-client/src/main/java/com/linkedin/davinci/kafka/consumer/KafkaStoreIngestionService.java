@@ -57,7 +57,7 @@ import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -1250,7 +1250,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
     properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
     PubSubSecurityProtocol securityProtocol = serverConfigForPubSubCluster.getKafkaSecurityProtocol(kafkaBootstrapUrls);
-    if (ApacheKafkaUtils.isKafkaSSLProtocol(securityProtocol)) {
+    if (PubSubUtil.isPubSubSslProtocol(securityProtocol)) {
       Optional<SSLConfig> sslConfig = serverConfigForPubSubCluster.getSslConfig();
       if (!sslConfig.isPresent()) {
         throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");

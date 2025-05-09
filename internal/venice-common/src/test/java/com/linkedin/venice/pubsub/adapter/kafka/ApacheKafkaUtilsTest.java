@@ -112,4 +112,12 @@ public class ApacheKafkaUtilsTest {
     assertEquals(filteredConfig.get("sasl.mechanism"), SASL_MECHANISM);
     assertEquals(filteredConfig.get("security.protocol"), "SASL_SSL");
   }
+
+  @Test
+  public void testIsKafkaProtocolValid() {
+    assertTrue(ApacheKafkaUtils.isKafkaProtocolValid("SSL"));
+    assertTrue(ApacheKafkaUtils.isKafkaProtocolValid("PLAINTEXT"));
+    assertTrue(ApacheKafkaUtils.isKafkaProtocolValid("SASL_SSL"));
+    assertTrue(ApacheKafkaUtils.isKafkaProtocolValid("SASL_PLAINTEXT"));
+  }
 }

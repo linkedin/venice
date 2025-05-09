@@ -4,6 +4,7 @@ import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProdu
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
@@ -130,7 +131,7 @@ public class ApacheKafkaUtils {
     if (!isKafkaProtocolValid(kafkaProtocol)) {
       throw new VeniceException("Invalid Kafka protocol specified: " + kafkaProtocol);
     }
-    if (!isKafkaSSLProtocol(kafkaProtocol)) {
+    if (!PubSubUtil.isPubSubSslProtocol(kafkaProtocol)) {
       // TLS/SSL is not enabled
       return false;
     }
@@ -146,15 +147,6 @@ public class ApacheKafkaUtils {
       properties.setProperty(config, value);
     });
     return true;
-  }
-
-  public static boolean isKafkaSSLProtocol(PubSubSecurityProtocol kafkaProtocol) {
-    return kafkaProtocol == PubSubSecurityProtocol.SSL || kafkaProtocol == PubSubSecurityProtocol.SASL_SSL;
-  }
-
-  public static boolean isKafkaSSLProtocol(String kafkaProtocol) {
-    return kafkaProtocol.equals(PubSubSecurityProtocol.SSL.name())
-        || kafkaProtocol.equals(PubSubSecurityProtocol.SASL_SSL.name());
   }
 
   public static boolean isKafkaProtocolValid(String kafkaProtocol) {

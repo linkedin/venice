@@ -131,4 +131,33 @@ public final class PubSubUtil {
     }
     return PubSubSecurityProtocol.forName(securityProtocol);
   }
+
+  /**
+   * Checks if the provided {@link PubSubSecurityProtocol} requires SSL.
+   *
+   * @param pubSubSecurityProtocol the security protocol to check
+   * @return {@code true} if the protocol uses SSL (either SSL or SASL_SSL), {@code false} otherwise
+   */
+  public static boolean isPubSubSslProtocol(PubSubSecurityProtocol pubSubSecurityProtocol) {
+    return pubSubSecurityProtocol == PubSubSecurityProtocol.SSL
+        || pubSubSecurityProtocol == PubSubSecurityProtocol.SASL_SSL;
+  }
+
+  /**
+   * Checks if the given security protocol name corresponds to a protocol that requires SSL.
+   *
+   * @param pubSubSecurityProtocol the name of the security protocol (case-insensitive)
+   * @return {@code true} if the protocol uses SSL, {@code false} otherwise
+   * @throws IllegalArgumentException if the name does not correspond to a valid {@link PubSubSecurityProtocol}
+   */
+  public static boolean isPubSubSslProtocol(String pubSubSecurityProtocol) {
+    if (pubSubSecurityProtocol == null) {
+      return false;
+    }
+    try {
+      return isPubSubSslProtocol(PubSubSecurityProtocol.forName(pubSubSecurityProtocol));
+    } catch (IllegalArgumentException e) {
+      return false; // or rethrow if desired
+    }
+  }
 }

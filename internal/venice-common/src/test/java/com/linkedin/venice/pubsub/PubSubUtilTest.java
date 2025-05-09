@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
@@ -129,5 +130,18 @@ public class PubSubUtilTest {
     props.clear();
     veniceProps = new VeniceProperties(props);
     assertEquals(PubSubUtil.getPubSubSecurityProtocolOrDefault(veniceProps), PubSubSecurityProtocol.PLAINTEXT);
+  }
+
+  @Test
+  public void testIsPubSubSslProtocol() {
+    assertTrue(PubSubUtil.isPubSubSslProtocol("SSL"));
+    assertFalse(PubSubUtil.isPubSubSslProtocol("PLAINTEXT"));
+    assertTrue(PubSubUtil.isPubSubSslProtocol("SASL_SSL"));
+    assertFalse(PubSubUtil.isPubSubSslProtocol("SASL_PLAINTEXT"));
+
+    assertTrue(PubSubUtil.isPubSubSslProtocol(PubSubSecurityProtocol.SSL));
+    assertFalse(PubSubUtil.isPubSubSslProtocol(PubSubSecurityProtocol.PLAINTEXT));
+    assertTrue(PubSubUtil.isPubSubSslProtocol(PubSubSecurityProtocol.SASL_SSL));
+    assertFalse(PubSubUtil.isPubSubSslProtocol(PubSubSecurityProtocol.SASL_PLAINTEXT));
   }
 }
