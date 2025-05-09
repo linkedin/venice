@@ -344,7 +344,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
   }
 
   @Override
-  protected void runComputeJob() {
+  public void runComputeJob() {
     LOGGER.info("Triggering MR job for data writer");
     try {
       runningJob = JobUtils.runJobWithConfig(jobConf, jobClientWrapper);
@@ -362,6 +362,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
   public void kill() {
     if (runningJob == null) {
       LOGGER.warn("No op to kill a null running job");
+      super.kill();
       return;
     }
     try {

@@ -334,7 +334,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   }
 
   @Override
-  protected void runComputeJob() {
+  public void runComputeJob() {
     // Load data from input path
     Dataset<Row> dataFrame = getInputDataFrame();
     validateDataFrame(dataFrame);
