@@ -299,6 +299,14 @@ public class VeniceProperties implements Serializable {
     }
   }
 
+  public String getOrDefault(String key, String defaultValue) {
+    if (containsKey(key)) {
+      return get(key);
+    } else {
+      return defaultValue;
+    }
+  }
+
   public String getStringWithAlternative(String preferredKey, String altKey) {
     if (containsKey(preferredKey)) {
       return get(preferredKey);

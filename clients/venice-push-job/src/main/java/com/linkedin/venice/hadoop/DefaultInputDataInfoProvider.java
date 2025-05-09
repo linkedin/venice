@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_KEY_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
@@ -350,7 +349,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   private VeniceAvroRecordReader getVeniceAvroRecordReader(FileSystem fs, Path path) {
     String keyField = props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
     String valueField = props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
-    String timestampField = props.getString(TIMESTAMP_FIELD_PROP, DEFAULT_TIMESTAMP_FIELD_PROP);
+    String timestampField = props.getOrDefault(TIMESTAMP_FIELD_PROP, "");
     return new VeniceAvroRecordReader(
         HdfsAvroUtils.getFileSchema(fs, path),
         keyField,

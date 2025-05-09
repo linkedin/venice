@@ -51,10 +51,14 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
     Schema keySchema = keyField.schema();
 
     // The timestamp field is optional
-    try {
-      Schema.Field timestampField = getField(dataSchema, timestampFieldStr);
-      timestampFieldPos = timestampField.pos();
-    } catch (VeniceSchemaFieldNotFoundException e) {
+    if (!timestampFieldStr.isEmpty()) {
+      try {
+        Schema.Field timestampField = getField(dataSchema, timestampFieldStr);
+        timestampFieldPos = timestampField.pos();
+      } catch (VeniceSchemaFieldNotFoundException e) {
+        timestampFieldPos = -1;
+      }
+    } else {
       timestampFieldPos = -1;
     }
 

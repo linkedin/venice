@@ -69,7 +69,7 @@ public class DataWriterSparkJob extends AbstractDataWriterSparkJob {
     if (pushJobSetting.replicationMetadataSchemaString != null) {
       setInputConf(sparkSession, dataFrameReader, RMD_SCHEMA_PROP, pushJobSetting.replicationMetadataSchemaString);
     }
-    if (pushJobSetting.timestampField != null) {
+    if (pushJobSetting.timestampField != null && !pushJobSetting.timestampField.isEmpty()) {
       setInputConf(sparkSession, dataFrameReader, TIMESTAMP_FIELD_PROP, pushJobSetting.timestampField);
     }
     if (pushJobSetting.etlValueSchemaTransformation != null) {
