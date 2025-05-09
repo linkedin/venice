@@ -73,6 +73,7 @@ import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceValidationException;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.MaterializedViewParameters;
@@ -99,8 +100,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
+import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -298,6 +302,66 @@ public class VenicePushJobTest {
         fail("Test should fail because pollStatusUntilComplete() never saw COMPLETE status, but doesn't.");
       } catch (VeniceException e) {
         Assert.assertTrue(e.getMessage().contains("push job is still in unknown state."));
+      }
+      verify(pushJob, atLeast(1)).cancel();
+      verify(pushJob, atLeast(1)).killDataWriterJob();
+    }
+  }
+
+  /**
+   * Ensures that the data writer job is killed if the job times out. Uses an Answer to stall the data writer job
+   * while it's running in order for it to get killed properly.
+   */
+  @Test
+  public void testDataWriterComputeJobTimeout() throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "key");
+    props.put(VALUE_FIELD_PROP, "value");
+    ControllerClient client = getClient();
+    JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
+    doReturn("SUCCESS").when(response).getStatus();
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
+    doReturn(response).when(client).killOfflinePushJob(anyString());
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      StoreInfo storeInfo = new StoreInfo();
+      storeInfo.setBootstrapToOnlineTimeoutInHours(0);
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      pushJobSetting.storeResponse = new StoreResponse();
+      pushJobSetting.storeResponse.setStore(storeInfo);
+      CountDownLatch runningJobLatch = new CountDownLatch(1);
+      CountDownLatch killedJobLatch = new CountDownLatch(1);
+      doNothing().when(pushJob).validateKeySchema(any());
+      doNothing().when(pushJob).validateValueSchema(any(), any(), anyBoolean());
+
+      /*
+       * 1. Data writer job starts and status is set to RUNNING.
+       * 2. Timeout thread kills the data writer job and status is set to KILLED.
+       * The latch is used to stall the validateJob() method until the data writer job is killed.
+       */
+      Answer<Void> stallDataWriterJob = invocation -> {
+        // At this point, the data writer job status is already set to RUNNING.
+        runningJobLatch.countDown(); // frees the VenicePushJob.killJob() method
+        killedJobLatch.await(5, TimeUnit.SECONDS); // waits for this data writer job to be killed
+        return null;
+      };
+
+      Answer<Void> killDataWriterJob = invocation -> {
+        runningJobLatch.await(5, TimeUnit.SECONDS); // waits for the data writer job status to be set to RUNNING
+        pushJob.killDataWriterJob();
+        killedJobLatch.countDown(); // frees the DataWriterComputeJob.validateJob() method
+        return null;
+      };
+
+      try {
+        doCallRealMethod().when(pushJob).runJobAndUpdateStatus();
+        DataWriterComputeJob dataWriterJob = spy(pushJob.getDataWriterComputeJob());
+        pushJob.setDataWriterComputeJob(dataWriterJob);
+        doAnswer(stallDataWriterJob).when(dataWriterJob).validateJob();
+        doAnswer(killDataWriterJob).when(pushJob).killJob(any(), any());
+        pushJob.run(); // data writer job will run in this main test thread
+      } catch (VeniceException e) {
+        assertTrue(e.getMessage().contains("No data found at source path"), e.getMessage());
       }
       verify(pushJob, atLeast(1)).cancel();
       verify(pushJob, atLeast(1)).killDataWriterJob();
