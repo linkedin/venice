@@ -532,8 +532,8 @@ public class KafkaConsumerServiceDelegatorTest {
 
     int versionNum = 5;
     PubSubMessageDeserializer pubSubDeserializer = PubSubMessageDeserializer.createOptimizedDeserializer();
-    VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
-    doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(veniceServerConfig)
+    VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(mockVeniceServerConfig)
         .getPubSubPositionTypeRegistry();
     KafkaConsumerService consumerService = new PartitionWiseKafkaConsumerService(
         ConsumerPoolType.REGULAR_POOL,
@@ -554,7 +554,7 @@ public class KafkaConsumerServiceDelegatorTest {
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        veniceServerConfig);
+        mockVeniceServerConfig);
     String storeName = Utils.getUniqueString("test_consumer_service");
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;

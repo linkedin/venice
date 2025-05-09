@@ -82,7 +82,7 @@ public class ApacheKafkaUtils {
    * </p>
    *
    * @param veniceProperties The source {@link VeniceProperties} containing client configuration.
-   * @param securityProtocol The Kafka security protocol to be used (e.g., {@code PLAINTEXT},
+   * @param securityProtocol The Kafka security protocol to be used (e.g., {@code PLAINTEXT}
    * @param validKafkaClientSpecificConfigKeys The set of config keys valid for the specific Kafka client type.
    * @return A {@link Properties} object containing only valid and required Kafka client configurations.
    * @throws VeniceException if required SSL configs are missing or an invalid protocol is specified.
