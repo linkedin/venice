@@ -5767,6 +5767,12 @@ public class VeniceParentHelixAdmin implements Admin {
               String d2ZkHost = controllerConfig.getChildControllerD2ZkHost(fabric);
               String d2ServiceName = controllerConfig.getD2ServiceName();
               if (StringUtils.isNotBlank(d2ZkHost) && StringUtils.isNotBlank(d2ServiceName)) {
+                if (veniceHelixAdmin.getD2Clients() != null) {
+                  return new D2ControllerClient(
+                      d2ServiceName,
+                      clusterName,
+                      veniceHelixAdmin.getD2Clients().get(fabric));
+                }
                 return new D2ControllerClient(d2ServiceName, clusterName, d2ZkHost, sslFactory);
               }
               String url = controllerConfig.getChildControllerUrl(fabric);
