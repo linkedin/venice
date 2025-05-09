@@ -23,6 +23,7 @@ import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -30,6 +31,14 @@ public class ApacheKafkaConsumerConfigTest {
   private static final String KAFKA_BROKER_ADDR = "kafka.broker.com:8181";
   private static final String SASL_JAAS_CONFIG =
       "org.apache.kafka.common.security.plain.PlainLoginModule required " + "username=\"foo\" password=\"bar\"\n";
+
+  private PubSubConsumerAdapterContext.Builder consumerContextBuilder;
+
+  @BeforeMethod(alwaysRun = true)
+  public void setUp() {
+    consumerContextBuilder = new PubSubConsumerAdapterContext.Builder().setConsumerName("test")
+        .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
+  }
 
   private static final String SASL_MECHANISM = "PLAIN";
 
@@ -52,10 +61,8 @@ public class ApacheKafkaConsumerConfigTest {
     props.put("ssl.keymanager.algorithm", "SunX509");
     props.put("ssl.trustmanager.algorithm", "SunX509");
     props.put("ssl.secure.random.implementation", "SHA1PRNG");
-    ApacheKafkaConsumerConfig consumerConfig = new ApacheKafkaConsumerConfig(
-        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(props))
-            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
-            .build());
+    ApacheKafkaConsumerConfig consumerConfig =
+        new ApacheKafkaConsumerConfig(consumerContextBuilder.setVeniceProperties(new VeniceProperties(props)).build());
     Properties consumerProps = consumerConfig.getConsumerProperties();
     assertEquals(SASL_JAAS_CONFIG, consumerProps.get("sasl.jaas.config"));
     assertEquals(SASL_MECHANISM, consumerProps.get("sasl.mechanism"));
@@ -87,9 +94,8 @@ public class ApacheKafkaConsumerConfigTest {
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, KAFKA_BROKER_ADDR);
     ApacheKafkaConsumerConfig apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(
-        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(props))
+        consumerContextBuilder.setVeniceProperties(new VeniceProperties(props))
             .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
-            .setConsumerName("test")
             .build());
 
     Properties consumerProps = apacheKafkaConsumerConfig.getConsumerProperties();
@@ -100,11 +106,8 @@ public class ApacheKafkaConsumerConfigTest {
         ApacheKafkaConsumerConfig.DEFAULT_RECEIVE_BUFFER_SIZE);
 
     props.put(ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX + ConsumerConfig.RECEIVE_BUFFER_CONFIG, "98765");
-    apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(
-        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(props))
-            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
-            .setConsumerName("test")
-            .build());
+    apacheKafkaConsumerConfig =
+        new ApacheKafkaConsumerConfig(consumerContextBuilder.setVeniceProperties(new VeniceProperties(props)).build());
     consumerProps = apacheKafkaConsumerConfig.getConsumerProperties();
     assertNotNull(consumerProps);
     assertTrue(consumerProps.containsKey(ConsumerConfig.RECEIVE_BUFFER_CONFIG));
@@ -121,11 +124,8 @@ public class ApacheKafkaConsumerConfigTest {
   public void testKeyAndValueDeserializerConfigConsistency() {
     Properties props = new Properties();
     props.put(KAFKA_BOOTSTRAP_SERVERS, KAFKA_BROKER_ADDR);
-    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(
-        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(props))
-            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
-            .setConsumerName("test")
-            .build());
+    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig =
+        new ApacheKafkaConsumerConfig(consumerContextBuilder.setVeniceProperties(new VeniceProperties(props)).build());
     Properties consumerProps = apacheKafkaConsumerConfig.getConsumerProperties();
     assertNotNull(consumerProps);
 
