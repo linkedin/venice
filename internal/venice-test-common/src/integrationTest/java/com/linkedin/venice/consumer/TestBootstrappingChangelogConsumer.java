@@ -99,11 +99,12 @@ import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
+@Test(singleThreaded = true)
 public class TestBootstrappingChangelogConsumer {
   private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
   private static final String REGION_NAME = "local-pubsub";
@@ -118,7 +119,7 @@ public class TestBootstrappingChangelogConsumer {
   private MetricsRepository metricsRepository;
   private String zkAddress;
 
-  @BeforeClass(alwaysRun = true)
+  @BeforeMethod(alwaysRun = true)
   public void setUp() {
     Utils.thisIsLocalhost();
 
@@ -149,7 +150,7 @@ public class TestBootstrappingChangelogConsumer {
     metricsRepository = new MetricsRepository();
   }
 
-  @AfterClass(alwaysRun = true)
+  @AfterMethod(alwaysRun = true)
   public void cleanUp() {
     clusterWrapper.close();
     TestView.resetCounters();
@@ -330,7 +331,11 @@ public class TestBootstrappingChangelogConsumer {
         verifyPut(polledChangeEventsMap, 100, 110, 1);
         verifyDelete(polledChangeEventsMap, 110, 120, 1);
       });
-      assertTrue(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        assertTrue(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
+      });
+
       polledChangeEventsList.clear();
       polledChangeEventsMap.clear();
 
@@ -514,7 +519,11 @@ public class TestBootstrappingChangelogConsumer {
         Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
         verifyPut(polledChangeEventsMap, 100, 110, 1);
       });
-      assertTrue(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        assertTrue(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
+      });
+
       polledChangeEventsList.clear();
       polledChangeEventsMap.clear();
 
@@ -599,7 +608,11 @@ public class TestBootstrappingChangelogConsumer {
         verifySpecificPut(polledChangeEventsMap, 100, 110, 1);
         verifySpecificDelete(polledChangeEventsMap, 110, 120, 1);
       });
-      assertTrue(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        assertTrue(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
+      });
+
       polledChangeEventsList.clear();
       polledChangeEventsMap.clear();
 
@@ -728,7 +741,11 @@ public class TestBootstrappingChangelogConsumer {
         Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
         verifySpecificPut(polledChangeEventsMap, 100, 110, 1);
       });
-      assertTrue(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        assertTrue(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
+      });
+
       polledChangeEventsList.clear();
       polledChangeEventsMap.clear();
 
