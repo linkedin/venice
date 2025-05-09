@@ -135,64 +135,41 @@ public class TestVersion {
     }
   }
 
-  @Test
-  public void testIsTopic() {
-    String topic = "abc_rt";
-    assertFalse(Version.isVersionTopic(topic));
-    assertTrue(Version.isRealTimeTopic(topic));
-    topic = "abc";
-    assertFalse(Version.isVersionTopic(topic));
-    topic = "abc_v12df";
-    assertFalse(Version.isVersionTopic(topic));
-    topic = "abc_v123";
-    assertTrue(Version.isVersionTopic(topic));
-    assertFalse(Version.isRealTimeTopic(topic));
-    assertTrue(Version.isVersionTopicOrStreamReprocessingTopic(topic));
-    topic = "abc_v123_sr";
-    assertFalse(Version.isVersionTopic(topic));
-    assertTrue(Version.isStreamReprocessingTopic(topic));
-    assertTrue(Version.isVersionTopicOrStreamReprocessingTopic(topic));
-    topic = "abc_v12ab3_sr";
-    assertFalse(Version.isVersionTopic(topic));
-    assertFalse(Version.isStreamReprocessingTopic(topic));
-    assertFalse(Version.isVersionTopicOrStreamReprocessingTopic(topic));
-    topic = "abc_v_sr";
-    assertFalse(Version.isVersionTopic(topic));
-    assertFalse(Version.isStreamReprocessingTopic(topic));
-    assertFalse(Version.isVersionTopicOrStreamReprocessingTopic(topic));
-
-    topic = "abc_rt_v1";
-    assertFalse(Version.isVersionTopic(topic));
-    assertTrue(Version.isRealTimeTopic(topic));
-
-    topic = "abc_rt_v1_sep";
-    assertFalse(Version.isVersionTopic(topic));
-    assertTrue(Version.isRealTimeTopic(topic));
+  private void verifyTopic(
+      String topic,
+      boolean isVT,
+      boolean isRT,
+      boolean isSR,
+      boolean isVTorSR,
+      boolean isVersioned) {
+    assert (Version.isVersionTopic(topic) == isVT);
+    assert (Version.isRealTimeTopic(topic) == isRT);
+    assert (Version.isStreamReprocessingTopic(topic) == isSR);
+    assert (Version.isVersionTopicOrStreamReprocessingTopic(topic) == isVTorSR);
+    assert (Version.isATopicThatIsVersioned(topic) == isVersioned);
   }
 
   @Test
-  public void testIsATopicThatIsVersioned() {
-    String topic = "abc_rt";
-    assertFalse(Version.isATopicThatIsVersioned(topic));
-    topic = "abc_v1_sr";
-    assertTrue(Version.isATopicThatIsVersioned(topic));
-    topic = "abc_v1";
-    assertTrue(Version.isATopicThatIsVersioned(topic));
-    topic = "abc_v1_cc";
-    assertTrue(Version.isATopicThatIsVersioned(topic));
+  public void testIsTopic() {
+    verifyTopic("abc_rt", false, true, false, false, false);
+    verifyTopic("abc", false, false, false, false, false);
+    verifyTopic("abc_v12df", false, false, false, false, false);
+    verifyTopic("abc_v123", true, false, false, true, true);
+    verifyTopic("abc_v123_sr", false, false, true, true, true);
+    verifyTopic("abc_v12ab3_sr", false, false, false, false, false);
+    verifyTopic("abc_v_sr", false, false, false, false, false);
+    verifyTopic("abc_v1", true, false, false, true, true);
+    verifyTopic("abc_v1_sr", false, false, true, true, true);
+    verifyTopic("abc_v1_cc", false, false, false, false, true);
+    verifyTopic("abc_mv", false, false, false, false, true);
+    verifyTopic("abc_rt_v1", false, true, false, false, false);
+    verifyTopic("abc_rt_v1_sep", false, true, false, false, false);
+  }
+
+  @Test
+  public void testPushId() {
     String pushId = VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX + System.currentTimeMillis();
     assertTrue(Version.isPushIdTTLRePush(pushId));
-
-    // where is this method used ???? abora
-    topic = "abc_rt_v1";
-    assertFalse(Version.isATopicThatIsVersioned(topic));
-
-    topic = "abc_v1_rt_sep";
-    assertFalse(Version.isATopicThatIsVersioned(topic));
-
-    // from storeName_v1_rt to storeName_rt_v1
-    // from storeName_v1_rt_sep to storeName_rt_v1_sep
-
   }
 
   @Test
