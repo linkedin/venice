@@ -133,6 +133,24 @@ public final class PubSubUtil {
   }
 
   /**
+   * Returns the {@link PubSubSecurityProtocol} configured in the given {@link Properties}, falling back
+   * to PLAINTEXT if no value is found.
+   *
+   * @param properties the Java {@link Properties} object to extract the security protocol from
+   * @return the resolved {@link PubSubSecurityProtocol}, or PLAINTEXT if not specified
+   */
+  public static PubSubSecurityProtocol getPubSubSecurityProtocolOrDefault(Properties properties) {
+    String securityProtocol = properties.getProperty(KAFKA_SECURITY_PROTOCOL_LEGACY);
+    if (securityProtocol == null) {
+      securityProtocol = properties.getProperty(PUBSUB_SECURITY_PROTOCOL_LEGACY);
+    }
+    if (securityProtocol == null) {
+      securityProtocol = properties.getProperty(PUBSUB_SECURITY_PROTOCOL, PubSubSecurityProtocol.PLAINTEXT.name());
+    }
+    return PubSubSecurityProtocol.forName(securityProtocol);
+  }
+
+  /**
    * Checks if the provided {@link PubSubSecurityProtocol} requires SSL.
    *
    * @param pubSubSecurityProtocol the security protocol to check
