@@ -101,9 +101,17 @@ class KafkaBrokerFactory implements PubSubBrokerFactory<KafkaBrokerFactory.Kafka
 
       sslConfig.entrySet().stream().forEach(entry -> configMap.put((String) entry.getKey(), entry.getValue()));
       configs.getAdditionalBrokerConfiguration().forEach((key, value) -> {
-        String replace = value.replace("$PORT", port + "").replace("$HOSTNAME", DEFAULT_HOST_NAME);
-        LOGGER.info("Set custom additional value {}: {}", key, replace);
-        configMap.put(key, replace);
+        String resolvedValue = value;
+
+        if (value.contains("SASL_SSL")) {
+          resolvedValue = resolvedValue.replace("$PORT", String.valueOf(sslPort));
+        } else if (value.contains("SASL_PLAINTEXT")) {
+          resolvedValue = resolvedValue.replace("$PORT", String.valueOf(port));
+        }
+
+        resolvedValue = resolvedValue.replace("$HOSTNAME", DEFAULT_HOST_NAME);
+        LOGGER.info("Set custom additional value {}: {}", key, resolvedValue);
+        configMap.put(key, resolvedValue);
       });
 
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);

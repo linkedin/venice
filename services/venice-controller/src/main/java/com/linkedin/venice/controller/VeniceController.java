@@ -165,7 +165,7 @@ public class VeniceController {
     long serviceDiscoveryRegistrationRetryMS = multiClusterConfigs.getServiceDiscoveryRegistrationRetryMS();
     this.asyncRetryingServiceDiscoveryAnnouncer =
         new AsyncRetryingServiceDiscoveryAnnouncer(serviceDiscoveryAnnouncers, serviceDiscoveryRegistrationRetryMS);
-    this.pubSubTopicRepository = new PubSubTopicRepository();
+    this.pubSubTopicRepository = multiClusterConfigs.getPubSubTopicRepository();
     this.controllerService = createControllerService();
     this.adminServer = createAdminServer(false);
     this.secureAdminServer = sslEnabled ? createAdminServer(true) : null;

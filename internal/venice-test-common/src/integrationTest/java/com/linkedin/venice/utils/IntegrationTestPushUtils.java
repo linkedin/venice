@@ -466,6 +466,7 @@ public class IntegrationTestPushUtils {
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> new VeniceProperties(properties))
             .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
             .setPubSubConsumerAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getConsumerAdapterFactory())
             .setPubSubAdminAdapterFactory(pubSubBrokerWrapper.getPubSubClientsFactory().getAdminAdapterFactory())
             .setPubSubOperationTimeoutMs(kafkaOperationTimeoutMs)
