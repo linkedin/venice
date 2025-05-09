@@ -71,7 +71,7 @@ public class BlobP2PTransferAmongServersTest {
     VeniceServerWrapper server1 = cluster.getVeniceServerByPort(server1Port);
     VeniceServerWrapper server2 = cluster.getVeniceServerByPort(server2Port);
 
-    // verify the snapshot is generated for both servers after the job is done
+    // verify the snapshot is not generated for both servers after the job is done
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       String snapshotPath1 = RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId);
       Assert.assertFalse(Files.exists(Paths.get(snapshotPath1)));

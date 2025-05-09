@@ -307,11 +307,36 @@ public class BlobSnapshotManagerTest {
     Mockito.doNothing().when(storagePartition).createSnapshot();
     Mockito.doNothing().when(blobSnapshotManager).cleanupSnapshot(TOPIC_NAME, PARTITION_ID);
 
-    blobSnapshotManager.getTransferMetadata(blobTransferPayload);
-    // Mock there is a cleanup, but it should be not executed due to there is a snapshot user
-    blobSnapshotManager.cleanupOutOfRetentionSnapshot(TOPIC_NAME, PARTITION_ID);
+    // Thread 1: Get transfer metadata and try to generate snapshot.
+    Thread transferThread = new Thread(() -> {
+      try {
+        blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+      } catch (Exception e) {
+        Assert.fail("Exception in transfer thread: " + e.getMessage());
+      }
+    });
 
-    // verify that the cleanup is not executed
+    // Thread 2: Try to clean up, but should not succeed due to ongoing request.
+    Thread cleanupThread = new Thread(() -> {
+      try {
+        Thread.sleep(100); // Small delay to ensure first thread has started
+        blobSnapshotManager.cleanupOutOfRetentionSnapshot(TOPIC_NAME, PARTITION_ID);
+      } catch (Exception e) {
+        Assert.fail("Exception in cleanup thread: " + e.getMessage());
+      }
+    });
+
+    // Start
+    transferThread.start();
+    cleanupThread.start();
+    try {
+      transferThread.join(3000);
+      cleanupThread.join(3000);
+    } catch (InterruptedException e) {
+      Assert.fail("Test testNotCleanupSnapshotWhileServingBlobTransferRequest interrupted");
+    }
+
+    // Verify cleanup was not executed because snapshot was in use
     verify(blobSnapshotManager, times(0)).cleanupSnapshot(TOPIC_NAME, PARTITION_ID);
   }
 
@@ -340,12 +365,37 @@ public class BlobSnapshotManagerTest {
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
     Mockito.doNothing().when(storagePartition).createSnapshot();
 
-    // Mock there is a cleanup.
-    blobSnapshotManager.cleanupOutOfRetentionSnapshot(TOPIC_NAME, PARTITION_ID);
-    // A new request arrived
-    blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+    // Thread 1: cleanup snapshot
+    Thread cleanupThread = new Thread(() -> {
+      try {
+        blobSnapshotManager.cleanupOutOfRetentionSnapshot(TOPIC_NAME, PARTITION_ID);
+      } catch (Exception e) {
+        Assert.fail("Exception in cleanup thread: " + e.getMessage());
+      }
+    });
 
-    // verify that the cleanup is executed and snapshot is recreated
+    // Thread 2: Get transfer metadata and try to generate snapshot.
+    Thread transferThread = new Thread(() -> {
+      try {
+        Thread.sleep(100); // Small delay to ensure cleanup thread has started first
+        blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+      } catch (Exception e) {
+        Assert.fail("Exception in transfer thread: " + e.getMessage());
+      }
+    });
+
+    // Start
+    cleanupThread.start();
+    transferThread.start();
+
+    try {
+      cleanupThread.join(3000);
+      transferThread.join(3000);
+    } catch (InterruptedException e) {
+      Assert.fail("Test testServeBlobTransferRequestWhileDeletingSnapshot interrupted");
+    }
+
+    // Verify cleanup was executed and snapshot was created
     verify(blobSnapshotManager, times(1)).cleanupSnapshot(TOPIC_NAME, PARTITION_ID);
     verify(blobSnapshotManager, times(1)).createSnapshot(TOPIC_NAME, PARTITION_ID);
   }
