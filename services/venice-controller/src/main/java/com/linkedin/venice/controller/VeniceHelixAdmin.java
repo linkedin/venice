@@ -401,6 +401,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final MetaStoreWriter metaStoreWriter;
   private final MetaStoreReader metaStoreReader;
   private final D2Client d2Client;
+  private final Map<String, D2Client> d2Clients;
   private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
   private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
   private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH = "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH;
@@ -475,6 +476,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         metricsRepository,
         false,
         d2Client,
+        null,
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
@@ -490,6 +492,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       MetricsRepository metricsRepository,
       boolean sslEnabled,
       @Nonnull D2Client d2Client,
+      Map<String, D2Client> d2Clients,
       Optional<SSLConfig> sslConfig,
       Optional<DynamicAccessController> accessController,
       Optional<ICProvider> icProvider,
@@ -515,6 +518,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
     this.d2Client = d2Client;
+    this.d2Clients = d2Clients;
     this.pubSubTopicRepository = pubSubTopicRepository;
 
     if (sslEnabled) {
@@ -1920,6 +1924,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                       clusterName,
                       entry.getValue(),
                       sslFactory)));
+
+      // Respect d2Clients from controller constructor
+      if (d2Clients != null) {
+        controllerConfig.getChildDataCenterControllerD2Map()
+            .entrySet()
+            .forEach(
+                entry -> controllerClients.put(
+                    entry.getKey(),
+                    new D2ControllerClient(
+                        controllerConfig.getD2ServiceName(),
+                        clusterName,
+                        d2Clients.get(entry.getKey()),
+                        sslFactory)));
+      }
 
       return controllerClients;
     });
@@ -9278,5 +9296,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   // visible for testing
   RealTimeTopicSwitcher getRealTimeTopicSwitcher() {
     return realTimeTopicSwitcher;
+  }
+
+  Map<String, D2Client> getD2Clients() {
+    return d2Clients;
   }
 }

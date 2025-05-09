@@ -179,6 +179,7 @@ public class D2ControllerClient extends ControllerClient {
     return discoverCluster(d2ZkHost, d2ServiceName, storeName, retryAttempts, Optional.empty());
   }
 
+  @Deprecated
   public static D2ServiceDiscoveryResponse discoverCluster(
       String d2ZkHost,
       String d2ServiceName,

@@ -40,6 +40,7 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
         Optional.empty(),
         "",
         "",
+        Optional.empty(),
         "",
         false)) {
       initializer.execute();
@@ -58,6 +59,7 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
         Optional.empty(),
         "",
         "d2Service",
+        Optional.empty(),
         "d2ZkHost",
         false)) {
       doReturn("leaderControllerUrl").when(controllerClient).getLeaderControllerUrl();
@@ -116,6 +118,7 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
               Optional.empty(),
               "",
               "",
+              Optional.empty(),
               "",
               false)) {
         if (protocol == AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE) {
