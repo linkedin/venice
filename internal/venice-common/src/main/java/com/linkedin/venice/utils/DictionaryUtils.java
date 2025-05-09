@@ -44,7 +44,7 @@ public class DictionaryUtils {
     PubSubConsumerAdapterContext context =
         new PubSubConsumerAdapterContext.Builder().setVeniceProperties(pubSubProperties)
             .setPubSubTopicRepository(pubSubTopicRepository)
-            .setPubSubMessageDeserializer(PubSubMessageDeserializer.getInstance())
+            .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
             .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties))
             .setConsumerName("DictionaryUtilsConsumer")
             .build();

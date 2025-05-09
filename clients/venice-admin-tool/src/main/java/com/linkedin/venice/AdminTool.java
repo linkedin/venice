@@ -3636,7 +3636,7 @@ public class AdminTool {
     return pubSubClientsFactory.getConsumerAdapterFactory()
         .create(
             new PubSubConsumerAdapterContext.Builder()
-                .setPubSubMessageDeserializer(PubSubMessageDeserializer.getOptimizedInstance())
+                .setPubSubMessageDeserializer(PubSubMessageDeserializer.createOptimizedDeserializer())
                 .setPubSubPositionTypeRegistry(pubSubPositionTypeRegistry)
                 .setVeniceProperties(veniceProperties)
                 .setConsumerName("admin-tool-topic-dumper")

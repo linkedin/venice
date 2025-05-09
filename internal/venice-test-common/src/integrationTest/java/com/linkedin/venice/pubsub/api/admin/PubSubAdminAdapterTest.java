@@ -101,7 +101,7 @@ public class PubSubAdminAdapterTest {
   @BeforeMethod(alwaysRun = true)
   public void setUpMethod() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
-    pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
+    pubSubMessageDeserializer = PubSubMessageDeserializer.createDefaultDeserializer();
     pubSubTopicRepository = new PubSubTopicRepository();
     pubSubClientsFactory = pubSubBrokerWrapper.getPubSubClientsFactory();
 

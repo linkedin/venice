@@ -54,7 +54,7 @@ import org.testng.annotations.Test;
 
 public class KafkaConsumerServiceTest {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-  private final PubSubMessageDeserializer pubSubDeserializer = PubSubMessageDeserializer.getOptimizedInstance();
+  private final PubSubMessageDeserializer pubSubDeserializer = PubSubMessageDeserializer.createOptimizedDeserializer();
   private VeniceServerConfig mockVeniceServerConfig;
 
   @BeforeMethod(alwaysRun = true)

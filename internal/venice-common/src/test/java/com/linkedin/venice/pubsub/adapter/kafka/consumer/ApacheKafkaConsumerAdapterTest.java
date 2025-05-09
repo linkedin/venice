@@ -91,7 +91,7 @@ public class ApacheKafkaConsumerAdapterTest {
   @BeforeMethod(alwaysRun = true)
   public void setUp() {
     internalKafkaConsumer = mock(Consumer.class);
-    pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
+    pubSubMessageDeserializer = PubSubMessageDeserializer.createDefaultDeserializer();
     topicPartitionsOffsetsTracker = mock(TopicPartitionsOffsetsTracker.class);
     pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
     apacheKafkaConsumerConfig = mock(ApacheKafkaConsumerConfig.class);

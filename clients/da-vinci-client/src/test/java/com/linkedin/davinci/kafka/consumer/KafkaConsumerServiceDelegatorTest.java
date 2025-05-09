@@ -531,7 +531,7 @@ public class KafkaConsumerServiceDelegatorTest {
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
 
     int versionNum = 5;
-    PubSubMessageDeserializer pubSubDeserializer = PubSubMessageDeserializer.getOptimizedInstance();
+    PubSubMessageDeserializer pubSubDeserializer = PubSubMessageDeserializer.createOptimizedDeserializer();
     VeniceServerConfig veniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(veniceServerConfig)
         .getPubSubPositionTypeRegistry();

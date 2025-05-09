@@ -42,7 +42,7 @@ public class ApacheKafkaConsumerTest {
     properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBroker.getAddress());
     ApacheKafkaConsumerConfig apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(
         new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
-            .setPubSubMessageDeserializer(PubSubMessageDeserializer.getInstance())
+            .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
             .setPubSubPositionTypeRegistry(kafkaBroker.getPubSubPositionTypeRegistry())
             .setConsumerName("testConsumer")
             .build());

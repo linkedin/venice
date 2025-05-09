@@ -343,7 +343,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     this.pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties);
     this.pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
     this.pubSubConsumerAdapterFactory = PubSubClientsFactory.createConsumerFactory(pubSubProperties);
-    this.pubSubMessageDeserializer = PubSubMessageDeserializer.getOptimizedInstance();
+    this.pubSubMessageDeserializer = PubSubMessageDeserializer.createOptimizedDeserializer();
   }
 
   protected PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> getPubSubConsumerAdapterFactory() {

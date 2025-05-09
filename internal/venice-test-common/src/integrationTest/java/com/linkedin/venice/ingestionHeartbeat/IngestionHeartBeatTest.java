@@ -221,7 +221,7 @@ public class IngestionHeartBeatTest {
             .getConsumerAdapterFactory()
             .create(
                 new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
-                    .setPubSubMessageDeserializer(PubSubMessageDeserializer.getInstance())
+                    .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
                     .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
                     .setConsumerName("testConsumer")
                     .build())) {

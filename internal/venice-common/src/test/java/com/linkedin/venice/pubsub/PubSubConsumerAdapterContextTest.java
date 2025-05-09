@@ -25,7 +25,7 @@ public class PubSubConsumerAdapterContextTest {
         .setMetricsRepository(new MetricsRepository())
         .setPubSubTopicRepository(new PubSubTopicRepository())
         .setIsOffsetCollectionEnabled(true)
-        .setPubSubMessageDeserializer(PubSubMessageDeserializer.getInstance())
+        .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
         .setPubSubPositionTypeRegistry(registry)
         .build();
 

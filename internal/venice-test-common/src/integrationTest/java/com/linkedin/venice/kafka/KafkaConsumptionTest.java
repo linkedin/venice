@@ -182,7 +182,7 @@ public class KafkaConsumptionTest {
     StaleTopicChecker staleTopicChecker = mock(StaleTopicChecker.class);
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory =
         localPubSubBroker.getPubSubClientsFactory().getConsumerAdapterFactory();
-    PubSubMessageDeserializer pubSubDeserializer = PubSubMessageDeserializer.getOptimizedInstance();
+    PubSubMessageDeserializer pubSubDeserializer = PubSubMessageDeserializer.createOptimizedDeserializer();
 
     AggKafkaConsumerService aggKafkaConsumerService = new AggKafkaConsumerService(
         pubSubConsumerAdapterFactory,

@@ -104,7 +104,7 @@ class TopicMetadataFetcher implements Closeable {
     this.pubSubConsumerPool = new LinkedBlockingQueue<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
     this.closeables = new ArrayList<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
     this.cachedEntryTtlInNs = MILLISECONDS.toNanos(topicManagerContext.getTopicOffsetCheckIntervalMs());
-    PubSubMessageDeserializer pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
+    PubSubMessageDeserializer pubSubMessageDeserializer = PubSubMessageDeserializer.createDefaultDeserializer();
     VeniceProperties pubSubProperties = topicManagerContext.getPubSubProperties(pubSubClusterAddress);
     PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerFactory =
         topicManagerContext.getPubSubConsumerAdapterFactory();
@@ -116,7 +116,7 @@ class TopicMetadataFetcher implements Closeable {
             .setPubSubTopicRepository(topicManagerContext.getPubSubTopicRepository())
             .setMetricsRepository(topicManagerContext.getMetricsRepository());
     for (int i = 0; i < topicManagerContext.getTopicMetadataFetcherConsumerPoolSize(); i++) {
-      pubSubConsumerContextBuilder.setConsumerName("TM-" + i);
+      pubSubConsumerContextBuilder.setConsumerName("TopicManager-" + i);
       PubSubConsumerAdapter pubSubConsumerAdapter = pubSubConsumerFactory.create(pubSubConsumerContextBuilder.build());
       closeables.add(pubSubConsumerAdapter);
       if (!pubSubConsumerPool.offer(pubSubConsumerAdapter)) {

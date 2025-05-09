@@ -118,14 +118,14 @@ public class PubSubMessageDeserializer {
     return valueSerializer;
   }
 
-  public static PubSubMessageDeserializer getInstance() {
+  public static PubSubMessageDeserializer createDefaultDeserializer() {
     return new PubSubMessageDeserializer(
         new KafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
   }
 
-  public static PubSubMessageDeserializer getOptimizedInstance() {
+  public static PubSubMessageDeserializer createOptimizedDeserializer() {
     return new PubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
