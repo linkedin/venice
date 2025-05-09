@@ -36,6 +36,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.writer.VeniceWriter;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -160,7 +161,8 @@ public class AbstractTestVeniceParentHelixAdmin {
         TestUtils.getMultiClusterConfigFromOneCluster(config),
         false,
         Optional.empty(),
-        authorizerService);
+        authorizerService,
+        mock(MetricsRepository.class));
     ControllerClient mockControllerClient = mock(ControllerClient.class);
     doReturn(new ControllerResponse()).when(mockControllerClient).checkResourceCleanupForStoreCreation(anyString());
     StoreResponse storeResponse = mock(StoreResponse.class);
