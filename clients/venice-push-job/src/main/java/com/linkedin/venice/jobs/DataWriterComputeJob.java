@@ -88,7 +88,7 @@ public abstract class DataWriterComputeJob implements ComputeJob {
 
   public abstract DataWriterTaskTracker getTaskTracker();
 
-  protected void validateJob() {
+  public void validateJob() {
     DataWriterTaskTracker dataWriterTaskTracker = getTaskTracker();
     if (dataWriterTaskTracker == null) {
       throw new VeniceException("DataWriterTaskTracker is not set. Unable to validate the job status.");

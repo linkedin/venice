@@ -2578,7 +2578,7 @@ public class VenicePushJob implements AutoCloseable {
     sendPushJobDetailsToController();
   }
 
-  private void killJob(PushJobSetting pushJobSetting, ControllerClient controllerClient) {
+  void killJob(PushJobSetting pushJobSetting, ControllerClient controllerClient) {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
     killDataWriterJob();
     if (!pushJobSetting.isIncrementalPush) {
