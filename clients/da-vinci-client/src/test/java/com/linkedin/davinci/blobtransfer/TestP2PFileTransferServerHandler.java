@@ -60,7 +60,7 @@ public class TestP2PFileTransferServerHandler {
     storageMetadataService = Mockito.mock(StorageMetadataService.class);
     storageEngineRepository = Mockito.mock(StorageEngineRepository.class);
 
-    blobSnapshotManager = new BlobSnapshotManager(storageEngineRepository, storageMetadataService);
+    blobSnapshotManager = Mockito.spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
     serverHandler =
         new P2PFileTransferServerHandler(baseDir.toString(), blobTransferMaxTimeoutInMin, blobSnapshotManager);
     ch = new EmbeddedChannel(serverHandler);
@@ -163,6 +163,7 @@ public class TestP2PFileTransferServerHandler {
     Files.createDirectories(snapshotDir);
     FullHttpRequest request =
         new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(Mockito.anyString(), Mockito.anyInt());
 
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
@@ -202,6 +203,8 @@ public class TestP2PFileTransferServerHandler {
     String file1ChecksumHeader = BlobTransferUtils.generateFileChecksum(file1);
     FullHttpRequest request =
         new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
+
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(Mockito.anyString(), Mockito.anyInt());
 
     ch.writeInbound(request);
 
@@ -270,6 +273,8 @@ public class TestP2PFileTransferServerHandler {
     // the order of file transfer is not guaranteed so put them into a set and remove them one by one
     Collections.addAll(fileNames, "attachment; filename=\"file1\"", "attachment; filename=\"file2\"");
     Collections.addAll(fileChecksums, file1ChecksumHeader, file2ChecksumHeader);
+
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(Mockito.anyString(), Mockito.anyInt());
 
     ch.writeInbound(request);
     // start of file1

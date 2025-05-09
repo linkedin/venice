@@ -97,6 +97,17 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       try {
         blobTransferRequest = parseBlobTransferPayload(URI.create(httpRequest.uri()));
         snapshotDir = new File(blobTransferRequest.getSnapshotDir());
+
+        // Check the snapshot table format
+        BlobTransferTableFormat currentSnapshotTableFormat = blobSnapshotManager.getBlobTransferTableFormat();
+        if (blobTransferRequest.getRequestTableFormat() != currentSnapshotTableFormat) {
+          byte[] errBody = ("Table format mismatch for " + blobTransferRequest.getFullResourceName()
+              + ", current snapshot format is " + currentSnapshotTableFormat.name() + ", requested format is "
+              + blobTransferRequest.getRequestTableFormat().name()).getBytes();
+          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
+          return;
+        }
+
         try {
           transferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferRequest);
         } catch (Exception e) {
@@ -106,16 +117,6 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
         if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
           byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
-          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
-          return;
-        }
-
-        // Check the snapshot table format
-        BlobTransferTableFormat currentSnapshotTableFormat = blobSnapshotManager.getBlobTransferTableFormat();
-        if (blobTransferRequest.getRequestTableFormat() != currentSnapshotTableFormat) {
-          byte[] errBody = ("Table format mismatch for " + blobTransferRequest.getFullResourceName()
-              + ", current snapshot format is " + currentSnapshotTableFormat.name() + ", requested format is "
-              + blobTransferRequest.getRequestTableFormat().name()).getBytes();
           setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
           return;
         }

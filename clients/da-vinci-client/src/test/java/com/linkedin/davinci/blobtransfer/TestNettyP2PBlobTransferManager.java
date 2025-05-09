@@ -235,6 +235,7 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
 
     snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     // Execution:
     // Bootstrap try to get plain table snapshot,
@@ -266,6 +267,7 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
 
     snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     // Execution:
     // Manager should be able to fetch the file and download it to another directory
@@ -302,6 +304,7 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
 
     snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     // Execution:
     // Manager should be able to fetch the file and download it to another directory, and future is done normally
@@ -363,6 +366,7 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
 
     snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     // Execution:
     // Manager should be able to fetch the file and download it to another directory, and future is done normally
