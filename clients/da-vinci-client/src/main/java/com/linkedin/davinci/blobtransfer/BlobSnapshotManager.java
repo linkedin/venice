@@ -124,9 +124,6 @@ public class BlobSnapshotManager {
     String topicName = payload.getTopicName();
     int partitionId = payload.getPartition();
 
-    // 1. check if the concurrent user count exceeds the limit
-    checkIfConcurrentUserExceedsLimit(topicName, partitionId);
-
     // check if storageEngineRepository has this store partition, so exit early if not, otherwise won't be able to
     // create snapshot
     if (storageEngineRepository.getLocalStorageEngine(topicName) == null
@@ -136,6 +133,9 @@ public class BlobSnapshotManager {
 
     ReentrantLock lock = getSnapshotLock(topicName, partitionId);
     try (AutoCloseableLock ignored = AutoCloseableLock.of(lock)) {
+      // 1. check if the concurrent user count exceeds the limit
+      checkIfConcurrentUserExceedsLimit(topicName, partitionId);
+
       initializeTrackingValues(topicName, partitionId);
 
       boolean havingActiveUsers = getConcurrentSnapshotUsers(topicName, partitionId) > 0;
@@ -417,7 +417,7 @@ public class BlobSnapshotManager {
   /**
    * Schedule a task to clean up the snapshot folder which is out of retention time for all topics and partitions.
    */
-  public void scheduleCleanupOutOfRetentionSnapshotTask() {
+  private void scheduleCleanupOutOfRetentionSnapshotTask() {
     if (snapshotCleanupScheduler != null) {
       snapshotCleanupScheduler.scheduleAtFixedRate(() -> {
         if (snapshotTimestamps.isEmpty()) {
