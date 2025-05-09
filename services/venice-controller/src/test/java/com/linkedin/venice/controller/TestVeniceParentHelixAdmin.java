@@ -103,6 +103,7 @@ import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
+import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -209,7 +210,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     public AsyncSetupMockVeniceParentHelixAdmin(
         VeniceHelixAdmin veniceHelixAdmin,
         VeniceControllerClusterConfig config) {
-      super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
+      super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config), mock(MetricsRepository.class));
     }
 
     public boolean isAsyncSetupRunning(String clusterName) {
@@ -352,7 +353,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
     configMap.put(clusterName, config);
     configMap.put(secondCluster, configForSecondCluster);
-    parentAdmin = new VeniceParentHelixAdmin(internalAdmin, new VeniceControllerMultiClusterConfig(configMap));
+    parentAdmin = new VeniceParentHelixAdmin(
+        internalAdmin,
+        new VeniceControllerMultiClusterConfig(configMap),
+        mock(MetricsRepository.class));
     Map<String, VeniceWriter> writerMap = new HashMap<>();
     for (String cluster: configMap.keySet()) {
       ControllerClient mockControllerClient = mock(ControllerClient.class);
@@ -929,7 +933,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     private Map<String, Boolean> storeVersionToKillJobStatus = new HashMap<>();
 
     public PartialMockVeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerClusterConfig config) {
-      super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
+      super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config), mock(MetricsRepository.class));
     }
 
     public void setOfflineJobStatus(ExecutionStatus executionStatus) {
