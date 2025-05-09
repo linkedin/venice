@@ -351,15 +351,19 @@ public class VenicePushJobTest {
        */
       Answer<Void> stallDataWriterJob = invocation -> {
         // At this point, the data writer job status is already set to RUNNING.
-        runningJobLatch.countDown(); // frees the VenicePushJob.killJob() method
-        killedJobLatch.await(5, TimeUnit.SECONDS); // waits for this data writer job to be killed
+        runningJobLatch.countDown(); // frees VenicePushJob.killJob()
+        if (!killedJobLatch.await(5, TimeUnit.SECONDS)) { // waits for this data writer job to be killed
+          fail("Timed out waiting for the data writer job to be killed.");
+        }
         throw new VeniceException("No data found at source path");
       };
 
       Answer<Void> killDataWriterJob = invocation -> {
-        runningJobLatch.await(5, TimeUnit.SECONDS); // waits for the data writer job status to be set to RUNNING
-        pushJob.killDataWriterJob();
-        killedJobLatch.countDown(); // frees the DataWriterComputeJob.validateJob() method
+        if (!runningJobLatch.await(5, TimeUnit.SECONDS)) { // waits for job status to be set to RUNNING
+          fail("Timed out waiting for the data writer job status to be set to RUNNING");
+        }
+        pushJob.killDataWriterJob(); // sets job status to KILLED
+        killedJobLatch.countDown(); // frees DataWriterComputeJob.runComputeJob()
         return null;
       };
 
