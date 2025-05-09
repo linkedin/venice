@@ -213,7 +213,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
-import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.ConfigurationException;
@@ -939,8 +939,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       ingestionMemoryLimitStoreSet = Collections.emptySet();
     }
 
-    divProducerStateMaxAgeMs =
-        serverProperties.getLong(DIV_PRODUCER_STATE_MAX_AGE_MS, KafkaDataIntegrityValidator.DISABLED);
+    divProducerStateMaxAgeMs = serverProperties.getLong(DIV_PRODUCER_STATE_MAX_AGE_MS, DataIntegrityValidator.DISABLED);
     pubSubClientsFactory = new PubSubClientsFactory(serverProperties);
     routerPrincipalName = serverProperties.getString(ROUTER_PRINCIPAL_NAME, "venice-router");
     ingestionTaskMaxIdleCount = serverProperties.getInt(SERVER_INGESTION_TASK_MAX_IDLE_COUNT, 10000);
