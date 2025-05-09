@@ -661,7 +661,7 @@ public class VenicePushJob implements AutoCloseable {
   public void run() {
     ScheduledExecutorService timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
     long bootstrapToOnlineTimeoutInHours =
-        getPushJobSetting().storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
+        getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
     Future<?> timeoutFuture = timeoutExecutor.schedule(() -> {
       LOGGER.error("Timeout reached. Stopping the job.");
       cancel();
