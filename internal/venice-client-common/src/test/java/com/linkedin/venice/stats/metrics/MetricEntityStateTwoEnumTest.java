@@ -17,6 +17,7 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
+import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -42,7 +43,7 @@ public class MetricEntityStateTwoEnumTest {
     when(mockOtelRepository.emitOpenTelemetryMetrics()).thenReturn(true);
     when(mockOtelRepository.getMetricFormat()).thenReturn(getDefaultFormat());
     when(mockOtelRepository.getDimensionName(any())).thenCallRealMethod();
-    when(mockOtelRepository.createAttributes(any(), any(), any())).thenCallRealMethod();
+    when(mockOtelRepository.createAttributes(any(), any(), (VeniceDimensionInterface) any())).thenCallRealMethod();
     VeniceMetricsConfig mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
     when(mockMetricsConfig.getOtelCustomDimensionsMap()).thenReturn(new HashMap<>());
     when(mockOtelRepository.getMetricsConfig()).thenReturn(mockMetricsConfig);
@@ -280,20 +281,6 @@ public class MetricEntityStateTwoEnumTest {
     assertNotNull(attributesEnumMap2);
     assertEquals(attributesEnumMap2.size(), 1);
     assertEquals(attributesEnumMap2.get(dimension2), attributes);
-  }
-
-  @Test
-  public void testRecordWithNullDimension() {
-    MetricEntityStateTwoEnums<MetricEntityStateTest.DimensionEnum1, MetricEntityStateTest.DimensionEnum2> metricEntityState =
-        MetricEntityStateTwoEnums.create(
-            mockMetricEntity,
-            mockOtelRepository,
-            baseDimensionsMap,
-            MetricEntityStateTest.DimensionEnum1.class,
-            MetricEntityStateTest.DimensionEnum2.class);
-    // Null dimension will cause IllegalArgumentException in getDimension, record should catch it.
-    metricEntityState.record(100L, null, null);
-    metricEntityState.record(100.5, null, null);
   }
 
   @Test

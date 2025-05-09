@@ -28,7 +28,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.stats.ServerReadQuotaUsageStats;
-import io.tehuti.metrics.MetricsRepository;
+import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -36,6 +36,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -63,7 +64,6 @@ public class ReadQuotaEnforcementHandlerListenerTest {
         mock(HelixCustomizedViewOfflinePushRepository.class);
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     AggServerQuotaUsageStats stats = mock(AggServerQuotaUsageStats.class);
-    MetricsRepository metricsRepository = new MetricsRepository();
 
     List<StoreDataChangedListener> listeners = new ArrayList<>();
     doAnswer((invocation) -> {
@@ -76,9 +76,8 @@ public class ReadQuotaEnforcementHandlerListenerTest {
         storeRepository,
         CompletableFuture.completedFuture(customizedViewRepository),
         nodeId,
-        stats,
-        metricsRepository);
-
+        stats);
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> Assert.assertFalse(listeners.isEmpty()));
     Assert.assertEquals(listeners.get(0), quotaEnforcer);
   }
 
@@ -112,15 +111,13 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     }).when(customizedViewRepository).getPartitionAssignments(anyString());
 
     AggServerQuotaUsageStats stats = mock(AggServerQuotaUsageStats.class);
-    MetricsRepository metricsRepository = new MetricsRepository();
     // Object under test
     ReadQuotaEnforcementHandler quotaEnforcer = new ReadQuotaEnforcementHandler(
         serverConfig,
         storeRepository,
         CompletableFuture.completedFuture(customizedViewRepository),
         nodeId,
-        stats,
-        metricsRepository);
+        stats);
 
     // Add a store (call store created) verify all versions in buckets and in subscriptions
     Store store1 = getDummyStore("store1", Arrays.asList(new Integer[] { 1 }), 10);

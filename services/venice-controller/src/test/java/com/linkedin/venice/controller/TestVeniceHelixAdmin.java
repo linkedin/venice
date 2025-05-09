@@ -1152,7 +1152,7 @@ public class TestVeniceHelixAdmin {
     }
 
     // should bail out before even checking future versions
-    verify(mockVeniceHelixAdmin, never()).getOnlineFutureVersion(any(), any());
+    verify(mockVeniceHelixAdmin, never()).getFutureVersionWithStatus(any(), any(), any());
   }
 
   /** No future version → just return (no exception) */
@@ -1161,7 +1161,10 @@ public class TestVeniceHelixAdmin {
     VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
     doCallRealMethod().when(mockVeniceHelixAdmin).rollForwardToFutureVersion(anyString(), anyString(), anyString());
     // pretend there is no future version
-    doReturn(0).when(mockVeniceHelixAdmin).getOnlineFutureVersion(eq(clusterName), eq(storeName));
+    doReturn(0).when(mockVeniceHelixAdmin)
+        .getFutureVersionWithStatus(eq(clusterName), eq(storeName), eq(VersionStatus.ONLINE));
+    doReturn(0).when(mockVeniceHelixAdmin)
+        .getFutureVersionWithStatus(eq(clusterName), eq(storeName), eq(VersionStatus.PUSHED));
 
     doReturn("test").when(mockVeniceHelixAdmin).getRegionName();
     // mock the static utility class
@@ -1181,7 +1184,7 @@ public class TestVeniceHelixAdmin {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testRollForwardPartitionNotReady(boolean isPartitionReadyToServe) {
     VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
-    doReturn(2).when(mockVeniceHelixAdmin).getOnlineFutureVersion(clusterName, storeName);
+    doReturn(2).when(mockVeniceHelixAdmin).getFutureVersionWithStatus(clusterName, storeName, VersionStatus.ONLINE);
 
     // build a fake Store whose version 2 has 2 partitions but only 1 ready replica
     Store mockStore = mock(Store.class);

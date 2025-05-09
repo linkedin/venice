@@ -70,8 +70,8 @@ public class VeniceWriterFactory {
             ? pubSubPositionTypeRegistry
             : PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties),
         "PubSubPositionTypeRegistry cannot be null when creating VeniceWriterFactory");
-    LOGGER.info(
-        "### MARKER ### Creating VeniceWriterFactory with properties: {} defaultBrokerAddress: {} pubSubPositionTypeRegistry: {} pubSubProducerAdapterFactory: {}",
+    LOGGER.debug(
+        "Creating VeniceWriterFactory with properties: {} defaultBrokerAddress: {} pubSubPositionTypeRegistry: {} pubSubProducerAdapterFactory: {}",
         this.veniceProperties,
         this.defaultBrokerAddress,
         this.pubSubPositionTypeRegistry,

@@ -150,6 +150,14 @@ public class HttpClient5Utils {
             .setIOReactorConfig(ioReactorConfig)
             .setDefaultConnectionConfig(getDefaultConnectionConfig())
             .setDefaultRequestConfig(getDefaultRequestConfig())
+            /**
+             * This is used to disable the retry and delay upon 429 and 503 and this feature
+             * is enabled by default, so we need to explicitly disable it.
+             * If we don't disable it, by default, we will observe a high latency (>1s) upon
+             * 429/503 response.
+             * Check {@link org.apache.hc.client5.http.impl.DefaultHttpRequestRetryStrategy} for more details.
+             */
+            .disableAutomaticRetries()
             .build();
       }
     }
