@@ -12,7 +12,6 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -52,7 +51,6 @@ public class TestP2PFileTransferServerHandler {
   StorageMetadataService storageMetadataService;
   P2PFileTransferServerHandler serverHandler;
   BlobSnapshotManager blobSnapshotManager;
-  ReadOnlyStoreRepository readOnlyStoreRepository;
   StorageEngineRepository storageEngineRepository;
 
   @BeforeMethod
@@ -60,7 +58,6 @@ public class TestP2PFileTransferServerHandler {
     baseDir = Files.createTempDirectory("tmp");
     blobTransferMaxTimeoutInMin = 30;
     storageMetadataService = Mockito.mock(StorageMetadataService.class);
-    readOnlyStoreRepository = Mockito.mock(ReadOnlyStoreRepository.class);
     storageEngineRepository = Mockito.mock(StorageEngineRepository.class);
 
     blobSnapshotManager = new BlobSnapshotManager(storageEngineRepository, storageMetadataService);

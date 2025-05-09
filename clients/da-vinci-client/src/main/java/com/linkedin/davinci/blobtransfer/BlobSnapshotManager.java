@@ -134,10 +134,10 @@ public class BlobSnapshotManager {
       throw new VeniceException("No storage engine found for topic: " + topicName + " partition: " + partitionId);
     }
 
-    initializeTrackingValues(topicName, partitionId);
-
     ReentrantLock lock = getSnapshotLock(topicName, partitionId);
     try (AutoCloseableLock ignored = AutoCloseableLock.of(lock)) {
+      initializeTrackingValues(topicName, partitionId);
+
       boolean havingActiveUsers = getConcurrentSnapshotUsers(topicName, partitionId) > 0;
       boolean isSnapshotStale = isSnapshotStale(topicName, partitionId);
       increaseConcurrentUserCount(topicName, partitionId);
@@ -368,6 +368,32 @@ public class BlobSnapshotManager {
   }
 
   /**
+   * Remove tracking values for a topic-partition when the snapshot is cleaned up
+   */
+  public void removeTrackingValues(String topicName, int partitionId) {
+    removePartitionEntry(snapshotTimestamps, topicName, partitionId);
+    removePartitionEntry(snapshotMetadataRecords, topicName, partitionId);
+    removePartitionEntry(concurrentSnapshotUsers, topicName, partitionId);
+    removePartitionEntry(snapshotAccessLocks, topicName, partitionId);
+  }
+
+  /**
+   * Remove the partition entry from the map
+   */
+  private <V> void removePartitionEntry(
+      Map<String, VeniceConcurrentHashMap<Integer, V>> map,
+      String topicName,
+      int partitionId) {
+    VeniceConcurrentHashMap<Integer, V> partitionMap = map.get(topicName);
+    if (partitionMap != null) {
+      partitionMap.remove(partitionId);
+      if (partitionMap.isEmpty()) {
+        map.remove(topicName);
+      }
+    }
+  }
+
+  /**
    * A regular cleanup task to clean up the snapshot folder which is out of retention time.
    */
   public void cleanupOutOfRetentionSnapshot(String topicName, int partitionId) {
@@ -380,20 +406,7 @@ public class BlobSnapshotManager {
 
       LOGGER.info("Cleaning up stale snapshot for topic {} partition {}", topicName, partitionId);
       cleanupSnapshot(topicName, partitionId);
-
-      if (snapshotTimestamps.containsKey(topicName)) {
-        snapshotTimestamps.get(topicName).remove(partitionId);
-        if (snapshotTimestamps.get(topicName).isEmpty()) {
-          snapshotTimestamps.remove(topicName);
-        }
-      }
-
-      if (snapshotMetadataRecords.containsKey(topicName)) {
-        snapshotMetadataRecords.get(topicName).remove(partitionId);
-        if (snapshotMetadataRecords.get(topicName).isEmpty()) {
-          snapshotMetadataRecords.remove(topicName);
-        }
-      }
+      removeTrackingValues(topicName, partitionId);
 
       LOGGER.info("Successfully cleaned up snapshot for topic {} partition {}", topicName, partitionId);
     } catch (Exception e) {
