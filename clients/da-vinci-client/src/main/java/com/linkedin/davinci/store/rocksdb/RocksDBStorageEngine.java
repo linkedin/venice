@@ -153,12 +153,15 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   public long getDuplicateKeyCountEstimate() {
     Set<Integer> partitionIds = super.getPartitionIds();
     long duplicateCount = 0;
-    for (int i: partitionIds) {
+    for (int partitionId: partitionIds) {
       RocksDBStoragePartition partition;
       try {
-        partition = (RocksDBStoragePartition) super.getPartitionOrThrow(i);
+        partition = (RocksDBStoragePartition) super.getPartitionOrThrow(partitionId);
       } catch (VeniceException e) {
-        LOGGER.warn("Could not find partition {} for store {}", i, super.getStoreVersionName());
+        LOGGER.warn(
+            "Could not find partition {} for store {}",
+            Utils.getReplicaId(getStoreVersionName(), partitionId),
+            super.getStoreVersionName());
         continue;
       }
       duplicateCount += partition.getDuplicateKeyCountEstimate();
@@ -170,13 +173,16 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     Set<Integer> partitionIds = super.getPartitionIds();
     long keyCount = 0;
 
-    for (int i: partitionIds) {
+    for (int partitionId: partitionIds) {
       RocksDBStoragePartition partition;
       try {
-        partition = (RocksDBStoragePartition) super.getPartitionOrThrow(i);
+        partition = (RocksDBStoragePartition) super.getPartitionOrThrow(partitionId);
         keyCount += partition.getKeyCountEstimate();
       } catch (Exception e) {
-        LOGGER.warn("Could not find partition {} for store {}", i, super.getStoreVersionName());
+        LOGGER.warn(
+            "Could not find partition {} for store {}",
+            Utils.getReplicaId(getStoreVersionName(), partitionId),
+            super.getStoreVersionName());
       }
     }
     return keyCount;
