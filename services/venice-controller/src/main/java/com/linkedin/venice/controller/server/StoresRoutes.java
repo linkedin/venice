@@ -65,6 +65,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
@@ -431,10 +432,10 @@ public class StoresRoutes extends AbstractRoute {
           veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
           return;
         }
+        VeniceControllerClusterConfig destClusterConfig = admin.getControllerConfig(destClusterName);
         // Both source and destination clusters should either have RT versioning enabled or disabled
-        if (admin.getControllerConfig(srcClusterName).isRealTimeTopicVersioningEnabled() != admin
-            .getControllerConfig(destClusterName)
-            .isRealTimeTopicVersioningEnabled()) {
+        if (destClusterConfig != null && (admin.getControllerConfig(srcClusterName)
+            .isRealTimeTopicVersioningEnabled() != destClusterConfig.isRealTimeTopicVersioningEnabled())) {
           veniceResponse
               .setError("Source cluster and destination cluster both should have RT versioning enabled or disabled ");
           veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
