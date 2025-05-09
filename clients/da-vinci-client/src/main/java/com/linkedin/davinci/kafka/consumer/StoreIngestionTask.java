@@ -38,7 +38,6 @@ import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
-import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -400,7 +399,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
   private boolean skipAfterBatchPushUnsubEnabled = false;
-  private final HeartbeatMonitoringService heartbeatMonitoringService;
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -623,7 +621,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.parallelProcessingThreadPool = builder.getAAWCWorkLoadProcessingThreadPool();
     this.hostName = Utils.getHostName() + "_" + storeVersionConfig.getListenerPort();
     this.zkHelixAdmin = zkHelixAdmin;
-    this.heartbeatMonitoringService = builder.getHeartbeatMonitoringService();
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -977,8 +974,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long lag,
       long threshold,
       boolean shouldLogLag,
-      LagType lagType,
-      long latestConsumedProducerTimestamp);
+      LagType lagType);
 
   /**
    * This function checks various conditions to verify if a store is ready to serve.
@@ -1016,15 +1012,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // Log only once a minute per partition.
       boolean shouldLogLag = !REDUNDANT_LOGGING_FILTER.isRedundantException(msg);
+      LOGGER.info("DEBUGGING CONFIG: {} {}", serverConfig.isUseHeartbeatLagForReadyToServeCheckEnabled(), shouldLogLag);
       if (serverConfig.isUseHeartbeatLagForReadyToServeCheckEnabled()) {
-        // Measure heartbeat lag for
+        // Measure heartbeat lag for ready-to-serve check.
         isLagAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
             partitionConsumptionState,
             measureHybridHeartbeatLag(partitionConsumptionState, shouldLogLag),
             DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS,
             shouldLogLag,
-            HEARTBEAT_LAG,
-            0);
+            HEARTBEAT_LAG);
+        LOGGER.info("DEBUGGING HB LAG ACC: {}", isLagAcceptable);
       } else {
         /**
          * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
@@ -1036,8 +1033,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               measureHybridOffsetLag(partitionConsumptionState, shouldLogLag),
               offsetThreshold,
               shouldLogLag,
-              OFFSET_LAG,
-              0);
+              OFFSET_LAG);
         }
       }
     } catch (Exception e) {
@@ -4879,7 +4875,4 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return (isGlobalRtDivEnabled()) ? pcs.getLatestConsumedVtOffset() : pcs.getLatestProcessedLocalVersionTopicOffset();
   }
 
-  HeartbeatMonitoringService getHeartbeatMonitoringService() {
-    return heartbeatMonitoringService;
-  }
 }

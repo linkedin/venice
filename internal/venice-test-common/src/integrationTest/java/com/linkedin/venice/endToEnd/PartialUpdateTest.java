@@ -162,6 +162,10 @@ public class PartialUpdateTest {
     return false;
   }
 
+  protected boolean isHeartbeatReadyToServeCheckEnabled() {
+    return false;
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties serverProperties = new Properties();
@@ -172,6 +176,9 @@ public class PartialUpdateTest {
     serverProperties.put(
         ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED,
         Boolean.toString(isAAWCParallelProcessingEnabled()));
+    serverProperties.put(
+        ConfigKeys.SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED,
+        Boolean.toString(isHeartbeatReadyToServeCheckEnabled()));
     Properties controllerProps = new Properties();
     controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     controllerProps.put(ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED, false);

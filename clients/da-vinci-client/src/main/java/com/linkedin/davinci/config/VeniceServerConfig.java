@@ -191,7 +191,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CU
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
-import static com.linkedin.venice.ConfigKeys.SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK;
+import static com.linkedin.venice.ConfigKeys.SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ZSTD_DICT_COMPRESSION_LEVEL;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SORTED_INPUT_DRAINER_SIZE;
@@ -1080,7 +1080,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     idleIngestionTaskCleanupIntervalInSeconds =
         serverProperties.getInt(SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS, -1);
     useHeartbeatLagForReadyToServeCheckEnabled =
-        serverProperties.getBoolean(SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK, false);
+        serverProperties.getBoolean(SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED, false);
     loadControllerEnabled = serverProperties.getBoolean(SERVER_LOAD_CONTROLLER_ENABLED, false);
     loadControllerWindowSizeInSec = serverProperties.getInt(SERVER_LOAD_CONTROLLER_WINDOW_SIZE_IN_SECONDS, 60);
     loadControllerAcceptMultiplier = serverProperties.getDouble(SERVER_LOAD_CONTROLLER_ACCEPT_MULTIPLIER, 2.0);

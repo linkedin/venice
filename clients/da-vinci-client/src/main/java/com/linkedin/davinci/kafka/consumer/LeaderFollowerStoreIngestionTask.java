@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.davinci.ingestion.LagType.OFFSET_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.LEADER_TO_STANDBY;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.STANDBY_TO_LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER;
@@ -27,6 +26,7 @@ import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
+import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
@@ -184,6 +184,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final String nativeReplicationSourceVersionTopicKafkaURL;
   private final Set<String> nativeReplicationSourceVersionTopicKafkaURLSingletonSet;
   private final VeniceWriterFactory veniceWriterFactory;
+  private final HeartbeatMonitoringService heartbeatMonitoringService;
 
   /**
    * N.B.:
@@ -246,6 +247,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         builder.getLeaderFollowerNotifiers(),
         zkHelixAdmin);
     this.version = version;
+    this.heartbeatMonitoringService = builder.getHeartbeatMonitoringService();
     /**
      * We are going to apply fast leader failover for per user store system store since it is time sensitive, and if the
      * split-brain problem happens in prod, we could design a way to periodically produce snapshot to the meta system
@@ -1814,11 +1816,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected long measureHybridHeartbeatLag(PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
-    int partition = partitionConsumptionState.getPartition();
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      return getHeartbeatMonitoringService().getReplicaLeaderHeartbeatLag(storeName, versionNumber, partition);
+      return getHeartbeatMonitoringService()
+          .getReplicaLeaderMaxHeartbeatLag(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
     } else {
-      return getHeartbeatMonitoringService().getReplicaFollowerHeartbeatLag(storeName, versionNumber, partition);
+      return getHeartbeatMonitoringService()
+          .getReplicaFollowerHeartbeatLag(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
     }
   }
 
@@ -2156,8 +2159,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long lag,
       long threshold,
       boolean shouldLogLag,
-      LagType lagType,
-      long latestConsumedProducerTimestamp) {
+      LagType lagType) {
     boolean isLagAcceptable = lag <= threshold;
     boolean isHybridFollower = isHybridFollower(pcs);
 
@@ -2179,11 +2181,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .append("}.");
       }
       LOGGER.info(
-          "[{} lag] replica: {} is {}. {}Lag: [{}] {} Threshold [{}]. {}",
+          "[{} lag] replica: {} is {}. Lag: [{}] {} Threshold [{}]. {}",
           lagType.prettyString(),
           pcs.getReplicaId(),
           (isLagAcceptable ? "not lagging" : "lagging"),
-          (lagType == OFFSET_LAG ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
           lag,
           lag <= threshold ? "<=" : ">",
           threshold,
@@ -4404,4 +4405,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   void setTime(Time time) {
     this.time = time;
   }
+
+  HeartbeatMonitoringService getHeartbeatMonitoringService() {
+    return heartbeatMonitoringService;
+  }
+
 }
