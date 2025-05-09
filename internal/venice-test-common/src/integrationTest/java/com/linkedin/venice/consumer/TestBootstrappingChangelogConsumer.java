@@ -920,9 +920,6 @@ public class TestBootstrappingChangelogConsumer {
           polledChangeEventsList,
           bootstrappingVeniceChangelogConsumerList);
       Assert.assertEquals(polledChangeEventsMap.size(), recordsToProduce);
-      if (polledChangeEventsMap.size() == 22) {
-        int i = 0;
-      }
 
       verifyPut(polledChangeEventsMap, startIndex, startIndex + numPuts, version);
       verifyDelete(polledChangeEventsMap, startIndex + numPuts, startIndex + numDeletes, version);
