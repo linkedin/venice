@@ -52,6 +52,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.apache.logging.log4j.LogManager;
@@ -98,6 +99,7 @@ public class VeniceController {
   private final Optional<DynamicAccessController> accessController;
   private final Optional<AuthorizerService> authorizerService;
   private final D2Client d2Client;
+  private Map<String, D2Client> d2Clients;
   private final Optional<ClientConfig> routerClientConfig;
   private final Optional<ICProvider> icProvider;
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
@@ -162,6 +164,7 @@ public class VeniceController {
     this.accessController = Optional.ofNullable(ctx.getAccessController());
     this.authorizerService = Optional.ofNullable(ctx.getAuthorizerService());
     this.d2Client = ctx.getD2Client();
+    this.d2Clients = ctx.getD2Clients();
     this.routerClientConfig = Optional.ofNullable(ctx.getRouterClientConfig());
     this.icProvider = Optional.ofNullable(ctx.getIcProvider());
     this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
@@ -198,6 +201,7 @@ public class VeniceController {
         accessController,
         authorizerService,
         d2Client,
+        d2Clients,
         routerClientConfig,
         icProvider,
         externalSupersetSchemaGenerator,
@@ -424,6 +428,8 @@ public class VeniceController {
       String childControllerUrl = systemStoreClusterConfig.getChildControllerUrl(regionName);
       String d2ServiceName = systemStoreClusterConfig.getD2ServiceName();
       String d2ZkHost = systemStoreClusterConfig.getChildControllerD2ZkHost(regionName);
+      Optional<D2Client> regionD2Client = Optional.ofNullable(
+          d2Clients == null ? null : d2Clients.get(systemStoreClusterConfig.getChildControllerD2ServiceName()));
       boolean sslOnly = systemStoreClusterConfig.isControllerEnforceSSLOnly();
       if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
         ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
@@ -436,6 +442,7 @@ public class VeniceController {
                 ((VeniceHelixAdmin) admin).getSslFactory(),
                 childControllerUrl,
                 d2ServiceName,
+                regionD2Client,
                 d2ZkHost,
                 sslOnly);
         metaSystemStoreSchemaInitializer.execute();
@@ -450,6 +457,7 @@ public class VeniceController {
               ((VeniceHelixAdmin) admin).getSslFactory(),
               childControllerUrl,
               d2ServiceName,
+              regionD2Client,
               d2ZkHost,
               sslOnly);
       kmeSchemaInitializer.execute();
@@ -515,7 +523,7 @@ public class VeniceController {
       LOGGER.error(errorMessage, e);
       Utils.exit(errorMessage + e.getMessage());
     }
-
+    // TODO: if this is not a test or prototype, we should create D2Client with formal configs.
     D2Client d2Client = D2ClientFactory.getD2Client(zkAddress, Optional.empty());
     VeniceController controller = new VeniceController(
         new VeniceControllerContext.Builder().setPropertiesList(Collections.singletonList(controllerProps))

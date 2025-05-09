@@ -718,7 +718,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         sslFactory,
         null,
         null,
-        null);
+        null,
+        Optional.of(d2Client)); // TODO: Figure out a way to get D2Client from davinci config to figure out D2Client.
     storeIngestionService.start();
     storeIngestionService.addIngestionNotifier(new IsolatedIngestionNotifier(this));
 

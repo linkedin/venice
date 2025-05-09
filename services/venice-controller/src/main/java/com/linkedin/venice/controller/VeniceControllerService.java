@@ -61,6 +61,7 @@ public class VeniceControllerService extends AbstractVeniceService {
       Optional<DynamicAccessController> accessController,
       Optional<AuthorizerService> authorizerService,
       D2Client d2Client,
+      Map<String, D2Client> d2Clients,
       Optional<ClientConfig> routerClientConfig,
       Optional<ICProvider> icProvider,
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
@@ -89,6 +90,7 @@ public class VeniceControllerService extends AbstractVeniceService {
         metricsRepository,
         sslEnabled,
         d2Client,
+        d2Clients,
         sslConfig,
         accessController,
         icProvider,
@@ -141,6 +143,8 @@ public class VeniceControllerService extends AbstractVeniceService {
     newSchemaEncountered = (schemaId, schema) -> {
       LOGGER.info("Encountered a new KME value schema (id = {}), proceed to register", schemaId);
       try {
+        Optional<D2Client> regionD2Client = Optional.ofNullable(
+            d2Clients == null ? null : d2Clients.get(systemStoreClusterConfig.getChildControllerD2ServiceName()));
         ControllerClientBackedSystemSchemaInitializer schemaInitializer =
             new ControllerClientBackedSystemSchemaInitializer(
                 AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
@@ -151,6 +155,7 @@ public class VeniceControllerService extends AbstractVeniceService {
                 ((VeniceHelixAdmin) admin).getSslFactory(),
                 systemStoreClusterConfig.getChildControllerUrl(systemStoreClusterConfig.getRegionName()),
                 systemStoreClusterConfig.getChildControllerD2ServiceName(),
+                regionD2Client,
                 systemStoreClusterConfig.getChildControllerD2ZkHost(systemStoreClusterConfig.getRegionName()),
                 systemStoreClusterConfig.isControllerEnforceSSLOnly());
 

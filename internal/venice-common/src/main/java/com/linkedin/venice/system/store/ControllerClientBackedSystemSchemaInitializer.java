@@ -3,6 +3,7 @@ package com.linkedin.venice.system.store;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -56,6 +57,8 @@ public class ControllerClientBackedSystemSchemaInitializer implements Closeable 
   private final String controllerD2ServiceName;
   private final String d2ZkHost;
   private final boolean enforceSslOnly;
+
+  private final Optional<D2Client> d2Client;
   private ControllerClient controllerClient;
 
   public ControllerClientBackedSystemSchemaInitializer(
@@ -67,6 +70,7 @@ public class ControllerClientBackedSystemSchemaInitializer implements Closeable 
       Optional<SSLFactory> sslFactory,
       String controllerUrl,
       String controllerD2ServiceName,
+      Optional<D2Client> d2Client,
       String d2ZkHost,
       boolean enforceSslOnly) {
     this.protocolDefinition = protocolDefinition;
@@ -77,6 +81,7 @@ public class ControllerClientBackedSystemSchemaInitializer implements Closeable 
     this.sslFactory = sslFactory;
     this.controllerUrl = controllerUrl;
     this.controllerD2ServiceName = controllerD2ServiceName;
+    this.d2Client = d2Client;
     this.d2ZkHost = d2ZkHost;
     this.enforceSslOnly = enforceSslOnly;
   }
@@ -85,11 +90,11 @@ public class ControllerClientBackedSystemSchemaInitializer implements Closeable 
     if (controllerClient == null) {
       if (!controllerUrl.isEmpty()) {
         controllerClient = ControllerClient.constructClusterControllerClient(clusterName, controllerUrl, sslFactory);
-      } else if (!controllerD2ServiceName.isEmpty() && !d2ZkHost.isEmpty()) {
+      } else if (!controllerD2ServiceName.isEmpty() && d2Client.isPresent()) {
         controllerClient = new D2ControllerClient(
             controllerD2ServiceName,
             clusterName,
-            d2ZkHost,
+            d2Client.get(),
             enforceSslOnly ? sslFactory : Optional.empty());
       } else {
         throw new VeniceException(

@@ -1,6 +1,7 @@
 package com.linkedin.venice.server;
 
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferManagerBuilder;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
@@ -129,6 +130,8 @@ public class VeniceServer {
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   private Lazy<ZKHelixAdmin> zkHelixAdmin;
 
+  private final Optional<D2Client> d2Client;
+
   /**
    * @deprecated Use {@link VeniceServer#VeniceServer(VeniceServerContext)} instead.
    *
@@ -194,6 +197,7 @@ public class VeniceServer {
     this.routerAccessController = Optional.ofNullable(ctx.getRouterAccessController());
     this.storeAccessController = Optional.ofNullable(ctx.getStoreAccessController());
     this.clientConfigForConsumer = Optional.ofNullable(ctx.getClientConfigForConsumer());
+    this.d2Client = Optional.ofNullable(ctx.getD2Client());
   }
 
   /**
@@ -233,6 +237,7 @@ public class VeniceServer {
               sslFactory,
               localControllerUrl,
               d2ServiceName,
+              d2Client,
               d2ZkHost,
               false);
       ControllerClientBackedSystemSchemaInitializer kmeSchemaInitializer =
@@ -245,6 +250,7 @@ public class VeniceServer {
               sslFactory,
               localControllerUrl,
               d2ServiceName,
+              d2Client,
               d2ZkHost,
               false);
       metaSystemStoreSchemaInitializer.execute();
@@ -411,7 +417,8 @@ public class VeniceServer {
         sslFactory,
         heartbeatMonitoringService,
         zkHelixAdmin,
-        adaptiveThrottlerSignalService);
+        adaptiveThrottlerSignalService,
+        d2Client);
 
     this.diskHealthCheckService = new DiskHealthCheckService(
         serverConfig.isDiskHealthCheckServiceEnabled(),
