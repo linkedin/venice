@@ -2,6 +2,7 @@ package com.linkedin.venice.jobs;
 
 import static com.linkedin.venice.ConfigKeys.PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.PushJobSetting;
@@ -88,6 +89,7 @@ public abstract class DataWriterComputeJob implements ComputeJob {
 
   public abstract DataWriterTaskTracker getTaskTracker();
 
+  @VisibleForTesting
   public void validateJob() {
     DataWriterTaskTracker dataWriterTaskTracker = getTaskTracker();
     if (dataWriterTaskTracker == null) {
@@ -160,7 +162,8 @@ public abstract class DataWriterComputeJob implements ComputeJob {
     }
   }
 
-  protected abstract void runComputeJob();
+  @VisibleForTesting
+  public abstract void runComputeJob();
 
   @Override
   public void configure(VeniceProperties properties) {
