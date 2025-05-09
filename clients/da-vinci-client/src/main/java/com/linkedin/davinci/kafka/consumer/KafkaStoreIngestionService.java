@@ -1249,7 +1249,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       kafkaBootstrapUrls = resolvedKafkaUrl;
     }
     properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
-    PubSubSecurityProtocol securityProtocol = serverConfigForPubSubCluster.getKafkaSecurityProtocol(kafkaBootstrapUrls);
+    PubSubSecurityProtocol securityProtocol =
+        serverConfigForPubSubCluster.getPubSubSecurityProtocol(kafkaBootstrapUrls);
     if (PubSubUtil.isPubSubSslProtocol(securityProtocol)) {
       Optional<SSLConfig> sslConfig = serverConfigForPubSubCluster.getSslConfig();
       if (!sslConfig.isPresent()) {

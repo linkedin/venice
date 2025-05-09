@@ -155,7 +155,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(VeniceProperties.empty()).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     doReturn(getConsumerAssignmentStrategy()).when(mockVeniceServerConfig).getSharedConsumerAssignmentStrategy();
     doReturn(1).when(mockVeniceServerConfig).getConsumerPoolSizePerKafkaCluster();
-    doReturn(PubSubSecurityProtocol.PLAINTEXT).when(mockVeniceServerConfig).getKafkaSecurityProtocol(dummyKafkaUrl);
+    doReturn(PubSubSecurityProtocol.PLAINTEXT).when(mockVeniceServerConfig).getPubSubSecurityProtocol(dummyKafkaUrl);
     doReturn(10).when(mockVeniceServerConfig).getKafkaMaxPollRecords();
     doReturn(2).when(mockVeniceServerConfig).getTopicManagerMetadataFetcherConsumerPoolSize();
     doReturn(2).when(mockVeniceServerConfig).getTopicManagerMetadataFetcherThreadPoolSize();

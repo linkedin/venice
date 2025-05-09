@@ -268,7 +268,7 @@ public class VeniceClusterConfig {
     return kafkaBootstrapServers;
   }
 
-  public PubSubSecurityProtocol getKafkaSecurityProtocol(String kafkaBootstrapUrl) {
+  public PubSubSecurityProtocol getPubSubSecurityProtocol(String kafkaBootstrapUrl) {
     PubSubSecurityProtocol clusterSpecificSecurityProtocol = kafkaBootstrapUrlToSecurityProtocol.get(kafkaBootstrapUrl);
     return clusterSpecificSecurityProtocol == null ? pubSubSecurityProtocol : clusterSpecificSecurityProtocol;
   }
