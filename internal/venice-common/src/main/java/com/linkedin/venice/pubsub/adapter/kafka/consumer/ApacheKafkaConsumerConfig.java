@@ -30,10 +30,6 @@ import org.apache.logging.log4j.Logger;
 public class ApacheKafkaConsumerConfig {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaConsumerConfig.class);
 
-  public static final String KAFKA_AUTO_OFFSET_RESET_CONFIG =
-      KAFKA_CONFIG_PREFIX + ConsumerConfig.AUTO_OFFSET_RESET_CONFIG;
-  public static final String KAFKA_ENABLE_AUTO_COMMIT_CONFIG =
-      KAFKA_CONFIG_PREFIX + ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG;
   public static final String KAFKA_FETCH_MIN_BYTES_CONFIG = KAFKA_CONFIG_PREFIX + ConsumerConfig.FETCH_MIN_BYTES_CONFIG;
   public static final String KAFKA_FETCH_MAX_BYTES_CONFIG = KAFKA_CONFIG_PREFIX + ConsumerConfig.FETCH_MAX_BYTES_CONFIG;
   public static final String KAFKA_MAX_POLL_RECORDS_CONFIG =
