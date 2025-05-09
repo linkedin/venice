@@ -59,8 +59,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -208,9 +206,6 @@ public class KafkaConsumptionTest {
     // Local consumer subscription.
     Properties consumerProperties = new Properties();
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
-    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     aggKafkaConsumerService.createKafkaConsumerService(consumerProperties);
     PartitionReplicaIngestionContext partitionReplicaIngestionContext = new PartitionReplicaIngestionContext(
         versionTopic,
@@ -225,9 +220,6 @@ public class KafkaConsumptionTest {
     // Remote consumer subscription.
     consumerProperties = new Properties();
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaUrl);
-    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     aggKafkaConsumerService.createKafkaConsumerService(consumerProperties);
     StorePartitionDataReceiver remoteDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
         .subscribeConsumerFor(remoteKafkaUrl, storeIngestionTask, partitionReplicaIngestionContext, -1);
