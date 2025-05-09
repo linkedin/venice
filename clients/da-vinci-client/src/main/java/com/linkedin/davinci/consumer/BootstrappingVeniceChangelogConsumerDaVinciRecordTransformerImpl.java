@@ -46,6 +46,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
@@ -80,6 +81,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private final ApacheKafkaOffsetPosition placeHolderOffset = ApacheKafkaOffsetPosition.of(0);
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
+  private AtomicBoolean isCaughtUp = new AtomicBoolean(false);
 
   public BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl(ChangelogClientConfig changelogClientConfig) {
     this.changelogClientConfig = changelogClientConfig;
@@ -132,6 +134,12 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         LOGGER.error("Failed to subscribe to partitions: {} for store: {}", partitions, storeName, error);
         throw new VeniceException(error);
       }
+
+      isCaughtUp.set(true);
+      LOGGER.info(
+          "BootstrappingVeniceChangelogConsumer is caught up for store: {} for partitions: {}",
+          storeName,
+          partitions);
     });
 
     return CompletableFuture.supplyAsync(() -> {
@@ -204,6 +212,11 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       return tempMap.values();
     }
     return drainedPubSubMessages;
+  }
+
+  @Override
+  public boolean isCaughtUp() {
+    return isCaughtUp.get();
   }
 
   private void internalStart() {

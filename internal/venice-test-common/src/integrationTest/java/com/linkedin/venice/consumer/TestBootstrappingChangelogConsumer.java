@@ -41,6 +41,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static org.testng.AssertJUnit.assertFalse;
+import static org.testng.AssertJUnit.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -310,12 +312,14 @@ public class TestBootstrappingChangelogConsumer {
       }
 
       bootstrappingVeniceChangelogConsumerList.get(0).start().get();
+      assertFalse(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
 
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsMap =
           new HashMap<>();
       List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsList = new ArrayList<>();
       // 21 changes in near-line. 10 puts, 10 deletes, and 1 record with a producer timestamp
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        // assertFalse(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
         pollChangeEventsFromChangeCaptureConsumer(
             polledChangeEventsMap,
             polledChangeEventsList,
@@ -326,6 +330,7 @@ public class TestBootstrappingChangelogConsumer {
         verifyPut(polledChangeEventsMap, 100, 110, 1);
         verifyDelete(polledChangeEventsMap, 110, 120, 1);
       });
+      assertTrue(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
       polledChangeEventsList.clear();
       polledChangeEventsMap.clear();
 
@@ -486,6 +491,7 @@ public class TestBootstrappingChangelogConsumer {
       Thread.sleep(30000);
 
       bootstrappingVeniceChangelogConsumerList.get(0).start().get();
+      assertFalse(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
 
       // Verify snapshots exists
       for (int i = 0; i < PARTITION_COUNT; i++) {
@@ -497,6 +503,7 @@ public class TestBootstrappingChangelogConsumer {
           new HashMap<>();
       List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsList = new ArrayList<>();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        assertFalse(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
         pollChangeEventsFromChangeCaptureConsumer(
             polledChangeEventsMap,
             polledChangeEventsList,
@@ -507,6 +514,7 @@ public class TestBootstrappingChangelogConsumer {
         Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
         verifyPut(polledChangeEventsMap, 100, 110, 1);
       });
+      assertTrue(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
       polledChangeEventsList.clear();
       polledChangeEventsMap.clear();
 
@@ -572,6 +580,7 @@ public class TestBootstrappingChangelogConsumer {
       }
 
       bootstrappingVeniceChangelogConsumerList.get(0).start().get();
+      assertFalse(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
 
       Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsMap =
           new HashMap<>();
@@ -579,6 +588,7 @@ public class TestBootstrappingChangelogConsumer {
           new ArrayList<>();
       // 20 changes in near-line. 10 puts, 10 deletes
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        assertFalse(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
         pollChangeEventsFromSpecificChangeCaptureConsumer(
             polledChangeEventsMap,
             polledChangeEventsList,
@@ -589,6 +599,7 @@ public class TestBootstrappingChangelogConsumer {
         verifySpecificPut(polledChangeEventsMap, 100, 110, 1);
         verifySpecificDelete(polledChangeEventsMap, 110, 120, 1);
       });
+      assertTrue(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
       polledChangeEventsList.clear();
       polledChangeEventsMap.clear();
 
@@ -693,6 +704,7 @@ public class TestBootstrappingChangelogConsumer {
       Thread.sleep(30000);
 
       bootstrappingVeniceChangelogConsumerList.get(0).start().get();
+      assertFalse(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
 
       // Verify snapshots exists
       for (int i = 0; i < PARTITION_COUNT; i++) {
@@ -705,6 +717,7 @@ public class TestBootstrappingChangelogConsumer {
       List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsList =
           new ArrayList<>();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        assertFalse(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
         pollChangeEventsFromSpecificChangeCaptureConsumer(
             polledChangeEventsMap,
             polledChangeEventsList,
@@ -715,6 +728,7 @@ public class TestBootstrappingChangelogConsumer {
         Assert.assertEquals(polledChangeEventsList.size(), expectedRecordCount);
         verifySpecificPut(polledChangeEventsMap, 100, 110, 1);
       });
+      assertTrue(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
       polledChangeEventsList.clear();
       polledChangeEventsMap.clear();
 
@@ -906,6 +920,9 @@ public class TestBootstrappingChangelogConsumer {
           polledChangeEventsList,
           bootstrappingVeniceChangelogConsumerList);
       Assert.assertEquals(polledChangeEventsMap.size(), recordsToProduce);
+      if (polledChangeEventsMap.size() == 22) {
+        int i = 0;
+      }
 
       verifyPut(polledChangeEventsMap, startIndex, startIndex + numPuts, version);
       verifyDelete(polledChangeEventsMap, startIndex + numPuts, startIndex + numDeletes, version);
