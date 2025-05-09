@@ -1,7 +1,6 @@
 package com.linkedin.venice.pubsub.adapter.kafka;
 
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
-import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubUtil;
@@ -21,9 +20,6 @@ import org.apache.kafka.common.header.internals.RecordHeaders;
 
 public class ApacheKafkaUtils {
   public static final RecordHeaders EMPTY_RECORD_HEADERS = new RecordHeaders();
-
-  public static final Set<String> KAFKA_CONFIG_PREFIXES =
-      Collections.unmodifiableSet(new HashSet<>(Arrays.asList(KAFKA_CONFIG_PREFIX, PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX)));
 
   static {
     EMPTY_RECORD_HEADERS.setReadOnly();
