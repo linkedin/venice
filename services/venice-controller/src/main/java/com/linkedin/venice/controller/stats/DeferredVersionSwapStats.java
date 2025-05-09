@@ -4,6 +4,7 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.Total;
 
 
 public class DeferredVersionSwapStats extends AbstractVeniceStats {
@@ -23,7 +24,7 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
     deferredVersionSwapFailedRollForwardSensor =
         registerSensorIfAbsent(DEFERRED_VERSION_SWAP_FAILED_ROLL_FORWARD, new Count());
     deferredVersionSwapStalledVersionSwapSensor =
-        registerSensorIfAbsent(DEFERRED_VERSION_SWAP_STALLED_VERSION_SWAP, new Count());
+        registerSensorIfAbsent(DEFERRED_VERSION_SWAP_STALLED_VERSION_SWAP, new Total());
   }
 
   public void recordDeferredVersionSwapErrorSensor() {
