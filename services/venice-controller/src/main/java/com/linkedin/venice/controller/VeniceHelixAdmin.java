@@ -1079,7 +1079,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             largestUsedRTStoreVersion);
       }
 
-      configureNewStore(newStore, config, largestUsedStoreVersion, largestUsedRTStoreVersion);
+      configureNewStore(newStore, config, largestUsedStoreVersion, largestUsedRTStoreVersion, clusterName);
 
       storeRepo.addStore(newStore);
       // Create global config for that store.
@@ -1106,7 +1106,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Store newStore,
       VeniceControllerClusterConfig config,
       int largestUsedVersionNumber,
-      int largestUsedRTVersionNumber) {
+      int largestUsedRTVersionNumber,
+      String clusterName) {
     newStore.setNativeReplicationEnabled(config.isMultiRegion());
 
     /**
@@ -1120,7 +1121,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
     /* If this store existed previously, we do not want to use the same RT topic name that was used by the previous
     store. To ensure this, increase largestUsedRTVersionNumber and new RT name will be different */
-    if (getMultiClusterConfigs().isRealTimeTopicVersioningEnabled()) {
+    if (getControllerConfig(clusterName).isRealTimeTopicVersioningEnabled()) {
       newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber + 1);
     }
   }
@@ -9213,7 +9214,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return multiClusterConfigs;
   }
 
-  VeniceControllerClusterConfig getControllerConfig(String clusterName) {
+  @Override
+  public VeniceControllerClusterConfig getControllerConfig(String clusterName) {
     return multiClusterConfigs.getControllerConfig(clusterName);
   }
 

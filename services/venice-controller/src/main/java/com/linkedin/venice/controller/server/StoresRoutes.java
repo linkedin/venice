@@ -431,6 +431,15 @@ public class StoresRoutes extends AbstractRoute {
           veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
           return;
         }
+        // Both source and destination clusters should either have RT versioning enabled or disabled
+        if (admin.getControllerConfig(srcClusterName).isRealTimeTopicVersioningEnabled() != admin
+            .getControllerConfig(destClusterName)
+            .isRealTimeTopicVersioningEnabled()) {
+          veniceResponse
+              .setError("Source cluster and destination cluster both should have RT versioning enabled or disabled ");
+          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
+          return;
+        }
 
         admin.migrateStore(srcClusterName, destClusterName, storeName);
       }
