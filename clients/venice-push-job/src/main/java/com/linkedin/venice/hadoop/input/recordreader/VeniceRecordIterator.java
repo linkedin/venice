@@ -18,4 +18,11 @@ public interface VeniceRecordIterator extends Closeable {
    * Return the current value. This method should return same value until `next` is called.
    */
   byte[] getCurrentValue();
+
+  /**
+   * Return the timestamp associated with the current record. This method will either return the timestamp of the record
+   * or -1L if a timestamp was not specified with the given record
+   * @return
+   */
+  long getTimeStamp();
 }

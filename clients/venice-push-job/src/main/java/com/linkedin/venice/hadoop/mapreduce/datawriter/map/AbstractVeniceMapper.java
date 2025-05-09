@@ -5,8 +5,8 @@ import com.linkedin.venice.hadoop.mapreduce.datawriter.task.ReporterBackedMapRed
 import com.linkedin.venice.hadoop.mapreduce.engine.MapReduceEngineTaskConfigProvider;
 import com.linkedin.venice.hadoop.task.datawriter.AbstractInputRecordProcessor;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.utils.TriConsumer;
 import java.io.IOException;
-import java.util.function.BiConsumer;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Mapper;
@@ -37,7 +37,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     if (updatePreviousReporter(reporter)) {
       dataWriterTaskTracker = new ReporterBackedMapReduceDataWriterTaskTracker(reporter);
     }
-    super.processRecord(inputKey, inputValue, getRecordEmitter(output), dataWriterTaskTracker);
+    super.processRecord(inputKey, inputValue, -1L, getRecordEmitter(output), dataWriterTaskTracker);
   }
 
   private boolean updatePreviousReporter(Reporter reporter) {
@@ -63,8 +63,10 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     return bw;
   }
 
-  private BiConsumer<byte[], byte[]> getRecordEmitter(OutputCollector<BytesWritable, BytesWritable> outputCollector) {
-    return (key, value) -> {
+  private TriConsumer<byte[], byte[], Long> getRecordEmitter(
+      OutputCollector<BytesWritable, BytesWritable> outputCollector) {
+    // TODO: We don't support passing the timestamp in MR yet, so this ignored the timestamp input
+    return (key, value, Long) -> {
       BytesWritable keyBW = wrapBytes(key);
       BytesWritable valueBW = wrapBytes(value);
       try {
