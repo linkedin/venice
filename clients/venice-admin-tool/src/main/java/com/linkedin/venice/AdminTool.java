@@ -2453,12 +2453,6 @@ public class AdminTool {
       for (Arg arg: foundCommand.getOptionalArgs()) {
         createOpt(arg, arg.isParameterized(), arg.getHelpText(), options);
       }
-      Options parameterOptionsForHelp = new Options();
-      for (Object obj: options.getOptions()) {
-        Option o = (Option) obj;
-        parameterOptionsForHelp.addOption(o);
-      }
-      options.addOptionGroup(commandGroup);
     }
 
     /* Commands */
