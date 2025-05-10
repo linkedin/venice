@@ -655,6 +655,12 @@ public class VenicePushJob implements AutoCloseable {
    * @throws VeniceException
    */
   public void run() {
+    Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
+        pushJobSetting.enableSSL,
+        props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
+        this.sslProperties);
+    initControllerClient(pushJobSetting.storeName, sslFactory);
+
     ScheduledExecutorService timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
     long bootstrapToOnlineTimeoutInHours =
         getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
@@ -673,11 +679,6 @@ public class VenicePushJob implements AutoCloseable {
 
   private void runPushJob() {
     try {
-      Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
-          pushJobSetting.enableSSL,
-          props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
-          this.sslProperties);
-      initControllerClient(pushJobSetting.storeName, sslFactory);
       pushJobSetting.clusterName = controllerClient.getClusterName();
       LOGGER.info(
           "The store {} is discovered in Venice cluster {}",
