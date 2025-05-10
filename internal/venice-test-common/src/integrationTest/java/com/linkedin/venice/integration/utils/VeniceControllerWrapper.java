@@ -59,6 +59,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerContext;
+import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
@@ -78,6 +79,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -371,11 +373,13 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       if (passedSupersetSchemaGenerator instanceof SupersetSchemaGenerator) {
         supersetSchemaGenerator = Optional.of((SupersetSchemaGenerator) passedSupersetSchemaGenerator);
       }
+      Map<String, D2Client> d2Clients = prepareD2ClientsFromProperties(propertiesList);
       VeniceControllerContext ctx = new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
           .setMetricsRepository(metricsRepository)
           .setServiceDiscoveryAnnouncers(d2ServerList)
           .setAuthorizerService(options.getAuthorizerService())
           .setD2Client(d2Client)
+          .setD2Clients(d2Clients)
           .setRouterClientConfig(consumerClientConfig.orElse(null))
           .setExternalSupersetSchemaGenerator(supersetSchemaGenerator.orElse(null))
           .setAccessController(options.getDynamicAccessController())
@@ -396,6 +400,19 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           options.getZkAddress(),
           metricsRepository);
     };
+  }
+
+  private static Map<String, D2Client> prepareD2ClientsFromProperties(List<VeniceProperties> propertiesList) {
+    VeniceControllerMultiClusterConfig multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
+    Map<String, D2Client> d2Clients = new HashMap<>();
+    for (Map.Entry<String, String> entry: multiClusterConfigs.getCommonConfig()
+        .getChildDataCenterControllerD2Map()
+        .entrySet()) {
+      String regionName = entry.getKey();
+      String zkAddress = entry.getValue();
+      d2Clients.put(regionName, D2TestUtils.getAndStartD2Client(zkAddress));
+    }
+    return d2Clients;
   }
 
   private static String createDataCenterNameWithIndex(int index) {
@@ -486,6 +503,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         new VeniceControllerContext.Builder().setPropertiesList(configs)
             .setServiceDiscoveryAnnouncers(d2ServerList)
             .setD2Client(d2Client)
+            .setD2Clients(prepareD2ClientsFromProperties(configs))
             .build());
   }
 

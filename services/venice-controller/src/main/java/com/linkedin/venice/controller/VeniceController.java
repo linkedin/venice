@@ -428,8 +428,7 @@ public class VeniceController {
       String childControllerUrl = systemStoreClusterConfig.getChildControllerUrl(regionName);
       String d2ServiceName = systemStoreClusterConfig.getD2ServiceName();
       String d2ZkHost = systemStoreClusterConfig.getChildControllerD2ZkHost(regionName);
-      Optional<D2Client> regionD2Client = Optional.ofNullable(
-          d2Clients == null ? null : d2Clients.get(systemStoreClusterConfig.getChildControllerD2ServiceName()));
+      Optional<D2Client> regionD2Client = Optional.ofNullable(d2Clients == null ? null : d2Clients.get(regionName));
       boolean sslOnly = systemStoreClusterConfig.isControllerEnforceSSLOnly();
       if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
         ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
