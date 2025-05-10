@@ -653,7 +653,7 @@ public class AdminTool {
     CommandLine cmd = parser.parse(options, args);
 
     if (cmd.hasOption(Arg.HELP.first())) {
-      printUsageAndExit(commandGroup, parameterOptionsForHelp);
+      printUsageAndExit(commandGroup, parameterOptionsForHelp, cmd);
     } else if (cmd.hasOption(Command.CONVERT_VSON_SCHEMA.toString())) {
       convertVsonSchemaAndExit(cmd);
     }
@@ -2427,7 +2427,33 @@ public class AdminTool {
 
   /* Things that are not commands */
 
-  private static void printUsageAndExit(OptionGroup commandGroup, Options options) {
+  private static void printUsageAndExit(OptionGroup commandGroup, Options options, CommandLine cmd) {
+    /**
+     * Get the first command if it is available, otherwise print all commands.
+     */
+    Command foundCommand = null;
+    for (Command c: Command.values()) {
+      if (cmd.hasOption(c.toString())) {
+        foundCommand = c;
+      }
+    }
+    Command[] commands = Command.values();
+    if (foundCommand != null) {
+      commands = new Command[] { foundCommand };
+      commandGroup = new OptionGroup();
+      createCommandOpt(foundCommand, commandGroup);
+
+      /**
+       * Gather all the options belonging to the found command.
+       */
+      options = new Options();
+      for (Arg arg: foundCommand.getRequiredArgs()) {
+        createOpt(arg, arg.isParameterized(), arg.getHelpText(), options);
+      }
+      for (Arg arg: foundCommand.getOptionalArgs()) {
+        createOpt(arg, arg.isParameterized(), arg.getHelpText(), options);
+      }
+    }
 
     /* Commands */
     String command = "java -jar "
@@ -2443,7 +2469,6 @@ public class AdminTool {
 
     /* Examples */
     System.out.println("\nExamples:");
-    Command[] commands = Command.values();
     Arrays.sort(commands, Command.commandComparator);
     for (Command c: commands) {
       StringJoiner exampleArgs = new StringJoiner(" ");
