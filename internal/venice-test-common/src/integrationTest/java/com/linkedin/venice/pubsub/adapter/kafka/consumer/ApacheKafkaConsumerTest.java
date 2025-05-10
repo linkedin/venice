@@ -6,6 +6,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -48,8 +49,12 @@ public class ApacheKafkaConsumerTest {
             .build());
     consumer = new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig);
     admin = new ApacheKafkaAdminAdapter(
-        new ApacheKafkaAdminConfig(new VeniceProperties(properties)),
-        pubSubTopicRepository);
+        new ApacheKafkaAdminConfig(
+            new PubSubAdminAdapterContext.Builder().setAdminClientName("testAdminClient")
+                .setVeniceProperties(new VeniceProperties(properties))
+                .setPubSubTopicRepository(pubSubTopicRepository)
+                .setPubSubPositionTypeRegistry(kafkaBroker.getPubSubPositionTypeRegistry())
+                .build()));
   }
 
   @AfterMethod

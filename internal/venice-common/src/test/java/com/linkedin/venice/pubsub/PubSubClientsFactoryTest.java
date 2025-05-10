@@ -122,9 +122,9 @@ public class PubSubClientsFactoryTest {
     }
   }
 
-  protected static class TestPubSubAdminAdapterFactory extends PubSubAdminAdapterFactory {
+  protected static class TestPubSubAdminAdapterFactory extends PubSubAdminAdapterFactory<PubSubAdminAdapter> {
     @Override
-    public PubSubAdminAdapter create(VeniceProperties veniceProperties, PubSubTopicRepository pubSubTopicRepository) {
+    public PubSubAdminAdapter create(PubSubAdminAdapterContext context) {
       return null;
     }
 

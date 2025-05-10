@@ -27,6 +27,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
@@ -260,7 +261,7 @@ public class TestTopicCleanupService {
 
     ApacheKafkaAdminAdapterFactory apacheKafkaAdminAdapterFactory = mock(ApacheKafkaAdminAdapterFactory.class);
     ApacheKafkaAdminAdapter apacheKafkaAdminAdapter = mock(ApacheKafkaAdminAdapter.class);
-    doReturn(apacheKafkaAdminAdapter).when(apacheKafkaAdminAdapterFactory).create(any(), eq(pubSubTopicRepository));
+    doReturn(apacheKafkaAdminAdapter).when(apacheKafkaAdminAdapterFactory).create(any(PubSubAdminAdapterContext.class));
 
     topicCleanupService.setSourceOfTruthPubSubAdminAdapter(apacheKafkaAdminAdapter);
     Pair<String, String> pair = new Pair<>(clusterName, "");

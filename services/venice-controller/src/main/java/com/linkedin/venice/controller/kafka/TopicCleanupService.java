@@ -8,6 +8,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -125,9 +126,14 @@ public class TopicCleanupService extends AbstractVeniceService {
   }
 
   private PubSubAdminAdapter constructSourceOfTruthPubSubAdminAdapter(
-      PubSubAdminAdapterFactory<?> sourceOfTruthAdminAdapterFactory) {
+      PubSubAdminAdapterFactory<? extends PubSubAdminAdapter> sourceOfTruthAdminAdapterFactory) {
     VeniceProperties veniceProperties = admin.getPubSubSSLProperties(getTopicManager().getPubSubClusterAddress());
-    return sourceOfTruthAdminAdapterFactory.create(veniceProperties, pubSubTopicRepository);
+    return sourceOfTruthAdminAdapterFactory.create(
+        new PubSubAdminAdapterContext.Builder().setAdminClientName("SourceOfTruthAdminClient")
+            .setVeniceProperties(veniceProperties)
+            .setPubSubPositionTypeRegistry(multiClusterConfigs.getPubSubPositionTypeRegistry())
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .build());
   }
 
   // For test purpose

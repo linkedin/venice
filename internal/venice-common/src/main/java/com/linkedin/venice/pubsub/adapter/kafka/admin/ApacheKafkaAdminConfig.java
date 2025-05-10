@@ -5,11 +5,11 @@ import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProdu
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
-import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.Arrays;
@@ -34,16 +34,18 @@ public class ApacheKafkaAdminConfig {
           Arrays.asList(KAFKA_CONFIG_PREFIX, PUBSUB_KAFKA_CLIENT_CONFIG_PREFIX, PUBSUB_KAFKA_ADMIN_CONFIG_PREFIX)));
 
   private final Properties adminProperties;
+  private final PubSubTopicRepository pubSubTopicRepository;
   private final String brokerAddress;
   private final long topicConfigMaxRetryInMs;
   private final Duration defaultApiTimeout;
 
-  public ApacheKafkaAdminConfig(VeniceProperties veniceProperties) {
-    this.brokerAddress = veniceProperties.getString(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS);
-    PubSubSecurityProtocol securityProtocol = PubSubUtil.getPubSubSecurityProtocolOrDefault(veniceProperties);
+  public ApacheKafkaAdminConfig(PubSubAdminAdapterContext adminAdapterContext) {
+    VeniceProperties veniceProperties = adminAdapterContext.getVeniceProperties();
+    this.pubSubTopicRepository = adminAdapterContext.getPubSubTopicRepository();
+    this.brokerAddress = adminAdapterContext.getPubSubBrokerAddress();
     this.adminProperties = ApacheKafkaUtils.getValidKafkaClientProperties(
         veniceProperties,
-        securityProtocol,
+        adminAdapterContext.getPubSubSecurityProtocol(),
         AdminClientConfig.configNames(),
         KAFKA_ADMIN_CONFIG_PREFIXES);
     this.adminProperties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
@@ -60,10 +62,9 @@ public class ApacheKafkaAdminConfig {
         PubSubConstants.PUBSUB_ADMIN_API_DEFAULT_TIMEOUT_MS,
         PubSubConstants.PUBSUB_ADMIN_API_DEFAULT_TIMEOUT_MS_DEFAULT_VALUE);
     defaultApiTimeout = Duration.ofMillis(defaultApiTimeoutInMs);
-    this.adminProperties.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, defaultApiTimeoutInMs);
-    this.adminProperties
-        .put(AdminClientConfig.CLIENT_ID_CONFIG, ApacheKafkaUtils.generateClientId("KcAdmin", brokerAddress));
 
+    this.adminProperties.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, defaultApiTimeoutInMs);
+    this.adminProperties.put(AdminClientConfig.CLIENT_ID_CONFIG, adminAdapterContext.getAdminClientName());
     LOGGER.debug("Created ApacheKafkaAdminConfig: {} - adminProperties: {}", this, adminProperties);
   }
 
@@ -83,5 +84,9 @@ public class ApacheKafkaAdminConfig {
 
   public String getBrokerAddress() {
     return brokerAddress;
+  }
+
+  public PubSubTopicRepository getPubSubTopicRepository() {
+    return pubSubTopicRepository;
   }
 }
