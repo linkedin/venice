@@ -350,7 +350,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
                 .setMetricsRepository(MetricsRepositoryUtils.createSingleThreadedMetricsRepository())
                 .setSslFactory(sslFactory)
                 .setClientConfigForConsumer(consumerClientConfig)
-                .setServiceDiscoveryAnnouncers(d2Servers);
+                .setServiceDiscoveryAnnouncers(d2Servers)
+                .setD2Client(D2TestUtils.getAndStartD2Client(zkAddress));
 
         TestVeniceServer server = new TestVeniceServer(serverContextBuilder.build());
         return new VeniceServerWrapper(
@@ -511,6 +512,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     this.veniceServer = new TestVeniceServer(
         new VeniceServerContext.Builder().setVeniceConfigLoader(config)
             .setMetricsRepository(MetricsRepositoryUtils.createSingleThreadedMetricsRepository())
+            .setD2Client(D2TestUtils.getAndStartD2Client(zkAddress))
             .setSslFactory(sslFactory)
             .setClientConfigForConsumer(consumerClientConfig)
             .setServiceDiscoveryAnnouncers(d2Servers)
