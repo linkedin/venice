@@ -124,8 +124,7 @@ public class AdminExecutionTask implements Callable<Void> {
           stats.recordAdminMessageStartProcessingLatency(
               Math.max(
                   0,
-                  adminOperationWrapper.getStartProcessingTimestamp()
-                      - adminOperationWrapper.getLocalBrokerTimestamp()));
+                  adminOperationWrapper.getStartProcessingTimestamp() - adminOperationWrapper.getDelegateTimestamp()));
         }
         processMessage(adminOperationWrapper.getAdminOperation());
         long completionTimestamp = System.currentTimeMillis();
