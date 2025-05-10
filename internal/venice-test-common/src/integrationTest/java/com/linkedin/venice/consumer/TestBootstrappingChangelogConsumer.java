@@ -98,8 +98,8 @@ import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
@@ -118,7 +118,7 @@ public class TestBootstrappingChangelogConsumer {
   private MetricsRepository metricsRepository;
   private String zkAddress;
 
-  @BeforeMethod(alwaysRun = true)
+  @BeforeClass(alwaysRun = true)
   public void setUp() {
     Utils.thisIsLocalhost();
 
@@ -148,7 +148,7 @@ public class TestBootstrappingChangelogConsumer {
     metricsRepository = new MetricsRepository();
   }
 
-  @AfterMethod(alwaysRun = true)
+  @AfterClass(alwaysRun = true)
   public void cleanUp() {
     clusterWrapper.close();
     TestView.resetCounters();
