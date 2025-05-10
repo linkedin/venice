@@ -6,6 +6,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -39,10 +40,13 @@ public class ApacheKafkaConsumerTest {
     kafkaBroker = ServiceFactory.getPubSubBroker();
     Properties properties = new Properties();
     properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBroker.getAddress());
-    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig =
-        new ApacheKafkaConsumerConfig(new VeniceProperties(properties), "testConsumer");
-    consumer =
-        new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig, PubSubMessageDeserializer.getInstance(), false);
+    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
+            .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+            .setPubSubPositionTypeRegistry(kafkaBroker.getPubSubPositionTypeRegistry())
+            .setConsumerName("testConsumer")
+            .build());
+    consumer = new ApacheKafkaConsumerAdapter(apacheKafkaConsumerConfig);
     admin = new ApacheKafkaAdminAdapter(
         new ApacheKafkaAdminConfig(new VeniceProperties(properties)),
         pubSubTopicRepository);

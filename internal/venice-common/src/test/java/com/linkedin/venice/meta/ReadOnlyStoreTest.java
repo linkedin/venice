@@ -1,6 +1,6 @@
 package com.linkedin.venice.meta;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;

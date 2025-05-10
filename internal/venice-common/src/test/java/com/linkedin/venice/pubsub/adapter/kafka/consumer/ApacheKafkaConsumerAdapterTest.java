@@ -27,6 +27,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -47,7 +48,6 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -57,7 +57,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -85,20 +84,21 @@ public class ApacheKafkaConsumerAdapterTest {
   private Consumer<byte[], byte[]> internalKafkaConsumer;
   private ApacheKafkaConsumerAdapter kafkaConsumerAdapter;
   private PubSubMessageDeserializer pubSubMessageDeserializer;
+  private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker;
   private ApacheKafkaConsumerConfig apacheKafkaConsumerConfig;
 
   @BeforeMethod(alwaysRun = true)
   public void setUp() {
     internalKafkaConsumer = mock(Consumer.class);
-    pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
+    pubSubMessageDeserializer = PubSubMessageDeserializer.createDefaultDeserializer();
     topicPartitionsOffsetsTracker = mock(TopicPartitionsOffsetsTracker.class);
-    apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(new VeniceProperties(new Properties()), "testConsumer");
-    kafkaConsumerAdapter = new ApacheKafkaConsumerAdapter(
-        internalKafkaConsumer,
-        apacheKafkaConsumerConfig,
-        pubSubMessageDeserializer,
-        topicPartitionsOffsetsTracker);
+    pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
+    apacheKafkaConsumerConfig = mock(ApacheKafkaConsumerConfig.class);
+    when(apacheKafkaConsumerConfig.getTopicPartitionsOffsetsTracker()).thenReturn(topicPartitionsOffsetsTracker);
+    when(apacheKafkaConsumerConfig.getPubSubMessageDeserializer()).thenReturn(pubSubMessageDeserializer);
+    when(apacheKafkaConsumerConfig.getPubSubPositionTypeRegistry()).thenReturn(pubSubPositionTypeRegistry);
+    kafkaConsumerAdapter = new ApacheKafkaConsumerAdapter(internalKafkaConsumer, apacheKafkaConsumerConfig);
   }
 
   @AfterMethod(alwaysRun = true)
@@ -325,6 +325,7 @@ public class ApacheKafkaConsumerAdapterTest {
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(
         Collections.singletonMap(new TopicPartition("test", 0), Collections.singletonList(record)));
     doReturn(records).when(internalKafkaConsumer).poll(any());
+    doReturn(3).when(apacheKafkaConsumerConfig).getConsumerPollRetryTimes();
 
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("test"), 0);
 
@@ -356,6 +357,7 @@ public class ApacheKafkaConsumerAdapterTest {
     ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(
         Collections.singletonMap(new TopicPartition("test", 42), Collections.singletonList(record)));
     doReturn(records).when(internalKafkaConsumer).poll(any());
+    doReturn(3).when(apacheKafkaConsumerConfig).getConsumerPollRetryTimes();
     kafkaConsumerAdapter.poll(Long.MAX_VALUE);
   }
 
@@ -366,17 +368,15 @@ public class ApacheKafkaConsumerAdapterTest {
             new TopicPartition("test", 42),
             Collections.singletonList(new ConsumerRecord<>("test", 42, 75, "key".getBytes(), "value".getBytes()))));
     doReturn(consumerRecords).when(internalKafkaConsumer).poll(any());
+    doReturn(3).when(apacheKafkaConsumerConfig).getConsumerPollRetryTimes();
     kafkaConsumerAdapter.poll(Long.MAX_VALUE);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testApacheKafkaConsumer(boolean enabledOffsetCollection) {
     if (!enabledOffsetCollection) {
-      kafkaConsumerAdapter = new ApacheKafkaConsumerAdapter(
-          internalKafkaConsumer,
-          apacheKafkaConsumerConfig,
-          pubSubMessageDeserializer,
-          null);
+      when(apacheKafkaConsumerConfig.getTopicPartitionsOffsetsTracker()).thenReturn(null);
+      kafkaConsumerAdapter = new ApacheKafkaConsumerAdapter(internalKafkaConsumer, apacheKafkaConsumerConfig);
     }
 
     PubSubTopic testTopic = pubSubTopicRepository.getTopic("test_topic_v1");
@@ -482,6 +482,7 @@ public class ApacheKafkaConsumerAdapterTest {
     PubSubTopicPartition pubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("testTopic"), 0);
     doReturn(partitionInfos).when(internalKafkaConsumer).partitionsFor(pubSubTopicPartition.getTopicName());
+    doReturn(3).when(apacheKafkaConsumerConfig).getTopicQueryRetryTimes();
     assertTrue(kafkaConsumerAdapter.isValidTopicPartition(pubSubTopicPartition));
     verify(internalKafkaConsumer).partitionsFor(pubSubTopicPartition.getTopicName());
   }

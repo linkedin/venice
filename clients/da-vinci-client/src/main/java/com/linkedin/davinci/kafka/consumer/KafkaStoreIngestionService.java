@@ -1,15 +1,14 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_AUTO_OFFSET_RESET_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_BYTES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MAX_WAIT_MS_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_MIN_BYTES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_GROUP_ID_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MAX_POLL_RECORDS_CONFIG;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
 
@@ -59,7 +58,7 @@ import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -117,7 +116,6 @@ import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -290,6 +288,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             .setMetricsRepository(metricsRepository)
             .setTopicOffsetCheckIntervalMs(serverConfig.getTopicOffsetCheckIntervalMs())
             .setPubSubPropertiesSupplier(this::getPubSubSSLPropertiesFromServerConfig)
+            .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry())
             .setPubSubAdminAdapterFactory(pubSubClientsFactory.getAdminAdapterFactory())
             .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
             .setTopicMetadataFetcherThreadPoolSize(serverConfig.getTopicManagerMetadataFetcherThreadPoolSize())
@@ -1208,9 +1207,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private Properties getCommonKafkaConsumerProperties(VeniceServerConfig serverConfig) {
     Properties kafkaConsumerProperties = serverConfig.getClusterProperties().getPropertiesCopy();
     kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
-    kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
-    // Venice is persisting offset in local offset db.
-    kafkaConsumerProperties.setProperty(KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
     kafkaConsumerProperties
         .setProperty(KAFKA_FETCH_MIN_BYTES_CONFIG, String.valueOf(serverConfig.getKafkaFetchMinSizePerSecond()));
     kafkaConsumerProperties
@@ -1253,15 +1249,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       kafkaBootstrapUrls = resolvedKafkaUrl;
     }
     properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
-    PubSubSecurityProtocol securityProtocol = serverConfigForPubSubCluster.getKafkaSecurityProtocol(kafkaBootstrapUrls);
-    if (ApacheKafkaUtils.isKafkaSSLProtocol(securityProtocol)) {
+    PubSubSecurityProtocol securityProtocol =
+        serverConfigForPubSubCluster.getPubSubSecurityProtocol(kafkaBootstrapUrls);
+    if (PubSubUtil.isPubSubSslProtocol(securityProtocol)) {
       Optional<SSLConfig> sslConfig = serverConfigForPubSubCluster.getSslConfig();
       if (!sslConfig.isPresent()) {
         throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
       }
       properties.putAll(sslConfig.get().getKafkaSSLConfig());
     }
-    properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name());
+    properties.setProperty(PUBSUB_SECURITY_PROTOCOL, securityProtocol.name());
     return new VeniceProperties(properties);
   }
 

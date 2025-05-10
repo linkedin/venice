@@ -12,6 +12,7 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -100,7 +101,7 @@ public class PubSubAdminAdapterTest {
   @BeforeMethod(alwaysRun = true)
   public void setUpMethod() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
-    pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
+    pubSubMessageDeserializer = PubSubMessageDeserializer.createDefaultDeserializer();
     pubSubTopicRepository = new PubSubTopicRepository();
     pubSubClientsFactory = pubSubBrokerWrapper.getPubSubClientsFactory();
 
@@ -118,7 +119,11 @@ public class PubSubAdminAdapterTest {
     pubSubAdminAdapter = pubSubClientsFactory.getAdminAdapterFactory().create(veniceProperties, pubSubTopicRepository);
     pubSubConsumerAdapterLazy = Lazy.of(
         () -> pubSubClientsFactory.getConsumerAdapterFactory()
-            .create(veniceProperties, false, pubSubMessageDeserializer, clientId));
+            .create(
+                new PubSubConsumerAdapterContext.Builder().setVeniceProperties(veniceProperties)
+                    .setPubSubMessageDeserializer(pubSubMessageDeserializer)
+                    .setConsumerName(clientId)
+                    .build()));
     pubSubProducerAdapterLazy = Lazy.of(
         () -> pubSubClientsFactory.getProducerAdapterFactory()
             .create(
