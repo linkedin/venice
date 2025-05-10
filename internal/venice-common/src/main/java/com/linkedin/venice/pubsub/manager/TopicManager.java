@@ -92,7 +92,7 @@ public class TopicManager implements Closeable {
                 .setPubSubPositionTypeRegistry(context.getPubSubPositionTypeRegistry())
                 .setMetricsRepository(context.getMetricsRepository())
                 .setVeniceProperties(context.getPubSubProperties(pubSubClusterAddress))
-                .setAdminClientName("TopicManager")
+                .setAdminClientName("TM")
                 .build());
     this.topicMetadataFetcher = new TopicMetadataFetcher(pubSubClusterAddress, context, stats, pubSubAdminAdapter);
     this.logger.info(

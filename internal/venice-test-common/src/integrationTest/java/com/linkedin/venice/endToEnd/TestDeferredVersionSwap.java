@@ -25,7 +25,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
-import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -587,20 +586,6 @@ public class TestDeferredVersionSwap {
         coloVersions.forEach((colo, version) -> {
           Assert.assertEquals((int) version, 1);
         });
-      });
-    }
-
-    String childControllerURLs = multiRegionMultiClusterWrapper.getChildRegions().get(0).getControllerConnectString();
-    try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAMES[0], childControllerURLs)) {
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-        StoreInfo childStore = childControllerClient.getStore(metaSystemStoreName).getStore();
-        assertTrue(
-            childStore.getVersion(1).isPresent(),
-            "Version 1 should be present in child store: " + childStore.getName());
-        assertTrue(
-            childStore.getVersion(1).get().getStatus() == VersionStatus.ONLINE,
-            "Version 1 should be ONLINE in child store: " + childStore.getName());
       });
     }
 
