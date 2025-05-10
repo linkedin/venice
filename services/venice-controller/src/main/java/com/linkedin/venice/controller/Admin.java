@@ -1043,4 +1043,6 @@ public interface Admin extends AutoCloseable, Closeable {
   PubSubTopicRepository getPubSubTopicRepository();
 
   LogContext getLogContext();
+
+  VeniceControllerClusterConfig getControllerConfig(String clusterName);
 }
