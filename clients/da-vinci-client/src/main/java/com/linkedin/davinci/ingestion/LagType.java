@@ -1,7 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
 public enum LagType {
-  OFFSET_LAG("Offset"), TIME_LAG("Time");
+  OFFSET_LAG("Offset"), HEARTBEAT_LAG("Heartbeat");
 
   private final String prettyString;
 

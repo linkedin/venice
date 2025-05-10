@@ -1,6 +1,5 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.davinci.ingestion.LagType.OFFSET_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.LEADER_TO_STANDBY;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.STANDBY_TO_LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.IN_TRANSITION_FROM_STANDBY_TO_LEADER;
@@ -185,7 +184,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   private final String nativeReplicationSourceVersionTopicKafkaURL;
   private final Set<String> nativeReplicationSourceVersionTopicKafkaURLSingletonSet;
   private final VeniceWriterFactory veniceWriterFactory;
-
   private final HeartbeatMonitoringService heartbeatMonitoringService;
 
   /**
@@ -1816,6 +1814,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  @Override
+  protected long measureHybridHeartbeatLag(PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
+    if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
+      return getHeartbeatMonitoringService()
+          .getReplicaLeaderMaxHeartbeatLag(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+    } else {
+      return getHeartbeatMonitoringService()
+          .getReplicaFollowerHeartbeatLag(partitionConsumptionState, storeName, versionNumber, shouldLogLag);
+    }
+  }
+
   protected long measureRTOffsetLagForMultiRegions(
       Set<String> sourceRealTimeTopicKafkaURLs,
       PartitionConsumptionState partitionConsumptionState,
@@ -2150,8 +2159,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       long lag,
       long threshold,
       boolean shouldLogLag,
-      LagType lagType,
-      long latestConsumedProducerTimestamp) {
+      LagType lagType) {
     boolean isLagAcceptable = lag <= threshold;
     boolean isHybridFollower = isHybridFollower(pcs);
 
@@ -2173,11 +2181,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             .append("}.");
       }
       LOGGER.info(
-          "[{} lag] replica: {} is {}. {}Lag: [{}] {} Threshold [{}]. {}",
+          "[{} lag] replica: {} is {}. Lag: [{}] {} Threshold [{}]. {}",
           lagType.prettyString(),
           pcs.getReplicaId(),
           (isLagAcceptable ? "not lagging" : "lagging"),
-          (lagType == OFFSET_LAG ? "" : "The latest producer timestamp is " + latestConsumedProducerTimestamp + ". "),
           lag,
           lag <= threshold ? "<=" : ">",
           threshold,
@@ -2283,13 +2290,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState,
       DefaultPubSubMessage consumerRecord,
       String kafkaUrl) {
-    if (heartbeatMonitoringService == null) {
+    if (getHeartbeatMonitoringService() == null) {
       // Not enabled!
       return;
     }
 
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER)) {
-      heartbeatMonitoringService.recordLeaderHeartbeat(
+      getHeartbeatMonitoringService().recordLeaderHeartbeat(
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
@@ -2297,7 +2304,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           consumerRecord.getValue().producerMetadata.messageTimestamp,
           partitionConsumptionState.isComplete());
     } else {
-      heartbeatMonitoringService.recordFollowerHeartbeat(
+      getHeartbeatMonitoringService().recordFollowerHeartbeat(
           storeName,
           versionNumber,
           partitionConsumptionState.getPartition(),
@@ -4394,12 +4401,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return kafkaClusterIdToUrlMap;
   }
 
-  HeartbeatMonitoringService getHeartbeatMonitoringService() {
-    return heartbeatMonitoringService;
-  }
-
   // Package private for unit test
   void setTime(Time time) {
     this.time = time;
   }
+
+  HeartbeatMonitoringService getHeartbeatMonitoringService() {
+    return heartbeatMonitoringService;
+  }
+
 }
