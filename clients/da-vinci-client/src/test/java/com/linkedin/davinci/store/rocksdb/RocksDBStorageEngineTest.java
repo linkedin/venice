@@ -1,6 +1,7 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_EMIT_DUPLICATE_KEY_METRIC;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -24,6 +25,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.Properties;
 import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -49,8 +51,9 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     Store mockStore = mock(Store.class);
     when(mockStore.getVersion(versionNumber)).thenReturn(mockVersion);
     when(mockReadOnlyStoreRepository.getStoreOrThrow(storeName)).thenReturn(mockStore);
-
-    VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    Properties properties = new Properties();
+    properties.put(ROCKSDB_EMIT_DUPLICATE_KEY_METRIC, "true");
+    VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
     storageService = new StorageService(
         AbstractStorageEngineTest.getVeniceConfigLoader(serverProps),
         mock(AggVersionedStorageEngineStats.class),
@@ -194,6 +197,15 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   @Test
   public void testUpdate() {
     super.testUpdate();
+    AbstractStorageEngine testStorageEngine = getTestStoreEngine();
+    Assert.assertEquals(testStorageEngine.getType(), PersistenceType.ROCKS_DB);
+    RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine) testStorageEngine;
+    Set<Integer> persistedPartitionIds = rocksDBStorageEngine.getPersistedPartitionIds();
+    Assert.assertEquals(persistedPartitionIds.size(), 2);
+    Assert.assertTrue(persistedPartitionIds.contains(PARTITION_ID));
+    Assert.assertTrue(persistedPartitionIds.contains(METADATA_PARTITION_ID));
+    Assert.assertEquals(2, rocksDBStorageEngine.getKeyCountEstimate());
+    Assert.assertEquals(0, rocksDBStorageEngine.getDuplicateKeyCountEstimate());
   }
 
   @Test
