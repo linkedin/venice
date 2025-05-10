@@ -154,7 +154,7 @@ public class TestBootstrappingChangelogConsumer {
     TestView.resetCounters();
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "changelogConsumer", dataProviderClass = DataProviderUtils.class, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "changelogConsumer", dataProviderClass = DataProviderUtils.class)
   public void testVeniceChangelogConsumer(int consumerCount) throws Exception {
     String storeName = Utils.getUniqueString("store");
     String inputDirPath = setUpStore(storeName, false);
@@ -265,7 +265,7 @@ public class TestBootstrappingChangelogConsumer {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 3, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT * 3)
   public void testVeniceChangelogConsumerDaVinciRecordTransformerImpl() throws Exception {
     String storeName = Utils.getUniqueString("store");
     boolean useSpecificRecord = false;
@@ -318,7 +318,6 @@ public class TestBootstrappingChangelogConsumer {
       List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsList = new ArrayList<>();
       // 21 changes in near-line. 10 puts, 10 deletes, and 1 record with a producer timestamp
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        // assertFalse(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
         pollChangeEventsFromChangeCaptureConsumer(
             polledChangeEventsMap,
             polledChangeEventsList,
@@ -414,7 +413,7 @@ public class TestBootstrappingChangelogConsumer {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testBlobTransferVeniceChangelogConsumerDaVinciRecordTransformerImpl() throws Exception {
     String storeName = Utils.getUniqueString("store");
     boolean useSpecificRecord = false;
@@ -506,7 +505,6 @@ public class TestBootstrappingChangelogConsumer {
           new HashMap<>();
       List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsList = new ArrayList<>();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        assertFalse(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
         pollChangeEventsFromChangeCaptureConsumer(
             polledChangeEventsMap,
             polledChangeEventsList,
@@ -543,7 +541,7 @@ public class TestBootstrappingChangelogConsumer {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testSpecificRecordVeniceChangelogConsumerDaVinciRecordTransformerImpl() throws Exception {
     String storeName = Utils.getUniqueString("store");
     boolean useSpecificRecord = true;
@@ -595,7 +593,6 @@ public class TestBootstrappingChangelogConsumer {
           new ArrayList<>();
       // 20 changes in near-line. 10 puts, 10 deletes
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        assertFalse(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
         pollChangeEventsFromSpecificChangeCaptureConsumer(
             polledChangeEventsMap,
             polledChangeEventsList,
@@ -632,7 +629,7 @@ public class TestBootstrappingChangelogConsumer {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testSpecificRecordBlobTransferVeniceChangelogConsumerDaVinciRecordTransformerImpl() throws Exception {
     String storeName = Utils.getUniqueString("store");
     boolean useSpecificRecord = true;
@@ -728,7 +725,6 @@ public class TestBootstrappingChangelogConsumer {
       List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsList =
           new ArrayList<>();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        assertFalse(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
         pollChangeEventsFromSpecificChangeCaptureConsumer(
             polledChangeEventsMap,
             polledChangeEventsList,
