@@ -85,18 +85,19 @@ import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
+@Test(singleThreaded = true)
 public class DaVinciClientRecordTransformerTest {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciClientRecordTransformerTest.class);
   private static final int TEST_TIMEOUT = 120_000;
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
 
-  @BeforeClass
+  @BeforeMethod(alwaysRun = true)
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
@@ -116,7 +117,7 @@ public class DaVinciClientRecordTransformerTest {
     D2ClientUtils.startClient(d2Client);
   }
 
-  @AfterClass
+  @AfterMethod(alwaysRun = true)
   public void cleanUp() {
     if (d2Client != null) {
       D2ClientUtils.shutdownClient(d2Client);
