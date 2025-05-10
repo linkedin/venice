@@ -1012,7 +1012,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // Log only once a minute per partition.
       boolean shouldLogLag = !REDUNDANT_LOGGING_FILTER.isRedundantException(msg);
-      LOGGER.info("DEBUGGING CONFIG: {} {}", serverConfig.isUseHeartbeatLagForReadyToServeCheckEnabled(), shouldLogLag);
       if (serverConfig.isUseHeartbeatLagForReadyToServeCheckEnabled()) {
         // Measure heartbeat lag for ready-to-serve check.
         isLagAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
@@ -1021,7 +1020,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS,
             shouldLogLag,
             HEARTBEAT_LAG);
-        LOGGER.info("DEBUGGING HB LAG ACC: {}", isLagAcceptable);
       } else {
         /**
          * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
