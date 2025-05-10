@@ -693,17 +693,6 @@ public class RouterServer extends AbstractVeniceService {
     final SslInitializer sslInitializer;
     if (sslFactory.isPresent()) {
       sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
-      if (config.getClientSslHandshakeThreads() > 0) {
-        ThreadPoolExecutor sslHandshakeExecutor = ThreadPoolFactory.createThreadPool(
-            config.getClientSslHandshakeThreads(),
-            "SSLHandShakeThread",
-            config.getRegionName(),
-            config.getClientSslHandshakeQueueCapacity(),
-            LINKED_BLOCKING_QUEUE);
-        ThreadPoolStats sslHandshakeThreadPoolStats =
-            new ThreadPoolStats(metricsRepository, sslHandshakeExecutor, "ssl_handshake_thread_pool");
-        sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor, sslHandshakeThreadPoolStats::recordQueuedTasksCount);
-      }
       if (config.getResolveThreads() > 0) {
         ThreadPoolExecutor dnsResolveExecutor = ThreadPoolFactory.createThreadPool(
             config.getResolveThreads(),
@@ -712,14 +701,14 @@ public class RouterServer extends AbstractVeniceService {
             config.getResolveQueueCapacity(),
             LINKED_BLOCKING_QUEUE);
         new ThreadPoolStats(metricsRepository, dnsResolveExecutor, "dns_resolution_thread_pool");
-        int clientSslHandshakeThreads = config.getClientSslHandshakeThreads();
+        int resolveThreads = config.getResolveThreads();
         int maxConcurrentSslHandshakes = config.getMaxConcurrentSslHandshakes();
         int clientResolutionRetryAttempts = config.getClientResolutionRetryAttempts();
         long clientResolutionRetryBackoffMs = config.getClientResolutionRetryBackoffMs();
         if (useEpoll) {
-          sslResolverEventLoopGroup = new EpollEventLoopGroup(clientSslHandshakeThreads, dnsResolveExecutor);
+          sslResolverEventLoopGroup = new EpollEventLoopGroup(resolveThreads, dnsResolveExecutor);
         } else {
-          sslResolverEventLoopGroup = new NioEventLoopGroup(clientSslHandshakeThreads, dnsResolveExecutor);
+          sslResolverEventLoopGroup = new NioEventLoopGroup(resolveThreads, dnsResolveExecutor);
         }
         sslInitializer.enableResolveBeforeSSL(
             sslResolverEventLoopGroup,
