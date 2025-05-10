@@ -44,7 +44,8 @@ public class TestBlobTransferManagerBuilder {
         BlobTransferUtils.BlobTransferTableFormat.PLAIN_TABLE,
         2000000,
         2000000,
-        2000000);
+        2000000,
+        2);
 
     BlobTransferManager blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(blobTransferConfig)
         .setClientConfig(clientConfig)
@@ -82,7 +83,8 @@ public class TestBlobTransferManagerBuilder {
         BlobTransferUtils.BlobTransferTableFormat.PLAIN_TABLE,
         2000000,
         2000000,
-        2000000);
+        2000000,
+        2);
 
     // Case 1: expect exception is thrown due to both clientConfig and customizedViewFuture are not null
     try {

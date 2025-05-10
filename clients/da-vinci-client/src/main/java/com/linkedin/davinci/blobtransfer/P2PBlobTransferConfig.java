@@ -24,6 +24,8 @@ public class P2PBlobTransferConfig {
   private final long blobTransferClientReadLimitBytesPerSec;
   // Service write limit in bytes per second for all blob transfer channels
   private final long blobTransferServiceWriteLimitBytesPerSec;
+  // Interval in hours for snapshot manager to clean up old snapshots
+  private final int snapshotCleanupIntervalInHours;
 
   public P2PBlobTransferConfig(
       int p2pTransferServerPort,
@@ -35,7 +37,8 @@ public class P2PBlobTransferConfig {
       BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat,
       int peersConnectivityFreshnessInSeconds,
       long blobTransferClientReadLimitBytesPerSec,
-      long blobTransferServiceWriteLimitBytesPerSec) {
+      long blobTransferServiceWriteLimitBytesPerSec,
+      int snapshotCleanupIntervalInHours) {
     this.p2pTransferServerPort = p2pTransferServerPort;
     this.p2pTransferClientPort = p2pTransferClientPort;
     this.baseDir = baseDir;
@@ -46,6 +49,7 @@ public class P2PBlobTransferConfig {
     this.peersConnectivityFreshnessInSeconds = peersConnectivityFreshnessInSeconds;
     this.blobTransferClientReadLimitBytesPerSec = blobTransferClientReadLimitBytesPerSec;
     this.blobTransferServiceWriteLimitBytesPerSec = blobTransferServiceWriteLimitBytesPerSec;
+    this.snapshotCleanupIntervalInHours = snapshotCleanupIntervalInHours;
   }
 
   public int getP2pTransferServerPort() {
@@ -86,5 +90,9 @@ public class P2PBlobTransferConfig {
 
   public long getBlobTransferServiceWriteLimitBytesPerSec() {
     return blobTransferServiceWriteLimitBytesPerSec;
+  }
+
+  public int getSnapshotCleanupIntervalInHours() {
+    return snapshotCleanupIntervalInHours;
   }
 }

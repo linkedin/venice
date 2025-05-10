@@ -109,6 +109,11 @@ public abstract class AbstractStoragePartition {
   public abstract void createSnapshot();
 
   /**
+   * Cleans up the snapshot
+   */
+  public abstract void cleanupSnapshot();
+
+  /**
    * checks whether the current state of the database is valid
    * during the start of ingestion.
    */
