@@ -127,11 +127,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   @Override
   public List<OfflinePushStatus> loadOfflinePushStatusesAndPartitionStatuses() {
     LOGGER.info("Start loading all offline pushes statuses from ZK in cluster: {}.", clusterName);
-    List<OfflinePushStatus> offlinePushStatuses = HelixUtils.getChildren(
-        offlinePushStatusAccessor,
-        offlinePushStatusParentPath,
-        refreshAttemptsForZkReconnect,
-        refreshIntervalForZkReconnectInMs);
+    List<OfflinePushStatus> offlinePushStatuses =
+        HelixUtils.getChildren(offlinePushStatusAccessor, offlinePushStatusParentPath, refreshAttemptsForZkReconnect);
     Iterator<OfflinePushStatus> iterator = offlinePushStatuses.iterator();
     while (iterator.hasNext()) {
       OfflinePushStatus pushStatus = iterator.next();
@@ -414,11 +411,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
    */
   protected List<PartitionStatus> getPartitionStatuses(String topic, int partitionCount) {
     LOGGER.debug("Start reading partition status from ZK for topic: {} in cluster: {}.", topic, clusterName);
-    List<PartitionStatus> zkResult = HelixUtils.getChildren(
-        partitionStatusAccessor,
-        getOfflinePushStatusPath(topic),
-        refreshAttemptsForZkReconnect,
-        refreshIntervalForZkReconnectInMs);
+    List<PartitionStatus> zkResult =
+        HelixUtils.getChildren(partitionStatusAccessor, getOfflinePushStatusPath(topic), refreshAttemptsForZkReconnect);
     LOGGER.debug("Read {} partition status from ZK for topic: {} in cluster: {}.", zkResult.size(), topic, clusterName);
 
     if (zkResult.isEmpty()) {

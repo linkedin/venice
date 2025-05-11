@@ -98,14 +98,9 @@ public final class HelixUtils {
    * @param path parent path
    * @return a list of objects that are under parent path. It will return null if parent path is not existing
    */
-  public static <T> List<T> getChildren(
-      ZkBaseDataAccessor<T> dataAccessor,
-      String path,
-      int retryCount,
-      long retryInterval) {
-    int attempt = 1;
-    while (attempt <= retryCount) {
-      attempt++;
+  public static <T> List<T> getChildren(ZkBaseDataAccessor<T> dataAccessor, String path, int retryCount) {
+    int attempt = 0;
+    while (attempt < retryCount) {
       List<String> childrenNames = dataAccessor.getChildNames(path, AccessOption.PERSISTENT);
       int expectedCount = 0;
       if (childrenNames == null) {
@@ -116,17 +111,9 @@ public final class HelixUtils {
       List<T> children = dataAccessor.getChildren(path, null, AccessOption.PERSISTENT);
       if (children.size() != expectedCount) {
         // Data is inconsistent
-        if (attempt < retryCount) {
-          LOGGER.info(
-              "dataAccessor.getChildNames() did not return the expected number of elements from path: {}\nExpected: {}, but got {}. Attempt:{}/{}, will sleep {} and retry.",
-              path,
-              expectedCount,
-              children.size(),
-              attempt,
-              retryCount,
-              retryInterval);
-          Utils.sleep(retryInterval);
-        }
+        attempt++;
+        LOGGER.info("Expected number of elements: {}, but got {}.", expectedCount, children.size());
+        handleFailedHelixOperation(path, "getChildren", attempt, retryCount);
       } else {
         return children;
       }
@@ -253,9 +240,12 @@ public final class HelixUtils {
    */
   private static void handleFailedHelixOperation(String path, String helixOperation, int attempt, int retryCount) {
     if (attempt < retryCount) {
+      if (!path.isEmpty()) {
+        path = " with path " + path;
+      }
       long retryIntervalSec = (long) Math.pow(2, attempt);
       LOGGER.error(
-          "{} failed with path {} on attempt {}/{}. Will retry in {} seconds.",
+          "{} failed{} on attempt {}/{}. Will retry in {} seconds.",
           helixOperation,
           path,
           attempt,
@@ -268,34 +258,28 @@ public final class HelixUtils {
   }
 
   /**
-   * Try to connect Helix Manger. If failed, waits for certain time and retry. If Helix Manager can not be
+   * Try to connect Helix Manager. If failed, waits for certain time and retry. If Helix Manager can not be
    * connected after certain number of retry, throws exception. This method is most likely being used asynchronously since
    * it is going to block and wait if connection fails.
-   * @param manager HelixManager instance
-   * @param maxRetries retry time
-   * @param sleepTimeSeconds time in second that it blocks until next retry.
-   * @exception VeniceException if connection keeps failing after certain number of retry
+   *
+   * @param manager    HelixManager instance
+   * @param retryCount retry time
+   * @throws VeniceException if connection keeps failing after certain number of retry
    */
-  public static void connectHelixManager(SafeHelixManager manager, int maxRetries, int sleepTimeSeconds) {
-    int attempt = 1;
-    boolean isSuccess = false;
-    while (!isSuccess) {
+  public static void connectHelixManager(SafeHelixManager manager, int retryCount) {
+    int attempt = 0;
+    while (attempt < retryCount) {
       try {
         manager.connect();
-        isSuccess = true;
+        // Connection established.
+        break;
       } catch (Exception e) {
-        if (attempt <= maxRetries) {
-          LOGGER.warn(
-              "Failed to connect {} on attempt {}/{}. Will retry in {} seconds.",
-              manager.toString(),
-              attempt,
-              maxRetries,
-              sleepTimeSeconds);
-          attempt++;
-          Utils.sleep(TimeUnit.SECONDS.toMillis(sleepTimeSeconds));
+        attempt++;
+        if (attempt < retryCount) {
+          handleFailedHelixOperation("", "connectHelixManager", attempt, retryCount);
         } else {
           throw new VeniceException(
-              "Error connecting to Helix Manager for Cluster '" + manager.getClusterName() + "' after " + maxRetries
+              "Error connecting to Helix Manager for Cluster '" + manager.getClusterName() + "' after " + retryCount
                   + " attempts.",
               e);
         }
@@ -308,20 +292,16 @@ public final class HelixUtils {
    * controller.
    * Otherwise, the following operations issued by participant/spectator would fail.
    */
-  public static void checkClusterSetup(HelixAdmin admin, String cluster, int maxRetry, int retryIntervalSec) {
-    int attempt = 1;
-    while (true) {
+  public static void checkClusterSetup(HelixAdmin admin, String cluster, int retryCount) {
+    int attempt = 0;
+    while (attempt < retryCount) {
       if (admin.getClusters().contains(cluster)) {
         // Cluster is ready.
         break;
       } else {
-        if (attempt <= maxRetry) {
-          LOGGER.warn(
-              "Cluster has not been initialized by controller. Attempt: {}. Will retry in {} seconds.",
-              attempt,
-              retryIntervalSec);
-          attempt++;
-          Utils.sleep(TimeUnit.SECONDS.toMillis(retryIntervalSec));
+        attempt++;
+        if (attempt < retryCount) {
+          handleFailedHelixOperation("", "checkClusterSetup", attempt, retryCount);
         } else {
           throw new VeniceException("Cluster has not been initialized by controller after attempted: " + attempt);
         }

@@ -97,11 +97,8 @@ public class HelixSchemaAccessor {
   }
 
   public List<SchemaEntry> getAllValueSchemas(String storeName) {
-    return HelixUtils.getChildren(
-        schemaAccessor,
-        getValueSchemaParentPath(storeName).toString(),
-        refreshAttemptsForZkReconnect,
-        refreshIntervalForZkReconnectInMs);
+    return HelixUtils
+        .getChildren(schemaAccessor, getValueSchemaParentPath(storeName).toString(), refreshAttemptsForZkReconnect);
   }
 
   public DerivedSchemaEntry getDerivedSchema(String storeName, String derivedSchemaIdPair) {
@@ -113,8 +110,7 @@ public class HelixSchemaAccessor {
     return HelixUtils.getChildren(
         derivedSchemaAccessor,
         getDerivedSchemaParentPath(storeName).toString(),
-        refreshAttemptsForZkReconnect,
-        refreshIntervalForZkReconnectInMs);
+        refreshAttemptsForZkReconnect);
   }
 
   public void createKeySchema(String storeName, SchemaEntry schemaEntry) {
@@ -238,8 +234,7 @@ public class HelixSchemaAccessor {
     return HelixUtils.getChildren(
         replicationMetadataSchemaAccessor,
         getReplicationMetadataSchemaParentPath(storeName).toString(),
-        refreshAttemptsForZkReconnect,
-        refreshIntervalForZkReconnectInMs);
+        refreshAttemptsForZkReconnect);
   }
 
   public void addReplicationMetadataSchema(String storeName, RmdSchemaEntry rmdSchemaEntry) {
