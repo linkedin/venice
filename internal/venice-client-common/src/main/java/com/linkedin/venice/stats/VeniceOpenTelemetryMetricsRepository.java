@@ -39,8 +39,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -179,9 +181,17 @@ public class VeniceOpenTelemetryMetricsRepository {
           "metricEntities cannot be empty if exponential Histogram is enabled, List all the metrics used in this service using setMetricEntities method");
     }
 
+    // find all the unique metric names which are of type HISTOGRAM: passing in the same name
+    // multiple times will result in the same metric being registered multiple times.
+    // ModuleMetricEntityInterface#getUniqueMetricEntities method will take care of this if used,
+    // this is an additional check to cases that doesn't use that method.
+    Set<String> uniqueMetricNamesSet = new HashSet<>();
     for (MetricEntity metricEntity: metricsConfig.getMetricEntities()) {
       if (metricEntity.getMetricType() == MetricType.HISTOGRAM) {
-        metricNames.add(getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName()));
+        String fullMetricName = getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName());
+        if (uniqueMetricNamesSet.add(fullMetricName)) {
+          metricNames.add(fullMetricName);
+        }
       }
     }
 
