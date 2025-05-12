@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNull;
 
+import com.linkedin.venice.controller.multitaskscheduler.MigrationRecord.Step;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.mockito.Mock;
@@ -52,6 +53,7 @@ public class StoreMigrationManagerTest {
     assertEquals(retrievedRecord.getSourceCluster(), sourceCluster);
     assertEquals(retrievedRecord.getDestinationCluster(), destinationCluster);
     assertEquals(retrievedRecord.getCurrentStep(), currStep);
+    assertEquals(retrievedRecord.getCurrentStepEnum(), Step.fromStepNumber(currStep));
   }
 
   @Test

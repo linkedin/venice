@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.multitaskscheduler;
 
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -10,6 +11,8 @@ import org.apache.logging.log4j.Logger;
 
 
 public class StoreMigrationManager extends ScheduledTaskManager {
+  // TODO: MigrationRecord will be persisted to ZooKeeper, and cleaned up when the migration is complete, in a future
+  // pull request.
   private Map<String, MigrationRecord> migrationRecords;
   private final int maxRetryAttempts;
   private static final Logger LOGGER = LogManager.getLogger(StoreMigrationManager.class);
@@ -20,7 +23,8 @@ public class StoreMigrationManager extends ScheduledTaskManager {
 
   @Override
   protected ScheduledExecutorService createExecutorService(int threadPoolSize) {
-    return Executors.newScheduledThreadPool(threadPoolSize);
+    return Executors
+        .newScheduledThreadPool(threadPoolSize, new DaemonThreadFactory("`MultiTaskScheduler-StoreMigration"));
   }
 
   @Override

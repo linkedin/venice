@@ -3,14 +3,15 @@ package com.linkedin.venice.controller.multitaskscheduler;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import org.testcontainers.shaded.org.awaitility.Awaitility;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -42,7 +43,10 @@ public class StoreMigrationManagerIntegrationTest {
     MigrationRecord migrationRecord = storeMigrationManager.getMigrationRecord(storeName);
     migrationRecord.setStoreMigrationStartTime(Instant.now().minus(25, ChronoUnit.HOURS));
     // Allow time for the scheduled tasks to execute until getIsAborted is set to true
-    Awaitility.await().atMost(3, TimeUnit.SECONDS).until(migrationRecord::getIsAborted);
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+
+      assertTrue(migrationRecord.getIsAborted(), "Migration record should be aborted.");
+    });
     // Verify that the migration record has been removed, indicating task is aborted
     assertEquals(migrationRecord.getCurrentStep(), 2);
     assertNull(
@@ -63,7 +67,7 @@ public class StoreMigrationManagerIntegrationTest {
       System.err.println("Error occurred while waiting for the future: " + executionException.getCause());
     }
     // Allow time for the sequentially scheduled tasks to execute
-    Awaitility.await().atMost(3, TimeUnit.SECONDS).untilAsserted(() -> {
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
       assertEquals(
           recordFromUpdateClusterDiscovery.getCurrentStep(),
           6,

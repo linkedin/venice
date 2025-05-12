@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.multitaskscheduler;
 
+import static com.linkedin.venice.controller.multitaskscheduler.MigrationRecord.Step;
+
 import java.time.Duration;
 import java.time.Instant;
 import org.apache.logging.log4j.LogManager;
@@ -20,23 +22,23 @@ class StoreMigrationTask implements Runnable {
   @Override
   public void run() {
     try {
-      switch (record.getCurrentStep()) {
-        case 0:
+      switch (record.getCurrentStepEnum()) {
+        case CHECK_DISK_SPACE:
           checkDiskSpace();
           break;
-        case 1:
+        case PRE_CHECK_AND_SUBMIT_MIGRATION_REQUEST:
           preCheckAndSubmitMigrationRequest();
           break;
-        case 2:
+        case VERIFY_MIGRATION_STATUS:
           verifyMigrationStatus();
           break;
-        case 3:
+        case UPDATE_CLUSTER_DISCOVERY:
           updateClusterDiscovery();
           break;
-        case 4:
+        case VERIFY_READ_REDIRECTION:
           verifyReadRedirection();
           break;
-        case 5:
+        case END_MIGRATION:
           endMigration();
           break;
         default:
@@ -59,13 +61,15 @@ class StoreMigrationTask implements Runnable {
 
   private void checkDiskSpace() {
     // Implement disk space check logic
-    record.setCurrentStep(1);
+    record.setCurrentStep(Step.PRE_CHECK_AND_SUBMIT_MIGRATION_REQUEST);
+    record.resetAttempts();
     manager.scheduleNextStep(this, 0);
   }
 
   private void preCheckAndSubmitMigrationRequest() {
     // Implement pre-check and submission logic
-    record.setCurrentStep(2);
+    record.setCurrentStep(Step.VERIFY_MIGRATION_STATUS);
+    record.resetAttempts();
     manager.scheduleNextStep(this, 0);
   }
 
@@ -79,7 +83,8 @@ class StoreMigrationTask implements Runnable {
     boolean statusVerified = false; // Placeholder for actual status
 
     if (statusVerified) {
-      record.setCurrentStep(3);
+      record.setCurrentStep(Step.UPDATE_CLUSTER_DISCOVERY);
+      record.resetAttempts();
       manager.scheduleNextStep(this, 0);
     } else if (isTimeout()) {
       abortMigration();
@@ -94,7 +99,8 @@ class StoreMigrationTask implements Runnable {
     // Replace with actual logic
     updateSuccessful = true; // Simulate a successful update for integration testing
     if (updateSuccessful) {
-      record.setCurrentStep(4);
+      record.setCurrentStep(Step.VERIFY_READ_REDIRECTION);
+      record.resetAttempts();
       manager.scheduleNextStep(this, 0);
     } else {
       record.incrementAttempts();
@@ -113,7 +119,8 @@ class StoreMigrationTask implements Runnable {
     // Replace with actual logic
     verified = true; // Simulate a successful update for integration testing
     if (verified) {
-      record.setCurrentStep(5);
+      record.setCurrentStep(Step.END_MIGRATION);
+      record.resetAttempts();
       manager.scheduleNextStep(this, 0);
     } else if (record.getAttempts() > manager.getMaxRetryAttempts()) {
       abortMigration();
@@ -125,7 +132,8 @@ class StoreMigrationTask implements Runnable {
 
   private void endMigration() {
     // Implement end store migration logic, including old store deletion
-    record.setCurrentStep(6); // Mark as completed
+    record.setCurrentStep(Step.MIGRATION_SUCCEED); // Mark as store migration succeeded
+
     manager.cleanupMigrationRecord(record.getStoreName());
   }
 

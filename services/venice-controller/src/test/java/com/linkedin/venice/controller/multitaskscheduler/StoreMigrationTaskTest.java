@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.multitaskscheduler;
 
+import static com.linkedin.venice.controller.multitaskscheduler.MigrationRecord.Step;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.never;
@@ -31,26 +32,32 @@ public class StoreMigrationTaskTest {
   @Test
   public void testRun_CheckDiskSpace() {
     when(mockRecord.getCurrentStep()).thenReturn(0);
+    when(mockRecord.getCurrentStepEnum()).thenReturn(Step.CHECK_DISK_SPACE);
 
     task.run();
 
-    verify(mockRecord).setCurrentStep(1);
+    verify(mockRecord).setCurrentStep(Step.PRE_CHECK_AND_SUBMIT_MIGRATION_REQUEST);
+    verify(mockRecord).resetAttempts();
     verify(mockManager).scheduleNextStep(same(task), eq(0));
   }
 
   @Test
   public void testRun_PreCheckAndSubmitMigrationRequest() {
     when(mockRecord.getCurrentStep()).thenReturn(1);
+    when(mockRecord.getCurrentStepEnum()).thenReturn(Step.PRE_CHECK_AND_SUBMIT_MIGRATION_REQUEST);
 
     task.run();
 
-    verify(mockRecord).setCurrentStep(2);
+    verify(mockRecord).setCurrentStep(Step.VERIFY_MIGRATION_STATUS);
+    verify(mockRecord).resetAttempts();
     verify(mockManager).scheduleNextStep(same(task), eq(0));
   }
 
   @Test
   public void testRun_VerifyMigrationStatus_Timeout() {
     when(mockRecord.getCurrentStep()).thenReturn(2);
+    when(mockRecord.getCurrentStepEnum()).thenReturn(Step.VERIFY_MIGRATION_STATUS);
+
     when(mockRecord.getStoreMigrationStartTime()).thenReturn(Instant.now().minus(Duration.ofDays(1)));
     when(mockRecord.getStoreName()).thenReturn("testStore");
 
@@ -65,42 +72,49 @@ public class StoreMigrationTaskTest {
   @Test
   public void testRun_VerifyMigrationStatus_NoTimeout() {
     when(mockRecord.getCurrentStep()).thenReturn(2);
+    when(mockRecord.getCurrentStepEnum()).thenReturn(Step.VERIFY_MIGRATION_STATUS);
     when(mockRecord.getStoreMigrationStartTime()).thenReturn(Instant.now());
     when(mockRecord.getStoreName()).thenReturn("testStore");
 
     task.run();
 
     verify(mockManager, never()).cleanupMigrationRecord(mockRecord.getStoreName());
+    verify(mockManager).scheduleNextStep(same(task), eq(60));
   }
 
   @Test
   public void testRun_UpdateClusterDiscovery() {
     when(mockRecord.getCurrentStep()).thenReturn(3);
+    when(mockRecord.getCurrentStepEnum()).thenReturn(Step.UPDATE_CLUSTER_DISCOVERY);
 
     task.run();
 
-    verify(mockRecord).setCurrentStep(4);
+    verify(mockRecord).setCurrentStep(Step.VERIFY_READ_REDIRECTION);
+    verify(mockRecord).resetAttempts();
     verify(mockManager).scheduleNextStep(same(task), eq(0));
   }
 
   @Test
   public void testRun_VerifyReadRedirection() {
     when(mockRecord.getCurrentStep()).thenReturn(4);
+    when(mockRecord.getCurrentStepEnum()).thenReturn(Step.VERIFY_READ_REDIRECTION);
 
     task.run();
 
-    verify(mockRecord).setCurrentStep(5);
+    verify(mockRecord).setCurrentStep(Step.END_MIGRATION);
+    verify(mockRecord).resetAttempts();
     verify(mockManager).scheduleNextStep(same(task), eq(0));
   }
 
   @Test
   public void testRun_EndMigration() {
     when(mockRecord.getCurrentStep()).thenReturn(5);
+    when(mockRecord.getCurrentStepEnum()).thenReturn(Step.END_MIGRATION);
     when(mockRecord.getStoreName()).thenReturn("testStore");
 
     task.run();
 
-    verify(mockRecord).setCurrentStep(6);
+    verify(mockRecord).setCurrentStep(Step.MIGRATION_SUCCEED);
     verify(mockManager).cleanupMigrationRecord(mockRecord.getStoreName());
   }
 
