@@ -600,6 +600,10 @@ public enum Command {
   UPDATE_ADMIN_OPERATION_PROTOCOL_VERSION(
       "update-admin-operation-protocol-version", "Update the admin operation protocol version",
       new Arg[] { URL, CLUSTER, ADMIN_OPERATION_PROTOCOL_VERSION }
+  ),
+  CLEAN_EXECUTION_IDS(
+      "clean-execution-ids", "Clean execution ids for the deleted store from `succeededPerStore` map.",
+      new Arg[] { URL, CLUSTER }
   );
 
   private final String commandName;
