@@ -65,7 +65,7 @@ public class StatsAvroGenericDaVinciClientTest {
     assertTrue(metrics.get(".test_store--healthy_request.OccurrenceRate").value() > 0);
     assertTrue(metrics.get(".test_store--unhealthy_request.OccurrenceRate").value() > 0);
     assertTrue(metrics.get(".test_store--healthy_request_latency.Avg").value() > 0);
-    assertEquals(metrics.get(".test_store--success_request_key_count.Avg").value(), 1.0);
+    assertEquals(metrics.get(".test_store--success_request_key_count.Avg").value(), 1.0 / 2);
     assertEquals(metrics.get(".test_store--success_request_key_count.Max").value(), 1.0);
     assertTrue(metrics.get(".test_store--success_request_ratio.SimpleRatioStat").value() < 1.0);
     assertTrue(metrics.get(".test_store--success_request_key_ratio.SimpleRatioStat").value() < 1.0);
@@ -105,7 +105,7 @@ public class StatsAvroGenericDaVinciClientTest {
     assertTrue(metrics.get(".test_store--multiget_healthy_request.OccurrenceRate").value() > 0);
     assertTrue(metrics.get(".test_store--multiget_unhealthy_request.OccurrenceRate").value() > 0);
     assertTrue(metrics.get(".test_store--multiget_healthy_request_latency.Avg").value() > 0);
-    assertEquals(metrics.get(".test_store--multiget_success_request_key_count.Avg").value(), 2.0);
+    assertEquals(metrics.get(".test_store--multiget_success_request_key_count.Avg").value(), 1.0); // round (2.0 / 3)
     assertEquals(metrics.get(".test_store--multiget_success_request_key_count.Max").value(), 2.0);
     assertTrue(metrics.get(".test_store--multiget_success_request_ratio.SimpleRatioStat").value() < 1.0);
     assertTrue(metrics.get(".test_store--multiget_success_request_key_ratio.SimpleRatioStat").value() < 1.0);

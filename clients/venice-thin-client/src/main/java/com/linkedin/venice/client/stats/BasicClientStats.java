@@ -11,6 +11,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
 import static org.apache.hc.core5.http.HttpStatus.SC_NOT_FOUND;
+import static org.apache.hc.core5.http.HttpStatus.SC_NO_CONTENT;
 import static org.apache.hc.core5.http.HttpStatus.SC_OK;
 
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
@@ -74,6 +75,10 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> healthyLatencyMetricForDavinciClient;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> unhealthyLatencyMetricForDavinciClient;
   private final Sensor requestKeyCountSensor;
+  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyKeyCountMetric;
+  private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> unhealthyKeyCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> healthyKeyCountMetricForDavinciClient;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> unhealthyKeyCountMetricForDavinciClient;
   private final Sensor successRequestKeyCountSensor;
   private final Sensor successRequestRatioSensor;
   private final Sensor successRequestKeyRatioSensor;
@@ -172,10 +177,31 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
                   getFullMetricName(BasicClientTehutiMetricName.UNHEALTHY_REQUEST_LATENCY.getMetricName()))),
           getBaseDimensionsMap(),
           VeniceResponseStatusCategory.class);
+
+      healthyKeyCountMetricForDavinciClient = MetricEntityStateOneEnum.create(
+          BasicClientMetricEntity.KEY_COUNT_DVC.getMetricEntity(),
+          getOtelRepository(),
+          this::registerSensor,
+          BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT,
+          Arrays.asList(successRequestKeyCountRate, new Avg(), new Max()),
+          baseDimensionsMap,
+          VeniceResponseStatusCategory.class);
+
+      unhealthyKeyCountMetricForDavinciClient = MetricEntityStateOneEnum.create(
+          BasicClientMetricEntity.KEY_COUNT_DVC.getMetricEntity(),
+          otelRepository,
+          this::registerSensor,
+          BasicClientTehutiMetricName.FAILED_REQUEST_KEY_COUNT,
+          Arrays.asList(new Rate(), new Avg(), new Max()),
+          baseDimensionsMap,
+          VeniceResponseStatusCategory.class);
+
       healthyRequestMetric = null;
       unhealthyRequestMetric = null;
       healthyLatencyMetric = null;
       unhealthyLatencyMetric = null;
+      healthyKeyCountMetric = null;
+      unhealthyKeyCountMetric = null;
     } else {
       healthyRequestMetric = MetricEntityStateThreeEnums.create(
           BasicClientMetricEntity.CALL_COUNT.getMetricEntity(),
@@ -226,10 +252,34 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
           VeniceResponseStatusCategory.class);
+      // key count
+      healthyKeyCountMetric = MetricEntityStateThreeEnums.create(
+          BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
+          getOtelRepository(),
+          this::registerSensor,
+          BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT,
+          Arrays.asList(successRequestKeyCountRate, new Avg(), new Max()),
+          baseDimensionsMap,
+          HttpResponseStatusEnum.class,
+          HttpResponseStatusCodeCategory.class,
+          VeniceResponseStatusCategory.class);
+      unhealthyKeyCountMetric = MetricEntityStateThreeEnums.create(
+          BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
+          otelRepository,
+          this::registerSensor,
+          BasicClientTehutiMetricName.FAILED_REQUEST_KEY_COUNT,
+          Arrays.asList(new Rate(), new Avg(), new Max()),
+          baseDimensionsMap,
+          HttpResponseStatusEnum.class,
+          HttpResponseStatusCodeCategory.class,
+          VeniceResponseStatusCategory.class);
+
       healthyRequestMetricForDavinciClient = null;
       unhealthyRequestMetricForDavinciClient = null;
       healthyLatencyMetricForDavinciClient = null;
       unhealthyLatencyMetricForDavinciClient = null;
+      healthyKeyCountMetricForDavinciClient = null;
+      unhealthyKeyCountMetricForDavinciClient = null;
     }
 
     // successRequestRatioSensor will be a derived metric in OTel
@@ -301,6 +351,34 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
 
   public void recordSuccessRequestKeyCount(int successKeyCount) {
     successRequestKeyCountSensor.record(successKeyCount);
+    if (ClientType.isDavinciClient(this.clientType)) {
+      healthyKeyCountMetricForDavinciClient.record(successKeyCount, SUCCESS);
+    } else {
+      int httpStatus = getHealthyRequestHttpStatus(successKeyCount);
+      HttpResponseStatusEnum statusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
+      HttpResponseStatusCodeCategory httpCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
+      healthyKeyCountMetric.record(successKeyCount, statusEnum, httpCategory, SUCCESS);
+    }
+  }
+
+  public void recordFailedRequestKeyCount(int failedKeyCount, Throwable throwable) {
+    if (ClientType.isDavinciClient(this.clientType)) {
+      unhealthyKeyCountMetricForDavinciClient.record(failedKeyCount, FAIL);
+    } else {
+      /**
+       * When throwable is null and the failed key count is 0, it means that the request was successful. However,
+       * we still need to record the failed key count as 0, and thus we use a default http status of SC_NO_CONTENT
+       * to indicate success.
+       */
+      int httpStatus = throwable != null ? getUnhealthyRequestHttpStatus(throwable) : SC_NO_CONTENT;
+      HttpResponseStatusEnum statusEnum = transformIntToHttpResponseStatusEnum(httpStatus);
+      HttpResponseStatusCodeCategory httpCategory = getVeniceHttpResponseStatusCodeCategory(httpStatus);
+      unhealthyKeyCountMetric.record(failedKeyCount, statusEnum, httpCategory, FAIL);
+    }
+  }
+
+  public void recordFailedRequestKeyCount(int failedKeyCount) {
+    recordFailedRequestKeyCount(failedKeyCount, null);
   }
 
   protected final Rate getRequestRate() {
@@ -361,7 +439,8 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
    * Metric names for tehuti metrics used in this class.
    */
   public enum BasicClientTehutiMetricName implements TehutiMetricNameEnum {
-    HEALTHY_REQUEST, UNHEALTHY_REQUEST, HEALTHY_REQUEST_LATENCY, UNHEALTHY_REQUEST_LATENCY;
+    HEALTHY_REQUEST, UNHEALTHY_REQUEST, HEALTHY_REQUEST_LATENCY, UNHEALTHY_REQUEST_LATENCY, SUCCESS_REQUEST_KEY_COUNT,
+    FAILED_REQUEST_KEY_COUNT;
 
     private final String metricName;
 
@@ -402,6 +481,18 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
             VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     ),
     /**
+     * Count of keys during response handling along with response codes
+     */
+    KEY_COUNT(
+        MetricType.HISTOGRAM, MetricUnit.NUMBER, "Count of keys during response handling along with response codes",
+        setOf(
+            VENICE_STORE_NAME,
+            VENICE_REQUEST_METHOD,
+            HTTP_RESPONSE_STATUS_CODE,
+            HTTP_RESPONSE_STATUS_CODE_CATEGORY,
+            VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+    ),
+    /**
      * Count of all DaVinci requests: as DaVinci is local reads, we do not track HTTP response codes
      * But keeping the same name call_count across all clients for consistency
      */
@@ -415,6 +506,14 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     CALL_TIME_DVC(
         CALL_TIME.name().toLowerCase(), MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
         "Latency for all DaVinci Client responses",
+        setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+    ),
+    /**
+     * Count of keys during response handling along with response codes
+     */
+    KEY_COUNT_DVC(
+        KEY_COUNT.name().toLowerCase(), MetricType.HISTOGRAM, MetricUnit.NUMBER,
+        "Count of keys for all DaVinci Client responses",
         setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     );
 

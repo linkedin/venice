@@ -525,8 +525,8 @@ public class DispatchingAvroGenericStoreClientTest {
       assertFalse(metrics.get(metricPrefix + "healthy_request_latency.Avg").value() > 0);
       assertTrue(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
       assertTrue(metrics.get(metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
-      // as partial healthy request is still considered unhealthy, not incrementing the below metric
-      assertFalse(metrics.get(metricPrefix + "success_request_key_count.Max").value() > 0);
+      // as partial healthy request is should still report success key count.
+      assertTrue(metrics.get(metricPrefix + "success_request_key_count.Max").value() > 0);
       if (batchGet) {
         assertTrue(metrics.get(metricPrefix + "response_ttfr.Avg").value() > 0);
         assertEquals(batchGetRequestContext.successRequestKeyCount.get(), (int) successKeyCount);
@@ -1294,7 +1294,7 @@ public class DispatchingAvroGenericStoreClientTest {
       fail();
     } catch (Exception e) {
       assertTrue(e.getMessage().endsWith("At least one route did not complete"), e.getMessage());
-      validateComputeRequestMetrics(false, false, RequestType.COMPUTE, false, 2, 1);
+      validateComputeRequestMetrics(false, true, RequestType.COMPUTE, false, 2, 1);
     } finally {
       tearDown();
     }
@@ -1525,7 +1525,7 @@ public class DispatchingAvroGenericStoreClientTest {
       assertEquals(
           response.get("test_key_1").get("name").toString(),
           COMPUTE_REQUEST_VALUE_RESPONSE.get("test_key_1").get("name"));
-      validateComputeRequestMetrics(false, false, RequestType.COMPUTE_STREAMING, false, 2, 1);
+      validateComputeRequestMetrics(false, true /*partialHealthyRequest*/, RequestType.COMPUTE_STREAMING, false, 2, 1);
     } finally {
       tearDown();
     }

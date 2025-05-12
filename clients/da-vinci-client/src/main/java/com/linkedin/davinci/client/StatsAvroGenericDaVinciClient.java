@@ -83,6 +83,10 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
     return trackRequest(clientStatsForSingleGet, () -> super.get(key, reusableValue)).whenComplete((v, throwable) -> {
       if (throwable == null && v != null) {
         clientStatsForSingleGet.recordSuccessRequestKeyCount(1);
+        clientStatsForSingleGet.recordFailedRequestKeyCount(0);
+      } else {
+        clientStatsForSingleGet.recordSuccessRequestKeyCount(0);
+        clientStatsForSingleGet.recordFailedRequestKeyCount(1);
       }
     });
   }
@@ -91,8 +95,12 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) {
     clientStatsForBatchGet.recordRequestKeyCount(keys.size());
     return trackRequest(clientStatsForBatchGet, () -> super.batchGet(keys)).whenComplete((v, throwable) -> {
-      if (throwable == null && v != null) {
+      if (v != null) {
         clientStatsForBatchGet.recordSuccessRequestKeyCount(v.size());
+        clientStatsForBatchGet.recordFailedRequestKeyCount(keys.size() - v.size());
+      } else {
+        clientStatsForBatchGet.recordSuccessRequestKeyCount(0);
+        clientStatsForBatchGet.recordFailedRequestKeyCount(keys.size());
       }
     });
   }
