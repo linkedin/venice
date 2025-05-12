@@ -34,6 +34,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
@@ -1227,6 +1228,51 @@ public class RocksDBStoragePartitionTest {
               "Received exception during RocksDB's snapshot creation in directory " + fullSnapshotPath);
         }
       }
+    }
+  }
+
+  @Test
+  public void testCheckAndThrowSpecificException() {
+    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
+    String storeDir = getTempDatabaseDir(storeName);
+    int partitionId = 0;
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    partitionConfig.setDeferredWrite(false);
+    Properties extraProps = new Properties();
+    extraProps.setProperty(BLOB_TRANSFER_MANAGER_ENABLED, "true");
+    VeniceProperties veniceServerProperties =
+        AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, extraProps);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    serverConfig.enforceMemoryLimitInStore(storeName);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
+
+    // Set the blob transfer enabled flag
+    storeConfig.setBlobTransferEnabled(false);
+
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig,
+        storeConfig);
+
+    // DiskLimitExhaustedException
+    try {
+      storagePartition.checkAndThrowSpecificException(
+          new RocksDBException(RocksDBStoragePartition.ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_DISK_QUOTA));
+    } catch (Exception e) {
+      Assert.assertTrue(e instanceof DiskLimitExhaustedException, "Unexpected exception type: " + e);
+
+      if (storagePartition != null) {
+        storagePartition.close();
+        storagePartition.drop();
+      }
+      removeDir(storeDir);
     }
   }
 }

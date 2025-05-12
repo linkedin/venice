@@ -299,7 +299,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         singletonList(new Count()),
         baseDimensionsMap,
         RequestRetryType.class);
-    allowedRetryCountMetric = new MetricEntityStateBase(
+    allowedRetryCountMetric = MetricEntityStateBase.create(
         ALLOWED_RETRY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
@@ -308,7 +308,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         baseDimensionsMap,
         baseAttributes);
 
-    disallowedRetryCountMetric = new MetricEntityStateBase(
+    disallowedRetryCountMetric = MetricEntityStateBase.create(
         DISALLOWED_RETRY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
@@ -317,7 +317,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         baseDimensionsMap,
         baseAttributes);
 
-    retryDelayMetric = new MetricEntityStateBase(
+    retryDelayMetric = MetricEntityStateBase.create(
         RETRY_DELAY.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,

@@ -11,6 +11,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.VeniceView;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
 import java.util.Map;
@@ -41,12 +42,14 @@ public abstract class VeniceViewWriter extends VeniceView {
   protected final int versionNumber;
   protected Optional<Boolean> isNearlineProducerCompressionEnabled = Optional.empty();
   protected Optional<Integer> nearlineProducerCountPerWriter = Optional.empty();
+  protected final VeniceWriterFactory veniceWriterFactory;
 
   public VeniceViewWriter(
       VeniceConfigLoader props,
       Version version,
       Schema keySchema,
-      Map<String, String> extraViewParameters) {
+      Map<String, String> extraViewParameters,
+      VeniceWriterFactory veniceWriterFactory) {
     super(props.getCombinedProperties().toProperties(), version.getStoreName(), extraViewParameters);
     this.version = version;
     this.versionNumber = version.getNumber();
@@ -58,6 +61,7 @@ public abstract class VeniceViewWriter extends VeniceView {
       nearlineProducerCountPerWriter =
           Optional.of(Integer.valueOf(extraViewParameters.get(NEARLINE_PRODUCER_COUNT_PER_WRITER)));
     }
+    this.veniceWriterFactory = veniceWriterFactory;
   }
 
   /**

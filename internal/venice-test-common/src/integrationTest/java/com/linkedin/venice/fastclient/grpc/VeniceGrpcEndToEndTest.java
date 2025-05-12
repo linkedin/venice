@@ -106,7 +106,8 @@ public class VeniceGrpcEndToEndTest {
     TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, recordCnt);
 
     // 3. Run a push job to push the data to Venice (VPJ)
-    Properties vpjProps = TestWriteUtils.defaultVPJProps(cluster.getRandomRouterURL(), inputDirPath, storeName);
+    Properties vpjProps = TestWriteUtils
+        .defaultVPJProps(cluster.getRandomRouterURL(), inputDirPath, storeName, cluster.getPubSubClientProperties());
     TestWriteUtils.runPushJob("test push job", vpjProps);
 
     cluster.useControllerClient(

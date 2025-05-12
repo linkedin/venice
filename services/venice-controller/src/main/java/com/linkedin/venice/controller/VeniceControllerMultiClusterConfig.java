@@ -5,6 +5,8 @@ import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
@@ -18,6 +20,7 @@ import java.util.Set;
 
 public class VeniceControllerMultiClusterConfig {
   private final Map<String, VeniceControllerClusterConfig> clusterToControllerConfigMap;
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   public VeniceControllerMultiClusterConfig(Collection<VeniceProperties> controllerClusterProperties) {
     clusterToControllerConfigMap = new HashMap<>();
@@ -292,6 +295,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getPubSubClientsFactory();
   }
 
+  public PubSubPositionTypeRegistry getPubSubPositionTypeRegistry() {
+    return getCommonConfig().getPubSubPositionTypeRegistry();
+  }
+
   public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
     return getCommonConfig().getSourceOfTruthAdminAdapterFactory();
   }
@@ -350,5 +357,9 @@ public class VeniceControllerMultiClusterConfig {
 
   public LogContext getLogContext() {
     return getCommonConfig().getLogContext();
+  }
+
+  public PubSubTopicRepository getPubSubTopicRepository() {
+    return pubSubTopicRepository;
   }
 }

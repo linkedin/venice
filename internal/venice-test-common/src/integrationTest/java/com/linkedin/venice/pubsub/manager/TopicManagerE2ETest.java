@@ -14,13 +14,15 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -70,7 +72,7 @@ public class TopicManagerE2ETest {
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
-    pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
+    pubSubMessageDeserializer = PubSubMessageDeserializer.createDefaultDeserializer();
     pubSubTopicRepository = new PubSubTopicRepository();
     pubSubClientsFactory = pubSubBrokerWrapper.getPubSubClientsFactory();
   }
@@ -98,16 +100,22 @@ public class TopicManagerE2ETest {
                 new PubSubProducerAdapterContext.Builder().setVeniceProperties(veniceProperties)
                     .setBrokerAddress(pubSubBrokerWrapper.getAddress())
                     .setProducerName(clientId)
+                    .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
                     .build()));
     pubSubAdminAdapterLazy =
         Lazy.of(() -> pubSubClientsFactory.getAdminAdapterFactory().create(veniceProperties, pubSubTopicRepository));
     pubSubConsumerAdapterLazy = Lazy.of(
         () -> pubSubClientsFactory.getConsumerAdapterFactory()
-            .create(veniceProperties, false, pubSubMessageDeserializer, clientId));
+            .create(
+                new PubSubConsumerAdapterContext.Builder().setVeniceProperties(veniceProperties)
+                    .setConsumerName(clientId)
+                    .setPubSubMessageDeserializer(pubSubMessageDeserializer)
+                    .build()));
 
     metricsRepository = new MetricsRepository();
     topicManagerContextBuilder = new TopicManagerContext.Builder().setPubSubTopicRepository(pubSubTopicRepository)
         .setMetricsRepository(metricsRepository)
+        .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties))
         .setTopicMetadataFetcherConsumerPoolSize(2)
         .setTopicMetadataFetcherThreadPoolSize(6)
         .setTopicOffsetCheckIntervalMs(100)

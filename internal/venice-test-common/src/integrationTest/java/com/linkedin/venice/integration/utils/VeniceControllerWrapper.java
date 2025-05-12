@@ -33,7 +33,6 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
-import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
@@ -41,9 +40,10 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
-import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
@@ -222,14 +222,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
             .put(SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED, true)
             .put(
-                PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS,
+                PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS,
                 pubSubClientsFactory.getProducerAdapterFactory().getClass().getName())
             .put(
-                PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS,
+                PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
                 pubSubClientsFactory.getConsumerAdapterFactory().getClass().getName())
-            .put(
-                PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
-                pubSubClientsFactory.getAdminAdapterFactory().getClass().getName())
+            .put(PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS, pubSubClientsFactory.getAdminAdapterFactory().getClass().getName())
             .put(extraProps.toProperties());
 
         if (sslEnabled) {
@@ -237,7 +235,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         }
 
         if (options.isSslToKafka()) {
-          builder.put(KAFKA_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name());
+          builder.put(PUBSUB_SECURITY_PROTOCOL_LEGACY, PubSubSecurityProtocol.SSL.name());
           builder.put(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
         }
 

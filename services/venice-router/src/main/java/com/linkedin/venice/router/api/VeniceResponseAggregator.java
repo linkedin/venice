@@ -16,9 +16,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
 import com.linkedin.alpini.base.misc.HeaderNames;
-import com.linkedin.alpini.base.misc.MetricNames;
 import com.linkedin.alpini.base.misc.Metrics;
-import com.linkedin.alpini.base.misc.TimeValue;
 import com.linkedin.alpini.netty4.misc.BasicHttpRequest;
 import com.linkedin.alpini.router.api.ResponseAggregatorFactory;
 import com.linkedin.venice.HttpConstants;
@@ -237,18 +235,17 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     }
 
     HttpResponseStatus httpResponseStatus = finalResponse.status();
-    Map<MetricNames, TimeValue> allMetrics = metrics.getMetrics();
     /**
      * All the metrics in {@link com.linkedin.ddsstorage.router.api.MetricNames} are supported in {@link Metrics}.
      * We are not exposing the following metrics inside Venice right now.
      * 1. {@link ROUTER_PARSE_URI}
      * 2. {@link ROUTER_ROUTING_TIME}
      */
-    TimeValue timeValue = allMetrics.get(ROUTER_SERVER_TIME);
-    if (timeValue != null) {
+    long timeValue = metrics.get(ROUTER_SERVER_TIME);
+    if (timeValue != Metrics.UNSET_VALUE) {
       // TODO: When a batch get throws a quota exception, the ROUTER_SERVER_TIME is missing, so we can't record anything
       // here...
-      double latency = LatencyUtils.convertNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
+      double latency = LatencyUtils.convertNSToMS(timeValue);
       stats.recordLatency(storeName, latency);
       int keyNum = venicePath.getPartitionKeys().size();
       if (HEALTHY_STATUSES.contains(httpResponseStatus)) {
@@ -266,19 +263,19 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         stats.recordUnhealthyRequest(storeName, latency, httpResponseStatus, keyNum);
       }
     }
-    timeValue = allMetrics.get(ROUTER_RESPONSE_WAIT_TIME);
-    if (timeValue != null) {
-      double waitingTime = LatencyUtils.convertNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
+    timeValue = metrics.get(ROUTER_RESPONSE_WAIT_TIME);
+    if (timeValue != Metrics.UNSET_VALUE) {
+      double waitingTime = LatencyUtils.convertNSToMS(timeValue);
       stats.recordResponseWaitingTime(storeName, waitingTime);
     }
-    timeValue = allMetrics.get(ROUTER_PARSE_URI);
-    if (timeValue != null) {
-      double parsingTime = LatencyUtils.convertNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
+    timeValue = metrics.get(ROUTER_PARSE_URI);
+    if (timeValue != Metrics.UNSET_VALUE) {
+      double parsingTime = LatencyUtils.convertNSToMS(timeValue);
       stats.recordRequestParsingLatency(storeName, parsingTime);
     }
-    timeValue = allMetrics.get(ROUTER_ROUTING_TIME);
-    if (timeValue != null) {
-      double routingTime = LatencyUtils.convertNSToMS(timeValue.getRawValue(TimeUnit.NANOSECONDS));
+    timeValue = metrics.get(ROUTER_ROUTING_TIME);
+    if (timeValue != Metrics.UNSET_VALUE) {
+      double routingTime = LatencyUtils.convertNSToMS(timeValue);
       stats.recordRequestRoutingLatency(storeName, routingTime);
     }
     if (HEALTHY_STATUSES.contains(httpResponseStatus) && !venicePath.isStreamingRequest()) {

@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -39,7 +38,6 @@ public class TestAdminOperationVersionDetection {
     // Create multi-region multi-cluster setup
     Properties parentControllerProperties = new Properties();
     Properties serverProperties = new Properties();
-    serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
@@ -76,8 +74,7 @@ public class TestAdminOperationVersionDetection {
         response.getLocalAdminOperationProtocolVersion(),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Map<String, Long> urlToVersionMap = response.getControllerUrlToVersionMap();
-    // TODO: This result should be 2 when we actually forward request to standby
-    assertEquals(urlToVersionMap.size(), 1);
+    assertEquals(urlToVersionMap.size(), 2);
     assertEquals(response.getCluster(), clusterName);
   }
 
@@ -101,8 +98,7 @@ public class TestAdminOperationVersionDetection {
         response.getLocalAdminOperationProtocolVersion(),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Map<String, Long> urlToVersionMap = response.getControllerUrlToVersionMap();
-    // TODO: This result should be 2 when we actually forward request to standby
-    assertEquals(urlToVersionMap.size(), 1);
+    assertEquals(urlToVersionMap.size(), 2);
     assertEquals(response.getCluster(), clusterName);
   }
 }

@@ -42,4 +42,9 @@ public enum VeniceMetricsDimensions {
   public String getDimensionName(VeniceOpenTelemetryMetricNamingFormat format) {
     return dimensionName[format.getValue()];
   }
+
+  // visible for testing
+  public String getDimensionNameInDefaultFormat() {
+    return dimensionName[VeniceOpenTelemetryMetricNamingFormat.getDefaultFormat().getValue()];
+  }
 }

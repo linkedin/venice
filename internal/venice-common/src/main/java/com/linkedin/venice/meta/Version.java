@@ -347,6 +347,22 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return Integer.parseInt(kafkaTopic.substring(versionStartIndex));
   }
 
+  static int parseVersionFromVersionTopicPartition(String kafkaTopic) {
+    int versionStartIndex = getLastIndexOfVersionSeparator(kafkaTopic) + VERSION_SEPARATOR.length();
+
+    // Remove partition number if present
+    // e.g. store_89c1b5c06764_75ba3e03_v1-0
+    String versionString = kafkaTopic.substring(versionStartIndex);
+    versionString =
+        versionString.contains("-") ? versionString.substring(0, versionString.indexOf('-')) : versionString;
+
+    try {
+      return Integer.parseInt(versionString);
+    } catch (NumberFormatException e) {
+      return 1;
+    }
+  }
+
   static int getLastIndexOfVersionSeparator(String kafkaTopic) {
     int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
     if (lastIndexOfVersionSeparator == -1) {

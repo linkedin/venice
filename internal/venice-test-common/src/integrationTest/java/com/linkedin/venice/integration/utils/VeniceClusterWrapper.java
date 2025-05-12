@@ -1,7 +1,11 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
@@ -103,6 +107,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final VeniceClusterCreateOptions options;
   private final ZkServerWrapper zkServerWrapper;
   private final PubSubBrokerWrapper pubSubBrokerWrapper;
+  private final Map<String, String> pubBrokerDetails;
   private final Map<Integer, VeniceControllerWrapper> veniceControllerWrappers;
   private final Map<Integer, VeniceServerWrapper> veniceServerWrappers;
   private final Map<Integer, VeniceRouterWrapper> veniceRouterWrappers;
@@ -138,6 +143,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       VeniceClusterCreateOptions options,
       ZkServerWrapper zkServerWrapper,
       PubSubBrokerWrapper pubSubBrokerWrapper,
+      Map<String, String> pubBrokerDetails,
       Map<Integer, VeniceControllerWrapper> veniceControllerWrappers,
       Map<Integer, VeniceServerWrapper> veniceServerWrappers,
       Map<Integer, VeniceRouterWrapper> veniceRouterWrappers,
@@ -156,6 +162,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.options = options;
     this.zkServerWrapper = zkServerWrapper;
     this.pubSubBrokerWrapper = pubSubBrokerWrapper;
+    this.pubBrokerDetails = pubBrokerDetails;
     this.veniceControllerWrappers = veniceControllerWrappers;
     this.veniceServerWrappers = veniceServerWrappers;
     this.veniceRouterWrappers = veniceRouterWrappers;
@@ -163,6 +170,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.clusterToServerD2 = clusterToServerD2;
     this.pubSubProducerAdapterFactory = pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory();
     this.nettyServerToGrpcAddress = nettyServerToGrpcAddress;
+  }
+
+  public Map<String, String> getPubSubClientProperties() {
+    return pubBrokerDetails;
   }
 
   static ServiceProvider<VeniceClusterWrapper> generateService(VeniceClusterCreateOptions options) {
@@ -203,8 +214,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             "PubSubBrokerWrapper region name " + pubSubBrokerWrapper.getRegionName()
                 + " does not match with the region name " + options.getRegionName() + " in the options");
       }
-      PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper))
-          .forEach((k, v) -> options.getExtraProperties().putIfAbsent(k, v));
+      Map<String, String> pubBrokerDetails =
+          PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper));
+      pubBrokerDetails.forEach((k, v) -> options.getExtraProperties().putIfAbsent(k, v));
       // Setup D2 for controller
       String zkAddress = zkServerWrapper.getAddress();
       D2TestUtils.setupD2Config(
@@ -329,6 +341,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               options,
               finalZkServerWrapper,
               finalPubSubBrokerWrapper,
+              pubBrokerDetails,
               veniceControllerWrappers,
               veniceServerWrappers,
               veniceRouterWrappers,
@@ -845,7 +858,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     properties.putAll(PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
     properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
-    VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(properties, pubSubProducerAdapterFactory);
+    VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(
+        properties,
+        pubSubProducerAdapterFactory,
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -862,7 +878,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getSSLAddress());
     properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
     properties.putAll(KafkaTestUtils.getLocalKafkaClientSSLConfig());
-    VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(properties, pubSubProducerAdapterFactory);
+    VeniceWriterFactory factory = TestUtils.getVeniceWriterFactory(
+        properties,
+        pubSubProducerAdapterFactory,
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
 
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -1126,7 +1145,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         compressionStrategy,
         compressionDictionaryGenerator,
         pubSubProducerAdapterFactory,
-        PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)));
+        PubSubBrokerWrapper.getBrokerDetailsForClients(Collections.singletonList(pubSubBrokerWrapper)),
+        pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
 
     int versionId = response.getVersion();
     waitVersion(storeName, versionId, controllerClient.get());

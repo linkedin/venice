@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -19,7 +20,8 @@ public class ViewWriterUtils extends ViewUtils {
       Store store,
       int version,
       Schema keySchema,
-      Map<String, String> extraViewParameters) {
+      Map<String, String> extraViewParameters,
+      VeniceWriterFactory veniceWriterFactory) {
     Properties params = configLoader.getCombinedProperties().toProperties();
     VeniceView view = ReflectUtils.callConstructor(
         ReflectUtils.loadClass(viewClass),
@@ -34,7 +36,8 @@ public class ViewWriterUtils extends ViewUtils {
         .put(NEARLINE_PRODUCER_COUNT_PER_WRITER, Integer.toString(store.getNearlineProducerCountPerWriter()));
     return ReflectUtils.callConstructor(
         ReflectUtils.loadClass(view.getWriterClassName()),
-        new Class<?>[] { VeniceConfigLoader.class, Version.class, Schema.class, Map.class },
-        new Object[] { configLoader, store.getVersionOrThrow(version), keySchema, viewParamsWithProducerConfigs });
+        new Class<?>[] { VeniceConfigLoader.class, Version.class, Schema.class, Map.class, VeniceWriterFactory.class },
+        new Object[] { configLoader, store.getVersionOrThrow(version), keySchema, viewParamsWithProducerConfigs,
+            veniceWriterFactory });
   }
 }

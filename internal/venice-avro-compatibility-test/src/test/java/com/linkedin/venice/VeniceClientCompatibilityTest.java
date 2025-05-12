@@ -1,6 +1,6 @@
 package com.linkedin.venice;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.VeniceClusterInitializer.ID_FIELD_PREFIX;
 import static com.linkedin.venice.VeniceClusterInitializer.KEY_PREFIX;
 import static com.linkedin.venice.VeniceClusterInitializer.ZK_ADDRESS_FIELD;

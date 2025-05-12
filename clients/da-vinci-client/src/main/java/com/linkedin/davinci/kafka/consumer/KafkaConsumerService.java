@@ -1,7 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_CLIENT_ID_CONFIG;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
@@ -10,6 +9,7 @@ import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.davinci.utils.IndexedMap;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -135,17 +135,20 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             this::getMaxElapsedTimeMSSinceLastPollInConsumerPool,
             metadataRepository,
             isUnregisterMetricForDeletedStoreEnabled);
+
+    VeniceProperties properties = new VeniceProperties(consumerProperties);
+    PubSubConsumerAdapterContext.Builder contextBuilder =
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(properties)
+            .setPubSubMessageDeserializer(pubSubDeserializer)
+            .setIsOffsetCollectionEnabled(isKafkaConsumerOffsetCollectionEnabled)
+            .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry());
     for (int i = 0; i < numOfConsumersPerKafkaCluster; ++i) {
       /**
        * We need to assign a unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
        */
-      consumerProperties.setProperty(KAFKA_CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i, poolType));
+      contextBuilder.setConsumerName(i + poolType.getStatSuffix());
       SharedKafkaConsumer pubSubConsumer = new SharedKafkaConsumer(
-          pubSubConsumerAdapterFactory.create(
-              new VeniceProperties(consumerProperties),
-              isKafkaConsumerOffsetCollectionEnabled,
-              pubSubDeserializer,
-              null),
+          pubSubConsumerAdapterFactory.create(contextBuilder.build()),
           aggStats,
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription);
@@ -190,10 +193,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
       SharedKafkaConsumer consumer,
       PubSubTopic versionTopic,
       PubSubTopicPartition topicPartition) {
-  }
-
-  String getUniqueClientId(String kafkaUrl, int suffix, ConsumerPoolType poolType) {
-    return Utils.getHostName() + "_" + kafkaUrl + "_" + suffix + poolType.getStatSuffix();
   }
 
   @Override
@@ -596,6 +595,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
    * respectively. Each strategy will have a specific extension of {@link KafkaConsumerService}.
    */
   public enum ConsumerAssignmentStrategy {
+    @Deprecated
     TOPIC_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(TopicWiseKafkaConsumerService::new),
     PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(PartitionWiseKafkaConsumerService::new),
     STORE_AWARE_PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY(StoreAwarePartitionWiseKafkaConsumerService::new);

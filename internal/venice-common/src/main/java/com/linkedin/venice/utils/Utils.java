@@ -25,6 +25,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -690,6 +691,15 @@ public class Utils {
 
   public static String getSeparateRealTimeTopicName(StoreInfo storeInfo) {
     return getSeparateRealTimeTopicName(Utils.getRealTimeTopicName(storeInfo));
+  }
+
+  public static int calculateTopicHashCode(PubSubTopic topic) {
+    if (topic.isSeparateRealTimeTopic()) {
+      String realTimeTopicName = Utils.getRealTimeTopicNameFromSeparateRealTimeTopic(topic.getName());
+      PubSubTopic normalizedTopic = new PubSubTopicImpl(realTimeTopicName);
+      return normalizedTopic.hashCode();
+    }
+    return topic.hashCode();
   }
 
   private static class TimeUnitInfo {

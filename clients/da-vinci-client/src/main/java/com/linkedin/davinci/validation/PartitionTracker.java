@@ -1,6 +1,6 @@
 package com.linkedin.davinci.validation;
 
-import static com.linkedin.davinci.validation.KafkaDataIntegrityValidator.DISABLED;
+import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
 
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
@@ -109,7 +109,7 @@ public class PartitionTracker {
   }
 
   public void updateLatestConsumedVtOffset(long offset) {
-    latestConsumedVtOffset.updateAndGet(current -> Math.max(current, offset));
+    latestConsumedVtOffset.updateAndGet(current -> offset);
   }
 
   public final String toString() {
@@ -139,8 +139,15 @@ public class PartitionTracker {
   public void setPartitionState(TopicType type, OffsetRecord offsetRecord, long maxAgeInMs) {
     long minimumRequiredRecordProducerTimestamp =
         maxAgeInMs == DISABLED ? DISABLED : offsetRecord.getMaxMessageTimeInMs() - maxAgeInMs;
+    setPartitionState(type, offsetRecord.getProducerPartitionStateMap(), minimumRequiredRecordProducerTimestamp);
+  }
+
+  public void setPartitionState(
+      TopicType type,
+      Map<CharSequence, ProducerPartitionState> producerPartitionStateMap,
+      long minimumRequiredRecordProducerTimestamp) {
     Iterator<Map.Entry<CharSequence, ProducerPartitionState>> iterator =
-        offsetRecord.getProducerPartitionStateMap().entrySet().iterator();
+        producerPartitionStateMap.entrySet().iterator();
     Map.Entry<CharSequence, ProducerPartitionState> entry;
     GUID producerGuid;
     ProducerPartitionState producerPartitionState;
@@ -219,7 +226,7 @@ public class PartitionTracker {
     ProducerPartitionState state;
     if (TopicType.isVersionTopic(type)) {
       state = offsetRecord.getProducerPartitionState(guid);
-      offsetRecord.setLatestConsumedVtOffset(latestConsumedVtOffset.get());
+      offsetRecord.setLatestConsumedVtOffset(getLatestConsumedVtOffset());
     } else {
       state = offsetRecord.getRealTimeProducerState(type.getKafkaUrl(), guid);
     }

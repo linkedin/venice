@@ -72,10 +72,15 @@ import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
+import static com.linkedin.venice.meta.VersionStatus.ERROR;
+import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
+import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
+import static com.linkedin.venice.utils.RegionUtils.isRegionPartOfRegionsFilterList;
+import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -176,6 +181,7 @@ import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceProtocolException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
@@ -207,7 +213,6 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.persona.StoragePersona;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -240,7 +245,7 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
-import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -616,7 +621,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().isClusterValid(clusterName);
   }
 
-  private void sendAdminMessageAndWaitForConsumed(String clusterName, String storeName, AdminOperation message) {
+  void sendAdminMessageAndWaitForConsumed(String clusterName, String storeName, AdminOperation message) {
     if (!veniceWriterMap.containsKey(clusterName)) {
       throw new VeniceException("Cluster: " + clusterName + " is not started yet!");
     }
@@ -651,6 +656,17 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         // TODO Remove the admin command execution tracking code since no one is using it (might not even be working).
         adminCommandExecutionTracker.startTrackingExecution(execution);
+      } catch (VeniceProtocolException e) {
+        LOGGER.error(
+            "Failed to serialize admin message in cluster {}: {}. "
+                + "Please check the schema compatibility. Full error message: {}",
+            clusterName,
+            message,
+            e.getMessage());
+        getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
+            .getVeniceAdminStats()
+            .recordFailedSerializingAdminOperationMessageCount();
+        throw e;
       }
     } finally {
       releaseAdminMessageExecutionIdLock(clusterName);
@@ -789,7 +805,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * ongoing admin operation is being performed.
    * This lock is held when generating, writing and processing the admin messages for the given store.
    */
-  private void acquireAdminMessageLock(String clusterName, String storeName) {
+  void acquireAdminMessageLock(String clusterName, String storeName) {
     try {
       if (clusterName == null) {
         throw new VeniceException("Cannot acquire admin message lock with a null cluster name");
@@ -817,7 +833,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
-  private void releaseAdminMessageLock(String clusterName, String storeName) {
+  void releaseAdminMessageLock(String clusterName, String storeName) {
     if (clusterName == null) {
       throw new VeniceException("Cannot release admin message lock with null cluster name");
     }
@@ -1501,26 +1517,6 @@ public class VeniceParentHelixAdmin implements Admin {
       int repushSourceVersion) {
     Store store = getStore(clusterName, storeName);
 
-    // For target region pushes with deferred swap enabled, check if we should skip target region push for dvc clients
-    // A store with dvc clients can be skipped if there is a dvc heartbeat reported for the current version and
-    // DEFERRED_VERSION_SWAP_SERVICE_WITH_DVC_CHECK_ENABLED is set to true
-    boolean isTargetRegionPushWithDeferredSwap = !StringUtils.isEmpty(targetedRegions) && versionSwapDeferred;
-    if (isTargetRegionPushWithDeferredSwap) {
-      validateTargetedRegions(targetedRegions, clusterName);
-      boolean skipTargetRegionPushForDavinci = isDavinciHeartbeatReported(clusterName, storeName)
-          && multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled();
-      if (skipTargetRegionPushForDavinci) {
-        LOGGER.info(
-            "Skip setting targetedRegions and versionSwapDeferred values for store: {} "
-                + "because isSkipDeferredVersionSwapForDVCEnabled: {} and isDavinciHeartbeatReported: {}",
-            storeName,
-            multiClusterConfigs.isSkipDeferredVersionSwapForDVCEnabled(),
-            isDavinciHeartbeatReported(clusterName, storeName));
-        targetedRegions = "";
-        versionSwapDeferred = false;
-      }
-    }
-
     Optional<String> currentPushTopic =
         getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental(), Version.isPushIdRePush(pushJobId));
 
@@ -1638,31 +1634,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Checks if there is a davinci heartbeat reported in any region for the current version
-   * @param clusterName name of the cluster the store is in
-   * @param storeName name of the store to check for a davinci heartbeat
-   * @return
-   */
-  private boolean isDavinciHeartbeatReported(String clusterName, String storeName) {
-    Map<String, ControllerClient> clientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    for (String region: clientMap.keySet()) {
-      StoreInfo childStore = getStoreInChildRegion(region, clusterName, storeName);
-      Optional<Version> currentVersionInChild = childStore.getVersion(childStore.getCurrentVersion());
-      if (currentVersionInChild.isPresent()) {
-        LOGGER.info(
-            "isDavinciHeartbeatReported: {}, region: {}, storeName: {}",
-            currentVersionInChild.get().getIsDavinciHeartbeatReported(),
-            region,
-            storeName);
-        if (currentVersionInChild.get().getIsDavinciHeartbeatReported()) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  /**
    * Validate the given targeted regions are all valid. A valid region should have a controller client present in the cluster.
    * @param targetedRegions
    * @param clusterName
@@ -1671,7 +1642,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (StringUtils.isEmpty(targetedRegions)) {
       return;
     }
-    Set<String> targetedRegionSet = RegionUtils.parseRegionsFilterList(targetedRegions);
+    Set<String> targetedRegionSet = parseRegionsFilterList(targetedRegions);
     Map<String, ControllerClient> clientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
     for (String region: targetedRegionSet) {
       if (!clientMap.containsKey(region)) {
@@ -1799,7 +1770,7 @@ public class VeniceParentHelixAdmin implements Admin {
       addVersion.rewindTimeInSecondsOverride = -1;
     }
     if (StringUtils.isNotEmpty(targetedRegions)) {
-      addVersion.targetedRegions = new ArrayList<>(RegionUtils.parseRegionsFilterList(targetedRegions));
+      addVersion.targetedRegions = new ArrayList<>(parseRegionsFilterList(targetedRegions));
     }
     addVersion.timestampMetadataVersionId = version.getRmdVersionId();
     addVersion.versionSwapDeferred = version.isVersionSwapDeferred();
@@ -2098,7 +2069,7 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
-      // Send admin message to set backup version as current version. Child controllers will execute the admin message.
+      // Send admin message to set future version as current version. Child controllers will execute the admin message.
       RollForwardCurrentVersion rollForwardCurrentVersion =
           (RollForwardCurrentVersion) AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getNewInstance();
       rollForwardCurrentVersion.clusterName = clusterName;
@@ -2108,17 +2079,62 @@ public class VeniceParentHelixAdmin implements Admin {
       message.operationType = AdminMessageType.ROLLFORWARD_CURRENT_VERSION.getValue();
       message.payloadUnion = rollForwardCurrentVersion;
 
-      Map<String, String> futureVersions = getFutureVersionsForMultiColos(clusterName, storeName);
-      int futureVersion = 0;
-      for (Map.Entry<String, String> entry: futureVersions.entrySet()) {
-        futureVersion = Integer.parseInt(entry.getValue());
-        if (futureVersion > 0) {
+      // get the future version from the interested regions which will be used to compare after roll forward
+      Map<String, String> futureVersionsBeforeRollForward = getFutureVersionsForMultiColos(clusterName, storeName);
+      int futureVersionBeforeRollForward = 0;
+      for (Map.Entry<String, String> entry: futureVersionsBeforeRollForward.entrySet()) {
+        if (!isRegionPartOfRegionsFilterList(entry.getKey(), regionFilter)) {
+          continue;
+        }
+        futureVersionBeforeRollForward = Integer.parseInt(entry.getValue());
+        if (futureVersionBeforeRollForward > 0) {
           break;
         }
       }
+
+      if (futureVersionBeforeRollForward <= 0) {
+        throw new VeniceException("Roll forward failed without any future version");
+      }
+
+      LOGGER.info(
+          "Sending roll forward command to future version {} for store {} to child controllers",
+          futureVersionBeforeRollForward,
+          storeName);
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-      LOGGER.info("Truncating topic {} after rollforward", Version.composeKafkaTopic(storeName, futureVersion));
-      truncateKafkaTopic(Version.composeKafkaTopic(storeName, futureVersion));
+      String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
+      LOGGER.info(
+          "Truncating topic {} after child controllers consumed the roll forward messages to not block new versions",
+          kafkaTopic);
+      truncateKafkaTopic(kafkaTopic);
+
+      // check whether the roll forward is successful in all regions in regionFilter.
+      // Add retries to let the child controllers finish processing the roll forward command
+      Map<String, Integer> failedRegions = new HashMap<>();
+      int finalFutureVersionBeforeRollForward = futureVersionBeforeRollForward;
+      RetryUtils.executeWithMaxAttempt(() -> {
+        Map<String, Integer> currentVersionsAfterRollForward = getCurrentVersionsForMultiColos(clusterName, storeName);
+        failedRegions.clear();
+        currentVersionsAfterRollForward.forEach((region, currentVersion) -> {
+          if (isRegionPartOfRegionsFilterList(region, regionFilter)
+              && currentVersion < finalFutureVersionBeforeRollForward) {
+            failedRegions.put(region, currentVersion);
+          }
+        });
+        if (!failedRegions.isEmpty()) {
+          StringBuilder sb = new StringBuilder();
+          sb.append("Roll forward failed in regions: ");
+          for (Map.Entry<String, Integer> entry: failedRegions.entrySet()) {
+            sb.append(entry.getKey()).append(" with current version: ").append(entry.getValue()).append(",");
+          }
+          sb.append(". Roll forward will be retried until it is successful.");
+          throw new VeniceException(sb.toString());
+        }
+      }, 5, Duration.ofMillis(200), Arrays.asList(VeniceException.class));
+
+      LOGGER.info(
+          "Roll forward to future version {} is successful in all regions for store {}",
+          futureVersionBeforeRollForward,
+          storeName);
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
@@ -2487,7 +2503,7 @@ public class VeniceParentHelixAdmin implements Admin {
         try {
           PartitionUtils.getVenicePartitioner(
               partitionerConfigRecord.partitionerClass.toString(),
-              new VeniceProperties(partitionerConfigRecord.partitionerParams),
+              VeniceProperties.fromCharSequenceMap(partitionerConfigRecord.partitionerParams),
               getKeySchema(clusterName, storeName).getSchema());
         } catch (PartitionerSchemaMismatchException e) {
           String errorMessage = errorMessagePrefix + e.getMessage();
@@ -3720,7 +3736,7 @@ public class VeniceParentHelixAdmin implements Admin {
     Map<String, String> extraDetails = new HashMap<>();
     Map<String, Long> extraInfoUpdateTimestamp = new HashMap<>();
     int numChildRegionsFailedToFetchStatus = 0;
-    Set<String> targetedRegionSet = RegionUtils.parseRegionsFilterList(targetedRegions);
+    Set<String> targetedRegionSet = parseRegionsFilterList(targetedRegions);
 
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       String region = entry.getKey();
@@ -3765,56 +3781,56 @@ public class VeniceParentHelixAdmin implements Admin {
     ExecutionStatus currentReturnStatus =
         getFinalReturnStatus(statuses, childRegions, numChildRegionsFailedToFetchStatus, currentReturnStatusDetails);
 
-    // Do not delete parent Kafka if its part of targeted colo push to prevent concurrent pushes
-    if (currentReturnStatus.isTerminal()) {
-      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
-      int versionNum = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-      HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int versionNum = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+    HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+    ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+    Store parentStore = repository.getStore(storeName);
+    Version version = parentStore.getVersion(versionNum);
 
-      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
-        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-        Store parentStore = repository.getStore(storeName);
-        Version version = parentStore.getVersion(versionNum);
+    // Check if push is in a terminal status in target regions for pushes using deferred swap and try
+    // updating the parent status. Parent status should only be updated if it is currently in a STARTED state to avoid
+    // multiple duplicate updates as vpj will keep polling until all regions are complete
+    boolean isParentVersionStatusStarted = parentStore.getVersionStatus(versionNum).equals(STARTED);
+    if (isTargetRegionPushWithDeferredSwap && isParentVersionStatusStarted) {
+      updateParentVersionStatusIfTerminal(targetedRegionSet, extraInfo, parentStore, repository, versionNum);
+    }
+
+    try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+      if (currentReturnStatus.isTerminal()) {
+        LOGGER.info("Received terminal status: {} for topic: {}", currentReturnStatus, kafkaTopic);
+
+        // Do not truncate the parent version topic if it is a push w/ deferred swap to prevent concurrent pushes
+        // Otherwise, truncate the parent version topic and update the version status
         boolean isDeferredSwap = version != null && version.isVersionSwapDeferred();
-        if (!isDeferredSwap || !StringUtils.isEmpty(targetedRegions)) {
-          // targetedRegions is non-empty for target region push of batch store
-          boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
-          Version storeVersion = parentStore.getVersion(versionNum);
-          boolean isVersionPushed = storeVersion != null && storeVersion.getStatus().equals(PUSHED);
-          boolean isHybridStore = storeVersion != null && storeVersion.getHybridStoreConfig() != null;
-          boolean isTargetRegionPushWithDeferredSwapForCurrentVersion =
-              isTargetRegionPush && version.isVersionSwapDeferred();
-          // Truncate topic after push is in terminal state if
-          // 1. Its a hybrid store or regular push. (Hybrid store target push uses repush where isTargetRegionPush is
-          // false)
-          // 2. If target region push is enabled and job to push data only to target region completed (status == PUSHED)
-          // 3. If it is a target region push with deferred swap and a majority of regions have reached terminal status
-          if (!isTargetRegionPush // regular push
-              || isVersionPushed // target region push
-              || isHybridStore || isTargetRegionPushWithDeferredSwapForCurrentVersion) {
-            LOGGER
-                .info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
-            truncateTopicsOptionally(
-                clusterName,
-                kafkaTopic,
-                incrementalPushVersion,
-                currentReturnStatus,
-                currentReturnStatusDetails);
-          }
-          // status PUSHED is set when batch store's target region push is completed, but other region are yet to
-          // complete
-          if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
-            if (isTargetRegionPush && !isVersionPushed) {
-              parentStore.updateVersionStatus(versionNum, PUSHED);
-              repository.updateStore(parentStore);
-              LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, PUSHED);
-            } else { // status ONLINE is set when all region finishes ingestion for either regular or target region
-                     // push.
-              parentStore.updateVersionStatus(versionNum, ONLINE);
-              repository.updateStore(parentStore);
-              LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, ONLINE);
-            }
-          }
+        if (!isDeferredSwap) {
+          handleTerminalJobStatus(
+              clusterName,
+              kafkaTopic,
+              incrementalPushVersion,
+              targetedRegions,
+              parentStore,
+              version,
+              versionNum,
+              currentReturnStatus,
+              currentReturnStatusDetails,
+              repository);
+        }
+      } else {
+        // If the aggregate status is not terminal, but the parent version status is marked as KILLED, we should mark
+        // the
+        // push job status as terminal (ERROR) as job was killed
+        if (version.getStatus().equals(KILLED)) {
+          LOGGER.info(
+              "Marking execution status as ERROR for store {} because parent version status is KILLED",
+              storeName);
+          return new OfflinePushStatusInfo(
+              ExecutionStatus.ERROR,
+              null,
+              extraInfo,
+              currentReturnStatusDetails.toString(),
+              extraDetails,
+              extraInfoUpdateTimestamp);
         }
       }
     }
@@ -3826,6 +3842,122 @@ public class VeniceParentHelixAdmin implements Admin {
         currentReturnStatusDetails.toString(),
         extraDetails,
         extraInfoUpdateTimestamp);
+  }
+
+  /**
+   * Checks if all target regions have reached a terminal status (COMPLETED or ERROR). If all regions are in a COMPLETED
+   * state, mark the version status as PUSHED so the DeferredVersionSwapService can start monitoring the store to roll forward.
+   * If amy region's push failed, mark the version status as ERROR so the DeferredVersionSwapService doesn't try to roll forward
+   * @param targetRegions
+   * @param regionToPushStatusInfo
+   * @param parentStore
+   * @param repository
+   * @param versionNum
+   */
+  private void updateParentVersionStatusIfTerminal(
+      Set<String> targetRegions,
+      Map<String, String> regionToPushStatusInfo,
+      Store parentStore,
+      ReadWriteStoreRepository repository,
+      int versionNum) {
+    Set<String> completedRegions = new HashSet<>();
+    Set<String> failedRegions = new HashSet<>();
+    for (Map.Entry<String, String> entry: regionToPushStatusInfo.entrySet()) {
+      String region = entry.getKey();
+      String pushStatus = regionToPushStatusInfo.get(region);
+      if (targetRegions.contains(region)) {
+        if (pushStatus.equals(ExecutionStatus.COMPLETED.toString())) {
+          completedRegions.add(region);
+        } else if (pushStatus.equals(ExecutionStatus.ERROR.toString())) {
+          failedRegions.add(region);
+        }
+      }
+    }
+
+    if (completedRegions.size() == targetRegions.size()) {
+      parentStore.updateVersionStatus(versionNum, PUSHED);
+      repository.updateStore(parentStore);
+      LOGGER.info(
+          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          versionNum,
+          PUSHED);
+    } else if (failedRegions.size() > 0) {
+      parentStore.updateVersionStatus(versionNum, ERROR);
+      repository.updateStore(parentStore);
+      LOGGER.info(
+          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          versionNum,
+          ERROR);
+    }
+  }
+
+  /**
+   * For a job with a terminal status, the following tasks are performed:
+   * 1. Truncate the parent topic so that we can start another push. Truncation happens if
+   *    a. It is a hybrid store or regular push. (Hybrid store target push uses repush where isTargetRegionPush == false)
+   *    b. If target region push w/o deferred swap is enabled and job to push data to all regions have reached terminal status
+   *    c. If it is a target region push with deferred swap and a majority of regions have reached terminal status
+   * 2. Update the parent version status to either ONLINE or PUSHED if currentReturnStatus is COMPLETED for non target region pushes w/ deferred swap.
+   *    a. PUSHED is set if only the target region in a target region push is complete and serving traffic
+   *    b. ONLINE is set if all regions have completed their push and are serving traffic
+   * @param clusterName
+   * @param kafkaTopic
+   * @param incrementalPushVersion
+   * @param targetedRegions
+   * @param parentStore
+   * @param version
+   * @param currentReturnStatus
+   * @param currentReturnStatusDetails
+   * @param repository
+   */
+  private void handleTerminalJobStatus(
+      String clusterName,
+      String kafkaTopic,
+      Optional<String> incrementalPushVersion,
+      String targetedRegions,
+      Store parentStore,
+      Version version,
+      int versionNum,
+      ExecutionStatus currentReturnStatus,
+      StringBuilder currentReturnStatusDetails,
+      ReadWriteStoreRepository repository) {
+    Version storeVersion = parentStore.getVersion(versionNum);
+    boolean isPushCompleteInAllRegionsForTargetRegionPush =
+        storeVersion != null && storeVersion.getStatus().equals(PUSHED);
+    boolean isHybridStore = storeVersion != null && storeVersion.getHybridStoreConfig() != null;
+
+    boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
+
+    if (!isTargetRegionPush // Push is complete for a normal batch push w/o target region push
+        || isPushCompleteInAllRegionsForTargetRegionPush // Push is complete in all regions for a target region push w/o
+                                                         // deferred swap
+        || isHybridStore // Push is to a hybrid store
+    ) {
+      LOGGER.info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
+      truncateTopicsOptionally(
+          clusterName,
+          kafkaTopic,
+          incrementalPushVersion,
+          currentReturnStatus,
+          currentReturnStatusDetails);
+    }
+
+    // Update the parent version status for all pushes except for target region push w/ deferred swap as it's handled
+    // separately
+    // in DeferredVersionSwapService
+    if (currentReturnStatus.equals(ExecutionStatus.COMPLETED)) {
+      if (isTargetRegionPush && !isPushCompleteInAllRegionsForTargetRegionPush) {
+        parentStore.updateVersionStatus(versionNum, PUSHED); // Push is complete in the target regions & only target
+                                                             // regions are serving traffic
+        repository.updateStore(parentStore);
+        LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, PUSHED);
+      } else {
+        parentStore.updateVersionStatus(versionNum, ONLINE); // Push is complete in all regions & version is serving
+                                                             // traffic
+        repository.updateStore(parentStore);
+        LOGGER.info("Updating parent store version {} status to {}", kafkaTopic, ONLINE);
+      }
+    }
   }
 
   /**
@@ -4176,7 +4308,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (Objects.equals(sourceFabric, destinationFabric)) {
       throw new VeniceException(
           String.format(
-              "Source ({}) and destination ({}) cannot be the same data center",
+              "Source (%s) and destination (%s) cannot be the same data center",
               sourceFabric,
               destinationFabric));
     }
@@ -4402,9 +4534,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public void updateAdminOperationProtocolVersion(String clusterName, Long adminOperationProtocolVersion) {
-    getVeniceHelixAdmin().checkControllerLeadershipFor(clusterName);
-    getVeniceHelixAdmin().getAdminConsumerService(clusterName)
-        .updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
+    getVeniceHelixAdmin().updateAdminOperationProtocolVersion(clusterName, adminOperationProtocolVersion);
   }
 
   @Override
@@ -4484,14 +4614,6 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public VeniceWriterFactory getVeniceWriterFactory() {
     return getVeniceHelixAdmin().getVeniceWriterFactory();
-  }
-
-  /**
-   * @see VeniceHelixAdmin#getPubSubConsumerAdapterFactory()
-   */
-  @Override
-  public PubSubConsumerAdapterFactory getPubSubConsumerAdapterFactory() {
-    return getVeniceHelixAdmin().getPubSubConsumerAdapterFactory();
   }
 
   @Override

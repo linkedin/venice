@@ -1,6 +1,6 @@
 package com.linkedin.venice.meta;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.ConfigConstants;
 import com.linkedin.venice.helix.StoreJSONSerializer;

@@ -16,6 +16,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
@@ -65,6 +66,7 @@ public class DaVinciUserApp {
     String storageClass = args[8]; // DISK or MEMORY_BACKED_BY_DISK
     boolean recordTransformerEnabled = Boolean.parseBoolean(args[9]);
     boolean blobTransferDaVinciSSLEnabled = Boolean.parseBoolean(args[10]);
+    boolean batchPushReportEnabled = Boolean.parseBoolean(args[11]);
 
     D2Client d2Client = new D2ClientBuilder().setZkHosts(zkHosts)
         .setZkSessionTimeout(3, TimeUnit.SECONDS)
@@ -96,6 +98,10 @@ public class DaVinciUserApp {
       extraBackendConfig.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
       extraBackendConfig.put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
       extraBackendConfig.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+    }
+
+    if (batchPushReportEnabled) {
+      extraBackendConfig.put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, "10");
     }
 
     // convert the storage class string to enum

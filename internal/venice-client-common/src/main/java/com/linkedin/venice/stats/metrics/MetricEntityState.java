@@ -170,8 +170,8 @@ public abstract class MetricEntityState {
               + metricEntity.getMetricName());
     }
 
-    // validate the input dimensions and compare against the required dimensions: baseDimensionsMaps might be
-    // populated only if emitOpenTelemetryMetrics is true, so checking only when OTel is enabled
+    // validate the input dimensions and compare against the required dimensions: baseDimensionsMaps might
+    // not be populated if OTel is not enabled , so checking the below only when OTel is enabled
     if (emitOpenTelemetryMetrics()) {
       if (baseAttributes != null) {
         // check 2:
@@ -181,14 +181,14 @@ public abstract class MetricEntityState {
               "baseAttributes: " + baseAttributes.asMap().keySet() + " and baseDimensionsMap: "
                   + baseDimensionsMap.keySet() + " should have the same size and values");
         }
+        Map<AttributeKey<?>, Object> baseAttributesAsMap = baseAttributes.asMap();
         for (Map.Entry<VeniceMetricsDimensions, String> entry: baseDimensionsMap.entrySet()) {
           AttributeKey<String> key = AttributeKey.stringKey(otelRepository.getDimensionName(entry.getKey()));
-          Map<AttributeKey<?>, Object> baseAttributesAsMap = baseAttributes.asMap();
           if (!baseAttributesAsMap.containsKey(key)
               || !Objects.equals(baseAttributesAsMap.get(key), entry.getValue())) {
             throw new IllegalArgumentException(
-                "baseAttributes: " + baseAttributes.asMap().keySet()
-                    + " should contain all the keys in baseDimensionsMap: " + baseDimensionsMap.keySet());
+                "baseAttributes: " + baseAttributes.asMap()
+                    + " should contain all the keys and same values as in baseDimensionsMap: " + baseDimensionsMap);
           }
         }
       }
@@ -203,6 +203,12 @@ public abstract class MetricEntityState {
                   + " doesn't match with the required dimensions " + metricEntity.getDimensionsList() + " for metric: "
                   + metricEntity.getMetricName());
         }
+      } else {
+        if (currentDimensions.size() != metricEntity.getDimensionsList().size()) {
+          throw new IllegalArgumentException(
+              "currentDimensions " + currentDimensions + " doesn't match with the required dimensions "
+                  + metricEntity.getDimensionsList() + " for metric: " + metricEntity.getMetricName());
+        }
       }
 
       // check 4:
@@ -216,6 +222,18 @@ public abstract class MetricEntityState {
         throw new IllegalArgumentException(
             "Input dimensions " + currentDimensions + " doesn't match with the required dimensions "
                 + requiredDimensions + " for metric: " + metricEntity.getMetricName());
+      }
+
+      // check 5:
+      // If the baseDimensionsMap has all non-null values
+      if (baseDimensionsMap != null) {
+        for (Map.Entry<VeniceMetricsDimensions, String> entry: baseDimensionsMap.entrySet()) {
+          if (entry.getValue() == null || entry.getValue().isEmpty()) {
+            throw new IllegalArgumentException(
+                "baseDimensionsMap " + baseDimensionsMap.keySet() + " contains a null or empty value for dimension "
+                    + entry.getKey() + " for metric: " + metricEntity.getMetricName());
+          }
+        }
       }
     }
   }
@@ -237,6 +255,10 @@ public abstract class MetricEntityState {
     return getOtelRepository().createAttributes(metricEntity, baseDimensionsMap, dimensions);
   }
 
+  Attributes createAttributes(Map<VeniceMetricsDimensions, String> dimensions) {
+    return getOtelRepository().createAttributes(metricEntity, baseDimensionsMap, dimensions);
+  }
+
   final boolean emitOpenTelemetryMetrics() {
     return emitOpenTelemetryMetrics;
   }
@@ -247,6 +269,10 @@ public abstract class MetricEntityState {
 
   VeniceOpenTelemetryMetricsRepository getOtelRepository() {
     return otelRepository;
+  }
+
+  Map<VeniceMetricsDimensions, String> getBaseDimensionsMap() {
+    return baseDimensionsMap;
   }
 
   /** used only for testing */

@@ -13,7 +13,6 @@ import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -38,22 +37,20 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   private VeniceWriter veniceWriter;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
   private final int maxColoIdValue;
-
-  private final PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
   private final String changeCaptureTopicName;
 
   public ChangeCaptureViewWriter(
       VeniceConfigLoader props,
       Version version,
       Schema keySchema,
-      Map<String, String> extraViewParameters) {
-    super(props, version, keySchema, extraViewParameters);
+      Map<String, String> extraViewParameters,
+      VeniceWriterFactory veniceWriterFactory) {
+    super(props, version, keySchema, extraViewParameters, veniceWriterFactory);
     internalView = new ChangeCaptureView(
         props.getCombinedProperties().toProperties(),
         version.getStoreName(),
         extraViewParameters);
     kafkaClusterUrlToIdMap = props.getVeniceServerConfig().getKafkaClusterUrlToIdMap();
-    pubSubProducerAdapterFactory = props.getVeniceServerConfig().getPubSubClientsFactory().getProducerAdapterFactory();
     maxColoIdValue = kafkaClusterUrlToIdMap.values().stream().max(Integer::compareTo).orElse(-1);
     changeCaptureTopicName =
         this.getTopicNamesAndConfigsForVersion(version.getNumber()).keySet().stream().findAny().get();
@@ -190,8 +187,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     if (veniceWriter != null) {
       return;
     }
-    veniceWriter =
-        new VeniceWriterFactory(props, pubSubProducerAdapterFactory, null).createVeniceWriter(buildWriterOptions());
+    veniceWriter = veniceWriterFactory.createVeniceWriter(buildWriterOptions());
   }
 
   private ValueBytes constructValueBytes(ByteBuffer value, int schemaId) {

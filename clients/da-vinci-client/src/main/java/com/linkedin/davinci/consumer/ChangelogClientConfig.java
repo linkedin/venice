@@ -3,7 +3,15 @@ package com.linkedin.davinci.consumer;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Objects;
 import java.util.Properties;
 import javax.annotation.Nonnull;
@@ -12,6 +20,7 @@ import org.apache.avro.specific.SpecificRecord;
 
 public class ChangelogClientConfig<T extends SpecificRecord> {
   private @Nonnull Properties consumerProperties = new Properties();
+
   private SchemaReader schemaReader;
   private String viewName;
   private Boolean isBeforeImageView = false;
@@ -51,6 +60,17 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private Boolean isExperimentalClientEnabled = false;
   private int maxBufferSize = 1000;
 
+  /**
+   * Internal fields derived from the consumer properties.
+   * These are refreshed each time a new set of consumer properties is applied.
+   */
+  private PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
+  private PubSubPositionDeserializer pubSubPositionDeserializer;
+  private PubSubMessageDeserializer pubSubMessageDeserializer;
+  private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
+
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
   }
@@ -70,6 +90,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   public ChangelogClientConfig<T> setConsumerProperties(@Nonnull Properties consumerProperties) {
     this.consumerProperties = Objects.requireNonNull(consumerProperties);
+    // Initialize all internal PubSub-related components using the current consumer properties.
+    initializePubSubInternals();
     return this;
   }
 
@@ -298,5 +320,49 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   public ChangelogClientConfig setMaxBufferSize(int maxBufferSize) {
     this.maxBufferSize = maxBufferSize;
     return this;
+  }
+
+  /**
+   * Initializes all internal PubSub-related components using the current {@link #consumerProperties}.
+   *
+   * <p>This method sets up:
+   * <ul>
+   *   <li>{@link #pubSubPositionTypeRegistry} – derived from consumer properties</li>
+   *   <li>{@link #pubSubPositionDeserializer} – uses the initialized position type registry</li>
+   *   <li>{@link #pubSubConsumerAdapterFactory} – created based on resolved consumer configuration</li>
+   *   <li>{@link #pubSubMessageDeserializer} – stateless shared instance</li>
+   * </ul>
+   *
+   * <p><strong>Note:</strong> These fields are derived from the {@link #consumerProperties} and should
+   * not be externally modified or re-initialized independently. Always ensure
+   * {@code consumerProperties} is set first before calling this method. This method
+   * should only be invoked internally when the properties are updated.
+   */
+  private void initializePubSubInternals() {
+    VeniceProperties pubSubProperties = new VeniceProperties(this.consumerProperties);
+    this.pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(pubSubProperties);
+    this.pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
+    this.pubSubConsumerAdapterFactory = PubSubClientsFactory.createConsumerFactory(pubSubProperties);
+    this.pubSubMessageDeserializer = PubSubMessageDeserializer.createOptimizedDeserializer();
+  }
+
+  protected PubSubConsumerAdapterFactory<? extends PubSubConsumerAdapter> getPubSubConsumerAdapterFactory() {
+    return pubSubConsumerAdapterFactory;
+  }
+
+  protected PubSubPositionDeserializer getPubSubPositionDeserializer() {
+    return pubSubPositionDeserializer;
+  }
+
+  protected PubSubMessageDeserializer getPubSubMessageDeserializer() {
+    return pubSubMessageDeserializer;
+  }
+
+  protected PubSubPositionTypeRegistry getPubSubPositionTypeRegistry() {
+    return pubSubPositionTypeRegistry;
+  }
+
+  protected PubSubTopicRepository getPubSubTopicRepository() {
+    return pubSubTopicRepository;
   }
 }

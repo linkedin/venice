@@ -14,6 +14,8 @@ import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
@@ -28,6 +30,7 @@ import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import it.unimi.dsi.fastutil.ints.Int2LongMaps;
@@ -62,7 +65,7 @@ class TopicMetadataFetcher implements Closeable {
   private static final int DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY = 5;
   private static final Duration INITIAL_RETRY_DELAY = Duration.ofMillis(100);
   private static final List<Class<? extends Throwable>> PUBSUB_RETRIABLE_FAILURES =
-      Arrays.asList(PubSubTopicDoesNotExistException.class, PubSubOpTimeoutException.class);
+      Collections.singletonList(Exception.class);
 
   /**
    * Blocking queue is used to ensure single-threaded access to a consumer as PubSubConsumerAdapter
@@ -101,15 +104,20 @@ class TopicMetadataFetcher implements Closeable {
     this.pubSubConsumerPool = new LinkedBlockingQueue<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
     this.closeables = new ArrayList<>(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize());
     this.cachedEntryTtlInNs = MILLISECONDS.toNanos(topicManagerContext.getTopicOffsetCheckIntervalMs());
-    PubSubMessageDeserializer pubSubMessageDeserializer = PubSubMessageDeserializer.getInstance();
+    PubSubMessageDeserializer pubSubMessageDeserializer = PubSubMessageDeserializer.createDefaultDeserializer();
+    VeniceProperties pubSubProperties = topicManagerContext.getPubSubProperties(pubSubClusterAddress);
+    PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerFactory =
+        topicManagerContext.getPubSubConsumerAdapterFactory();
+    PubSubConsumerAdapterContext.Builder pubSubConsumerContextBuilder =
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(pubSubProperties)
+            .setIsOffsetCollectionEnabled(false)
+            .setPubSubMessageDeserializer(pubSubMessageDeserializer)
+            .setPubSubPositionTypeRegistry(topicManagerContext.getPubSubPositionTypeRegistry())
+            .setPubSubTopicRepository(topicManagerContext.getPubSubTopicRepository())
+            .setMetricsRepository(topicManagerContext.getMetricsRepository());
     for (int i = 0; i < topicManagerContext.getTopicMetadataFetcherConsumerPoolSize(); i++) {
-      PubSubConsumerAdapter pubSubConsumerAdapter = topicManagerContext.getPubSubConsumerAdapterFactory()
-          .create(
-              topicManagerContext.getPubSubProperties(pubSubClusterAddress),
-              false,
-              pubSubMessageDeserializer,
-              pubSubClusterAddress);
-
+      pubSubConsumerContextBuilder.setConsumerName("TopicManager-" + i);
+      PubSubConsumerAdapter pubSubConsumerAdapter = pubSubConsumerFactory.create(pubSubConsumerContextBuilder.build());
       closeables.add(pubSubConsumerAdapter);
       if (!pubSubConsumerPool.offer(pubSubConsumerAdapter)) {
         throw new VeniceException("Failed to initialize consumer pool for topic metadata fetcher");
