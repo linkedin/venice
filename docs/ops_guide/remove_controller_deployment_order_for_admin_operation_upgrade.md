@@ -52,8 +52,8 @@ Parent controllers will retrieve this version from ZK when serializing admin ope
 ProtocolVersionAutoDetectionService runs at the cluster level, ensuring all controllers, including parent, child, and standby nodes, remain synchronized on protocol versions.
 It shares the lifecycle with HelixVeniceClusterResources, activating when a parent controller becomes a leader for one cluster, and stopping when leadership changes. 
 This service periodically checks protocol versions and updates the "GOOD" version in ZK.
-<img src="../assets/images/ops_guide/remove_deployment_order/service.svg" alt="Detection Service" style="display: block; margin: 0 auto"/>
 
+![Detection Service](../assets/images/ops_guide/remove_deployment_order/service.svg)
 
 Process overview:
 1. Leader controllers (both parent and child) request local versions from standby controllers.
