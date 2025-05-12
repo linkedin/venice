@@ -7,9 +7,24 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
 
 
+/**
+ * This class is used to track the latency of various operations related to adding a version in Venice.
+ *
+ * It includes metrics for:
+ * <ul>
+ * <li>Handling add version requests when the source version exists</li>
+ * <li>Creating batch topics (for both child and parent controllers)</li>
+ * <li>Waiting for node resources assignment</li>
+ * <li>Creating Helix storage cluster resources</li>
+ * <li>Retiring old store versions</li>
+ * <li>Sending the start of a push</li>
+ * <li>Handling version creation failures</li>
+ * </ul>
+ * Each metric is using Milliseconds as the unit of measurement.
+ */
 public class AddVersionLatencyStats extends AbstractVeniceStats {
-  private final Sensor retiredVersionLatencySensor;
-  private final Sensor waitTimeForResourcesSensor;
+  private final Sensor retireOldStoreVersionsLatencySensor;
+  private final Sensor waitTimeForResourcesAssignmentLatencySensor;
   private final Sensor handleVersionCreationFailureLatencySensor;
   private final Sensor handleAddVersionWithSourceVersionExistLatencySensor;
   private final Sensor sendStartOfPushLatencySensor;
@@ -18,8 +33,10 @@ public class AddVersionLatencyStats extends AbstractVeniceStats {
 
   public AddVersionLatencyStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    retiredVersionLatencySensor = registerSensorIfAbsent("add_version_retired_version_latency", new Avg(), new Max());
-    waitTimeForResourcesSensor = registerSensorIfAbsent("add_version_wait_time_for_resources", new Avg(), new Max());
+    retireOldStoreVersionsLatencySensor =
+        registerSensorIfAbsent("add_version_retire_old_store_versions_latency", new Avg(), new Max());
+    waitTimeForResourcesAssignmentLatencySensor =
+        registerSensorIfAbsent("add_version_wait_time_for_resources_assignment_latency", new Avg(), new Max());
     handleVersionCreationFailureLatencySensor =
         registerSensorIfAbsent("add_version_handle_version_creation_failure_latency", new Avg(), new Max());
     handleAddVersionWithSourceVersionExistLatencySensor = registerSensorIfAbsent(
@@ -34,16 +51,12 @@ public class AddVersionLatencyStats extends AbstractVeniceStats {
         registerSensorIfAbsent("add_version_helix_storage_cluster_resources_creation_latency", new Avg(), new Max());
   }
 
-  public void recordRetiredVersionLatency(long latency) {
-    retiredVersionLatencySensor.record(latency);
+  public void recordRetireOldStoreVersionsLatency(long latency) {
+    retireOldStoreVersionsLatencySensor.record(latency);
   }
 
-  public void recordWaitTimeForResources(long latency) {
-    waitTimeForResourcesSensor.record(latency);
-  }
-
-  public void recordHandleVersionCreationFailureLatency(long latency) {
-    handleVersionCreationFailureLatencySensor.record(latency);
+  public void recordWaitTimeForResourcesAssignmentLatency(long latency) {
+    waitTimeForResourcesAssignmentLatencySensor.record(latency);
   }
 
   public void recordHandleAddVersionWithSourceVersionExistLatency(long latency) {
@@ -60,5 +73,9 @@ public class AddVersionLatencyStats extends AbstractVeniceStats {
 
   public void recordHelixStorageClusterResourcesCreationLatency(long latency) {
     helixStorageClusterResourcesCreationLatencySensor.record(latency);
+  }
+
+  public void recordHandleVersionCreationFailureLatency(long latency) {
+    handleVersionCreationFailureLatencySensor.record(latency);
   }
 }

@@ -2883,7 +2883,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               ? getVersionFromSourceCluster(repository, clusterName, storeName, versionNumber)
               : Optional.empty();
           if (sourceVersion.isPresent()) {
-            long topicCreationStartTime = System.currentTimeMillis();
+            long cloneSourceVersionTimestamp = System.currentTimeMillis();
             // Adding an existing version to the destination cluster whose version level resources are already created,
             // including Kafka topics with data ready, so skip the steps of recreating these resources.
             version = sourceVersion.get().cloneVersion();
@@ -2908,7 +2908,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             repository.updateStore(store);
 
             addVersionLatencyStats.recordHandleAddVersionWithSourceVersionExistLatency(
-                LatencyUtils.getElapsedTimeFromMsToMs(topicCreationStartTime));
+                LatencyUtils.getElapsedTimeFromMsToMs(cloneSourceVersionTimestamp));
           } else {
             if (versionNumber == VERSION_ID_UNSET) {
               // No version supplied, generate a new version. This could happen either in the parent
@@ -3007,6 +3007,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     "Parent controller should know the source Kafka bootstrap server url for store: " + storeName
                         + " and version: " + version.getNumber() + " in cluster: " + clusterName);
               }
+              long createBatchTopicInParentTimestamp = System.currentTimeMillis();
               createBatchTopics(
                   version,
                   pushType,
@@ -3014,6 +3015,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   numberOfPartitions,
                   clusterConfig,
                   useFastKafkaOperationTimeout);
+              addVersionLatencyStats.recordCreateBatchTopicsLatency(
+                  LatencyUtils.getElapsedTimeFromMsToMs(createBatchTopicInParentTimestamp));
             }
 
             // We shouldn't need to create view resources in parent fabric
@@ -3104,8 +3107,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             try {
               long retireOldStoreStartTimestamp = System.currentTimeMillis();
               retireOldStoreVersions(clusterName, storeName, true, currentVersionBeforePush);
-              addVersionLatencyStats
-                  .recordRetiredVersionLatency(LatencyUtils.getElapsedTimeFromMsToMs(retireOldStoreStartTimestamp));
+              addVersionLatencyStats.recordRetireOldStoreVersionsLatency(
+                  LatencyUtils.getElapsedTimeFromMsToMs(retireOldStoreStartTimestamp));
             } catch (Throwable t) {
               LOGGER.error(
                   "Failed to delete previous backup version while pushing {} to store {} in cluster {}",
@@ -3128,8 +3131,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               offlinePushStrategy,
               clusterConfig.getOffLineJobWaitTimeInMilliseconds(),
               replicationFactor);
-          addVersionLatencyStats
-              .recordWaitTimeForResources(LatencyUtils.getElapsedTimeFromMsToMs(startWaitingTimestamp));
+          addVersionLatencyStats.recordWaitTimeForResourcesAssignmentLatency(
+              LatencyUtils.getElapsedTimeFromMsToMs(startWaitingTimestamp));
         } catch (VeniceNoClusterException e) {
           if (!isLeaderControllerFor(clusterName)) {
             int versionNumberInProgress = version == null ? versionNumber : version.getNumber();
