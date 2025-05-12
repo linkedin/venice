@@ -306,7 +306,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       throw new VeniceException("There is no value corresponding to key bytes: " + ByteUtils.toHexString(keyBytes));
     }
     byte[] valueBytes = values.next();
-    Long timestamp = -1L;
+    long timestamp = -1L;
     if (timestampIterator.hasNext()) {
       timestamp = timestampIterator.next();
     }
