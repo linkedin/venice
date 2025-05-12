@@ -29,6 +29,11 @@ public interface BootstrappingVeniceChangelogConsumer<K, V> {
    * NOTE: This future may take some time to complete depending on how much data needs to be ingested in order to catch
    * up with the time that this client started.
    *
+   * NOTE: In the experimental client, the future will complete when there is at least one message to be polled.
+   * We don't wait for all partitions to catch up, as loading every message into a buffer will result in an
+   * Out Of Memory error. Instead, use the {@link #isCaughtUp()} method to determine once all subscribed partitions have
+   * caught up.
+   *
    * @param partitions which partition id's to catch up with
    * @return a future that completes once catch up is complete for all passed in partitions.
    */
@@ -41,6 +46,10 @@ public interface BootstrappingVeniceChangelogConsumer<K, V> {
   /**
    * polls for the next batch of change events. The first records returned following calling 'start()' will be from the bootstrap state.
    * Once this state is consumed, subsequent calls to poll will be based off of recent updates to the Venice store.
+   *
+   * In the experimental client, records will be returned in batches configured to the MAX_BUFFER_SIZE. So the initial
+   * calls to poll will be from records from the bootstrap state, until the partitions have caught up.
+   *
    * @param timeoutInMs
    * @return
    */
