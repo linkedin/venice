@@ -27,7 +27,6 @@ import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -674,8 +673,6 @@ public interface Admin extends AutoCloseable, Closeable {
   Map<String, String> findAllBootstrappingVersions(String clusterName);
 
   VeniceWriterFactory getVeniceWriterFactory();
-
-  PubSubConsumerAdapterFactory getPubSubConsumerAdapterFactory();
 
   VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress);
 

@@ -1,35 +1,31 @@
 package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Closeable;
 
 
 /**
- * Generic consumer factory interface.
- *
- * A pus-sub specific concrete implementation of this interface should be provided to be able to create
- * and instantiate consumers for that system.
+ * Generic factory interface for creating PubSub consumers.
+ * <p>
+ * Concrete implementations should create and configure consumers for a specific PubSub system (e.g., Kafka, Pulsar).
+ * <p>
+ * Implementations must provide a public no-arg constructor to support reflective instantiation.
  */
-public interface PubSubConsumerAdapterFactory<ADAPTER extends PubSubConsumerAdapter> extends Closeable {
+public abstract class PubSubConsumerAdapterFactory<ADAPTER extends PubSubConsumerAdapter> implements Closeable {
   /**
-   *
-   * @param veniceProperties            A copy of venice properties. Relevant consumer configs will be extracted from
-   *                                    veniceProperties using prefix matching. For example, to construct kafka consumer
-   *                                    configs that start with "kafka." prefix will be used.
-   * @param isOffsetCollectionEnabled   A flag to enable collection of offset or not.
-   * @param pubSubMessageDeserializer   To deserialize the raw byte records into {@link PubSubMessage}s to process.
-   * @param consumerName                Name of the consumer. If not null, it will be used to set the context
-   *                                    for consumer thread.
-   * @return                            Returns an instance of a consumer adapter
+   * Constructor for PubSubConsumerAdapterFactory used mainly for reflective instantiation.
    */
-  ADAPTER create(
-      VeniceProperties veniceProperties,
-      boolean isOffsetCollectionEnabled,
-      PubSubMessageDeserializer pubSubMessageDeserializer,
-      String consumerName);
+  public PubSubConsumerAdapterFactory() {
+    // no-op
+  }
 
-  String getName();
+  /**
+   * Creates a PubSub consumer adapter.
+   *
+   * @param context The context containing all dependencies and configurations required to create a consumer.
+   * @return An instance of the PubSub consumer adapter.
+   */
+  public abstract ADAPTER create(PubSubConsumerAdapterContext context);
+
+  public abstract String getName();
 }

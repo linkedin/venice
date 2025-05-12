@@ -24,6 +24,7 @@ public class MRJobCounterHelper {
   private static final String EMPTY_RECORD = "empty record";
   private static final String AUTHORIZATION_FAILURES = "authorization failures";
   private static final String RECORD_TOO_LARGE_FAILURES = "record too large failures";
+  private static final String UNCOMPRESSED_RECORD_TOO_LARGE_FAILURES = "uncompressed record too large failures";
 
   private static final String COUNTER_GROUP_DATA_QUALITY = "Data quality";
   private static final String DUPLICATE_KEY_WITH_IDENTICAL_VALUE = "duplicate key with identical value";
@@ -66,6 +67,9 @@ public class MRJobCounterHelper {
   public static final GroupAndCounterNames RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_DATA_QUALITY, RECORD_TOO_LARGE_FAILURES);
 
+  public static final GroupAndCounterNames UNCOMPRESSED_RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(COUNTER_GROUP_DATA_QUALITY, UNCOMPRESSED_RECORD_TOO_LARGE_FAILURES);
+
   public static final GroupAndCounterNames OUTPUT_RECORD_COUNT_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_KAFKA, COUNTER_OUTPUT_RECORDS);
 
@@ -102,6 +106,10 @@ public class MRJobCounterHelper {
 
   public static void incrRecordTooLargeFailureCount(Reporter reporter, long amount) {
     incrAmountWithGroupCounterName(reporter, RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME, amount);
+  }
+
+  public static void incrUncompressedRecordTooLargeFailureCount(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, UNCOMPRESSED_RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME, amount);
   }
 
   public static void incrTotalKeySize(Reporter reporter, long amount) {
@@ -156,6 +164,10 @@ public class MRJobCounterHelper {
     return getCountWithGroupCounterName(reporter, RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME);
   }
 
+  public static long getUncompressedRecordTooLargeFailureCount(Reporter reporter) {
+    return getCountWithGroupCounterName(reporter, UNCOMPRESSED_RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME);
+  }
+
   public static long getTotalKeySize(Reporter reporter) {
     return getCountWithGroupCounterName(reporter, TOTAL_KEY_SIZE_GROUP_COUNTER_NAME);
   }
@@ -190,6 +202,10 @@ public class MRJobCounterHelper {
 
   public static long getRecordTooLargeFailureCount(Counters counters) {
     return getCountFromCounters(counters, RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME);
+  }
+
+  public static long getUncompressedRecordTooLargeFailureCount(Counters counters) {
+    return getCountFromCounters(counters, UNCOMPRESSED_RECORD_TOO_LARGE_FAILURE_GROUP_COUNTER_NAME);
   }
 
   public static long getTotalKeySize(Counters counters) {

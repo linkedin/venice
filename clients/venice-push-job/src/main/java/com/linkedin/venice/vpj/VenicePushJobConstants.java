@@ -222,7 +222,6 @@ public final class VenicePushJobConstants {
   public static final String STORAGE_ENGINE_OVERHEAD_RATIO = "storage_engine_overhead_ratio";
   @Deprecated
   public static final String VSON_PUSH = "vson.push";
-  public static final String KAFKA_SECURITY_PROTOCOL = "SSL";
   public static final String COMPRESSION_STRATEGY = "compression.strategy";
   public static final String KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY = "kafka.input.source.compression.strategy";
   public static final String SSL_CONFIGURATOR_CLASS_CONFIG = "ssl.configurator.class";

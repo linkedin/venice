@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
@@ -24,7 +25,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.MAP_REDUCE_PARTITIONER_CLASS_CONFIG;
@@ -74,6 +74,7 @@ import com.linkedin.venice.hadoop.mapreduce.datawriter.reduce.VeniceReducer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.CounterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -89,7 +90,6 @@ import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Partitioner;
 import org.apache.hadoop.mapred.RunningJob;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -138,7 +138,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       pushJobSetting.partitionerParams.forEach(conf::set);
     }
     if (pushJobSetting.sslToKafka) {
-      conf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
+      conf.set(PUBSUB_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name());
       props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
         conf.set(key, props.getString(key));
       });
@@ -220,26 +220,8 @@ public class DataWriterMRJob extends DataWriterComputeJob {
     conf.setLong(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
     conf.setLong(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
 
-    /**
-     * Override the configs following the rules:
-     * <ul>
-     *   <li>Pass-through the properties whose names start with the prefixes defined in {@link PASS_THROUGH_CONFIG_PREFIXES}.</li>
-     *   <li>Override the properties that are specified with the {@link HADOOP_PREFIX} prefix.</li>
-     * </ul>
-     **/
-    for (String configKey: props.keySet()) {
-      String lowerCaseConfigKey = configKey.toLowerCase();
-      if (lowerCaseConfigKey.startsWith(HADOOP_PREFIX)) {
-        String overrideKey = configKey.substring(HADOOP_PREFIX.length());
-        jobConf.set(overrideKey, props.getString(configKey));
-      }
-      for (String prefix: PASS_THROUGH_CONFIG_PREFIXES) {
-        if (lowerCaseConfigKey.startsWith(prefix)) {
-          jobConf.set(configKey, props.getString(configKey));
-          break;
-        }
-      }
-    }
+    DataWriterComputeJob
+        .populateWithPassThroughConfigs(props, jobConf::set, PASS_THROUGH_CONFIG_PREFIXES, HADOOP_PREFIX);
   }
 
   protected void setupInputFormatConf(JobConf jobConf, PushJobSetting pushJobSetting) {

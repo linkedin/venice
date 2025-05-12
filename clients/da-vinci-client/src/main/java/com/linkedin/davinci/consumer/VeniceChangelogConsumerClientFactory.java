@@ -5,27 +5,19 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ViewConfig;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import org.apache.commons.lang.StringUtils;
 
 
 public class VeniceChangelogConsumerClientFactory {
-  private static final PubSubConsumerAdapterFactory kafkaConsumerAdapterFactory =
-      new ApacheKafkaConsumerAdapterFactory();
   private final Map<String, VeniceChangelogConsumer> storeClientMap = new VeniceConcurrentHashMap<>();
   private final Map<String, BootstrappingVeniceChangelogConsumer> storeBootstrappingClientMap =
       new VeniceConcurrentHashMap<>();
@@ -105,15 +97,11 @@ public class VeniceChangelogConsumerClientFactory {
         newStoreChangelogClientConfig.setIsBeforeImageView(true);
         return new VeniceChangelogConsumerImpl(
             newStoreChangelogClientConfig,
-            consumer != null
-                ? consumer
-                : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
+            consumer != null ? consumer : getPubSubConsumer(newStoreChangelogClientConfig, consumerName));
       }
       return new VeniceAfterImageConsumerImpl(
           newStoreChangelogClientConfig,
-          consumer != null
-              ? consumer
-              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName));
+          consumer != null ? consumer : getPubSubConsumer(newStoreChangelogClientConfig, consumerName));
     });
   }
 
@@ -147,7 +135,7 @@ public class VeniceChangelogConsumerClientFactory {
             newStoreChangelogClientConfig,
             consumer != null
                 ? consumer
-                : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
+                : VeniceChangelogConsumerClientFactory.getPubSubConsumer(newStoreChangelogClientConfig, consumerName),
             consumerId);
       }
     });
@@ -207,13 +195,16 @@ public class VeniceChangelogConsumerClientFactory {
     return viewClass;
   }
 
-  static PubSubConsumerAdapter getConsumer(Properties consumerProps, String consumerName) {
-    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
-        new OptimizedKafkaValueSerializer(),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    return kafkaConsumerAdapterFactory
-        .create(new VeniceProperties(consumerProps), false, pubSubMessageDeserializer, consumerName);
+  protected static PubSubConsumerAdapter getPubSubConsumer(
+      ChangelogClientConfig changelogClientConfig,
+      String consumerName) {
+    PubSubConsumerAdapterContext context = new PubSubConsumerAdapterContext.Builder().setConsumerName(consumerName)
+        .setVeniceProperties(new VeniceProperties(changelogClientConfig.getConsumerProperties()))
+        .setPubSubMessageDeserializer(changelogClientConfig.getPubSubMessageDeserializer())
+        .setPubSubTopicRepository(changelogClientConfig.getPubSubTopicRepository())
+        .setPubSubPositionTypeRegistry(changelogClientConfig.getPubSubPositionTypeRegistry())
+        .build();
+    return changelogClientConfig.getPubSubConsumerAdapterFactory().create(context);
   }
 
   private String getViewClass(String storeName, String viewName, D2ControllerClient d2ControllerClient, int retries) {

@@ -216,7 +216,7 @@ public class VeniceWriterUnitTest {
     when(kafkaKey.getKey()).thenReturn(new byte[] { 0xa });
     when(leaderProducerCallback.getSourceConsumerRecord()).thenReturn(record);
     LeaderFollowerStoreIngestionTask storeIngestionTask = mock(LeaderFollowerStoreIngestionTask.class);
-    when(storeIngestionTask.isTransientRecordBufferUsed()).thenReturn(true);
+    when(storeIngestionTask.isTransientRecordBufferUsed(any())).thenReturn(true);
     when(leaderProducerCallback.getIngestionTask()).thenReturn(storeIngestionTask);
     doCallRealMethod().when(leaderProducerCallback).setChunkingInfo(any(), any(), any(), any(), any(), any(), any());
     writer.put(

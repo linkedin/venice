@@ -15,7 +15,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
@@ -41,6 +40,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -72,10 +72,12 @@ public class TestFatalDataValidationExceptionHandling {
   private VeniceClusterWrapper veniceCluster;
 
   protected final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     veniceCluster = setUpCluster();
+    pubSubPositionTypeRegistry = veniceCluster.getPubSubBrokerWrapper().getPubSubPositionTypeRegistry();
   }
 
   @AfterClass(alwaysRun = true)
@@ -113,7 +115,6 @@ public class TestFatalDataValidationExceptionHandling {
     // Add Venice Server
     Properties serverProperties = new Properties();
     serverProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
-    serverProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
@@ -186,15 +187,15 @@ public class TestFatalDataValidationExceptionHandling {
       PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
           veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
       try (
-          VeniceWriter<byte[], byte[], byte[]> veniceWriter1 =
-              TestUtils.getVeniceWriterFactory(veniceWriterProperties1, pubSubProducerAdapterFactory)
-                  .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build());
-          VeniceWriter<byte[], byte[], byte[]> veniceWriter2 =
-              TestUtils.getVeniceWriterFactory(veniceWriterProperties2, pubSubProducerAdapterFactory)
-                  .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build());
-          VeniceWriter<byte[], byte[], byte[]> veniceWriter3 =
-              TestUtils.getVeniceWriterFactory(veniceWriterProperties3, pubSubProducerAdapterFactory)
-                  .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build())) {
+          VeniceWriter<byte[], byte[], byte[]> veniceWriter1 = TestUtils
+              .getVeniceWriterFactory(veniceWriterProperties1, pubSubProducerAdapterFactory, pubSubPositionTypeRegistry)
+              .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build());
+          VeniceWriter<byte[], byte[], byte[]> veniceWriter2 = TestUtils
+              .getVeniceWriterFactory(veniceWriterProperties2, pubSubProducerAdapterFactory, pubSubPositionTypeRegistry)
+              .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build());
+          VeniceWriter<byte[], byte[], byte[]> veniceWriter3 = TestUtils
+              .getVeniceWriterFactory(veniceWriterProperties3, pubSubProducerAdapterFactory, pubSubPositionTypeRegistry)
+              .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build())) {
         createCorruptDIVScenario(veniceWriter1, veniceWriter2, veniceWriter3, stringSerializer);
       }
 

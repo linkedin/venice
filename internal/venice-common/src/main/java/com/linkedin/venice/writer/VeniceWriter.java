@@ -140,6 +140,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public static final String MAX_RECORD_SIZE_BYTES = VENICE_WRITER_CONFIG_PREFIX + "max.record.size.bytes";
 
+  /**
+  * Enable maximum record size before record compression. Default: false
+  * */
+  public static final String ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT =
+      VENICE_WRITER_CONFIG_PREFIX + "enable.uncompressed.record.size.limit";
+
   public static final String PRODUCER_THREAD_COUNT = VENICE_WRITER_CONFIG_PREFIX + "producer.thread.count";
   public static final String PRODUCER_QUEUE_SIZE = VENICE_WRITER_CONFIG_PREFIX + "producer.queue.size";
 

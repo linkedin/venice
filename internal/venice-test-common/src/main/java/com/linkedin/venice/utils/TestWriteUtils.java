@@ -875,10 +875,12 @@ public class TestWriteUtils {
       String parentControllerD2ServiceName,
       String childControllerD2ServiceName,
       String inputDirPath,
-      String storeName) {
+      String storeName,
+      Map<String, String> pubSubClientConfigs) {
     final String controllerServiceName;
     parentRegionName = parentRegionName == null ? "parentRegion" : parentRegionName;
     Properties props = new Properties();
+    props.putAll(pubSubClientConfigs);
     if (parentRegionD2ZkAddress != null) {
       controllerServiceName = parentControllerD2ServiceName;
       props.put(PARENT_CONTROLLER_REGION_NAME, parentRegionName);
@@ -899,9 +901,14 @@ public class TestWriteUtils {
     return defaultVPJPropsInternal(props, inputDirPath, storeName);
   }
 
-  public static Properties defaultVPJProps(String veniceUrl, String inputDirPath, String storeName) {
+  public static Properties defaultVPJProps(
+      String veniceUrl,
+      String inputDirPath,
+      String storeName,
+      Map<String, String> pubSubClientConfigs) {
     Properties props = new Properties();
     props.put(VENICE_DISCOVER_URL_PROP, veniceUrl);
+    props.putAll(pubSubClientConfigs);
     return defaultVPJPropsInternal(props, inputDirPath, storeName);
   }
 

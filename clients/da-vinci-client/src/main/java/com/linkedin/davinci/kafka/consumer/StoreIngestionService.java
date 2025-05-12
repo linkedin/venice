@@ -5,6 +5,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -101,4 +102,6 @@ public interface StoreIngestionService {
   StoreIngestionTask getStoreIngestionTask(String topic);
 
   VeniceConfigLoader getVeniceConfigLoader();
+
+  VeniceWriterFactory getVeniceWriterFactory();
 }

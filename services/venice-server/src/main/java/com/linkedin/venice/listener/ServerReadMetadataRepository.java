@@ -214,8 +214,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
       response.setHelixGroupInfo(helixGroupInfo);
       response.setRoutingInfo(routingInfo);
     } catch (VeniceException e) {
-      LOGGER
-          .warn("Failed to populate request based store properties for store {}: [Venice Expection] {}.", storeName, e);
+      LOGGER.error("Failed to populate request based store properties for store {}:", storeName, e);
       response
           .setMessage("Failed to populate metadata by client for store: " + storeName + " due to: " + e.getMessage());
       response.setError(true);
@@ -226,7 +225,7 @@ public class ServerReadMetadataRepository implements ReadMetadataRetriever {
         e.printStackTrace(pw);
       }
       String trace = sw.toString();
-      LOGGER.warn("Failed to populate request based store properties for store {}: [Exception] {}.", storeName, e);
+      LOGGER.error("Failed to populate request based store properties for store {}", storeName, e);
       response
           .setMessage("Failed to populate metadata by client for store: " + storeName + " due to: " + e + "\n" + trace);
       response.setError(true);

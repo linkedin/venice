@@ -1,8 +1,11 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -21,6 +24,7 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -33,6 +37,10 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -169,6 +177,27 @@ public class StoreBufferServiceTest {
   }
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testDrainBufferRecordsWhenPCSIsNull(boolean queueLeaderWrites) throws Exception {
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites, mockedStats, null);
+    StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
+    String topic = Utils.getUniqueString("test_topic") + "_v1";
+    int partition = 1;
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topic);
+    PubSubTopicPartition pubSubTopicPartition1 = new PubSubTopicPartitionImpl(pubSubTopic, partition);
+    when(mockTask.getPartitionConsumptionState(partition)).thenReturn(null);
+    when(mockTask.isGlobalRtDivEnabled()).thenReturn(false);
+    doCallRealMethod().when(mockTask).updateOffsetMetadataAndSyncOffset(any());
+    doCallRealMethod().when(mockTask).updateOffsetMetadataAndSyncOffset(any(), any());
+    bufferService.start();
+    CompletableFuture<Void> cmdFuture = bufferService.execSyncOffsetCommandAsync(pubSubTopicPartition1, mockTask);
+    bufferService.drainBufferedRecordsFromTopicPartition(pubSubTopicPartition1);
+    cmdFuture.get(SECONDS.toMillis(30), MILLISECONDS);
+    Assert.assertTrue(cmdFuture.isDone()); // Make sure the command future is done
+    bufferService.stop();
+    verify(mockTask, never()).updateOffsetMetadataAndSyncOffset(any());
+  }
+
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testGetDrainerIndexForConsumerRecordSeparateDrainer(boolean queueLeaderWrites) {
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topic);
@@ -234,6 +263,32 @@ public class StoreBufferServiceTest {
     int avgPartitionCountPerDrainer = partitionCount / drainerNum;
     for (int i = 0; i < drainerNum; ++i) {
       Assert.assertEquals(drainerPartitionCount[i], avgPartitionCountPerDrainer);
+    }
+  }
+
+  /**
+   * Tests that {@link StoreBufferService#getDrainerIndexForConsumerRecord} assigns the same drainer index for both
+   * real-time (RT) and separate real-time (Separate RT) topics for the same partition.
+   */
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testGetDrainerIndexForConsumerRecordSeparateRt(boolean queueLeaderWrites) {
+    String baseTopicName = Utils.getUniqueString("test_topic");
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(baseTopicName));
+    PubSubTopic separateRtTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(baseTopicName));
+    List<PubSubTopic> topics = new ArrayList<>(Arrays.asList(rtTopic, separateRtTopic));
+    StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000, queueLeaderWrites, mockedStats, null);
+    for (int partition = 0; partition < 64; ++partition) {
+      int firstDrainerIndex = -1;
+      for (PubSubTopic topic: topics) {
+        PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(topic, partition);
+        DefaultPubSubMessage cr = new ImmutablePubSubMessage(key, value, topicPartition, mockPosition, 0, 0);
+        int drainerIndex = bufferService.getDrainerIndexForConsumerRecord(cr, partition);
+        if (firstDrainerIndex == -1) {
+          firstDrainerIndex = drainerIndex;
+        } else {
+          Assert.assertEquals(drainerIndex, firstDrainerIndex, "Separate RT drainer should be the same as RT drainer");
+        }
+      }
     }
   }
 

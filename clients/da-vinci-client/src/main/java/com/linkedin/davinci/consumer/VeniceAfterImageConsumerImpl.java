@@ -1,6 +1,6 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory.getConsumer;
+import static com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.LATEST;
 
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -34,8 +34,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   // in the context of seeking to EOP in the event of the user calling that seek or a version push.
   // TODO: We shouldn't use this in the long run. Once the EOP position is queryable from venice and version
   // swap is produced to VT, then we should remove this as it's no longer needed.
-  final private Lazy<PubSubConsumerAdapter> internalSeekConsumer;
-  AtomicBoolean versionSwapThreadScheduled = new AtomicBoolean(false);
+  private final Lazy<PubSubConsumerAdapter> internalSeekConsumer;
+  private final AtomicBoolean versionSwapThreadScheduled = new AtomicBoolean(false);
   private final VersionSwapDataChangeListener<K, V> versionSwapListener;
 
   public VeniceAfterImageConsumerImpl(ChangelogClientConfig changelogClientConfig, PubSubConsumerAdapter consumer) {
@@ -43,9 +43,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         changelogClientConfig,
         consumer,
         Lazy.of(
-            () -> getConsumer(
-                changelogClientConfig.getConsumerProperties(),
-                changelogClientConfig.getStoreName() + "-" + "internal")));
+            () -> VeniceChangelogConsumerClientFactory
+                .getPubSubConsumer(changelogClientConfig, changelogClientConfig.getStoreName() + "-" + "internal")));
   }
 
   protected VeniceAfterImageConsumerImpl(
@@ -126,7 +125,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             topicPartition.getPartitionNumber(),
             new VeniceChangeCoordinate(
                 topicPartition.getPubSubTopic().getName(),
-                PubSubPosition.LATEST,
+                LATEST,
                 topicPartition.getPartitionNumber()));
       } else if (checkpoints.get(topicPartition.getPartitionNumber()) == null) {
         LOGGER.warn("No EOP checkpoint found for partition: {}", topicPartition.getPartitionNumber());

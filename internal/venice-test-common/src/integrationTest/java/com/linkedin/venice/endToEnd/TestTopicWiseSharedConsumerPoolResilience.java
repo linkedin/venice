@@ -38,6 +38,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
+@Deprecated
 public class TestTopicWiseSharedConsumerPoolResilience {
   private static final Logger LOGGER = LogManager.getLogger(TestTopicWiseSharedConsumerPoolResilience.class);
 

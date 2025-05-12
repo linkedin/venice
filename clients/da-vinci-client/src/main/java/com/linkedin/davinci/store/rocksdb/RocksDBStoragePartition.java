@@ -1,6 +1,8 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
+import static org.rocksdb.TickerType.COMPACTION_KEY_DROP_NEWER_ENTRY;
+import static org.rocksdb.TickerType.COMPACTION_KEY_DROP_USER;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -8,6 +10,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
@@ -69,7 +72,8 @@ import org.rocksdb.WriteOptions;
 @NotThreadSafe
 public class RocksDBStoragePartition extends AbstractStoragePartition {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartition.class);
-  private static final String ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_SPACE_QUOTA = "Max allowed space was reached";
+  protected static final String ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_MEMORY_QUOTA = "Max allowed space was reached";
+  protected static final String ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_DISK_QUOTA = "No space left on device";
   protected static final ReadOptions READ_OPTIONS_DEFAULT = new ReadOptions();
   static final byte[] REPLICATION_METADATA_COLUMN_FAMILY = "timestamp_metadata".getBytes();
 
@@ -88,6 +92,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final String replicaId;
   protected final String storeName;
   protected final String storeNameAndVersion;
+  protected final int storeVersion;
   protected final boolean blobTransferEnabled;
   protected final int partitionId;
   private final String fullPathForPartitionDB;
@@ -139,6 +144,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final boolean readWriteLeaderForRMDCF;
 
   private final Optional<Statistics> aggStatistics;
+  private Statistics keyStatistics;
+
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
   private Optional<Supplier<byte[]>> expectedChecksumSupplier;
@@ -169,6 +176,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.rocksDBServerConfig = rocksDBServerConfig;
     this.storeNameAndVersion = storagePartitionConfig.getStoreName();
     this.storeName = Version.parseStoreFromVersionTopic(storeNameAndVersion);
+    this.storeVersion = Version.parseVersionFromVersionTopicPartition(storeNameAndVersion);
     this.partitionId = storagePartitionConfig.getPartitionId();
     this.replicaId = Utils.getReplicaId(storagePartitionConfig.getStoreName(), partitionId);
     this.aggStatistics = factory.getAggStatistics();
@@ -385,7 +393,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     options.setKeepLogFileNum(rocksDBServerConfig.getMaxLogFileNum());
     options.setMaxLogFileSize(rocksDBServerConfig.getMaxLogFileSize());
 
-    aggStatistics.ifPresent(options::setStatistics);
+    if (rocksDBServerConfig.isEmitDuplicateKeyMetricEnabled()) {
+      keyStatistics = new Statistics();
+      options.setStatistics(keyStatistics);
+    } else {
+      aggStatistics.ifPresent(options::setStatistics);
+    }
 
     if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
       PlainTableConfig tableConfig = new PlainTableConfig();
@@ -510,12 +523,23 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
   }
 
+  protected void checkAndThrowSpecificException(RocksDBException e) {
+    checkAndThrowMemoryLimitException(e);
+    checkAndThrowDiskLimitException(e);
+  }
+
   private void checkAndThrowMemoryLimitException(RocksDBException e) {
-    if (e.getMessage().contains(ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_SPACE_QUOTA)) {
+    if (e.getMessage().contains(ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_MEMORY_QUOTA)) {
       throw new MemoryLimitExhaustedException(
           storeNameAndVersion,
           partitionId,
           factory.getSstFileManagerForMemoryLimiter().getTotalSize());
+    }
+  }
+
+  private void checkAndThrowDiskLimitException(RocksDBException e) {
+    if (e.getMessage().contains(ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_DISK_QUOTA)) {
+      throw new DiskLimitExhaustedException(storeName, storeVersion, e.getMessage());
     }
   }
 
@@ -545,7 +569,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
             valueBuffer.remaining());
       }
     } catch (RocksDBException e) {
-      checkAndThrowMemoryLimitException(e);
+      checkAndThrowSpecificException(e);
       throw new VeniceException("Failed to store the key/value pair in the RocksDB: " + replicaId, e);
     }
   }
@@ -766,7 +790,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         rocksDB.delete(key);
       }
     } catch (RocksDBException e) {
-      checkAndThrowMemoryLimitException(e);
+      checkAndThrowSpecificException(e);
       throw new VeniceException("Failed to delete entry from RocksDB: " + replicaId, e);
     }
   }
@@ -793,13 +817,25 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           // avoid data loss during crash recovery
           rocksDB.flush(WAIT_FOR_FLUSH_OPTIONS, columnFamilyHandleList);
         } catch (RocksDBException e) {
-          checkAndThrowMemoryLimitException(e);
+          checkAndThrowSpecificException(e);
           throw new VeniceException("Failed to flush memtable to disk for RocksDB: " + replicaId, e);
         }
       }
       return Collections.emptyMap();
     }
     return rocksDBSstFileWriter.sync();
+  }
+
+  public long getDuplicateKeyCountEstimate() {
+    if (keyStatistics != null) {
+      return keyStatistics.getTickerCount(COMPACTION_KEY_DROP_NEWER_ENTRY)
+          + keyStatistics.getTickerCount(COMPACTION_KEY_DROP_USER);
+    }
+    return -1;
+  }
+
+  public long getKeyCountEstimate() throws RocksDBException {
+    return rocksDB.getLongProperty("rocksdb.estimate-num-keys");
   }
 
   public void deleteFilesInDirectory(String fullPath) {

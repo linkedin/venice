@@ -34,6 +34,9 @@ public interface DataWriterTaskTracker extends TaskTracker {
   default void trackRecordTooLargeFailure() {
   }
 
+  default void trackUncompressedRecordTooLargeFailure() {
+  }
+
   default void trackRecordSentToPubSub() {
   }
 
@@ -77,6 +80,10 @@ public interface DataWriterTaskTracker extends TaskTracker {
   }
 
   default long getRecordTooLargeFailureCount() {
+    return 0;
+  }
+
+  default long getUncompressedRecordTooLargeFailureCount() {
     return 0;
   }
 

@@ -35,7 +35,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
-import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -55,7 +55,7 @@ import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
@@ -554,7 +554,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
     doCallRealMethod().when(mockIngestionTask)
         .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
-    KafkaDataIntegrityValidator consumerDiv = mock(KafkaDataIntegrityValidator.class);
+    DataIntegrityValidator consumerDiv = mock(DataIntegrityValidator.class);
     doReturn(consumerDiv).when(mockIngestionTask).getConsumerDiv();
     doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
 

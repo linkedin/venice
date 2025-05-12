@@ -37,6 +37,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -218,8 +219,12 @@ public class IngestionHeartBeatTest {
         properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
         try (PubSubConsumerAdapter pubSubConsumer = pubSubBrokerWrapper.getPubSubClientsFactory()
             .getConsumerAdapterFactory()
-            .create(new VeniceProperties(properties), false, PubSubMessageDeserializer.getInstance(), "testConsumer")) {
-
+            .create(
+                new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
+                    .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+                    .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+                    .setConsumerName("testConsumer")
+                    .build())) {
           for (int partition = 0; partition < response.getPartitions(); partition++) {
             // RT: verify HB is received
             verifyHBinKafkaTopic(

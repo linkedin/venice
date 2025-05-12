@@ -12,12 +12,13 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterContext;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubMessageSerializer;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapterContext;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -132,7 +133,6 @@ public abstract class ConsumerIntegrationTest {
             .setHybridOffsetLagThreshold(streamingMessageLag));
     topicName = Utils.getRealTimeTopicName(
         cluster.getLeaderVeniceController().getVeniceAdmin().getStore(cluster.getClusterName(), store));
-    controllerClient.emptyPush(store, "test_push", 1);
     TestUtils.assertCommand(controllerClient.emptyPush(this.store, "test_push", 1), "empty push failed");
 
     TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
@@ -142,6 +142,8 @@ public abstract class ConsumerIntegrationTest {
           freshStoreResponse.getStore().getCurrentVersion(),
           version,
           "The empty push has not activated the store.");
+      Store routerStore = cluster.getVeniceRouters().get(0).getMetaDataRepository().getStore(store);
+      Assert.assertEquals(routerStore.getCurrentVersion(), version, "The empty push has not activated the store.");
     });
     client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(store).setVeniceURL(cluster.getRandomRouterURL()));
@@ -194,6 +196,7 @@ public abstract class ConsumerIntegrationTest {
             .setVeniceProperties(props)
             .setPubSubMessageSerializer(pubSubMessageSerializer)
             .setBrokerAddress(cluster.getPubSubBrokerWrapper().getAddress())
+            .setPubSubPositionTypeRegistry(cluster.getPubSubBrokerWrapper().getPubSubPositionTypeRegistry())
             .build();
     return new VeniceWriterWithNewerProtocol(
         veniceWriterOptions,

@@ -1,5 +1,9 @@
 package com.linkedin.venice.pubsub;
 
+import static com.linkedin.venice.ConfigKeys.PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS;
+import static com.linkedin.venice.ConfigKeys.PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS;
@@ -13,7 +17,6 @@ import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Properties;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -59,14 +62,11 @@ public class PubSubClientsFactory {
     return adminAdapterFactory;
   }
 
-  public static PubSubProducerAdapterFactory<PubSubProducerAdapter> createProducerFactory(Properties properties) {
-    return createProducerFactory(new VeniceProperties(properties));
-  }
-
   public static PubSubProducerAdapterFactory<PubSubProducerAdapter> createProducerFactory(
       VeniceProperties veniceProperties) {
     return createFactory(
         veniceProperties,
+        PUBSUB_PRODUCER_ADAPTER_FACTORY_CLASS,
         PUB_SUB_PRODUCER_ADAPTER_FACTORY_CLASS,
         ApacheKafkaProducerAdapterFactory.class.getName(),
         FactoryType.PRODUCER);
@@ -76,6 +76,7 @@ public class PubSubClientsFactory {
       VeniceProperties veniceProperties) {
     return createFactory(
         veniceProperties,
+        PUBSUB_CONSUMER_ADAPTER_FACTORY_CLASS,
         PUB_SUB_CONSUMER_ADAPTER_FACTORY_CLASS,
         ApacheKafkaConsumerAdapterFactory.class.getName(),
         FactoryType.CONSUMER);
@@ -84,6 +85,7 @@ public class PubSubClientsFactory {
   public static PubSubAdminAdapterFactory<PubSubAdminAdapter> createAdminFactory(VeniceProperties veniceProperties) {
     return createFactory(
         veniceProperties,
+        PUBSUB_ADMIN_ADAPTER_FACTORY_CLASS,
         PUB_SUB_ADMIN_ADAPTER_FACTORY_CLASS,
         ApacheKafkaAdminAdapterFactory.class.getName(),
         FactoryType.ADMIN);
@@ -93,6 +95,7 @@ public class PubSubClientsFactory {
       VeniceProperties veniceProperties) {
     return createFactory(
         veniceProperties,
+        PUBSUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS,
         PUB_SUB_SOURCE_OF_TRUTH_ADMIN_ADAPTER_FACTORY_CLASS,
         ApacheKafkaAdminAdapterFactory.class.getName(),
         FactoryType.ADMIN);
@@ -100,12 +103,13 @@ public class PubSubClientsFactory {
 
   private static <T> T createFactory(
       VeniceProperties properties,
-      String configKey,
+      String preferredConfigKey,
+      String alternateConfigKey,
       String defaultClassName,
       FactoryType factoryType) {
     String className;
-    if (properties.containsKey(configKey)) {
-      className = properties.getString(configKey);
+    if (properties.containsKey(preferredConfigKey) || properties.containsKey(alternateConfigKey)) {
+      className = properties.getStringWithAlternative(preferredConfigKey, alternateConfigKey);
       LOGGER.debug("Creating pub-sub {} adapter factory instance for class: {}", factoryType, className);
     } else {
       className = defaultClassName;

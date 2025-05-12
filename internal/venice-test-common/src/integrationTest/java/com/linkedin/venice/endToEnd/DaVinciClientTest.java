@@ -1,6 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY;
+import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_LATENCY;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
@@ -38,11 +38,12 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
+import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
+import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
@@ -105,6 +106,8 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -174,7 +177,6 @@ public class DaVinciClientTest {
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
-    clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
     clusterConfig.put(CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING, REAL_TIME_TOPIC_VERSIONING_ENABLED);
@@ -289,7 +291,12 @@ public class DaVinciClientTest {
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
         .build();
 
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = new VeniceMetricsRepository(
+        new VeniceMetricsConfig.Builder().setServiceName(DAVINCI_CLIENT.getName())
+            .setMetricPrefix(DAVINCI_CLIENT.getMetricsPrefix())
+            .setEmitOtelMetrics(true)
+            .setMetricEntities(CLIENT_METRIC_ENTITIES)
+            .build());
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
@@ -357,11 +364,11 @@ public class DaVinciClientTest {
       client2.unsubscribeAll();
 
       // DVRT metrics shouldn't be registered if DVRT isn't enabled
-      String startLatency = String.format(
+      String putLatency = String.format(
           ".%s_total--%s_avg_ms.DaVinciRecordTransformerStatsGauge",
           storeName1,
-          RECORD_TRANSFORMER_ON_START_VERSION_INGESTION_LATENCY);
-      assertNull(metricsRepository.getMetric(startLatency));
+          RECORD_TRANSFORMER_PUT_LATENCY);
+      assertNull(metricsRepository.getMetric(putLatency));
     }
 
     // Test bootstrap-time junk removal
@@ -1208,6 +1215,7 @@ public class DaVinciClientTest {
         Integer.toString(port2),
         StorageClass.DISK.toString(),
         "false",
+        "false",
         "false");
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
@@ -1258,8 +1266,8 @@ public class DaVinciClientTest {
    * For the local P2P testing, need to setup two different directories and ports for the two Da Vinci clients in order
    * to avoid conflicts.
    */
-  @Test(timeOut = 2 * TEST_TIMEOUT)
-  public void testBlobP2PTransferAmongDVC() throws Exception {
+  @Test(timeOut = 2 * TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testBlobP2PTransferAmongDVC(boolean batchPushReportEnable) throws Exception {
     String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
     String zkHosts = cluster.getZk().getAddress();
     int port1 = TestUtils.getFreePort();
@@ -1286,7 +1294,8 @@ public class DaVinciClientTest {
         Integer.toString(port2),
         StorageClass.DISK.toString(),
         "false",
-        "true");
+        "true",
+        String.valueOf(batchPushReportEnable));
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
@@ -1320,6 +1329,12 @@ public class DaVinciClientTest {
         .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
         .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
         .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+
+    if (batchPushReportEnable) {
+      // if batch push report is enabled, the peer finding expects to query at version level, but it should not affect
+      // performance.
+      configBuilder.put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, "10");
+    }
 
     VeniceProperties backendConfig2 = configBuilder.build();
     DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
@@ -1401,7 +1416,8 @@ public class DaVinciClientTest {
         Integer.toString(port2),
         storageClass,
         "false",
-        "true");
+        "true",
+        "false");
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);

@@ -166,8 +166,6 @@ public abstract class AbstractStore implements Store {
 
       version.setUseVersionLevelIncrementalPushEnabled(true);
 
-      version.setTargetSwapRegion(getTargetSwapRegion());
-
       version.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
 
       version.setGlobalRtDivEnabled(isGlobalRtDivEnabled());

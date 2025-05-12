@@ -412,8 +412,13 @@ public class PushStatusStoreReaderTest {
     when(storeClientMock.get(any(PushStatusKey.class))).thenReturn(CompletableFuture.completedFuture(mockStatusValue));
 
     // Execute the method
-    CompletableFuture<Map<CharSequence, Integer>> future = storeReaderSpy
-        .getPartitionStatusAsync(storeName, version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+    CompletableFuture<Map<CharSequence, Integer>> future = storeReaderSpy.getPartitionOrVersionStatusAsync(
+        storeName,
+        version,
+        partitionId,
+        incrementalPushVersion,
+        incrementalPushPrefix,
+        false);
 
     Map<CharSequence, Integer> result = future.get(5, TimeUnit.SECONDS);
 
@@ -441,8 +446,13 @@ public class PushStatusStoreReaderTest {
     }));
 
     // Execute the method
-    CompletableFuture<Map<String, Integer>> future = storeReaderSpy
-        .getPartitionStatusAsync(storeName, version, partitionId, incrementalPushVersion, incrementalPushPrefix);
+    CompletableFuture<Map<String, Integer>> future = storeReaderSpy.getPartitionOrVersionStatusAsync(
+        storeName,
+        version,
+        partitionId,
+        incrementalPushVersion,
+        incrementalPushPrefix,
+        false);
 
     try {
       future.get(5, TimeUnit.SECONDS);

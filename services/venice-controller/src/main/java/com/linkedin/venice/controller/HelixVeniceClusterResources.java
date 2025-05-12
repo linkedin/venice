@@ -5,6 +5,7 @@ import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
+import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -65,6 +66,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final VeniceControllerClusterConfig config;
   private final PushMonitorDelegator pushMonitor;
   private final LeakedPushStatusCleanUpService leakedPushStatusCleanUpService;
+  private final ProtocolVersionAutoDetectionService protocolVersionAutoDetectionService;
   private final ZkRoutersClusterManager routersClusterManager;
   private final AggPartitionHealthStats aggPartitionHealthStats;
   private final ZkStoreConfigAccessor storeConfigAccessor;
@@ -74,8 +76,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
 
   private ErrorPartitionResetTask errorPartitionResetTask = null;
 
-  private final ExecutorService deadStoreStatsPreFetchService = Executors.newSingleThreadExecutor();
-  private DeadStoreStatsPreFetchTask deadStoreStatsPreFetchTask = null;
+  final ExecutorService deadStoreStatsPreFetchService = Executors.newSingleThreadExecutor();
+  DeadStoreStatsPreFetchTask deadStoreStatsPreFetchTask = null;
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final VeniceAdminStats veniceAdminStats;
   private final VeniceHelixAdmin admin;
@@ -213,6 +215,18 @@ public class HelixVeniceClusterResources implements VeniceResource {
       deadStoreStatsPreFetchTask =
           new DeadStoreStatsPreFetchTask(clusterName, admin, config.getDeadStoreStatsPreFetchRefreshIntervalInMs());
     }
+    if (config.isParent() && config.isProtocolVersionAutoDetectionServiceEnabled()) {
+      this.protocolVersionAutoDetectionService = new ProtocolVersionAutoDetectionService(
+          clusterName,
+          admin,
+          new ProtocolVersionAutoDetectionStats(
+              metricsRepository,
+              "admin_operation_protocol_version_auto_detection_service_" + clusterName),
+          config.getProtocolVersionAutoDetectionSleepMS());
+    } else {
+      this.protocolVersionAutoDetectionService = null;
+    }
+
     veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
     this.storagePersonaRepository =
         new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
@@ -351,6 +365,28 @@ public class HelixVeniceClusterResources implements VeniceResource {
         leakedPushStatusCleanUpService.stop();
       } catch (Exception e) {
         LOGGER.error("Error when stopping leaked push status clean-up service for cluster: {}", clusterName);
+      }
+    }
+  }
+
+  /**
+   * Cause {@link ProtocolVersionAutoDetectionService} service to begin executing.
+   */
+  public void startProtocolVersionAutoDetectionService() {
+    if (protocolVersionAutoDetectionService != null) {
+      protocolVersionAutoDetectionService.start();
+    }
+  }
+
+  /**
+   * Cause {@link ProtocolVersionAutoDetectionService} service to stop executing.
+   */
+  public void stopProtocolVersionAutoDetectionService() {
+    if (protocolVersionAutoDetectionService != null) {
+      try {
+        protocolVersionAutoDetectionService.stop();
+      } catch (Exception e) {
+        LOGGER.error("Error when stopping protocol version auto detection service for cluster: {}", clusterName);
       }
     }
   }

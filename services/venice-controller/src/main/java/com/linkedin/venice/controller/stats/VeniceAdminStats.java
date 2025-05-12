@@ -26,6 +26,13 @@ public class VeniceAdminStats extends AbstractVeniceStats {
    */
   private final Sensor successfullyStartedUserIncrementalPushParentAdminCountSensor;
 
+  /**
+   * A counter reporting the number of failed serialization attempts of admin operations.
+   * This metric is used to monitor the health of serialization of admin operations in parent admin by using the dynamic
+   * version in the serializer.
+   */
+  private final Sensor failedSerializingAdminOperationMessageCount;
+
   public VeniceAdminStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
 
@@ -35,6 +42,8 @@ public class VeniceAdminStats extends AbstractVeniceStats {
         registerSensorIfAbsent("successfully_started_user_batch_push_parent_admin_count", new Count());
     successfullyStartedUserIncrementalPushParentAdminCountSensor =
         registerSensorIfAbsent("successful_started_user_incremental_push_parent_admin_count", new Count());
+    failedSerializingAdminOperationMessageCount =
+        registerSensorIfAbsent("failed_serializing_admin_operation_message_count", new Count());
   }
 
   public void recordUnexpectedTopicAbsenceCount() {
@@ -47,5 +56,9 @@ public class VeniceAdminStats extends AbstractVeniceStats {
 
   public void recordSuccessfullyStartedUserIncrementalPushParentAdminCount() {
     successfullyStartedUserIncrementalPushParentAdminCountSensor.record();
+  }
+
+  public void recordFailedSerializingAdminOperationMessageCount() {
+    failedSerializingAdminOperationMessageCount.record();
   }
 }

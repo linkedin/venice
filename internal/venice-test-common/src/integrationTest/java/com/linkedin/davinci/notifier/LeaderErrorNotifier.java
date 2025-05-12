@@ -1,7 +1,8 @@
 package com.linkedin.davinci.notifier;
 
-import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
-import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+import static com.linkedin.venice.common.VeniceSystemStoreUtils.isSystemStore;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;

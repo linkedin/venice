@@ -1,7 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
 import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import org.apache.kafka.clients.producer.RecordMetadata;
 

@@ -22,13 +22,14 @@ public enum VersionStatus implements VeniceEnumValue {
   STARTED(1),
 
   /**
-   * Version has been pushed to venice and is ready to serve read request. Intermediate status after a push job succeeds in all child regions
-   * before DeferredVersionSwapService flips the status to ONLINE. This status only exists in the parent
+   * For the child version status, this means that servers have finished ingesting this version, but DVC clients have not ingested this version yet.
+   * For the parent version status, this is an intermediate status after a push job succeeds in all child regions
+   * before {@link com.linkedin.venice.controller.DeferredVersionSwapService} flips the status to ONLINE.
    */
   PUSHED(2),
 
   /**
-   * Version is serving read requests
+   * Version is serving read requests and DVC clients can ingest this version
    */
   ONLINE(3),
 
@@ -49,8 +50,8 @@ public enum VersionStatus implements VeniceEnumValue {
   PARTIALLY_ONLINE(6),
 
   /**
-   * Version is killed. Intermediate status after a push job is killed or fails before DeferredVersionSwapService flips the status to
-   * either ERROR or PARTIALLY_ONLINE
+   * Version is killed. Intermediate status after a push job is killed or fails before
+   * {@link com.linkedin.venice.controller.DeferredVersionSwapService} flips the status toeither ERROR or PARTIALLY_ONLINE
    */
   KILLED(7);
 

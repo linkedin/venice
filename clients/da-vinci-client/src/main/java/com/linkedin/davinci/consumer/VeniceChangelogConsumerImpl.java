@@ -43,9 +43,10 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -80,6 +81,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -123,8 +125,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final AbstractAvroChunkingAdapter<V> userEventChunkingAdapter;
 
   protected final SchemaReader schemaReader;
-  protected final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-
   protected final Map<Integer, AtomicLong> partitionToPutMessageCount = new VeniceConcurrentHashMap<>();
   protected final Map<Integer, AtomicLong> partitionToDeleteMessageCount = new VeniceConcurrentHashMap<>();
   protected final Map<Integer, Boolean> partitionToBootstrapState = new VeniceConcurrentHashMap<>();
@@ -143,6 +143,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected final String storeName;
 
   protected final PubSubConsumerAdapter pubSubConsumer;
+  protected final PubSubTopicRepository pubSubTopicRepository;
+  protected final PubSubPositionDeserializer pubSubPositionDeserializer;
   protected final ExecutorService seekExecutorService;
 
   // This member is a map of maps in order to accommodate view topics. If the message we consume has the appropriate
@@ -163,7 +165,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer) {
+    Objects.requireNonNull(changelogClientConfig, "ChangelogClientConfig cannot be null");
     this.pubSubConsumer = pubSubConsumer;
+    this.pubSubTopicRepository = changelogClientConfig.getPubSubTopicRepository();
+    this.pubSubPositionDeserializer = changelogClientConfig.getPubSubPositionDeserializer();
+
     seekExecutorService = Executors.newFixedThreadPool(10);
 
     // TODO: putting the change capture case here is a little bit weird. The view abstraction should probably

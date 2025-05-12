@@ -28,7 +28,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUS
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
 
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -116,7 +115,6 @@ public class TestActiveActiveIngestion {
   public void setUp() {
     serializer = new AvroSerializer(STRING_SCHEMA);
     Properties serverProperties = new Properties();
-    serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     serverProperties.put(SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED, true);
     serverProperties.put(
@@ -328,6 +326,8 @@ public class TestActiveActiveIngestion {
     VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
+    // Add a marker record to make sure we have consumed to all the RT record.
+    int putWithRmdKeyIndex = 1001;
 
     try (
         VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
@@ -336,6 +336,8 @@ public class TestActiveActiveIngestion {
       runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
       // Produce a DELETE record with large timestamp
       produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
+      // Produce a PUT record with large timestamp
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, putWithRmdKeyIndex, 1000, false);
     }
 
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
@@ -343,7 +345,7 @@ public class TestActiveActiveIngestion {
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+        Assert.assertNotNull(client.get(Integer.toString(putWithRmdKeyIndex)).get());
       });
     }
 

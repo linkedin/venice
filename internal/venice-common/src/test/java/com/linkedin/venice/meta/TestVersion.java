@@ -163,6 +163,15 @@ public class TestVersion {
   }
 
   @Test
+  public void testParseVersionFromVersionTopicPartition() {
+    int version = 1;
+    String topic = "abc_v1-0";
+    assertEquals(Version.parseVersionFromVersionTopicPartition(topic), version);
+    topic = "abc_v1-0_cc";
+    assertEquals(Version.parseVersionFromVersionTopicPartition(topic), version);
+  }
+
+  @Test
   void testVersionStatus() {
     for (VersionStatus status: VersionStatus.values()) {
       if (status == VersionStatus.KILLED) {

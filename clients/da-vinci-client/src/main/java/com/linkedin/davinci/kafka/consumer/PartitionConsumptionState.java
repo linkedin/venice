@@ -26,6 +26,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -174,6 +175,11 @@ public class PartitionConsumptionState {
    */
   private final ConcurrentMap<String, Long> consumedUpstreamRTOffsetMap;
 
+  /**
+   * For Global RT DIV. When the RT DIV is loaded from disk, the LCRO must remain in-memory before the subscribe().
+   */
+  private final ConcurrentMap<String, Long> latestConsumedRtOffsetMap;
+
   // stores the SOP control message's producer timestamp.
   private long startOfPushTimestamp = 0;
 
@@ -230,6 +236,8 @@ public class PartitionConsumptionState {
   // veniceWriterLazyRef could be set and get in different threads, mark it volatile.
   private volatile Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef;
 
+  private BooleanSupplier isCurrentVersion;
+
   public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.replicaId = replicaId;
     this.partition = partition;
@@ -255,6 +263,7 @@ public class PartitionConsumptionState {
     // Restore in-memory consumption RT upstream offset map and latest processed RT upstream offset map from the
     // checkpoint upstream offset map
     consumedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
+    latestConsumedRtOffsetMap = new VeniceConcurrentHashMap<>();
     latestProcessedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
     if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
       offsetRecord.cloneUpstreamOffsetMap(consumedUpstreamRTOffsetMap);
@@ -288,6 +297,10 @@ public class PartitionConsumptionState {
     this.lastVTProduceCallFuture = lastVTProduceCallFuture;
   }
 
+  public void setCurrentVersionSupplier(BooleanSupplier isCurrentVersion) {
+    this.isCurrentVersion = isCurrentVersion;
+  }
+
   public OffsetRecord getOffsetRecord() {
     return this.offsetRecord;
   }
@@ -317,6 +330,10 @@ public class PartitionConsumptionState {
       this.lagCaughtUp = true;
       this.lagCaughtUpTimeInMs = System.currentTimeMillis();
     }
+  }
+
+  public boolean isCurrentVersion() {
+    return isCurrentVersion.getAsBoolean();
   }
 
   public boolean hasLagCaughtUp() {
@@ -718,6 +735,14 @@ public class PartitionConsumptionState {
     return consumedUpstreamRTOffsetMap.getOrDefault(kafkaUrl, 0L);
   }
 
+  public void updateLatestConsumedRtOffset(String brokerUrl, long offset) {
+    latestConsumedRtOffsetMap.put(brokerUrl, offset);
+  }
+
+  public long getLatestConsumedRtOffset(String brokerUrl) {
+    return latestConsumedRtOffsetMap.getOrDefault(brokerUrl, -1L);
+  }
+
   public void updateLatestProcessedUpstreamRTOffset(String kafkaUrl, long offset) {
     latestProcessedUpstreamRTOffsetMap.put(kafkaUrl, offset);
   }
@@ -777,16 +802,22 @@ public class PartitionConsumptionState {
     return latestProcessedUpstreamRTOffset;
   }
 
+  public long getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository) {
+    return getLeaderOffset(kafkaURL, pubSubTopicRepository, false);
+  }
+
   /**
    * The caller of this API should be interested in which offset currently leader should consume from now.
    * 1. If currently leader should consume from real-time topic, return upstream RT offset;
+   *    If Global RT DIV is enabled, use the value of LCRO from the Global RT DIV from StorageEngine.
    * 2. if currently leader should consume from version topic, return either remote VT offset or local VT offset, depending
    *    on whether the remote consumption flag is on.
    */
-  public long getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository) {
+  public long getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository, boolean useLcro) {
     PubSubTopic leaderTopic = getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     if (leaderTopic != null && !leaderTopic.isVersionTopic()) {
-      return getLatestProcessedUpstreamRTOffset(kafkaURL);
+      // consumed corresponds to messages seen by consumer, processed corresponds to messages seen by drainer
+      return (useLcro) ? getLatestConsumedRtOffset(kafkaURL) : getLatestProcessedUpstreamRTOffset(kafkaURL);
     } else {
       return consumeRemotely()
           ? getLatestProcessedUpstreamVersionTopicOffset()
@@ -816,6 +847,10 @@ public class PartitionConsumptionState {
 
   public long getLatestProcessedLocalVersionTopicOffset() {
     return this.latestProcessedLocalVersionTopicOffset;
+  }
+
+  public long getLatestConsumedVtOffset() {
+    return offsetRecord.getLatestConsumedVtOffset();
   }
 
   public void updateLatestProcessedUpstreamVersionTopicOffset(long offset) {

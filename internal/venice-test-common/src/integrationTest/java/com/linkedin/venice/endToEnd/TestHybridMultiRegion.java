@@ -9,7 +9,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_EOP;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
@@ -38,6 +37,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.serializer.AvroSerializer;
@@ -70,6 +70,7 @@ public class TestHybridMultiRegion {
    *                 the middle of the test, please restart them at the end of your test.
    */
   private VeniceTwoLayerMultiRegionMultiClusterWrapper sharedVenice;
+  private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
 
   /**
    * This cluster is re-used by some of the tests, in order to speed up the suite. Some other tests require
@@ -79,6 +80,7 @@ public class TestHybridMultiRegion {
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     sharedVenice = setUpCluster();
+    pubSubPositionTypeRegistry = sharedVenice.getParentKafkaBrokerWrapper().getPubSubPositionTypeRegistry();
   }
 
   @AfterClass(alwaysRun = true)
@@ -234,12 +236,12 @@ public class TestHybridMultiRegion {
       veniceWriterProperties2.put(INSTANCE_ID, writer2);
 
       try (
-          VeniceWriter<byte[], byte[], byte[]> veniceWriter1 =
-              TestUtils.getVeniceWriterFactory(veniceWriterProperties1, pubSubProducerAdapterFactory)
-                  .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build());
-          VeniceWriter<byte[], byte[], byte[]> veniceWriter2 =
-              TestUtils.getVeniceWriterFactory(veniceWriterProperties2, pubSubProducerAdapterFactory)
-                  .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build())) {
+          VeniceWriter<byte[], byte[], byte[]> veniceWriter1 = TestUtils
+              .getVeniceWriterFactory(veniceWriterProperties1, pubSubProducerAdapterFactory, pubSubPositionTypeRegistry)
+              .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build());
+          VeniceWriter<byte[], byte[], byte[]> veniceWriter2 = TestUtils
+              .getVeniceWriterFactory(veniceWriterProperties2, pubSubProducerAdapterFactory, pubSubPositionTypeRegistry)
+              .createVeniceWriter(new VeniceWriterOptions.Builder(versionTopicName).build())) {
         veniceWriter1.broadcastStartOfPush(false, Collections.emptyMap());
 
         /**
@@ -332,7 +334,6 @@ public class TestHybridMultiRegion {
 
     Properties serverProperties = new Properties();
     serverProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
-    serverProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");

@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFR
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
 import static com.linkedin.venice.client.store.predicate.PredicateBuilder.and;
 import static com.linkedin.venice.client.store.predicate.PredicateBuilder.equalTo;
@@ -68,8 +67,6 @@ import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -78,7 +75,6 @@ import org.testng.annotations.Test;
 
 
 public class DaVinciComputeTest {
-  private static final Logger LOGGER = LogManager.getLogger(DaVinciComputeTest.class);
   private static final int TEST_TIMEOUT = 120_000; // ms
 
   private VeniceClusterWrapper cluster;
@@ -142,7 +138,6 @@ public class DaVinciComputeTest {
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
-    clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
         .numberOfRouters(1)

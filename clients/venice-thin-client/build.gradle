@@ -28,6 +28,7 @@ dependencies {
   testImplementation libraries.kafkaClientsTest
   testImplementation libraries.kafkaClients
   testImplementation libraries.netty
+  testImplementation libraries.openTelemetryTestSdk
 }
 
 artifacts {
