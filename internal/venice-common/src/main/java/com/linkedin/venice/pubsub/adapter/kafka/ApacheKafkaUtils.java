@@ -99,11 +99,11 @@ public class ApacheKafkaUtils {
         extractedValidProperties.put(configKey, configVal);
       }
     });
-    extractedValidProperties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name());
 
     // Step 3: Copy SSL-related properties. These properties are mandatory if SSL is enabled,
     // but they typically do not have prefixes.
     validateAndCopyKafkaSSLConfig(securityProtocol, veniceProperties, extractedValidProperties);
+    extractedValidProperties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name());
     return extractedValidProperties;
   }
 
