@@ -92,7 +92,7 @@ public class TestZstdLibrary {
         LOGGER.info("Running test with {} samples in 1 File", i);
         runTest(1, i, 1, 1);
       } catch (Exception e) {
-        if (e instanceof ZstdException && e.getMessage().equals("Src size is incorrect")) {
+        if (e instanceof ZstdException && e.getMessage().equals("nb of samples too low")) {
           LOGGER.info("Exception thrown for {} samples", i, e);
           numExceptions++;
         } else {
