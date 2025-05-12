@@ -969,6 +969,8 @@ public class AdminTool {
               controllerClientMap,
               clusterName,
               systemStoreType == null ? Optional.empty() : Optional.of(systemStoreType)));
+    } else if (BackfillMinIsrTask.TASK_NAME.equals(task)) {
+      System.out.println(functionSupplier = () -> new BackfillMinIsrTask(controllerClientMap));
     } else {
       printErrAndExit("Undefined task: " + task);
     }
