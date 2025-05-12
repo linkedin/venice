@@ -63,7 +63,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
   private Map<String, Integer> fetchNonTargetRegionStoreRetryCountMap = new HashMap<>();
   private Set<String> stalledVersionSwapSet = new HashSet<>();
-  private int numStalledVersions = 0;
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -225,7 +224,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
     if (stalledVersionSwapSet.contains(storeName)) {
       stalledVersionSwapSet.remove(storeName);
-      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(numStalledVersions -= 1);
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
     }
 
     // Update parent version status after roll forward, so we don't check this store version again
@@ -377,7 +376,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             + " and the wait time: " + store.getTargetSwapRegionWaitTime() + " has passed";
         logMessageIfNotRedundant(message);
         stalledVersionSwapSet.add(store.getName());
-        deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(numStalledVersions += 1);
+        deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
       }
     }
   }
