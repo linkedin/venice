@@ -164,7 +164,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -247,6 +246,7 @@ public class VenicePushJob implements AutoCloseable {
   private final PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
   private PushJobHeartbeatSender pushJobHeartbeatSender = null;
   private boolean pushJobStatusUploadDisabledHasBeenLogged = false;
+  private final ScheduledExecutorService timeoutExecutor;
 
   /**
    * @param jobId  id of the job
@@ -255,6 +255,7 @@ public class VenicePushJob implements AutoCloseable {
   public VenicePushJob(String jobId, Properties vanillaProps) {
     this.jobId = jobId;
     this.props = getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null"));
+    this.timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
     LOGGER.info("Constructing {}: {}", VenicePushJob.class.getSimpleName(), props.toString(true));
     this.sslProperties = Lazy.of(() -> {
       try {
@@ -655,35 +656,22 @@ public class VenicePushJob implements AutoCloseable {
    * @throws VeniceException
    */
   public void run() {
-    Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
-        pushJobSetting.enableSSL,
-        props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
-        this.sslProperties);
-    initControllerClient(pushJobSetting.storeName, sslFactory);
-
-    ScheduledExecutorService timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
-    long bootstrapToOnlineTimeoutInHours =
-        getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
-    Future<?> timeoutFuture = timeoutExecutor.schedule(() -> {
-      LOGGER.error("Timeout reached. Stopping the job.");
-      cancel();
-    }, bootstrapToOnlineTimeoutInHours, TimeUnit.HOURS);
-
     try {
-      runPushJob();
-    } finally {
-      timeoutFuture.cancel(true);
-      timeoutExecutor.shutdown();
-    }
-  }
-
-  private void runPushJob() {
-    try {
+      initControllerClient(pushJobSetting.storeName);
       pushJobSetting.clusterName = controllerClient.getClusterName();
       LOGGER.info(
           "The store {} is discovered in Venice cluster {}",
           pushJobSetting.storeName,
           pushJobSetting.clusterName);
+
+      long bootstrapToOnlineTimeoutInHours =
+          getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
+      timeoutExecutor.schedule(() -> {
+        cancel();
+        throw new VeniceException(
+            "Failing push-job for store " + pushJobSetting.storeName + " which is still running after "
+                + bootstrapToOnlineTimeoutInHours + " hours.");
+      }, bootstrapToOnlineTimeoutInHours, TimeUnit.HOURS);
 
       if (pushJobSetting.isSourceKafka) {
         initKIFRepushDetails();
@@ -1207,9 +1195,12 @@ public class VenicePushJob implements AutoCloseable {
    *    2. A mock controller client is provided
    *
    * @param storeName
-   * @param sslFactory
    */
-  private void initControllerClient(String storeName, Optional<SSLFactory> sslFactory) {
+  private void initControllerClient(String storeName) {
+    Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
+        pushJobSetting.enableSSL,
+        props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
+        this.sslProperties);
     final String controllerD2ZkHost;
     if (pushJobSetting.multiRegion) {
       // In multi region mode, push jobs will communicate with parent controller
@@ -2520,8 +2511,6 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * A cancel method for graceful cancellation of the running Job to be invoked as a result of user actions or due to
    * the job exceeding bootstrapToOnlineTimeoutInHours.
-   *
-   * @throws Exception
    */
   public void cancel() {
     killJob(pushJobSetting, controllerClient);
@@ -2633,6 +2622,7 @@ public class VenicePushJob implements AutoCloseable {
 
   @Override
   public void close() {
+    timeoutExecutor.shutdownNow();
     closeVeniceWriter();
     Utils.closeQuietlyWithErrorLogged(dataWriterComputeJob);
     Utils.closeQuietlyWithErrorLogged(controllerClient);
