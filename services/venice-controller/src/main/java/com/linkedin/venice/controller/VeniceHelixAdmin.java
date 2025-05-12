@@ -67,6 +67,7 @@ import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
+import com.linkedin.venice.controller.stats.AddVersionLatencyStats;
 import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
@@ -420,6 +421,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private final Map<String, DisabledPartitionStats> disabledPartitionStatMap = new HashMap<>();
   private final Map<String, PushJobStatusStats> pushJobStatusStatsMap = new HashMap<>();
+  private final Map<String, AddVersionLatencyStats> addVersionLatencyStatsMap = new HashMap<>();
 
   private static final String PUSH_JOB_DETAILS_WRITER = "PUSH_JOB_DETAILS_WRITER";
   private final Map<String, VeniceWriter> jobTrackingVeniceWriterMap = new VeniceConcurrentHashMap<>();
@@ -750,6 +752,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       disabledPartitionStatMap.put(clusterName, disabledPartitionStats);
       liveInstanceMonitorMap.put(clusterName, liveInstanceMonitor);
       pushJobStatusStatsMap.put(clusterName, pushJobStatusStats);
+      addVersionLatencyStatsMap.put(clusterName, new AddVersionLatencyStats(metricsRepository, clusterName));
       // Register new instance callback
       liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
         @Override
@@ -2781,8 +2784,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * Note, versionNumber may be VERSION_ID_UNSET, which must be accounted for.
    * Add version is a multi step process that can be broken down to three main steps:
-   * 1. topic creation or verification, 2. version creation or addition, 3. start ingestion. The execution for some of
-   * these steps are different depending on how it's invoked.
+   * 1. topic creation or verification
+   * 2. version creation or addition
+   * 3. start ingestion. The execution for some of these steps are different depending on how it's invoked.
    *
    * @return Boolean - whether the version is newly created. Version - existing or new version, or null if the version
    *         is skipped during store migration.
@@ -2809,6 +2813,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String targetedRegions,
       int repushSourceVersion,
       int currentRTVersionNumber) {
+    AddVersionLatencyStats addVersionLatencyStats = addVersionLatencyStatsMap.get(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     MaintenanceSignal maintenanceSignal =
         HelixUtils.getClusterMaintenanceSignal(clusterName, resources.getHelixManager());
@@ -2878,6 +2883,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               ? getVersionFromSourceCluster(repository, clusterName, storeName, versionNumber)
               : Optional.empty();
           if (sourceVersion.isPresent()) {
+            long topicCreationStartTime = System.currentTimeMillis();
             // Adding an existing version to the destination cluster whose version level resources are already created,
             // including Kafka topics with data ready, so skip the steps of recreating these resources.
             version = sourceVersion.get().cloneVersion();
@@ -2900,6 +2906,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Update ZK with the new version
             store.addVersion(version, true, currentRTVersionNumber);
             repository.updateStore(store);
+
+            addVersionLatencyStats.recordHandleAddVersionWithSourceVersionExistLatency(
+                LatencyUtils.getElapsedTimeFromMsToMs(topicCreationStartTime));
           } else {
             if (versionNumber == VERSION_ID_UNSET) {
               // No version supplied, generate a new version. This could happen either in the parent
@@ -2911,7 +2920,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               }
               version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
             }
-
+            long startTime = System.currentTimeMillis();
             topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
             createBatchTopics(
                 version,
@@ -2920,6 +2929,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 numberOfPartitions,
                 clusterConfig,
                 useFastKafkaOperationTimeout);
+            addVersionLatencyStats.recordCreateBatchTopicsLatency(LatencyUtils.getElapsedTimeFromMsToMs(startTime));
 
             String sourceKafkaBootstrapServers = null;
 
@@ -3020,6 +3030,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             if (sendStartOfPush) {
+              long sendStartOfPushTimestamp = System.currentTimeMillis();
               ByteBuffer compressionDictionaryBuffer = null;
               if (compressionDictionary != null) {
                 compressionDictionaryBuffer =
@@ -3058,6 +3069,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                       -1L, // -1 indicates rewinding from the beginning of the source topic
                       new HashMap<>());
                 }
+                addVersionLatencyStats
+                    .recordSendStartOfPushLatency(LatencyUtils.getElapsedTimeFromMsToMs(sendStartOfPushTimestamp));
               } finally {
                 if (veniceWriter != null) {
                   veniceWriter.close();
@@ -3073,11 +3086,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 numberOfPartitions,
                 replicationFactor,
                 offlinePushStrategy);
+            long helixResourceCreationStartTime = System.currentTimeMillis();
             helixAdminClient.createVeniceStorageClusterResources(
                 clusterName,
                 version.kafkaTopicName(),
                 numberOfPartitions,
                 replicationFactor);
+            addVersionLatencyStats.recordHelixStorageClusterResourcesCreationLatency(
+                LatencyUtils.getElapsedTimeFromMsToMs(helixResourceCreationStartTime));
           }
         }
 
@@ -3086,7 +3102,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START
               && multiClusterConfigs.getControllerConfig(clusterName).isEarlyDeleteBackUpEnabled() && !isRepush) {
             try {
+              long retireOldStoreStartTimestamp = System.currentTimeMillis();
               retireOldStoreVersions(clusterName, storeName, true, currentVersionBeforePush);
+              addVersionLatencyStats
+                  .recordRetiredVersionLatency(LatencyUtils.getElapsedTimeFromMsToMs(retireOldStoreStartTimestamp));
             } catch (Throwable t) {
               LOGGER.error(
                   "Failed to delete previous backup version while pushing {} to store {} in cluster {}",
@@ -3102,12 +3121,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (startIngestion) {
         try {
           // Store write lock is released before polling status
+          long startWaitingTimestamp = System.currentTimeMillis();
           waitUntilNodesAreAssignedForResource(
               clusterName,
               version.kafkaTopicName(),
               offlinePushStrategy,
               clusterConfig.getOffLineJobWaitTimeInMilliseconds(),
               replicationFactor);
+          addVersionLatencyStats
+              .recordWaitTimeForResources(LatencyUtils.getElapsedTimeFromMsToMs(startWaitingTimestamp));
         } catch (VeniceNoClusterException e) {
           if (!isLeaderControllerFor(clusterName)) {
             int versionNumberInProgress = version == null ? versionNumber : version.getNumber();
@@ -3136,7 +3158,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (version != null) {
           failedVersionNumber = version.getNumber();
           String statusDetails = "Version creation failure, caught:\n" + ExceptionUtils.stackTraceToString(e);
+          long createVersionStartTime = System.currentTimeMillis();
           handleVersionCreationFailure(clusterName, storeName, failedVersionNumber, statusDetails);
+          addVersionLatencyStats
+              .recordHandleVersionCreationFailureLatency(LatencyUtils.getElapsedTimeFromMsToMs(createVersionStartTime));
         }
       } catch (Throwable e1) {
         String handlingErrorMsg = "Exception occurred while handling version " + versionNumber
