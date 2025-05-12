@@ -248,6 +248,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             sharedConsumer.unSubscribe(topicPartition);
             removeTopicPartitionFromConsumptionTask(sharedConsumer, topicPartition);
           }
+          consumerPollTracker.removeTopicPartition(topicPartition);
         });
       }
       return null;
@@ -269,6 +270,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         consumer.unSubscribe(pubSubTopicPartition, timeoutMs);
         removeTopicPartitionFromConsumptionTask(consumer, pubSubTopicPartition);
       }
+      consumerPollTracker.removeTopicPartition(pubSubTopicPartition);
       versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
         if (topicPartitionToConsumerMap != null) {
           topicPartitionToConsumerMap.remove(pubSubTopicPartition);
@@ -291,6 +293,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             consumerUnSubTopicPartitionSet.computeIfAbsent(consumer, k -> new HashSet<>());
         topicPartitionSet.add(topicPartition);
       }
+      consumerPollTracker.removeTopicPartition(topicPartition);
     }
     /**
      * Leverage {@link PubSubConsumerAdapter#batchUnsubscribe(Set)}.
