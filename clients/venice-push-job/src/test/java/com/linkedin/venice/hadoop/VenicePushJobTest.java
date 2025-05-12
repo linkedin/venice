@@ -278,15 +278,21 @@ public class VenicePushJobTest {
     }
   }
 
+  @DataProvider(name = "DataWriterJobClasses")
+  public Object[][] getDataWriterJobClasses() {
+    return new Object[][] { { DataWriterMRJob.class }, { DataWriterSparkJob.class } };
+  }
+
   /**
    * Test that VenicePushJob.cancel() is called after bootstrapToOnlineTimeoutInHours is reached.
    * UNKNOWN status is returned for pollStatusUntilComplete() to stall the job until cancel() can be called.
    */
-  @Test
-  public void testPushJobTimeout() throws Exception {
+  @Test(dataProvider = "DataWriterJobClasses")
+  public void testPushJobTimeout(Class<? extends DataWriterComputeJob> dataWriterJobClass) throws Exception {
     Properties props = getVpjRequiredProperties();
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
+    props.put(DATA_WRITER_COMPUTE_JOB_CLASS, dataWriterJobClass.getName());
     ControllerClient client = getClient();
     JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
     doReturn("UNKNOWN").when(response).getStatus();
@@ -312,16 +318,11 @@ public class VenicePushJobTest {
     }
   }
 
-  @DataProvider(name = "DataWriterJobClasses")
-  public Object[][] getDataWriterJobClasses() {
-    return new Object[][] { { DataWriterMRJob.class }, { DataWriterSparkJob.class } };
-  }
-
   /**
    * Ensures that the data writer job is killed if the job times out. Uses an Answer to stall the data writer job
    * while it's running in order for it to get killed properly.
    */
-  @Test(timeOut = 5 * Time.MS_PER_SECOND, dataProvider = "DataWriterJobClasses")
+  @Test(dataProvider = "DataWriterJobClasses")
   public void testDataWriterComputeJobTimeout(Class<? extends DataWriterComputeJob> dataWriterJobClass)
       throws Exception {
     Properties props = getVpjRequiredProperties();
