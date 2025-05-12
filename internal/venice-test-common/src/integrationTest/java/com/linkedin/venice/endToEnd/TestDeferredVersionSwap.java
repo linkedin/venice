@@ -25,6 +25,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -589,6 +590,8 @@ public class TestDeferredVersionSwap {
       });
     }
 
+    verifyThatPushStatusStoreIsOnline(storeName);
+
     // Create dvc client in target region
     List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     VeniceClusterWrapper cluster1 = childDatacenters.get(0).getClusters().get(CLUSTER_NAMES[0]);
@@ -723,6 +726,8 @@ public class TestDeferredVersionSwap {
       });
     }
 
+    verifyThatPushStatusStoreIsOnline(storeName);
+
     // Create dvc client in target region
     List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
     VeniceClusterWrapper cluster1 = childDatacenters.get(0).getClusters().get(CLUSTER_NAMES[0]);
@@ -792,5 +797,18 @@ public class TestDeferredVersionSwap {
     }
 
     client1.close();
+  }
+
+  public void verifyThatPushStatusStoreIsOnline(String storeName) {
+    for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+      String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
+      ControllerClient childControllerClient =
+          new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = childControllerClient.getStore(pushStatusStoreName);
+        Assert.assertFalse(storeResponse.isError());
+        Assert.assertTrue(storeResponse.getStore().getCurrentVersion() > 0, pushStatusStoreName + " is not ready");
+      });
+    }
   }
 }
