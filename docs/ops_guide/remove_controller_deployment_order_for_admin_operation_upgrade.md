@@ -86,6 +86,7 @@ When a bad semantic usage is detected, the system throws a VeniceProtocolExcepti
 
 # Operational Guide
 1. What are configs to be set?
+
 ```java
   /**
    * Enables / disables protocol version auto-detection service in parent controller.
@@ -102,6 +103,7 @@ When a bad semantic usage is detected, the system throws a VeniceProtocolExcepti
   public static final String CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS =
       "controller.protocol.version.auto.detection.sleep.ms";
 ```
+
 2. How to start/stop the version detection service?
 - Set `CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED` to `true` in the parent controller to start the version detection service, 
 and `false` to stop it.
