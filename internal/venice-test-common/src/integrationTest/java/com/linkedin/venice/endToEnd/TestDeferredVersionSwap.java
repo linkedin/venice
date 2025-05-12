@@ -799,7 +799,7 @@ public class TestDeferredVersionSwap {
     client1.close();
   }
 
-  public void verifyThatPushStatusStoreIsOnline(String storeName) {
+  private void verifyThatPushStatusStoreIsOnline(String storeName) {
     for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
       String pushStatusStoreName = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
       ControllerClient childControllerClient =
