@@ -2920,7 +2920,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               }
               version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
             }
-            long startTime = System.currentTimeMillis();
+            long createBatchTopicStartTime = System.currentTimeMillis();
             topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
             createBatchTopics(
                 version,
@@ -2929,7 +2929,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 numberOfPartitions,
                 clusterConfig,
                 useFastKafkaOperationTimeout);
-            addVersionLatencyStats.recordBatchTopicCreationLatency(LatencyUtils.getElapsedTimeFromMsToMs(startTime));
+            addVersionLatencyStats
+                .recordBatchTopicCreationLatency(LatencyUtils.getElapsedTimeFromMsToMs(createBatchTopicStartTime));
 
             String sourceKafkaBootstrapServers = null;
 
