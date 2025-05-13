@@ -27,7 +27,9 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.serializer.AvroSpecificDeserializer;
 import com.linkedin.venice.utils.lazy.Lazy;
+import java.lang.reflect.Field;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.testng.annotations.Test;
@@ -38,6 +40,9 @@ public class RecordTransformerTest {
   static final int partitionId = 0;
   static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
       AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+  static final Lazy<Integer> lazyKey = Lazy.of(() -> 42);
+  static final String value = "SampleValue";
+  static final Lazy<String> lazyValue = Lazy.of(() -> value);
   static final Schema keySchema = Schema.create(Schema.Type.INT);
   static final Schema valueSchema = Schema.create(Schema.Type.STRING);
 
@@ -62,13 +67,11 @@ public class RecordTransformerTest {
     assertEquals(recordTransformer.getKeySchema().getType(), Schema.Type.INT);
     assertEquals(recordTransformer.getOutputValueSchema().getType(), Schema.Type.STRING);
 
-    Lazy<Integer> lazyKey = Lazy.of(() -> 42);
-    Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
     DaVinciRecordTransformerResult<String> transformerResult =
         recordTransformer.transform(lazyKey, lazyValue, partitionId);
     recordTransformer.processPut(lazyKey, lazyValue, partitionId);
     assertEquals(transformerResult.getResult(), DaVinciRecordTransformerResult.Result.TRANSFORMED);
-    assertEquals(transformerResult.getValue(), "SampleValueTransformed");
+    assertEquals(transformerResult.getValue(), value + "Transformed");
     assertNull(recordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId));
 
     recordTransformer.processDelete(lazyKey, partitionId);
@@ -229,13 +232,11 @@ public class RecordTransformerTest {
 
     assertEquals(blockingRecordTransformer.getOutputValueSchema().getType(), Schema.Type.STRING);
 
-    Lazy<Integer> lazyKey = Lazy.of(() -> 42);
-    Lazy<String> lazyValue = Lazy.of(() -> "SampleValue");
     DaVinciRecordTransformerResult<String> recordTransformerResult =
         blockingRecordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId);
     verify(clientRecordTransformer).transform(lazyKey, lazyValue, partitionId);
     verify(clientRecordTransformer).processPut(eq(lazyKey), any(), eq(partitionId));
-    assertEquals(recordTransformerResult.getValue(), "SampleValueTransformed");
+    assertEquals(recordTransformerResult.getValue(), value + "Transformed");
 
     blockingRecordTransformer.processDelete(lazyKey, partitionId);
     verify(clientRecordTransformer).processDelete(lazyKey, partitionId);
@@ -274,5 +275,49 @@ public class RecordTransformerTest {
 
     blockingRecordTransformer.onVersionSwap(currentVersion, futureVersion, partitionId);
     verify(clientRecordTransformer).onVersionSwap(currentVersion, futureVersion, partitionId);
+  }
+
+  @Test
+  public void testSpecificRecordTransformer() throws NoSuchFieldException, IllegalAccessException {
+    Schema valueSchema = TestSpecificValue.SCHEMA$;
+
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestSpecificRecordTransformer::new)
+            .setOutputValueSchema(valueSchema)
+            .setOutputValueClass(TestSpecificValue.class)
+            .build();
+
+    assertTrue(dummyRecordTransformerConfig.isSpecificClient());
+
+    DaVinciRecordTransformer<Integer, TestSpecificValue, TestSpecificValue> recordTransformer =
+        new TestSpecificRecordTransformer(
+            storeVersion,
+            keySchema,
+            valueSchema,
+            valueSchema,
+            dummyRecordTransformerConfig);
+
+    DaVinciRecordTransformerUtility<Integer, TestSpecificValue> recordTransformerUtility =
+        recordTransformer.getRecordTransformerUtility();
+
+    Field outputValueDeserializerField =
+        recordTransformerUtility.getClass().getDeclaredField("outputValueDeserializer");
+    outputValueDeserializerField.setAccessible(true);
+    assertTrue(outputValueDeserializerField.get(recordTransformerUtility) instanceof AvroSpecificDeserializer);
+
+    TestSpecificValue specificValue = new TestSpecificValue();
+    String firstName = "first";
+    String lastName = "last";
+    specificValue.firstName = firstName;
+    specificValue.lastName = lastName;
+
+    Lazy<TestSpecificValue> lazyValue = Lazy.of(() -> specificValue);
+
+    DaVinciRecordTransformerResult<TestSpecificValue> transformerResult =
+        recordTransformer.transform(lazyKey, lazyValue, partitionId);
+    assertEquals(transformerResult.getResult(), DaVinciRecordTransformerResult.Result.TRANSFORMED);
+    TestSpecificValue transformedSpecificValue = transformerResult.getValue();
+    assertEquals(transformedSpecificValue.firstName, firstName.toUpperCase());
+    assertEquals(transformedSpecificValue.lastName, lastName.toUpperCase());
   }
 }
