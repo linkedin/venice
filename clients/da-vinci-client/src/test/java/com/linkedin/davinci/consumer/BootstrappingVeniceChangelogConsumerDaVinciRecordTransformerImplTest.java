@@ -24,6 +24,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.TestUtils;
@@ -60,6 +61,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   private static final int CURRENT_STORE_VERSION = 1;
   private static final int FUTURE_STORE_VERSION = 2;
   private static final int MAX_BUFFER_SIZE = 10;
+  private static final int value = 2;
+  private static final Lazy<Integer> lazyValue = Lazy.of(() -> value);
 
   private Schema keySchema;
   private Schema valueSchema;
@@ -68,7 +71,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   private ChangelogClientConfig changelogClientConfig;
   private DaVinciRecordTransformerConfig mockDaVinciRecordTransformerConfig;
   private DaVinciClient mockDaVinciClient;
+  private CompletableFuture<Void> daVinciClientSubscribeFuture;
   private List<Lazy<Integer>> keys;
+  private Set<Integer> partitionSet;
 
   @BeforeMethod
   public void setUp() throws NoSuchFieldException, IllegalAccessException {
@@ -109,8 +114,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
 
     // Replace daVinciClient with a mock
     mockDaVinciClient = mock(DaVinciClient.class);
+    daVinciClientSubscribeFuture = new CompletableFuture<>();
     when(mockDaVinciClient.getPartitionCount()).thenReturn(PARTITION_COUNT);
-    when(mockDaVinciClient.subscribe(any())).thenReturn(mock(CompletableFuture.class));
+    when(mockDaVinciClient.subscribe(any())).thenReturn(daVinciClientSubscribeFuture);
 
     AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
       try {
@@ -125,9 +131,11 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     });
 
     keys = new ArrayList<>();
+    partitionSet = new HashSet<>();
     for (int i = 0; i < PARTITION_COUNT; i++) {
       int tempI = i;
       keys.add(Lazy.of(() -> tempI));
+      partitionSet.add(i);
     }
   }
 
@@ -141,11 +149,6 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     assertTrue((Boolean) isStartedField.get(bootstrappingVeniceChangelogConsumer), "isStarted should be true");
 
     verify(mockDaVinciClient).start();
-
-    Set<Integer> partitionSet = new HashSet<>();
-    for (int i = 0; i < PARTITION_COUNT; i++) {
-      partitionSet.add(i);
-    }
 
     Field subscribedPartitionsField =
         BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("subscribedPartitions");
@@ -196,9 +199,6 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   public void testPutAndDelete() {
     bootstrappingVeniceChangelogConsumer.start();
     recordTransformer.onStartVersionIngestion(true);
-
-    int value = 2;
-    Lazy<Integer> lazyValue = Lazy.of(() -> value);
 
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
@@ -279,22 +279,15 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     // CompletableFuture should not be finished until a record has been pushed to the buffer by the current version
     assertFalse(startCompletableFuture.isDone());
 
-    int value = 2;
-    Lazy<Integer> lazyValue = Lazy.of(() -> value);
-
     // Future version should not cause the CompletableFuture to complete
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       futureRecordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
     }
-    assertFalse(startCompletableFuture.isDone());
 
     // CompletableFuture should be finished when the current version produces to the buffer
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
     }
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      assertTrue(startCompletableFuture.isDone());
-    });
   }
 
   @Test
@@ -328,8 +321,6 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     recordTransformer.onStartVersionIngestion(true);
 
     int partitionId = 1;
-    int value = 2;
-    Lazy<Integer> lazyValue = Lazy.of(() -> value);
 
     List<CompletableFuture> completableFutureList = new ArrayList<>();
     for (int i = 0; i <= MAX_BUFFER_SIZE; i++) {
@@ -407,6 +398,57 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       verify(bufferIsFullCondition).signal();
     });
+  }
+
+  @Test
+  public void testIsCaughtUp() {
+    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+
+    CompletableFuture startCompletableFuture = bootstrappingVeniceChangelogConsumer.start(partitionSet);
+    recordTransformer.onStartVersionIngestion(true);
+
+    // Add records for all but 1 partition to complete the start future, but to not complete the subscribe future.
+    for (int partitionId = 0; partitionId < PARTITION_COUNT - 1; partitionId++) {
+      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+    }
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      verify(mockDaVinciClient).subscribe(partitionSet);
+      assertTrue(startCompletableFuture.isDone());
+    });
+    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+
+    // Add record for last partition
+    recordTransformer.processPut(keys.get(PARTITION_COUNT - 1), lazyValue, PARTITION_COUNT - 1);
+    daVinciClientSubscribeFuture.complete(null);
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      assertTrue(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+    });
+  }
+
+  @Test
+  public void testIsCaughtUpException() {
+    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+
+    CompletableFuture startCompletableFuture = bootstrappingVeniceChangelogConsumer.start();
+    recordTransformer.onStartVersionIngestion(true);
+
+    // Add records for all but 1 partition to complete the start future, but to not complete the subscribe future.
+    for (int partitionId = 0; partitionId < PARTITION_COUNT - 1; partitionId++) {
+      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
+    }
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      verify(mockDaVinciClient).subscribe(partitionSet);
+      assertTrue(startCompletableFuture.isDone());
+    });
+    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+
+    // Add record for last partition
+    recordTransformer.processPut(keys.get(PARTITION_COUNT - 1), lazyValue, PARTITION_COUNT - 1);
+    daVinciClientSubscribeFuture.completeExceptionally(new VeniceException("Test exception"));
+    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
   }
 
   private void verifyPuts(int value) {
