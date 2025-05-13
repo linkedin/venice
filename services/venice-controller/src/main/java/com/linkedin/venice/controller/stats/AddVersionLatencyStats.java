@@ -9,73 +9,96 @@ import io.tehuti.metrics.stats.Max;
 
 /**
  * This class is used to track the latency of various operations related to adding a version in Venice.
- *
- * It includes metrics for:
+ * <p>
+ * The following sensors are tracked:
  * <ul>
- * <li>Handling add version requests when the source version exists</li>
- * <li>Creating batch topics (for both child and parent controllers)</li>
- * <li>Waiting for node resources assignment</li>
- * <li>Creating Helix storage cluster resources</li>
- * <li>Retiring old store versions</li>
- * <li>Sending the start of a push</li>
- * <li>Handling version creation failures</li>
+ *   <li><b>existingSourceVersionHandlingLatencySensor</b> –
+ *       Measures latency when handling add version requests with an existing source version.</li>
+ *   <li><b>batchTopicCreationLatencySensor</b> –
+ *       Tracks latency for creating batch topics (used by both child and parent controllers).</li>
+ *   <li><b>resourceAssignmentWaitLatencySensor</b> –
+ *       Captures time spent waiting for node resource assignments.</li>
+ *   <li><b>helixResourceCreationLatencySensor</b> –
+ *       Monitors the latency of creating Helix storage cluster resources.</li>
+ *   <li><b>retireOldVersionsLatencySensor</b> –
+ *       Records the time taken to retire outdated store versions.</li>
+ *   <li><b>startOfPushLatencySensor</b> –
+ *       Measures latency for sending the start-of-push signal.</li>
+ *   <li><b>versionCreationFailureLatencySensor</b> –
+ *       Tracks latency during version creation failure handling.</li>
  * </ul>
- * Each metric is using Milliseconds as the unit of measurement.
+ * Each metric uses milliseconds as the unit of measurement.
  */
 public class AddVersionLatencyStats extends AbstractVeniceStats {
-  private final Sensor retireOldStoreVersionsLatencySensor;
-  private final Sensor waitTimeForResourcesAssignmentLatencySensor;
-  private final Sensor handleVersionCreationFailureLatencySensor;
-  private final Sensor handleAddVersionWithSourceVersionExistLatencySensor;
-  private final Sensor sendStartOfPushLatencySensor;
-  private final Sensor topicCreationLatencySensor;
-  private final Sensor helixStorageClusterResourcesCreationLatencySensor;
+  /** Measures the time taken to retire outdated store versions. */
+  private final Sensor retireOldVersionsLatencySensor;
+
+  /** Captures the latency while waiting for node resource assignments. */
+  private final Sensor resourceAssignmentWaitLatencySensor;
+
+  /** Tracks latency during the handling of version creation failures. */
+  private final Sensor versionCreationFailureLatencySensor;
+
+  /** Measures latency for add version requests where the source version already exists. */
+  private final Sensor existingSourceVersionHandlingLatencySensor;
+
+  /** Records the time taken to send the start-of-push signal. */
+  private final Sensor startOfPushLatencySensor;
+
+  /** Tracks latency for creating batch topics, applicable to both parent and child controllers. */
+  private final Sensor batchTopicCreationLatencySensor;
+
+  /** Monitors the time required to create Helix storage cluster resources. */
+  private final Sensor helixResourceCreationLatencySensor;
 
   public AddVersionLatencyStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    retireOldStoreVersionsLatencySensor =
-        registerSensorIfAbsent("add_version_retire_old_store_versions_latency", new Avg(), new Max());
-    waitTimeForResourcesAssignmentLatencySensor =
-        registerSensorIfAbsent("add_version_wait_time_for_resources_assignment_latency", new Avg(), new Max());
-    handleVersionCreationFailureLatencySensor =
-        registerSensorIfAbsent("add_version_handle_version_creation_failure_latency", new Avg(), new Max());
-    handleAddVersionWithSourceVersionExistLatencySensor = registerSensorIfAbsent(
-        "add_version_handle_add_version_with_source_version_exist_latency",
-        new Avg(),
-        new Max());
-    sendStartOfPushLatencySensor =
-        registerSensorIfAbsent("add_version_send_start_of_push_latency", new Avg(), new Max());
-    topicCreationLatencySensor =
-        registerSensorIfAbsent("add_version_create_batch_topics_latency", new Avg(), new Max());
-    helixStorageClusterResourcesCreationLatencySensor =
-        registerSensorIfAbsent("add_version_helix_storage_cluster_resources_creation_latency", new Avg(), new Max());
+    retireOldVersionsLatencySensor =
+        registerSensorIfAbsent("add_version_retire_old_versions_latency", new Avg(), new Max());
+
+    resourceAssignmentWaitLatencySensor =
+        registerSensorIfAbsent("add_version_resource_assignment_wait_latency", new Avg(), new Max());
+
+    versionCreationFailureLatencySensor =
+        registerSensorIfAbsent("add_version_creation_failure_latency", new Avg(), new Max());
+
+    existingSourceVersionHandlingLatencySensor =
+        registerSensorIfAbsent("add_version_existing_source_handling_latency", new Avg(), new Max());
+
+    startOfPushLatencySensor = registerSensorIfAbsent("add_version_start_of_push_latency", new Avg(), new Max());
+
+    batchTopicCreationLatencySensor =
+        registerSensorIfAbsent("add_version_batch_topic_creation_latency", new Avg(), new Max());
+
+    helixResourceCreationLatencySensor =
+        registerSensorIfAbsent("add_version_helix_resource_creation_latency", new Avg(), new Max());
   }
 
-  public void recordRetireOldStoreVersionsLatency(long latency) {
-    retireOldStoreVersionsLatencySensor.record(latency);
+  public void recordRetireOldVersionsLatency(long latency) {
+    retireOldVersionsLatencySensor.record(latency);
   }
 
-  public void recordWaitTimeForResourcesAssignmentLatency(long latency) {
-    waitTimeForResourcesAssignmentLatencySensor.record(latency);
+  public void recordResourceAssignmentWaitLatency(long latency) {
+    resourceAssignmentWaitLatencySensor.record(latency);
   }
 
-  public void recordHandleAddVersionWithSourceVersionExistLatency(long latency) {
-    handleAddVersionWithSourceVersionExistLatencySensor.record(latency);
+  public void recordExistingSourceVersionHandlingLatency(long latency) {
+    existingSourceVersionHandlingLatencySensor.record(latency);
   }
 
-  public void recordSendStartOfPushLatency(long latency) {
-    sendStartOfPushLatencySensor.record(latency);
+  public void recordStartOfPushLatency(long latency) {
+    startOfPushLatencySensor.record(latency);
   }
 
-  public void recordCreateBatchTopicsLatency(long latency) {
-    topicCreationLatencySensor.record(latency);
+  public void recordBatchTopicCreationLatency(long latency) {
+    batchTopicCreationLatencySensor.record(latency);
   }
 
-  public void recordHelixStorageClusterResourcesCreationLatency(long latency) {
-    helixStorageClusterResourcesCreationLatencySensor.record(latency);
+  public void recordHelixResourceCreationLatency(long latency) {
+    helixResourceCreationLatencySensor.record(latency);
   }
 
-  public void recordHandleVersionCreationFailureLatency(long latency) {
-    handleVersionCreationFailureLatencySensor.record(latency);
+  public void recordVersionCreationFailureLatency(long latency) {
+    versionCreationFailureLatencySensor.record(latency);
   }
 }

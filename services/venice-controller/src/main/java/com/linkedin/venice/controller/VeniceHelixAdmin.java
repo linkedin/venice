@@ -2907,7 +2907,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             store.addVersion(version, true, currentRTVersionNumber);
             repository.updateStore(store);
 
-            addVersionLatencyStats.recordHandleAddVersionWithSourceVersionExistLatency(
+            addVersionLatencyStats.recordExistingSourceVersionHandlingLatency(
                 LatencyUtils.getElapsedTimeFromMsToMs(cloneSourceVersionTimestamp));
           } else {
             if (versionNumber == VERSION_ID_UNSET) {
@@ -2929,7 +2929,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 numberOfPartitions,
                 clusterConfig,
                 useFastKafkaOperationTimeout);
-            addVersionLatencyStats.recordCreateBatchTopicsLatency(LatencyUtils.getElapsedTimeFromMsToMs(startTime));
+            addVersionLatencyStats.recordBatchTopicCreationLatency(LatencyUtils.getElapsedTimeFromMsToMs(startTime));
 
             String sourceKafkaBootstrapServers = null;
 
@@ -3015,7 +3015,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   numberOfPartitions,
                   clusterConfig,
                   useFastKafkaOperationTimeout);
-              addVersionLatencyStats.recordCreateBatchTopicsLatency(
+              addVersionLatencyStats.recordBatchTopicCreationLatency(
                   LatencyUtils.getElapsedTimeFromMsToMs(createBatchTopicInParentTimestamp));
             }
 
@@ -3073,7 +3073,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                       new HashMap<>());
                 }
                 addVersionLatencyStats
-                    .recordSendStartOfPushLatency(LatencyUtils.getElapsedTimeFromMsToMs(sendStartOfPushTimestamp));
+                    .recordStartOfPushLatency(LatencyUtils.getElapsedTimeFromMsToMs(sendStartOfPushTimestamp));
               } finally {
                 if (veniceWriter != null) {
                   veniceWriter.close();
@@ -3095,7 +3095,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 version.kafkaTopicName(),
                 numberOfPartitions,
                 replicationFactor);
-            addVersionLatencyStats.recordHelixStorageClusterResourcesCreationLatency(
+            addVersionLatencyStats.recordHelixResourceCreationLatency(
                 LatencyUtils.getElapsedTimeFromMsToMs(helixResourceCreationStartTime));
           }
         }
@@ -3107,8 +3107,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             try {
               long retireOldStoreStartTimestamp = System.currentTimeMillis();
               retireOldStoreVersions(clusterName, storeName, true, currentVersionBeforePush);
-              addVersionLatencyStats.recordRetireOldStoreVersionsLatency(
-                  LatencyUtils.getElapsedTimeFromMsToMs(retireOldStoreStartTimestamp));
+              addVersionLatencyStats
+                  .recordRetireOldVersionsLatency(LatencyUtils.getElapsedTimeFromMsToMs(retireOldStoreStartTimestamp));
             } catch (Throwable t) {
               LOGGER.error(
                   "Failed to delete previous backup version while pushing {} to store {} in cluster {}",
@@ -3131,8 +3131,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               offlinePushStrategy,
               clusterConfig.getOffLineJobWaitTimeInMilliseconds(),
               replicationFactor);
-          addVersionLatencyStats.recordWaitTimeForResourcesAssignmentLatency(
-              LatencyUtils.getElapsedTimeFromMsToMs(startWaitingTimestamp));
+          addVersionLatencyStats
+              .recordResourceAssignmentWaitLatency(LatencyUtils.getElapsedTimeFromMsToMs(startWaitingTimestamp));
         } catch (VeniceNoClusterException e) {
           if (!isLeaderControllerFor(clusterName)) {
             int versionNumberInProgress = version == null ? versionNumber : version.getNumber();
@@ -3164,7 +3164,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           long createVersionStartTime = System.currentTimeMillis();
           handleVersionCreationFailure(clusterName, storeName, failedVersionNumber, statusDetails);
           addVersionLatencyStats
-              .recordHandleVersionCreationFailureLatency(LatencyUtils.getElapsedTimeFromMsToMs(createVersionStartTime));
+              .recordVersionCreationFailureLatency(LatencyUtils.getElapsedTimeFromMsToMs(createVersionStartTime));
         }
       } catch (Throwable e1) {
         String handlingErrorMsg = "Exception occurred while handling version " + versionNumber
