@@ -2042,11 +2042,6 @@ public class ConfigKeys {
   public static final String DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS = "davinci.push.status.check.interval.in.ms";
 
   /**
-   * The number of threads that will be used to perform SSL handshakes between clients and a router.
-   */
-  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
-
-  /**
    * Config to control the number of threads used for DNS resolution.
    * If the value is positive, DNS resolution would be done before SSL handshake between clients and a router.
    * 0 will disable the dns resolution but does not affect the SSL handshake.
