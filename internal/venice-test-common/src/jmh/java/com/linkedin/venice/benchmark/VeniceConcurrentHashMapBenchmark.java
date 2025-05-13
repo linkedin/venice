@@ -37,7 +37,6 @@ public class VeniceConcurrentHashMapBenchmark {
   VeniceConcurrentHashMap<Integer, Long> concurrentHashMap;
   DescriptiveStatistics aggregatedAvgStats = new DescriptiveStatistics();
   DescriptiveStatistics aggregatedMaxStats = new DescriptiveStatistics();
-  DescriptiveStatistics aggregatedP99Stats = new DescriptiveStatistics();
 
   @Setup
   public void setUp() {
@@ -51,8 +50,7 @@ public class VeniceConcurrentHashMapBenchmark {
   public void cleanUp() {
     System.out.println(
         "Aggregated stats: Avg: " + aggregatedAvgStats.getMean() + "; Max avg: " + aggregatedAvgStats.getMax()
-            + "; Avg P99: " + aggregatedP99Stats.getMean() + "; Max P99: " + aggregatedP99Stats.getMax() + "; Max: "
-            + aggregatedMaxStats.getMax());
+            + "; Avg max: " + aggregatedMaxStats.getMean() + "; Max max: " + aggregatedMaxStats.getMax());
   }
 
   @State(Scope.Thread)
@@ -64,7 +62,6 @@ public class VeniceConcurrentHashMapBenchmark {
     public void end(VeniceConcurrentHashMapBenchmark benchmark) {
       benchmark.aggregatedAvgStats.addValue(stats.getMean());
       benchmark.aggregatedMaxStats.addValue(stats.getMax());
-      benchmark.aggregatedP99Stats.addValue(stats.getPercentile(99));
     }
   }
 
