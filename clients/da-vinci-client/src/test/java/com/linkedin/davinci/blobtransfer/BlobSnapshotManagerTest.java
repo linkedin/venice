@@ -24,6 +24,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -71,7 +72,7 @@ public class BlobSnapshotManagerTest {
     doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
-        blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+        blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
 
     // Due to the store is hybrid, it will re-create a new snapshot.
     verify(storagePartition, times(1)).createSnapshot();
@@ -100,12 +101,13 @@ public class BlobSnapshotManagerTest {
 
     // Create snapshot for the first time
     BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
-        blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+        blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID), 1);
     Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
 
     // Try to create snapshot again with concurrent users
-    actualBlobTransferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+    actualBlobTransferPartitionMetadata =
+        blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID), 2);
     Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
   }
@@ -133,13 +135,13 @@ public class BlobSnapshotManagerTest {
     // Create snapshot
     for (int tryCount = 0; tryCount < BlobSnapshotManager.DEFAULT_MAX_CONCURRENT_USERS; tryCount++) {
       BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
-          blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+          blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
       Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
     }
 
     // The last snapshot creation should fail
     try {
-      blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+      blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
     } catch (VeniceException e) {
       String errorMessage = String.format(
           "Exceeded the maximum number of concurrent users %d for topic %s partition %d",
@@ -176,13 +178,14 @@ public class BlobSnapshotManagerTest {
 
     // first request for same payload but use offset 1
     BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
-        blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+        blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
     Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
 
     // second request for same payload but use offset 2
     BlobTransferPartitionMetadata blobTransferPartitionMetadata2 = Mockito.mock(BlobTransferPartitionMetadata.class);
     doReturn(blobTransferPartitionMetadata2).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
-    actualBlobTransferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+    actualBlobTransferPartitionMetadata =
+        blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
     Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
 
     // verify that the second offset record is not tracked, and the first offset record is still tracked
@@ -219,7 +222,7 @@ public class BlobSnapshotManagerTest {
       for (int i = 0; i < numberOfThreads; i++) {
         asyncExecutor.submit(() -> {
           BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
-              blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+              blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
           blobSnapshotManager.decreaseConcurrentUserCount(blobTransferPayload);
           Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
           latch.countDown();
@@ -264,7 +267,7 @@ public class BlobSnapshotManagerTest {
 
     // New request but the snapshot info is not recorded, and it will try to generate a new snapshot
     try {
-      blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+      blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
       Assert.fail("Should throw exception");
     } catch (VeniceException e) {
       String errorMessage = String.format(
@@ -310,7 +313,7 @@ public class BlobSnapshotManagerTest {
     // Thread 1: Get transfer metadata and try to generate snapshot.
     Thread transferThread = new Thread(() -> {
       try {
-        blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+        blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
       } catch (Exception e) {
         Assert.fail("Exception in transfer thread: " + e.getMessage());
       }
@@ -378,7 +381,7 @@ public class BlobSnapshotManagerTest {
     Thread transferThread = new Thread(() -> {
       try {
         Thread.sleep(100); // Small delay to ensure cleanup thread has started first
-        blobSnapshotManager.getTransferMetadata(blobTransferPayload);
+        blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
       } catch (Exception e) {
         Assert.fail("Exception in transfer thread: " + e.getMessage());
       }

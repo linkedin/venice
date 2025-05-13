@@ -17,11 +17,12 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.nio.ByteBuffer;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.logging.log4j.LogManager;
@@ -121,9 +122,18 @@ public class BlobSnapshotManager {
    *     2.2. if not stale, directly return the metadata
    *
    * @param payload the blob transfer payload
+   * @param successCountedAsActiveCurrentUser Indicates whether this request has been successfully counted as an active user.
+   * Typically, we should increment the active concurrent user count at the beginning of receiving request on the server handler side.
+   * However, since we need to check the count of active users before recreating a snapshot for ensuring no active users are present, we move the increment logic to here.
+   * We also need to decrement the active user count when the request is completed or fails at the server side handler.
+   * This flag (successCountedCurrentUser) lets us know if this request was counted as an active user, so we can accurately decrement the count later.
+   *
+   *
    * @return the need transfer metadata to client
    */
-  public BlobTransferPartitionMetadata getTransferMetadata(BlobTransferPayload payload) throws VeniceException {
+  public BlobTransferPartitionMetadata getTransferMetadata(
+      BlobTransferPayload payload,
+      AtomicBoolean successCountedAsActiveCurrentUser) throws VeniceException {
     String topicName = payload.getTopicName();
     int partitionId = payload.getPartition();
 
@@ -144,8 +154,14 @@ public class BlobSnapshotManager {
       boolean havingActiveUsers = getConcurrentSnapshotUsers(topicName, partitionId) > 0;
       boolean isSnapshotStale = isSnapshotStale(topicName, partitionId);
       increaseConcurrentUserCount(topicName, partitionId);
+      successCountedAsActiveCurrentUser.set(true);
 
-      // 2. check if the snapshot is stale and need to be recreated
+      // 2. Check if the snapshot is stale and needs to be recreated.
+      // If the snapshot is stale and there are active users, throw an exception to exit early, allowing the client to
+      // try the next available peer.
+      // Even if creating a snapshot is fast, the stale snapshot may still be in use and transferring data for a
+      // previous request.
+      // If the transfer is taking too long, it's better not to wait; instead, let the client proceed to the next peer.
       if (isSnapshotStale) {
         if (!havingActiveUsers) {
           recreateSnapshotAndMetadata(payload);
@@ -429,27 +445,37 @@ public class BlobSnapshotManager {
   private void scheduleCleanupOutOfRetentionSnapshotTask() {
     if (snapshotCleanupScheduler != null) {
       snapshotCleanupScheduler.scheduleAtFixedRate(() -> {
-        if (snapshotTimestamps.isEmpty()) {
-          LOGGER
-              .info("No snapshot timestamps found, skipping cleanup of stale snapshots for all topics and partitions.");
-          return;
-        }
-
-        LOGGER.info("Start cleaning up stale snapshots for all topics and partitions");
-
-        snapshotTimestamps.forEach((topicName, partitionMap) -> {
-          if (partitionMap != null) {
-            Set<Integer> partitionIds = new HashSet<>(partitionMap.keySet());
-
-            partitionIds.forEach(partitionId -> {
-              if (partitionMap.containsKey(partitionId)) {
-                cleanupOutOfRetentionSnapshot(topicName, partitionId);
-              }
-            });
+        try {
+          if (snapshotTimestamps.isEmpty()) {
+            LOGGER.info(
+                "No snapshot timestamps found, skipping cleanup of stale snapshots for all topics and partitions.");
+            return;
           }
-        });
 
-        LOGGER.info("Finished cleaning up stale snapshots for all topics and partitions");
+          LOGGER.info("Start cleaning up stale snapshots for all topics and partitions");
+          Iterator<String> topicIterator = new HashSet<>(snapshotTimestamps.keySet()).iterator();
+
+          while (topicIterator.hasNext()) {
+            String topicName = topicIterator.next();
+            VeniceConcurrentHashMap<Integer, Long> partitionMap = snapshotTimestamps.get(topicName);
+            if (partitionMap == null) {
+              continue;
+            }
+
+            Iterator<Integer> partitionIterator = new HashSet<>(partitionMap.keySet()).iterator();
+            while (partitionIterator.hasNext()) {
+              Integer partitionId = partitionIterator.next();
+              try {
+                cleanupOutOfRetentionSnapshot(topicName, partitionId);
+              } catch (Exception e) {
+                LOGGER.error("Error during scheduled cleanup for topic {} partition {}", topicName, partitionId, e);
+              }
+            }
+          }
+          LOGGER.info("Finished cleaning up stale snapshots for all topics and partitions");
+        } catch (Exception e) {
+          LOGGER.error("Error during scheduled cleanup of stale snapshots for all topics and partitions", e);
+        }
       }, 0, snapshotCleanupIntervalInMins, TimeUnit.MINUTES);
     }
   }

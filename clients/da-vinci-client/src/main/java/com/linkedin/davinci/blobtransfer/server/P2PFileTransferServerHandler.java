@@ -40,6 +40,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.URI;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -76,6 +77,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
    */
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest httpRequest) throws Exception {
+    AtomicBoolean successCountedAsActiveCurrentUser = new AtomicBoolean(false);
     // validation
     if (!httpRequest.decoderResult().isSuccess()) {
       setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, "Request decoding failed".getBytes(), false, ctx);
@@ -109,7 +111,8 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         }
 
         try {
-          transferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferRequest);
+          transferPartitionMetadata =
+              blobSnapshotManager.getTransferMetadata(blobTransferRequest, successCountedAsActiveCurrentUser);
         } catch (Exception e) {
           setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
           return;
@@ -169,7 +172,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         }
       });
     } finally {
-      if (blobTransferRequest != null) {
+      if (blobTransferRequest != null && successCountedAsActiveCurrentUser.get()) {
         blobSnapshotManager.decreaseConcurrentUserCount(blobTransferRequest);
       }
     }
