@@ -96,7 +96,7 @@ public class DaVinciClientRecordTransformerTest {
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
 
-  @BeforeClass(alwaysRun = true)
+  @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties clusterConfig = new Properties();
@@ -116,7 +116,7 @@ public class DaVinciClientRecordTransformerTest {
     D2ClientUtils.startClient(d2Client);
   }
 
-  @AfterClass(alwaysRun = true)
+  @AfterClass
   public void cleanUp() {
     if (d2Client != null) {
       D2ClientUtils.shutdownClient(d2Client);

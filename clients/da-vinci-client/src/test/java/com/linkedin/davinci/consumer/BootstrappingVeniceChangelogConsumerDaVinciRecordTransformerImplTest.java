@@ -15,6 +15,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -41,6 +42,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
@@ -295,6 +297,25 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   }
 
   @Test
+  public void testCompletableFutureFromStartException() {
+    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+
+    CompletableFuture startCompletableFuture = bootstrappingVeniceChangelogConsumer.start();
+    recordTransformer.onStartVersionIngestion(true);
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      verify(mockDaVinciClient).subscribe(partitionSet);
+      assertFalse(startCompletableFuture.isDone());
+    });
+    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+
+    daVinciClientSubscribeFuture.completeExceptionally(new VeniceException("Test exception"));
+    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
+
+    assertThrows(ExecutionException.class, startCompletableFuture::get);
+  }
+
+  @Test
   public void testTransformResult() {
     int value = 2;
     int partitionId = 0;
@@ -429,31 +450,6 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       assertTrue(bootstrappingVeniceChangelogConsumer.isCaughtUp());
     });
-  }
-
-  @Test
-  public void testIsCaughtUpException() {
-    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
-
-    CompletableFuture startCompletableFuture = bootstrappingVeniceChangelogConsumer.start();
-    recordTransformer.onStartVersionIngestion(true);
-
-    // Add records for all but 1 partition to complete the start future, but to not complete the subscribe future.
-    for (int partitionId = 0; partitionId < PARTITION_COUNT - 1; partitionId++) {
-      recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
-    }
-
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      verify(mockDaVinciClient).subscribe(partitionSet);
-      assertTrue(startCompletableFuture.isDone());
-    });
-    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
-
-    // Add record for last partition
-    recordTransformer.processPut(keys.get(PARTITION_COUNT - 1), lazyValue, PARTITION_COUNT - 1);
-
-    daVinciClientSubscribeFuture.completeExceptionally(new VeniceException("Test exception"));
-    assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
   }
 
   private void verifyPuts(int value) {

@@ -265,7 +265,7 @@ public class TestBootstrappingChangelogConsumer {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT * 3)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testVeniceChangelogConsumerDaVinciRecordTransformerImpl() throws Exception {
     String storeName = Utils.getUniqueString("store");
     boolean useSpecificRecord = false;

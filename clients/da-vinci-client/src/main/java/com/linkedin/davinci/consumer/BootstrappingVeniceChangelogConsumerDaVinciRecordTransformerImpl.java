@@ -81,7 +81,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private final ApacheKafkaOffsetPosition placeHolderOffset = ApacheKafkaOffsetPosition.of(0);
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
-  private AtomicBoolean isCaughtUp = new AtomicBoolean(false);
+  private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
 
   public BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl(ChangelogClientConfig changelogClientConfig) {
     this.changelogClientConfig = changelogClientConfig;
@@ -122,27 +122,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     internalStart();
     subscribedPartitions.addAll(partitions);
 
-    /*
-     * Avoid waiting on the CompletableFuture to prevent a circular dependency.
-     * When subscribe is called, DVRT scans the entire storage engine and fills pubSubMessages.
-     * Because pubSubMessages has limited capacity, blocking on the CompletableFuture
-     * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
-     * will wait forever for capacity to become available. This leads to a deadlock.
-     */
-    daVinciClient.subscribe(partitions).whenComplete((result, error) -> {
-      if (error != null) {
-        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", partitions, storeName, error);
-        throw new VeniceException(error);
-      }
-
-      isCaughtUp.set(true);
-      LOGGER.info(
-          "BootstrappingVeniceChangelogConsumer is caught up for store: {} for partitions: {}",
-          storeName,
-          partitions);
-    });
-
-    return CompletableFuture.supplyAsync(() -> {
+    CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
       try {
         /*
          * When this latch gets released, this means there's at least one message in pubSubMessages. So when the user
@@ -157,6 +137,29 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       }
       return null;
     }, completableFutureThreadPool);
+
+    /*
+     * Avoid waiting on the CompletableFuture to prevent a circular dependency.
+     * When subscribe is called, DVRT scans the entire storage engine and fills pubSubMessages.
+     * Because pubSubMessages has limited capacity, blocking on the CompletableFuture
+     * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
+     * will wait forever for capacity to become available. This leads to a deadlock.
+     */
+    daVinciClient.subscribe(partitions).whenComplete((result, error) -> {
+      if (error != null) {
+        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", partitions, storeName, error);
+        startFuture.completeExceptionally(new VeniceException(error));
+        return;
+      }
+
+      isCaughtUp.set(true);
+      LOGGER.info(
+          "BootstrappingVeniceChangelogConsumer is caught up for store: {} for partitions: {}",
+          storeName,
+          partitions);
+    });
+
+    return startFuture;
   }
 
   @Override
