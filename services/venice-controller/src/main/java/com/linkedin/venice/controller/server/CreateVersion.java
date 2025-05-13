@@ -810,6 +810,12 @@ public class CreateVersion extends AbstractRoute {
               storeName,
               clusterName);
           admin.writeEndOfPush(clusterName, storeName, versionNumber, true);
+        } else {
+          LOGGER.info(
+              "Empty push job: {} for store: {} in cluster: {} is a duplicate empty push. No new version was created and no SOP/EOP was sent again.",
+              pushJobId,
+              storeName,
+              clusterName);
         }
 
         /** TODO: Poll {@link com.linkedin.venice.controller.VeniceParentHelixAdmin#getOffLineJobStatus(String, String, Map, TopicManager)} until it is terminal... */
