@@ -92,7 +92,7 @@ public class VenicePropertiesTest {
   public void testGetOrDefaultString() {
     Map<CharSequence, CharSequence> props = new HashMap<>();
     props.put("Foo", "bar");
-    VeniceProperties veniceProperties = new VeniceProperties(props);
+    VeniceProperties veniceProperties = VeniceProperties.fromCharSequenceMap(props);
 
     assertEquals(veniceProperties.getOrDefault("Foo", "yuck"), "bar");
     assertEquals(veniceProperties.getOrDefault("Bar", "Foo"), "Foo");
