@@ -40,7 +40,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -173,7 +172,8 @@ public class VeniceOpenTelemetryMetricsRepository {
    * 2. If we don't configure exponential histogram aggregation for every histogram: it could lead to observability miss
    */
   private void setExponentialHistogramAggregation(SdkMeterProviderBuilder builder, VeniceMetricsConfig metricsConfig) {
-    List<String> metricNames = new ArrayList<>();
+    // Set to keep track of all unique metric names which are of type HISTOGRAM
+    Set<String> metricNames = new HashSet<>();
 
     Collection<MetricEntity> metricEntities = metricsConfig.getMetricEntities();
     if (metricEntities == null || metricsConfig.getMetricEntities().isEmpty()) {
@@ -181,17 +181,9 @@ public class VeniceOpenTelemetryMetricsRepository {
           "metricEntities cannot be empty if exponential Histogram is enabled, List all the metrics used in this service using setMetricEntities method");
     }
 
-    // find all the unique metric names which are of type HISTOGRAM: passing in the same name
-    // multiple times will result in the same metric being registered multiple times.
-    // ModuleMetricEntityInterface#getUniqueMetricEntities method will take care of this if used,
-    // this is an additional check to cases that doesn't use that method.
-    Set<String> uniqueMetricNamesSet = new HashSet<>();
     for (MetricEntity metricEntity: metricsConfig.getMetricEntities()) {
       if (metricEntity.getMetricType() == MetricType.HISTOGRAM) {
-        String fullMetricName = getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName());
-        if (uniqueMetricNamesSet.add(fullMetricName)) {
-          metricNames.add(fullMetricName);
-        }
+        metricNames.add(getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName()));
       }
     }
 
