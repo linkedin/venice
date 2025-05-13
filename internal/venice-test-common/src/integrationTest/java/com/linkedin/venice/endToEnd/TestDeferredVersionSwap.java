@@ -591,6 +591,7 @@ public class TestDeferredVersionSwap {
     }
 
     verifyThatPushStatusStoreIsOnline(storeName);
+    verifyThatMetaStoreIsOnline(storeName);
 
     // Create dvc client in target region
     List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
@@ -727,6 +728,7 @@ public class TestDeferredVersionSwap {
     }
 
     verifyThatPushStatusStoreIsOnline(storeName);
+    verifyThatMetaStoreIsOnline(storeName);
 
     // Create dvc client in target region
     List<VeniceMultiClusterWrapper> childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
@@ -808,6 +810,19 @@ public class TestDeferredVersionSwap {
         StoreResponse storeResponse = childControllerClient.getStore(pushStatusStoreName);
         Assert.assertFalse(storeResponse.isError());
         Assert.assertTrue(storeResponse.getStore().getCurrentVersion() > 0, pushStatusStoreName + " is not ready");
+      });
+    }
+  }
+
+  private void verifyThatMetaStoreIsOnline(String storeName) {
+    for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+      String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+      ControllerClient childControllerClient =
+          new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = childControllerClient.getStore(metaStoreName);
+        Assert.assertFalse(storeResponse.isError());
+        Assert.assertTrue(storeResponse.getStore().getCurrentVersion() > 0, metaStoreName + " is not ready");
       });
     }
   }
