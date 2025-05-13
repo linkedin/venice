@@ -42,7 +42,7 @@ public class InMemoryKafkaBroker {
    * @return the offset of the produced message
    * @throws IllegalArgumentException if the topic or partition does not exist.
    */
-  public long produce(String topicName, int partition, InMemoryKafkaMessage message) {
+  public InMemoryPubSubPosition produce(String topicName, int partition, InMemoryKafkaMessage message) {
     InMemoryKafkaTopic topic = getTopic(topicName);
     return topic.produce(partition, message);
   }

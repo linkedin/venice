@@ -8,11 +8,10 @@ import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
+import static com.linkedin.davinci.kafka.consumer.LeaderProducedRecordContext.NO_UPSTREAM_POSITION;
 import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
-import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
@@ -4037,10 +4036,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // except
     // as needed in integration test.
     if (purgeTransientRecordBuffer && isTransientRecordBufferUsed(partitionConsumptionState)
-        && leaderProducedRecordContext != null && leaderProducedRecordContext.getConsumedOffset() != -1) {
+        && leaderProducedRecordContext != null
+        && leaderProducedRecordContext.getConsumedPosition() != NO_UPSTREAM_POSITION) {
       partitionConsumptionState.mayRemoveTransientRecord(
           leaderProducedRecordContext.getConsumedKafkaClusterId(),
-          leaderProducedRecordContext.getConsumedOffset(),
+          leaderProducedRecordContext.getConsumedPosition(),
           kafkaKey.getKey());
     }
 

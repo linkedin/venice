@@ -4132,8 +4132,8 @@ public abstract class StoreIngestionTaskTest {
 
     final int batchMessagesNum = 100;
     final List<Long> resubscriptionOffsetForLocalVT = Arrays.asList(30L, 70L);
-    final List<Long> resubscriptionOffsetForLocalRT = Arrays.asList(40L);
-    final List<Long> resubscriptionOffsetForRemoteRT = Arrays.asList(50L);
+    final List<Long> resubscriptionOffsetForLocalRT = Collections.singletonList(40L);
+    final List<Long> resubscriptionOffsetForRemoteRT = Collections.singletonList(50L);
 
     // Prepare resubscription number to be verified after ingestion.
     int totalResubscriptionTriggered = resubscriptionOffsetForLocalVT.size() + resubscriptionOffsetForLocalRT.size()
@@ -4965,6 +4965,7 @@ public abstract class StoreIngestionTaskTest {
     when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
     when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
     when(leaderProducedRecordContext.getKeyBytes()).thenReturn(putKeyFoo);
+    when(leaderProducedRecordContext.getConsumedPosition()).thenReturn(mockedPubSubPosition);
 
     Schema myKeySchema = Schema.create(Schema.Type.INT);
     SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
