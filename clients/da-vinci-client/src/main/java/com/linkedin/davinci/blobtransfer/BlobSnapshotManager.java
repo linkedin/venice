@@ -12,11 +12,14 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.nio.ByteBuffer;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -35,7 +38,7 @@ public class BlobSnapshotManager {
       AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
   private final static int DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN = 30;
   public final static int DEFAULT_MAX_CONCURRENT_USERS = 5;
-  public final static int DEFAULT_SNAPSHOT_CLEANUP_INTERVAL_IN_HOURS = 2;
+  public final static int DEFAULT_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS = 120;
 
   // A map to keep track of the number of hosts using a snapshot for a particular topic and partition, use to restrict
   // concurrent user count
@@ -52,13 +55,13 @@ public class BlobSnapshotManager {
 
   // Locks for coordinating access to each snapshot
   // Example: <topicName, <partitionId, lock>>
-  private VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<Integer, ReentrantLock>> snapshotAccessLocks;
+  private VeniceConcurrentHashMap<String, SparseConcurrentList<ReentrantLock>> snapshotAccessLocks;
 
   private final StorageEngineRepository storageEngineRepository;
   private final StorageMetadataService storageMetadataService;
   private final int maxConcurrentUsers;
   private final long snapshotRetentionTimeInMillis;
-  private final int snapshotCleanupIntervalInHours;
+  private final int snapshotCleanupIntervalInMins;
   private final BlobTransferUtils.BlobTransferTableFormat blobTransferTableFormat;
   private final ScheduledExecutorService snapshotCleanupScheduler;
 
@@ -71,13 +74,13 @@ public class BlobSnapshotManager {
       int maxConcurrentUsers,
       int snapshotRetentionTimeInMin,
       BlobTransferUtils.BlobTransferTableFormat transferTableFormat,
-      int snapshotCleanupIntervalInHours) {
+      int snapshotCleanupIntervalInMins) {
     this.storageEngineRepository = storageEngineRepository;
     this.storageMetadataService = storageMetadataService;
     this.maxConcurrentUsers = maxConcurrentUsers;
     this.snapshotRetentionTimeInMillis = TimeUnit.MINUTES.toMillis(snapshotRetentionTimeInMin);
     this.blobTransferTableFormat = transferTableFormat;
-    this.snapshotCleanupIntervalInHours = snapshotCleanupIntervalInHours;
+    this.snapshotCleanupIntervalInMins = snapshotCleanupIntervalInMins;
 
     this.concurrentSnapshotUsers = new VeniceConcurrentHashMap<>();
     this.snapshotTimestamps = new VeniceConcurrentHashMap<>();
@@ -105,7 +108,7 @@ public class BlobSnapshotManager {
         DEFAULT_MAX_CONCURRENT_USERS,
         DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN,
         BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
-        DEFAULT_SNAPSHOT_CLEANUP_INTERVAL_IN_HOURS);
+        DEFAULT_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS);
   }
 
   /**
@@ -353,7 +356,7 @@ public class BlobSnapshotManager {
    * Get the lock for a particular topic and partition
    */
   private ReentrantLock getSnapshotLock(String topicName, int partitionId) {
-    return snapshotAccessLocks.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>())
+    return snapshotAccessLocks.computeIfAbsent(topicName, k -> new SparseConcurrentList<>())
         .computeIfAbsent(partitionId, p -> new ReentrantLock());
   }
 
@@ -374,7 +377,13 @@ public class BlobSnapshotManager {
     removePartitionEntry(snapshotTimestamps, topicName, partitionId);
     removePartitionEntry(snapshotMetadataRecords, topicName, partitionId);
     removePartitionEntry(concurrentSnapshotUsers, topicName, partitionId);
-    removePartitionEntry(snapshotAccessLocks, topicName, partitionId);
+    SparseConcurrentList<ReentrantLock> lockList = snapshotAccessLocks.get(topicName);
+    if (lockList != null) {
+      lockList.remove(partitionId);
+      if (lockList.isEmpty()) {
+        snapshotAccessLocks.remove(topicName);
+      }
+    }
   }
 
   /**
@@ -424,29 +433,22 @@ public class BlobSnapshotManager {
           return;
         }
 
-        // deep copy the snapshotTimestamps map to avoid concurrent modification while iterating
-        VeniceConcurrentHashMap<String, VeniceConcurrentHashMap<Integer, Long>> snapshotTimestampsCopy =
-            new VeniceConcurrentHashMap<>();
-        for (Map.Entry<String, VeniceConcurrentHashMap<Integer, Long>> entry: snapshotTimestamps.entrySet()) {
-          String topicName = entry.getKey();
-          VeniceConcurrentHashMap<Integer, Long> partitionMap = new VeniceConcurrentHashMap<>();
-          for (Map.Entry<Integer, Long> partitionEntry: entry.getValue().entrySet()) {
-            partitionMap.put(partitionEntry.getKey(), partitionEntry.getValue());
-          }
-          snapshotTimestampsCopy.put(topicName, partitionMap);
-        }
-
         LOGGER.info("Start cleaning up stale snapshots for all topics and partitions");
-        for (Map.Entry<String, VeniceConcurrentHashMap<Integer, Long>> entry: snapshotTimestampsCopy.entrySet()) {
-          String topicName = entry.getKey();
-          VeniceConcurrentHashMap<Integer, Long> partitionMap = entry.getValue();
-          for (Map.Entry<Integer, Long> partitionEntry: partitionMap.entrySet()) {
-            int partitionId = partitionEntry.getKey();
-            cleanupOutOfRetentionSnapshot(topicName, partitionId);
+
+        snapshotTimestamps.forEach((topicName, partitionMap) -> {
+          if (partitionMap != null) {
+            Set<Integer> partitionIds = new HashSet<>(partitionMap.keySet());
+
+            partitionIds.forEach(partitionId -> {
+              if (partitionMap.containsKey(partitionId)) {
+                cleanupOutOfRetentionSnapshot(topicName, partitionId);
+              }
+            });
           }
-        }
+        });
+
         LOGGER.info("Finished cleaning up stale snapshots for all topics and partitions");
-      }, 0, snapshotCleanupIntervalInHours, TimeUnit.HOURS);
+      }, 0, snapshotCleanupIntervalInMins, TimeUnit.MINUTES);
     }
   }
 

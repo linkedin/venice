@@ -114,7 +114,7 @@ public class BlobTransferManagerBuilder {
           blobTransferConfig.getMaxConcurrentSnapshotUser(),
           blobTransferConfig.getSnapshotRetentionTimeInMin(),
           blobTransferConfig.getTransferSnapshotTableFormat(),
-          blobTransferConfig.getSnapshotCleanupIntervalInHours());
+          blobTransferConfig.getSnapshotCleanupIntervalInMins());
 
       BlobTransferManager<Void> blobTransferManager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(

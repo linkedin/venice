@@ -1976,10 +1976,10 @@ public class ConfigKeys {
   public static final String BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC =
       "blob.transfer.service.write.limit.bytes.per.sec";
 
-  // This is the cleanup interval in hours for the blob transfer snapshot. Every interval, the snapshot will be cleaned
+  // This is the cleanup interval in mins for the blob transfer snapshot. Every interval, the snapshot will be cleaned
   // up.
-  public static final String BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_HOURS =
-      "blob.transfer.snapshot.cleanup.interval.in.hours";
+  public static final String BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS =
+      "blob.transfer.snapshot.cleanup.interval.in.mins";
 
   // Enable ssl for the blob transfer
   public static final String BLOB_TRANSFER_SSL_ENABLED = "blob.transfer.ssl.enabled";
