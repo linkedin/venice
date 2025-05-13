@@ -56,6 +56,7 @@ public class NettyFileTransferClient {
   private final String baseDir;
   private final int serverPort;
   private final int peersConnectivityFreshnessInSeconds; // the freshness of the peers connectivity records
+  private final int blobReceiveTimeoutInMin; // the timeout for blob receive in minutes in client side
   private StorageMetadataService storageMetadataService;
   private final ExecutorService hostConnectExecutorService;
   private final ScheduledExecutorService connectTimeoutScheduler;
@@ -73,12 +74,14 @@ public class NettyFileTransferClient {
       String baseDir,
       StorageMetadataService storageMetadataService,
       int peersConnectivityFreshnessInSeconds,
+      int blobReceiveTimeoutInMin,
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
       Optional<SSLFactory> sslFactory) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
     this.storageMetadataService = storageMetadataService;
     this.peersConnectivityFreshnessInSeconds = peersConnectivityFreshnessInSeconds;
+    this.blobReceiveTimeoutInMin = blobReceiveTimeoutInMin;
 
     clientBootstrap = new Bootstrap();
     workerGroup = new NioEventLoopGroup();
@@ -292,9 +295,12 @@ public class NettyFileTransferClient {
               .completeExceptionally(
                   new TimeoutException(
                       "Request timed out for store " + storeName + " version " + version + " partition " + partition
-                          + " table format " + requestedTableFormat + " from host " + host));
+                          + " table format " + requestedTableFormat + " from host " + host + " in "
+                          + blobReceiveTimeoutInMin + " minutes."));
+          // Close the channel if the request times out
+          ch.close();
         }
-      }, REQUEST_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
+      }, blobReceiveTimeoutInMin, TimeUnit.MINUTES);
     } catch (Exception e) {
       if (!inputStream.toCompletableFuture().isCompletedExceptionally()) {
         inputStream.toCompletableFuture().completeExceptionally(e);

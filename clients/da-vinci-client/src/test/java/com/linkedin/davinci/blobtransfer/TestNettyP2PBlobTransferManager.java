@@ -127,6 +127,7 @@ public class TestNettyP2PBlobTransferManager {
             tmpPartitionDir.toString(),
             storageMetadataService,
             30,
+            30,
             globalChannelTrafficShapingHandler,
             sslFactory));
     finder = mock(BlobFinder.class);

@@ -144,7 +144,7 @@ public class BlobSnapshotManagerTest {
       blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
     } catch (VeniceException e) {
       String errorMessage = String.format(
-          "Exceeded the maximum number of concurrent users %d for topic %s partition %d",
+          "Exceeded the maximum number of concurrent users %d, request for topic %s partition %d can not be served anymore",
           BlobSnapshotManager.DEFAULT_MAX_CONCURRENT_USERS,
           TOPIC_NAME,
           PARTITION_ID);
