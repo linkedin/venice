@@ -48,6 +48,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.http.HttpStatus;
@@ -781,9 +782,19 @@ public class CreateVersion extends AbstractRoute {
         String pushJobId = request.queryParams(PUSH_JOB_ID);
         int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
+
+        Store store = admin.getStore(clusterName, storeName);
+        if (store == null) {
+          LOGGER.error(
+              "Request to empty push with job id: {} for store: {} in cluster: {} is rejected as no store found",
+              pushJobId,
+              storeName,
+              clusterName);
+          throw new VeniceNoStoreException(storeName, clusterName);
+        }
+        Set<Version> previousVersions = new HashSet<>(store.getVersions());
         version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
         int versionNumber = version.getNumber();
-
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         responseObject.setVersion(versionNumber);
@@ -792,7 +803,14 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setKafkaTopic(version.kafkaTopicName());
         responseObject.setKafkaBootstrapServers(version.getPushStreamSourceAddress());
 
-        admin.writeEndOfPush(clusterName, storeName, versionNumber, true);
+        if (!previousVersions.contains(version)) {
+          LOGGER.info(
+              "Sending SOP and EOP for empty push job: {} for store: {} in cluster: {}",
+              pushJobId,
+              storeName,
+              clusterName);
+          admin.writeEndOfPush(clusterName, storeName, versionNumber, true);
+        }
 
         /** TODO: Poll {@link com.linkedin.venice.controller.VeniceParentHelixAdmin#getOffLineJobStatus(String, String, Map, TopicManager)} until it is terminal... */
 
