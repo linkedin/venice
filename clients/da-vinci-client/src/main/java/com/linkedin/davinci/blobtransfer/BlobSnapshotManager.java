@@ -430,6 +430,8 @@ public class BlobSnapshotManager {
     if (snapshotCleanupScheduler != null) {
       snapshotCleanupScheduler.scheduleAtFixedRate(() -> {
         if (snapshotTimestamps.isEmpty()) {
+          LOGGER
+              .info("No snapshot timestamps found, skipping cleanup of stale snapshots for all topics and partitions.");
           return;
         }
 
