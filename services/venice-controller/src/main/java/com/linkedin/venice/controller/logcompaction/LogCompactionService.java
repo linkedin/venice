@@ -106,8 +106,8 @@ public class LogCompactionService extends AbstractVeniceService {
       for (String clusterName: clusters) {
         for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
           try {
-            RepushJobResponse response =
-                admin.repushStore(new RepushJobRequest(storeInfo.getName(), RepushJobRequest.SCHEDULED_TRIGGER));
+            RepushJobResponse response = admin.repushStore(
+                new RepushJobRequest(clusterName, storeInfo.getName(), RepushJobRequest.SCHEDULED_TRIGGER));
             LOGGER.info(
                 "log compaction triggered for cluster: {} store: {} | execution ID: {}",
                 clusterName,

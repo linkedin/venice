@@ -109,8 +109,10 @@ public class TestCompactionManager {
     when(mockRepushOrchestrator.repush(any())).thenReturn(null);
 
     // Create a RepushJobRequest
-    RepushJobRequest repushJobRequest =
-        new RepushJobRequest(Utils.getUniqueString("store"), RepushJobRequest.MANUAL_TRIGGER);
+    RepushJobRequest repushJobRequest = new RepushJobRequest(
+        Utils.getUniqueString("cluster"),
+        Utils.getUniqueString("store"),
+        RepushJobRequest.MANUAL_TRIGGER);
 
     // Call the repushStore method and expect a VeniceException
     testCompactionManager.repushStore(repushJobRequest);
