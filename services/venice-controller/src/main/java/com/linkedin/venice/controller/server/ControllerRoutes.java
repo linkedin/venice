@@ -258,7 +258,7 @@ public class ControllerRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         String clusterName = request.queryParams(CLUSTER);
-        String currentUrl = getRequestURL(request, false);
+        String currentUrl = getRequestURL(request);
 
         responseObject.setCluster(clusterName);
         Map<String, Long> controllerUrlToVersionMap = admin.getAdminOperationVersionFromControllers(clusterName);

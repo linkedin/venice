@@ -55,7 +55,7 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     LOGGER.info("Starting {}", getClass().getSimpleName());
-    executor.scheduleAtFixedRate(getRunnableTask(), 0, sleepIntervalInMs, TimeUnit.MILLISECONDS);
+    executor.scheduleAtFixedRate(getRunnableTask(), sleepIntervalInMs, sleepIntervalInMs, TimeUnit.MILLISECONDS);
     return true;
   }
 
