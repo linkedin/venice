@@ -37,6 +37,9 @@ public enum VeniceMetricsDimensions {
   /** {@link JobRunStatus} */
   JOB_EXECUTION_STATUS("job.execution.status"),
 
+  /** {@link RepushStoreTriggerSource} */
+  REPUSH_STORE_TRIGGER_SOURCE("repush.store.trigger.source"),
+
   /** {@link LogCompactionSelectionReason} */
   LOG_COMPACTION_SELECTION_REASON("log.compaction.selection.reason");
 

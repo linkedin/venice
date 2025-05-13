@@ -1028,13 +1028,13 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, RepushJobResponse veniceResponse) {
         AdminSparkServer.validateParams(request, REPUSH_STORE.getParams(), admin);
-        String cluster = request.queryParams(CLUSTER);
+        String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(STORE_NAME);
         String sourceRegion = request.queryParamOrDefault(SOURCE_REGION, null);
         try {
           veniceResponse.copyValueOf(
               admin.repushStore(
-                  new RepushJobRequest(cluster, storeName, sourceRegion, RepushJobRequest.MANUAL_TRIGGER)));
+                  new RepushJobRequest(clusterName, storeName, sourceRegion, RepushJobRequest.MANUAL_TRIGGER)));
         } catch (Exception e) {
           veniceResponse.setError("Failed to compact store: " + storeName, e);
         }

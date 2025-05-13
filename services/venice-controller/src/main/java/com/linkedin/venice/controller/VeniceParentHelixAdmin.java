@@ -232,6 +232,7 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -5241,7 +5242,13 @@ public class VeniceParentHelixAdmin implements Admin {
     // But when that day comes that we implement that kind of behavior dichotomy, we should code here that either honors
     // what's been passed in (parent getting a request for a repush in a child colo should forward that along) OR the
     // parent should just abort the request and return an error.
-    return veniceHelixAdmin.repushStore(repushJobRequest);
+    RepushJobResponse response = veniceHelixAdmin.repushStore(repushJobRequest);
+    logCompactionStatsMap.get(repushJobRequest.getClusterName())
+        .recordRepushStoreCall(
+            repushJobRequest.getStoreName(),
+            repushJobRequest.getTriggerSource(),
+            response.isError() ? VeniceResponseStatusCategory.FAIL : VeniceResponseStatusCategory.SUCCESS);
+    return response;
   }
 
   @Override

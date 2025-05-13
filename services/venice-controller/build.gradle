@@ -34,6 +34,7 @@ dependencies {
 
   implementation project(':internal:venice-common')
   implementation project(':clients:venice-thin-client')
+  implementation project(':internal:venice-client-common')
 
   implementation libraries.commonsIo
   implementation libraries.fastUtil
