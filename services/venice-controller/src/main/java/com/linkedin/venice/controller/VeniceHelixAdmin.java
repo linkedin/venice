@@ -7791,7 +7791,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * Get the admin operation protocol versions from controllers (leader + standby) for specific cluster.
    * @param clusterName: the cluster name
-   * @return map (controllerUrl: version). Example: {http://localhost:1234=1, http://localhost:1235=1}*/
+   * @return map (controllerUrl(http): version). Example: {http://localhost:1234=1, http://localhost:1235=1}*/
   @Override
   public Map<String, Long> getAdminOperationVersionFromControllers(String clusterName) {
     checkControllerLeadershipFor(clusterName);

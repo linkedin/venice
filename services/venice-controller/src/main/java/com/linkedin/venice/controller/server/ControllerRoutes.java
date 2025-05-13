@@ -258,7 +258,7 @@ public class ControllerRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         String clusterName = request.queryParams(CLUSTER);
-        String currentUrl = getRequestURL(request);
+        String currentUrl = getRequestURL(request, false);
 
         responseObject.setCluster(clusterName);
         Map<String, Long> controllerUrlToVersionMap = admin.getAdminOperationVersionFromControllers(clusterName);
@@ -302,16 +302,16 @@ public class ControllerRoutes extends AbstractRoute {
   }
 
   /**
-   * Get the request base URL from the request object.
+   * Get the request base URL from the request object with HTTP as protocol.
    * Example:
    * request.url() = https://localhost:8080/venice/cluster/clusterName/leaderController?param1=value1&param2=value2
-   * base URL: https://localhost:8080
-   * @return the base URL
+   * base URL with https: https://localhost:8080
+   * @return the base URL with http http://localhost:8080
    */
   private String getRequestURL(Request request) {
     try {
       URL url = new URL(request.url());
-      return url.getProtocol() + "://" + url.getHost() + (url.getPort() != -1 ? ":" + url.getPort() : "");
+      return HttpConstants.HTTP + "://" + url.getHost() + (url.getPort() != -1 ? ":" + url.getPort() : "");
     } catch (Exception e) {
       throw new VeniceException("Invalid URL: " + request.url(), e);
     }
