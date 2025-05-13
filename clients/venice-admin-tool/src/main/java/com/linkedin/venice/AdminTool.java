@@ -879,6 +879,8 @@ public class AdminTool {
     String checkpointFile = getRequiredArgument(cmd, Arg.CHECKPOINT_FILE, Command.CLUSTER_BATCH_TASK);
     int parallelism = Integer.parseInt(getOptionalArgument(cmd, Arg.THREAD_COUNT, "1"));
     String storeFilterFile = getOptionalArgument(cmd, Arg.STORE_FILTER_FILE, "");
+    int kafkaTopicMinISR = Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA));
+    int kafkaTopicRtMinISR = Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_RT_TOPICS_MIN_IN_SYNC_REPLICAS));
     Set<String> interestedStoresSet = new HashSet<>();
     LOGGER.info(
         "[**** Cluster Command Params ****] Cluster: {}, Task: {}, Checkpoint: {}, Parallelism: {}, Store filter: {}",
@@ -970,7 +972,8 @@ public class AdminTool {
               clusterName,
               systemStoreType == null ? Optional.empty() : Optional.of(systemStoreType)));
     } else if (BackfillMinIsrTask.TASK_NAME.equals(task)) {
-      System.out.println(functionSupplier = () -> new BackfillMinIsrTask(controllerClientMap));
+      System.out.println(
+          functionSupplier = () -> new BackfillMinIsrTask(controllerClientMap, kafkaTopicMinISR, kafkaTopicRtMinISR));
     } else {
       printErrAndExit("Undefined task: " + task);
     }

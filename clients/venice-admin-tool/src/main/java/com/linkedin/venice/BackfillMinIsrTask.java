@@ -1,7 +1,6 @@
 package com.linkedin.venice;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -20,9 +19,13 @@ public class BackfillMinIsrTask implements Function<String, Boolean> {
   public static final String TASK_NAME = "BackfillMinIsr";
   private static final Logger LOGGER = LogManager.getLogger(BackfillMinIsrTask.class);
   private final Map<String, ControllerClient> childControllerClientMap;
+  private final int vtMinISR;
+  private final int rtMinISR;
 
-  public BackfillMinIsrTask(Map<String, ControllerClient> controllerClientMap) {
+  public BackfillMinIsrTask(Map<String, ControllerClient> controllerClientMap, int vtMinISR, int rtMinISR) {
     this.childControllerClientMap = controllerClientMap;
+    this.vtMinISR = vtMinISR;
+    this.rtMinISR = rtMinISR;
   }
 
   private Version getCurrentVersion(ControllerClient controllerClient, String storeName) {
@@ -58,9 +61,8 @@ public class BackfillMinIsrTask implements Function<String, Boolean> {
       // Update RT min ISR
       if (version.isHybrid()) {
         String realTimeTopicName = Utils.getRealTimeTopicName(version);
-        ControllerResponse rtResponse = childControllerClient.updateKafkaTopicMinInSyncReplica(
-            realTimeTopicName,
-            Integer.parseInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS));
+        ControllerResponse rtResponse =
+            childControllerClient.updateKafkaTopicMinInSyncReplica(realTimeTopicName, rtMinISR);
 
         if (rtResponse.isError()) {
           LOGGER.warn(
@@ -73,13 +75,12 @@ public class BackfillMinIsrTask implements Function<String, Boolean> {
       }
 
       // Update VT min ISR
-      String versionTopicName = Version.composeKafkaTopic(storeName, version.getNumber());
-      ControllerResponse vtResponse = childControllerClient
-          .updateKafkaTopicMinInSyncReplica(versionTopicName, Integer.parseInt(KAFKA_MIN_IN_SYNC_REPLICAS));
+      ControllerResponse vtResponse =
+          childControllerClient.updateKafkaTopicMinInSyncReplica(version.kafkaTopicName(), vtMinISR);
       if (vtResponse.isError()) {
         LOGGER.warn(
             "Unable to update vt: {} min ISR to {} for store: {}",
-            versionTopicName,
+            version.kafkaTopicName(),
             KAFKA_MIN_IN_SYNC_REPLICAS,
             storeName);
         return false;
