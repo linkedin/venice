@@ -342,7 +342,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   /**
-   * Get maximum heartbeat lag from all regions for a given LEADER replica.
+   * Get maximum heartbeat lag from all regions (except separate RT regions) for a given LEADER replica.
    * @return Max leader heartbeat lag, or Long.MAX_VALUE if any region's heartbeat is unknown.
    */
   public long getReplicaLeaderMaxHeartbeatLag(
@@ -367,6 +367,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
      * should be able to tell us all the lag information.
      */
     for (Map.Entry<String, HeartbeatTimeStampEntry> entry: replicaTimestampMap.entrySet()) {
+      // Skip separate RT topic as it is not tracked towards replication latency goal.
+      if (Utils.isSeparateTopicRegion(entry.getKey())) {
+        continue;
+      }
       if (!entry.getValue().consumedFromUpstream) {
         if (shouldLogLag) {
           LOGGER.info(

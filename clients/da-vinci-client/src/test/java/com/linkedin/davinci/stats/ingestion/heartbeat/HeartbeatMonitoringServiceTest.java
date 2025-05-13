@@ -98,9 +98,17 @@ public class HeartbeatMonitoringServiceTest {
         .put(
             "dc-1",
             new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(10), true, true));
+    leaderMap.get(store)
+        .get(version)
+        .get(partition)
+        .put(
+            "dc-1_sep",
+            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(100), true, true));
+
     // Check valid leader lag
     long lag = heartbeatMonitoringService.getReplicaLeaderMaxHeartbeatLag(pcs, store, version, true);
     Assert.assertTrue(lag >= TimeUnit.MINUTES.toMillis(10));
+    Assert.assertTrue(lag < TimeUnit.MINUTES.toMillis(11));
     // Add unavailable region
     leaderMap.get(store)
         .get(version)
