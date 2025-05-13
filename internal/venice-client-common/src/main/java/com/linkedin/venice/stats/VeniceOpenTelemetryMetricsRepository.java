@@ -172,8 +172,7 @@ public class VeniceOpenTelemetryMetricsRepository {
    * 2. If we don't configure exponential histogram aggregation for every histogram: it could lead to observability miss
    */
   private void setExponentialHistogramAggregation(SdkMeterProviderBuilder builder, VeniceMetricsConfig metricsConfig) {
-    // Set to keep track of all unique metric names which are of type HISTOGRAM
-    Set<String> metricNames = new HashSet<>();
+    Set<String> uniqueHistogramMetricNames = new HashSet<>();
 
     Collection<MetricEntity> metricEntities = metricsConfig.getMetricEntities();
     if (metricEntities == null || metricsConfig.getMetricEntities().isEmpty()) {
@@ -183,12 +182,12 @@ public class VeniceOpenTelemetryMetricsRepository {
 
     for (MetricEntity metricEntity: metricsConfig.getMetricEntities()) {
       if (metricEntity.getMetricType() == MetricType.HISTOGRAM) {
-        metricNames.add(getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName()));
+        uniqueHistogramMetricNames.add(getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName()));
       }
     }
 
     // Register views for all MetricType.HISTOGRAM metrics to be aggregated/exported as exponential histograms
-    for (String metricName: metricNames) {
+    for (String metricName: uniqueHistogramMetricNames) {
       InstrumentSelector selector =
           InstrumentSelector.builder().setType(InstrumentType.HISTOGRAM).setName(metricName).build();
 
