@@ -124,7 +124,13 @@ public class DaVinciClientRecordTransformerTest {
     Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  /*
+   * Lower priority ensures that this test runs first. This is needed because this test fails if it doesn't go first,
+   * even when this class is set to single threaded and we recreate the resources before every test.
+   * It fails because the DVRT metrics get emitted but they're not queryable from the metrics repository. The root
+   * cause is unknown, but to mitigate for now we need this test to run first.
+   */
+  @Test(timeOut = TEST_TIMEOUT, priority = -1)
   public void testRecordTransformer() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
 

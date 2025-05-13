@@ -283,11 +283,15 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       futureRecordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
     }
+    assertFalse(startCompletableFuture.isDone());
 
     // CompletableFuture should be finished when the current version produces to the buffer
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
     }
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      assertTrue(startCompletableFuture.isDone());
+    });
   }
 
   @Test
@@ -447,6 +451,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
 
     // Add record for last partition
     recordTransformer.processPut(keys.get(PARTITION_COUNT - 1), lazyValue, PARTITION_COUNT - 1);
+
     daVinciClientSubscribeFuture.completeExceptionally(new VeniceException("Test exception"));
     assertFalse(bootstrappingVeniceChangelogConsumer.isCaughtUp());
   }
