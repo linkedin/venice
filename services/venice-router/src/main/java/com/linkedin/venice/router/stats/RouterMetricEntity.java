@@ -14,13 +14,14 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import java.util.Set;
 
 
 /**
  * List all Metric entities for router
  */
-public enum RouterMetricEntity {
+public enum RouterMetricEntity implements ModuleMetricEntityInterface {
   /**
    * Count of all requests during response handling along with response codes
    */
@@ -106,6 +107,7 @@ public enum RouterMetricEntity {
     this.metricEntity = new MetricEntity(this.name().toLowerCase(), metricType, unit, description, dimensionsList);
   }
 
+  @Override
   public MetricEntity getMetricEntity() {
     return metricEntity;
   }
