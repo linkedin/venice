@@ -26,7 +26,7 @@ public class PubSubProducerAdapterContext {
   private final String producerName;
   private final String brokerAddress;
   private final VeniceProperties veniceProperties;
-  private final PubSubSecurityProtocol securityProtocol;
+  private final PubSubSecurityProtocol pubSubSecurityProtocol;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final MetricsRepository metricsRepository;
   private final PubSubTopicRepository pubSubTopicRepository;
@@ -39,7 +39,7 @@ public class PubSubProducerAdapterContext {
     this.producerName = builder.producerName;
     this.brokerAddress = builder.brokerAddress;
     this.veniceProperties = builder.veniceProperties;
-    this.securityProtocol = builder.securityProtocol;
+    this.pubSubSecurityProtocol = builder.pubSubSecurityProtocol;
     this.metricsRepository = builder.metricsRepository;
     this.pubSubTopicRepository = builder.pubSubTopicRepository;
     this.shouldValidateProducerConfigStrictly = builder.shouldValidateProducerConfigStrictly;
@@ -61,8 +61,8 @@ public class PubSubProducerAdapterContext {
     return veniceProperties;
   }
 
-  public PubSubSecurityProtocol getSecurityProtocol() {
-    return securityProtocol;
+  public PubSubSecurityProtocol getPubSubSecurityProtocol() {
+    return pubSubSecurityProtocol;
   }
 
   public MetricsRepository getMetricsRepository() {
@@ -97,7 +97,7 @@ public class PubSubProducerAdapterContext {
     private String producerName;
     private String brokerAddress;
     private VeniceProperties veniceProperties;
-    private PubSubSecurityProtocol securityProtocol;
+    private PubSubSecurityProtocol pubSubSecurityProtocol;
     private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
     private MetricsRepository metricsRepository;
     private PubSubTopicRepository pubSubTopicRepository;
@@ -128,7 +128,7 @@ public class PubSubProducerAdapterContext {
     }
 
     public Builder setSecurityProtocol(PubSubSecurityProtocol securityProtocol) {
-      this.securityProtocol = securityProtocol;
+      this.pubSubSecurityProtocol = securityProtocol;
       return this;
     }
 
@@ -183,7 +183,9 @@ public class PubSubProducerAdapterContext {
       } else if (compressionType == null) {
         compressionType = "gzip";
       }
-
+      if (pubSubSecurityProtocol == null) {
+        pubSubSecurityProtocol = PubSubUtil.getPubSubSecurityProtocolOrDefault(veniceProperties);
+      }
       producerName = PubSubUtil.generatePubSubClientId(PubSubClientType.PRODUCER, producerName, brokerAddress);
       return new PubSubProducerAdapterContext(this);
     }

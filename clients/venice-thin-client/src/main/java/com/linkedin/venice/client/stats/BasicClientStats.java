@@ -9,6 +9,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
+import static com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface.getUniqueMetricEntities;
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
 import static org.apache.hc.core5.http.HttpStatus.SC_NOT_FOUND;
 import static org.apache.hc.core5.http.HttpStatus.SC_OK;
@@ -31,6 +32,7 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricEntityStateThreeEnums;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -44,7 +46,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 
 
@@ -53,10 +54,8 @@ import org.apache.http.HttpStatus;
  * by thin, fast and DaVinci clients.
  */
 public class BasicClientStats extends AbstractVeniceHttpStats {
-  public static final Collection<MetricEntity> CLIENT_METRIC_ENTITIES = Collections.unmodifiableList(
-      Arrays.stream(BasicClientMetricEntity.values())
-          .map(BasicClientMetricEntity::getMetricEntity)
-          .collect(Collectors.toList()));
+  public static final Collection<MetricEntity> CLIENT_METRIC_ENTITIES =
+      getUniqueMetricEntities(BasicClientMetricEntity.class);
 
   private static final String SYSTEM_STORE_NAME_PREFIX = "venice_system_store_";
 
@@ -375,7 +374,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     }
   }
 
-  public enum BasicClientMetricEntity {
+  public enum BasicClientMetricEntity implements ModuleMetricEntityInterface {
     /**
      * Count of all requests during response handling along with response codes
      */
@@ -437,6 +436,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensions);
     }
 
+    @Override
     public MetricEntity getMetricEntity() {
       return metricEntity;
     }

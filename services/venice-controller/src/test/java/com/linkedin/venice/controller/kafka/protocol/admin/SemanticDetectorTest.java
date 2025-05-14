@@ -1,6 +1,9 @@
 package com.linkedin.venice.controller.kafka.protocol.admin;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.fail;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;

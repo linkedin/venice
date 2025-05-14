@@ -73,6 +73,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CHANNEL_OPTION_WRITE_BUFFER_
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
@@ -212,7 +213,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
-import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.ConfigurationException;
@@ -637,6 +638,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       Arrays.asList(0.4D, 0.6D, 0.8D, 1.0D, 1.2D, 1.4D, 1.6D);
 
   private final boolean isParticipantMessageStoreEnabled;
+  private final long consumerPollTrackerStaleThresholdInSeconds;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -936,8 +938,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       ingestionMemoryLimitStoreSet = Collections.emptySet();
     }
 
-    divProducerStateMaxAgeMs =
-        serverProperties.getLong(DIV_PRODUCER_STATE_MAX_AGE_MS, KafkaDataIntegrityValidator.DISABLED);
+    divProducerStateMaxAgeMs = serverProperties.getLong(DIV_PRODUCER_STATE_MAX_AGE_MS, DataIntegrityValidator.DISABLED);
     pubSubClientsFactory = new PubSubClientsFactory(serverProperties);
     routerPrincipalName = serverProperties.getString(ROUTER_PRINCIPAL_NAME, "venice-router");
     ingestionTaskMaxIdleCount = serverProperties.getInt(SERVER_INGESTION_TASK_MAX_IDLE_COUNT, 10000);
@@ -1088,6 +1089,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_LOAD_CONTROLLER_MULTI_GET_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
     loadControllerComputeLatencyAcceptThresholdMs =
         serverProperties.getInt(SERVER_LOAD_CONTROLLER_COMPUTE_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
+    consumerPollTrackerStaleThresholdInSeconds = serverProperties
+        .getLong(SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS, TimeUnit.MINUTES.toSeconds(15));
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -2012,5 +2015,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getLoadControllerComputeLatencyAcceptThresholdMs() {
     return loadControllerComputeLatencyAcceptThresholdMs;
+  }
+
+  public long getConsumerPollTrackerStaleThresholdSeconds() {
+    return consumerPollTrackerStaleThresholdInSeconds;
   }
 }

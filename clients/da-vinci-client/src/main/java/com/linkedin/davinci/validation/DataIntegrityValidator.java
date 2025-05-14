@@ -17,7 +17,8 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class is a library that can validate the Kafka message during consumption, which can be used in
+ * Colloquially known as DIV (Data Integrity Validator).
+ * This class is a library that can validate the topic message during consumption, which can be used in
  * Venice-Server/Da-Vinci and ETL. In high level, it keeps track of messages produced by different producers,
  * and validates data integrity in 4 perspectives:
  * 1. Whether a segment starts from a non-zero sequence number (UNREGISTERED_PRODUCER);
@@ -25,16 +26,16 @@ import org.apache.logging.log4j.Logger;
  * 3. Whether data within a segment is corrupted (CORRUPT);
  * 4. Whether producers have produced duplicate messages, which is fine and expected due to producer retries (DUPLICATE).
  */
-public class KafkaDataIntegrityValidator {
-  private static final Logger LOGGER = LogManager.getLogger(KafkaDataIntegrityValidator.class);
+public class DataIntegrityValidator {
+  private static final Logger LOGGER = LogManager.getLogger(DataIntegrityValidator.class);
   public static final long DISABLED = -1;
-  private final long kafkaLogCompactionDelayInMs;
+  private final long logCompactionDelayInMs;
   private final long maxAgeInMs;
   /** Keeps track of every upstream producer this consumer task has seen so far for each partition. */
   protected final SparseConcurrentList<PartitionTracker> partitionTrackers = new SparseConcurrentList<>();
   protected final IntFunction<PartitionTracker> partitionTrackerCreator;
 
-  public KafkaDataIntegrityValidator(String topicName) {
+  public DataIntegrityValidator(String topicName) {
     this(topicName, DISABLED, DISABLED);
   }
 
@@ -43,19 +44,19 @@ public class KafkaDataIntegrityValidator {
    *
    * TODO: Open source the ETL or make it stop depending on an exotic open source API
    */
-  public KafkaDataIntegrityValidator(String topicName, long kafkaLogCompactionDelayInMs) {
-    this(topicName, kafkaLogCompactionDelayInMs, DISABLED);
+  public DataIntegrityValidator(String topicName, long logCompactionDelayInMs) {
+    this(topicName, logCompactionDelayInMs, DISABLED);
   }
 
-  public KafkaDataIntegrityValidator(String topicName, long kafkaLogCompactionDelayInMs, long maxAgeInMs) {
-    this.kafkaLogCompactionDelayInMs = kafkaLogCompactionDelayInMs;
+  public DataIntegrityValidator(String topicName, long logCompactionDelayInMs, long maxAgeInMs) {
+    this.logCompactionDelayInMs = logCompactionDelayInMs;
     this.maxAgeInMs = maxAgeInMs;
     this.partitionTrackerCreator = p -> new PartitionTracker(topicName, p);
     LOGGER.info(
-        "Initialized KafkaDataIntegrityValidator with topicName: {}, maxAgeInMs: {}, kafkaLogCompactionDelayInMs: {}",
+        "Initialized DataIntegrityValidator with topicName: {}, maxAgeInMs: {}, logCompactionDelayInMs: {}",
         topicName,
         maxAgeInMs,
-        kafkaLogCompactionDelayInMs);
+        logCompactionDelayInMs);
   }
 
   /** N.B.: Package-private for test purposes */
@@ -117,7 +118,7 @@ public class KafkaDataIntegrityValidator {
     }
   }
 
-  public void cloneVtProducerStates(int partition, KafkaDataIntegrityValidator newValidator) {
+  public void cloneVtProducerStates(int partition, DataIntegrityValidator newValidator) {
     PartitionTracker destPartitionTracker = newValidator.registerPartition(partition);
     registerPartition(partition).cloneVtProducerStates(destPartitionTracker);
   }
@@ -146,7 +147,7 @@ public class KafkaDataIntegrityValidator {
    * Only check for missing sequence number; segment starting from a positive sequence number is acceptable considering
    * real-time buffer replay would start in the middle of a segment; checksum is also ignored for the same reason.
    *
-   * If missing message happens for an old message that is older than the Kafka log compaction lag threshold, MISSING
+   * If missing message happens for an old message that is older than the log compaction lag threshold, MISSING
    * exception will not be thrown because it's expected that log compaction would compact old messages. However, if data
    * are fresh and missing message is detected, MISSING exception will be thrown.
    *
@@ -162,7 +163,7 @@ public class KafkaDataIntegrityValidator {
         PartitionTracker.VERSION_TOPIC,
         consumerRecord,
         errorMetricCallback,
-        this.kafkaLogCompactionDelayInMs);
+        this.logCompactionDelayInMs);
   }
 
   public void updateLatestConsumedVtOffset(int partition, long offset) {

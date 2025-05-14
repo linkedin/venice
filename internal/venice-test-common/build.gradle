@@ -217,7 +217,7 @@ def integrationTestBuckets = [
       "com.linkedin.venice.controllerapi.TestControllerClient",
       "com.linkedin.venice.endToEnd.TestAdminOperationWithPreviousVersion",
       "com.linkedin.venice.endToEnd.TestMaterializedViewEndToEnd",
-      "com.linkedin.venice.endToEnd.TestDeferredVersionSwap"
+      "com.linkedin.venice.endToEnd.TestDeferredVersionSwap*",
   ],
   "1500":[
       "com.linkedin.venice.multicluster.TestMetadataOperationInMultiCluster",

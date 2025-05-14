@@ -3,7 +3,6 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -18,20 +17,19 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.AggKafkaConsumerServiceStats;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.lang.reflect.InvocationTargetException;
@@ -523,7 +521,7 @@ public class KafkaConsumerServiceDelegatorTest {
   public void testKafkaConsumerServiceResubscriptionConcurrency() throws Exception {
     ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1);
+    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumer1);
 
     Properties properties = new Properties();
     String testKafkaUrl = "test_kafka_url";
@@ -533,10 +531,10 @@ public class KafkaConsumerServiceDelegatorTest {
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
 
     int versionNum = 5;
-    PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
-        new OptimizedKafkaValueSerializer(),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+    PubSubMessageDeserializer pubSubDeserializer = PubSubMessageDeserializer.createOptimizedDeserializer();
+    VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(mockVeniceServerConfig)
+        .getPubSubPositionTypeRegistry();
     KafkaConsumerService consumerService = new PartitionWiseKafkaConsumerService(
         ConsumerPoolType.REGULAR_POOL,
         factory,
@@ -556,7 +554,7 @@ public class KafkaConsumerServiceDelegatorTest {
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        mock(VeniceServerConfig.class));
+        mockVeniceServerConfig);
     String storeName = Utils.getUniqueString("test_consumer_service");
 
     Function<String, Boolean> isAAWCStoreFunc = vt -> true;

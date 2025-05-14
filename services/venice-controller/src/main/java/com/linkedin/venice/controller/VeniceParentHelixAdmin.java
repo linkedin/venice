@@ -5908,4 +5908,9 @@ public class VeniceParentHelixAdmin implements Admin {
   public LogContext getLogContext() {
     return getVeniceHelixAdmin().getLogContext();
   }
+
+  @Override
+  public VeniceControllerClusterConfig getControllerConfig(String clusterName) {
+    return multiClusterConfigs.getControllerConfig(clusterName);
+  }
 }

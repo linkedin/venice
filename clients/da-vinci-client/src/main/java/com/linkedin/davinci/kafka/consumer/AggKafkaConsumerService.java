@@ -21,6 +21,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
@@ -78,6 +79,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
   private final static String STUCK_CONSUMER_MSG =
       "Didn't find any suspicious ingestion task, and please contact developers to investigate it further";
+  private static final String CONSUMER_POLL_WARNING_MESSAGE_PREFIX =
+      "Consumer poll tracker found stale topic partitions for consumer service: ";
 
   private final VeniceJsonSerializer<Map<String, Map<String, TopicPartitionIngestionInfo>>> topicPartitionIngestionContextJsonSerializer =
       new VeniceJsonSerializer<>(new TypeReference<Map<String, Map<String, TopicPartitionIngestionInfo>>>() {
@@ -117,11 +120,14 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       int intervalInSeconds = serverConfig.getStuckConsumerRepairIntervalSecond();
       this.stuckConsumerRepairExecutorService.scheduleAtFixedRate(
           getStuckConsumerDetectionAndRepairRunnable(
+              LOGGER,
+              SystemTime.INSTANCE,
               kafkaServerToConsumerServiceMap,
               versionTopicStoreIngestionTaskMapping,
               TimeUnit.SECONDS.toMillis(serverConfig.getStuckConsumerDetectionRepairThresholdSecond()),
               TimeUnit.SECONDS.toMillis(serverConfig.getNonExistingTopicIngestionTaskKillThresholdSecond()),
               TimeUnit.SECONDS.toMillis(serverConfig.getNonExistingTopicCheckRetryIntervalSecond()),
+              TimeUnit.SECONDS.toMillis(serverConfig.getConsumerPollTrackerStaleThresholdSeconds()),
               new StuckConsumerRepairStats(metricsRepository),
               killIngestionTaskRunnable),
           intervalInSeconds,
@@ -154,11 +160,14 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   protected static Runnable getStuckConsumerDetectionAndRepairRunnable(
+      Logger logger,
+      Time time,
       Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap,
       Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping,
       long stuckConsumerRepairThresholdMs,
       long nonExistingTopicIngestionTaskKillThresholdMs,
       long nonExistingTopicRetryIntervalMs,
+      long consumerPollTrackerStaleThresholdMs,
       StuckConsumerRepairStats stuckConsumerRepairStats,
       Consumer<String> killIngestionTaskRunnable) {
     return () -> {
@@ -177,82 +186,113 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         long maxDelayMs = consumerService.getMaxElapsedTimeMSSinceLastPollInConsumerPool();
         if (maxDelayMs >= stuckConsumerRepairThresholdMs) {
           scanStoreIngestionTaskToFixStuckConsumer = true;
-          LOGGER.warn("Found some consumer has stuck for {} ms, will start the repairing procedure", maxDelayMs);
+          logger.warn("Found some consumer has stuck for {} ms, will start the repairing procedure", maxDelayMs);
           break;
         }
       }
-      if (!scanStoreIngestionTaskToFixStuckConsumer) {
-        return;
-      }
-      stuckConsumerRepairStats.recordStuckConsumerFound();
+      if (scanStoreIngestionTaskToFixStuckConsumer) {
+        stuckConsumerRepairStats.recordStuckConsumerFound();
 
-      /**
-       * Collect a list of SITs, whose version topic doesn't exist by checking {@link StoreIngestionTask#isProducingVersionTopicHealthy()},
-       * and this function will continue to check the version topic healthiness for a period of {@link nonExistingTopicIngestionTaskKillThresholdMs}
-       * to tolerate transient topic discovery issue.
-       */
-      Map<String, StoreIngestionTask> versionTopicIngestionTaskMappingForNonExistingTopic = new HashMap<>();
-      versionTopicStoreIngestionTaskMapping.forEach((vt, sit) -> {
-        try {
-          if (!sit.isProducingVersionTopicHealthy()) {
-            versionTopicIngestionTaskMappingForNonExistingTopic.put(vt, sit);
-            LOGGER.warn("The producing version topic:{} is not healthy", vt);
-          }
-        } catch (Exception e) {
-          LOGGER.error("Got exception while checking topic existence for version topic: {}", vt, e);
-        }
-      });
-      int maxAttempts =
-          (int) Math.ceil((double) nonExistingTopicIngestionTaskKillThresholdMs / nonExistingTopicRetryIntervalMs);
-      for (int cnt = 0; cnt < maxAttempts; ++cnt) {
-        Iterator<Map.Entry<String, StoreIngestionTask>> iterator =
-            versionTopicIngestionTaskMappingForNonExistingTopic.entrySet().iterator();
-        while (iterator.hasNext()) {
-          Map.Entry<String, StoreIngestionTask> entry = iterator.next();
-          String versionTopic = entry.getKey();
-          StoreIngestionTask sit = entry.getValue();
+        /**
+         * Collect a list of SITs, whose version topic doesn't exist by checking {@link StoreIngestionTask#isProducingVersionTopicHealthy()},
+         * and this function will continue to check the version topic healthiness for a period of {@link nonExistingTopicIngestionTaskKillThresholdMs}
+         * to tolerate transient topic discovery issue.
+         */
+        Map<String, StoreIngestionTask> versionTopicIngestionTaskMappingForNonExistingTopic = new HashMap<>();
+        versionTopicStoreIngestionTaskMapping.forEach((vt, sit) -> {
           try {
-            if (sit.isProducingVersionTopicHealthy()) {
-              /**
-               * If the version topic becomes available after retries, remove it from the tracking map.
-               */
-              iterator.remove();
-              LOGGER.info("The producing version topic:{} becomes healthy", versionTopic);
+            if (!sit.isProducingVersionTopicHealthy()) {
+              versionTopicIngestionTaskMappingForNonExistingTopic.put(vt, sit);
+              logger.warn("The producing version topic:{} is not healthy", vt);
             }
           } catch (Exception e) {
-            LOGGER.error("Got exception while checking topic existence for version topic: {}", versionTopic, e);
-          } finally {
-            Utils.sleep(nonExistingTopicRetryIntervalMs);
+            logger.error("Got exception while checking topic existence for version topic: {}", vt, e);
           }
+        });
+        int maxAttempts =
+            (int) Math.ceil((double) nonExistingTopicIngestionTaskKillThresholdMs / nonExistingTopicRetryIntervalMs);
+        for (int cnt = 0; cnt < maxAttempts; ++cnt) {
+          Iterator<Map.Entry<String, StoreIngestionTask>> iterator =
+              versionTopicIngestionTaskMappingForNonExistingTopic.entrySet().iterator();
+          while (iterator.hasNext()) {
+            Map.Entry<String, StoreIngestionTask> entry = iterator.next();
+            String versionTopic = entry.getKey();
+            StoreIngestionTask sit = entry.getValue();
+            try {
+              if (sit.isProducingVersionTopicHealthy()) {
+                /**
+                 * If the version topic becomes available after retries, remove it from the tracking map.
+                 */
+                iterator.remove();
+                logger.info("The producing version topic:{} becomes healthy", versionTopic);
+              }
+            } catch (Exception e) {
+              logger.error("Got exception while checking topic existence for version topic: {}", versionTopic, e);
+            } finally {
+              Utils.sleep(nonExistingTopicRetryIntervalMs);
+            }
+          }
+        }
+
+        AtomicBoolean hasRepairedSomeIngestionTask = new AtomicBoolean(false);
+        versionTopicIngestionTaskMappingForNonExistingTopic.forEach((vt, sit) -> {
+          try {
+            logger.warn(
+                "The ingestion topics (version topic) are not healthy for "
+                    + "store version: {}, will kill the ingestion task to try to unblock shared consumer",
+                vt);
+            /**
+             * The following function call will interrupt all the stuck {@link org.apache.kafka.clients.producer.KafkaProducer#send} call
+             * to non-existing topics.
+             */
+            sit.closeVeniceWriters(false);
+            killIngestionTaskRunnable.accept(vt);
+            hasRepairedSomeIngestionTask.set(true);
+            stuckConsumerRepairStats.recordIngestionTaskRepair();
+          } catch (Exception e) {
+            logger.error("Hit exception while killing the stuck ingestion task for store version: {}", vt, e);
+          }
+        });
+        if (!hasRepairedSomeIngestionTask.get()) {
+          if (!REDUNDANT_LOGGING_FILTER.isRedundantException(STUCK_CONSUMER_MSG)) {
+            logger.warn(STUCK_CONSUMER_MSG);
+          }
+          stuckConsumerRepairStats.recordRepairFailure();
         }
       }
 
-      AtomicBoolean hasRepairedSomeIngestionTask = new AtomicBoolean(false);
-      versionTopicIngestionTaskMappingForNonExistingTopic.forEach((vt, sit) -> {
-        try {
-          LOGGER.warn(
-              "The ingestion topics (version topic) are not healthy for "
-                  + "store version: {}, will kill the ingestion task to try to unblock shared consumer",
-              vt);
-          /**
-           * The following function call will interrupt all the stuck {@link org.apache.kafka.clients.producer.KafkaProducer#send} call
-           * to non-existing topics.
-           */
-          sit.closeVeniceWriters(false);
-          killIngestionTaskRunnable.accept(vt);
-          hasRepairedSomeIngestionTask.set(true);
-          stuckConsumerRepairStats.recordIngestionTaskRepair();
-        } catch (Exception e) {
-          LOGGER.error("Hit exception while killing the stuck ingestion task for store version: {}", vt, e);
-        }
-      });
-      if (!hasRepairedSomeIngestionTask.get()) {
-        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(STUCK_CONSUMER_MSG)) {
-          LOGGER.warn(STUCK_CONSUMER_MSG);
-        }
-        stuckConsumerRepairStats.recordRepairFailure();
-      }
+      reportStaleTopicPartitions(logger, time, kafkaServerToConsumerServiceMap, consumerPollTrackerStaleThresholdMs);
     };
+  }
+
+  private static void reportStaleTopicPartitions(
+      Logger logger,
+      Time time,
+      Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap,
+      long consumerPollTrackerStaleThresholdMs) {
+    StringBuilder stringBuilder = new StringBuilder();
+    long now = time.getMilliseconds();
+    // Detect and log any subscribed topic partitions that are not polling records
+    for (Map.Entry<String, AbstractKafkaConsumerService> consumerService: kafkaServerToConsumerServiceMap.entrySet()) {
+      Map<PubSubTopicPartition, Long> staleTopicPartitions =
+          consumerService.getValue().getStaleTopicPartitions(now - consumerPollTrackerStaleThresholdMs);
+      if (!staleTopicPartitions.isEmpty()) {
+        stringBuilder.append(CONSUMER_POLL_WARNING_MESSAGE_PREFIX);
+        stringBuilder.append(consumerService.getKey());
+        for (Map.Entry<PubSubTopicPartition, Long> staleTopicPartition: staleTopicPartitions.entrySet()) {
+          stringBuilder.append("\n topic: ");
+          stringBuilder.append(staleTopicPartition.getKey().getTopicName());
+          stringBuilder.append(" partition: ");
+          stringBuilder.append(staleTopicPartition.getKey().getPartitionNumber());
+          stringBuilder.append(" stale for: ");
+          stringBuilder.append(now - staleTopicPartition.getValue());
+          stringBuilder.append("ms");
+        }
+        logger.warn(stringBuilder.toString());
+        // clear the StringBuilder to be reused for next reporting cycle
+        stringBuilder.setLength(0);
+      }
+    }
   }
 
   /**

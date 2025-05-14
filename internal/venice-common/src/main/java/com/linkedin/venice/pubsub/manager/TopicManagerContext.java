@@ -6,6 +6,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_DELETION_S
 
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -20,6 +21,7 @@ public class TopicManagerContext {
   private final PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory;
   private final PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
   private final PubSubTopicRepository pubSubTopicRepository;
+  private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final MetricsRepository metricsRepository;
   private final PubSubPropertiesSupplier pubSubPropertiesSupplier;
   private final long pubSubOperationTimeoutMs;
@@ -36,6 +38,7 @@ public class TopicManagerContext {
     this.pubSubAdminAdapterFactory = builder.pubSubAdminAdapterFactory;
     this.pubSubConsumerAdapterFactory = builder.pubSubConsumerAdapterFactory;
     this.pubSubTopicRepository = builder.pubSubTopicRepository;
+    this.pubSubPositionTypeRegistry = builder.pubSubPositionTypeRegistry;
     this.metricsRepository = builder.metricsRepository;
     this.pubSubPropertiesSupplier = builder.pubSubPropertiesSupplier;
     this.topicOffsetCheckIntervalMs = builder.topicOffsetCheckIntervalMs;
@@ -95,6 +98,10 @@ public class TopicManagerContext {
     VeniceProperties get(String pubSubBootstrapServers);
   }
 
+  public PubSubPositionTypeRegistry getPubSubPositionTypeRegistry() {
+    return pubSubPositionTypeRegistry;
+  }
+
   @Override
   public String toString() {
     return "TopicManagerContext{pubSubOperationTimeoutMs=" + pubSubOperationTimeoutMs
@@ -110,6 +117,7 @@ public class TopicManagerContext {
     private PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory;
     private PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
     private PubSubTopicRepository pubSubTopicRepository;
+    private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
     private MetricsRepository metricsRepository;
     private PubSubPropertiesSupplier pubSubPropertiesSupplier;
     private long pubSubOperationTimeoutMs = PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
@@ -148,6 +156,11 @@ public class TopicManagerContext {
 
     public Builder setPubSubTopicRepository(PubSubTopicRepository pubSubTopicRepository) {
       this.pubSubTopicRepository = pubSubTopicRepository;
+      return this;
+    }
+
+    public Builder setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry pubSubPositionTypeRegistry) {
+      this.pubSubPositionTypeRegistry = pubSubPositionTypeRegistry;
       return this;
     }
 

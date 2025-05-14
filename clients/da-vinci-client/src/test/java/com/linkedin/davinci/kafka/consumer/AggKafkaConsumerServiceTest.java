@@ -4,7 +4,6 @@ import static com.linkedin.davinci.kafka.consumer.KafkaConsumerService.ConsumerA
 import static com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator.ConsumerPoolStrategyType.DEFAULT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -18,7 +17,9 @@ import static org.testng.Assert.assertEquals;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.StuckConsumerRepairStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -27,6 +28,8 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext.PubSubPropertiesSupplier;
+import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -38,6 +41,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.function.Consumer;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -87,10 +93,12 @@ public class AggKafkaConsumerServiceTest {
     when(serverConfig.isUnregisterMetricForDeletedStoreEnabled()).thenReturn(Boolean.FALSE);
     when(serverConfig.getSharedConsumerAssignmentStrategy())
         .thenReturn(PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY);
+    when(serverConfig.getPubSubPositionTypeRegistry())
+        .thenReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY);
     Sensor dummySensor = mock(Sensor.class);
     when(metricsRepository.sensor(anyString(), any())).thenReturn(dummySensor);
     PubSubConsumerAdapter adapter = mock(PubSubConsumerAdapter.class);
-    when(consumerFactory.create(any(), anyBoolean(), any(), any())).thenReturn(adapter);
+    when(consumerFactory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(adapter);
     aggKafkaConsumerService = new AggKafkaConsumerService(
         consumerFactory,
         pubSubPropertiesSupplier,
@@ -172,8 +180,6 @@ public class AggKafkaConsumerServiceTest {
   public void testGetStuckConsumerDetectionAndRepairRunnable() {
     Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap = new HashMap<>();
     Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new HashMap<>();
-    long stuckConsumerRepairThresholdMs = 100;
-    long nonExistingTopicIngestionTaskKillThresholdMs = 1000;
     StuckConsumerRepairStats stuckConsumerRepairStats = mock(StuckConsumerRepairStats.class);
 
     // Everything is good
@@ -186,12 +192,9 @@ public class AggKafkaConsumerServiceTest {
 
     Consumer<String> killIngestionTaskRunnable = mock(Consumer.class);
 
-    Runnable repairRunnable = AggKafkaConsumerService.getStuckConsumerDetectionAndRepairRunnable(
+    Runnable repairRunnable = getDetectAndRepairRunnable(
         kafkaServerToConsumerServiceMap,
         versionTopicStoreIngestionTaskMapping,
-        stuckConsumerRepairThresholdMs,
-        nonExistingTopicIngestionTaskKillThresholdMs,
-        200,
         stuckConsumerRepairStats,
         killIngestionTaskRunnable);
     repairRunnable.run();
@@ -206,18 +209,13 @@ public class AggKafkaConsumerServiceTest {
   public void testGetStuckConsumerDetectionAndRepairRunnableForTransientNonExistingTopic() {
     Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap = new HashMap<>();
     Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new HashMap<>();
-    long stuckConsumerRepairThresholdMs = 100;
-    long nonExistingTopicIngestionTaskKillThresholdMs = 1000;
     StuckConsumerRepairStats stuckConsumerRepairStats = mock(StuckConsumerRepairStats.class);
 
     Consumer<String> killIngestionTaskRunnable = mock(Consumer.class);
 
-    Runnable repairRunnable = AggKafkaConsumerService.getStuckConsumerDetectionAndRepairRunnable(
+    Runnable repairRunnable = getDetectAndRepairRunnable(
         kafkaServerToConsumerServiceMap,
         versionTopicStoreIngestionTaskMapping,
-        stuckConsumerRepairThresholdMs,
-        nonExistingTopicIngestionTaskKillThresholdMs,
-        200,
         stuckConsumerRepairStats,
         killIngestionTaskRunnable);
     // One stuck consumer
@@ -240,18 +238,13 @@ public class AggKafkaConsumerServiceTest {
   public void testGetStuckConsumerDetectionAndRepairRunnableForNonExistingTopic() {
     Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap = new HashMap<>();
     Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new HashMap<>();
-    long stuckConsumerRepairThresholdMs = 100;
-    long nonExistingTopicIngestionTaskKillThresholdMs = 1000;
     StuckConsumerRepairStats stuckConsumerRepairStats = mock(StuckConsumerRepairStats.class);
 
     Consumer<String> killIngestionTaskRunnable = mock(Consumer.class);
 
-    Runnable repairRunnable = AggKafkaConsumerService.getStuckConsumerDetectionAndRepairRunnable(
+    Runnable repairRunnable = getDetectAndRepairRunnable(
         kafkaServerToConsumerServiceMap,
         versionTopicStoreIngestionTaskMapping,
-        stuckConsumerRepairThresholdMs,
-        nonExistingTopicIngestionTaskKillThresholdMs,
-        200,
         stuckConsumerRepairStats,
         killIngestionTaskRunnable);
     // One stuck consumer
@@ -273,5 +266,92 @@ public class AggKafkaConsumerServiceTest {
     versionTopicStoreIngestionTaskMapping.remove("bad_task");
     repairRunnable.run();
     verify(stuckConsumerRepairStats).recordRepairFailure();
+  }
+
+  @Test
+  public void testGetStuckConsumerDetectionAndRepairRunnableForStaleConsumerPoll() {
+    Time time = mock(Time.class);
+    Logger logger = mock(Logger.class);
+    Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap = new HashMap<>();
+    Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping = new HashMap<>();
+    StuckConsumerRepairStats stuckConsumerRepairStats = mock(StuckConsumerRepairStats.class);
+
+    // Everything is good from stuck consumer side of things
+    KafkaConsumerService goodConsumerService = mock(KafkaConsumerService.class);
+    when(goodConsumerService.getMaxElapsedTimeMSSinceLastPollInConsumerPool()).thenReturn(10l);
+    kafkaServerToConsumerServiceMap.put("good", goodConsumerService);
+    StoreIngestionTask goodTask = mock(StoreIngestionTask.class);
+    when(goodTask.isProducingVersionTopicHealthy()).thenReturn(true);
+    versionTopicStoreIngestionTaskMapping.put("good_task", goodTask);
+
+    Map<PubSubTopicPartition, Long> staleTopicPartitions = new HashMap<>();
+    PubSubTopicPartition mockStaleTopicPartition = mock(PubSubTopicPartition.class);
+    String staleTopicName = "noPollTopicName";
+    when(mockStaleTopicPartition.getTopicName()).thenReturn(staleTopicName);
+    when(mockStaleTopicPartition.getPartitionNumber()).thenReturn(0);
+    staleTopicPartitions.put(mockStaleTopicPartition, 0L);
+    long expectedStaleTimeMs = 20000L;
+    when(goodConsumerService.getStaleTopicPartitions(expectedStaleTimeMs - 10000L)).thenReturn(staleTopicPartitions);
+
+    Consumer<String> killIngestionTaskRunnable = mock(Consumer.class);
+    Runnable repairRunnable = getDetectAndRepairRunnable(
+        logger,
+        time,
+        kafkaServerToConsumerServiceMap,
+        versionTopicStoreIngestionTaskMapping,
+        stuckConsumerRepairStats,
+        killIngestionTaskRunnable);
+    when(time.getMilliseconds()).thenReturn(expectedStaleTimeMs);
+    repairRunnable.run();
+    verify(goodConsumerService).getMaxElapsedTimeMSSinceLastPollInConsumerPool();
+    verify(stuckConsumerRepairStats, never()).recordStuckConsumerFound();
+    verify(stuckConsumerRepairStats, never()).recordIngestionTaskRepair();
+    verify(stuckConsumerRepairStats, never()).recordRepairFailure();
+    verify(killIngestionTaskRunnable, never()).accept(any());
+    ArgumentCaptor<String> logStringCaptor = ArgumentCaptor.forClass(String.class);
+    verify(logger).warn(logStringCaptor.capture());
+    String logMessage = logStringCaptor.getValue();
+    Assert.assertTrue(logMessage.contains("Consumer poll tracker found stale topic partitions"));
+    Assert.assertTrue(logMessage.contains(staleTopicName));
+    Assert.assertTrue(logMessage.contains("stale for: " + expectedStaleTimeMs));
+  }
+
+  private Runnable getDetectAndRepairRunnable(
+      Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap,
+      Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping,
+      StuckConsumerRepairStats stuckConsumerRepairStats,
+      Consumer<String> killIngestionTaskRunnable) {
+    return getDetectAndRepairRunnable(
+        LogManager.getLogger(AggKafkaConsumerService.class),
+        SystemTime.INSTANCE,
+        kafkaServerToConsumerServiceMap,
+        versionTopicStoreIngestionTaskMapping,
+        stuckConsumerRepairStats,
+        killIngestionTaskRunnable);
+  }
+
+  private Runnable getDetectAndRepairRunnable(
+      Logger logger,
+      Time time,
+      Map<String, AbstractKafkaConsumerService> kafkaServerToConsumerServiceMap,
+      Map<String, StoreIngestionTask> versionTopicStoreIngestionTaskMapping,
+      StuckConsumerRepairStats stuckConsumerRepairStats,
+      Consumer<String> killIngestionTaskRunnable) {
+    long stuckConsumerRepairThresholdMs = 100;
+    long nonExistingTopicIngestionTaskKillThresholdMs = 1000;
+    long consumerPollTrackerStaleThresholdMs = 10000;
+
+    Runnable repairRunnable = AggKafkaConsumerService.getStuckConsumerDetectionAndRepairRunnable(
+        logger,
+        time,
+        kafkaServerToConsumerServiceMap,
+        versionTopicStoreIngestionTaskMapping,
+        stuckConsumerRepairThresholdMs,
+        nonExistingTopicIngestionTaskKillThresholdMs,
+        200,
+        consumerPollTrackerStaleThresholdMs,
+        stuckConsumerRepairStats,
+        killIngestionTaskRunnable);
+    return repairRunnable;
   }
 }

@@ -39,8 +39,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.List;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -171,7 +172,7 @@ public class VeniceOpenTelemetryMetricsRepository {
    * 2. If we don't configure exponential histogram aggregation for every histogram: it could lead to observability miss
    */
   private void setExponentialHistogramAggregation(SdkMeterProviderBuilder builder, VeniceMetricsConfig metricsConfig) {
-    List<String> metricNames = new ArrayList<>();
+    Set<String> uniqueHistogramMetricNames = new HashSet<>();
 
     Collection<MetricEntity> metricEntities = metricsConfig.getMetricEntities();
     if (metricEntities == null || metricsConfig.getMetricEntities().isEmpty()) {
@@ -181,12 +182,12 @@ public class VeniceOpenTelemetryMetricsRepository {
 
     for (MetricEntity metricEntity: metricsConfig.getMetricEntities()) {
       if (metricEntity.getMetricType() == MetricType.HISTOGRAM) {
-        metricNames.add(getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName()));
+        uniqueHistogramMetricNames.add(getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName()));
       }
     }
 
     // Register views for all MetricType.HISTOGRAM metrics to be aggregated/exported as exponential histograms
-    for (String metricName: metricNames) {
+    for (String metricName: uniqueHistogramMetricNames) {
       InstrumentSelector selector =
           InstrumentSelector.builder().setType(InstrumentType.HISTOGRAM).setName(metricName).build();
 

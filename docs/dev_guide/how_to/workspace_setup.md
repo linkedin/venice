@@ -93,8 +93,8 @@ with various values and find ones that work for you.
 ./gradlew :clients:da-vinci-client:jacocoTestCoverageVerification diffCoverage
 
 # Run a specific test in any module
-$ ./gradlew :sub-module:testType --tests "fully.qualified.name.of.the.test"
+./gradlew :sub-module:testType --tests "fully.qualified.name.of.the.test"
 
 # To run a specific integration test
-$ ./gradlew :internal:venice-test-common:integrationTest --tests "fully.qualified.name.of.the.test"
+./gradlew :internal:venice-test-common:integrationTest --tests "fully.qualified.name.of.the.test"
 ```

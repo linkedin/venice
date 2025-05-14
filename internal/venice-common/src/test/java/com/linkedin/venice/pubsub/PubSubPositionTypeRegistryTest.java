@@ -85,8 +85,11 @@ public class PubSubPositionTypeRegistryTest {
   public void testRegistryRejectsUnknownClassName() {
     Int2ObjectMap<String> userMap = new Int2ObjectOpenHashMap<>();
     userMap.put(99, "com.example.NonExistentPositionClass");
-    Exception exception = expectThrows(VeniceException.class, () -> new PubSubPositionTypeRegistry(userMap));
-    assertTrue(exception.getMessage().contains("Failed to create factory for"), "Got: " + exception.getMessage());
+    PubSubPositionTypeRegistry registry = new PubSubPositionTypeRegistry(userMap);
+    Exception exception = expectThrows(VeniceException.class, () -> registry.getFactoryByTypeId(99));
+    assertTrue(
+        exception.getMessage().contains("Failed to lazily create factory for com.example.NonExistentPositionClass"),
+        "Got: " + exception.getMessage());
     assertTrue(ExceptionUtils.recursiveClassEquals(exception.getCause(), ClassNotFoundException.class));
   }
 

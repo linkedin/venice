@@ -2,6 +2,7 @@ package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -61,29 +62,21 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   private final TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker;
   private final Map<TopicPartition, PubSubTopicPartition> assignments = new HashMap<>();
   private final PubSubMessageDeserializer pubSubMessageDeserializer;
+  private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
   private final ApacheKafkaConsumerConfig config;
 
-  ApacheKafkaConsumerAdapter(
-      ApacheKafkaConsumerConfig config,
-      PubSubMessageDeserializer pubSubMessageDeserializer,
-      boolean isKafkaConsumerOffsetCollectionEnabled) {
-    this(
-        new KafkaConsumer<>(config.getConsumerProperties()),
-        config,
-        pubSubMessageDeserializer,
-        isKafkaConsumerOffsetCollectionEnabled ? new TopicPartitionsOffsetsTracker() : null);
+  ApacheKafkaConsumerAdapter(ApacheKafkaConsumerConfig config) {
+    this(new KafkaConsumer<>(config.getConsumerProperties()), config);
   }
 
-  ApacheKafkaConsumerAdapter(
-      Consumer<byte[], byte[]> consumer,
-      ApacheKafkaConsumerConfig apacheKafkaConsumerConfig,
-      PubSubMessageDeserializer pubSubMessageDeserializer,
-      TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker) {
+  ApacheKafkaConsumerAdapter(Consumer<byte[], byte[]> consumer, ApacheKafkaConsumerConfig apacheKafkaConsumerConfig) {
     this.kafkaConsumer = Objects.requireNonNull(consumer, "Kafka consumer cannot be null");
     this.config = Objects.requireNonNull(apacheKafkaConsumerConfig, "ApacheKafkaConsumerConfig cannot be null");
     this.pubSubMessageDeserializer =
-        Objects.requireNonNull(pubSubMessageDeserializer, "PubSubMessageDeserializer cannot be null");
-    this.topicPartitionsOffsetsTracker = topicPartitionsOffsetsTracker;
+        Objects.requireNonNull(config.getPubSubMessageDeserializer(), "PubSubMessageDeserializer cannot be null");
+    this.pubSubPositionTypeRegistry =
+        Objects.requireNonNull(config.getPubSubPositionTypeRegistry(), "PubSubPositionTypeRegistry cannot be null");
+    this.topicPartitionsOffsetsTracker = config.getTopicPartitionsOffsetsTracker();
     LOGGER.info(
         "Created ApacheKafkaConsumerAdapter with config: {} - isMetricsBasedOffsetCachingEnabled: {}",
         apacheKafkaConsumerConfig,

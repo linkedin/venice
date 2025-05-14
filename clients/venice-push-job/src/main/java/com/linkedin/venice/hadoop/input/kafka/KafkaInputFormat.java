@@ -9,6 +9,7 @@ import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.ReporterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -55,6 +56,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> consumerProperties)
             .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(consumerProperties))
             .setPubSubAdminAdapterFactory(PubSubClientsFactory.createAdminFactory(consumerProperties))
             .setPubSubConsumerAdapterFactory(PubSubClientsFactory.createConsumerFactory(consumerProperties))
             .setTopicMetadataFetcherThreadPoolSize(1)

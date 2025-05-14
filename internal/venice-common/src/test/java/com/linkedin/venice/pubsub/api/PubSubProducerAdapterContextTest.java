@@ -56,7 +56,7 @@ public class PubSubProducerAdapterContextTest {
     assertNull(context.getMetricsRepository());
     assertNull(context.getPubSubTopicRepository());
     assertTrue(context.shouldValidateProducerConfigStrictly());
-    assertNull(context.getSecurityProtocol());
+    assertNotNull(context.getPubSubSecurityProtocol());
     assertNotNull(context.getProducerName());
   }
 }

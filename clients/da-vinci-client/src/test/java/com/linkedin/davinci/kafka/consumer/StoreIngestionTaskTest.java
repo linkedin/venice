@@ -110,7 +110,7 @@ import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
-import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -154,6 +154,7 @@ import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -1045,13 +1046,12 @@ public abstract class StoreIngestionTaskTest {
         .orElseGet(() -> new MockInMemoryConsumer(inMemoryRemoteKafkaBroker, pollStrategy, mockRemoteKafkaConsumer));
 
     doAnswer(invocation -> {
-      VeniceProperties consumerProps = invocation.getArgument(0, VeniceProperties.class);
-      String kafkaUrl = consumerProps.toProperties().getProperty(KAFKA_BOOTSTRAP_SERVERS);
-      if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
+      PubSubConsumerAdapterContext consumerContext = invocation.getArgument(0, PubSubConsumerAdapterContext.class);
+      if (consumerContext.getPubSubBrokerAddress().equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
         return inMemoryRemoteKafkaConsumer;
       }
       return inMemoryLocalKafkaConsumer;
-    }).when(mockFactory).create(any(), anyBoolean(), any(), any());
+    }).when(mockFactory).create(any(PubSubConsumerAdapterContext.class));
 
     mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createVeniceWriter(any());
@@ -5662,7 +5662,7 @@ public abstract class StoreIngestionTaskTest {
     GlobalRtDivState globalRtDivState = mock(GlobalRtDivState.class);
     doReturn(globalRtDivState).when(valueRecord).get(any());
     doReturn(valueRecord).when(ingestionTask).readStoredValueRecord(any(), any(), anyInt(), any(), any());
-    KafkaDataIntegrityValidator consumerDiv = mock(KafkaDataIntegrityValidator.class);
+    DataIntegrityValidator consumerDiv = mock(DataIntegrityValidator.class);
     doReturn(consumerDiv).when(ingestionTask).getConsumerDiv();
     Int2ObjectMap<String> brokerIdToUrlMap = new Int2ObjectOpenHashMap<>();
     brokerIdToUrlMap.put(0, "localhost:1234");

@@ -30,14 +30,17 @@ import static com.linkedin.venice.meta.Version.PushType.BATCH;
 import static com.linkedin.venice.meta.Version.PushType.INCREMENTAL;
 import static com.linkedin.venice.meta.Version.PushType.STREAM;
 import static com.linkedin.venice.meta.Version.PushType.STREAM_REPROCESSING;
+import static org.apache.http.HttpStatus.SC_NOT_FOUND;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -51,6 +54,7 @@ import static org.testng.Assert.fail;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.acl.NoOpDynamicAccessController;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.RequestTopicForPushRequest;
@@ -1107,5 +1111,110 @@ public class CreateVersionTest {
         () -> createVersion
             .handleNonStreamPushType(admin, store, request, response, isActiveActiveReplicationEnabledInAllRegions));
     assertTrue(ex2.getMessage().contains("Version creation failure"), "Actual Message: " + ex2.getMessage());
+  }
+
+  @Test
+  public void testEmptyPushThrowsNoStoreFoundException() throws Exception {
+    CreateVersion createVersion =
+        new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false, false);
+    Route emptyPushRoute = createVersion.emptyPush(admin);
+
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams(PUSH_JOB_ID)).thenReturn("pushJobId");
+    when(admin.whetherEnableBatchPushFromAdmin(STORE_NAME)).thenReturn(true);
+    when(admin.getStore(CLUSTER_NAME, STORE_NAME)).thenReturn(null); // simulate missing store
+
+    Object result = emptyPushRoute.handle(request, response);
+
+    assertNotNull(result);
+    verify(response).status(SC_NOT_FOUND);
+
+    VersionCreationResponse versionCreateResponse =
+        OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
+    assertTrue(versionCreateResponse.isError(), "Expected error to be true");
+  }
+
+  @Test
+  public void testEmptyPushCreatesNewVersionAndReturnsSuccess() throws Exception {
+    CreateVersion createVersion =
+        new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false, false);
+    Route emptyPushRoute = createVersion.emptyPush(admin);
+
+    // Required params
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams(PUSH_JOB_ID)).thenReturn("pushJobId");
+
+    // Admin behavior
+    when(admin.whetherEnableBatchPushFromAdmin(STORE_NAME)).thenReturn(true);
+    when(admin.calculateNumberOfPartitions(CLUSTER_NAME, STORE_NAME)).thenReturn(2);
+    when(admin.getReplicationFactor(CLUSTER_NAME, STORE_NAME)).thenReturn(3);
+
+    // Store and version mock
+    Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    when(mockStore.getVersions()).thenReturn(Collections.emptyList());
+    when(admin.getStore(CLUSTER_NAME, STORE_NAME)).thenReturn(mockStore);
+    when(admin.incrementVersionIdempotent(eq(CLUSTER_NAME), eq(STORE_NAME), eq("pushJobId"), eq(2), eq(3)))
+        .thenReturn(mockVersion);
+
+    when(mockVersion.getNumber()).thenReturn(2);
+    when(mockVersion.kafkaTopicName()).thenReturn("testStore_v2");
+    when(mockVersion.getPushStreamSourceAddress()).thenReturn("localhost:9092");
+
+    // Execute
+    Object result = emptyPushRoute.handle(request, response);
+    VersionCreationResponse responseObj = OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
+
+    // Assertions
+    assertFalse(responseObj.isError());
+    assertEquals(responseObj.getVersion(), 2);
+    assertEquals(responseObj.getKafkaTopic(), "testStore_v2");
+    assertEquals(responseObj.getKafkaBootstrapServers(), "localhost:9092");
+    verify(admin).writeEndOfPush(CLUSTER_NAME, STORE_NAME, 2, true);
+  }
+
+  @Test
+  public void testEmptyPushWithTheDuplicatePushJobIdSkipsSopAndEop() throws Exception {
+    CreateVersion createVersion =
+        new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false, false);
+    Route emptyPushRoute = createVersion.emptyPush(admin);
+
+    // Set up required query params
+    when(request.queryParams(NAME)).thenReturn(STORE_NAME);
+    when(request.queryParams(CLUSTER)).thenReturn(CLUSTER_NAME);
+    when(request.queryParams(PUSH_JOB_ID)).thenReturn("pushJobId");
+
+    // Admin config
+    when(admin.whetherEnableBatchPushFromAdmin(STORE_NAME)).thenReturn(true);
+    when(admin.calculateNumberOfPartitions(CLUSTER_NAME, STORE_NAME)).thenReturn(2);
+    when(admin.getReplicationFactor(CLUSTER_NAME, STORE_NAME)).thenReturn(3);
+
+    // Mock version and store
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getNumber()).thenReturn(2);
+    when(mockVersion.kafkaTopicName()).thenReturn("testStore_v2");
+    when(mockVersion.getPushStreamSourceAddress()).thenReturn("localhost:9092");
+
+    Store mockStore = mock(Store.class);
+    when(mockStore.getVersions()).thenReturn(Collections.singletonList(mockVersion));
+    when(admin.getStore(CLUSTER_NAME, STORE_NAME)).thenReturn(mockStore);
+
+    // Simulate version already exists
+    when(admin.incrementVersionIdempotent(CLUSTER_NAME, STORE_NAME, "pushJobId", 2, 3)).thenReturn(mockVersion);
+
+    // Execute
+    Object result = emptyPushRoute.handle(request, response);
+    VersionCreationResponse responseObj = OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
+
+    // Assertions
+    assertFalse(responseObj.isError());
+    assertEquals(responseObj.getVersion(), 2);
+    assertEquals(responseObj.getKafkaTopic(), "testStore_v2");
+    assertEquals(responseObj.getKafkaBootstrapServers(), "localhost:9092");
+
+    // SOP and EOP should NOT be written
+    verify(admin, never()).writeEndOfPush(any(), any(), anyInt(), anyBoolean());
   }
 }

@@ -30,7 +30,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARTITION_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
@@ -51,6 +50,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CRE
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ZSTD_DICTIONARY_CREATION_SUCCESS;
 
 import com.github.luben.zstd.Zstd;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.hadoop.PushJobSetting;
@@ -59,6 +59,7 @@ import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
+import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.spark.datawriter.partition.PartitionSorter;
 import com.linkedin.venice.spark.datawriter.partition.VeniceSparkPartitioner;
 import com.linkedin.venice.spark.datawriter.recordprocessor.SparkInputRecordProcessorFactory;
@@ -72,7 +73,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.util.Properties;
 import java.util.UUID;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.SparkConf;
@@ -180,7 +180,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     }
     jobConf.set(PARTITION_COUNT, pushJobSetting.partitionCount);
     if (pushJobSetting.sslToKafka) {
-      jobConf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
+      jobConf.set(ConfigKeys.PUBSUB_SECURITY_PROTOCOL, PubSubSecurityProtocol.SSL.name());
       props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
         jobConf.set(key, props.getString(key));
       });
