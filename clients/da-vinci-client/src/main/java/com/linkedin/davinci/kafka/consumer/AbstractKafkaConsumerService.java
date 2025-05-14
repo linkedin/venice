@@ -46,4 +46,5 @@ public abstract class AbstractKafkaConsumerService extends AbstractVeniceService
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition);
 
+  public abstract Map<PubSubTopicPartition, Long> getStaleTopicPartitions(long thresholdTimestamp);
 }

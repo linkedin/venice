@@ -54,6 +54,7 @@ class ConsumptionTask implements Runnable {
   private final IntConsumer recordsThrottler;
   private final AggKafkaConsumerServiceStats aggStats;
   private final ConsumerSubscriptionCleaner cleaner;
+  private final ConsumerPollTracker consumerPollTracker;
 
   /**
    * Maintain rate counter with default window size to calculate the message and bytes rate at topic partition level.
@@ -83,13 +84,15 @@ class ConsumptionTask implements Runnable {
       final IntConsumer bandwidthThrottler,
       final IntConsumer recordsThrottler,
       final AggKafkaConsumerServiceStats aggStats,
-      final ConsumerSubscriptionCleaner cleaner) {
+      final ConsumerSubscriptionCleaner cleaner,
+      final ConsumerPollTracker consumerPollTracker) {
     this.readCycleDelayMs = readCycleDelayMs;
     this.pollFunction = pollFunction;
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
     this.aggStats = aggStats;
     this.cleaner = cleaner;
+    this.consumerPollTracker = consumerPollTracker;
     this.taskId = taskId;
     this.consumptionTaskIdStr = Utils.getSanitizedStringForLogger(consumerNamePrefix) + " - " + taskId;
     this.LOGGER = LogManager.getLogger(getClass().getSimpleName() + "[ " + consumptionTaskIdStr + " ]");
@@ -134,6 +137,7 @@ class ConsumptionTask implements Runnable {
             if (dataReceiver != null) {
               dataReceiver.notifyOfTopicDeletion(topicPartitionToUnSub.getPubSubTopic().getName());
             }
+            consumerPollTracker.removeTopicPartition(topicPartitionToUnSub);
           }
           topicPartitionsToUnsub.clear();
 
@@ -165,6 +169,7 @@ class ConsumptionTask implements Runnable {
               topicPartitionMessages = entry.getValue();
 
               // Per-poll bookkeeping
+              consumerPollTracker.recordMessageReceived(pubSubTopicPartition);
               msgCount = topicPartitionMessages.size();
               polledPubSubMessagesCount += msgCount;
               payloadSizePerTopicPartition = 0;

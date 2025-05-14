@@ -73,6 +73,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CHANNEL_OPTION_WRITE_BUFFER_
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
@@ -637,6 +638,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       Arrays.asList(0.4D, 0.6D, 0.8D, 1.0D, 1.2D, 1.4D, 1.6D);
 
   private final boolean isParticipantMessageStoreEnabled;
+  private final long consumerPollTrackerStaleThresholdInSeconds;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -1087,6 +1089,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_LOAD_CONTROLLER_MULTI_GET_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
     loadControllerComputeLatencyAcceptThresholdMs =
         serverProperties.getInt(SERVER_LOAD_CONTROLLER_COMPUTE_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
+    consumerPollTrackerStaleThresholdInSeconds = serverProperties
+        .getLong(SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS, TimeUnit.MINUTES.toSeconds(15));
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -2011,5 +2015,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getLoadControllerComputeLatencyAcceptThresholdMs() {
     return loadControllerComputeLatencyAcceptThresholdMs;
+  }
+
+  public long getConsumerPollTrackerStaleThresholdSeconds() {
+    return consumerPollTrackerStaleThresholdInSeconds;
   }
 }

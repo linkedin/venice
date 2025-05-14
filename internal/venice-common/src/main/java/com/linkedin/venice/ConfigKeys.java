@@ -2743,6 +2743,11 @@ public class ConfigKeys {
    */
   public static final String SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS =
       "server.idle.ingestion.task.cleanup.interval.in.seconds";
-
   public static final String PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY = "pass.through.config.prefixes.list";
+  /**
+   * The threshold in ms to consider a subscribed topic partition problematic without a new message polled since it was
+   * subscribed.
+   */
+  public static final String SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS =
+      "server.consumer.poll.tracker.stale.threshold.in.seconds";
 }
