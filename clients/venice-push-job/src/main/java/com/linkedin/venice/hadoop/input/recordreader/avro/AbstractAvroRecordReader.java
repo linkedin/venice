@@ -5,6 +5,7 @@ import com.linkedin.avroutil1.compatibility.AvroSchemaUtil;
 import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
 import com.linkedin.venice.writer.update.UpdateBuilder;
@@ -151,8 +152,8 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
 
     Object timestampDatum = getRecordDatum(inputKey, inputValue).get(timestampFieldPos);
     if (!(timestampDatum instanceof Long)) {
-      // This is also ok, this just means it's null or an object, and we haven't implemented the RMD version for this
-      return -1L;
+      throw new VeniceInvalidInputException(
+          "Timestamp must be non null and of type long!!  Instead got:" + timestampDatum);
     }
 
     return (Long) timestampDatum;

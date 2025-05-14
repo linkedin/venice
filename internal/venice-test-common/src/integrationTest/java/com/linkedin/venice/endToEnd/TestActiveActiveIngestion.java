@@ -251,11 +251,10 @@ public class TestActiveActiveIngestion {
         VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
       veniceProducer.start();
       // Run Samza job to send PUT requests
-      runSamzaStreamJob(veniceProducer, storeName, "stream_", mockTime, 10, 0, 80);
+      runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 0, 80);
     }
 
     // Alright. For our last trick, we'll try and push a version which has timestamps specified in the job from spark.
-    // WHERE IS YOUR GOD NOW!?!?
     Long newTimestamp = System.currentTimeMillis() + TimeUnit.DAYS.toMillis(1000);
     Long oldTimestamp = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1000);
     TestWriteUtils
@@ -580,24 +579,13 @@ public class TestActiveActiveIngestion {
       int numPuts,
       int numDels,
       int startIdx) {
-    runSamzaStreamJob(veniceProducer, storeName, "stream_", mockedTime, numPuts, numDels, startIdx);
-  }
-
-  private void runSamzaStreamJob(
-      VeniceSystemProducer veniceProducer,
-      String storeName,
-      String valuePrefix,
-      Time mockedTime,
-      int numPuts,
-      int numDels,
-      int startIdx) {
     // Send PUT requests.
     for (int i = startIdx; i < startIdx + numPuts; i++) {
       sendStreamingRecord(
           veniceProducer,
           storeName,
           Integer.toString(i),
-          valuePrefix + i,
+          "stream_" + i,
           mockedTime == null ? null : mockedTime.getMilliseconds());
     }
     // Send DELETE requests.

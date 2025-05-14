@@ -70,7 +70,6 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -637,9 +636,12 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     this.enableUncompressedRecordSizeLimit =
         props.getBoolean(VeniceWriter.ENABLE_UNCOMPRESSED_RECORD_SIZE_LIMIT, false);
     this.callback = new PartitionWriterProducerCallback();
-    this.rmdSchema = !Objects.equals(props.getString(RMD_SCHEMA_PROP, ""), "")
-        ? new Schema.Parser().parse(props.getString(RMD_SCHEMA_PROP))
-        : null;
+    String rmdSchemaProp = props.getString(RMD_SCHEMA_PROP, "");
+    if (rmdSchemaProp.isEmpty()) {
+      this.rmdSchema = null;
+    } else {
+      this.rmdSchema = new Schema.Parser().parse(props.getString(RMD_SCHEMA_PROP));
+    }
     initStorageQuotaFields(props);
     /**
      * A dummy background task that reports progress every 5 minutes.

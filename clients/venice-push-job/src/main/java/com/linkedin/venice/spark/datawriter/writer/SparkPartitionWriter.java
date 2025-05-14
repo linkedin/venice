@@ -2,6 +2,7 @@ package com.linkedin.venice.spark.datawriter.writer;
 
 import static com.linkedin.venice.spark.SparkConstants.*;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.task.datawriter.AbstractPartitionWriter;
 import com.linkedin.venice.spark.datawriter.task.DataWriterAccumulators;
 import com.linkedin.venice.spark.datawriter.task.SparkDataWriterTaskTracker;
@@ -54,6 +55,9 @@ public class SparkPartitionWriter extends AbstractPartitionWriter {
 
       if (!Arrays.equals(incomingKey, key)) {
         if (key != null) {
+          if (!logicalTimestamps.isEmpty() && valuesForKey.size() != logicalTimestamps.size()) {
+            throw new VeniceException("Count mismatch between logical timestamps and input records, aborting!!");
+          }
           // Key is different from the prev one and is not null. Write it out to PubSub.
           super.processValuesForKey(key, valuesForKey.iterator(), logicalTimestamps.iterator(), dataWriterTaskTracker);
         }
