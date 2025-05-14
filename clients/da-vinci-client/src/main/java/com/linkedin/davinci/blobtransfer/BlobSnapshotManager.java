@@ -393,13 +393,10 @@ public class BlobSnapshotManager {
     removePartitionEntry(snapshotTimestamps, topicName, partitionId);
     removePartitionEntry(snapshotMetadataRecords, topicName, partitionId);
     removePartitionEntry(concurrentSnapshotUsers, topicName, partitionId);
-    SparseConcurrentList<ReentrantLock> lockList = snapshotAccessLocks.get(topicName);
-    if (lockList != null) {
+    snapshotAccessLocks.computeIfPresent(topicName, (key, lockList) -> {
       lockList.remove(partitionId);
-      if (lockList.isEmpty()) {
-        snapshotAccessLocks.remove(topicName);
-      }
-    }
+      return lockList.isEmpty() ? null : lockList;
+    });
   }
 
   /**
@@ -409,13 +406,10 @@ public class BlobSnapshotManager {
       Map<String, VeniceConcurrentHashMap<Integer, V>> map,
       String topicName,
       int partitionId) {
-    VeniceConcurrentHashMap<Integer, V> partitionMap = map.get(topicName);
-    if (partitionMap != null) {
+    map.computeIfPresent(topicName, (key, partitionMap) -> {
       partitionMap.remove(partitionId);
-      if (partitionMap.isEmpty()) {
-        map.remove(topicName);
-      }
-    }
+      return partitionMap.isEmpty() ? null : partitionMap;
+    });
   }
 
   /**
