@@ -434,8 +434,10 @@ public class StoresRoutes extends AbstractRoute {
         }
         VeniceControllerClusterConfig destClusterConfig = admin.getControllerConfig(destClusterName);
         // Both source and destination clusters should either have RT versioning enabled or disabled
-        if (destClusterConfig != null && (admin.getControllerConfig(srcClusterName)
-            .isRealTimeTopicVersioningEnabled() != destClusterConfig.isRealTimeTopicVersioningEnabled())) {
+        if (destClusterConfig == null) {
+          LOGGER.warn("ClusterConfig for distination cluster {} not found.", destClusterName);
+        } else if (admin.getControllerConfig(srcClusterName).isRealTimeTopicVersioningEnabled() != destClusterConfig
+            .isRealTimeTopicVersioningEnabled()) {
           veniceResponse
               .setError("Source cluster and destination cluster both should have RT versioning enabled or disabled ");
           veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
