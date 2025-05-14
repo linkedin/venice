@@ -60,7 +60,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -156,7 +156,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -252,7 +252,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -348,7 +348,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -444,7 +444,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -540,7 +540,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -636,7 +636,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -732,7 +732,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -828,7 +828,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -924,7 +924,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -1020,7 +1020,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -1116,7 +1116,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -1212,7 +1212,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -1308,7 +1308,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -1404,7 +1404,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -1500,7 +1500,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -1596,7 +1596,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -1692,7 +1692,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -1788,7 +1788,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -1884,7 +1884,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -1980,7 +1980,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -2076,7 +2076,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -2172,7 +2172,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -2268,7 +2268,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -2364,7 +2364,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -2460,7 +2460,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -2556,7 +2556,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -2652,7 +2652,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -2748,7 +2748,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -2844,7 +2844,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
@@ -2940,7 +2940,7 @@ jobs:
           echo "Repository name: ${{ github.repository }}"
           echo "event name: ${{ github.event_name }}"
           find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
-          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; >> artifacts.list
+          find . -type f \( -name 'core.*' -o -name 'hs_err_pid*.log' \) -exec xz -9 {} \; -exec echo "{}.xz" \; >> artifacts.list
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-jdk${{ matrix.jdk }}-logs.tar.gz ${{ github.job }}-artifacts
       - name: Generate Fork Repo Test Reports
