@@ -1035,6 +1035,8 @@ public class TestVeniceHelixAdmin {
     when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
     doCallRealMethod().when(veniceParentHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
     doCallRealMethod().when(veniceHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
+    doReturn(Optional.empty()).when(veniceHelixAdmin).getSslFactory();
+    doNothing().when(veniceHelixAdmin).checkControllerLeadershipFor(clusterName);
 
     // Mock current version in leader is 2
     when(veniceHelixAdmin.getLocalAdminOperationProtocolVersion()).thenReturn(2L);
@@ -1042,10 +1044,10 @@ public class TestVeniceHelixAdmin {
     // Mock response for standby controllers
     AdminOperationProtocolVersionControllerResponse response1 = new AdminOperationProtocolVersionControllerResponse();
     response1.setLocalAdminOperationProtocolVersion(1);
-    response1.setRequestUrl("http://standbyHost1:1234");
+    response1.setRequestUrl("standbyHost1_1234");
     AdminOperationProtocolVersionControllerResponse response2 = new AdminOperationProtocolVersionControllerResponse();
     response2.setLocalAdminOperationProtocolVersion(2);
-    response2.setRequestUrl("http://standbyHost2:1234");
+    response2.setRequestUrl("standbyHost2_1234");
 
     List<Instance> standbyControllers = new ArrayList<>();
     standbyControllers.add(new Instance("1", "standbyHost1", 1234));
@@ -1065,14 +1067,9 @@ public class TestVeniceHelixAdmin {
 
       Map<String, Long> urlToVersionMap = veniceParentHelixAdmin.getAdminOperationVersionFromControllers(clusterName);
       assertEquals(urlToVersionMap.size(), 3);
-      assertTrue(
-          urlToVersionMap.containsKey("http://standbyHost1:1234")
-              && urlToVersionMap.get("http://standbyHost1:1234") == 1L);
-      assertTrue(
-          urlToVersionMap.containsKey("http://standbyHost2:1234")
-              && urlToVersionMap.get("http://standbyHost2:1234") == 2L);
-      assertTrue(
-          urlToVersionMap.containsKey("http://leaderHost:1234") && urlToVersionMap.get("http://leaderHost:1234") == 2L);
+      assertTrue(urlToVersionMap.containsKey("standbyHost1_1234") && urlToVersionMap.get("standbyHost1_1234") == 1L);
+      assertTrue(urlToVersionMap.containsKey("standbyHost2_1234") && urlToVersionMap.get("standbyHost2_1234") == 2L);
+      assertTrue(urlToVersionMap.containsKey("leaderHost_1234") && urlToVersionMap.get("leaderHost_1234") == 2L);
     }
   }
 
