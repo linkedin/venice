@@ -51,6 +51,7 @@ public class TestProtocolVersionAutoDetection {
             .numberOfRouters(1)
             .replicationFactor(1)
             .forkServer(false)
+            .sslToStorageNodes(false)
             .parentControllerProperties(parentControllerProps);
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());

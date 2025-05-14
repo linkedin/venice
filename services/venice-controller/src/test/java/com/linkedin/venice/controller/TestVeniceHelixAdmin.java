@@ -1036,6 +1036,7 @@ public class TestVeniceHelixAdmin {
     doCallRealMethod().when(veniceParentHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
     doCallRealMethod().when(veniceHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
     doReturn(Optional.empty()).when(veniceHelixAdmin).getSslFactory();
+    doReturn("leaderHost_1234").when(veniceHelixAdmin).getControllerName();
     doNothing().when(veniceHelixAdmin).checkControllerLeadershipFor(clusterName);
 
     // Mock current version in leader is 2
@@ -1078,6 +1079,8 @@ public class TestVeniceHelixAdmin {
     VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
+    doReturn(Optional.empty()).when(veniceHelixAdmin).getSslFactory();
+    doReturn("leaderHost_1234").when(veniceHelixAdmin).getControllerName();
     doCallRealMethod().when(veniceParentHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
     doCallRealMethod().when(veniceHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
 

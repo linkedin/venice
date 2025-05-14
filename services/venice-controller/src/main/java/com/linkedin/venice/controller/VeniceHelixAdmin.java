@@ -7801,7 +7801,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Get the version from the current controller - leader
     Instance leaderController = getLeaderController(clusterName);
 
-    controllerNameToAdminOperationVersionMap.put(controllerName, getLocalAdminOperationProtocolVersion());
+    controllerNameToAdminOperationVersionMap.put(getControllerName(), getLocalAdminOperationProtocolVersion());
 
     // Create the controller client to reuse
     // (this is controller client to communicate with other controllers in the same cluster, the same region)
