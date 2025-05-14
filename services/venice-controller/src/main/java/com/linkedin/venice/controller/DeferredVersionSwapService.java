@@ -58,7 +58,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
   private static final Logger LOGGER = LogManager.getLogger(DeferredVersionSwapService.class);
   private static final int MAX_FETCH_STORE_FETCH_RETRY_LIMIT = 5;
-  private static final double WAIT_TIME_BUFFER_BEFORE_METRIC_EMISSION = 1.1;
   private Cache<String, Map<String, Long>> storePushCompletionTimeCache =
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
   private Map<String, Integer> fetchNonTargetRegionStoreRetryCountMap = new HashMap<>();
@@ -368,12 +367,15 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       }
 
       long completionTime = completionTimes.get(targetRegion);
-      long bufferedWaitTime = TimeUnit.MINUTES
-          .toSeconds(Math.round(store.getTargetSwapRegionWaitTime() * WAIT_TIME_BUFFER_BEFORE_METRIC_EMISSION));
+      long bufferedWaitTime = TimeUnit.MINUTES.toSeconds(
+          Math.round(
+              store.getTargetSwapRegionWaitTime()
+                  * veniceControllerMultiClusterConfig.getDeferredVersionSwapBufferTime()));
       long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
       if ((completionTime + bufferedWaitTime) < currentTime) {
         String message = "Store: " + store.getName() + "has not swapped to the target version: " + targetVersionNum
-            + " and the wait time: " + store.getTargetSwapRegionWaitTime() + " has passed";
+            + " and the wait time: " + store.getTargetSwapRegionWaitTime() + " has passed in target region "
+            + targetRegion;
         logMessageIfNotRedundant(message);
         stalledVersionSwapSet.add(store.getName());
         deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
