@@ -2042,11 +2042,6 @@ public class ConfigKeys {
   public static final String DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS = "davinci.push.status.check.interval.in.ms";
 
   /**
-   * The number of threads that will be used to perform SSL handshakes between clients and a router.
-   */
-  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
-
-  /**
    * Config to control the number of threads used for DNS resolution.
    * If the value is positive, DNS resolution would be done before SSL handshake between clients and a router.
    * 0 will disable the dns resolution but does not affect the SSL handshake.
@@ -2748,6 +2743,11 @@ public class ConfigKeys {
    */
   public static final String SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS =
       "server.idle.ingestion.task.cleanup.interval.in.seconds";
-
   public static final String PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY = "pass.through.config.prefixes.list";
+  /**
+   * The threshold in ms to consider a subscribed topic partition problematic without a new message polled since it was
+   * subscribed.
+   */
+  public static final String SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS =
+      "server.consumer.poll.tracker.stale.threshold.in.seconds";
 }
