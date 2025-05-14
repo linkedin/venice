@@ -25,7 +25,10 @@ import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.service.ICProvider;
@@ -36,6 +39,8 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.security.PrivilegedActionException;
+import java.security.PrivilegedExceptionAction;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -43,6 +48,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
@@ -87,9 +93,12 @@ public class AvroGenericDaVinciClientTest {
     when(mockBackend.getObjectCache()).thenReturn(null);
 
     ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
+    SubscriptionBasedReadOnlyStoreRepository mockStoreRepository = mock(SubscriptionBasedReadOnlyStoreRepository.class);
     Schema mockKeySchema = new Schema.Parser().parse("{\"type\": \"int\"}");
     when(mockSchemaRepository.getKeySchema(anyString())).thenReturn(new SchemaEntry(1, mockKeySchema));
     when(mockBackend.getSchemaRepository()).thenReturn(mockSchemaRepository);
+    when(mockBackend.getStoreRepository()).thenReturn(mockStoreRepository);
+    when(mockStoreRepository.getStoreOrThrow(anyString())).thenReturn(mock(Store.class));
 
     // Use reflection to set the private static daVinciBackend field
     Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
@@ -212,6 +221,44 @@ public class AvroGenericDaVinciClientTest {
     for (int i = 0; i < keyCnt; ++i) {
       assertEquals(resultMap.get(keyPrefix + i), testValue);
     }
+  }
+
+  @Test
+  public void putGetCachedStore() throws IllegalAccessException, PrivilegedActionException {
+    DaVinciBackend mockBackend = mock(DaVinciBackend.class);
+    Store mockStore = mock(Store.class);
+    Map<String, Store> cachedStores = new ConcurrentHashMap<>();
+
+    Field cachedStoreField = AccessController.doPrivileged((PrivilegedExceptionAction<Field>) () -> {
+      Field f = mockBackend.getClass().getDeclaredField("cachedStores");
+      f.setAccessible(true);
+      return f;
+    });
+    cachedStoreField.set(mockBackend, cachedStores);
+
+    doCallRealMethod().when(mockBackend).putStoreInCache(anyString(), any(Store.class));
+    doCallRealMethod().when(mockBackend).getCachedStore(anyString());
+
+    mockBackend.putStoreInCache("test_store", mockStore);
+    Assert.assertEquals(mockBackend.getCachedStore("test_store"), mockStore);
+  }
+
+  @Test
+  public void testThrowIfReadsDisabled() {
+    DaVinciBackend mockBackend = mock(DaVinciBackend.class);
+    Store mockStore = mock(Store.class);
+    when(mockBackend.getCachedStore(anyString())).thenReturn(mockStore);
+    when(mockStore.isEnableReads()).thenReturn(false);
+
+    AvroGenericDaVinciClient<Integer, String> client = mock(AvroGenericDaVinciClient.class);
+    doCallRealMethod().when(client).getDaVinciBackend();
+    assertThrows(VeniceClientException.class, client::getDaVinciBackend);
+
+    doReturn(mockBackend).when(client).getDaVinciBackend();
+    doReturn("test_store").when(client).getStoreName();
+    doCallRealMethod().when(client).throwIfReadsDisabled();
+
+    assertThrows(StoreDisabledException.class, client::throwIfReadsDisabled);
   }
 
   @Test
