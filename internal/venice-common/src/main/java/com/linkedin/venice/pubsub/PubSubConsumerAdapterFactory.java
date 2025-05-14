@@ -1,9 +1,6 @@
 package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Closeable;
 
 
@@ -23,21 +20,12 @@ public abstract class PubSubConsumerAdapterFactory<ADAPTER extends PubSubConsume
   }
 
   /**
+   * Creates a PubSub consumer adapter.
    *
-   * @param veniceProperties            A copy of venice properties. Relevant consumer configs will be extracted from
-   *                                    veniceProperties using prefix matching. For example, to construct kafka consumer
-   *                                    configs that start with "kafka." prefix will be used.
-   * @param isOffsetCollectionEnabled   A flag to enable collection of offset or not.
-   * @param pubSubMessageDeserializer   To deserialize the raw byte records into {@link PubSubMessage}s to process.
-   * @param consumerName                Name of the consumer. If not null, it will be used to set the context
-   *                                    for consumer thread.
-   * @return                            Returns an instance of a consumer adapter
+   * @param context The context containing all dependencies and configurations required to create a consumer.
+   * @return An instance of the PubSub consumer adapter.
    */
-  public abstract ADAPTER create(
-      VeniceProperties veniceProperties,
-      boolean isOffsetCollectionEnabled,
-      PubSubMessageDeserializer pubSubMessageDeserializer,
-      String consumerName);
+  public abstract ADAPTER create(PubSubConsumerAdapterContext context);
 
   public abstract String getName();
 }

@@ -1,6 +1,5 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory.getConsumer;
 import static com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.LATEST;
 
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
@@ -8,7 +7,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -40,26 +38,20 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   private final AtomicBoolean versionSwapThreadScheduled = new AtomicBoolean(false);
   private final VersionSwapDataChangeListener<K, V> versionSwapListener;
 
-  public VeniceAfterImageConsumerImpl(
-      ChangelogClientConfig changelogClientConfig,
-      PubSubConsumerAdapter consumer,
-      PubSubPositionDeserializer pubSubPositionDeserializer) {
+  public VeniceAfterImageConsumerImpl(ChangelogClientConfig changelogClientConfig, PubSubConsumerAdapter consumer) {
     this(
         changelogClientConfig,
         consumer,
         Lazy.of(
-            () -> getConsumer(
-                changelogClientConfig.getConsumerProperties(),
-                changelogClientConfig.getStoreName() + "-" + "internal")),
-        pubSubPositionDeserializer);
+            () -> VeniceChangelogConsumerClientFactory
+                .getPubSubConsumer(changelogClientConfig, changelogClientConfig.getStoreName() + "-" + "internal")));
   }
 
   protected VeniceAfterImageConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter consumer,
-      Lazy<PubSubConsumerAdapter> seekConsumer,
-      PubSubPositionDeserializer pubSubPositionDeserializer) {
-    super(changelogClientConfig, consumer, pubSubPositionDeserializer);
+      Lazy<PubSubConsumerAdapter> seekConsumer) {
+    super(changelogClientConfig, consumer);
     internalSeekConsumer = seekConsumer;
     versionSwapListener = new VersionSwapDataChangeListener<K, V>(
         this,

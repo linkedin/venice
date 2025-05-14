@@ -1,6 +1,8 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ROUTER_ENABLE_READ_THROTTLING;
+import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.d2.balancer.D2Client;

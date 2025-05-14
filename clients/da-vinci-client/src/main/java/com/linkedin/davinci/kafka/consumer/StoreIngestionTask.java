@@ -11,6 +11,8 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDB
 import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.END_OF_PUSH;
+import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_PUSH;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
@@ -2773,6 +2775,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     if (shouldSyncOffset(partitionConsumptionState, record, leaderProducedRecordContext)) {
       updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
+      if (isHybridMode()) {
+        hostLevelIngestionStats.recordTotalDuplicateKeys(storageEngine.getDuplicateKeyCountEstimate());
+        hostLevelIngestionStats.recordTotalKeyCount(storageEngine.getKeyCountEstimate());
+      }
     }
   }
 
@@ -3078,6 +3084,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       ControlMessage controlMessage,
       PartitionConsumptionState partitionConsumptionState) {
     StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
+    if (partitionConsumptionState.isEndOfPushReceived()) {
+      LOGGER.warn(
+          "Received START_OF_PUSH after END_OF_PUSH for replica: {}. This may indicate out-of-order or "
+              + "duplicate control messages. Details: Incoming SoP: {}, Previous SoP timestamp: {}, Previous "
+              + "EoP timestamp: {}. The message will be ignored.",
+          partitionConsumptionState.getReplicaId(),
+          startOfPush,
+          partitionConsumptionState.getStartOfPushTimestamp(),
+          partitionConsumptionState.getEndOfPushTimestamp());
+      return;
+    }
+
     /*
      * Notify the underlying store engine about starting batch push.
      */

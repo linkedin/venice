@@ -168,9 +168,6 @@ public class ConfigKeys {
 
   public static final String KAFKA_CLIENT_ID_CONFIG = ApacheKafkaConsumerConfig.KAFKA_CLIENT_ID_CONFIG;
   public static final String KAFKA_GROUP_ID_CONFIG = ApacheKafkaConsumerConfig.KAFKA_GROUP_ID_CONFIG;
-  public static final String KAFKA_AUTO_OFFSET_RESET_CONFIG = ApacheKafkaConsumerConfig.KAFKA_AUTO_OFFSET_RESET_CONFIG;
-  public static final String KAFKA_ENABLE_AUTO_COMMIT_CONFIG =
-      ApacheKafkaConsumerConfig.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
   public static final String KAFKA_FETCH_MIN_BYTES_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MIN_BYTES_CONFIG;
   public static final String KAFKA_FETCH_MAX_BYTES_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MAX_BYTES_CONFIG;
   public static final String KAFKA_MAX_POLL_RECORDS_CONFIG = ApacheKafkaConsumerConfig.KAFKA_MAX_POLL_RECORDS_CONFIG;
@@ -232,8 +229,30 @@ public class ConfigKeys {
   public static final String KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND =
       "kafka.fetch.quota.unordered.records.per.second";
 
-  // Kafka security protocol
-  public static final String KAFKA_SECURITY_PROTOCOL = "security.protocol";
+  /**
+   * @deprecated This legacy config key was used to specify the security protocol for PubSub clients.
+   * As part of an ongoing effort to namespace all PubSub client configs, this key is being replaced
+   * with a "pubsub."-prefixed version to reduce ambiguity with unrelated configurations.
+   * Use {@link #PUBSUB_SECURITY_PROTOCOL} instead.
+   */
+  @Deprecated
+  public static final String PUBSUB_SECURITY_PROTOCOL_LEGACY = "security.protocol";
+
+  /**
+   * New config key for specifying the PubSub client security protocol.
+   * This is part of a broader effort to namespace all PubSub configs under the "pubsub." prefix.
+   */
+  public static final String PUBSUB_SECURITY_PROTOCOL = PUBSUB_CLIENT_CONFIG_PREFIX + PUBSUB_SECURITY_PROTOCOL_LEGACY;
+
+  /**
+   * @deprecated This legacy config key was used to specify the Kafka security protocol using a "kafka." prefix.
+   * As part of the ongoing effort to unify and namespace all PubSub client configurations under the "pubsub." prefix,
+   * this key is being phased out in favor of {@link #PUBSUB_SECURITY_PROTOCOL}.
+   *
+   * Use {@code pubsub.security.protocol} instead to avoid ambiguity and ensure consistency across client configs.
+   */
+  @Deprecated
+  public static final String KAFKA_SECURITY_PROTOCOL_LEGACY = KAFKA_CONFIG_PREFIX + PUBSUB_SECURITY_PROTOCOL_LEGACY;
 
   /**
    * Number of PubSub consumer clients to be used per topic manager for fetching metadata.
@@ -2028,11 +2047,6 @@ public class ConfigKeys {
   public static final String DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS = "davinci.push.status.check.interval.in.ms";
 
   /**
-   * The number of threads that will be used to perform SSL handshakes between clients and a router.
-   */
-  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
-
-  /**
    * Config to control the number of threads used for DNS resolution.
    * If the value is positive, DNS resolution would be done before SSL handshake between clients and a router.
    * 0 will disable the dns resolution but does not affect the SSL handshake.
@@ -2734,6 +2748,11 @@ public class ConfigKeys {
    */
   public static final String SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS =
       "server.idle.ingestion.task.cleanup.interval.in.seconds";
-
   public static final String PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY = "pass.through.config.prefixes.list";
+  /**
+   * The threshold in ms to consider a subscribed topic partition problematic without a new message polled since it was
+   * subscribed.
+   */
+  public static final String SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS =
+      "server.consumer.poll.tracker.stale.threshold.in.seconds";
 }

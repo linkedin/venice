@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeastOnce;
@@ -19,10 +18,11 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.utils.IndexedHashMap;
 import com.linkedin.davinci.utils.IndexedMap;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
@@ -31,13 +31,11 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.RandomAccessDaemonThreadFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.util.ArrayList;
@@ -50,15 +48,21 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class KafkaConsumerServiceTest {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-  private final PubSubMessageDeserializer pubSubDeserializer = new PubSubMessageDeserializer(
-      new OptimizedKafkaValueSerializer(),
-      new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-      new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+  private final PubSubMessageDeserializer pubSubDeserializer = PubSubMessageDeserializer.createOptimizedDeserializer();
+  private VeniceServerConfig mockVeniceServerConfig;
+
+  @BeforeMethod(alwaysRun = true)
+  public void setUp() {
+    mockVeniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(mockVeniceServerConfig)
+        .getPubSubPositionTypeRegistry();
+  }
 
   @Test
   public void testTopicWiseGetConsumer() throws Exception {
@@ -82,7 +86,7 @@ public class KafkaConsumerServiceTest {
     when(task2.isHybridMode()).thenReturn(true);
 
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
@@ -109,7 +113,7 @@ public class KafkaConsumerServiceTest {
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        mock(VeniceServerConfig.class));
+        mockVeniceServerConfig);
     consumerService.start();
 
     PubSubTopic versionTopicForTask1 = task1.getVersionTopic();
@@ -156,7 +160,7 @@ public class KafkaConsumerServiceTest {
     when(consumer1.hasAnySubscription()).thenReturn(true);
 
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1);
+    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumer1);
 
     Properties properties = new Properties();
     String testKafkaUrl = "test_kafka_url";
@@ -247,7 +251,7 @@ public class KafkaConsumerServiceTest {
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        mock(VeniceServerConfig.class)) {
+        mockVeniceServerConfig) {
       @Override
       protected SharedKafkaConsumer pickConsumerForPartition(
           PubSubTopic versionTopic,
@@ -275,7 +279,7 @@ public class KafkaConsumerServiceTest {
     when(consumer1.hasAnySubscription()).thenReturn(false);
 
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
@@ -302,7 +306,7 @@ public class KafkaConsumerServiceTest {
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        mock(VeniceServerConfig.class));
+        mockVeniceServerConfig);
     consumerService.start();
 
     String storeName = Utils.getUniqueString("test_consumer_service");
@@ -376,7 +380,7 @@ public class KafkaConsumerServiceTest {
     when(task2.isHybridMode()).thenReturn(true);
 
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
@@ -403,7 +407,7 @@ public class KafkaConsumerServiceTest {
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        mock(VeniceServerConfig.class));
+        mockVeniceServerConfig);
     consumerService.start();
 
     PubSubConsumerAdapter consumerForT1P0 = consumerService
@@ -422,18 +426,6 @@ public class KafkaConsumerServiceTest {
     Assert.assertNotEquals(consumerForT2P0, consumerForT2P1);
     Assert.assertEquals(consumerForT1P0, consumerForT1P2);
     Assert.assertEquals(consumerForT1P3, consumerForT2P1);
-  }
-
-  @Test
-  public void testGenerateConsumerId() {
-    String hostName = Utils.getHostName();
-    String kafkaUrl = "abc:1234";
-    int suffix = 3;
-    ConsumerPoolType poolType = ConsumerPoolType.SEP_RT_LEADER_POOL;
-    KafkaConsumerService consumerService = mock(KafkaConsumerService.class);
-    doCallRealMethod().when(consumerService).getUniqueClientId(anyString(), anyInt(), any());
-    String expectedResult = hostName + "_" + kafkaUrl + "_" + suffix + poolType.getStatSuffix();
-    Assert.assertEquals(consumerService.getUniqueClientId(kafkaUrl, suffix, poolType), expectedResult);
   }
 
   @Test
@@ -562,7 +554,7 @@ public class KafkaConsumerServiceTest {
     ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
     ApacheKafkaConsumerAdapter consumer2 = mock(ApacheKafkaConsumerAdapter.class);
     PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
-    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.create(any(PubSubConsumerAdapterContext.class))).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
@@ -589,7 +581,7 @@ public class KafkaConsumerServiceTest {
         false,
         mock(ReadOnlyStoreRepository.class),
         false,
-        mock(VeniceServerConfig.class)) {
+        mockVeniceServerConfig) {
       @Override
       protected SharedKafkaConsumer pickConsumerForPartition(
           PubSubTopic versionTopic,
