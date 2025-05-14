@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller.server;
 
+import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLER;
 import static com.linkedin.venice.exceptions.ErrorType.INCORRECT_CONTROLLER;
 import static com.linkedin.venice.exceptions.ErrorType.INVALID_CONFIG;
 import static com.linkedin.venice.exceptions.ErrorType.STORE_NOT_FOUND;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -128,6 +130,51 @@ public class StoresRoutesTest {
     Assert.assertEquals(trackableControllerResponse.getError(), errMessage);
     Assert.assertEquals(trackableControllerResponse.getCluster(), TEST_CLUSTER);
     Assert.assertEquals(trackableControllerResponse.getName(), TEST_STORE_NAME);
+  }
+
+  @Test
+  public void testMigrateStore() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class, RETURNS_DEEP_STUBS);
+    String DEST_CLUSTER = "dest_cluster";
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(TEST_CLUSTER);
+    Request request = mock(Request.class);
+    doReturn(LEADER_CONTROLLER.getPath()).when(request).pathInfo();
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(DEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER_DEST));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.STORE_NAME));
+    Route migrateStoreRoute = new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).migrateStore(mockAdmin);
+
+    when(mockAdmin.getControllerConfig(TEST_CLUSTER).isRealTimeTopicVersioningEnabled()).thenReturn(true);
+    when(mockAdmin.getControllerConfig(DEST_CLUSTER).isRealTimeTopicVersioningEnabled()).thenReturn(false);
+    TrackableControllerResponse trackableControllerResponse = ObjectMapperFactory.getInstance()
+        .readValue(
+            migrateStoreRoute.handle(request, mock(Response.class)).toString(),
+            TrackableControllerResponse.class);
+    Assert.assertTrue(trackableControllerResponse.isError());
+
+    when(mockAdmin.getControllerConfig(TEST_CLUSTER).isRealTimeTopicVersioningEnabled()).thenReturn(false);
+    when(mockAdmin.getControllerConfig(DEST_CLUSTER).isRealTimeTopicVersioningEnabled()).thenReturn(true);
+    trackableControllerResponse = ObjectMapperFactory.getInstance()
+        .readValue(
+            migrateStoreRoute.handle(request, mock(Response.class)).toString(),
+            TrackableControllerResponse.class);
+    Assert.assertTrue(trackableControllerResponse.isError());
+
+    when(mockAdmin.getControllerConfig(TEST_CLUSTER).isRealTimeTopicVersioningEnabled()).thenReturn(true);
+    when(mockAdmin.getControllerConfig(DEST_CLUSTER).isRealTimeTopicVersioningEnabled()).thenReturn(true);
+    trackableControllerResponse = ObjectMapperFactory.getInstance()
+        .readValue(
+            migrateStoreRoute.handle(request, mock(Response.class)).toString(),
+            TrackableControllerResponse.class);
+    Assert.assertFalse(trackableControllerResponse.isError());
+
+    when(mockAdmin.getControllerConfig(TEST_CLUSTER).isRealTimeTopicVersioningEnabled()).thenReturn(false);
+    when(mockAdmin.getControllerConfig(DEST_CLUSTER).isRealTimeTopicVersioningEnabled()).thenReturn(false);
+    trackableControllerResponse = ObjectMapperFactory.getInstance()
+        .readValue(
+            migrateStoreRoute.handle(request, mock(Response.class)).toString(),
+            TrackableControllerResponse.class);
+    Assert.assertFalse(trackableControllerResponse.isError());
   }
 
   @Test

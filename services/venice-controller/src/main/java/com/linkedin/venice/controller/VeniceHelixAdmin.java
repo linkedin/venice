@@ -1120,7 +1120,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
     /* If this store existed previously, we do not want to use the same RT topic name that was used by the previous
     store. To ensure this, increase largestUsedRTVersionNumber and new RT name will be different */
-    if (getMultiClusterConfigs().isRealTimeTopicVersioningEnabled()) {
+    if (config.isRealTimeTopicVersioningEnabled()) {
       newStore.setLargestUsedRTVersionNumber(largestUsedRTVersionNumber + 1);
     }
   }
@@ -9213,7 +9213,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return multiClusterConfigs;
   }
 
-  VeniceControllerClusterConfig getControllerConfig(String clusterName) {
+  @Override
+  public VeniceControllerClusterConfig getControllerConfig(String clusterName) {
     return multiClusterConfigs.getControllerConfig(clusterName);
   }
 
