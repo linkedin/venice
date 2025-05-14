@@ -12,7 +12,6 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -52,7 +51,6 @@ public class TestP2PFileTransferServerHandler {
   StorageMetadataService storageMetadataService;
   P2PFileTransferServerHandler serverHandler;
   BlobSnapshotManager blobSnapshotManager;
-  ReadOnlyStoreRepository readOnlyStoreRepository;
   StorageEngineRepository storageEngineRepository;
 
   @BeforeMethod
@@ -60,11 +58,9 @@ public class TestP2PFileTransferServerHandler {
     baseDir = Files.createTempDirectory("tmp");
     blobTransferMaxTimeoutInMin = 30;
     storageMetadataService = Mockito.mock(StorageMetadataService.class);
-    readOnlyStoreRepository = Mockito.mock(ReadOnlyStoreRepository.class);
     storageEngineRepository = Mockito.mock(StorageEngineRepository.class);
 
-    blobSnapshotManager =
-        new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService);
+    blobSnapshotManager = Mockito.spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
     serverHandler =
         new P2PFileTransferServerHandler(baseDir.toString(), blobTransferMaxTimeoutInMin, blobSnapshotManager);
     ch = new EmbeddedChannel(serverHandler);
@@ -167,6 +163,7 @@ public class TestP2PFileTransferServerHandler {
     Files.createDirectories(snapshotDir);
     FullHttpRequest request =
         new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(Mockito.anyString(), Mockito.anyInt());
 
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
@@ -206,6 +203,8 @@ public class TestP2PFileTransferServerHandler {
     String file1ChecksumHeader = BlobTransferUtils.generateFileChecksum(file1);
     FullHttpRequest request =
         new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
+
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(Mockito.anyString(), Mockito.anyInt());
 
     ch.writeInbound(request);
 
@@ -274,6 +273,8 @@ public class TestP2PFileTransferServerHandler {
     // the order of file transfer is not guaranteed so put them into a set and remove them one by one
     Collections.addAll(fileNames, "attachment; filename=\"file1\"", "attachment; filename=\"file2\"");
     Collections.addAll(fileChecksums, file1ChecksumHeader, file2ChecksumHeader);
+
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(Mockito.anyString(), Mockito.anyInt());
 
     ch.writeInbound(request);
     // start of file1
