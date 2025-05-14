@@ -1044,10 +1044,10 @@ public class TestVeniceHelixAdmin {
     // Mock response for standby controllers
     AdminOperationProtocolVersionControllerResponse response1 = new AdminOperationProtocolVersionControllerResponse();
     response1.setLocalAdminOperationProtocolVersion(1);
-    response1.setRequestUrl("standbyHost1_1234");
+    response1.setLocalControllerName("standbyHost1_1234");
     AdminOperationProtocolVersionControllerResponse response2 = new AdminOperationProtocolVersionControllerResponse();
     response2.setLocalAdminOperationProtocolVersion(2);
-    response2.setRequestUrl("standbyHost2_1234");
+    response2.setLocalControllerName("standbyHost2_1234");
 
     List<Instance> standbyControllers = new ArrayList<>();
     standbyControllers.add(new Instance("1", "standbyHost1", 1234));
@@ -1091,7 +1091,7 @@ public class TestVeniceHelixAdmin {
 
     AdminOperationProtocolVersionControllerResponse response1 = new AdminOperationProtocolVersionControllerResponse();
     response1.setLocalAdminOperationProtocolVersion(1);
-    response1.setRequestUrl("http://standbyHost1:1234");
+    response1.setLocalControllerName("standbyHost1_1234");
     AdminOperationProtocolVersionControllerResponse failedResponse =
         new AdminOperationProtocolVersionControllerResponse();
     failedResponse.setError("Failed to get version");

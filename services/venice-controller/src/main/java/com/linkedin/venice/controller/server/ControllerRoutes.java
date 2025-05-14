@@ -258,22 +258,11 @@ public class ControllerRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         String clusterName = request.queryParams(CLUSTER);
-        String currentUrl = getRequestURL(request);
-
         responseObject.setCluster(clusterName);
-        Map<String, Long> controllerUrlToVersionMap = admin.getAdminOperationVersionFromControllers(clusterName);
-        responseObject.setControllerUrlToVersionMap(controllerUrlToVersionMap);
-        responseObject.setRequestUrl(currentUrl);
-
-        if (controllerUrlToVersionMap.containsKey(currentUrl)) {
-          responseObject.setLocalAdminOperationProtocolVersion(controllerUrlToVersionMap.get(currentUrl));
-        } else {
-          // Should not happen
-          throw new VeniceException(
-              "The current controller URL: " + currentUrl + " is not in the urlToVersionMap in the response "
-                  + controllerUrlToVersionMap);
-        }
-
+        Map<String, Long> controllerNameToVersionMap = admin.getAdminOperationVersionFromControllers(clusterName);
+        responseObject.setControllerNameToVersionMap(controllerNameToVersionMap);
+        responseObject.setLocalControllerName(getControllerName(request));
+        responseObject.setLocalAdminOperationProtocolVersion(admin.getLocalAdminOperationProtocolVersion());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
@@ -292,7 +281,7 @@ public class ControllerRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         responseObject.setLocalAdminOperationProtocolVersion(admin.getLocalAdminOperationProtocolVersion());
-        responseObject.setRequestUrl(getRequestURL(request));
+        responseObject.setLocalControllerName(getControllerName(request));
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
@@ -302,12 +291,12 @@ public class ControllerRoutes extends AbstractRoute {
   }
 
   /**
-   * Get the request base URL from the request object.
+   * Get controller name from URL.
    * Example:
    * request.url() = https://localhost:8080/venice/cluster/clusterName/leaderController?param1=value1&param2=value2
-   * @return the base URL: localhost_8080
+   * @return "localhost_8080"
    */
-  private String getRequestURL(Request request) {
+  private String getControllerName(Request request) {
     try {
       URL url = new URL(request.url());
       return url.getHost() + (url.getPort() != -1 ? "_" + url.getPort() : "");

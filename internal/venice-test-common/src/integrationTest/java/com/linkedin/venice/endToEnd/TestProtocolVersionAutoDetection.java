@@ -100,7 +100,7 @@ public class TestProtocolVersionAutoDetection {
       AdminOperationProtocolVersionControllerResponse parentResponse =
           parentControllerClient.getAdminOperationProtocolVersionFromControllers(clusterName);
       assertEquals(parentResponse.getLocalAdminOperationProtocolVersion(), LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-      assertEquals(parentResponse.getControllerUrlToVersionMap().size(), 2);
+      assertEquals(parentResponse.getControllerNameToVersionMap().size(), 2);
     }
 
     // child controller
@@ -109,7 +109,7 @@ public class TestProtocolVersionAutoDetection {
       AdminOperationProtocolVersionControllerResponse childResponse =
           dc0ControllerClient.getAdminOperationProtocolVersionFromControllers(clusterName);
       assertEquals(childResponse.getLocalAdminOperationProtocolVersion(), LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-      assertEquals(childResponse.getControllerUrlToVersionMap().size(), 2);
+      assertEquals(childResponse.getControllerNameToVersionMap().size(), 2);
     }
   }
 }

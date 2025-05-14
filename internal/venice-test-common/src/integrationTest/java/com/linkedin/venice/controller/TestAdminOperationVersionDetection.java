@@ -47,7 +47,7 @@ public class TestAdminOperationVersionDetection {
             .numberOfServers(1)
             .numberOfRouters(1)
             .replicationFactor(1)
-            .sslToStorageNodes(true)
+            .sslToStorageNodes(false)
             .forkServer(false)
             .serverProperties(serverProperties)
             .parentControllerProperties(parentControllerProperties);
@@ -73,7 +73,7 @@ public class TestAdminOperationVersionDetection {
     assertEquals(
         response.getLocalAdminOperationProtocolVersion(),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Map<String, Long> urlToVersionMap = response.getControllerUrlToVersionMap();
+    Map<String, Long> urlToVersionMap = response.getControllerNameToVersionMap();
     assertEquals(urlToVersionMap.size(), 2);
     assertEquals(response.getCluster(), clusterName);
   }
@@ -97,7 +97,7 @@ public class TestAdminOperationVersionDetection {
     assertEquals(
         response.getLocalAdminOperationProtocolVersion(),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Map<String, Long> urlToVersionMap = response.getControllerUrlToVersionMap();
+    Map<String, Long> urlToVersionMap = response.getControllerNameToVersionMap();
     assertEquals(urlToVersionMap.size(), 2);
     assertEquals(response.getCluster(), clusterName);
   }

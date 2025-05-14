@@ -7791,7 +7791,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * Get the admin operation protocol versions from controllers (leader + standby) for specific cluster.
    * @param clusterName: the cluster name
-   * @return map (controllerUrl: version). Example: {localhost_1234=1, localhost_1235=1}*/
+   * @return map (controllerName: version). Example: {localhost_1234=1, localhost_1235=1}*/
   @Override
   public Map<String, Long> getAdminOperationVersionFromControllers(String clusterName) {
     checkControllerLeadershipFor(clusterName);
@@ -7800,10 +7800,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     // Get the version from the current controller - leader
     Instance leaderController = getLeaderController(clusterName);
-    putControllerUrlToAdminOperationVersionMap(
-        controllerUrlToAdminOperationVersionMap,
-        leaderController,
-        getLocalAdminOperationProtocolVersion());
+
+    controllerUrlToAdminOperationVersionMap.put(controllerName, getLocalAdminOperationProtocolVersion());
 
     // Create the controller client to reuse
     // (this is controller client to communicate with other controllers in the same cluster, the same region)
@@ -7826,27 +7824,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             "Failed to get admin operation protocol version from standby controller: " + standbyControllerUrl
                 + ", error message: " + response.getError());
       }
-      putControllerUrlToAdminOperationVersionMap(
-          controllerUrlToAdminOperationVersionMap,
-          standbyController,
-          response.getLocalAdminOperationProtocolVersion());
+      controllerUrlToAdminOperationVersionMap
+          .put(response.getLocalControllerName(), response.getLocalAdminOperationProtocolVersion());
     }
 
     return controllerUrlToAdminOperationVersionMap;
-  }
-
-  /**
-   * Put the controller URL and admin operation protocol version into the map.
-   * @param controllerUrlToAdminOperationVersionMap: map to put the controller URL and version
-   * @param controller: the controller instance
-   * @param adminOperationProtocolVersion: the admin operation protocol version
-   */
-  private void putControllerUrlToAdminOperationVersionMap(
-      Map<String, Long> controllerUrlToAdminOperationVersionMap,
-      Instance controller,
-      long adminOperationProtocolVersion) {
-    String controllerUrl = controller.getHost() + "_" + controller.getPort();
-    controllerUrlToAdminOperationVersionMap.put(controllerUrl, adminOperationProtocolVersion);
   }
 
   /**
