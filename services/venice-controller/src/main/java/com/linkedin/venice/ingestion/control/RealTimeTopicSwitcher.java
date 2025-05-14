@@ -228,19 +228,24 @@ public class RealTimeTopicSwitcher {
         && topicManager.containsTopic(pubSubTopicRepository.getTopic(rtForPreviousVersion));
     boolean rtExistsForNextVersion =
         nextStoreVersion.isHybrid() && topicManager.containsTopic(pubSubTopicRepository.getTopic(rtForNextVersion));
+    LOGGER.info("Previous store version - {}, nextStoreVersion - {}, ");
 
     if (rtExistsForPreviousVersion || rtExistsForNextVersion) {
       if (rtExistsForPreviousVersion) {
         LOGGER.info(
-            "RT topic exists for store: {}, versionNum: {}. Broadcasting Version Swap message directly to RT.",
+            "RT topic exists for store: {}, versionNum: {}. Broadcasting Version Swap message directly to RT {} to switch to the next store version {}.",
             storeName,
-            previousVersion);
+            previousVersion,
+            rtForPreviousVersion,
+            nextVersion);
         broadcastVersionSwap(previousStoreVersion, nextStoreVersion, rtForPreviousVersion);
       }
       if (rtExistsForNextVersion && !rtForNextVersion.equals(rtForPreviousVersion)) {
         LOGGER.info(
-            "RT topic exists for store: {}, versionNum: {}. Broadcasting Version Swap message directly to RT.",
+            "RT topic exists for store: {}, versionNum: {}. Broadcasting Version Swap message directly to RT {} to switch to the next store version {}.",
             storeName,
+            nextVersion,
+            rtForNextVersion,
             nextVersion);
         // todo - when hybrid store repartition project completes, there can exist two different real time topics,
         // it is not clear yet, how to make CDC client, that depends on this `Version Swap` message, work in that case
