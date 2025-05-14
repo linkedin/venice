@@ -302,16 +302,15 @@ public class ControllerRoutes extends AbstractRoute {
   }
 
   /**
-   * Get the request base URL from the request object with HTTP as protocol.
+   * Get the request base URL from the request object.
    * Example:
    * request.url() = https://localhost:8080/venice/cluster/clusterName/leaderController?param1=value1&param2=value2
-   * base URL with https: https://localhost:8080
-   * @return the base URL with http http://localhost:8080
+   * @return the base URL: localhost_8080
    */
   private String getRequestURL(Request request) {
     try {
       URL url = new URL(request.url());
-      return HttpConstants.HTTP + "://" + url.getHost() + (url.getPort() != -1 ? ":" + url.getPort() : "");
+      return url.getHost() + (url.getPort() != -1 ? "_" + url.getPort() : "");
     } catch (Exception e) {
       throw new VeniceException("Invalid URL: " + request.url(), e);
     }

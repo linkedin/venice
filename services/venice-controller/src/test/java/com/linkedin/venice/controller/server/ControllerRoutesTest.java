@@ -230,7 +230,7 @@ public class ControllerRoutesTest {
 
     doReturn(leaderController).when(mockAdmin).getLeaderController(anyString());
     String leaderControllerHostHttps = String.format("https://%s:%s", TEST_HOST, TEST_PORT);
-    String leaderControllerHostHttp = String.format("http://%s:%s", TEST_HOST, TEST_PORT);
+    String leaderControllerHost = String.format("%s_%s", TEST_HOST, TEST_PORT);
 
     Request request = mock(Request.class);
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
@@ -238,9 +238,9 @@ public class ControllerRoutesTest {
     doReturn(leaderControllerHostHttps + "/get_admin_operation_version_from_controllers").when(request).url();
 
     Map<String, Long> urlToVersionMap = new HashMap<>();
-    urlToVersionMap.put("http://localhost:8080", 1L);
-    urlToVersionMap.put("http://localhost:8081", 2L);
-    urlToVersionMap.put(leaderControllerHostHttp, 1L);
+    urlToVersionMap.put("localhost_8080", 1L);
+    urlToVersionMap.put("localhost_8081", 2L);
+    urlToVersionMap.put(leaderControllerHost, 1L);
     doReturn(urlToVersionMap).when(mockAdmin).getAdminOperationVersionFromControllers(anyString());
 
     Route adminOperationVersionRoute =
@@ -252,7 +252,7 @@ public class ControllerRoutesTest {
     assertEquals(response.getLocalAdminOperationProtocolVersion(), 1L);
     assertEquals(response.getControllerUrlToVersionMap().size(), 3);
     assertEquals(response.getControllerUrlToVersionMap(), urlToVersionMap);
-    assertEquals(response.getRequestUrl(), leaderControllerHostHttp);
+    assertEquals(response.getRequestUrl(), leaderControllerHost);
     assertEquals(response.getCluster(), TEST_CLUSTER);
   }
 }
