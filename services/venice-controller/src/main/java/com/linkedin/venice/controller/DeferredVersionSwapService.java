@@ -123,9 +123,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       long storeWaitTime = TimeUnit.MINUTES.toSeconds(store.getTargetSwapRegionWaitTime());
       long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
       if ((completionTime + storeWaitTime) > currentTime) {
-        String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
-            + " as wait time: " + store.getTargetSwapRegionWaitTime() + " has not passed";
-        logMessageIfNotRedundant(message);
         return false;
       }
     }
@@ -339,7 +336,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
   /**
    * Check if the version swap for a store is stalled. A version swap is considered stalled if the wait time has elapsed and
-   * more than 110% of the wait time has passed without switching to the target version. Emit a metric is this happens
+   * more than the wait time * {deferred.version.swap.buffer.time} has passed without switching to the target version.
+   * Emit a metric is this happens
    * @param completionTimes the push completion time of the regions
    * @param targetRegions the list of target regions
    * @param store the store to check for
