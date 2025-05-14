@@ -39,8 +39,10 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.commons.httpclient.HttpStatus;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -185,6 +187,7 @@ public class BasicClientStatsTest {
     Attributes expectedAttributes = getExpectedAttributes(storeName, httpStatus, category);
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     Assert.assertFalse(metricsData.isEmpty());
+    assertEquals(metricsData.size(), 2, "There should be two metrics recorded: call_time and call_count");
 
     LongPointData callCountData = getLongPointData(metricsData, "call_count", otelPrefix);
     validateLongPointData(callCountData, 1, expectedAttributes);
@@ -249,7 +252,9 @@ public class BasicClientStatsTest {
             "Latency for all DaVinci Client responses",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
 
+    Set<String> uniqueMetricEntitiesNames = new HashSet<>();
     for (BasicClientStats.BasicClientMetricEntity metric: BasicClientStats.BasicClientMetricEntity.values()) {
+      uniqueMetricEntitiesNames.add(metric.getMetricEntity().getMetricName());
       MetricEntity actual = metric.getMetricEntity();
       MetricEntity expected = expectedMetrics.get(metric);
 
@@ -278,7 +283,7 @@ public class BasicClientStatsTest {
     // Assert size
     assertEquals(
         CLIENT_METRIC_ENTITIES.size(),
-        expectedMetricEntities.size(),
+        uniqueMetricEntitiesNames.size(),
         "Unexpected size of CLIENT_METRIC_ENTITIES");
 
     // Assert contents

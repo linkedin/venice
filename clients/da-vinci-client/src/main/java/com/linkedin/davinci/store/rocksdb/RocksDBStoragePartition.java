@@ -827,15 +827,21 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   public long getDuplicateKeyCountEstimate() {
-    if (keyStatistics != null) {
-      return keyStatistics.getTickerCount(COMPACTION_KEY_DROP_NEWER_ENTRY)
-          + keyStatistics.getTickerCount(COMPACTION_KEY_DROP_USER);
+    readCloseRWLock.readLock().lock();
+    try {
+      if (keyStatistics != null) {
+        makeSureRocksDBIsStillOpen();
+        return keyStatistics.getTickerCount(COMPACTION_KEY_DROP_NEWER_ENTRY)
+            + keyStatistics.getTickerCount(COMPACTION_KEY_DROP_USER);
+      }
+      return -1;
+    } finally {
+      readCloseRWLock.readLock().unlock();
     }
-    return -1;
   }
 
   public long getKeyCountEstimate() throws RocksDBException {
-    return rocksDB.getLongProperty("rocksdb.estimate-num-keys");
+    return getRocksDBStatValue("rocksdb.estimate-num-keys");
   }
 
   public void deleteFilesInDirectory(String fullPath) {
@@ -910,6 +916,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
     if (deferredWrite) {
       rocksDBSstFileWriter.close();
+    }
+    if (keyStatistics != null) {
+      keyStatistics.close();
     }
     options.close();
     if (writeOptions != null) {
