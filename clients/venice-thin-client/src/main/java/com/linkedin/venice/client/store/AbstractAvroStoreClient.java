@@ -540,6 +540,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       startWithExceptionThrownWhenFail();
     } catch (Exception e) {
       if (clientConfig.isForceClusterDiscoveryAtStartTime()) {
+        if (e instanceof VeniceClientException) {
+          throw (VeniceClientException) e;
+        }
         throw new VeniceClientException(
             "Failed to initializing Venice Client: " + getStoreName() + " with error: " + e.getMessage(),
             e);
