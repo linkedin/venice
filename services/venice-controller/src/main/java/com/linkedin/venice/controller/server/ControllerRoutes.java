@@ -291,7 +291,7 @@ public class ControllerRoutes extends AbstractRoute {
   }
 
   /**
-   * Get controller name from URL.
+   * Get controller name from the request object.
    * Example:
    * request.url() = https://localhost:8080/venice/cluster/clusterName/leaderController?param1=value1&param2=value2
    * @return "localhost_8080"

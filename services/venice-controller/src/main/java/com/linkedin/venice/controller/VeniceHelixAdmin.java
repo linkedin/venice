@@ -7796,12 +7796,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public Map<String, Long> getAdminOperationVersionFromControllers(String clusterName) {
     checkControllerLeadershipFor(clusterName);
 
-    Map<String, Long> controllerUrlToAdminOperationVersionMap = new HashMap<>();
+    Map<String, Long> controllerNameToAdminOperationVersionMap = new HashMap<>();
 
     // Get the version from the current controller - leader
     Instance leaderController = getLeaderController(clusterName);
 
-    controllerUrlToAdminOperationVersionMap.put(controllerName, getLocalAdminOperationProtocolVersion());
+    controllerNameToAdminOperationVersionMap.put(controllerName, getLocalAdminOperationProtocolVersion());
 
     // Create the controller client to reuse
     // (this is controller client to communicate with other controllers in the same cluster, the same region)
@@ -7824,11 +7824,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             "Failed to get admin operation protocol version from standby controller: " + standbyControllerUrl
                 + ", error message: " + response.getError());
       }
-      controllerUrlToAdminOperationVersionMap
+      controllerNameToAdminOperationVersionMap
           .put(response.getLocalControllerName(), response.getLocalAdminOperationProtocolVersion());
     }
 
-    return controllerUrlToAdminOperationVersionMap;
+    return controllerNameToAdminOperationVersionMap;
   }
 
   /**
