@@ -539,6 +539,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     try {
       startWithExceptionThrownWhenFail();
     } catch (Exception e) {
+      if (clientConfig.isForceClusterDiscoveryAtStartTime()) {
+        throw new VeniceClientException(
+            "Failed to initializing Venice Client: " + getStoreName() + " with error: " + e.getMessage(),
+            e);
+      }
       /**
        * We can't fail the start since the existing customers are relying on the best-effort start behavior.
        */
@@ -562,7 +567,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       if (started) {
         return;
       }
-      LOGGER.info("Starting Venice client for store: {}", getStoreName(), new RuntimeException("fake exception"));
       /**
        * The following function will try to warmup store metadata:
        * 1. Cluster discovery.
