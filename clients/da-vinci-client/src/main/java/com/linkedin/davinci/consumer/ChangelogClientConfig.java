@@ -246,6 +246,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  /**
+   * If you're using the experimental client, and you want to deserialize your keys into
+   * {@link org.apache.avro.specific.SpecificRecord} set this configuration.
+   */
   public ChangelogClientConfig setSpecificKey(Class specificKey) {
     this.innerClientConfig.setSpecificKeyClass(specificKey);
     return this;
@@ -256,6 +260,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  /**
+   * If you're using the experimental client, and you want to deserialize your values into
+   * {@link org.apache.avro.specific.SpecificRecord} then set this configuration.
+   */
   public ChangelogClientConfig setSpecificValueSchema(Schema specificValueSchema) {
     this.innerClientConfig.setSpecificValueSchema(specificValueSchema);
     return this;

@@ -199,10 +199,6 @@ public class ClientConfig<T extends SpecificRecord> {
     return specificValueSchema;
   }
 
-  /**
-   * If you're using the experimental client, and you want to deserialize your values into Avro SpecificRecords
-   * then set this configuration.
-   */
   public ClientConfig<T> setSpecificValueSchema(Schema specificValueSchema) {
     this.specificValueSchema = specificValueSchema;
     return this;
@@ -221,10 +217,6 @@ public class ClientConfig<T extends SpecificRecord> {
     return specificKeyClass;
   }
 
-  /**
-   * If you're using the experimental client, and you want to deserialize your keys into Avro SpecificRecords
-   * then set this configuration.
-   */
   public ClientConfig<T> setSpecificKeyClass(Class specificKeyClass) {
     this.specificKeyClass = specificKeyClass;
     return this;
