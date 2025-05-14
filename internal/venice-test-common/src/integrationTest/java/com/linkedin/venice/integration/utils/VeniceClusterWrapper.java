@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;

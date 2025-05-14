@@ -242,6 +242,8 @@ public class RealTimeTopicSwitcher {
             "RT topic exists for store: {}, versionNum: {}. Broadcasting Version Swap message directly to RT.",
             storeName,
             nextVersion);
+        // todo - when hybrid store repartition project completes, there can exist two different real time topics,
+        // it is not clear yet, how to make CDC client, that depends on this `Version Swap` message, work in that case
         broadcastVersionSwap(previousStoreVersion, nextStoreVersion, rtForNextVersion);
       }
     } else {
