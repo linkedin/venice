@@ -835,7 +835,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   public long getKeyCountEstimate() throws RocksDBException {
-    return rocksDB.getLongProperty("rocksdb.estimate-num-keys");
+    return getRocksDBStatValue("rocksdb.estimate-num-keys");
   }
 
   public void deleteFilesInDirectory(String fullPath) {
@@ -910,6 +910,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
     if (deferredWrite) {
       rocksDBSstFileWriter.close();
+    }
+    if (keyStatistics != null) {
+      keyStatistics.close();
     }
     options.close();
     if (writeOptions != null) {
