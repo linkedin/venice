@@ -98,6 +98,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
          * DVRT implmentation. This is to prevent the local state from being wiped everytime a change is deployed
          */
         .setSkipCompatibilityChecks(true)
+        .setKeyClass(innerClientConfig.getSpecificKeyClass())
         .setOutputValueClass(innerClientConfig.getSpecificValueClass())
         .setOutputValueSchema(innerClientConfig.getSpecificValueSchema())
         .build();

@@ -55,6 +55,8 @@ public class RecordTransformerTest {
     assertFalse(
         dummyRecordTransformerConfig.shouldSkipCompatibilityChecks(),
         "Default for skipCompatibilityChecks should be false");
+    assertFalse(dummyRecordTransformerConfig.useSpecificRecordKeyDeserializer());
+    assertFalse(dummyRecordTransformerConfig.useSpecificRecordValueDeserializer());
 
     DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
         storeVersion,
@@ -279,17 +281,20 @@ public class RecordTransformerTest {
 
   @Test
   public void testSpecificRecordTransformer() throws NoSuchFieldException, IllegalAccessException {
+    Schema keySchema = TestSpecificKey.SCHEMA$;
     Schema valueSchema = TestSpecificValue.SCHEMA$;
 
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestSpecificRecordTransformer::new)
+            .setKeyClass(TestSpecificKey.class)
             .setOutputValueSchema(valueSchema)
             .setOutputValueClass(TestSpecificValue.class)
             .build();
 
-    assertTrue(dummyRecordTransformerConfig.isSpecificClient());
+    assertTrue(dummyRecordTransformerConfig.useSpecificRecordKeyDeserializer());
+    assertTrue(dummyRecordTransformerConfig.useSpecificRecordValueDeserializer());
 
-    DaVinciRecordTransformer<Integer, TestSpecificValue, TestSpecificValue> recordTransformer =
+    DaVinciRecordTransformer<TestSpecificKey, TestSpecificValue, TestSpecificValue> recordTransformer =
         new TestSpecificRecordTransformer(
             storeVersion,
             keySchema,
@@ -297,27 +302,35 @@ public class RecordTransformerTest {
             valueSchema,
             dummyRecordTransformerConfig);
 
-    DaVinciRecordTransformerUtility<Integer, TestSpecificValue> recordTransformerUtility =
+    DaVinciRecordTransformerUtility<TestSpecificKey, TestSpecificValue> recordTransformerUtility =
         recordTransformer.getRecordTransformerUtility();
+
+    Field keyDeserializerField = recordTransformerUtility.getClass().getDeclaredField("keyDeserializer");
+    keyDeserializerField.setAccessible(true);
+    assertTrue(keyDeserializerField.get(recordTransformerUtility) instanceof AvroSpecificDeserializer);
 
     Field outputValueDeserializerField =
         recordTransformerUtility.getClass().getDeclaredField("outputValueDeserializer");
     outputValueDeserializerField.setAccessible(true);
     assertTrue(outputValueDeserializerField.get(recordTransformerUtility) instanceof AvroSpecificDeserializer);
 
+    TestSpecificKey specificKey = new TestSpecificKey();
+    int id = 123;
+    specificKey.id = id;
+    Lazy<TestSpecificKey> lazyKey = Lazy.of(() -> specificKey);
+
     TestSpecificValue specificValue = new TestSpecificValue();
     String firstName = "first";
     String lastName = "last";
     specificValue.firstName = firstName;
     specificValue.lastName = lastName;
-
     Lazy<TestSpecificValue> lazyValue = Lazy.of(() -> specificValue);
 
     DaVinciRecordTransformerResult<TestSpecificValue> transformerResult =
         recordTransformer.transform(lazyKey, lazyValue, partitionId);
     assertEquals(transformerResult.getResult(), DaVinciRecordTransformerResult.Result.TRANSFORMED);
     TestSpecificValue transformedSpecificValue = transformerResult.getValue();
-    assertEquals(transformedSpecificValue.firstName, firstName.toUpperCase());
-    assertEquals(transformedSpecificValue.lastName, lastName.toUpperCase());
+    assertEquals(transformedSpecificValue.firstName, firstName + id);
+    assertEquals(transformedSpecificValue.lastName, lastName + id);
   }
 }

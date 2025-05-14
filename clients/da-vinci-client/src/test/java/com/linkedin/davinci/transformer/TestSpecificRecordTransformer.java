@@ -9,7 +9,7 @@ import org.apache.avro.Schema;
 
 
 public class TestSpecificRecordTransformer
-    extends DaVinciRecordTransformer<Integer, TestSpecificValue, TestSpecificValue> {
+    extends DaVinciRecordTransformer<TestSpecificKey, TestSpecificValue, TestSpecificValue> {
   public TestSpecificRecordTransformer(
       int storeVersion,
       Schema keySchema,
@@ -21,18 +21,22 @@ public class TestSpecificRecordTransformer
 
   @Override
   public DaVinciRecordTransformerResult<TestSpecificValue> transform(
-      Lazy<Integer> key,
+      Lazy<TestSpecificKey> lazyKey,
       Lazy<TestSpecificValue> lazyValue,
       int partitionId) {
+    TestSpecificKey key = lazyKey.get();
+    int id = key.id;
+
     TestSpecificValue value = lazyValue.get();
-    value.firstName = value.firstName.toString().toUpperCase();
-    value.lastName = value.lastName.toString().toUpperCase();
+
+    value.firstName = value.firstName.toString() + id;
+    value.lastName = value.lastName.toString() + id;
 
     return new DaVinciRecordTransformerResult<>(DaVinciRecordTransformerResult.Result.TRANSFORMED, value);
   }
 
   @Override
-  public void processPut(Lazy<Integer> key, Lazy<TestSpecificValue> value, int partitionId) {
+  public void processPut(Lazy<TestSpecificKey> key, Lazy<TestSpecificValue> value, int partitionId) {
     return;
   }
 

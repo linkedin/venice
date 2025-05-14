@@ -31,6 +31,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private String storeName;
   private String veniceURL;
   private String statsPrefix;
+  private Class specificKeyClass = null;
   private Class<T> specificValueClass = null;
   private Schema specificValueSchema = null;
   private boolean isVsonClient = false;
@@ -98,6 +99,7 @@ public class ClientConfig<T extends SpecificRecord> {
         // Basic settings
         .setStoreName(config.getStoreName())
         .setVeniceURL(config.getVeniceURL())
+        .setSpecificKeyClass(config.getSpecificKeyClass())
         .setSpecificValueClass(config.getSpecificValueClass())
         .setSpecificValueSchema(config.getSpecificValueSchema())
         .setVsonClient(config.isVsonClient())
@@ -197,6 +199,10 @@ public class ClientConfig<T extends SpecificRecord> {
     return specificValueSchema;
   }
 
+  /**
+   * If you're using the experimental client, and you want to deserialize your values into Avro SpecificRecords
+   * then set this configuration.
+   */
   public ClientConfig<T> setSpecificValueSchema(Schema specificValueSchema) {
     this.specificValueSchema = specificValueSchema;
     return this;
@@ -208,6 +214,19 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setSpecificValueClass(Class<T> specificValueClass) {
     this.specificValueClass = specificValueClass;
+    return this;
+  }
+
+  public Class<T> getSpecificKeyClass() {
+    return specificKeyClass;
+  }
+
+  /**
+   * If you're using the experimental client, and you want to deserialize your keys into Avro SpecificRecords
+   * then set this configuration.
+   */
+  public ClientConfig<T> setSpecificKeyClass(Class specificKeyClass) {
+    this.specificKeyClass = specificKeyClass;
     return this;
   }
 

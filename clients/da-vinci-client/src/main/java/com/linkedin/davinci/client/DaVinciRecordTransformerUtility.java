@@ -6,7 +6,6 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -41,10 +40,15 @@ public class DaVinciRecordTransformerUtility<K, O> {
     this.recordTransformerConfig = recordTransformerConfig;
 
     Schema keySchema = recordTransformer.getKeySchema();
-    Schema outputValueSchema = recordTransformer.getOutputValueSchema();
-    this.keyDeserializer = new AvroGenericDeserializer<>(keySchema, keySchema);
+    if (recordTransformerConfig.useSpecificRecordKeyDeserializer()) {
+      this.keyDeserializer = FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(keySchema, recordTransformerConfig.getKeyClass());
+    } else {
+      this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
+    }
 
-    if (recordTransformerConfig.isSpecificClient()) {
+    Schema outputValueSchema = recordTransformer.getOutputValueSchema();
+    if (recordTransformerConfig.useSpecificRecordValueDeserializer()) {
       this.outputValueDeserializer = FastSerializerDeserializerFactory
           .getFastAvroSpecificDeserializer(outputValueSchema, recordTransformerConfig.getOutputValueClass());
     } else {

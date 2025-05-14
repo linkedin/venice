@@ -167,7 +167,6 @@ import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
-import org.apache.avro.specific.SpecificRecord;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -360,7 +359,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Optional<ObjectCacheBackend> cacheBackend;
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   private final Schema recordTransformerInputValueSchema;
-  private final AvroGenericDeserializer recordTransformerKeyDeserializer;
+  private final RecordDeserializer recordTransformerKeyDeserializer;
   private final Map<Integer, Schema> schemaIdToSchemaMap;
   private BlockingDaVinciRecordTransformer recordTransformer;
 
@@ -527,8 +526,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.recordTransformerConfig = recordTransformerConfig;
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
       this.chunkAssembler = new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName));
+
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
-      this.recordTransformerKeyDeserializer = new AvroGenericDeserializer(keySchema, keySchema);
+      if (recordTransformerConfig.useSpecificRecordKeyDeserializer()) {
+        this.recordTransformerKeyDeserializer = FastSerializerDeserializerFactory
+            .getFastAvroSpecificDeserializer(keySchema, recordTransformerConfig.getKeyClass());
+      } else {
+        this.recordTransformerKeyDeserializer =
+            FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
+      }
+
       this.recordTransformerInputValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName).getSchema();
       Schema outputValueSchema = recordTransformerConfig.getOutputValueSchema();
 
@@ -3992,8 +3999,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                   i -> schemaRepository.getValueSchema(storeName, readerSchemaId).getSchema());
               RecordDeserializer recordDeserializer;
 
-              if (recordTransformerConfig.isSpecificClient()
-                  && SpecificRecord.class.isAssignableFrom(recordTransformerConfig.getOutputValueClass())) {
+              if (recordTransformerConfig.useSpecificRecordValueDeserializer()) {
                 recordDeserializer = FastSerializerDeserializerFactory
                     .getFastAvroSpecificDeserializer(valueSchema, recordTransformerConfig.getOutputValueClass());
               } else {

@@ -246,6 +246,11 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public ChangelogClientConfig setSpecificKey(Class specificKey) {
+    this.innerClientConfig.setSpecificKeyClass(specificKey);
+    return this;
+  }
+
   public ChangelogClientConfig setSpecificValue(Class<T> specificValue) {
     this.innerClientConfig.setSpecificValueClass(specificValue);
     return this;
