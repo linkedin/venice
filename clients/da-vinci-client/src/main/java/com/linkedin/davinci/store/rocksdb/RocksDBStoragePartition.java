@@ -827,11 +827,17 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   public long getDuplicateKeyCountEstimate() {
-    if (keyStatistics != null) {
-      return keyStatistics.getTickerCount(COMPACTION_KEY_DROP_NEWER_ENTRY)
-          + keyStatistics.getTickerCount(COMPACTION_KEY_DROP_USER);
+    readCloseRWLock.readLock().lock();
+    try {
+      if (keyStatistics != null) {
+        makeSureRocksDBIsStillOpen();
+        return keyStatistics.getTickerCount(COMPACTION_KEY_DROP_NEWER_ENTRY)
+            + keyStatistics.getTickerCount(COMPACTION_KEY_DROP_USER);
+      }
+      return -1;
+    } finally {
+      readCloseRWLock.readLock().unlock();
     }
-    return -1;
   }
 
   public long getKeyCountEstimate() throws RocksDBException {
