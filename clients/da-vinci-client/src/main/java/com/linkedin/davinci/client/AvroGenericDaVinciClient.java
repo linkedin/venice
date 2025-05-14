@@ -43,6 +43,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.ComputeUtils;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Store;
@@ -238,6 +239,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   protected CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     throwIfNotReady();
+    throwIfWritesDisabled();
     subscription.addAll(partitions);
     return storeBackend.subscribe(partitions);
   }
@@ -312,6 +314,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public CompletableFuture<V> get(K key, V reusableValue) {
     throwIfNotReady();
+    throwIfReadsDisabled();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (versionBackend == null) {
@@ -436,12 +439,14 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
     throwIfNotReady();
+    throwIfReadsDisabled();
     return batchGetImplementation(keys);
   }
 
   // Visible for testing
   CompletableFuture<Map<K, V>> batchGetImplementation(Set<K> keys) {
     throwIfNotReady();
+    throwIfReadsDisabled();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (daVinciConfig.isCacheEnabled()) {
@@ -504,6 +509,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
 
     throwIfNotReady();
+    throwIfReadsDisabled();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (versionBackend == null) {
@@ -564,6 +570,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       ComputeRequestWrapper computeRequestWrapper,
       StreamingCallback<GenericRecord, GenericRecord> callback) {
     throwIfNotReady();
+    throwIfReadsDisabled();
     try (ReferenceCounted<VersionBackend> versionRef = storeBackend.getDaVinciCurrentVersion()) {
       VersionBackend versionBackend = versionRef.get();
       if (versionBackend == null) {
@@ -656,6 +663,18 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   protected void throwIfNotReady() {
     if (!isReady()) {
       throw new VeniceClientException("Da Vinci client is not ready, storeName=" + getStoreName());
+    }
+  }
+
+  private void throwIfReadsDisabled() {
+    if (!daVinciBackend.get().getCachedStore(getStoreName()).isEnableReads()) {
+      throw new StoreDisabledException(getStoreName(), "read");
+    }
+  }
+
+  private void throwIfWritesDisabled() {
+    if (!daVinciBackend.get().getCachedStore(getStoreName()).isEnableWrites()) {
+      throw new StoreDisabledException(getStoreName(), "write");
     }
   }
 
@@ -823,6 +842,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       } else {
         this.storeDeserializerCache = (AvroStoreDeserializerCache<V>) this.genericRecordStoreDeserializerCache;
       }
+
+      Store store = getBackend().getStoreRepository().getStoreOrThrow(getStoreName());
+      daVinciBackend.get().putStoreInCache(getStoreName(), store);
 
       ready.set(true);
       logger.info("Client is started successfully, storeName=" + getStoreName());
