@@ -32,6 +32,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -120,8 +121,21 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
   @Override
   public CompletableFuture<Void> start(Set<Integer> partitions) {
-    internalStart();
-    subscribedPartitions.addAll(partitions);
+    if (isStarted) {
+      throw new VeniceException("BootstrappingVeniceChangelogConsumer is already started!");
+    }
+
+    daVinciClient.start();
+    isStarted = true;
+
+    // If a user passes in empty partitions set, we subscribe to all partitions
+    if (partitions.isEmpty()) {
+      for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
+        subscribedPartitions.add(i);
+      }
+    } else {
+      subscribedPartitions.addAll(partitions);
+    }
 
     CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
       try {
@@ -146,9 +160,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
      * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
      * will wait forever for capacity to become available. This leads to a deadlock.
      */
-    daVinciClient.subscribe(partitions).whenComplete((result, error) -> {
+    daVinciClient.subscribe(subscribedPartitions).whenComplete((result, error) -> {
       if (error != null) {
-        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", partitions, storeName, error);
+        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", subscribedPartitions, storeName, error);
         startFuture.completeExceptionally(new VeniceException(error));
         return;
       }
@@ -157,7 +171,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       LOGGER.info(
           "BootstrappingVeniceChangelogConsumer is caught up for store: {} for partitions: {}",
           storeName,
-          partitions);
+          subscribedPartitions);
     });
 
     return startFuture;
@@ -165,14 +179,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
   @Override
   public CompletableFuture<Void> start() {
-    internalStart();
-
-    Set<Integer> allPartitions = new HashSet<>();
-    for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
-      allPartitions.add(i);
-    }
-
-    return this.start(allPartitions);
+    return this.start(Collections.emptySet());
   }
 
   @Override

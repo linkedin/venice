@@ -34,6 +34,8 @@ public interface BootstrappingVeniceChangelogConsumer<K, V> {
    * Out Of Memory error. Instead, use the {@link #isCaughtUp()} method to determine once all subscribed partitions have
    * caught up.
    *
+   * NOTE: In the experimental client, if you pass in an empty set, it will subscribe to all partitions for the store
+   *
    * @param partitions which partition id's to catch up with
    * @return a future that completes once catch up is complete for all passed in partitions.
    */

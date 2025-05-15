@@ -159,6 +159,23 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   }
 
   @Test
+  public void testStartWithEmptyPartitions() throws NoSuchFieldException, IllegalAccessException {
+    bootstrappingVeniceChangelogConsumer.start(Collections.emptySet());
+
+    Field isStartedField =
+        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("isStarted");
+    isStartedField.setAccessible(true);
+    assertTrue((Boolean) isStartedField.get(bootstrappingVeniceChangelogConsumer), "isStarted should be true");
+
+    verify(mockDaVinciClient).start();
+
+    Field subscribedPartitionsField =
+        BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("subscribedPartitions");
+    subscribedPartitionsField.setAccessible(true);
+    assertEquals(subscribedPartitionsField.get(bootstrappingVeniceChangelogConsumer), partitionSet);
+  }
+
+  @Test
   public void testStartSpecificPartitions() throws IllegalAccessException, NoSuchFieldException {
     Set<Integer> partitionSet = Collections.singleton(1);
     bootstrappingVeniceChangelogConsumer.start(partitionSet);
@@ -174,6 +191,15 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
         BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("subscribedPartitions");
     subscribedPartitionsField.setAccessible(true);
     assertEquals(subscribedPartitionsField.get(bootstrappingVeniceChangelogConsumer), partitionSet);
+  }
+
+  @Test
+  public void testStartMultipleTimes() {
+    Set<Integer> partitionSet = Collections.singleton(1);
+    bootstrappingVeniceChangelogConsumer.start();
+
+    assertThrows(VeniceException.class, () -> bootstrappingVeniceChangelogConsumer.start());
+    assertThrows(VeniceException.class, () -> bootstrappingVeniceChangelogConsumer.start(partitionSet));
   }
 
   @Test
