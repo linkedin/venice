@@ -96,8 +96,8 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
             "Failed to get admin operation protocol version from child controller " + entry.getKey() + ": "
                 + response.getError());
       }
-      Map<String, Long> controllerUrlToVersionMap = response.getControllerNameToVersionMap();
-      regionToControllerToVersionMap.put(entry.getKey(), controllerUrlToVersionMap);
+      Map<String, Long> controllerNameToVersionMap = response.getControllerNameToVersionMap();
+      regionToControllerToVersionMap.put(entry.getKey(), controllerNameToVersionMap);
     }
 
     LOGGER.info("All controller versions for cluster {}: {}", clusterName, regionToControllerToVersionMap);

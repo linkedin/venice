@@ -237,11 +237,11 @@ public class ControllerRoutesTest {
     doReturn(1L).when(mockAdmin).getLocalAdminOperationProtocolVersion();
     doReturn(leaderControllerHostHttps + "/get_admin_operation_version_from_controllers").when(request).url();
 
-    Map<String, Long> urlToVersionMap = new HashMap<>();
-    urlToVersionMap.put("localhost_8080", 1L);
-    urlToVersionMap.put("localhost_8081", 2L);
-    urlToVersionMap.put(leaderControllerHost, 1L);
-    doReturn(urlToVersionMap).when(mockAdmin).getAdminOperationVersionFromControllers(anyString());
+    Map<String, Long> controllerNameToVersionMap = new HashMap<>();
+    controllerNameToVersionMap.put("localhost_8080", 1L);
+    controllerNameToVersionMap.put("localhost_8081", 2L);
+    controllerNameToVersionMap.put(leaderControllerHost, 1L);
+    doReturn(controllerNameToVersionMap).when(mockAdmin).getAdminOperationVersionFromControllers(anyString());
 
     Route adminOperationVersionRoute =
         new ControllerRoutes(false, Optional.empty(), pubSubTopicRepository, requestHandler)
@@ -251,7 +251,7 @@ public class ControllerRoutesTest {
         AdminOperationProtocolVersionControllerResponse.class);
     assertEquals(response.getLocalAdminOperationProtocolVersion(), 1L);
     assertEquals(response.getControllerNameToVersionMap().size(), 3);
-    assertEquals(response.getControllerNameToVersionMap(), urlToVersionMap);
+    assertEquals(response.getControllerNameToVersionMap(), controllerNameToVersionMap);
     assertEquals(response.getLocalControllerName(), leaderControllerHost);
     assertEquals(response.getCluster(), TEST_CLUSTER);
   }

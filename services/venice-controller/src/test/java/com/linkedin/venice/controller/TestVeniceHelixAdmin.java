@@ -1066,11 +1066,18 @@ public class TestVeniceHelixAdmin {
       when(client.getLocalAdminOperationProtocolVersion("http://standbyHost1:1234")).thenReturn(response1);
       when(client.getLocalAdminOperationProtocolVersion("http://standbyHost2:1234")).thenReturn(response2);
 
-      Map<String, Long> urlToVersionMap = veniceParentHelixAdmin.getAdminOperationVersionFromControllers(clusterName);
-      assertEquals(urlToVersionMap.size(), 3);
-      assertTrue(urlToVersionMap.containsKey("standbyHost1_1234") && urlToVersionMap.get("standbyHost1_1234") == 1L);
-      assertTrue(urlToVersionMap.containsKey("standbyHost2_1234") && urlToVersionMap.get("standbyHost2_1234") == 2L);
-      assertTrue(urlToVersionMap.containsKey("leaderHost_1234") && urlToVersionMap.get("leaderHost_1234") == 2L);
+      Map<String, Long> controllerNameToVersionMap =
+          veniceParentHelixAdmin.getAdminOperationVersionFromControllers(clusterName);
+      assertEquals(controllerNameToVersionMap.size(), 3);
+      assertTrue(
+          controllerNameToVersionMap.containsKey("standbyHost1_1234")
+              && controllerNameToVersionMap.get("standbyHost1_1234") == 1L);
+      assertTrue(
+          controllerNameToVersionMap.containsKey("standbyHost2_1234")
+              && controllerNameToVersionMap.get("standbyHost2_1234") == 2L);
+      assertTrue(
+          controllerNameToVersionMap.containsKey("leaderHost_1234")
+              && controllerNameToVersionMap.get("leaderHost_1234") == 2L);
     }
   }
 

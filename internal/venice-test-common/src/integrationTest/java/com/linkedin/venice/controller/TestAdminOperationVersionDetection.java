@@ -73,8 +73,8 @@ public class TestAdminOperationVersionDetection {
     assertEquals(
         response.getLocalAdminOperationProtocolVersion(),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Map<String, Long> urlToVersionMap = response.getControllerNameToVersionMap();
-    assertEquals(urlToVersionMap.size(), 2);
+    Map<String, Long> controllerNameToVersionMap = response.getControllerNameToVersionMap();
+    assertEquals(controllerNameToVersionMap.size(), 2);
     assertEquals(response.getCluster(), clusterName);
   }
 
@@ -97,8 +97,8 @@ public class TestAdminOperationVersionDetection {
     assertEquals(
         response.getLocalAdminOperationProtocolVersion(),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Map<String, Long> urlToVersionMap = response.getControllerNameToVersionMap();
-    assertEquals(urlToVersionMap.size(), 2);
+    Map<String, Long> controllerNameToVersionMap = response.getControllerNameToVersionMap();
+    assertEquals(controllerNameToVersionMap.size(), 2);
     assertEquals(response.getCluster(), clusterName);
   }
 }
