@@ -115,4 +115,9 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
       StreamingCallback<GenericRecord, GenericRecord> callback) {
     innerStoreClient.computeWithKeyPrefixFilter(keyPrefix, computeRequestWrapper, callback);
   }
+
+  @Override
+  public void startWithExceptionThrownWhenFail() {
+    innerStoreClient.startWithExceptionThrownWhenFail();
+  }
 }

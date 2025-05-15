@@ -264,6 +264,20 @@ public class AvroGenericStoreClientImplTest {
 
   @Test
   public void getByStoreKeyTestWithNonExistingKey() throws Throwable {
+    String schema1Str = "\"string\"";
+
+    Map<Integer, String> valueSchemaEntries = new HashMap<>();
+    valueSchemaEntries.put(1, schema1Str);
+    // Push value schema
+    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, schema1Str);
+    String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/1";
+    routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
+
+    FullHttpResponse multiValueSchemaIDResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaIDPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaIDPath, multiValueSchemaIDResponse);
+
     String key = "test_key";
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: {}", entry.getKey());
@@ -322,11 +336,26 @@ public class AvroGenericStoreClientImplTest {
     String keyStr = "test_key";
     String valueStr = "test_value";
 
+    String schema1Str = "\"string\"";
+
+    Map<Integer, String> valueSchemaEntries = new HashMap<>();
+    valueSchemaEntries.put(1, schema1Str);
+    // Push value schema
+    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, schema1Str);
+    String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/1";
+    routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
+
+    FullHttpResponse multiValueSchemaIDResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaIDPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaIDPath, multiValueSchemaIDResponse);
+
     int nonExistingSchemaId = 2;
     FullHttpResponse valueResponse =
         StoreClientTestUtils.constructStoreResponse(nonExistingSchemaId, valueStr.getBytes());
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
+
     for (int i = 0; i < TEST_ITERATIONS; i++) {
       LOGGER.info("Iteration: {}", i);
       for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
@@ -337,7 +366,7 @@ public class AvroGenericStoreClientImplTest {
           Throwable cause = e.getCause();
           boolean causeOfCorrectType = cause instanceof VeniceClientException;
           boolean correctMessage =
-              cause.getMessage().contains("Failed to get latest value schema for store: test_store");
+              cause.getMessage().contains("Failed to get value schema for store: test_store and id: 2");
           if (!causeOfCorrectType || !correctMessage) {
             LOGGER.error(
                 "Received ExecutionException, as expected, but it doesn't have the right characteristics. Logging stacktrace. Client: {}",
@@ -367,6 +396,20 @@ public class AvroGenericStoreClientImplTest {
     String keyStr = "test_key";
     int valueSchemaId = 1;
     String valueStr = "test_value";
+
+    String schema1Str = "\"string\"";
+
+    Map<Integer, String> valueSchemaEntries = new HashMap<>();
+    valueSchemaEntries.put(1, schema1Str);
+    // Push value schema
+    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, schema1Str);
+    String valueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/1";
+    routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
+
+    FullHttpResponse multiValueSchemaIDResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaIDPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaIDPath, multiValueSchemaIDResponse);
 
     FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(valueSchemaId, valueStr.getBytes());
     valueResponse.headers().remove(HttpConstants.VENICE_SCHEMA_ID);

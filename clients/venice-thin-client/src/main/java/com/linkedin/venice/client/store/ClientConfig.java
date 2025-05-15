@@ -44,7 +44,6 @@ public class ClientConfig<T extends SpecificRecord> {
   // Performance-related settings
   private MetricsRepository metricsRepository = null;
   private Executor deserializationExecutor = null;
-  private Executor warmupExecutor = null;
   private BatchDeserializerType batchDeserializerType = BatchDeserializerType.BLOCKING;
   private boolean useFastAvro = true;
   private boolean retryOnRouterError = false;
@@ -111,7 +110,6 @@ public class ClientConfig<T extends SpecificRecord> {
         // Performance-related settings
         .setMetricsRepository(config.getMetricsRepository())
         .setDeserializationExecutor(config.getDeserializationExecutor())
-        .setWarmupExecutor(config.getWarmupExecutor())
         .setUseFastAvro(config.isUseFastAvro())
         .setRetryOnRouterError(config.isRetryOnRouterErrorEnabled())
         .setRetryOnAllErrors(config.isRetryOnAllErrorsEnabled())
@@ -332,21 +330,6 @@ public class ClientConfig<T extends SpecificRecord> {
    */
   public ClientConfig<T> setDeserializationExecutor(Executor deserializationExecutor) {
     this.deserializationExecutor = deserializationExecutor;
-    return this;
-  }
-
-  public Executor getWarmupExecutor() {
-    return warmupExecutor;
-  }
-
-  /**
-   * Provide an arbitrary executor to execute client warmup,
-   * rather than letting the client use its own internally-generated executor.
-   * If null, or unset, the client will use {@link java.util.concurrent.Executors#newFixedThreadPool(int)}
-   * with a single thread.
-   */
-  public ClientConfig<T> setWarmupExecutor(Executor warmupExecutor) {
-    this.warmupExecutor = warmupExecutor;
     return this;
   }
 
