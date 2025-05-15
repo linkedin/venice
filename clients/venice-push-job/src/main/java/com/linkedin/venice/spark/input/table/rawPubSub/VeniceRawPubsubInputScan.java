@@ -66,7 +66,7 @@ public class VeniceRawPubsubInputScan implements Scan, Batch {
   @Override
   public PartitionReaderFactory createReaderFactory() {
 
-    return new VenicePubsubInputPartitionReaderFactory(jobConfig);
+    return new VeniceRawPubsubInputPartitionReaderFactory(jobConfig);
   }
 
   @Override
