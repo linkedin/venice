@@ -2755,4 +2755,12 @@ public class ConfigKeys {
    */
   public static final String SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS =
       "server.consumer.poll.tracker.stale.threshold.in.seconds";
+  public static final String SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK =
+      "server.use.heartbeat.lag.for.ready.to.serve.check";
+
+  /**
+   * Use heartbeat lag instead of offset lag for ready-to-serve check.
+   */
+  public static final String SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED =
+      "server.use.heartbeat.lag.for.ready.to.serve.check.enabled";
 }

@@ -3592,8 +3592,7 @@ public abstract class StoreIngestionTaskTest {
               offsetLag,
               offsetThreshold,
               true,
-              lagType,
-              0));
+              lagType));
     }
 
     // case 2: offsetLag > offsetThreshold and instance is not a leader
@@ -3604,8 +3603,7 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            lagType,
-            0));
+            lagType));
 
     // Case 3: offsetLag <= offsetThreshold and instance is not a standby or DaVinciClient
     offsetLag = 50;
@@ -3618,8 +3616,7 @@ public abstract class StoreIngestionTaskTest {
               offsetLag,
               offsetThreshold,
               false,
-              lagType,
-              0));
+              lagType));
     }
 
     // Case 4: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
@@ -3630,8 +3627,7 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            lagType,
-            0),
+            lagType),
         !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
             || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
 
@@ -3647,8 +3643,7 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            lagType,
-            0));
+            lagType));
 
     // Case 6: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient.
     // and leaderCompleteState is LEADER_COMPLETED and last update time is more than threshold
@@ -3660,8 +3655,7 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            lagType,
-            0),
+            lagType),
         !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
             || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
 
@@ -3674,8 +3668,7 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            lagType,
-            0),
+            lagType),
         !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
             || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
   }
