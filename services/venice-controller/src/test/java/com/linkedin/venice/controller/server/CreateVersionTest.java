@@ -229,7 +229,7 @@ public class CreateVersionTest {
     VersionCreationResponse versionCreateResponse =
         OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
     if (isSeparateTopicEnabled && pushToSeparateTopicEnabled) {
-      assertEquals(versionCreateResponse.getKafkaTopic(), Version.composeSeparateRealTimeTopic(STORE_NAME));
+      assertEquals(versionCreateResponse.getKafkaTopic(), Utils.getSeparateRealTimeTopicName(version));
     } else {
       assertEquals(versionCreateResponse.getKafkaTopic(), Utils.getRealTimeTopicName(store));
     }

@@ -324,7 +324,7 @@ public class VeniceParentHelixAdminTest {
       try (TopicManagerRepository topicManagerRepo = IntegrationTestPushUtils
           .getTopicManagerRepo(PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE, 100, 0l, parentPubSub, pubSubTopicRepository);
           TopicManager topicManager = topicManagerRepo.getLocalTopicManager()) {
-        PubSubTopic metaStoreRT = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(metaSystemStoreName));
+        PubSubTopic metaStoreRT = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(metaSystemStoreName));
         topicManager.createTopic(metaStoreRT, 1, 1, true);
         TestUtils.waitForNonDeterministicAssertion(
             30,

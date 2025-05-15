@@ -524,7 +524,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#deleteStore(String, String, int, boolean)
+   * @see Admin#deleteStore(String, String, boolean, int, boolean)
    */
   public Route deleteStore(Admin admin) {
     return new VeniceRouteHandler<TrackableControllerResponse>(TrackableControllerResponse.class) {

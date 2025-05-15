@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -127,6 +128,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   // cluster. e.g. controllers in a multi cluster wrapper.
   private String externalControllerDiscoveryURL = "";
 
+  public static final String CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING_IN_TESTS = "true";
+
   private static final List<AvroProtocolDefinition> CLUSTER_LEADER_INITIALIZATION_ROUTINES = Arrays.asList(
       AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
       AvroProtocolDefinition.PARTITION_STATE,
@@ -181,6 +184,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     Map<Integer, VeniceServerWrapper> veniceServerWrappers = new HashMap<>();
     Map<Integer, VeniceRouterWrapper> veniceRouterWrappers = new HashMap<>();
     Map<String, String> nettyServerToGrpcAddress = new HashMap<>();
+    if (!options.getExtraProperties().containsKey(CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING)) {
+      options.getExtraProperties()
+          .setProperty(
+              CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
+              CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING_IN_TESTS);
+    }
 
     Map<String, String> clusterToD2;
     if (options.getClusterToD2() == null || options.getClusterToD2().isEmpty()) {
