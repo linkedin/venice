@@ -158,7 +158,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       }
 
       if (exceptionReceived) {
-        // We still want to record the partial success key count number even if the request is unhealthy.
         clientStats.emitUnhealthyRequestMetrics(latency, throwable);
       } else {
         clientStats.emitHealthyRequestMetrics(latency, requestContext.successRequestKeyCount.get());
@@ -178,8 +177,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           clientStats.recordResponseDeserializationTime(requestContext.responseDeserializationTime);
         }
       }
-
-      clientStats.recordSuccessRequestKeyCount(requestContext.successRequestKeyCount.get());
+      // We want to record the partial success key count number, no matter the request is healthy or unhealthy.
+      int successKeyCount = requestContext.successRequestKeyCount.get();
+      clientStats.recordSuccessRequestKeyCount(successKeyCount);
 
       if (requestContext.noAvailableReplica) {
         clientStats.recordNoAvailableReplicaRequest();
@@ -227,9 +227,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       }
 
       // numberOfKeys = successKeyCount + retrySuccessKeyCount + failedKeyCount.
-      clientStats.recordFailedRequestKeyCount(
-          numberOfKeys - requestContext.successRequestKeyCount.get() - retrySuccessKeyCount,
-          throwable);
+      clientStats.recordFailedRequestKeyCount(numberOfKeys - successKeyCount - retrySuccessKeyCount, throwable);
 
       if (exceptionReceived) {
         // throw an exception after incrementing some error related metrics

@@ -525,7 +525,7 @@ public class DispatchingAvroGenericStoreClientTest {
       assertFalse(metrics.get(metricPrefix + "healthy_request_latency.Avg").value() > 0);
       assertTrue(metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate").value() > 0);
       assertTrue(metrics.get(metricPrefix + "unhealthy_request_latency.Avg").value() > 0);
-      // as partial healthy request is should still report success key count.
+      // as partial healthy request should still report success key count number.
       assertTrue(metrics.get(metricPrefix + "success_request_key_count.Max").value() > 0);
       if (batchGet) {
         assertTrue(metrics.get(metricPrefix + "response_ttfr.Avg").value() > 0);
