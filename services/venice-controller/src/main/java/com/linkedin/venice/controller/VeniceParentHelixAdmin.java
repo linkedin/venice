@@ -1049,6 +1049,11 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
+  /**
+   * Deletes the acls associated with a store
+   * @param store
+   * @param storeName
+   */
   protected void deleteAclsForStore(Store store, String storeName) {
     if (store != null) {
       if (!store.isMigrating()) {
