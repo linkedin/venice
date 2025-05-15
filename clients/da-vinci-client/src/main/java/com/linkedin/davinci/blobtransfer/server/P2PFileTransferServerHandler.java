@@ -40,6 +40,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.URI;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -76,6 +77,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
    */
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest httpRequest) throws Exception {
+    AtomicBoolean successCountedAsActiveCurrentUser = new AtomicBoolean(false);
     // validation
     if (!httpRequest.decoderResult().isSuccess()) {
       setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, "Request decoding failed".getBytes(), false, ctx);
@@ -97,18 +99,6 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       try {
         blobTransferRequest = parseBlobTransferPayload(URI.create(httpRequest.uri()));
         snapshotDir = new File(blobTransferRequest.getSnapshotDir());
-        try {
-          transferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferRequest);
-        } catch (Exception e) {
-          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
-          return;
-        }
-
-        if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
-          byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
-          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
-          return;
-        }
 
         // Check the snapshot table format
         BlobTransferTableFormat currentSnapshotTableFormat = blobSnapshotManager.getBlobTransferTableFormat();
@@ -116,6 +106,20 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
           byte[] errBody = ("Table format mismatch for " + blobTransferRequest.getFullResourceName()
               + ", current snapshot format is " + currentSnapshotTableFormat.name() + ", requested format is "
               + blobTransferRequest.getRequestTableFormat().name()).getBytes();
+          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
+          return;
+        }
+
+        try {
+          transferPartitionMetadata =
+              blobSnapshotManager.getTransferMetadata(blobTransferRequest, successCountedAsActiveCurrentUser);
+        } catch (Exception e) {
+          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
+          return;
+        }
+
+        if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
+          byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
           setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
           return;
         }
@@ -168,7 +172,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         }
       });
     } finally {
-      if (blobTransferRequest != null) {
+      if (blobTransferRequest != null && successCountedAsActiveCurrentUser.get()) {
         blobSnapshotManager.decreaseConcurrentUserCount(blobTransferRequest);
       }
     }

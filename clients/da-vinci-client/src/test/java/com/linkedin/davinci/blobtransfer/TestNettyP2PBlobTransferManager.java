@@ -23,7 +23,6 @@ import com.linkedin.venice.exceptions.VenicePeersConnectionException;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -92,7 +91,6 @@ public class TestNettyP2PBlobTransferManager {
     storageMetadataService = mock(StorageMetadataService.class);
 
     blobTransferStats = mock(AggVersionedBlobTransferStats.class);
-    ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler =
         getGlobalChannelTrafficShapingHandlerInstance(2000000, 2000000);
@@ -113,8 +111,7 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.when(configLoader.getCombinedProperties()).thenReturn(veniceProperties);
     aclHandler = createAclHandler(configLoader);
 
-    blobSnapshotManager =
-        Mockito.spy(new BlobSnapshotManager(readOnlyStoreRepository, storageEngineRepository, storageMetadataService));
+    blobSnapshotManager = Mockito.spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
 
     server = new P2PBlobTransferService(
         port,
@@ -224,8 +221,6 @@ public class TestNettyP2PBlobTransferManager {
   @Test
   public void testSnapshotFormatNotMatch() throws IOException {
     // Preparation:
-    Mockito.doReturn(false).when(blobSnapshotManager).isStoreHybrid(anyString(), anyInt());
-
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     response.setDiscoveryResult(Collections.singletonList("localhost"));
     doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
@@ -240,6 +235,7 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
 
     snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     // Execution:
     // Bootstrap try to get plain table snapshot,
@@ -256,9 +252,7 @@ public class TestNettyP2PBlobTransferManager {
   @Test
   public void testLocalFileTransferInBatchStore()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
-    // Preparation:
-    Mockito.doReturn(false).when(blobSnapshotManager).isStoreHybrid(anyString(), anyInt());
-
+    // Preparation
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
     response.setDiscoveryResult(Collections.singletonList("localhost"));
     doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
@@ -273,6 +267,7 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
 
     snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     // Execution:
     // Manager should be able to fetch the file and download it to another directory
@@ -309,6 +304,7 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
 
     snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     // Execution:
     // Manager should be able to fetch the file and download it to another directory, and future is done normally
@@ -370,6 +366,7 @@ public class TestNettyP2PBlobTransferManager {
     Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
 
     snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     // Execution:
     // Manager should be able to fetch the file and download it to another directory, and future is done normally
@@ -397,7 +394,6 @@ public class TestNettyP2PBlobTransferManager {
   public void testLocalFileTransferInHybridStore()
       throws IOException, ExecutionException, InterruptedException, TimeoutException {
     // Preparation:
-    Mockito.doReturn(true).when(blobSnapshotManager).isStoreHybrid(anyString(), anyInt());
     Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
 
     BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();

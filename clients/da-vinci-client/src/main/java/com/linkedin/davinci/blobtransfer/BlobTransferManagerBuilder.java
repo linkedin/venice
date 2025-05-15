@@ -109,12 +109,12 @@ public class BlobTransferManagerBuilder {
           blobTransferConfig.getBlobTransferServiceWriteLimitBytesPerSec());
 
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
-          readOnlyStoreRepository,
           storageEngineRepository,
           storageMetadataService,
           blobTransferConfig.getMaxConcurrentSnapshotUser(),
           blobTransferConfig.getSnapshotRetentionTimeInMin(),
-          blobTransferConfig.getTransferSnapshotTableFormat());
+          blobTransferConfig.getTransferSnapshotTableFormat(),
+          blobTransferConfig.getSnapshotCleanupIntervalInMins());
 
       BlobTransferManager<Void> blobTransferManager = new NettyP2PBlobTransferManager(
           new P2PBlobTransferService(

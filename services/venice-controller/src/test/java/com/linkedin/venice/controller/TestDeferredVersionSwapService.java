@@ -430,4 +430,63 @@ public class TestDeferredVersionSwapService {
           offlinePushStatusInfoWithOneOngoingPush.getExtraInfoUpdateTimestamp());
     });
   }
+
+  @Test
+  public void testDeferredVersionSwapWithStalledSwap() throws Exception {
+    String storeName = "testStore";
+    Map<Integer, VersionStatus> versions = new HashMap<>();
+    versions.put(versionOne, VersionStatus.ONLINE);
+    versions.put(versionTwo, VersionStatus.PUSHED);
+    Store store = mockStore(versionOne, 1, region1, versions, storeName);
+    doReturn(versionTwo).when(store).getLargestUsedVersionNumber();
+
+    List<Store> storeList = new ArrayList<>();
+    storeList.add(store);
+    doReturn(storeList).when(admin).getAllStores(clusterName);
+    doReturn(true).when(admin).isLeaderControllerFor(clusterName);
+
+    Version versionOneImpl = new VersionImpl(storeName, versionOne);
+    Version versionTwoImpl = new VersionImpl(storeName, versionTwo);
+    versionTwoImpl.setStatus(VersionStatus.PUSHED);
+    List<Version> versionList = new ArrayList<>();
+    versionList.add(versionOneImpl);
+    versionList.add(versionTwoImpl);
+    StoreResponse storeResponse = getStoreResponse(versionList);
+
+    Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      ControllerClient controllerClient = entry.getValue();
+      doReturn(storeResponse).when(controllerClient).getStore(any());
+    }
+
+    mockVeniceHelixAdmin(controllerClientMap);
+    Map<String, Integer> coloToVersions = new HashMap<>();
+    coloToVersions.put(region1, versionTwo);
+    coloToVersions.put(region2, versionOne);
+    coloToVersions.put(region3, versionOne);
+
+    doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(any(), any());
+
+    Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
+    Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        ExecutionStatus.COMPLETED.toString(),
+        time - TimeUnit.MINUTES.toSeconds(90),
+        time - TimeUnit.MINUTES.toSeconds(30),
+        time - TimeUnit.MINUTES.toSeconds(30));
+
+    String kafkaTopicName = Version.composeKafkaTopic(storeName, versionTwo);
+    doReturn(offlinePushStatusInfoWithCompletedPush).when(admin).getOffLinePushStatus(clusterName, kafkaTopicName);
+
+    DeferredVersionSwapStats mockDeferredVersionSwapStats = mock(DeferredVersionSwapStats.class);
+    DeferredVersionSwapService deferredVersionSwapService =
+        new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, mockDeferredVersionSwapStats);
+
+    deferredVersionSwapService.startInner();
+
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      verify(mockDeferredVersionSwapStats, atLeast(1)).recordDeferredVersionSwapStalledVersionSwapSensor(1.0);
+    });
+  }
 }

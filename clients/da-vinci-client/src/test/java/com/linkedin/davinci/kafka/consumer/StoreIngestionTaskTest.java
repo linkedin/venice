@@ -11,7 +11,6 @@ import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeTyp
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.SortedInput.SORTED;
 import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
@@ -3593,8 +3592,7 @@ public abstract class StoreIngestionTaskTest {
               offsetLag,
               offsetThreshold,
               true,
-              lagType,
-              0));
+              lagType));
     }
 
     // case 2: offsetLag > offsetThreshold and instance is not a leader
@@ -3605,8 +3603,7 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            lagType,
-            0));
+            lagType));
 
     // Case 3: offsetLag <= offsetThreshold and instance is not a standby or DaVinciClient
     offsetLag = 50;
@@ -3619,8 +3616,7 @@ public abstract class StoreIngestionTaskTest {
               offsetLag,
               offsetThreshold,
               false,
-              lagType,
-              0));
+              lagType));
     }
 
     // Case 4: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
@@ -3631,8 +3627,7 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            lagType,
-            0),
+            lagType),
         !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
             || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
 
@@ -3648,8 +3643,7 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            lagType,
-            0));
+            lagType));
 
     // Case 6: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient.
     // and leaderCompleteState is LEADER_COMPLETED and last update time is more than threshold
@@ -3661,8 +3655,7 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            lagType,
-            0),
+            lagType),
         !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
             || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
 
@@ -3675,8 +3668,7 @@ public abstract class StoreIngestionTaskTest {
             offsetLag,
             offsetThreshold,
             false,
-            lagType,
-            0),
+            lagType),
         !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
             || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
   }
@@ -4888,7 +4880,7 @@ public abstract class StoreIngestionTaskTest {
     heartBeatFuture.complete(null);
     PubSubTopicPartition pubSubTopicPartition0 = new PubSubTopicPartitionImpl(pubsubTopic, 0);
     PubSubTopicPartition pubSubTopicPartition1 = new PubSubTopicPartitionImpl(pubsubTopic, 1);
-    PubSubTopic sepRTtopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(storeName));
+    PubSubTopic sepRTtopic = pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(storeName));
     PubSubTopicPartition pubSubTopicPartition1sep = new PubSubTopicPartitionImpl(sepRTtopic, 1);
 
     // all succeeded
@@ -5584,7 +5576,7 @@ public abstract class StoreIngestionTaskTest {
     value.payloadUnion = new Put();
     value.messageType = MessageType.PUT.getValue();
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic("testStore", 1));
-    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic("testStore"));
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic("testStore", 1));
 
     PubSubTopicPartition versionTopicPartition = new PubSubTopicPartitionImpl(versionTopic, PARTITION_FOO);
     PubSubTopicPartition rtPartition = new PubSubTopicPartitionImpl(rtTopic, PARTITION_FOO);
@@ -5766,74 +5758,6 @@ public abstract class StoreIngestionTaskTest {
     runTest(config);
     // The drop partition consumer action should still be handled as part of internalClose
     dropPartitionFuture.get().get();
-  }
-
-  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "Two-True-and-False")
-  public void testSnapshotGenerationConditions(boolean isBlobTransferEnabled, boolean blobTransferManagerEnabled) {
-    Map<String, Object> serverProperties = new HashMap<>();
-    serverProperties.put(BLOB_TRANSFER_MANAGER_ENABLED, blobTransferManagerEnabled);
-
-    Version version = mock(Version.class);
-    doReturn(1).when(version).getPartitionCount();
-    doReturn("store").when(version).getStoreName();
-    doReturn(VersionStatus.STARTED).when(version).getStatus();
-    doReturn(true).when(version).isNativeReplicationEnabled();
-    DataRecoveryVersionConfig dataRecoveryVersionConfig = new DataRecoveryVersionConfigImpl("dc-0", false, 1);
-    doReturn(dataRecoveryVersionConfig).when(version).getDataRecoveryVersionConfig();
-
-    StorageService storageService = mock(StorageService.class);
-    Store store = mock(Store.class);
-
-    doReturn(version).when(store).getVersion(eq(1));
-
-    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
-    doReturn(isBlobTransferEnabled).when(storeConfig).isBlobTransferEnabled();
-    doReturn(topic).when(storeConfig).getStoreVersionName();
-
-    StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
-        new RandomPollStrategy(),
-        Utils.setOf(PARTITION_FOO),
-        Optional.empty(),
-        serverProperties,
-        true,
-        null,
-        null).build();
-
-    doReturn(Version.parseStoreFromVersionTopic(topic)).when(store).getName();
-    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
-        storageService,
-        store,
-        version,
-        new Properties(),
-        isCurrentVersion,
-        storeConfig,
-        1,
-        false,
-        Optional.empty(),
-        null,
-        null);
-    OffsetRecord offsetRecord = mock(OffsetRecord.class);
-    doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
-    doReturn(false).when(offsetRecord).isEndOfPushReceived();
-    doReturn(100L).when(offsetRecord).getOffsetLag();
-    PartitionConsumptionState partitionConsumptionState =
-        new PartitionConsumptionState(Utils.getReplicaId(pubSubTopic, 0), 0, offsetRecord, true);
-
-    KafkaMessageEnvelope kafkaMessageEnvelope = spy(Mockito.mock(KafkaMessageEnvelope.class));
-    ProducerMetadata producerMetadata = new ProducerMetadata();
-    producerMetadata.producerGUID = GuidUtils.getGuidFromCharSequence("test_guid");
-    producerMetadata.messageTimestamp = 1000L;
-    kafkaMessageEnvelope.producerMetadata = producerMetadata;
-
-    // action
-    storeIngestionTaskUnderTest
-        .processEndOfPush(kafkaMessageEnvelope, offsetRecord.getOffsetLag(), partitionConsumptionState);
-    // verify
-    if (isBlobTransferEnabled && blobTransferManagerEnabled) {
-      verify(mockDeepCopyStorageEngine).createSnapshot(any());
-    } else {
-      verify(mockDeepCopyStorageEngine, never()).createSnapshot(any());
-    }
   }
 
   /**

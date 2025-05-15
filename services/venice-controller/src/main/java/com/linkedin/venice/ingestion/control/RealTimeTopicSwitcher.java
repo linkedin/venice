@@ -222,7 +222,36 @@ public class RealTimeTopicSwitcher {
 
     // If there exists an RT, then broadcast the Version Swap message to it, otherwise broadcast it to the VT
     String storeName = store.getName();
-    if (!topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName)))) {
+    String rtForPreviousVersion = Utils.getRealTimeTopicName(previousStoreVersion);
+    String rtForNextVersion = Utils.getRealTimeTopicName(nextStoreVersion);
+    boolean rtExistsForPreviousVersion = previousStoreVersion.isHybrid()
+        && topicManager.containsTopic(pubSubTopicRepository.getTopic(rtForPreviousVersion));
+    boolean rtExistsForNextVersion =
+        nextStoreVersion.isHybrid() && topicManager.containsTopic(pubSubTopicRepository.getTopic(rtForNextVersion));
+    LOGGER.info("Previous store version - {}, nextStoreVersion - {}, ");
+
+    if (rtExistsForPreviousVersion || rtExistsForNextVersion) {
+      if (rtExistsForPreviousVersion) {
+        LOGGER.info(
+            "RT topic exists for store: {}, versionNum: {}. Broadcasting Version Swap message directly to RT {} to switch to the next store version {}.",
+            storeName,
+            previousVersion,
+            rtForPreviousVersion,
+            nextVersion);
+        broadcastVersionSwap(previousStoreVersion, nextStoreVersion, rtForPreviousVersion);
+      }
+      if (rtExistsForNextVersion && !rtForNextVersion.equals(rtForPreviousVersion)) {
+        LOGGER.info(
+            "RT topic exists for store: {}, versionNum: {}. Broadcasting Version Swap message directly to RT {} to switch to the next store version {}.",
+            storeName,
+            nextVersion,
+            rtForNextVersion,
+            nextVersion);
+        // todo - when hybrid store repartition project completes, there can exist two different real time topics,
+        // it is not clear yet, how to make CDC client, that depends on this `Version Swap` message, work in that case
+        broadcastVersionSwap(previousStoreVersion, nextStoreVersion, rtForNextVersion);
+      }
+    } else {
       // ToDo: Broadcast the Version Swap message to batch only view topics
       LOGGER.info("RT topic doesn't exist for store: {}. Broadcasting Version Swap message directly to VT.", storeName);
 
@@ -237,9 +266,6 @@ public class RealTimeTopicSwitcher {
        */
       broadcastVersionSwap(previousStoreVersion, nextStoreVersion, previousStoreVersion.kafkaTopicName());
       broadcastVersionSwap(previousStoreVersion, nextStoreVersion, nextStoreVersion.kafkaTopicName());
-    } else {
-      LOGGER.info("RT topic exists for store: {}. Broadcasting Version Swap message directly to RT.", storeName);
-      broadcastVersionSwap(previousStoreVersion, nextStoreVersion, Utils.getRealTimeTopicName(store));
     }
   }
 

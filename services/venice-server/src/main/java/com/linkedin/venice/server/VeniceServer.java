@@ -488,7 +488,8 @@ public class VeniceServer {
               : BlobTransferTableFormat.BLOCK_BASED_TABLE,
           serverConfig.getBlobTransferPeersConnectivityFreshnessInSeconds(),
           serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
-          serverConfig.getBlobTransferServiceWriteLimitBytesPerSec());
+          serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
+          serverConfig.getSnapshotCleanupIntervalInMins());
 
       blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
           .setCustomizedViewFuture(customizedViewFuture)

@@ -109,6 +109,7 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_READ_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_REPLICA_FACTOR;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_ROUTING_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.DEFERRED_VERSION_SWAP_BUFFER_TIME;
 import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
@@ -566,9 +567,14 @@ public class VeniceControllerClusterConfig {
   private final Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
   private final boolean isRealTimeTopicVersioningEnabled;
   private final boolean isHybridStorePartitionCountUpdateEnabled;
+
+  /**
+   * Configs for DeferredVersionSwapService
+   */
   private final long deferredVersionSwapSleepMs;
   private final boolean deferredVersionSwapServiceEnabled;
   private final boolean skipDeferredVersionSwapForDVCEnabled;
+  private final double deferredVersionSwapBufferTime;
 
   private final Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference;
   private final List<String> helixInstanceCapacityKeys;
@@ -1143,6 +1149,7 @@ public class VeniceControllerClusterConfig {
     this.deferredVersionSwapServiceEnabled = props.getBoolean(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, false);
     this.skipDeferredVersionSwapForDVCEnabled = props.getBoolean(SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED, true);
     this.logContext = new LogContext.Builder().setRegionName(regionName).setComponentName("controller").build();
+    this.deferredVersionSwapBufferTime = props.getDouble(DEFERRED_VERSION_SWAP_BUFFER_TIME, 1.1);
   }
 
   public VeniceProperties getProps() {
@@ -1661,6 +1668,10 @@ public class VeniceControllerClusterConfig {
     return deferredVersionSwapServiceEnabled;
   }
 
+  public double getDeferredVersionSwapBufferTime() {
+    return deferredVersionSwapBufferTime;
+  }
+
   public boolean isSkipDeferredVersionSwapForDVCEnabled() {
     return skipDeferredVersionSwapForDVCEnabled;
   }
@@ -1978,6 +1989,10 @@ public class VeniceControllerClusterConfig {
 
   public long getProtocolVersionAutoDetectionSleepMS() {
     return protocolVersionAutoDetectionSleepMS;
+  }
+
+  public boolean isRealTimeTopicVersioningEnabled() {
+    return isRealTimeTopicVersioningEnabled;
   }
 
   /**

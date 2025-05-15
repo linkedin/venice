@@ -24,7 +24,6 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -273,8 +272,9 @@ public class StoreBufferServiceTest {
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
   public void testGetDrainerIndexForConsumerRecordSeparateRt(boolean queueLeaderWrites) {
     String baseTopicName = Utils.getUniqueString("test_topic");
-    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(baseTopicName));
-    PubSubTopic separateRtTopic = pubSubTopicRepository.getTopic(Version.composeSeparateRealTimeTopic(baseTopicName));
+    String realTimeTopic = Utils.composeRealTimeTopic(baseTopicName, 1);
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(realTimeTopic);
+    PubSubTopic separateRtTopic = pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(realTimeTopic));
     List<PubSubTopic> topics = new ArrayList<>(Arrays.asList(rtTopic, separateRtTopic));
     StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000, queueLeaderWrites, mockedStats, null);
     for (int partition = 0; partition < 64; ++partition) {

@@ -875,10 +875,12 @@ public class TestPushJobWithNativeReplication {
           for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
             ControllerClient childControllerClient =
                 new ControllerClient(clusterName, childDatacenter.getControllerConnectString());
-            StoreResponse store = childControllerClient.getStore(storeName);
-            Optional<Version> version = store.getStore().getVersion(2);
-            assertNotNull(version);
-            assertEquals(version.get().getStatus(), VersionStatus.KILLED);
+            TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+              StoreResponse store = childControllerClient.getStore(storeName);
+              Optional<Version> version = store.getStore().getVersion(2);
+              assertNotNull(version);
+              assertEquals(version.get().getStatus(), VersionStatus.KILLED);
+            });
           }
 
           TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {

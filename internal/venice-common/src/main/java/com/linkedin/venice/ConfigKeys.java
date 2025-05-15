@@ -1995,6 +1995,11 @@ public class ConfigKeys {
   public static final String BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC =
       "blob.transfer.service.write.limit.bytes.per.sec";
 
+  // This is the cleanup interval in mins for the blob transfer snapshot. Every interval, the snapshot will be cleaned
+  // up.
+  public static final String BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS =
+      "blob.transfer.snapshot.cleanup.interval.in.mins";
+
   // Enable ssl for the blob transfer
   public static final String BLOB_TRANSFER_SSL_ENABLED = "blob.transfer.ssl.enabled";
 
@@ -2670,6 +2675,12 @@ public class ConfigKeys {
       "controller.deferred.version.swap.service.enabled";
 
   /**
+   * Specifies after how long the wait time has passed before emitting a stalled version swap metric. Default is value 1.1 where
+   * the buffer time is 10% of the store wait time;
+   */
+  public static final String DEFERRED_VERSION_SWAP_BUFFER_TIME = "deferred.version.swap.buffer.time";
+
+  /**
    * Enables / disables allowing dvc clients to perform a target region push with deferred swap. When enabled, dvc clients
    * will be skipped and target regions will not be set and the deferred version swap service will skip checking stores with
    * isDavinciHeartbeatReported set to true. This is a temporary config until delayed ingestion for dvc is complete. Default value is enabled
@@ -2750,4 +2761,12 @@ public class ConfigKeys {
    */
   public static final String SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS =
       "server.consumer.poll.tracker.stale.threshold.in.seconds";
+  public static final String SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK =
+      "server.use.heartbeat.lag.for.ready.to.serve.check";
+
+  /**
+   * Use heartbeat lag instead of offset lag for ready-to-serve check.
+   */
+  public static final String SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED =
+      "server.use.heartbeat.lag.for.ready.to.serve.check.enabled";
 }

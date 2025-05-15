@@ -2,6 +2,7 @@ package com.linkedin.davinci.stats.ingestion.heartbeat;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.ReplicaHeartbeatInfo;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -16,6 +17,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -339,6 +341,97 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     }
   }
 
+  /**
+   * Get maximum heartbeat lag from all regions (except separate RT regions) for a given LEADER replica.
+   * @return Max leader heartbeat lag, or Long.MAX_VALUE if any region's heartbeat is unknown.
+   */
+  public long getReplicaLeaderMaxHeartbeatLag(
+      PartitionConsumptionState partitionConsumptionState,
+      String storeName,
+      int version,
+      boolean shouldLogLag) {
+    Map<String, HeartbeatTimeStampEntry> replicaTimestampMap =
+        getLeaderHeartbeatTimeStamps().getOrDefault(storeName, Collections.emptyMap())
+            .getOrDefault(version, Collections.emptyMap())
+            .getOrDefault(partitionConsumptionState.getPartition(), Collections.emptyMap());
+    if (replicaTimestampMap.isEmpty()) {
+      if (shouldLogLag) {
+        LOGGER.warn("Replica: {} leader lag entry not found.", partitionConsumptionState.getReplicaId());
+      }
+      return Long.MAX_VALUE;
+    }
+    long currentTimestamp = System.currentTimeMillis();
+    long maxLag = 0;
+    /**
+     * When initializing A/A leader lag entry, we will initialize towards all available regions, so scanning this map
+     * should be able to tell us all the lag information.
+     */
+    for (Map.Entry<String, HeartbeatTimeStampEntry> entry: replicaTimestampMap.entrySet()) {
+      // Skip separate RT topic as it is not tracked towards replication latency goal.
+      if (Utils.isSeparateTopicRegion(entry.getKey())) {
+        continue;
+      }
+      if (!entry.getValue().consumedFromUpstream) {
+        if (shouldLogLag) {
+          LOGGER.info(
+              "Replica: {} has not received any valid leader heartbeat from region: {}.",
+              partitionConsumptionState.getReplicaId(),
+              entry.getKey());
+        }
+        maxLag = Long.MAX_VALUE;
+      } else {
+        long heartbeatLag = currentTimestamp - entry.getValue().timestamp;
+        if (shouldLogLag) {
+          LOGGER.info(
+              "Replica: {} has leader heartbeat lag: {}ms from region: {}.",
+              partitionConsumptionState.getReplicaId(),
+              heartbeatLag,
+              entry.getKey());
+        }
+        maxLag = Math.max(maxLag, heartbeatLag);
+      }
+    }
+    return maxLag;
+  }
+
+  /**
+   * Get maximum heartbeat lag from local region for a given FOLLOWER replica.
+   * @return Follower heartbeat lag, or Long.MAX_VALUE if local region's heartbeat is unknown.
+   */
+  public long getReplicaFollowerHeartbeatLag(
+      PartitionConsumptionState partitionConsumptionState,
+      String storeName,
+      int version,
+      boolean shouldLogLag) {
+    HeartbeatTimeStampEntry followerReplicaTimestamp =
+        getFollowerHeartbeatTimeStamps().getOrDefault(storeName, Collections.emptyMap())
+            .getOrDefault(version, Collections.emptyMap())
+            .getOrDefault(partitionConsumptionState.getPartition(), Collections.emptyMap())
+            .get(getLocalRegionName());
+    if (followerReplicaTimestamp == null) {
+      if (shouldLogLag) {
+        LOGGER.warn("Replica: {} follower lag entry not found.", partitionConsumptionState.getReplicaId());
+      }
+      return Long.MAX_VALUE;
+    }
+    if (!followerReplicaTimestamp.consumedFromUpstream) {
+      if (shouldLogLag) {
+        LOGGER.info(
+            "Replica: {} has not received any valid follower heartbeat from local region.",
+            partitionConsumptionState.getReplicaId());
+      }
+      return Long.MAX_VALUE;
+    }
+    long heartbeatLag = System.currentTimeMillis() - followerReplicaTimestamp.timestamp;
+    if (shouldLogLag) {
+      LOGGER.info(
+          "Replica: {} has follower heartbeat lag: {}ms from local region.",
+          partitionConsumptionState.getReplicaId(),
+          heartbeatLag);
+    }
+    return heartbeatLag;
+  }
+
   ReadOnlyStoreRepository getMetadataRepository() {
     return metadataRepository;
   }
@@ -551,5 +644,9 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       }
       LOGGER.info("Heartbeat lag logging thread interrupted!  Shutting down...");
     }
+  }
+
+  String getLocalRegionName() {
+    return localRegionName;
   }
 }

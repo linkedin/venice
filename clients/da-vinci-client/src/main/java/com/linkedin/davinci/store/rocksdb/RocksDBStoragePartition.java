@@ -523,6 +523,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
   }
 
+  @Override
+  public synchronized void cleanupSnapshot() {
+    cleanupSnapshot(fullPathForPartitionDBSnapshot);
+  }
+
   protected void checkAndThrowSpecificException(RocksDBException e) {
     checkAndThrowMemoryLimitException(e);
     checkAndThrowDiskLimitException(e);
@@ -827,15 +832,21 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   public long getDuplicateKeyCountEstimate() {
-    if (keyStatistics != null) {
-      return keyStatistics.getTickerCount(COMPACTION_KEY_DROP_NEWER_ENTRY)
-          + keyStatistics.getTickerCount(COMPACTION_KEY_DROP_USER);
+    readCloseRWLock.readLock().lock();
+    try {
+      if (keyStatistics != null) {
+        makeSureRocksDBIsStillOpen();
+        return keyStatistics.getTickerCount(COMPACTION_KEY_DROP_NEWER_ENTRY)
+            + keyStatistics.getTickerCount(COMPACTION_KEY_DROP_USER);
+      }
+      return -1;
+    } finally {
+      readCloseRWLock.readLock().unlock();
     }
-    return -1;
   }
 
   public long getKeyCountEstimate() throws RocksDBException {
-    return rocksDB.getLongProperty("rocksdb.estimate-num-keys");
+    return getRocksDBStatValue("rocksdb.estimate-num-keys");
   }
 
   public void deleteFilesInDirectory(String fullPath) {
@@ -910,6 +921,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
     if (deferredWrite) {
       rocksDBSstFileWriter.close();
+    }
+    if (keyStatistics != null) {
+      keyStatistics.close();
     }
     options.close();
     if (writeOptions != null) {
@@ -1077,6 +1091,28 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       throw new VeniceException(
           "Received exception during RocksDB's snapshot creation in directory " + fullPathForPartitionDBSnapshot,
           e);
+    }
+  }
+
+  /**
+   * A util method to clean up snapshot;
+   * @param fullPathForPartitionDBSnapshot
+   */
+  public static void cleanupSnapshot(String fullPathForPartitionDBSnapshot) {
+    File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
+    if (partitionSnapshotDir.exists()) {
+      LOGGER.info("Snapshot directory already exists, deleting old snapshots at {}", fullPathForPartitionDBSnapshot);
+      try {
+        FileUtils.deleteDirectory(partitionSnapshotDir);
+      } catch (IOException e) {
+        throw new VeniceException(
+            "Failed to delete the existing snapshot directory: " + fullPathForPartitionDBSnapshot,
+            e);
+      }
+    } else {
+      LOGGER.info(
+          "Snapshot directory does not exist, no need to delete old snapshots at {}",
+          fullPathForPartitionDBSnapshot);
     }
   }
 }
