@@ -59,7 +59,8 @@ public interface BootstrappingVeniceChangelogConsumer<K, V> {
   Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs);
 
   /**
-   * In the experimental client, once this becomes true it will stay true.
+   * In the experimental client, once this becomes true it will stay true even if we start to lag after the
+   * bootstrapping phase.
    * @return True if all subscribed partitions have caught up.
    */
   boolean isCaughtUp();
