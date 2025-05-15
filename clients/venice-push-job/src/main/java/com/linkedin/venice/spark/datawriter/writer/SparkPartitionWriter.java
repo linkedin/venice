@@ -1,6 +1,8 @@
 package com.linkedin.venice.spark.datawriter.writer;
 
-import static com.linkedin.venice.spark.SparkConstants.*;
+import static com.linkedin.venice.spark.SparkConstants.KEY_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.TIMESTAMP_COLUMN_NAME;
+import static com.linkedin.venice.spark.SparkConstants.VALUE_COLUMN_NAME;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.task.datawriter.AbstractPartitionWriter;

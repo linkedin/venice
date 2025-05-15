@@ -99,6 +99,10 @@ public class TestVeniceAvroRecordReader {
     Assert.assertEquals(
         ((IndexedRecord) result).get(updateSchema.getField("age").pos()),
         new GenericData.Record(updateSchema.getField("age").schema().getTypes().get(0)));
+
+    // Test the exceptional case
+    record.put("timestamp", null);
+    Assert.assertThrows(() -> recordReader.getRecordTimestamp(new AvroWrapper<>(record), NullWritable.get()));
   }
 
   @Test(dataProvider = "Boolean-and-EtlTransformations")

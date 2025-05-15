@@ -20,6 +20,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -640,7 +641,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     if (rmdSchemaProp.isEmpty()) {
       this.rmdSchema = null;
     } else {
-      this.rmdSchema = new Schema.Parser().parse(props.getString(RMD_SCHEMA_PROP));
+      this.rmdSchema = AvroCompatibilityHelper.parse(props.getString(RMD_SCHEMA_PROP));
     }
     initStorageQuotaFields(props);
     /**
