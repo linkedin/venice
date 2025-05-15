@@ -37,6 +37,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -300,6 +301,7 @@ public class KafkaConsumptionTest {
     recordValue.producerMetadata.producerGUID = new GUID();
     recordValue.producerMetadata.messageTimestamp = producerTimestamp;
     recordValue.leaderMetadataFooter = new LeaderMetadata();
+    recordValue.leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.getWireFormatBytes();
     recordValue.leaderMetadataFooter.hostName = "localhost";
 
     if (isDataRecord) {
