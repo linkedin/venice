@@ -224,7 +224,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (changelogClientConfig.getInnerClientConfig().getMetricsRepository() != null) {
       this.changeCaptureStats = new BasicConsumerStats(
           changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
-          "vcc-" + changelogClientConfig.getConsumerName());
+          "vcc-" + changelogClientConfig.getConsumerName(),
+          storeName);
     } else {
       changeCaptureStats = null;
     }
@@ -1245,10 +1246,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         Set<PubSubTopicPartition> assignment) {
 
       Iterator<Map.Entry<Integer, Long>> heartbeatIterator = currentVersionLastHeartbeat.entrySet().iterator();
+      long maxLag = Long.MIN_VALUE;
+
       while (heartbeatIterator.hasNext()) {
-        Long lag = System.currentTimeMillis() - heartbeatIterator.next().getValue();
-        changeCaptureStats.recordLag(lag);
+        maxLag = Math.max(maxLag, System.currentTimeMillis() - heartbeatIterator.next().getValue());
       }
+      changeCaptureStats.emitHeartBeatDelayMetrics(maxLag);
 
       int maxVersion = -1;
       int minVersion = Integer.MAX_VALUE;
