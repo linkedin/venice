@@ -86,6 +86,9 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
     targetPubSubTopicName = inputPartition.getTopicName();
     targetPartitionNumber = inputPartition.getPartitionNumber();
     long startOffset = pubSubConsumer.beginningOffset(pubSubTopicPartition, Duration.ofSeconds(60));
+    // end offset is determined at execution time
+    // The target topic will probably receive new messages but we will stop consuming at the end point determined
+    // at the beginning of the job.
     long endOffset = pubSubConsumer.endOffset(pubSubTopicPartition);
 
     this.pubSubConsumer = consumer;
