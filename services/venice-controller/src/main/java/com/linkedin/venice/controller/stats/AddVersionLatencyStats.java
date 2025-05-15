@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -53,25 +54,59 @@ public class AddVersionLatencyStats extends AbstractVeniceStats {
 
   public AddVersionLatencyStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    retireOldVersionsLatencySensor =
-        registerSensorIfAbsent("add_version_retire_old_versions_latency", new Avg(), new Max());
 
-    resourceAssignmentWaitLatencySensor =
-        registerSensorIfAbsent("add_version_resource_assignment_wait_latency", new Avg(), new Max());
+    String retireOldVersionsLatencySensorName = "add_version_retire_old_versions_latency";
+    retireOldVersionsLatencySensor = registerSensorIfAbsent(
+        retireOldVersionsLatencySensorName,
+        new Avg(),
+        new Max(),
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + retireOldVersionsLatencySensorName));
 
-    versionCreationFailureLatencySensor =
-        registerSensorIfAbsent("add_version_creation_failure_latency", new Avg(), new Max());
+    String resourceAssignmentWaitLatencySensorName = "add_version_resource_assignment_wait_latency";
+    resourceAssignmentWaitLatencySensor = registerSensorIfAbsent(
+        resourceAssignmentWaitLatencySensorName,
+        new Avg(),
+        new Max(),
+        TehutiUtils
+            .getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + resourceAssignmentWaitLatencySensorName));
 
-    existingSourceVersionHandlingLatencySensor =
-        registerSensorIfAbsent("add_version_existing_source_handling_latency", new Avg(), new Max());
+    String versionCreationFailureLatencySensorName = "add_version_creation_failure_latency";
+    versionCreationFailureLatencySensor = registerSensorIfAbsent(
+        versionCreationFailureLatencySensorName,
+        new Avg(),
+        new Max(),
+        TehutiUtils
+            .getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + versionCreationFailureLatencySensorName));
 
-    startOfPushLatencySensor = registerSensorIfAbsent("add_version_start_of_push_latency", new Avg(), new Max());
+    String existingSourceVersionHandlingLatencySensorName = "add_version_existing_source_handling_latency";
+    existingSourceVersionHandlingLatencySensor = registerSensorIfAbsent(
+        existingSourceVersionHandlingLatencySensorName,
+        new Avg(),
+        new Max(),
+        TehutiUtils.getPercentileStat(
+            getName() + AbstractVeniceStats.DELIMITER + existingSourceVersionHandlingLatencySensorName));
 
-    batchTopicCreationLatencySensor =
-        registerSensorIfAbsent("add_version_batch_topic_creation_latency", new Avg(), new Max());
+    String startOfPushLatencySensorName = "add_version_start_of_push_latency";
+    startOfPushLatencySensor = registerSensorIfAbsent(
+        startOfPushLatencySensorName,
+        new Avg(),
+        new Max(),
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + startOfPushLatencySensorName));
 
-    helixResourceCreationLatencySensor =
-        registerSensorIfAbsent("add_version_helix_resource_creation_latency", new Avg(), new Max());
+    String batchTopicCreationLatencySensorName = "add_version_batch_topic_creation_latency";
+    batchTopicCreationLatencySensor = registerSensorIfAbsent(
+        "add_version_batch_topic_creation_latency",
+        new Avg(),
+        new Max(),
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + batchTopicCreationLatencySensorName));
+
+    String helixResourceCreationLatencySensorName = "add_version_helix_resource_creation_latency";
+    helixResourceCreationLatencySensor = registerSensorIfAbsent(
+        helixResourceCreationLatencySensorName,
+        new Avg(),
+        new Max(),
+        TehutiUtils
+            .getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + helixResourceCreationLatencySensorName));
   }
 
   public void recordRetireOldVersionsLatency(long latency) {
