@@ -230,15 +230,6 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     return isCaughtUp.get();
   }
 
-  private void internalStart() {
-    if (isStarted) {
-      return;
-    }
-
-    daVinciClient.start();
-    isStarted = true;
-  }
-
   private VeniceProperties buildVeniceConfig() {
     return new PropertyBuilder()
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, changelogClientConfig.getRocksDBBlockCacheSizeInBytes())
