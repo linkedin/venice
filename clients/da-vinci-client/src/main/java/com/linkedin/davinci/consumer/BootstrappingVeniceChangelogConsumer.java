@@ -49,6 +49,7 @@ public interface BootstrappingVeniceChangelogConsumer<K, V> {
    *
    * In the experimental client, records will be returned in batches configured to the MAX_BUFFER_SIZE. So the initial
    * calls to poll will be from records from the bootstrap state, until the partitions have caught up.
+   * Additionally, if the buffer hits the MAX_BUFFER_SIZE before the timeout is hit, poll will return immediately.
    *
    * @param timeoutInMs
    * @return
