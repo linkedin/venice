@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
@@ -60,6 +61,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private Cache<String, Map<String, Long>> storePushCompletionTimeCache =
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
   private Map<String, Integer> fetchNonTargetRegionStoreRetryCountMap = new HashMap<>();
+  private Set<String> stalledVersionSwapSet = new HashSet<>();
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -121,9 +123,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       long storeWaitTime = TimeUnit.MINUTES.toSeconds(store.getTargetSwapRegionWaitTime());
       long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
       if ((completionTime + storeWaitTime) > currentTime) {
-        String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
-            + " as wait time: " + store.getTargetSwapRegionWaitTime() + " has not passed";
-        logMessageIfNotRedundant(message);
         return false;
       }
     }
@@ -219,20 +218,35 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         targetVersionNum);
     veniceParentHelixAdmin.rollForwardToFutureVersion(cluster, storeName, regionsToRollForward);
 
+    if (stalledVersionSwapSet.contains(storeName)) {
+      stalledVersionSwapSet.remove(storeName);
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
+    }
+
     // Update parent version status after roll forward, so we don't check this store version again
     // If push was successful (version status is PUSHED), the parent version is marked as ONLINE
     // if push was successful in some regions (version status is KILLED), the parent version is marked PARTIALLY_ONLINE
+    long totalVersionSwapTimeInMinutes =
+        TimeUnit.MILLISECONDS.toMinutes(LatencyUtils.getElapsedTimeFromMsToMs(targetVersion.getCreatedTime()));
     if (targetVersion.getStatus() == VersionStatus.PUSHED) {
       store.updateVersionStatus(targetVersionNum, ONLINE);
       repository.updateStore(store);
-      LOGGER.info("Updated parent version status to ONLINE for version: {} in store: {}", targetVersionNum, storeName);
+
+      LOGGER.info(
+          "Updated parent version status to ONLINE for version: {} in store: {} for version created in: {}."
+              + "Version swap took {} minutes from push completion to version swap",
+          targetVersionNum,
+          storeName,
+          totalVersionSwapTimeInMinutes);
     } else {
       store.updateVersionStatus(targetVersionNum, VersionStatus.PARTIALLY_ONLINE);
       repository.updateStore(store);
       LOGGER.info(
-          "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {}",
+          "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {},"
+              + "Version swap took {} minutes from push completion to version swap",
           targetVersionNum,
-          storeName);
+          storeName,
+          totalVersionSwapTimeInMinutes);
     }
   }
 
@@ -318,6 +332,53 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
 
     return true;
+  }
+
+  /**
+   * Check if the version swap for a store is stalled. A version swap is considered stalled if the wait time has elapsed and
+   * more than the wait time * {deferred.version.swap.buffer.time} has passed without switching to the target version.
+   * Emit a metric is this happens
+   * @param completionTimes the push completion time of the regions
+   * @param targetRegions the list of target regions
+   * @param store the store to check for
+   * @param targetVersionNum the target version number to check for
+   */
+  private void emitMetricIfVersionSwapIsStalled(
+      Map<String, Long> completionTimes,
+      Set<String> targetRegions,
+      Store store,
+      int targetVersionNum,
+      Version parentVersion) {
+    if (parentVersion.getStatus().equals(ONLINE) || parentVersion.getStatus().equals(ERROR)
+        || parentVersion.getStatus().equals(PARTIALLY_ONLINE)) {
+      return;
+    }
+
+    // If we already emitted a metric for this store already, do not emit it again
+    if (stalledVersionSwapSet.contains(store.getName())) {
+      return;
+    }
+
+    for (String targetRegion: targetRegions) {
+      if (!completionTimes.containsKey(targetRegion)) {
+        continue;
+      }
+
+      long completionTime = completionTimes.get(targetRegion);
+      long bufferedWaitTime = TimeUnit.MINUTES.toSeconds(
+          Math.round(
+              store.getTargetSwapRegionWaitTime()
+                  * veniceControllerMultiClusterConfig.getDeferredVersionSwapBufferTime()));
+      long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
+      if ((completionTime + bufferedWaitTime) < currentTime) {
+        String message = "Store: " + store.getName() + "has not swapped to the target version: " + targetVersionNum
+            + " and the wait time: " + store.getTargetSwapRegionWaitTime() + " has passed in target region "
+            + targetRegion;
+        logMessageIfNotRedundant(message);
+        stalledVersionSwapSet.add(store.getName());
+        deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
+      }
+    }
   }
 
   /**
@@ -440,6 +501,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 veniceParentHelixAdmin.getVeniceHelixAdmin().getHelixVeniceClusterResources(cluster);
             ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
             Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
+
+            // Check if version swap is stalled for the store
+            emitMetricIfVersionSwapIsStalled(
+                pushStatusInfo.getExtraInfoUpdateTimestamp(),
+                targetRegions,
+                parentStore,
+                targetVersionNum,
+                targetVersion);
 
             // If version status is marked as KILLED (push timeout, user killed push job, etc), check if target
             // regions failed

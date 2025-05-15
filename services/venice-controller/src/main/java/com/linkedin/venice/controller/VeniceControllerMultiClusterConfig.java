@@ -231,6 +231,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getDeferredVersionSwapSleepMs();
   }
 
+  public double getDeferredVersionSwapBufferTime() {
+    return getCommonConfig().getDeferredVersionSwapBufferTime();
+  }
+
   public boolean isDeferredVersionSwapServiceEnabled() {
     return getCommonConfig().isDeferredVersionSwapServiceEnabled();
   }
