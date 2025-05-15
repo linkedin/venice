@@ -286,7 +286,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       final long preRequestTimeInNS) {
     /**
      * Leveraging the following function to do safe D2 discovery for the following schema fetches.
-     * And we could not use {@link #tryStart()} since it will cause a dead loop:
+     * And we could not use {@link #tryStart} since it will cause a dead loop:
      * {@link #getRaw} -> {@link #getKeySchema} -> {@link SchemaReader#getKeySchema} -> {@link #getRaw}
      */
     discoverD2Service(true);
@@ -576,57 +576,56 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
        * 2. Key/Value schemas.
        * 3. Necessary serializers.
        */
+      discoverD2Service(retryLimit > 1);
+      if (!needSchemaReader) {
+        return;
+      }
+      /**
+       * When the schema reader is disabled, we shouldn't try to initialize the serializers or refresh key/value schemas
+       * since it might cause a deadlock.
+       */
+      this.schemaReader = new RouterBackedSchemaReader(
+          this::getStoreClientForSchemaReader,
+          getReaderSchema(),
+          clientConfig.getPreferredSchemaFilter(),
+          clientConfig.getSchemaRefreshPeriod(),
+          null);
 
-      discoverD2Service(retryLimit > 1 ? true : false);
-      if (needSchemaReader) {
-        /**
-         * When the schema reader is disabled, we shouldn't try to initialize the serializers or refresh key/value schemas
-         * since it might cause a deadlock.
-         */
-        this.schemaReader = new RouterBackedSchemaReader(
-            this::getStoreClientForSchemaReader,
-            getReaderSchema(),
-            clientConfig.getPreferredSchemaFilter(),
-            clientConfig.getSchemaRefreshPeriod(),
-            null);
-
-        Throwable lastException = null;
-        int retryCount = 0;
-        for (; retryCount < retryLimit; ++retryCount) {
-          if (retryCount > 0) {
-            try {
-              // Short sleep interval should be good enough, and we assume the next retry could hit a different Router.
-              Thread.sleep(50);
-            } catch (InterruptedException e) {
-              Thread.currentThread().interrupt();
-              throw new VeniceException("Initialization of Venice client is interrupted");
-            }
-          }
+      Throwable lastException;
+      int retryCount = 0;
+      for (; retryCount < retryLimit; ++retryCount) {
+        if (retryCount > 0) {
           try {
-            // Refresh the value schemas
-            getSchemaReader().getLatestValueSchema();
-            initSerializer();
-            lastException = null;
-          } catch (ServiceDiscoveryException e) {
-            if (e.getCause() instanceof VeniceNoStoreException) {
-              // No store error is not retriable
-              throw e;
-            }
-            lastException = e.getCause();
-          } catch (Exception e) {
-            // Retry on other types of exceptions
-            lastException = e;
-          }
-          if (retryCount == retryLimit - 1 && lastException != null) {
-            // If we reach the retry limit, throw the last exception
-            throw new VeniceClientException(
-                "Failed to initialize Venice client for store: " + getStoreName() + " after " + retryLimit
-                    + " attempts",
-                lastException);
+            // Short sleep interval should be good enough, and we assume the next retry could hit a different Router.
+            Thread.sleep(50);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new VeniceException("Initialization of Venice client is interrupted");
           }
         }
+        try {
+          // Refresh the value schemas
+          getSchemaReader().getLatestValueSchema();
+          initSerializer();
+          started = true;
+          break;
+        } catch (ServiceDiscoveryException e) {
+          if (e.getCause() instanceof VeniceNoStoreException) {
+            // No store error is not retriable
+            throw e;
+          }
+          lastException = e.getCause();
+        } catch (Exception e) {
+          // Retry on other types of exceptions
+          lastException = e;
+        }
+        if (retryCount == retryLimit - 1 && lastException != null) {
+          // If we reach the retry limit, throw the last exception
+          throw new VeniceClientException(
+              "Failed to initialize Venice client for store: " + getStoreName() + " after " + retryLimit + " attempts",
+              lastException);
+        }
       }
-      started = true;
     }
   }
 
