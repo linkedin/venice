@@ -33,5 +33,4 @@ public class VeniceBasicPubsubInputPartition implements InputPartition {
   public int getPartitionNumber() {
     return partitionNumber;
   }
-
 }
