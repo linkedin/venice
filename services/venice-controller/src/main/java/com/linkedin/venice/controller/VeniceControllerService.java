@@ -143,8 +143,8 @@ public class VeniceControllerService extends AbstractVeniceService {
     newSchemaEncountered = (schemaId, schema) -> {
       LOGGER.info("Encountered a new KME value schema (id = {}), proceed to register", schemaId);
       try {
-        Optional<D2Client> regionD2Client = Optional.ofNullable(
-            d2Clients == null ? null : d2Clients.get(systemStoreClusterConfig.getChildControllerD2ServiceName()));
+        Optional<D2Client> regionD2Client =
+            Optional.ofNullable(d2Clients == null ? null : d2Clients.get(systemStoreClusterConfig.getRegionName()));
         ControllerClientBackedSystemSchemaInitializer schemaInitializer =
             new ControllerClientBackedSystemSchemaInitializer(
                 AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
