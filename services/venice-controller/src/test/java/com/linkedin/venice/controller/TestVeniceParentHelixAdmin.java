@@ -3259,14 +3259,14 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testDeleteStoreAdminMessageTimeout() {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
 
-    String storeName = "test-testReCreateStore";
-    String owner = "unittest";
+    String storeName = "testStore";
+    String owner = "testOwner";
     Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
     doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
 
     AdminMessageConsumptionTimeoutException exception =
-        new AdminMessageConsumptionTimeoutException("test msg", new Exception());
+        new AdminMessageConsumptionTimeoutException("timed out!", new Exception());
     doThrow(exception).when(adminSpy).sendAdminMessageAndWaitForConsumed(any(), any(), any());
     adminSpy.deleteStore(clusterName, storeName, false, 0, true);
     verify(adminSpy, times(1)).deleteAclsForStore(store, storeName);
