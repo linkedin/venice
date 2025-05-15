@@ -18,6 +18,8 @@ public class DaVinciRecordTransformerConfig {
   private final boolean storeRecordsInDaVinci;
   private final boolean alwaysBootstrapFromVersionTopic;
   private final boolean skipCompatibilityChecks;
+  private final boolean useSpecificRecordKeyDeserializer;
+  private final boolean useSpecificRecordValueDeserializer;
 
   public DaVinciRecordTransformerConfig(Builder builder) {
     this.recordTransformerFunction = Optional.ofNullable(builder.recordTransformerFunction)
@@ -30,6 +32,10 @@ public class DaVinciRecordTransformerConfig {
         || (this.outputValueClass == null && this.outputValueSchema != null)) {
       throw new VeniceException("outputValueClass and outputValueSchema must be defined together");
     }
+
+    this.useSpecificRecordKeyDeserializer = keyClass != null && SpecificRecord.class.isAssignableFrom(keyClass);
+    this.useSpecificRecordValueDeserializer =
+        outputValueClass != null && SpecificRecord.class.isAssignableFrom(outputValueClass);
 
     this.storeRecordsInDaVinci = builder.storeRecordsInDaVinci;
     this.alwaysBootstrapFromVersionTopic = builder.alwaysBootstrapFromVersionTopic;
@@ -51,10 +57,10 @@ public class DaVinciRecordTransformerConfig {
   }
 
   /**
-   * @return Whether the SpecificRecord deserializer should be used for keys
+   * @return Whether the {@link SpecificRecord} deserializer should be used for keys
    */
   public boolean useSpecificRecordKeyDeserializer() {
-    return keyClass != null && SpecificRecord.class.isAssignableFrom(keyClass);
+    return useSpecificRecordKeyDeserializer;
   }
 
   /**
@@ -65,10 +71,10 @@ public class DaVinciRecordTransformerConfig {
   }
 
   /**
-   * @return Whether the SpecificRecord deserializer should be used for values
+   * @return Whether the {@link SpecificRecord} deserializer should be used for values
    */
   public boolean useSpecificRecordValueDeserializer() {
-    return outputValueClass != null && SpecificRecord.class.isAssignableFrom(outputValueClass);
+    return useSpecificRecordValueDeserializer;
   }
 
   /**

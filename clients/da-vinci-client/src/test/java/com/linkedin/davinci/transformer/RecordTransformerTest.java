@@ -27,6 +27,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSpecificDeserializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.lang.reflect.Field;
@@ -47,7 +48,7 @@ public class RecordTransformerTest {
   static final Schema valueSchema = Schema.create(Schema.Type.STRING);
 
   @Test
-  public void testRecordTransformer() {
+  public void testRecordTransformer() throws NoSuchFieldException, IllegalAccessException {
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .setStoreRecordsInDaVinci(false)
@@ -69,6 +70,20 @@ public class RecordTransformerTest {
     assertEquals(recordTransformer.getKeySchema().getType(), Schema.Type.INT);
     assertEquals(recordTransformer.getOutputValueSchema().getType(), Schema.Type.STRING);
 
+    DaVinciRecordTransformerUtility<Integer, String> recordTransformerUtility =
+        recordTransformer.getRecordTransformerUtility();
+
+    Field keyDeserializerField = recordTransformerUtility.getClass().getDeclaredField("keyDeserializer");
+    keyDeserializerField.setAccessible(true);
+    assertTrue(keyDeserializerField.get(recordTransformerUtility) instanceof AvroGenericDeserializer);
+    assertFalse(keyDeserializerField.get(recordTransformerUtility) instanceof AvroSpecificDeserializer);
+
+    Field outputValueDeserializerField =
+        recordTransformerUtility.getClass().getDeclaredField("outputValueDeserializer");
+    outputValueDeserializerField.setAccessible(true);
+    assertTrue(outputValueDeserializerField.get(recordTransformerUtility) instanceof AvroGenericDeserializer);
+    assertFalse(outputValueDeserializerField.get(recordTransformerUtility) instanceof AvroSpecificDeserializer);
+
     DaVinciRecordTransformerResult<String> transformerResult =
         recordTransformer.transform(lazyKey, lazyValue, partitionId);
     recordTransformer.processPut(lazyKey, lazyValue, partitionId);
@@ -81,15 +96,9 @@ public class RecordTransformerTest {
     assertFalse(recordTransformer.getStoreRecordsInDaVinci());
 
     int classHash = recordTransformer.getClassHash();
-
-    DaVinciRecordTransformerUtility<Integer, String> recordTransformerUtility =
-        recordTransformer.getRecordTransformerUtility();
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
-
     assertTrue(recordTransformerUtility.hasTransformerLogicChanged(classHash, offsetRecord));
-
     offsetRecord.setRecordTransformerClassHash(classHash);
-
     assertFalse(recordTransformerUtility.hasTransformerLogicChanged(classHash, offsetRecord));
   }
 

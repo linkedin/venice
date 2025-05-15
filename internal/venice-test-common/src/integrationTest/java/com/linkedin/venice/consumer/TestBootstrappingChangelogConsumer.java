@@ -105,7 +105,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-@Test(singleThreaded = true)
 public class TestBootstrappingChangelogConsumer {
   private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
   private static final String REGION_NAME = "local-pubsub";

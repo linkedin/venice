@@ -32,6 +32,7 @@ import com.linkedin.davinci.consumer.ChangelogClientConfig;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.endToEnd.TestChangelogKey;
 import com.linkedin.venice.endToEnd.TestChangelogValue;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -120,7 +121,8 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
             .setIsExperimentalClientEnabled(true);
 
     if (useSpecificRecord) {
-      globalChangelogClientConfig.setSpecificValue(TestChangelogValue.class)
+      globalChangelogClientConfig.setSpecificKey(TestChangelogKey.class)
+          .setSpecificValue(TestChangelogValue.class)
           .setSpecificValueSchema(TestChangelogValue.SCHEMA$);
     }
 
@@ -140,9 +142,9 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
     LOGGER.info("DVRT CDC user app has come online.");
 
     if (useSpecificRecord) {
-      Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsMap =
+      Map<String, PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsMap =
           new HashMap<>();
-      List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsList =
+      List<PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsList =
           new ArrayList<>();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         pollChangeEventsFromSpecificChangeCaptureConsumer(
@@ -181,13 +183,13 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
   }
 
   private static void pollChangeEventsFromSpecificChangeCaptureConsumer(
-      Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> keyToMessageMap,
-      List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
-      BootstrappingVeniceChangelogConsumer<Utf8, TestChangelogValue> bootstrappingVeniceChangelogConsumer) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
+      Map<String, PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> keyToMessageMap,
+      List<PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
+      BootstrappingVeniceChangelogConsumer<TestChangelogKey, TestChangelogValue> bootstrappingVeniceChangelogConsumer) {
+    Collection<PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
         bootstrappingVeniceChangelogConsumer.poll(1000);
-    for (PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      String key = pubSubMessage.getKey() == null ? null : pubSubMessage.getKey().toString();
+    for (PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
+      String key = pubSubMessage.getKey() == null ? null : String.valueOf(pubSubMessage.getKey().id);
       keyToMessageMap.put(key, pubSubMessage);
     }
     polledMessageList.addAll(pubSubMessages);
