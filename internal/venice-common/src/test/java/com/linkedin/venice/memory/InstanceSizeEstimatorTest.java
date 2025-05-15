@@ -88,7 +88,7 @@ public class InstanceSizeEstimatorTest extends HeapSizeEstimatorTest {
             null, // shared instance
             0L,
             0,
-            ByteBuffer.allocate(0),
+            null,
             -1L));
     kmeSuppliers.add(rtKmeSupplier);
     kmeSuppliers.add(vtKmeSupplier);
