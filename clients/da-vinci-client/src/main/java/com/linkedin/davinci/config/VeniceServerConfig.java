@@ -13,6 +13,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_SNAPSH
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
@@ -73,6 +74,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CHANNEL_OPTION_WRITE_BUFFER_
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_FOR_CURRENT_VERSION_NON_AA_WC_LEADER;
@@ -190,6 +192,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CU
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_NON_CURRENT_VERSION_NON_AA_WC_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_THROTTLER_FACTORS_FOR_SEP_RT_LEADER;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
+import static com.linkedin.venice.ConfigKeys.SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ZSTD_DICT_COMPRESSION_LEVEL;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SORTED_INPUT_DRAINER_SIZE;
@@ -599,6 +602,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long blobTransferClientReadLimitBytesPerSec;
   private final long blobTransferServiceWriteLimitBytesPerSec;
   private final long blobTransferDisabledOffsetLagThreshold;
+  private final int snapshotCleanupIntervalInMins;
   private final int dvcP2pBlobTransferServerPort;
   private final int dvcP2pBlobTransferClientPort;
   private final boolean daVinciCurrentVersionBootstrappingSpeedupEnabled;
@@ -624,6 +628,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int aclInMemoryCacheTTLMs;
   private final int aaWCIngestionStorageLookupThreadPoolSize;
   private final int idleIngestionTaskCleanupIntervalInSeconds;
+  private final boolean useHeartbeatLagForReadyToServeCheckEnabled;
   private final boolean loadControllerEnabled;
   private final int loadControllerWindowSizeInSec;
   private final double loadControllerAcceptMultiplier;
@@ -637,6 +642,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       Arrays.asList(0.4D, 0.6D, 0.8D, 1.0D, 1.2D, 1.4D, 1.6D);
 
   private final boolean isParticipantMessageStoreEnabled;
+  private final long consumerPollTrackerStaleThresholdInSeconds;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -672,6 +678,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getSizeInBytes(BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC, 157286400L); // default 150 MB/s
     blobTransferServiceWriteLimitBytesPerSec =
         serverProperties.getSizeInBytes(BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC, 157286400L);
+    snapshotCleanupIntervalInMins = serverProperties.getInt(BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS, 120);
     blobTransferDisabledOffsetLagThreshold =
         serverProperties.getLong(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, 100000L);
     dvcP2pBlobTransferServerPort = serverProperties.getInt(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, -1);
@@ -1075,6 +1082,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     this.isParticipantMessageStoreEnabled = serverProperties.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
     idleIngestionTaskCleanupIntervalInSeconds =
         serverProperties.getInt(SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS, -1);
+    useHeartbeatLagForReadyToServeCheckEnabled =
+        serverProperties.getBoolean(SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED, false);
     loadControllerEnabled = serverProperties.getBoolean(SERVER_LOAD_CONTROLLER_ENABLED, false);
     loadControllerWindowSizeInSec = serverProperties.getInt(SERVER_LOAD_CONTROLLER_WINDOW_SIZE_IN_SECONDS, 60);
     loadControllerAcceptMultiplier = serverProperties.getDouble(SERVER_LOAD_CONTROLLER_ACCEPT_MULTIPLIER, 2.0);
@@ -1087,6 +1096,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_LOAD_CONTROLLER_MULTI_GET_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
     loadControllerComputeLatencyAcceptThresholdMs =
         serverProperties.getInt(SERVER_LOAD_CONTROLLER_COMPUTE_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
+    consumerPollTrackerStaleThresholdInSeconds = serverProperties
+        .getLong(SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS, TimeUnit.MINUTES.toSeconds(15));
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -1238,6 +1249,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getBlobTransferDisabledOffsetLagThreshold() {
     return blobTransferDisabledOffsetLagThreshold;
+  }
+
+  public int getSnapshotCleanupIntervalInMins() {
+    return snapshotCleanupIntervalInMins;
   }
 
   /**
@@ -1981,6 +1996,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return idleIngestionTaskCleanupIntervalInSeconds;
   }
 
+  public boolean isUseHeartbeatLagForReadyToServeCheckEnabled() {
+    return useHeartbeatLagForReadyToServeCheckEnabled;
+  }
+
   public boolean isLoadControllerEnabled() {
     return loadControllerEnabled;
   }
@@ -2011,5 +2030,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getLoadControllerComputeLatencyAcceptThresholdMs() {
     return loadControllerComputeLatencyAcceptThresholdMs;
+  }
+
+  public long getConsumerPollTrackerStaleThresholdSeconds() {
+    return consumerPollTrackerStaleThresholdInSeconds;
   }
 }

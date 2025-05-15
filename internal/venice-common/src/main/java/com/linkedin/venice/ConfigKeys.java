@@ -1995,6 +1995,11 @@ public class ConfigKeys {
   public static final String BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC =
       "blob.transfer.service.write.limit.bytes.per.sec";
 
+  // This is the cleanup interval in mins for the blob transfer snapshot. Every interval, the snapshot will be cleaned
+  // up.
+  public static final String BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS =
+      "blob.transfer.snapshot.cleanup.interval.in.mins";
+
   // Enable ssl for the blob transfer
   public static final String BLOB_TRANSFER_SSL_ENABLED = "blob.transfer.ssl.enabled";
 
@@ -2040,11 +2045,6 @@ public class ConfigKeys {
    * node, and decide whether to send a status update event. This config controls the interval between each check.
    */
   public static final String DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS = "davinci.push.status.check.interval.in.ms";
-
-  /**
-   * The number of threads that will be used to perform SSL handshakes between clients and a router.
-   */
-  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
 
   /**
    * Config to control the number of threads used for DNS resolution.
@@ -2748,6 +2748,19 @@ public class ConfigKeys {
    */
   public static final String SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS =
       "server.idle.ingestion.task.cleanup.interval.in.seconds";
-
   public static final String PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY = "pass.through.config.prefixes.list";
+  /**
+   * The threshold in ms to consider a subscribed topic partition problematic without a new message polled since it was
+   * subscribed.
+   */
+  public static final String SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS =
+      "server.consumer.poll.tracker.stale.threshold.in.seconds";
+  public static final String SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK =
+      "server.use.heartbeat.lag.for.ready.to.serve.check";
+
+  /**
+   * Use heartbeat lag instead of offset lag for ready-to-serve check.
+   */
+  public static final String SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED =
+      "server.use.heartbeat.lag.for.ready.to.serve.check.enabled";
 }

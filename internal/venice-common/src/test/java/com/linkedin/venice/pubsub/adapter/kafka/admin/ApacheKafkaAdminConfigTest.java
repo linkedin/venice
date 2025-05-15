@@ -4,6 +4,9 @@ import static com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminCon
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 import static org.testng.Assert.assertEquals;
 
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -19,6 +22,9 @@ public class ApacheKafkaAdminConfigTest {
       "org.apache.kafka.common.security.plain.PlainLoginModule required " + "username=\"foo\" password=\"bar\"\n";
 
   private static final String SASL_MECHANISM = "PLAIN";
+  private static final PubSubTopicRepository TOPIC_REPOSITORY = new PubSubTopicRepository();
+  private static final PubSubPositionTypeRegistry TYPE_REGISTRY =
+      PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
 
   @Test
   public void testSetupSaslInKafkaAdminPlaintext() {
@@ -51,7 +57,13 @@ public class ApacheKafkaAdminConfigTest {
       properties.put("kafka.ssl.secure.random.implementation", "SHA1PRNG");
     }
     VeniceProperties veniceProperties = new VeniceProperties(properties);
-    ApacheKafkaAdminConfig serverConfig = new ApacheKafkaAdminConfig(veniceProperties);
+    ApacheKafkaAdminConfig serverConfig = new ApacheKafkaAdminConfig(
+        new PubSubAdminAdapterContext.Builder().setVeniceProperties(veniceProperties)
+            .setPubSubSecurityProtocol(securityProtocol)
+            .setPubSubTopicRepository(TOPIC_REPOSITORY)
+            .setPubSubPositionTypeRegistry(TYPE_REGISTRY)
+            .setAdminClientName("testAdminClient")
+            .build());
     Properties adminProperties = serverConfig.getAdminProperties();
     assertEquals(SASL_JAAS_CONFIG, adminProperties.get("sasl.jaas.config"));
     assertEquals(SASL_MECHANISM, adminProperties.get("sasl.mechanism"));

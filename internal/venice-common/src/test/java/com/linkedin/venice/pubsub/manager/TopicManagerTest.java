@@ -29,6 +29,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubConstantsOverrider;
@@ -107,7 +108,7 @@ public class TopicManagerTest {
     inMemoryKafkaBroker = new InMemoryKafkaBroker("local");
     PubSubAdminAdapterFactory pubSubAdminAdapterFactory = mock(ApacheKafkaAdminAdapterFactory.class);
     MockInMemoryAdminAdapter mockInMemoryAdminAdapter = new MockInMemoryAdminAdapter(inMemoryKafkaBroker);
-    doReturn(mockInMemoryAdminAdapter).when(pubSubAdminAdapterFactory).create(any(), eq(pubSubTopicRepository));
+    doReturn(mockInMemoryAdminAdapter).when(pubSubAdminAdapterFactory).create(any(PubSubAdminAdapterContext.class));
     MockInMemoryConsumer mockInMemoryConsumer =
         new MockInMemoryConsumer(inMemoryKafkaBroker, new RandomPollStrategy(), mock(PubSubConsumerAdapter.class));
     mockInMemoryConsumer.setMockInMemoryAdminAdapter(mockInMemoryAdminAdapter);
@@ -569,7 +570,7 @@ public class TopicManagerTest {
     PubSubConsumerAdapterFactory consumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
     PubSubConsumerAdapter mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
     doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(PubSubConsumerAdapterContext.class));
-    doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(), eq(pubSubTopicRepository));
+    doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(PubSubAdminAdapterContext.class));
 
     PubSubTopicConfiguration topicProperties =
         new PubSubTopicConfiguration(Optional.of(TimeUnit.DAYS.toMillis(1)), true, Optional.of(1), 4L, Optional.of(5L));
@@ -633,7 +634,7 @@ public class TopicManagerTest {
     PubSubAdminAdapterFactory adminAdapterFactory = mock(PubSubAdminAdapterFactory.class);
     PubSubConsumerAdapterFactory consumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
     doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(PubSubConsumerAdapterContext.class));
-    doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(), eq(pubSubTopicRepository));
+    doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(PubSubAdminAdapterContext.class));
 
     Properties properties = new Properties();
     properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "localhost:1234");

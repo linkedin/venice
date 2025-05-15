@@ -19,7 +19,6 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
@@ -171,7 +170,6 @@ public class DaVinciClientTest {
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
   private PubSubProducerAdapterFactory pubSubProducerAdapterFactory;
-  private final boolean REAL_TIME_TOPIC_VERSIONING_ENABLED = true;
 
   @BeforeClass
   public void setUp() {
@@ -179,7 +177,6 @@ public class DaVinciClientTest {
     Properties clusterConfig = new Properties();
     clusterConfig.put(PUSH_STATUS_STORE_ENABLED, true);
     clusterConfig.put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 3);
-    clusterConfig.put(CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING, REAL_TIME_TOPIC_VERSIONING_ENABLED);
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(2)
         .numberOfRouters(1)
@@ -1278,8 +1275,6 @@ public class DaVinciClientTest {
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
     String storeName = Utils.getUniqueString("test-store");
     setUpStore(storeName, paramsConsumer, properties -> {}, true);
-    LOGGER.info("Port1 is {}, Port2 is {}", port1, port2);
-    LOGGER.info("zkHosts is {}", zkHosts);
 
     // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
     ForkedJavaProcess.exec(
@@ -1349,8 +1344,8 @@ public class DaVinciClientTest {
       client2.subscribeAll().get();
 
       for (int i = 0; i < 3; i++) {
-        String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
+        String partitionPath = RocksDBUtils.composePartitionDbDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(partitionPath)));
       }
 
       for (int i = 0; i < 3; i++) {
@@ -1358,6 +1353,9 @@ public class DaVinciClientTest {
         Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
         String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
         Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
+        // path 1 (dvc1) should have snapshot which they are transfer to path 2 (dvc2)
+        String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
       }
 
       // Case 2: Restart the second Da Vinci client to see if it can re-bootstrap from the first one with retained old
@@ -1380,52 +1378,10 @@ public class DaVinciClientTest {
         Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
         String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
         Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
+        // path 1 (dvc1) should have snapshot which they are transfer to path 2 (dvc2)
+        String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
       }
-    }
-  }
-
-  /**
-   * Test to verify the snapshot generation
-   */
-  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False", timeOut = 2 * TEST_TIMEOUT)
-  public void testDVCSnapshotGeneration(boolean useDiskStorage) throws Exception {
-    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
-    String zkHosts = cluster.getZk().getAddress();
-    int port1 = TestUtils.getFreePort();
-    int port2 = TestUtils.getFreePort();
-    while (port1 == port2) {
-      port2 = TestUtils.getFreePort();
-    }
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
-    String storeName = Utils.getUniqueString("test-store");
-    setUpStore(storeName, paramsConsumer, properties -> {}, true);
-    LOGGER.info("Port1 is {}, Port2 is {}", port1, port2);
-    LOGGER.info("zkHosts is {}", zkHosts);
-
-    // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
-    String storageClass = useDiskStorage ? StorageClass.DISK.toString() : StorageClass.MEMORY_BACKED_BY_DISK.toString();
-    ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts,
-        dvcPath1,
-        storeName,
-        "100",
-        "10",
-        "false",
-        Integer.toString(port1),
-        Integer.toString(port2),
-        storageClass,
-        "false",
-        "true",
-        "false");
-
-    // Wait for the first DaVinci Client to complete ingestion
-    Thread.sleep(60000);
-
-    // verify the dvc1 snapshot is created
-    for (int i = 0; i < 3; i++) {
-      String snapshotPath = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-      Assert.assertTrue(Files.exists(Paths.get(snapshotPath)));
     }
   }
 
@@ -1537,9 +1493,10 @@ public class DaVinciClientTest {
   }
 
   private void runIncrementalPush(String storeName, String incrementalPushVersion, int keyCount) throws Exception {
-    String realTimeTopicName = REAL_TIME_TOPIC_VERSIONING_ENABLED
-        ? Utils.composeRealTimeTopic(storeName, 1)
-        : Utils.composeRealTimeTopic(storeName);
+    String realTimeTopicName =
+        Boolean.parseBoolean(VeniceClusterWrapper.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING_IN_TESTS)
+            ? Utils.composeRealTimeTopic(storeName, 1)
+            : Utils.composeRealTimeTopic(storeName);
     VeniceWriterFactory vwFactory =
         IntegrationTestPushUtils.getVeniceWriterFactory(cluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);

@@ -653,7 +653,7 @@ public class AdminTool {
     CommandLine cmd = parser.parse(options, args);
 
     if (cmd.hasOption(Arg.HELP.first())) {
-      printUsageAndExit(commandGroup, parameterOptionsForHelp);
+      printUsageAndExit(commandGroup, parameterOptionsForHelp, cmd);
     } else if (cmd.hasOption(Command.CONVERT_VSON_SCHEMA.toString())) {
       convertVsonSchemaAndExit(cmd);
     }
@@ -878,6 +878,8 @@ public class AdminTool {
     String checkpointFile = getRequiredArgument(cmd, Arg.CHECKPOINT_FILE, Command.CLUSTER_BATCH_TASK);
     int parallelism = Integer.parseInt(getOptionalArgument(cmd, Arg.THREAD_COUNT, "1"));
     String storeFilterFile = getOptionalArgument(cmd, Arg.STORE_FILTER_FILE, "");
+    int kafkaTopicMinISR = Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA));
+    int kafkaTopicRtMinISR = Integer.parseInt(getOptionalArgument(cmd, Arg.KAFKA_RT_TOPICS_MIN_IN_SYNC_REPLICAS));
     Set<String> interestedStoresSet = new HashSet<>();
     LOGGER.info(
         "[**** Cluster Command Params ****] Cluster: {}, Task: {}, Checkpoint: {}, Parallelism: {}, Store filter: {}",
@@ -968,6 +970,9 @@ public class AdminTool {
               controllerClientMap,
               clusterName,
               systemStoreType == null ? Optional.empty() : Optional.of(systemStoreType)));
+    } else if (BackfillMinIsrTask.TASK_NAME.equals(task)) {
+      System.out.println(
+          functionSupplier = () -> new BackfillMinIsrTask(controllerClientMap, kafkaTopicMinISR, kafkaTopicRtMinISR));
     } else {
       printErrAndExit("Undefined task: " + task);
     }
@@ -2427,7 +2432,33 @@ public class AdminTool {
 
   /* Things that are not commands */
 
-  private static void printUsageAndExit(OptionGroup commandGroup, Options options) {
+  private static void printUsageAndExit(OptionGroup commandGroup, Options options, CommandLine cmd) {
+    /**
+     * Get the first command if it is available, otherwise print all commands.
+     */
+    Command foundCommand = null;
+    for (Command c: Command.values()) {
+      if (cmd.hasOption(c.toString())) {
+        foundCommand = c;
+      }
+    }
+    Command[] commands = Command.values();
+    if (foundCommand != null) {
+      commands = new Command[] { foundCommand };
+      commandGroup = new OptionGroup();
+      createCommandOpt(foundCommand, commandGroup);
+
+      /**
+       * Gather all the options belonging to the found command.
+       */
+      options = new Options();
+      for (Arg arg: foundCommand.getRequiredArgs()) {
+        createOpt(arg, arg.isParameterized(), arg.getHelpText(), options);
+      }
+      for (Arg arg: foundCommand.getOptionalArgs()) {
+        createOpt(arg, arg.isParameterized(), arg.getHelpText(), options);
+      }
+    }
 
     /* Commands */
     String command = "java -jar "
@@ -2443,7 +2474,6 @@ public class AdminTool {
 
     /* Examples */
     System.out.println("\nExamples:");
-    Command[] commands = Command.values();
     Arrays.sort(commands, Command.commandComparator);
     for (Command c: commands) {
       StringJoiner exampleArgs = new StringJoiner(" ");

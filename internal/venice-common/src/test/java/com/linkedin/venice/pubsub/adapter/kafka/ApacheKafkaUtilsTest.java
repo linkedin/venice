@@ -3,7 +3,6 @@ package com.linkedin.venice.pubsub.adapter.kafka;
 import static com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils.KAFKA_SSL_MANDATORY_CONFIGS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_PRODUCER_CONFIG_PREFIXES;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
@@ -61,36 +60,6 @@ public class ApacheKafkaUtilsTest {
       assertTrue(headerMap.containsKey(header.key()));
       assertEquals(header.value(), headerMap.get(header.key()).getBytes());
     }
-  }
-
-  @Test
-  public void testGenerateClientId() throws InterruptedException {
-    // Case 1: Both clientName and brokerAddress are provided
-    String clientId1 = ApacheKafkaUtils.generateClientId("consumerA", "broker-123");
-    assertNotNull(clientId1, "Client ID should not be null");
-    assertTrue(clientId1.startsWith("consumerA-broker-123-"), "Client ID format is incorrect");
-
-    // Case 2: Only clientName is provided
-    String clientId2 = ApacheKafkaUtils.generateClientId("consumerB", null);
-    assertNotNull(clientId2, "Client ID should not be null");
-    assertTrue(clientId2.startsWith("consumerB--"), "Client ID format is incorrect");
-
-    // Case 3: Only brokerAddress is provided
-    String clientId3 = ApacheKafkaUtils.generateClientId(null, "broker-456");
-    assertNotNull(clientId3, "Client ID should not be null");
-    assertTrue(clientId3.startsWith("kc-broker-456-"), "Client ID format is incorrect");
-
-    // Case 4: Both parameters are null (defaults should be used)
-    String clientId4 = ApacheKafkaUtils.generateClientId(null, null);
-    assertNotNull(clientId4, "Client ID should not be null");
-    assertTrue(clientId4.startsWith("kc--"), "Client ID format is incorrect");
-
-    // Case 5: Ensure uniqueness between two generated IDs
-    String clientId5 = ApacheKafkaUtils.generateClientId("consumerC", "broker-789");
-    Thread.sleep(1); // Ensure timestamp difference
-    String clientId6 = ApacheKafkaUtils.generateClientId("consumerC", "broker-789");
-
-    assertNotEquals(clientId5, clientId6, "Generated Client IDs should be unique");
   }
 
   @Test

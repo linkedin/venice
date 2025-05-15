@@ -1980,6 +1980,10 @@ public class VeniceControllerClusterConfig {
     return protocolVersionAutoDetectionSleepMS;
   }
 
+  public boolean isRealTimeTopicVersioningEnabled() {
+    return isRealTimeTopicVersioningEnabled;
+  }
+
   /**
    * A function that would put a k/v pair into a map with some processing works.
    */

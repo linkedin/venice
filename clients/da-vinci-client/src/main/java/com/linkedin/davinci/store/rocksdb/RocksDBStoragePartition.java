@@ -1,6 +1,8 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
+import static org.rocksdb.TickerType.COMPACTION_KEY_DROP_NEWER_ENTRY;
+import static org.rocksdb.TickerType.COMPACTION_KEY_DROP_USER;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -142,6 +144,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final boolean readWriteLeaderForRMDCF;
 
   private final Optional<Statistics> aggStatistics;
+  private Statistics keyStatistics;
+
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
   private Optional<Supplier<byte[]>> expectedChecksumSupplier;
@@ -389,7 +393,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     options.setKeepLogFileNum(rocksDBServerConfig.getMaxLogFileNum());
     options.setMaxLogFileSize(rocksDBServerConfig.getMaxLogFileSize());
 
-    aggStatistics.ifPresent(options::setStatistics);
+    if (rocksDBServerConfig.isEmitDuplicateKeyMetricEnabled()) {
+      keyStatistics = new Statistics();
+      options.setStatistics(keyStatistics);
+    } else {
+      aggStatistics.ifPresent(options::setStatistics);
+    }
 
     if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
       PlainTableConfig tableConfig = new PlainTableConfig();
@@ -512,6 +521,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     if (blobTransferEnabled) {
       createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
     }
+  }
+
+  @Override
+  public synchronized void cleanupSnapshot() {
+    cleanupSnapshot(fullPathForPartitionDBSnapshot);
   }
 
   protected void checkAndThrowSpecificException(RocksDBException e) {
@@ -817,6 +831,24 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return rocksDBSstFileWriter.sync();
   }
 
+  public long getDuplicateKeyCountEstimate() {
+    readCloseRWLock.readLock().lock();
+    try {
+      if (keyStatistics != null) {
+        makeSureRocksDBIsStillOpen();
+        return keyStatistics.getTickerCount(COMPACTION_KEY_DROP_NEWER_ENTRY)
+            + keyStatistics.getTickerCount(COMPACTION_KEY_DROP_USER);
+      }
+      return -1;
+    } finally {
+      readCloseRWLock.readLock().unlock();
+    }
+  }
+
+  public long getKeyCountEstimate() throws RocksDBException {
+    return getRocksDBStatValue("rocksdb.estimate-num-keys");
+  }
+
   public void deleteFilesInDirectory(String fullPath) {
     if (fullPath == null || fullPath.isEmpty()) {
       return;
@@ -889,6 +921,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
     if (deferredWrite) {
       rocksDBSstFileWriter.close();
+    }
+    if (keyStatistics != null) {
+      keyStatistics.close();
     }
     options.close();
     if (writeOptions != null) {
@@ -1056,6 +1091,28 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       throw new VeniceException(
           "Received exception during RocksDB's snapshot creation in directory " + fullPathForPartitionDBSnapshot,
           e);
+    }
+  }
+
+  /**
+   * A util method to clean up snapshot;
+   * @param fullPathForPartitionDBSnapshot
+   */
+  public static void cleanupSnapshot(String fullPathForPartitionDBSnapshot) {
+    File partitionSnapshotDir = new File(fullPathForPartitionDBSnapshot);
+    if (partitionSnapshotDir.exists()) {
+      LOGGER.info("Snapshot directory already exists, deleting old snapshots at {}", fullPathForPartitionDBSnapshot);
+      try {
+        FileUtils.deleteDirectory(partitionSnapshotDir);
+      } catch (IOException e) {
+        throw new VeniceException(
+            "Failed to delete the existing snapshot directory: " + fullPathForPartitionDBSnapshot,
+            e);
+      }
+    } else {
+      LOGGER.info(
+          "Snapshot directory does not exist, no need to delete old snapshots at {}",
+          fullPathForPartitionDBSnapshot);
     }
   }
 }

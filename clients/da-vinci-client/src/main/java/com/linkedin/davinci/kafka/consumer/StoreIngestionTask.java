@@ -1,7 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.davinci.ingestion.LagType.HEARTBEAT_LAG;
 import static com.linkedin.davinci.ingestion.LagType.OFFSET_LAG;
-import static com.linkedin.davinci.ingestion.LagType.TIME_LAG;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.DROP_PARTITION;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
@@ -188,7 +188,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private static final long SCHEMA_POLLING_TIMEOUT_MS = MINUTES.toMillis(5);
   private static final long SOP_POLLING_TIMEOUT_MS = HOURS.toMillis(1);
-
+  private static final long DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS = MINUTES.toMillis(2); // Default is 2 minutes.
   protected static final long WAITING_TIME_FOR_LAST_RECORD_TO_BE_PROCESSED = MINUTES.toMillis(1); // 1 min
 
   static final int MAX_CONSUMER_ACTION_ATTEMPTS = 5;
@@ -985,8 +985,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long lag,
       long threshold,
       boolean shouldLogLag,
-      LagType lagType,
-      long latestConsumedProducerTimestamp);
+      LagType lagType);
 
   /**
    * This function checks various conditions to verify if a store is ready to serve.
@@ -1020,117 +1019,30 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     try {
       // Looks like none of the short-circuitry fired, so we need to measure lag!
-      long offsetThreshold = getOffsetToOnlineLagThresholdPerPartition(hybridStoreConfig, storeName, partitionCount);
-      long producerTimeLagThresholdInSeconds =
-          hybridStoreConfig.get().getProducerTimestampLagThresholdToGoOnlineInSeconds();
       String msg = msgForLagMeasurement[partitionId];
 
       // Log only once a minute per partition.
       boolean shouldLogLag = !REDUNDANT_LOGGING_FILTER.isRedundantException(msg);
-      /**
-       * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
-       */
-      if (offsetThreshold >= 0) {
+      if (serverConfig.isUseHeartbeatLagForReadyToServeCheckEnabled()) {
+        // Measure heartbeat lag for ready-to-serve check.
         isLagAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
             partitionConsumptionState,
-            measureHybridOffsetLag(partitionConsumptionState, shouldLogLag),
-            offsetThreshold,
+            measureHybridHeartbeatLag(partitionConsumptionState, shouldLogLag),
+            DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS,
             shouldLogLag,
-            OFFSET_LAG,
-            0);
-      }
-
-      /**
-       * If the hybrid producer time lag threshold is positive, check the difference between current time and latest
-       * producer timestamp; ready-to-serve will not be reported until the diff is smaller than the defined time lag threshold.
-       *
-       * If timestamp lag threshold is set to -1, offset lag threshold will be the only criterion for going online.
-       */
-      if (producerTimeLagThresholdInSeconds > 0) {
-        long producerTimeLagThresholdInMS = SECONDS.toMillis(producerTimeLagThresholdInSeconds);
-        long latestConsumedProducerTimestamp =
-            partitionConsumptionState.getOffsetRecord().getLatestProducerProcessingTimeInMs();
-        boolean timestampLagIsAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
-            partitionConsumptionState,
-            LatencyUtils.getElapsedTimeFromMsToMs(latestConsumedProducerTimestamp),
-            producerTimeLagThresholdInMS,
-            shouldLogLag,
-            TIME_LAG,
-            latestConsumedProducerTimestamp);
+            HEARTBEAT_LAG);
+      } else {
         /**
-         * If time lag is not acceptable but the producer timestamp of the last message of RT is smaller or equal than
-         * the known latest producer timestamp in server, it means ingestion task has reached the end of RT, so it's
-         * safe to ignore the time lag.
-         *
-         * Notice that if EOP is not received, this function will be short circuit before reaching here, so there is
-         * no risk of meeting the time lag earlier than expected.
+         * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
          */
-        if (!timestampLagIsAcceptable) {
-          String msgIdentifier = msg + "_ignore_time_lag";
-          String realTimeTopicKafkaURL;
-          Set<String> realTimeTopicKafkaURLs = getRealTimeDataSourceKafkaAddress(partitionConsumptionState);
-          if (realTimeTopicKafkaURLs.isEmpty()) {
-            throw new VeniceException("Expect a real-time topic Kafka URL for store " + storeName);
-          } else if (realTimeTopicKafkaURLs.size() == 1) {
-            realTimeTopicKafkaURL = realTimeTopicKafkaURLs.iterator().next();
-          } else if (realTimeTopicKafkaURLs.contains(localKafkaServer)) {
-            realTimeTopicKafkaURL = localKafkaServer;
-          } else {
-            throw new VeniceException(
-                String.format(
-                    "Expect source RT Kafka URLs contains local Kafka URL. Got local "
-                        + "Kafka URL %s and RT source Kafka URLs %s",
-                    localKafkaServer,
-                    realTimeTopicKafkaURLs));
-          }
-
-          final PubSubTopic lagMeasurementTopic = pubSubTopicRepository.getTopic(realTimeTopic.getName());
-          final PubSubTopicPartition pubSubTopicPartition =
-              new PubSubTopicPartitionImpl(lagMeasurementTopic, partitionId);
-
-          // DaVinci and STANDBY checks the local consumption and leaderCompleteState status
-          final String lagMeasurementKafkaUrl =
-              (isHybridFollower(partitionConsumptionState)) ? localKafkaServer : realTimeTopicKafkaURL;
-          TopicManager topicManager = getTopicManager(lagMeasurementKafkaUrl);
-          if (!topicManager.containsTopicCached(realTimeTopic)) {
-            timestampLagIsAcceptable = true;
-            if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
-              LOGGER.info(
-                  "[Time lag] Topic: {} doesn't exist; ignoring time lag for replica: {}",
-                  lagMeasurementTopic,
-                  partitionConsumptionState.getReplicaId());
-            }
-          } else {
-            long latestProducerTimestampInTopic =
-                topicManager.getProducerTimestampOfLastDataMessageCached(pubSubTopicPartition);
-            if (latestProducerTimestampInTopic < 0
-                || latestProducerTimestampInTopic <= latestConsumedProducerTimestamp) {
-              timestampLagIsAcceptable = true;
-              if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
-                if (latestProducerTimestampInTopic < 0) {
-                  LOGGER.info(
-                      "[Time lag] Topic: {} is empty or all messages have been truncated; ignoring time lag for replica: {}",
-                      lagMeasurementTopic,
-                      partitionConsumptionState.getReplicaId());
-                } else {
-                  LOGGER.info(
-                      "[Time Lag] The producer timestamp of the last message in topic-partition: {} is {}, which is smaller or equal to the latest known producer time: {}. Consumption lag is already caught up for replica {}.",
-                      getReplicaId(lagMeasurementTopic, partitionId),
-                      latestProducerTimestampInTopic,
-                      latestConsumedProducerTimestamp,
-                      partitionConsumptionState.getReplicaId());
-                }
-              }
-            }
-          }
-        }
+        long offsetThreshold = getOffsetToOnlineLagThresholdPerPartition(hybridStoreConfig, storeName, partitionCount);
         if (offsetThreshold >= 0) {
-          /**
-           * If both threshold configs are on, both offset lag and time lag must be within thresholds before online.
-           */
-          isLagAcceptable &= timestampLagIsAcceptable;
-        } else {
-          isLagAcceptable = timestampLagIsAcceptable;
+          isLagAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
+              partitionConsumptionState,
+              measureHybridOffsetLag(partitionConsumptionState, shouldLogLag),
+              offsetThreshold,
+              shouldLogLag,
+              OFFSET_LAG);
         }
       }
     } catch (Exception e) {
@@ -1142,7 +1054,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionConsumptionState.getReplicaId(),
             e);
       }
-      isLagAcceptable = false;
     }
 
     if (isLagAcceptable) {
@@ -1165,6 +1076,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Measure the hybrid offset lag for partition being tracked in `partitionConsumptionState`.
    */
   protected abstract long measureHybridOffsetLag(
+      PartitionConsumptionState partitionConsumptionState,
+      boolean shouldLogLag);
+
+  protected abstract long measureHybridHeartbeatLag(
       PartitionConsumptionState partitionConsumptionState,
       boolean shouldLogLag);
 
@@ -2783,6 +2698,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     if (shouldSyncOffset(partitionConsumptionState, record, leaderProducedRecordContext)) {
       updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
+      if (isHybridMode()) {
+        hostLevelIngestionStats.recordTotalDuplicateKeys(storageEngine.getDuplicateKeyCountEstimate());
+        hostLevelIngestionStats.recordTotalKeyCount(storageEngine.getKeyCountEstimate());
+      }
     }
   }
 
@@ -3233,13 +3152,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
         cacheBackend.get().getStorageEngine(kafkaVersionTopic).endBatchWrite(storagePartitionConfig);
       }
-    }
-
-    /**
-     * Generate snapshot after batch write is done.
-     */
-    if (storeVersionConfig.isBlobTransferEnabled() && serverConfig.isBlobTransferManagerEnabled()) {
-      storageEngine.createSnapshot(storagePartitionConfig);
     }
 
     /**
@@ -4970,4 +4882,5 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   long getLocalVtSubscribeOffset(PartitionConsumptionState pcs) {
     return (isGlobalRtDivEnabled()) ? pcs.getLatestConsumedVtOffset() : pcs.getLatestProcessedLocalVersionTopicOffset();
   }
+
 }

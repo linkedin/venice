@@ -91,6 +91,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       new RedundantExceptionFilter(8 * 1024 * 1024 * 4, TimeUnit.MINUTES.toMillis(10));
   private final VeniceServerConfig serverConfig;
+  protected final ConsumerPollTracker consumerPollTracker;
 
   /**
    * @param statsOverride injection of stats, for test purposes
@@ -142,6 +143,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             .setPubSubMessageDeserializer(pubSubDeserializer)
             .setIsOffsetCollectionEnabled(isKafkaConsumerOffsetCollectionEnabled)
             .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry());
+    this.consumerPollTracker = new ConsumerPollTracker(time);
     for (int i = 0; i < numOfConsumersPerKafkaCluster; ++i) {
       /**
        * We need to assign a unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
@@ -180,7 +182,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
           bandwidthThrottlerFunction,
           recordsThrottlerFunction,
           this.aggStats,
-          cleaner);
+          cleaner,
+          consumerPollTracker);
       consumerToConsumptionTask.putByIndex(pubSubConsumer, consumptionTask, i);
       consumerToLocks.put(pubSubConsumer, new ReentrantLock());
     }
@@ -245,6 +248,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             sharedConsumer.unSubscribe(topicPartition);
             removeTopicPartitionFromConsumptionTask(sharedConsumer, topicPartition);
           }
+          consumerPollTracker.removeTopicPartition(topicPartition);
         });
       }
       return null;
@@ -266,6 +270,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         consumer.unSubscribe(pubSubTopicPartition, timeoutMs);
         removeTopicPartitionFromConsumptionTask(consumer, pubSubTopicPartition);
       }
+      consumerPollTracker.removeTopicPartition(pubSubTopicPartition);
       versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
         if (topicPartitionToConsumerMap != null) {
           topicPartitionToConsumerMap.remove(pubSubTopicPartition);
@@ -288,6 +293,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             consumerUnSubTopicPartitionSet.computeIfAbsent(consumer, k -> new HashSet<>());
         topicPartitionSet.add(topicPartition);
       }
+      consumerPollTracker.removeTopicPartition(topicPartition);
     }
     /**
      * Leverage {@link PubSubConsumerAdapter#batchUnsubscribe(Set)}.
@@ -453,7 +459,13 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
        */
       consumptionTask.setDataReceiver(topicPartition, consumedDataReceiver);
       consumer.subscribe(consumedDataReceiver.destinationIdentifier(), topicPartition, lastReadOffset);
+      consumerPollTracker.recordSubscribed(topicPartition);
     }
+  }
+
+  @Override
+  public Map<PubSubTopicPartition, Long> getStaleTopicPartitions(long thresholdTimestamp) {
+    return consumerPollTracker.getStaleTopicPartitions(thresholdTimestamp);
   }
 
   interface KCSConstructor {
