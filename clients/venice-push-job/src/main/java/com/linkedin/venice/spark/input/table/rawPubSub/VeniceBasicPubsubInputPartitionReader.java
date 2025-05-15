@@ -6,6 +6,8 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -15,6 +17,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -62,17 +65,19 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
 
   public VeniceBasicPubsubInputPartitionReader(
       VeniceProperties jobConfig,
-      VeniceBasicPubsubInputPartitionReader inputPartition) {
+      VeniceBasicPubsubInputPartition inputPartition) {
     this(
         jobConfig,
         inputPartition,
-        new PubSubClientsFactory(jobConfig).getConsumerAdapterFactory()
+        PubSubClientsFactory.createConsumerFactory(jobConfig)
             .create(
-                jobConfig,
-                false,
-                PubSubMessageDeserializer.getInstance(),
-                // PubSubPassThroughDeserializer.getInstance(),
-                "Spark_raw_pubsub_input_partition_consumer"),
+                new PubSubConsumerAdapterContext.Builder().setVeniceProperties(jobConfig)
+                    .setPubSubTopicRepository(new PubSubTopicRepository())
+                    .setPubSubMessageDeserializer(PubSubMessageDeserializer.createOptimizedDeserializer())
+                    .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(jobConfig))
+                    .setConsumerName(
+                        "raw_kif_" + inputPartition.getTopicName() + "_" + inputPartition.getPartitionNumber())
+                    .build()), // this is hideous
         new PubSubTopicRepository());
   }
 
