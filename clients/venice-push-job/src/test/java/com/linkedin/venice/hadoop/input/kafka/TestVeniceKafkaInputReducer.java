@@ -86,6 +86,8 @@ public class TestVeniceKafkaInputReducer {
     AbstractPartitionWriter.VeniceWriterMessage message = reducer.extract(
         serializedMapperKey,
         values.iterator(),
+        Collections.emptyIterator(),
+        null,
         new ReporterBackedMapReduceDataWriterTaskTracker(Mockito.mock(Reporter.class)));
     Assert.assertNotNull(message);
     Assert.assertEquals(message.getKeyBytes(), keyBytes);
@@ -103,6 +105,8 @@ public class TestVeniceKafkaInputReducer {
     message = reducer.extract(
         serializedMapperKey,
         values.iterator(),
+        Collections.emptyIterator(),
+        null,
         new ReporterBackedMapReduceDataWriterTaskTracker(Mockito.mock(Reporter.class)));
     // If DELETE contains RMD, it should be kept.
     if (valueContainsRmdPayload) {
@@ -121,6 +125,8 @@ public class TestVeniceKafkaInputReducer {
     message = reducer.extract(
         serializedMapperKey,
         values.iterator(),
+        Collections.emptyIterator(),
+        null,
         new ReporterBackedMapReduceDataWriterTaskTracker(Mockito.mock(Reporter.class)));
     Assert.assertNotNull(message);
     Assert.assertEquals(message.getKeyBytes(), keyBytes);
@@ -156,6 +162,8 @@ public class TestVeniceKafkaInputReducer {
     AbstractPartitionWriter.VeniceWriterMessage message = reducer.extract(
         serializedMapperKey,
         values.iterator(),
+        Collections.emptyIterator(),
+        null,
         new ReporterBackedMapReduceDataWriterTaskTracker(Mockito.mock(Reporter.class)));
 
     if (isChunkingEnabled) {

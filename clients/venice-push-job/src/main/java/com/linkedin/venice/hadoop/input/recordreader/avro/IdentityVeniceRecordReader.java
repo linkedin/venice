@@ -38,6 +38,11 @@ public class IdentityVeniceRecordReader extends AbstractVeniceRecordReader<ByteB
   }
 
   @Override
+  public Long getRecordTimestamp(ByteBuffer inputKey, ByteBuffer inputValue) {
+    return -1L;
+  }
+
+  @Override
   public byte[] getValueBytes(ByteBuffer keyBuffer, ByteBuffer valueBuffer) {
     return ByteUtils.extractByteArray(valueBuffer);
   }

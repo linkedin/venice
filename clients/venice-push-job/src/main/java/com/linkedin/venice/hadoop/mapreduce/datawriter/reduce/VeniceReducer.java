@@ -15,6 +15,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
+import java.util.Collections;
 import java.util.Iterator;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.Counters;
@@ -68,9 +69,11 @@ public class VeniceReducer extends AbstractPartitionWriter
     } else {
       dataWriterTaskTracker = getDataWriterTaskTracker();
     }
+
     processValuesForKey(
         key.copyBytes(),
         IteratorUtils.mapIterator(values, BytesWritable::copyBytes),
+        Collections.emptyIterator(),
         dataWriterTaskTracker);
   }
 

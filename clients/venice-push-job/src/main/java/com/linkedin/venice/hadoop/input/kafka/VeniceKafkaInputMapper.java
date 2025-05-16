@@ -60,8 +60,10 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<KafkaInputMappe
   protected boolean process(
       KafkaInputMapperKey inputKey,
       KafkaInputMapperValue inputValue,
+      Long timestamp,
       AtomicReference<byte[]> keyRef,
       AtomicReference<byte[]> valueRef,
+      AtomicReference<Long> timestampRef,
       DataWriterTaskTracker dataWriterTaskTracker) {
     if (veniceFilterChain != null && veniceFilterChain.apply(inputValue)) {
       dataWriterTaskTracker.trackRepushTtlFilteredRecord();
@@ -71,6 +73,7 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<KafkaInputMappe
     keyRef.set(serializedKey);
     byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(inputValue);
     valueRef.set(serializedValue);
+    timestampRef.set(timestamp);
     return true;
   }
 
