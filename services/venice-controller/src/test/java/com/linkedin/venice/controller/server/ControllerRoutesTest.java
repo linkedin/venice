@@ -207,6 +207,8 @@ public class ControllerRoutesTest {
 
     doReturn(leaderController).when(mockAdmin).getLeaderController(anyString());
     String leaderControllerHost = String.format("http://%s:%s", TEST_HOST, TEST_PORT);
+    doReturn(leaderControllerHost).when(mockAdmin).getControllerName();
+
     Request request = mock(Request.class);
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
     doReturn(1L).when(mockAdmin).getLocalAdminOperationProtocolVersion();
@@ -231,6 +233,7 @@ public class ControllerRoutesTest {
     doReturn(leaderController).when(mockAdmin).getLeaderController(anyString());
     String leaderControllerHostHttps = String.format("https://%s:%s", TEST_HOST, TEST_PORT);
     String leaderControllerHost = String.format("%s_%s", TEST_HOST, TEST_PORT);
+    doReturn(leaderControllerHost).when(mockAdmin).getControllerName();
 
     Request request = mock(Request.class);
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
