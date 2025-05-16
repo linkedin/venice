@@ -135,7 +135,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @BeforeMethod
   public void setupTestCase() {
     setupInternalMocks();
-    initializeParentAdmin(Optional.empty());
+    initializeParentAdmin(Optional.empty(), Optional.empty());
   }
 
   @AfterMethod

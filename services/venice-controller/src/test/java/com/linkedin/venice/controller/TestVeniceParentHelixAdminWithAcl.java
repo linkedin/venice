@@ -94,7 +94,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
 
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    initializeParentAdmin(Optional.of(authorizerService));
+    initializeParentAdmin(Optional.of(authorizerService), Optional.empty());
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin
         .createStore(clusterName, storeName, "dev", keySchemaStr, valueSchemaStr, false, Optional.of(accessPerm));
@@ -123,7 +123,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
 
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    initializeParentAdmin(Optional.of(authorizerService));
+    initializeParentAdmin(Optional.of(authorizerService), Optional.empty());
     parentAdmin.initStorageCluster(clusterName);
     Assert.assertThrows(
         VeniceException.class,
@@ -153,7 +153,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
                 Optional.of(-1L),
                 Optional.of(1L),
                 Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
-    initializeParentAdmin(Optional.of(authorizerService));
+    initializeParentAdmin(Optional.of(authorizerService), Optional.empty());
     parentAdmin.initStorageCluster(clusterName);
     parentAdmin.deleteStore(clusterName, storeName, false, 0, true);
     Assert.assertEquals(1, authorizerService.clearAclCounter);
@@ -169,7 +169,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     String storeName = "test-store-authorizer";
     String expectedPerm =
         "{\"AccessPermissions\":{\"Read\":[\"user:user2\",\"group:group2\",\"service:app2\"],\"Write\":[\"user:user2\",\"group:group2\",\"service:app2\"]}}";
-    initializeParentAdmin(Optional.of(authorizerService));
+    initializeParentAdmin(Optional.of(authorizerService), Optional.empty());
     parentAdmin.updateAclForStore(clusterName, storeName, expectedPerm);
     Assert.assertEquals(1, authorizerService.setAclsCounter);
     String curPerm = parentAdmin.getAclForStore(clusterName, storeName);
@@ -207,7 +207,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
                 Optional.of(-1L),
                 Optional.of(1L),
                 Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
-    initializeParentAdmin(Optional.of(authorizerService));
+    initializeParentAdmin(Optional.of(authorizerService), Optional.empty());
     Assert.assertThrows(
         VeniceNoStoreException.class,
         () -> parentAdmin.updateAclForStore(clusterName, storeName, expectedPerm));
@@ -230,7 +230,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
                 Optional.of(-1L),
                 Optional.of(1L),
                 Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
-    initializeParentAdmin(Optional.of(authorizerService));
+    initializeParentAdmin(Optional.of(authorizerService), Optional.empty());
     Assert.assertThrows(VeniceNoStoreException.class, () -> parentAdmin.getAclForStore(clusterName, storeName));
   }
 
@@ -250,7 +250,7 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
                 Optional.of(-1L),
                 Optional.of(1L),
                 Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
-    initializeParentAdmin(Optional.of(authorizerService));
+    initializeParentAdmin(Optional.of(authorizerService), Optional.empty());
     Assert.assertThrows(VeniceNoStoreException.class, () -> parentAdmin.deleteAclForStore(clusterName, storeName));
     Assert.assertEquals(0, authorizerService.clearAclCounter);
   }
