@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 
@@ -36,8 +37,10 @@ public class TestAdminOperationVersionDetection {
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     // Create multi-region multi-cluster setup
-    Properties parentControllerProperties = new Properties();
+    Properties controllerProperties = new Properties();
+    controllerProperties.put(CONTROLLER_SSL_ENABLED, "false");
     Properties serverProperties = new Properties();
+    serverProperties.put(CONTROLLER_SSL_ENABLED, "false");
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
@@ -47,10 +50,11 @@ public class TestAdminOperationVersionDetection {
             .numberOfServers(1)
             .numberOfRouters(1)
             .replicationFactor(1)
-            .sslToStorageNodes(false)
+            .sslToStorageNodes(true)
             .forkServer(false)
             .serverProperties(serverProperties)
-            .parentControllerProperties(parentControllerProperties);
+            .parentControllerProperties(controllerProperties)
+            .childControllerProperties(controllerProperties);
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
   }

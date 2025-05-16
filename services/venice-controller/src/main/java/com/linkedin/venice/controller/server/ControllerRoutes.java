@@ -25,7 +25,6 @@ import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.controllerapi.StoppableNodeStatusResponse;
 import com.linkedin.venice.exceptions.ErrorType;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
@@ -34,7 +33,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
-import java.net.URL;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -261,7 +259,7 @@ public class ControllerRoutes extends AbstractRoute {
         responseObject.setCluster(clusterName);
         Map<String, Long> controllerNameToVersionMap = admin.getAdminOperationVersionFromControllers(clusterName);
         responseObject.setControllerNameToVersionMap(controllerNameToVersionMap);
-        responseObject.setLocalControllerName(getControllerName(request));
+        responseObject.setLocalControllerName(admin.getControllerName());
         responseObject.setLocalAdminOperationProtocolVersion(admin.getLocalAdminOperationProtocolVersion());
       } catch (Throwable e) {
         responseObject.setError(e);
@@ -281,28 +279,13 @@ public class ControllerRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         responseObject.setLocalAdminOperationProtocolVersion(admin.getLocalAdminOperationProtocolVersion());
-        responseObject.setLocalControllerName(getControllerName(request));
+        responseObject.setLocalControllerName(admin.getControllerName());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
-  }
-
-  /**
-   * Get controller name from the request object.
-   * Example:
-   * request.url() = https://localhost:8080/venice/cluster/clusterName/leaderController?param1=value1&param2=value2
-   * @return "localhost_8080"
-   */
-  private String getControllerName(Request request) {
-    try {
-      URL url = new URL(request.url());
-      return url.getHost() + (url.getPort() != -1 ? "_" + url.getPort() : "");
-    } catch (Exception e) {
-      throw new VeniceException("Invalid URL: " + request.url(), e);
-    }
   }
 
   @FunctionalInterface

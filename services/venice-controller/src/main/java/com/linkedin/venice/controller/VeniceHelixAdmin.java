@@ -7387,6 +7387,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (instanceNameAndState.getValue().equals(helixState)) {
           // Found the Venice controller, adding to the return list
           String id = instanceNameAndState.getKey();
+          // TODO: Update the instance constructor when Helix NodeId is changed to use secure port.
           controllers.add(
               new Instance(
                   id,
@@ -7814,6 +7815,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     List<Instance> standbyControllers = getControllersByHelixState(clusterName, HelixState.STANDBY_STATE);
 
     for (Instance standbyController: standbyControllers) {
+      // In production, leader and standby share the secure port but have different hostnames—no conflict.
+      // In tests, both run on 'localhost' with the same secure port, which confuses routing.
+      // Hence, we need to disable SSL for local integration tests.
+      // RCA: Helix uses an insecure port from the instance ID, while secure port comes from shared multiClusterConfig.
       String standbyControllerUrl = standbyController.getUrl(getSslFactory().isPresent());
 
       // Get the admin operation protocol version from standby controller
@@ -8053,7 +8058,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     multiClusterConfigs.addClusterConfig(config);
   }
 
-  String getControllerName() {
+  @Override
+  public String getControllerName() {
     return controllerName;
   }
 
