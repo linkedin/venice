@@ -64,6 +64,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -227,6 +228,7 @@ public class TestChangelogConsumer {
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
             .setLocalD2ZkHosts(localZkServer.getAddress())
             .setControllerRequestRetryCount(3)
             .setVersionSwapDetectionIntervalTimeInSeconds(3L)
@@ -379,6 +381,7 @@ public class TestChangelogConsumer {
         .setControllerD2ServiceName(D2_SERVICE_NAME)
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setLocalD2ZkHosts(localZkServer.getAddress())
+        .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
         .setControllerRequestRetryCount(3)
         .setVersionSwapDetectionIntervalTimeInSeconds(3L)
         .setIsBeforeImageView(true);
@@ -399,6 +402,7 @@ public class TestChangelogConsumer {
         .setConsumerProperties(consumerProperties)
         .setControllerD2ServiceName(D2_SERVICE_NAME)
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
         .setLocalD2ZkHosts(localZkServer.getAddress())
         .setVersionSwapDetectionIntervalTimeInSeconds(3L)
         .setControllerRequestRetryCount(3)
@@ -804,6 +808,7 @@ public class TestChangelogConsumer {
             .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setLocalD2ZkHosts(localZkServer.getAddress())
+            .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
             .setControllerRequestRetryCount(3)
             .setVersionSwapDetectionIntervalTimeInSeconds(3L)
             .setSpecificValue(TestChangelogValue.class)
@@ -920,6 +925,7 @@ public class TestChangelogConsumer {
             .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setLocalD2ZkHosts(localZkServer.getAddress())
+            .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
             .setControllerRequestRetryCount(3)
             .setVersionSwapDetectionIntervalTimeInSeconds(3L)
             .setSpecificValue(TestChangelogValue.class)

@@ -66,6 +66,7 @@ import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -167,6 +168,7 @@ public class TestBootstrappingChangelogConsumer {
           new ChangelogClientConfig().setConsumerProperties(consumerProperties)
               .setControllerD2ServiceName(D2_SERVICE_NAME)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+              .setD2Client(IntegrationTestPushUtils.getD2Client(zkAddress))
               .setLocalD2ZkHosts(zkAddress)
               .setControllerRequestRetryCount(3)
               .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
@@ -278,6 +280,7 @@ public class TestBootstrappingChangelogConsumer {
           new ChangelogClientConfig().setConsumerProperties(consumerProperties)
               .setControllerD2ServiceName(D2_SERVICE_NAME)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+              .setD2Client(IntegrationTestPushUtils.getD2Client(zkAddress))
               .setLocalD2ZkHosts(zkAddress)
               .setControllerRequestRetryCount(3)
               .setBootstrapFileSystemPath(inputDirPath)
@@ -443,6 +446,7 @@ public class TestBootstrappingChangelogConsumer {
           new ChangelogClientConfig().setConsumerProperties(consumerProperties)
               .setControllerD2ServiceName(D2_SERVICE_NAME)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+              .setD2Client(IntegrationTestPushUtils.getD2Client(zkAddress))
               .setLocalD2ZkHosts(zkAddress)
               .setControllerRequestRetryCount(3)
               .setBootstrapFileSystemPath(inputDirPath1)
