@@ -6,8 +6,9 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.serializer.AvroGenericDeserializer;
-import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -27,9 +28,9 @@ public class DaVinciRecordTransformerUtility<K, O> {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciRecordTransformerUtility.class);
   private final DaVinciRecordTransformer recordTransformer;
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
-  private final AvroGenericDeserializer<K> keyDeserializer;
-  private final AvroGenericDeserializer<O> outputValueDeserializer;
-  private final AvroSerializer<O> outputValueSerializer;
+  private final RecordDeserializer<K> keyDeserializer;
+  private final RecordDeserializer<O> outputValueDeserializer;
+  private final RecordSerializer<O> outputValueSerializer;
 
   public DaVinciRecordTransformerUtility(
       DaVinciRecordTransformer recordTransformer,
@@ -38,10 +39,23 @@ public class DaVinciRecordTransformerUtility<K, O> {
     this.recordTransformerConfig = recordTransformerConfig;
 
     Schema keySchema = recordTransformer.getKeySchema();
+    if (recordTransformerConfig.useSpecificRecordKeyDeserializer()) {
+      this.keyDeserializer = FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(keySchema, recordTransformerConfig.getKeyClass());
+    } else {
+      this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
+    }
+
     Schema outputValueSchema = recordTransformer.getOutputValueSchema();
-    this.keyDeserializer = new AvroGenericDeserializer<>(keySchema, keySchema);
-    this.outputValueDeserializer = new AvroGenericDeserializer<>(outputValueSchema, outputValueSchema);
-    this.outputValueSerializer = new AvroSerializer<>(outputValueSchema);
+    if (recordTransformerConfig.useSpecificRecordValueDeserializer()) {
+      this.outputValueDeserializer = FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(outputValueSchema, recordTransformerConfig.getOutputValueClass());
+    } else {
+      this.outputValueDeserializer =
+          FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(outputValueSchema, outputValueSchema);
+    }
+
+    this.outputValueSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(outputValueSchema);
   }
 
   /**

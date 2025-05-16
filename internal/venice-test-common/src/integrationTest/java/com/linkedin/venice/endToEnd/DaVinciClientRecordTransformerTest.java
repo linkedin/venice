@@ -124,7 +124,13 @@ public class DaVinciClientRecordTransformerTest {
     Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  /*
+   * Lower priority ensures that this test runs first. This is needed because this test fails if it doesn't go first,
+   * even when this class is set to single threaded and we recreate the resources before every test.
+   * It fails because the DVRT metrics get emitted but they're not queryable from the metrics repository. The root
+   * cause is unknown, but to mitigate for now we need this test to run first.
+   */
+  @Test(timeOut = TEST_TIMEOUT, priority = -1)
   public void testRecordTransformer() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
 
@@ -228,8 +234,23 @@ public class DaVinciClientRecordTransformerTest {
         metricsRepository,
         backendConfig)) {
 
-      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
+      DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
           .setRecordTransformerFunction(TestIntToStringRecordTransformer::new)
+          .build();
+
+      Schema myKeySchema = Schema.create(Schema.Type.INT);
+      Schema myInputValueSchema = Schema.create(Schema.Type.INT);
+      Schema myOutputValueSchema = Schema.create(Schema.Type.STRING);
+      TestIntToStringRecordTransformer recordTransformer = new TestIntToStringRecordTransformer(
+          1,
+          myKeySchema,
+          myInputValueSchema,
+          myOutputValueSchema,
+          dummyRecordTransformerConfig);
+
+      DaVinciRecordTransformerConfig recordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
+          .setRecordTransformerFunction(
+              (storeVersion, keySchema, inputValueSchema, outputValueSchema, config) -> recordTransformer)
           .setOutputValueClass(String.class)
           .setOutputValueSchema(Schema.create(Schema.Type.STRING))
           .build();
@@ -248,6 +269,24 @@ public class DaVinciClientRecordTransformerTest {
         String expectedValue = k + "Transformed";
         assertEquals(valueObj.toString(), expectedValue);
       }
+
+      /*
+       * Simulates a client restart. During this process, the DVRT will use the on-disk state
+       * to repopulate the inMemoryDB, avoiding the need for re-ingestion after clearing.
+       */
+      clientWithRecordTransformer.close();
+      recordTransformer.clearInMemoryDB();
+      assertTrue(recordTransformer.isInMemoryDBEmpty());
+
+      clientWithRecordTransformer.start();
+      clientWithRecordTransformer.subscribeAll().get();
+
+      for (int k = 1; k <= numKeys; ++k) {
+        Object valueObj = clientWithRecordTransformer.get(k).get();
+        String expectedValue = k + "Transformed";
+        assertEquals(valueObj.toString(), expectedValue);
+      }
+
       clientWithRecordTransformer.unsubscribeAll();
     }
   }

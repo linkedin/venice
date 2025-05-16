@@ -31,7 +31,9 @@ public class ClientConfig<T extends SpecificRecord> {
   private String storeName;
   private String veniceURL;
   private String statsPrefix;
+  private Class specificKeyClass = null;
   private Class<T> specificValueClass = null;
+  private Schema specificValueSchema = null;
   private boolean isVsonClient = false;
 
   // D2 specific settings
@@ -96,7 +98,9 @@ public class ClientConfig<T extends SpecificRecord> {
         // Basic settings
         .setStoreName(config.getStoreName())
         .setVeniceURL(config.getVeniceURL())
+        .setSpecificKeyClass(config.getSpecificKeyClass())
         .setSpecificValueClass(config.getSpecificValueClass())
+        .setSpecificValueSchema(config.getSpecificValueSchema())
         .setVsonClient(config.isVsonClient())
 
         // D2 specific settings
@@ -189,12 +193,30 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public Schema getSpecificValueSchema() {
+    return specificValueSchema;
+  }
+
+  public ClientConfig<T> setSpecificValueSchema(Schema specificValueSchema) {
+    this.specificValueSchema = specificValueSchema;
+    return this;
+  }
+
   public Class<T> getSpecificValueClass() {
     return specificValueClass;
   }
 
   public ClientConfig<T> setSpecificValueClass(Class<T> specificValueClass) {
     this.specificValueClass = specificValueClass;
+    return this;
+  }
+
+  public Class<T> getSpecificKeyClass() {
+    return specificKeyClass;
+  }
+
+  public ClientConfig<T> setSpecificKeyClass(Class specificKeyClass) {
+    this.specificKeyClass = specificKeyClass;
     return this;
   }
 

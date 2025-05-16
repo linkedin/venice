@@ -408,7 +408,7 @@ public class IntegrationTestPushUtils {
   public static void sendStreamingDeleteRecord(
       SystemProducer producer,
       String storeName,
-      String key,
+      Object key,
       Long logicalTimeStamp) {
     sendStreamingRecord(producer, storeName, key, null, logicalTimeStamp);
   }
