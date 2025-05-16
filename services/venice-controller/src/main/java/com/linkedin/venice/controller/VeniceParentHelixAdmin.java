@@ -4547,6 +4547,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getLocalAdminOperationProtocolVersion();
   }
 
+  @Override
+  public String getControllerName() {
+    return getVeniceHelixAdmin().getControllerName();
+  }
+
   /**
    * Unsupported operation in the parent controller.
    */

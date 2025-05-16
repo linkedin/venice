@@ -1045,4 +1045,6 @@ public interface Admin extends AutoCloseable, Closeable {
   LogContext getLogContext();
 
   VeniceControllerClusterConfig getControllerConfig(String clusterName);
+
+  String getControllerName();
 }

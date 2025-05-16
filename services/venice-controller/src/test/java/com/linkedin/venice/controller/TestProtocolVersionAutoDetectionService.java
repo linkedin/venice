@@ -216,13 +216,13 @@ public class TestProtocolVersionAutoDetectionService {
       for (Map.Entry<String, Long> entry: hostToVersionMap.entrySet()) {
         String hostName = entry.getKey();
         long version = entry.getValue();
-        response.getControllerUrlToVersionMap().put(hostName, version);
+        response.getControllerNameToVersionMap().put(hostName, version);
         if (hostToClusterToLeaderStateMap.containsKey(hostName)) {
           Map<String, Boolean> clusterToStateMap = hostToClusterToLeaderStateMap.get(hostName);
           if (clusterToStateMap.get(clusterName) != null && clusterToStateMap.get(clusterName)) {
             // Add the local version for leader controller
             response.setLocalAdminOperationProtocolVersion(version);
-            response.setRequestUrl(hostName);
+            response.setLocalControllerName(hostName);
             response.setCluster(clusterName);
           }
         }
