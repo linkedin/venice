@@ -70,22 +70,6 @@ public class EarliestPositionTest {
     assertThrows(UnsupportedOperationException.class, () -> instance.getNumericOffset());
   }
 
-  @Test
-  public void testComparePositionThrows() {
-    EarliestPosition instance = EarliestPosition.getInstance();
-    PubSubPosition dummy = new DummyPosition();
-
-    assertThrows(UnsupportedOperationException.class, () -> instance.comparePosition(dummy));
-  }
-
-  @Test
-  public void testDiffThrows() {
-    EarliestPosition instance = EarliestPosition.getInstance();
-    PubSubPosition dummy = new DummyPosition();
-
-    assertThrows(UnsupportedOperationException.class, () -> instance.diff(dummy));
-  }
-
   public static class DummyPosition implements PubSubPosition {
     public int getHeapSize() {
       return 0;
