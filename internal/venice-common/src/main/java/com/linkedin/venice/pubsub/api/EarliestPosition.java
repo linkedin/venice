@@ -37,16 +37,6 @@ final class EarliestPosition implements PubSubPosition {
   }
 
   @Override
-  public int comparePosition(PubSubPosition other) {
-    throw new UnsupportedOperationException("Cannot compare EARLIEST position");
-  }
-
-  @Override
-  public long diff(PubSubPosition other) {
-    throw new UnsupportedOperationException("Cannot diff EARLIEST position");
-  }
-
-  @Override
   public PubSubPositionWireFormat getPositionWireFormat() {
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.setType(EARLIEST_POSITION_RESERVED_TYPE_ID);
