@@ -20,13 +20,19 @@ public enum ControllerMetricEntity {
   );
 
   private final MetricEntity metricEntity;
+  private final String metricName;
 
   ControllerMetricEntity(
       MetricType metricType,
       MetricUnit unit,
       String description,
       Set<VeniceMetricsDimensions> dimensionsList) {
-    this.metricEntity = new MetricEntity(this.name().toLowerCase(), metricType, unit, description, dimensionsList);
+    this.metricName = this.name().toLowerCase();
+    this.metricEntity = new MetricEntity(metricName, metricType, unit, description, dimensionsList);
+  }
+
+  public String getMetricName() {
+    return metricName;
   }
 
   public MetricEntity getMetricEntity() {
