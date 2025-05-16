@@ -45,6 +45,7 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -205,8 +206,9 @@ public class VeniceWriterUnitTest {
     String valueString = stringBuilder.toString();
 
     LeaderProducerCallback leaderProducerCallback = mock(LeaderProducerCallback.class);
+    PubSubPosition consumedPositionMock = mock(PubSubPosition.class);
     PartitionConsumptionState.TransientRecord transientRecord =
-        new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, 0);
+        new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, consumedPositionMock);
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
     when(leaderProducerCallback.getPartitionConsumptionState()).thenReturn(partitionConsumptionState);
     when(partitionConsumptionState.getTransientRecord(any())).thenReturn(transientRecord);

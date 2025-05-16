@@ -569,17 +569,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       if (updatedValueBytes == null) {
         hostLevelIngestionStats.recordTombstoneCreatedDCR();
         aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
-        partitionConsumptionState.setTransientRecord(
-            kafkaClusterId,
-            consumerRecord.getPosition().getNumericOffset(),
-            keyBytes,
-            valueSchemaId,
-            rmdRecord);
+        partitionConsumptionState
+            .setTransientRecord(kafkaClusterId, consumerRecord.getPosition(), keyBytes, valueSchemaId, rmdRecord);
       } else {
         int valueLen = updatedValueBytes.remaining();
         partitionConsumptionState.setTransientRecord(
             kafkaClusterId,
-            consumerRecord.getPosition().getNumericOffset(),
+            consumerRecord.getPosition(),
             keyBytes,
             updatedValueBytes.array(),
             updatedValueBytes.position(),
@@ -870,8 +866,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                   new DeleteMetadata(valueSchemaId, rmdProtocolVersionId, updatedRmdBytes),
                   oldValueManifest,
                   oldRmdManifest);
-      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
-          .newDeleteRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), key, deletePayload);
+      LeaderProducedRecordContext leaderProducedRecordContext =
+          LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getPosition(), key, deletePayload);
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
@@ -901,8 +897,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
-          LeaderProducedRecordContext
-              .newPutRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), key, updatedPut),
+          LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getPosition(), key, updatedPut),
           produceToTopicFunction,
           partition,
           kafkaUrl,
