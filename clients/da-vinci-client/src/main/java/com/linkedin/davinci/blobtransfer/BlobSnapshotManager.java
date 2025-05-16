@@ -38,7 +38,7 @@ public class BlobSnapshotManager {
   private static final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
       AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
   private final static int DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN = 30;
-  public final static int DEFAULT_MAX_CONCURRENT_USERS = 5;
+  public final static int DEFAULT_MAX_CONCURRENT_USERS = 15;
   public final static int DEFAULT_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS = 120;
 
   // A map to keep track of the number of hosts using a snapshot for a particular topic and partition, use to restrict
@@ -212,15 +212,32 @@ public class BlobSnapshotManager {
 
   /**
    * Check if the concurrent user count exceeds the limit
+   * The map concurrentSnapshotUsers is a per topic and partition map, so we need to sum up to get the total count that the server handler is currently served.
+   *
+   * Note:
+   * Due to the lock is at per partition per topic level, but the check limitation is globally via concurrentSnapshotUsers.
+   * Then there may be race condition due to "check-then-increment" window:
+   *   1. Thread A and thread B both check the concurrentSnapshotUsers count and amount = maxConcurrentUsers - 1, at the same time
+   *   2. Thread A increment the concurrentSnapshotUsers count, then B increment the concurrentSnapshotUsers count, and both of them are allowed to proceed.
+   *   3. But actually, the concurrentSnapshotUsers count is maxConcurrentUsers + 1
+   *   In rare cases, actual concurrent users may temporarily exceed maxConcurrentUsers, but only by a small margin.
+   *
    * @param topicName the topic name
    * @param partitionId the partition id
    * @throws VeniceException if the concurrent user count exceeds the limit
    */
   private void checkIfConcurrentUserExceedsLimit(String topicName, int partitionId) throws VeniceException {
-    boolean exceededMaxConcurrentUsers = getConcurrentSnapshotUsers(topicName, partitionId) >= maxConcurrentUsers;
+    // get the current host level served request count which is all topics and partitions
+    int totalTopicsPartitionsRequestCount = concurrentSnapshotUsers.values()
+        .stream()
+        .flatMap(innerMap -> innerMap.values().stream())
+        .mapToInt(AtomicInteger::get)
+        .sum();
+
+    boolean exceededMaxConcurrentUsers = totalTopicsPartitionsRequestCount >= maxConcurrentUsers;
     if (exceededMaxConcurrentUsers) {
       String errorMessage = String.format(
-          "Exceeded the maximum number of concurrent users %d for topic %s partition %d",
+          "Exceeded the maximum number of concurrent users %d, request for topic %s partition %d can not be served anymore",
           maxConcurrentUsers,
           topicName,
           partitionId);
