@@ -57,7 +57,7 @@ public class AbstractTestVeniceParentHelixAdmin {
   static final String TEST_SCHEMA =
       "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", " + "\"type\":\"int\"}]}";
 
-  static final String clusterName = "test-cluster";
+  protected static final String clusterName = "test-cluster";
   static final String regionName = "test-region";
   static final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
   static final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
@@ -155,14 +155,16 @@ public class AbstractTestVeniceParentHelixAdmin {
    * Separate internal mocks setup and initialization so tests can change the behavior of the mocks without running into
    * concurrency issues. i.e. change mock's behavior in test thread while it's being used in some background threads.
    */
-  public void initializeParentAdmin(Optional<AuthorizerService> authorizerService) {
+  public void initializeParentAdmin(
+      Optional<AuthorizerService> authorizerService,
+      Optional<MetricsRepository> metricsRepository) {
     parentAdmin = new VeniceParentHelixAdmin(
         internalAdmin,
         TestUtils.getMultiClusterConfigFromOneCluster(config),
         false,
         Optional.empty(),
         authorizerService,
-        mock(MetricsRepository.class));
+        metricsRepository.orElseGet(() -> mock(MetricsRepository.class)));
     ControllerClient mockControllerClient = mock(ControllerClient.class);
     doReturn(new ControllerResponse()).when(mockControllerClient).checkResourceCleanupForStoreCreation(anyString());
     StoreResponse storeResponse = mock(StoreResponse.class);
@@ -218,4 +220,24 @@ public class AbstractTestVeniceParentHelixAdmin {
     return resources;
   }
 
+  /**
+   * Expose the config object to configure specific config values for testing.
+   */
+  public VeniceControllerClusterConfig getConfig() {
+    return config;
+  }
+
+  /**
+   * Expose the parent controller admin object to configure specific behaviour for testing.
+   */
+  public VeniceParentHelixAdmin getParentAdmin() {
+    return parentAdmin;
+  }
+
+  /**
+   * Expose the child controller admin object to configure specific behaviour for testing.
+   */
+  public VeniceHelixAdmin getInternalAdmin() {
+    return internalAdmin;
+  }
 }
