@@ -65,7 +65,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigReco
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
-import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.AddVersionLatencyStats;
@@ -635,10 +634,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             repushOrchestratorClass,
             new Class[] { VeniceProperties.class },
             new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
+        LOGGER.info(RepushOrchestrator.class.getSimpleName() + " created successfully.");
         compactionManager =
             new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
+        LOGGER.info(CompactionManager.class.getSimpleName() + " created successfully.");
       } catch (Exception e) {
-        LOGGER.error("Failed to enable " + LogCompactionService.class.getSimpleName(), e);
+        LOGGER.error(
+            "Failed to enable " + RepushOrchestrator.class.getSimpleName() + " or "
+                + CompactionManager.class.getSimpleName(),
+            e);
         throw new VeniceException(e);
       }
     }
@@ -7816,6 +7820,54 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // Get the admin operation protocol version from standby controller
       AdminOperationProtocolVersionControllerResponse response =
           localControllerClient.getLocalAdminOperationProtocolVersion(standbyControllerUrl);
+      if (response.isError()) {
+        throw new VeniceException(
+            "Failed to get admin operation protocol version from standby controller: " + standbyControllerUrl
+                + ", error message: " + response.getError());
+      }
+      controllerUrlToAdminOperationVersionMap
+          .put(response.getRequestUrl(), response.getLocalAdminOperationProtocolVersion());
+    }
+
+    return controllerUrlToAdminOperationVersionMap;
+  }
+
+  /**
+   * Get the local admin operation protocol version.
+   */
+  @Override
+  public long getLocalAdminOperationProtocolVersion() {
+    return AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
+  }
+
+  /**
+   * Get the admin operation protocol versions from controllers (leader + standby) for specific cluster.
+   * @param clusterName: the cluster name
+   * @return map (controllerUrl: version). Example: {http://localhost:1234=1, http://localhost:1235=1}*/
+  @Override
+  public Map<String, Long> getAdminOperationVersionFromControllers(String clusterName) {
+    checkControllerLeadershipFor(clusterName);
+
+    Map<String, Long> controllerUrlToAdminOperationVersionMap = new HashMap<>();
+
+    // Get the version from the current controller - leader
+    String leaderControllerUrl = getLeaderController(clusterName).getUrl(false);
+    controllerUrlToAdminOperationVersionMap.put(leaderControllerUrl, getLocalAdminOperationProtocolVersion());
+
+    // Create the controller client to reuse
+    // (this is controller client to communicate with other controllers in the same cluster, the same region)
+    ControllerClient localControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, leaderControllerUrl, sslFactory);
+
+    // Get version for standby controllers
+    List<Instance> standbyControllers = getControllersByHelixState(clusterName, HelixState.STANDBY_STATE);
+
+    for (Instance standbyController: standbyControllers) {
+      String standbyControllerUrl = standbyController.getUrl(false);
+
+      // Get the admin operation protocol version from standby controller
+      AdminOperationProtocolVersionControllerResponse response =
+          localControllerClient.getLocalAdminOperationProtocolVersion();
       if (response.isError()) {
         throw new VeniceException(
             "Failed to get admin operation protocol version from standby controller: " + standbyControllerUrl
