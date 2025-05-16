@@ -92,6 +92,7 @@ import com.linkedin.venice.ConfigConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.authorization.AceEntry;
 import com.linkedin.venice.authorization.AclBinding;
 import com.linkedin.venice.authorization.AuthorizerService;
@@ -5189,10 +5190,14 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public List<StoreInfo> getStoresForCompaction(String clusterName) {
-    throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
+    return veniceHelixAdmin.getStoresForCompaction(clusterName);
   }
 
   /**
+   * This is the entry/exit common point for manual and scheduled repush codepaths.
+   * This being the common point allows streamlined logging for the repushStore endpoint.
+   *
+   * This function triggers repush store downstream.
    * see {@link Admin#repushStore}
    */
   @Override
@@ -5205,13 +5210,23 @@ public class VeniceParentHelixAdmin implements Admin {
     // But when that day comes that we implement that kind of behavior dichotomy, we should code here that either honors
     // what's been passed in (parent getting a request for a repush in a child colo should forward that along) OR the
     // parent should just abort the request and return an error.
-    RepushJobResponse response = veniceHelixAdmin.repushStore(repushJobRequest);
-    logCompactionStatsMap.get(repushJobRequest.getClusterName())
-        .recordRepushStoreCall(
-            repushJobRequest.getStoreName(),
-            repushJobRequest.getTriggerSource(),
-            response.isError() ? VeniceResponseStatusCategory.FAIL : VeniceResponseStatusCategory.SUCCESS);
-    return response;
+    try {
+      System.out.println("VeniceParentHelixAdmin::repushStore()");
+      RepushJobResponse response = veniceHelixAdmin.repushStore(repushJobRequest);
+      logCompactionStatsMap.get(repushJobRequest.getClusterName())
+          .recordRepushStoreCall(
+              repushJobRequest.getStoreName(),
+              repushJobRequest.getTriggerSource(),
+              response.isError() ? VeniceResponseStatusCategory.FAIL : VeniceResponseStatusCategory.SUCCESS);
+      return response;
+    } catch (Exception e) {
+      logCompactionStatsMap.get(repushJobRequest.getClusterName())
+          .recordRepushStoreCall(
+              repushJobRequest.getStoreName(),
+              repushJobRequest.getTriggerSource(),
+              VeniceResponseStatusCategory.FAIL);
+      throw e;
+    }
   }
 
   @Override
@@ -5705,7 +5720,8 @@ public class VeniceParentHelixAdmin implements Admin {
     return lingeringStoreVersionChecker;
   }
 
-  VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
+  @VisibleForTesting
+  public VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
     return multiClusterConfigs;
   }
 
