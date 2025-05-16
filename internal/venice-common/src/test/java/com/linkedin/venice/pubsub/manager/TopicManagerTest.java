@@ -44,6 +44,7 @@ import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
@@ -166,6 +167,7 @@ public class TopicManagerTest {
     recordValue.producerMetadata.messageTimestamp = producerTimestamp;
     recordValue.leaderMetadataFooter = new LeaderMetadata();
     recordValue.leaderMetadataFooter.hostName = "localhost";
+    recordValue.leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.LATEST.getWireFormatBytes();
 
     if (isDataRecord) {
       Put put = new Put();

@@ -711,7 +711,7 @@ public class VeniceWriterUnitTest {
           0,
           1,
           null,
-          new LeaderMetadataWrapper(0, 0),
+          new LeaderMetadataWrapper(0, 0, 0, ByteBuffer.allocate(0)),
           APP_DEFAULT_LOGICAL_TS,
           null,
           null,

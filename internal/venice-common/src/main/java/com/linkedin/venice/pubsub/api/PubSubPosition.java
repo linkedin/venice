@@ -4,6 +4,7 @@ import com.linkedin.venice.annotation.RestrictedApi;
 import com.linkedin.venice.annotation.UnderDevelopment;
 import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import java.nio.ByteBuffer;
 
 
 /**
@@ -41,6 +42,14 @@ public interface PubSubPosition extends Measurable {
    * @return the position wrapper
    */
   PubSubPositionWireFormat getPositionWireFormat();
+
+  /**
+   * Returns the serialized wire format bytes of this position.
+   * @return byte array representing the position in wire format
+   */
+  default ByteBuffer getWireFormatBytes() {
+    return getPositionWireFormat().getRawBytes();
+  }
 
   static PubSubPosition getPositionFromWireFormat(PubSubPositionWireFormat positionWireFormat) {
     return PubSubPositionDeserializer.getPositionFromWireFormat(positionWireFormat);

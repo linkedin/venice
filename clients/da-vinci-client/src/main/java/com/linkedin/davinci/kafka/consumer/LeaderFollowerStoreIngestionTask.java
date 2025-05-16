@@ -14,6 +14,7 @@ import static com.linkedin.venice.kafka.protocol.enums.MessageType.UPDATE;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static java.lang.Long.max;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
@@ -73,6 +74,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -1728,8 +1730,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partition,
         kafkaUrl,
         beforeProcessingRecordTimestampNs);
-    long sourceTopicOffset = consumerRecord.getPosition().getNumericOffset();
-    LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, kafkaClusterId);
+    PubSubPosition consumedPosition = consumerRecord.getPosition();
+    long sourceTopicOffset = consumedPosition.getNumericOffset();
+    LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(
+        sourceTopicOffset,
+        kafkaClusterId,
+        DEFAULT_TERM_ID,
+        consumedPosition.getWireFormatBytes());
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     long beforeProduceTimestampNS = System.nanoTime();
     produceFunction.accept(callback, leaderMetadataWrapper);
@@ -2261,8 +2268,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partition,
         kafkaUrl,
         beforeProcessingRecordTimestampNs);
-    LeaderMetadataWrapper leaderMetadataWrapper =
-        new LeaderMetadataWrapper(consumerRecord.getPosition().getNumericOffset(), kafkaClusterId);
+    PubSubPosition consumedPosition = consumerRecord.getPosition();
+    LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(
+        consumedPosition.getNumericOffset(),
+        kafkaClusterId,
+        DEFAULT_TERM_ID,
+        consumedPosition.getWireFormatBytes());
     LeaderCompleteState leaderCompleteState =
         LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported());
     /**
