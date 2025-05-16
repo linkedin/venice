@@ -52,6 +52,7 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.AdminMessageConsumptionTimeoutException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -3268,6 +3269,23 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
     verify(adminSpy, times(5)).getCurrentVersionsForMultiColos(clusterName, storeName);
+  }
+
+  @Test
+  public void testDeleteStoreAdminMessageTimeout() {
+    VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
+
+    String storeName = "testStore";
+    String owner = "testOwner";
+    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
+    doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
+
+    AdminMessageConsumptionTimeoutException exception =
+        new AdminMessageConsumptionTimeoutException("timed out!", new Exception());
+    doThrow(exception).when(adminSpy).sendAdminMessageAndWaitForConsumed(any(), any(), any());
+    adminSpy.deleteStore(clusterName, storeName, false, 0, true);
+    verify(adminSpy, times(1)).deleteAclsForStore(store, storeName);
   }
 
   private Store setupForStoreViewConfigUpdateTest(String storeName) {
