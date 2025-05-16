@@ -34,6 +34,7 @@ dependencies {
 
   implementation project(':internal:venice-common')
   implementation project(':clients:venice-thin-client')
+  implementation project(':internal:venice-client-common')
 
   implementation libraries.commonsIo
   implementation libraries.fastUtil
@@ -43,11 +44,13 @@ dependencies {
   implementation libraries.spark
   // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   implementation libraries.zkclient
+  implementation libraries.opentelemetryApi
 
   testImplementation project(':services:venice-router')
   testImplementation libraries.avroUtilFastserde
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
   testImplementation project(':internal:venice-test-common')
+  testImplementation libraries.openTelemetryTestSdk
 }
 
 jar {

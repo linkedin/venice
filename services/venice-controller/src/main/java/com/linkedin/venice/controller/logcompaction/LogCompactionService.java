@@ -4,10 +4,14 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LogContext;
+import io.tehuti.metrics.MetricsRepository;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -38,10 +42,20 @@ public class LogCompactionService extends AbstractVeniceService {
   private final Admin admin;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   final ScheduledExecutorService executor;
+  private final Map<String, LogCompactionStats> statsMap;
 
-  public LogCompactionService(Admin admin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
+  public LogCompactionService(
+      Admin admin,
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository) {
     this.admin = admin;
     this.multiClusterConfigs = multiClusterConfigs;
+    this.statsMap = new HashMap<>();
+    for (String clusterName: multiClusterConfigs.getClusters()) {
+      if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()) {
+        statsMap.put(clusterName, new LogCompactionStats(metricsRepository, clusterName));
+      }
+    }
 
     executor = Executors.newScheduledThreadPool(multiClusterConfigs.getLogCompactionThreadCount());
   }
@@ -92,8 +106,8 @@ public class LogCompactionService extends AbstractVeniceService {
       for (String clusterName: clusters) {
         for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
           try {
-            RepushJobResponse response =
-                admin.repushStore(new RepushJobRequest(storeInfo.getName(), RepushJobRequest.SCHEDULED_TRIGGER));
+            RepushJobResponse response = admin.repushStore(
+                new RepushJobRequest(clusterName, storeInfo.getName(), RepushJobRequest.SCHEDULED_TRIGGER));
             LOGGER.info(
                 "log compaction triggered for cluster: {} store: {} | execution ID: {}",
                 clusterName,
