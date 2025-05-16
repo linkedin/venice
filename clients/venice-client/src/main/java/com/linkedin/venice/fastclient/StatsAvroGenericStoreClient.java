@@ -176,13 +176,16 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         if (requestContext.responseDeserializationTime > 0) {
           clientStats.recordResponseDeserializationTime(requestContext.responseDeserializationTime);
         }
-        clientStats.recordSuccessRequestKeyCount(requestContext.successRequestKeyCount.get());
       }
+      // We want to record the partial success key count number, no matter the request is healthy or unhealthy.
+      int successKeyCount = requestContext.successRequestKeyCount.get();
+      clientStats.recordSuccessRequestKeyCount(successKeyCount);
 
       if (requestContext.noAvailableReplica) {
         clientStats.recordNoAvailableReplicaRequest();
       }
 
+      int retrySuccessKeyCount = 0;
       if (requestContext instanceof GetRequestContext) {
         GetRequestContext getRequestContext = (GetRequestContext) requestContext;
 
@@ -198,7 +201,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           if (!exceptionReceived) {
             if (getRequestContext.retryContext.retryWin) {
               clientStats.recordRetryRequestWin();
-              clientStats.recordRetryRequestSuccessKeyCount(1);
+              retrySuccessKeyCount = 1;
+              clientStats.recordRetryRequestSuccessKeyCount(retrySuccessKeyCount);
             }
           }
         }
@@ -213,13 +217,17 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           clientStats.recordRetryRequestKeyCount(retryRequestContext.numKeysInRequest);
           clientStats.recordRetryFanoutSize(retryRequestContext.getFanoutSize());
           if (!exceptionReceived) {
-            clientStats.recordRetryRequestSuccessKeyCount(retryRequestContext.numKeysCompleted.get());
+            retrySuccessKeyCount = retryRequestContext.numKeysCompleted.get();
+            clientStats.recordRetryRequestSuccessKeyCount(retrySuccessKeyCount);
             if (retryRequestContext.numKeysCompleted.get() > 0) {
               clientStats.recordRetryRequestWin();
             }
           }
         }
       }
+
+      // numberOfKeys = successKeyCount + retrySuccessKeyCount + failedKeyCount.
+      clientStats.recordFailedRequestKeyCount(numberOfKeys - successKeyCount - retrySuccessKeyCount, throwable);
 
       if (exceptionReceived) {
         // throw an exception after incrementing some error related metrics

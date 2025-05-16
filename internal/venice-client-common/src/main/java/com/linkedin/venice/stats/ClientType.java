@@ -18,4 +18,8 @@ public enum ClientType {
   public String getMetricsPrefix() {
     return otelMetricsPrefix;
   }
+
+  public static boolean isDavinciClient(ClientType clientType) {
+    return clientType == DAVINCI_CLIENT;
+  }
 }

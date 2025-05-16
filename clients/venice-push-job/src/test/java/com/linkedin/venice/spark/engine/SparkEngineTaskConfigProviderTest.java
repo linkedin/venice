@@ -33,8 +33,12 @@ public class SparkEngineTaskConfigProviderTest {
 
   @AfterClass(alwaysRun = true)
   public void tearDown() {
-    sparkContext.close();
-    spark.stop();
+    if (sparkContext != null) {
+      sparkContext.close();
+    }
+    if (spark != null) {
+      spark.stop();
+    }
   }
 
   @Test
