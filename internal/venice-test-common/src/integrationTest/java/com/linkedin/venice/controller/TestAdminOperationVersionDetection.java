@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 
