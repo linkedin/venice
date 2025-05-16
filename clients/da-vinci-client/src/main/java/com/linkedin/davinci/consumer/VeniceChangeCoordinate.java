@@ -3,6 +3,7 @@ package com.linkedin.davinci.consumer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import java.io.ByteArrayInputStream;
@@ -67,7 +68,7 @@ public class VeniceChangeCoordinate implements Externalizable {
       // but it DOESNT account for version rollbacks.
       return topic.compareTo(other.topic);
     }
-    return pubSubPosition.comparePosition(other.pubSubPosition);
+    return PubSubUtil.comparePubSubPositions(pubSubPosition, other.pubSubPosition);
   }
 
   // These methods contain 'need to know' information and expose underlying details.
