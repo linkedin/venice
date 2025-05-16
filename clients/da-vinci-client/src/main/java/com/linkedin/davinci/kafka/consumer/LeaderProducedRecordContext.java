@@ -62,7 +62,7 @@ public class LeaderProducedRecordContext implements Measurable {
   /**
    * This is the position at which the message was produced in the Version Topic.
    */
-  private PubSubPosition producedPosition = PubSubSymbolicPosition.LATEST;
+  private PubSubPosition producedPosition = NO_UPSTREAM_POSITION;
 
   /**
    * This is the timestamp at which the message was produced in the Version Topic as
