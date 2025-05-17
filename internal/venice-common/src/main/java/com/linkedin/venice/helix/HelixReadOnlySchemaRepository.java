@@ -13,6 +13,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.RetryUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Duration;
 import java.util.Collection;
@@ -98,12 +99,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       long refreshIntervalForZkReconnectInMs) {
     this.storeRepository = storeRepository;
     this.zkClient = zkClient;
-    this.accessor = new HelixSchemaAccessor(
-        zkClient,
-        adapter,
-        clusterName,
-        refreshAttemptsForZkReconnect,
-        refreshIntervalForZkReconnectInMs);
+    this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName, VeniceProperties.empty());
 
     storeRepository.registerStoreDataChangedListener(this);
     this.zkStateListener =

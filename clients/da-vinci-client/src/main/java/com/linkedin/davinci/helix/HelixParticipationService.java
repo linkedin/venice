@@ -38,6 +38,7 @@ import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.List;
@@ -68,9 +69,6 @@ import org.apache.logging.log4j.Logger;
 public class HelixParticipationService extends AbstractVeniceService
     implements StatusMessageHandler<KillOfflinePushMessage> {
   private static final Logger LOGGER = LogManager.getLogger(HelixParticipationService.class);
-
-  private static final int MAX_RETRY = 30;
-  private static final int RETRY_INTERVAL_SEC = 1;
 
   private final Instance instance;
   private final String clusterName;
@@ -305,7 +303,7 @@ public class HelixParticipationService extends AbstractVeniceService
     HelixAdmin admin = new ZKHelixAdmin(zkAddress);
     try {
       // Check whether the cluster is ready or not at first to prevent zk no node exception.
-      HelixUtils.checkClusterSetup(admin, clusterName, MAX_RETRY, RETRY_INTERVAL_SEC);
+      HelixUtils.checkClusterSetup(admin, clusterName, 9);
       List<String> instances = admin.getInstancesInCluster(clusterName);
       if (instances.contains(instance.getNodeId())) {
         LOGGER.info("{} is not a new node to cluster: {}, skip the cleaning up.", instance.getNodeId(), clusterName);
@@ -365,9 +363,8 @@ public class HelixParticipationService extends AbstractVeniceService
         clusterName,
         zkClient,
         new HelixAdapterSerializer(),
-        veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
-        veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs(),
-        veniceServerConfig.getRegionName());
+        veniceServerConfig.getRegionName(),
+        VeniceProperties.empty());
 
     /**
      * The accessor can only get created successfully after helix manager is created.
