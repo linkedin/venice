@@ -26,6 +26,7 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
@@ -127,9 +128,8 @@ public class TestHelixCustomizedView {
         veniceCluster.getClusterName(),
         zkClient,
         adapterSerializer,
-        3,
-        1000,
-        veniceCluster.getRegionName());
+        veniceCluster.getRegionName(),
+        VeniceProperties.empty());
     HelixUtils.create(
         offlinePushStatusAccessor.getOfflinePushStatusAccessor(),
         offlinePushStatusAccessor.getOfflinePushStatuesParentPath() + "/invalid_topic",

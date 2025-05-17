@@ -38,6 +38,7 @@ import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.List;
@@ -362,9 +363,8 @@ public class HelixParticipationService extends AbstractVeniceService
         clusterName,
         zkClient,
         new HelixAdapterSerializer(),
-        veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
-        veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs(),
-        veniceServerConfig.getRegionName());
+        veniceServerConfig.getRegionName(),
+        VeniceProperties.empty());
 
     /**
      * The accessor can only get created successfully after helix manager is created.
