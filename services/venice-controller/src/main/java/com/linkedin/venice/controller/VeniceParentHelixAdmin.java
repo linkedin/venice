@@ -1042,8 +1042,10 @@ public class VeniceParentHelixAdmin implements Admin {
           clusterName,
           timeoutException);
       deleteAclsForStore(store, storeName);
+      throw timeoutException;
     } catch (Exception e) {
       LOGGER.info("Caught an exception when deleting store {} in cluster {}", storeName, clusterName, e);
+      throw e;
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
@@ -1055,14 +1057,15 @@ public class VeniceParentHelixAdmin implements Admin {
    * @param storeName
    */
   protected void deleteAclsForStore(Store store, String storeName) {
-    if (store != null) {
-      if (!store.isMigrating()) {
-        cleanUpAclsForStore(store.getName(), VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
-      } else {
-        LOGGER.info("Store: {} is migrating! Skipping acl deletion!", storeName);
-      }
-    } else {
+    if (store == null) {
       LOGGER.warn("Store object for {} is missing! Skipping acl deletion!", storeName);
+      return;
+    }
+
+    if (!store.isMigrating()) {
+      cleanUpAclsForStore(store.getName(), VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
+    } else {
+      LOGGER.info("Store: {} is migrating! Skipping acl deletion!", storeName);
     }
   }
 
