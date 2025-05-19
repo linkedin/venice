@@ -61,7 +61,6 @@ import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -256,7 +255,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
       Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
       Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
-      Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
       Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
 
       if (!systemStores.containsKey(storeName)) {
@@ -264,8 +262,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       }
       if (hybridRewindSeconds.isPresent() && hybridOffsetLagThreshold.isPresent()) {
         final long finalHybridTimeLagThreshold = hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
-        final DataReplicationPolicy finalHybridDataReplicationPolicy =
-            hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE);
         final BufferReplayPolicy finalHybridBufferReplayPolicy =
             hybridBufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP);
         systemStores.get(storeName)
@@ -274,7 +270,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
                     hybridRewindSeconds.get(),
                     hybridOffsetLagThreshold.get(),
                     finalHybridTimeLagThreshold,
-                    finalHybridDataReplicationPolicy,
                     finalHybridBufferReplayPolicy));
       }
     }
@@ -2133,13 +2128,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
 
-    store.setHybridStoreConfig(
-        new HybridStoreConfigImpl(
-            1000,
-            100,
-            -1,
-            DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(1000, 100, -1, BufferReplayPolicy.REWIND_FROM_EOP));
     store.setActiveActiveReplicationEnabled(true);
     store.setIncrementalPushEnabled(true);
     store.setNativeReplicationEnabled(true);
@@ -2988,13 +2977,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 60);
 
     store.setActiveActiveReplicationEnabled(aaEnabled);
-    store.setHybridStoreConfig(
-        new HybridStoreConfigImpl(
-            60,
-            20000,
-            0,
-            DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(60, 20000, 0, BufferReplayPolicy.REWIND_FROM_EOP));
     // Incremental push can be enabled on a hybrid store, default inc push policy is inc push to RT now
     if (aaEnabled) {
       parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));

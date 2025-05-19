@@ -1432,7 +1432,6 @@ public abstract class StoreIngestionTaskTest {
         -1,
         100,
         HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
 
     VeniceWriter vtWriter = getVeniceWriter(new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));
@@ -1755,14 +1754,8 @@ public abstract class StoreIngestionTaskTest {
       verify(mockAbstractStorageEngine, never()).adjustStoragePartition(eq(PARTITION_FOO), eq(PREPARE_FOR_READ), any());
     }, aaConfig);
 
-    testConfig.setHybridStoreConfig(
-        Optional.of(
-            new HybridStoreConfigImpl(
-                1L,
-                1L,
-                1L,
-                DataReplicationPolicy.AGGREGATE,
-                BufferReplayPolicy.REWIND_FROM_SOP)));
+    testConfig
+        .setHybridStoreConfig(Optional.of(new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP)));
     final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
@@ -2490,7 +2483,6 @@ public abstract class StoreIngestionTaskTest {
                   100,
                   100,
                   HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-                  DataReplicationPolicy.NON_AGGREGATE,
                   BufferReplayPolicy.REWIND_FROM_EOP)));
       runTest(config);
     } finally {
@@ -2589,7 +2581,6 @@ public abstract class StoreIngestionTaskTest {
                 10,
                 20,
                 HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-                DataReplicationPolicy.NON_AGGREGATE,
                 BufferReplayPolicy.REWIND_FROM_EOP)));
     testConfig.setExtraServerProperties(
         Collections.singletonMap(RocksDBServerConfig.ROCKSDB_BLOB_FILES_ENABLED, Boolean.toString(blobMode)));
@@ -2642,7 +2633,6 @@ public abstract class StoreIngestionTaskTest {
             10,
             20,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
     long[] messageCountPerPartition = new long[PARTITION_COUNT];
 
@@ -2783,7 +2773,6 @@ public abstract class StoreIngestionTaskTest {
         100,
         100,
         HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
@@ -3014,7 +3003,6 @@ public abstract class StoreIngestionTaskTest {
         100,
         100,
         HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
@@ -3154,8 +3142,7 @@ public abstract class StoreIngestionTaskTest {
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
 
-    HybridStoreConfig hybridStoreConfig =
-        new HybridStoreConfigImpl(100, 100, 100, dataReplicationPolicy, BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(100, 100, 100, BufferReplayPolicy.REWIND_FROM_EOP);
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
         partitionCount,
@@ -3286,9 +3273,7 @@ public abstract class StoreIngestionTaskTest {
       // case 5b: standby replica and !LEADER_COMPLETED
       doReturn(STANDBY).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
       doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
-      assertEquals(
-          storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp),
-          !(aaConfig == AA_ON || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)));
+      assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
       // case 5c: standby replica and LEADER_COMPLETED => partition is ready to serve
       doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsBufferReplayStartedLagCaughtUp).isLeaderCompleted();
@@ -3323,9 +3308,7 @@ public abstract class StoreIngestionTaskTest {
       // case 6b: standby replica and !LEADER_COMPLETED
       doReturn(STANDBY).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderFollowerState();
       doReturn(LEADER_NOT_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
-      assertEquals(
-          storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging),
-          !(aaConfig == AA_ON || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)));
+      assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging));
       // case 6c: standby replica and LEADER_COMPLETED => partition is ready to serve
       doReturn(LEADER_COMPLETED).when(mockPcsBufferReplayStartedRemoteLagging).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsBufferReplayStartedRemoteLagging).isLeaderCompleted();
@@ -3358,9 +3341,7 @@ public abstract class StoreIngestionTaskTest {
       // case 7b: standby replica and !LEADER_COMPLETED
       doReturn(STANDBY).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
       doReturn(LEADER_NOT_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
-      assertEquals(
-          storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging),
-          !(aaConfig == AA_ON || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)));
+      assertFalse(storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging));
       // case 7c: standby replica and LEADER_COMPLETED => partition is ready to serve
       doReturn(LEADER_COMPLETED).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderCompleteState();
       doCallRealMethod().when(mockPcsOffsetLagCaughtUpTimestampLagging).isLeaderCompleted();
@@ -3378,12 +3359,7 @@ public abstract class StoreIngestionTaskTest {
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
     HybridStoreConfig hybridStoreConfig = null;
     if (hybridConfig == HYBRID) {
-      hybridStoreConfig = new HybridStoreConfigImpl(
-          100,
-          100,
-          -1,
-          DataReplicationPolicy.NON_AGGREGATE,
-          BufferReplayPolicy.REWIND_FROM_EOP);
+      hybridStoreConfig = new HybridStoreConfigImpl(100, 100, -1, BufferReplayPolicy.REWIND_FROM_EOP);
     }
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
@@ -3503,8 +3479,7 @@ public abstract class StoreIngestionTaskTest {
         LagType.values(),
         new NodeType[] { DA_VINCI, FOLLOWER },
         AAConfig.values(),
-        LeaderCompleteCheck.values(),
-        DataReplicationPolicy.values());
+        LeaderCompleteCheck.values());
   }
 
   /**
@@ -3518,15 +3493,13 @@ public abstract class StoreIngestionTaskTest {
       LagType lagType,
       NodeType nodeType,
       AAConfig aaConfig,
-      LeaderCompleteCheck leaderCompleteCheck,
-      DataReplicationPolicy dataReplicationPolicy) {
+      LeaderCompleteCheck leaderCompleteCheck) {
     int partitionCount = 2;
     VenicePartitioner partitioner = getVenicePartitioner();
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
 
-    HybridStoreConfig hybridStoreConfig =
-        new HybridStoreConfigImpl(100, 100, 100, dataReplicationPolicy, BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(100, 100, 100, BufferReplayPolicy.REWIND_FROM_EOP);
 
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
         partitionCount,
@@ -3628,8 +3601,7 @@ public abstract class StoreIngestionTaskTest {
             offsetThreshold,
             false,
             lagType),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
-            || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON));
 
     // Case 5: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and leaderCompleteState is LEADER_COMPLETED and last update time is within threshold
@@ -3656,8 +3628,7 @@ public abstract class StoreIngestionTaskTest {
             offsetThreshold,
             false,
             lagType),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
-            || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON));
 
     // Case 7: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and leaderCompleteState is LEADER_NOT_COMPLETED and leader is not completed
@@ -3669,8 +3640,7 @@ public abstract class StoreIngestionTaskTest {
             offsetThreshold,
             false,
             lagType),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON && (aaConfig == AA_ON
-            || (aaConfig == AA_OFF && dataReplicationPolicy != DataReplicationPolicy.AGGREGATE))));
+        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON));
   }
 
   @DataProvider
@@ -3687,8 +3657,7 @@ public abstract class StoreIngestionTaskTest {
 
     HybridStoreConfig hybridStoreConfig = null;
     if (hybridConfig == HYBRID) {
-      hybridStoreConfig =
-          new HybridStoreConfigImpl(100, 100, 100, DataReplicationPolicy.AGGREGATE, BufferReplayPolicy.REWIND_FROM_EOP);
+      hybridStoreConfig = new HybridStoreConfigImpl(100, 100, 100, BufferReplayPolicy.REWIND_FROM_EOP);
     }
     MockStoreVersionConfigs storeAndVersionConfigs = setupStoreAndVersionMocks(
         partitionCount,
@@ -3784,20 +3753,15 @@ public abstract class StoreIngestionTaskTest {
 
   @DataProvider
   public static Object[][] testProcessTopicSwitchProvider() {
-    return DataProviderUtils.allPermutationGenerator(new NodeType[] { DA_VINCI, LEADER }, DataProviderUtils.BOOLEAN);
+    return DataProviderUtils.allPermutationGenerator(new NodeType[] { DA_VINCI, LEADER });
   }
 
   @Test(dataProvider = "testProcessTopicSwitchProvider")
-  public void testProcessTopicSwitch(NodeType nodeType, boolean isAggregateMode) {
+  public void testProcessTopicSwitch(NodeType nodeType) {
     VenicePartitioner partitioner = getVenicePartitioner();
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
     partitionerConfig.setPartitionerClass(partitioner.getClass().getName());
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
-        100,
-        100,
-        100,
-        isAggregateMode ? DataReplicationPolicy.AGGREGATE : DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(100, 100, 100, BufferReplayPolicy.REWIND_FROM_EOP);
     MockStoreVersionConfigs storeAndVersionConfigs =
         setupStoreAndVersionMocks(2, partitionerConfig, Optional.of(hybridStoreConfig), false, true, AA_OFF);
     StorageService storageService = mock(StorageService.class);
@@ -3845,8 +3809,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(mockOffsetRecord).when(mockPcs).getOffsetRecord();
     doReturn(PARTITION_FOO).when(mockPcs).getPartition();
     doReturn(PARTITION_FOO).when(mockPcs).getPartition();
-    boolean result = storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
-    Assert.assertEquals(isAggregateMode, result);
+    storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
     verify(mockTopicManagerRemoteKafka, never()).getOffsetByTime(any(), anyLong());
     verify(mockOffsetRecord, never()).setLeaderUpstreamOffset(anyString(), anyLong());
   }
@@ -4127,7 +4090,6 @@ public abstract class StoreIngestionTaskTest {
         100,
         100,
         HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-        DataReplicationPolicy.ACTIVE_ACTIVE,
         BufferReplayPolicy.REWIND_FROM_EOP);
 
     final int batchMessagesNum = 100;
@@ -4291,7 +4253,6 @@ public abstract class StoreIngestionTaskTest {
             10,
             20,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
     VeniceException veniceException = new VeniceException("Wrapped interruptedException", new InterruptedException());
 
@@ -4327,7 +4288,6 @@ public abstract class StoreIngestionTaskTest {
             10,
             20,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
 
     StoreIngestionTaskTestConfig testConfig = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
@@ -5273,24 +5233,16 @@ public abstract class StoreIngestionTaskTest {
             .getOffsetToOnlineLagThresholdPerPartition(Optional.empty(), storeName, partitionCount));
 
     // Negative threshold
-    HybridStoreConfigImpl hybridStoreConfig1 = new HybridStoreConfigImpl(
-        100L,
-        -1L,
-        100L,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_SOP);
+    HybridStoreConfigImpl hybridStoreConfig1 =
+        new HybridStoreConfigImpl(100L, -1L, 100L, BufferReplayPolicy.REWIND_FROM_SOP);
     assertEquals(
         StoreIngestionTask
             .getOffsetToOnlineLagThresholdPerPartition(Optional.of(hybridStoreConfig1), storeName, partitionCount),
         -1L);
 
     // For current version, the partition-level offset lag threshold should be divided by partition count
-    HybridStoreConfigImpl hybridStoreConfig2 = new HybridStoreConfigImpl(
-        100L,
-        100L,
-        100L,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_SOP);
+    HybridStoreConfigImpl hybridStoreConfig2 =
+        new HybridStoreConfigImpl(100L, 100L, 100L, BufferReplayPolicy.REWIND_FROM_SOP);
     Store store = mock(Store.class);
     doReturn(10).when(store).getCurrentVersion();
     doReturn(store).when(storeRepository).getStore(storeName);

@@ -18,7 +18,6 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
@@ -74,7 +73,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
@@ -397,29 +395,25 @@ public class TestPushJobWithNativeReplication {
         "testNativeReplicationForHybrid",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
             .setHybridRewindSeconds(TEST_TIMEOUT)
-            .setHybridOffsetLagThreshold(2)
-            .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE),
+            .setHybridOffsetLagThreshold(2),
         50,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           // Write batch data
           TestWriteUtils.runPushJob("Test push job", props);
 
           // Verify version level hybrid config is set correctly. The current version should be 1.
-          VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+          VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
           Version version =
               childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
           HybridStoreConfig hybridConfig = version.getHybridStoreConfig();
           Assert.assertNotNull(hybridConfig);
           Assert.assertEquals(hybridConfig.getRewindTimeInSeconds(), TEST_TIMEOUT);
           Assert.assertEquals(hybridConfig.getOffsetLagThresholdToGoOnline(), 2);
-          Assert.assertEquals(hybridConfig.getDataReplicationPolicy(), DataReplicationPolicy.AGGREGATE);
 
-          // Write Samza data (aggregated mode)
           Map<String, String> samzaConfig = new HashMap<>();
           String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
           samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
           samzaConfig.put(configPrefix + VENICE_STORE, storeName);
-          samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
           samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
           samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
           samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
@@ -430,11 +424,6 @@ public class TestPushJobWithNativeReplication {
           try (VeniceSystemProducer veniceProducer =
               factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
             veniceProducer.start();
-
-            // Verify the kafka URL being returned to Samza is the same as parent region kafka url.
-            Assert.assertEquals(
-                veniceProducer.getKafkaBootstrapServers(),
-                multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
 
             for (int i = 1; i <= 10; i++) {
               sendStreamingRecord(veniceProducer, storeName, i);

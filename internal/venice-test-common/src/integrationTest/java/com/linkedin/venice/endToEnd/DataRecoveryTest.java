@@ -41,7 +41,6 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -149,7 +148,6 @@ public class DataRecoveryTest {
                   storeName,
                   new UpdateStoreQueryParams().setHybridRewindSeconds(10)
                       .setHybridOffsetLagThreshold(2)
-                      .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)
                       .setNativeReplicationEnabled(true)
                       .setPartitionCount(1))
               .isError());

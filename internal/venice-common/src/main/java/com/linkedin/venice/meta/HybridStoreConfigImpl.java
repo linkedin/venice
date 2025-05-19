@@ -19,20 +19,19 @@ public class HybridStoreConfigImpl implements HybridStoreConfig {
   public static final long DEFAULT_HYBRID_TIME_LAG_THRESHOLD = -1L;
   public static final long DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD = 1000L;
   public static final String DEFAULT_REAL_TIME_TOPIC_NAME = "";
-
+  public static final DataReplicationPolicy DEFAULT_DATA_REPLICATION_POLICY = DataReplicationPolicy.NON_AGGREGATE;
   private final StoreHybridConfig hybridConfig;
 
   public HybridStoreConfigImpl(
       long rewindTimeInSeconds,
       long offsetLagThresholdToGoOnline,
       long producerTimestampLagThresholdToGoOnlineInSeconds,
-      DataReplicationPolicy dataReplicationPolicy,
       BufferReplayPolicy bufferReplayPolicy) {
     this(
         rewindTimeInSeconds,
         offsetLagThresholdToGoOnline,
         producerTimestampLagThresholdToGoOnlineInSeconds,
-        dataReplicationPolicy,
+        DEFAULT_DATA_REPLICATION_POLICY,
         bufferReplayPolicy,
         DEFAULT_REAL_TIME_TOPIC_NAME);
   }

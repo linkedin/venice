@@ -12,7 +12,6 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
@@ -78,7 +77,6 @@ public class RealTimeTopicSwitcherRewindTest {
             REWIND_TIME_IN_SECONDS,
             1,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP)));
     final PubSubTopic sourceTopicName = pubSubTopicRepository.getTopic("source topic name_v1");
     final PubSubTopic destinationTopicName = pubSubTopicRepository.getTopic("destination topic name_v1");
@@ -112,7 +110,6 @@ public class RealTimeTopicSwitcherRewindTest {
             REWIND_TIME_IN_SECONDS,
             1,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_SOP)));
     final PubSubTopic sourceTopicName = pubSubTopicRepository.getTopic("source topic name_v1");
     final PubSubTopic destinationTopicName = pubSubTopicRepository.getTopic("destination topic name_v1");

@@ -38,7 +38,6 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.StoreJSONSerializer;
 import com.linkedin.venice.helix.SystemStoreJSONSerializer;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -1012,7 +1011,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     zkSharedStore.setHybridStoreConfig(hybridStoreConfig);
     SystemStore systemStore = new SystemStore(zkSharedStore, VeniceSystemStoreType.META_STORE, testStore);
@@ -1126,7 +1124,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(badCurrentVersionStoreConfig).when(store).getHybridStoreConfig();
@@ -1161,7 +1158,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(badCurrentVersionStoreConfig).when(store).getHybridStoreConfig();
@@ -1197,7 +1193,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(aggStoreConfig).when(store).getHybridStoreConfig();
@@ -1238,7 +1233,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(aggStoreConfig).when(store).getHybridStoreConfig();
@@ -1279,7 +1273,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
@@ -1333,7 +1326,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
@@ -1387,7 +1379,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
@@ -1442,7 +1433,6 @@ public class TestMetaDataHandler {
         Time.SECONDS_PER_DAY,
         1,
         TimeUnit.MINUTES.toSeconds(1),
-        DataReplicationPolicy.NON_AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_EOP);
     Mockito.doReturn(true).when(store).isHybrid();
     Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();

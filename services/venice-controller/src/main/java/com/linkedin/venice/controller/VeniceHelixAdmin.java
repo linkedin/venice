@@ -3209,15 +3209,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return false;
     }
 
-    // Child controllers always create real-time topics for hybrid stores in their region
-    if (!isParent()) {
-      return true;
-    }
-
-    // Parent controllers create real-time topics in the parent region only under certain conditions
-    return !store.isActiveActiveReplicationEnabled()
-        && (store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE
-            || store.isIncrementalPushEnabled());
+    // Only child regions need realtime topic.
+    return !isParent();
   }
 
   /**
@@ -5772,17 +5765,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 DEFAULT_REWIND_TIME_IN_SECONDS,
                 DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD,
                 DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-                DataReplicationPolicy.NON_AGGREGATE,
                 null));
-      } else if (hybridStoreConfig.getDataReplicationPolicy() == null) {
-        store.setHybridStoreConfig(
-            new HybridStoreConfigImpl(
-                hybridStoreConfig.getRewindTimeInSeconds(),
-                hybridStoreConfig.getOffsetLagThresholdToGoOnline(),
-                hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(),
-                DataReplicationPolicy.NON_AGGREGATE,
-                hybridStoreConfig.getBufferReplayPolicy(),
-                hybridStoreConfig.getRealTimeTopicName()));
       }
       return store;
     });
@@ -8219,11 +8202,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         default:
           break;
       }
-      // Filter out aggregate mode store explicitly.
-      if (enableActiveActiveReplicationForCluster && originalStore.isHybrid()
-          && originalStore.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
-        shouldUpdateActiveActiveReplication = false;
-      }
       if (shouldUpdateActiveActiveReplication) {
         LOGGER.info("Will enable active active replication for store: {}", storeName.get());
         setActiveActiveReplicationEnabled(clusterName, storeName.get(), enableActiveActiveReplicationForCluster);
@@ -8266,11 +8244,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           throw new VeniceException("Unsupported store type." + storeType);
       }
 
-      // Filter out aggregate mode store explicitly.
       storesToBeConfigured = storesToBeConfigured.stream()
-          .filter(
-              store -> !(store.isHybrid()
-                  && store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)))
           .filter(
               store -> !((VeniceSystemStoreType.getSystemStoreType(store.getName()) != null)
                   && (VeniceSystemStoreType.getSystemStoreType(store.getName()).isStoreZkShared())))

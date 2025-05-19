@@ -188,23 +188,14 @@ public class ActiveActiveReplicationForHybridTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testEnableActiveActiveReplicationForCluster() {
     String storeName1 = Utils.getUniqueString("test-batch-store");
-    String storeName2 = Utils.getUniqueString("test-hybrid-agg-store");
-    String storeName3 = Utils.getUniqueString("test-hybrid-non-agg-store");
+    String storeName2 = Utils.getUniqueString("test-hybrid-non-agg-store");
     try {
       createAndVerifyStoreInAllRegions(storeName1, parentControllerClient, dcControllerClientList);
       createAndVerifyStoreInAllRegions(storeName2, parentControllerClient, dcControllerClientList);
-      createAndVerifyStoreInAllRegions(storeName3, parentControllerClient, dcControllerClientList);
 
       assertCommand(
           parentControllerClient.updateStore(
               storeName2,
-              new UpdateStoreQueryParams().setHybridRewindSeconds(10)
-                  .setHybridOffsetLagThreshold(2)
-                  .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)));
-
-      assertCommand(
-          parentControllerClient.updateStore(
-              storeName3,
               new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(2)));
 
       // Test batch
@@ -226,28 +217,24 @@ public class ActiveActiveReplicationForHybridTest {
       verifyDCConfigAARepl(dc0Client, storeName1, false, true, false);
       verifyDCConfigAARepl(dc1Client, storeName1, false, true, true);
 
-      // Test hybrid - agg vs non-agg
       assertCommand(
           parentControllerClient.configureActiveActiveReplicationForCluster(
               true,
               VeniceUserStoreType.HYBRID_ONLY.toString(),
               Optional.empty()));
-      verifyDCConfigAARepl(parentControllerClient, storeName2, true, false, false);
-      verifyDCConfigAARepl(dc0Client, storeName2, true, false, false);
-      verifyDCConfigAARepl(dc1Client, storeName2, true, false, false);
-      verifyDCConfigAARepl(parentControllerClient, storeName3, true, false, true);
-      verifyDCConfigAARepl(dc0Client, storeName3, true, false, true);
-      verifyDCConfigAARepl(dc1Client, storeName3, true, false, true);
+      verifyDCConfigAARepl(parentControllerClient, storeName2, true, false, true);
+      verifyDCConfigAARepl(dc0Client, storeName2, true, false, true);
+      verifyDCConfigAARepl(dc1Client, storeName2, true, false, true);
       assertCommand(
           parentControllerClient.configureActiveActiveReplicationForCluster(
               false,
               VeniceUserStoreType.HYBRID_ONLY.toString(),
               Optional.empty()));
-      verifyDCConfigAARepl(parentControllerClient, storeName3, true, true, false);
-      verifyDCConfigAARepl(dc0Client, storeName3, true, true, false);
-      verifyDCConfigAARepl(dc1Client, storeName3, true, true, false);
+      verifyDCConfigAARepl(parentControllerClient, storeName2, true, true, false);
+      verifyDCConfigAARepl(dc0Client, storeName2, true, true, false);
+      verifyDCConfigAARepl(dc1Client, storeName2, true, true, false);
     } finally {
-      deleteStores(storeName1, storeName2, storeName3);
+      deleteStores(storeName1, storeName2);
     }
   }
 
