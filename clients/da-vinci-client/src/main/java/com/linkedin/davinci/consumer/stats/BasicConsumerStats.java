@@ -92,7 +92,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         BasicConsumerMetricEntity.CURRENT_CONSUMING_VERSION.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        BasicConsumerTehutiMetricName.MAXIMUM_CONSUMING_VERSION,
+        BasicConsumerTehutiMetricName.MINIMUM_CONSUMING_VERSION,
         Collections.singletonList(new Gauge()),
         baseDimensionsMap,
         baseAttributes);
