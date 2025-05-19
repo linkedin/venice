@@ -1,6 +1,10 @@
 package com.linkedin.davinci.consumer;
 
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CLIENT_METRIC_ENTITIES;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
+import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -60,7 +64,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
-import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -528,7 +531,8 @@ public class VeniceChangelogConsumerImplTest {
             .setStoreName(storeName)
             .setShouldCompactMessages(true)
             .setViewName("");
-    changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
+    changelogClientConfig.getInnerClientConfig()
+        .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CLIENT_METRIC_ENTITIES, true));
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
 
@@ -560,6 +564,8 @@ public class VeniceChangelogConsumerImplTest {
 
     prepareVersionTopicRecordsToBePolled(5L, 15L, mockPubSubConsumer, oldVersionTopic, 0, true);
     pubSubMessages = new ArrayList<>(veniceChangelogConsumer.poll(100));
+
+    // BasicConsumerStats consumerStats = veniceChangelogConsumer.getChangeCaptureStats();
     assertFalse(pubSubMessages.isEmpty());
     Assert.assertEquals(pubSubMessages.size(), 10);
     for (int i = 5; i < 15; i++) {
@@ -655,6 +661,7 @@ public class VeniceChangelogConsumerImplTest {
 
     reporterThread.recordStats(lastHeartbeat, consumerStats, topicPartitionSet);
     Mockito.verify(consumerStats).emitCurrentConsumingVersionMetrics(1, 1);
+    Mockito.verify(consumerStats).emitHeartBeatDelayMetrics(anyLong());
 
     reporterThread.start();
     reporterThread.interrupt();
@@ -859,7 +866,8 @@ public class VeniceChangelogConsumerImplTest {
         new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
             .setSchemaReader(schemaReader)
             .setStoreName(storeName);
-    changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
+    changelogClientConfig.getInnerClientConfig()
+        .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CLIENT_METRIC_ENTITIES, true));
     return changelogClientConfig;
   }
 }

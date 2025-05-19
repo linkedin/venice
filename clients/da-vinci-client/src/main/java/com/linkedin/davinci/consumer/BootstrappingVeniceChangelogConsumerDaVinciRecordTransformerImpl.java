@@ -129,7 +129,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   }
 
   @Override
-  public CompletableFuture<Void> start(Set<Integer> partitions) {
+  public synchronized CompletableFuture<Void> start(Set<Integer> partitions) {
     internalStart();
     subscribedPartitions.addAll(partitions);
 
