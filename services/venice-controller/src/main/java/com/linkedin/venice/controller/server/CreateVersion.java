@@ -369,8 +369,6 @@ public class CreateVersion extends AbstractRoute {
     // Create aa replication checks with lazy evaluation
     Lazy<Boolean> isActiveActiveReplicationEnabledInAllRegions =
         getActiveActiveReplicationCheck(admin, store, clusterName, storeName, false);
-    Lazy<Boolean> isActiveActiveReplicationEnabledInAllRegionAllVersions =
-        getActiveActiveReplicationCheck(admin, store, clusterName, storeName, true);
 
     // Validate source and emergency region details and update request object
     String sourceGridFabric = applyConfigBasedOnReplication(

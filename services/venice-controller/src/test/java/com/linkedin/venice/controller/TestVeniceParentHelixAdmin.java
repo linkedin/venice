@@ -142,7 +142,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testDualWriteSendPushJobDetails() {
+  public void testSendPushJobDetailsToChildRegions() {
     parentAdmin.initStorageCluster(clusterName);
     PushJobStatusRecordKey key = new PushJobStatusRecordKey();
     key.versionNumber = 1;
@@ -165,7 +165,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn("test-cluster").when(internalAdmin).getPushJobStatusStoreClusterName();
     parentAdmin.sendPushJobDetails(key, value);
     verify(internalAdmin, atLeast(1)).sendPushJobDetails(key, value);
-    verify(internalAdmin, atLeast(1)).sendPushJobDetailsToLocalRT(any(), any());
+    // Parent does not write push job details to parent region RT anymore.
+    verify(internalAdmin, never()).sendPushJobDetailsToLocalRT(any(), any());
     verify(controllerClient, atLeast(1)).sendPushJobDetails(anyString(), anyInt(), any());
     doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
 
