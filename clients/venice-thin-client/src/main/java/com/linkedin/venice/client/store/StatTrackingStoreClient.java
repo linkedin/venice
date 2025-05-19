@@ -97,7 +97,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     CompletableFuture<V> innerFuture = super.get(key, Optional.of(singleGetStats), startTimeInNS);
     singleGetStats.recordRequestKeyCount(1);
     CompletableFuture<V> statFuture = innerFuture
-        .handle((BiFunction<? super V, Throwable, ? extends V>) getStatCallback(singleGetStats, 1, startTimeInNS));
+        .handle((BiFunction<? super V, Throwable, ? extends V>) getStatCallback(singleGetStats, startTimeInNS));
     return AppTimeOutTrackingCompletableFuture.track(statFuture, singleGetStats);
   }
 
@@ -107,7 +107,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     CompletableFuture<byte[]> innerFuture = super.getRaw(requestPath, Optional.of(schemaReaderStats), startTimeInNS);
     schemaReaderStats.recordRequestKeyCount(1);
     CompletableFuture<byte[]> statFuture = innerFuture.handle(
-        (BiFunction<? super byte[], Throwable, ? extends byte[]>) getStatCallback(schemaReaderStats, 1, startTimeInNS));
+        (BiFunction<? super byte[], Throwable, ? extends byte[]>) getStatCallback(schemaReaderStats, startTimeInNS));
     return statFuture;
   }
 
@@ -182,7 +182,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     private final Optional<ClientStats> statsOptional;
     private final long preRequestTimeInNS;
     private final StreamingResponseTracker streamingResponseTracker;
-    private final int keyCnt;
 
     public StatTrackingStreamingCallback(
         StreamingCallback<K, V> callback,
@@ -193,7 +192,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       this.stats = stats;
       this.statsOptional = Optional.of(stats);
       this.preRequestTimeInNS = preRequestTimeInNS;
-      this.keyCnt = keyCnt;
       streamingResponseTracker = new StreamingResponseTracker(stats, keyCnt, preRequestTimeInNS);
     }
 
@@ -217,7 +215,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
           preRequestTimeInNS,
           exception,
           successKeyCount,
-          keyCnt,
           duplicateEntryCount);
     }
   }
@@ -260,7 +257,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       long startTimeInNS,
       Optional<Exception> exception,
       int successKeyCnt,
-      int keyCnt,
       int duplicateEntryCnt) {
     double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
     if (exception.isPresent()) {
@@ -268,9 +264,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     } else {
       clientStats.emitHealthyRequestMetrics(latency, successKeyCnt);
     }
-    clientStats.recordSuccessRequestKeyCount(successKeyCnt);
-    // keyCnt = successKeyCnt + failedKeyCnt
-    clientStats.recordFailedRequestKeyCount(keyCnt - successKeyCnt);
+    clientStats.recordResponseKeyCount(successKeyCnt);
     clientStats.recordSuccessDuplicateRequestKeyCount(duplicateEntryCnt);
   }
 
@@ -286,7 +280,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   public static <T> BiFunction<? super T, Throwable, ? extends T> getStatCallback(
       ClientStats clientStats,
-      int keyCount,
       long startTimeInNS) {
     return (T value, Throwable throwable) -> {
       double latency = LatencyUtils.getElapsedTimeFromNSToMS(startTimeInNS);
@@ -296,9 +289,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       }
 
       clientStats.emitHealthyRequestMetrics(latency, value);
-      int successfulKeyCount = getSuccessfulKeyCount(value);
-      clientStats.recordSuccessRequestKeyCount(successfulKeyCount);
-      clientStats.recordFailedRequestKeyCount(keyCount - successfulKeyCount, throwable);
+      clientStats.recordResponseKeyCount(getSuccessfulKeyCount(value));
       return value;
     };
   }

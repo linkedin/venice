@@ -177,9 +177,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           clientStats.recordResponseDeserializationTime(requestContext.responseDeserializationTime);
         }
       }
-      // We want to record the partial success key count number, no matter the request is healthy or unhealthy.
-      int successKeyCount = requestContext.successRequestKeyCount.get();
-      clientStats.recordSuccessRequestKeyCount(successKeyCount);
+      // We want to record the response key count number, no matter the request is healthy or unhealthy.
+      clientStats.recordResponseKeyCount(requestContext.successRequestKeyCount.get());
 
       if (requestContext.noAvailableReplica) {
         clientStats.recordNoAvailableReplicaRequest();
@@ -201,8 +200,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           if (!exceptionReceived) {
             if (getRequestContext.retryContext.retryWin) {
               clientStats.recordRetryRequestWin();
-              retrySuccessKeyCount = 1;
-              clientStats.recordRetryRequestSuccessKeyCount(retrySuccessKeyCount);
+              clientStats.recordRetryRequestSuccessKeyCount(1);
             }
           }
         }
@@ -217,17 +215,13 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           clientStats.recordRetryRequestKeyCount(retryRequestContext.numKeysInRequest);
           clientStats.recordRetryFanoutSize(retryRequestContext.getFanoutSize());
           if (!exceptionReceived) {
-            retrySuccessKeyCount = retryRequestContext.numKeysCompleted.get();
-            clientStats.recordRetryRequestSuccessKeyCount(retrySuccessKeyCount);
+            clientStats.recordRetryRequestSuccessKeyCount(retryRequestContext.numKeysCompleted.get());
             if (retryRequestContext.numKeysCompleted.get() > 0) {
               clientStats.recordRetryRequestWin();
             }
           }
         }
       }
-
-      // numberOfKeys = successKeyCount + retrySuccessKeyCount + failedKeyCount.
-      clientStats.recordFailedRequestKeyCount(numberOfKeys - successKeyCount - retrySuccessKeyCount, throwable);
 
       if (exceptionReceived) {
         // throw an exception after incrementing some error related metrics
