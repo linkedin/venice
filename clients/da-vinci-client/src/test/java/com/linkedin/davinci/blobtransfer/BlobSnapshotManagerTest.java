@@ -80,82 +80,6 @@ public class BlobSnapshotManagerTest {
   }
 
   @Test(timeOut = TIMEOUT)
-  public void testSameSnapshotWhenConcurrentUsersNotExceedMaxAllowedUsers() {
-    Store mockStore = mock(Store.class);
-    Version mockVersion = mock(Version.class);
-    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
-    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
-    when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
-
-    BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
-    doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
-
-    AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
-    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
-    Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
-    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
-    Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
-    Mockito.doNothing().when(storagePartition).createSnapshot();
-
-    // Create snapshot for the first time
-    BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
-        blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID), 1);
-    Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
-
-    // Try to create snapshot again with concurrent users
-    actualBlobTransferPartitionMetadata =
-        blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
-    Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID), 2);
-    Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
-  }
-
-  @Test(timeOut = TIMEOUT)
-  public void testSameSnapshotWhenConcurrentUsersExceedsMaxAllowedUsers() {
-    Store mockStore = mock(Store.class);
-    Version mockVersion = mock(Version.class);
-    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
-    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
-    when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
-    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
-
-    BlobSnapshotManager blobSnapshotManager =
-        spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
-    doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
-
-    AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
-    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
-    Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
-    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
-    Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
-    Mockito.doNothing().when(storagePartition).createSnapshot();
-
-    // Create snapshot
-    for (int tryCount = 0; tryCount < BlobSnapshotManager.DEFAULT_MAX_CONCURRENT_USERS; tryCount++) {
-      BlobTransferPartitionMetadata actualBlobTransferPartitionMetadata =
-          blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
-      Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
-    }
-
-    // The last snapshot creation should fail
-    try {
-      blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
-    } catch (VeniceException e) {
-      String errorMessage = String.format(
-          "Exceeded the maximum number of concurrent users %d, request for topic %s partition %d can not be served anymore",
-          BlobSnapshotManager.DEFAULT_MAX_CONCURRENT_USERS,
-          TOPIC_NAME,
-          PARTITION_ID);
-      Assert.assertEquals(e.getMessage(), errorMessage);
-    }
-    Assert.assertEquals(
-        blobSnapshotManager.getConcurrentSnapshotUsers(TOPIC_NAME, PARTITION_ID),
-        BlobSnapshotManager.DEFAULT_MAX_CONCURRENT_USERS);
-  }
-
-  @Test(timeOut = TIMEOUT)
   public void testTwoRequestUsingSameOffset() {
     // Prepare
     Store mockStore = mock(Store.class);
@@ -296,7 +220,6 @@ public class BlobSnapshotManagerTest {
         new BlobSnapshotManager(
             storageEngineRepository,
             storageMetadataService,
-            5,
             0,
             BlobTransferTableFormat.BLOCK_BASED_TABLE,
             2));

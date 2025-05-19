@@ -120,13 +120,13 @@ public class TestNettyP2PBlobTransferManager {
         blobSnapshotManager,
         globalChannelTrafficShapingHandler,
         sslFactory,
-        aclHandler);
+        aclHandler,
+        20);
     client = Mockito.spy(
         new NettyFileTransferClient(
             port,
             tmpPartitionDir.toString(),
             storageMetadataService,
-            30,
             30,
             globalChannelTrafficShapingHandler,
             sslFactory));

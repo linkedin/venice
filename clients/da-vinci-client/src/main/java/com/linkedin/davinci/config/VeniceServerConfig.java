@@ -5,7 +5,6 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOT
 import static com.linkedin.venice.ConfigConstants.DEFAULT_MAX_RECORD_SIZE_BYTES_BACKFILL;
 import static com.linkedin.venice.ConfigKeys.ACL_IN_MEMORY_CACHE_TTL_MS;
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
-import static com.linkedin.venice.ConfigKeys.BLOB_RECEIVE_MAX_TIMEOUT_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
@@ -598,7 +597,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int snapshotRetentionTimeInMin;
   private final int maxConcurrentSnapshotUser;
   private final int blobTransferMaxTimeoutInMin;
-  private final int blobReceiveMaxTimeoutInMin;
   private final int blobTransferPeersConnectivityFreshnessInSeconds;
   private final long blobTransferClientReadLimitBytesPerSec;
   private final long blobTransferServiceWriteLimitBytesPerSec;
@@ -672,7 +670,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     snapshotRetentionTimeInMin = serverProperties.getInt(BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN, 60);
     maxConcurrentSnapshotUser = serverProperties.getInt(BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER, 15);
     blobTransferMaxTimeoutInMin = serverProperties.getInt(BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN, 60);
-    blobReceiveMaxTimeoutInMin = serverProperties.getInt(BLOB_RECEIVE_MAX_TIMEOUT_IN_MIN, 60);
     blobTransferPeersConnectivityFreshnessInSeconds =
         serverProperties.getInt(BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS, 30);
     blobTransferClientReadLimitBytesPerSec =
@@ -1232,10 +1229,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getBlobTransferMaxTimeoutInMin() {
     return blobTransferMaxTimeoutInMin;
-  }
-
-  public int getBlobReceiveMaxTimeoutInMin() {
-    return blobReceiveMaxTimeoutInMin;
   }
 
   public int getBlobTransferPeersConnectivityFreshnessInSeconds() {

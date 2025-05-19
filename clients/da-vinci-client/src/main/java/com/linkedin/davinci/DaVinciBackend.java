@@ -311,7 +311,6 @@ public class DaVinciBackend implements Closeable {
             backendConfig.getMaxConcurrentSnapshotUser(),
             backendConfig.getSnapshotRetentionTimeInMin(),
             backendConfig.getBlobTransferMaxTimeoutInMin(),
-            backendConfig.getBlobReceiveMaxTimeoutInMin(),
             backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
                 ? BlobTransferTableFormat.PLAIN_TABLE
                 : BlobTransferTableFormat.BLOCK_BASED_TABLE,

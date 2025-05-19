@@ -111,7 +111,6 @@ public class BlobTransferManagerBuilder {
       BlobSnapshotManager blobSnapshotManager = new BlobSnapshotManager(
           storageEngineRepository,
           storageMetadataService,
-          blobTransferConfig.getMaxConcurrentSnapshotUser(),
           blobTransferConfig.getSnapshotRetentionTimeInMin(),
           blobTransferConfig.getTransferSnapshotTableFormat(),
           blobTransferConfig.getSnapshotCleanupIntervalInMins());
@@ -124,13 +123,13 @@ public class BlobTransferManagerBuilder {
               blobSnapshotManager,
               globalTrafficHandler,
               sslFactory,
-              aclHandler),
+              aclHandler,
+              blobTransferConfig.getMaxConcurrentSnapshotUser()),
           new NettyFileTransferClient(
               blobTransferConfig.getP2pTransferClientPort(),
               blobTransferConfig.getBaseDir(),
               storageMetadataService,
               blobTransferConfig.getPeersConnectivityFreshnessInSeconds(),
-              blobTransferConfig.getBlobReceiveTimeoutInMin(),
               globalTrafficHandler,
               sslFactory),
           blobFinder,

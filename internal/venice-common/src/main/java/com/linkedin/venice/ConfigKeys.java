@@ -1980,8 +1980,6 @@ public class ConfigKeys {
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
   // this is a config to decide max file transfer timeout time in minutes in server side.
   public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
-  // this is a config to decide max file receive timeout time in minutes in client side.
-  public static final String BLOB_RECEIVE_MAX_TIMEOUT_IN_MIN = "blob.receive.max.timeout.in.min";
   // this is a config to decide the max allowed offset lag to use kafka, even if the blob transfer is enable.
   public static final String BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD =
       "blob.transfer.disabled.offset.lag.threshold";

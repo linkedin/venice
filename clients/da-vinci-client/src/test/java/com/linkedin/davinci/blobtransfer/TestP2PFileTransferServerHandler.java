@@ -62,7 +62,7 @@ public class TestP2PFileTransferServerHandler {
 
     blobSnapshotManager = Mockito.spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
     serverHandler =
-        new P2PFileTransferServerHandler(baseDir.toString(), blobTransferMaxTimeoutInMin, blobSnapshotManager);
+        new P2PFileTransferServerHandler(baseDir.toString(), blobTransferMaxTimeoutInMin, blobSnapshotManager, 20);
     ch = new EmbeddedChannel(serverHandler);
   }
 

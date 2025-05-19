@@ -42,6 +42,7 @@ import java.io.RandomAccessFile;
 import java.net.URI;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -57,7 +58,11 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   private final String baseDir;
   // Maximum timeout for blob transfer in minutes per partition
   private final int blobTransferMaxTimeoutInMin;
+  // Max allowed global concurrent snapshot users
+  private final int maxAllowedConcurrentSnapshotUsers;
   private BlobSnapshotManager blobSnapshotManager;
+  // Global counter for all active transfer requests across all topics and partitions
+  private final AtomicInteger globalConcurrentTransferRequests = new AtomicInteger(0);
   private static final AttributeKey<BlobTransferPayload> BLOB_TRANSFER_REQUEST =
       AttributeKey.valueOf("blobTransferRequest");
   private static final AttributeKey<AtomicBoolean> SUCCESS_COUNTED =
@@ -66,10 +71,12 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   public P2PFileTransferServerHandler(
       String baseDir,
       int blobTransferMaxTimeoutInMin,
-      BlobSnapshotManager blobSnapshotManager) {
+      BlobSnapshotManager blobSnapshotManager,
+      int maxAllowedConcurrentSnapshotUsers) {
     this.baseDir = baseDir;
     this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
     this.blobSnapshotManager = blobSnapshotManager;
+    this.maxAllowedConcurrentSnapshotUsers = maxAllowedConcurrentSnapshotUsers;
   }
 
   /**
@@ -114,11 +121,24 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         return;
       }
 
+      // Check the concurrent request limit
+      if (globalConcurrentTransferRequests.get() >= maxAllowedConcurrentSnapshotUsers) {
+        String errMessage =
+            "The number of concurrent snapshot users exceeds the limit of " + maxAllowedConcurrentSnapshotUsers
+                + ", wont be able to process the request for " + blobTransferRequest.getFullResourceName();
+        LOGGER.error(errMessage);
+        setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
+        return;
+      }
+
       try {
         transferPartitionMetadata =
             blobSnapshotManager.getTransferMetadata(blobTransferRequest, successCountedAsActiveCurrentUser);
         ctx.channel().attr(SUCCESS_COUNTED).set(successCountedAsActiveCurrentUser);
         ctx.channel().attr(BLOB_TRANSFER_REQUEST).set(blobTransferRequest);
+        if (successCountedAsActiveCurrentUser.get()) {
+          globalConcurrentTransferRequests.incrementAndGet();
+        }
       } catch (Exception e) {
         setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
         return;
@@ -193,6 +213,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         && blobTransferRequest != null) {
       try {
         blobSnapshotManager.decreaseConcurrentUserCount(blobTransferRequest);
+        globalConcurrentTransferRequests.decrementAndGet();
       } catch (Exception e) {
         LOGGER.error("Failed to decrease the snapshot concurrent user count for request {}", blobTransferRequest, e);
       }

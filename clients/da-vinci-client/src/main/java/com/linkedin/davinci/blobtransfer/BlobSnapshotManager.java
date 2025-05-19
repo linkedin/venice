@@ -60,7 +60,6 @@ public class BlobSnapshotManager {
 
   private final StorageEngineRepository storageEngineRepository;
   private final StorageMetadataService storageMetadataService;
-  private final int maxConcurrentUsers;
   private final long snapshotRetentionTimeInMillis;
   private final int snapshotCleanupIntervalInMins;
   private final BlobTransferUtils.BlobTransferTableFormat blobTransferTableFormat;
@@ -72,13 +71,11 @@ public class BlobSnapshotManager {
   public BlobSnapshotManager(
       StorageEngineRepository storageEngineRepository,
       StorageMetadataService storageMetadataService,
-      int maxConcurrentUsers,
       int snapshotRetentionTimeInMin,
       BlobTransferUtils.BlobTransferTableFormat transferTableFormat,
       int snapshotCleanupIntervalInMins) {
     this.storageEngineRepository = storageEngineRepository;
     this.storageMetadataService = storageMetadataService;
-    this.maxConcurrentUsers = maxConcurrentUsers;
     this.snapshotRetentionTimeInMillis = TimeUnit.MINUTES.toMillis(snapshotRetentionTimeInMin);
     this.blobTransferTableFormat = transferTableFormat;
     this.snapshotCleanupIntervalInMins = snapshotCleanupIntervalInMins;
@@ -106,7 +103,6 @@ public class BlobSnapshotManager {
     this(
         storageEngineRepository,
         storageMetadataService,
-        DEFAULT_MAX_CONCURRENT_USERS,
         DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN,
         BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
         DEFAULT_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS);
@@ -114,12 +110,11 @@ public class BlobSnapshotManager {
 
   /**
    * Get the transfer metadata for a particular payload
-   * 1. throttle the request if many concurrent users.
-   * 2. check snapshot staleness
-   *     2.1. if stale:
-   *            2.1.1. if it does not have active users: recreate the snapshot and metadata, then return the metadata
-   *            2.1.2. if it has active users: no need to recreate the snapshot, throw an exception to let the client move to next candidate.
-   *     2.2. if not stale, directly return the metadata
+   * 1. check snapshot staleness
+   *     1.1. if stale:
+   *            1.1.1. if it does not have active users: recreate the snapshot and metadata, then return the metadata
+   *            1.1.2. if it has active users: no need to recreate the snapshot, throw an exception to let the client move to next candidate.
+   *     1.2. if not stale, directly return the metadata
    *
    * @param payload the blob transfer payload
    * @param successCountedAsActiveCurrentUser Indicates whether this request has been successfully counted as an active user.
@@ -146,9 +141,6 @@ public class BlobSnapshotManager {
 
     ReentrantLock lock = getSnapshotLock(topicName, partitionId);
     try (AutoCloseableLock ignored = AutoCloseableLock.of(lock)) {
-      // 1. check if the concurrent user count exceeds the limit
-      checkIfConcurrentUserExceedsLimit(topicName, partitionId);
-
       initializeTrackingValues(topicName, partitionId);
 
       boolean havingActiveUsers = getConcurrentSnapshotUsers(topicName, partitionId) > 0;
@@ -156,7 +148,7 @@ public class BlobSnapshotManager {
       increaseConcurrentUserCount(topicName, partitionId);
       successCountedAsActiveCurrentUser.set(true);
 
-      // 2. Check if the snapshot is stale and needs to be recreated.
+      // 1. Check if the snapshot is stale and needs to be recreated.
       // If the snapshot is stale and there are active users, throw an exception to exit early, allowing the client to
       // try the next available peer.
       // Even if creating a snapshot is fast, the stale snapshot may still be in use and transferring data for a
@@ -206,42 +198,6 @@ public class BlobSnapshotManager {
       String errorMessage =
           String.format("Failed to create snapshot for topic %s partition %d", topicName, partitionId);
       LOGGER.error(errorMessage, e);
-      throw new VeniceException(errorMessage);
-    }
-  }
-
-  /**
-   * Check if the concurrent user count exceeds the limit
-   * The map concurrentSnapshotUsers is a per topic and partition map, so we need to sum up to get the total count that the server handler is currently served.
-   *
-   * Note:
-   * Due to the lock is at per partition per topic level, but the check limitation is globally via concurrentSnapshotUsers.
-   * Then there may be race condition due to "check-then-increment" window:
-   *   1. Thread A and thread B both check the concurrentSnapshotUsers count and amount = maxConcurrentUsers - 1, at the same time
-   *   2. Thread A increment the concurrentSnapshotUsers count, then B increment the concurrentSnapshotUsers count, and both of them are allowed to proceed.
-   *   3. But actually, the concurrentSnapshotUsers count is maxConcurrentUsers + 1
-   *   In rare cases, actual concurrent users may temporarily exceed maxConcurrentUsers, but only by a small margin.
-   *
-   * @param topicName the topic name
-   * @param partitionId the partition id
-   * @throws VeniceException if the concurrent user count exceeds the limit
-   */
-  private void checkIfConcurrentUserExceedsLimit(String topicName, int partitionId) throws VeniceException {
-    // get the current host level served request count which is all topics and partitions
-    int totalTopicsPartitionsRequestCount = concurrentSnapshotUsers.values()
-        .stream()
-        .flatMap(innerMap -> innerMap.values().stream())
-        .mapToInt(AtomicInteger::get)
-        .sum();
-
-    boolean exceededMaxConcurrentUsers = totalTopicsPartitionsRequestCount >= maxConcurrentUsers;
-    if (exceededMaxConcurrentUsers) {
-      String errorMessage = String.format(
-          "Exceeded the maximum number of concurrent users %d, request for topic %s partition %d can not be served anymore",
-          maxConcurrentUsers,
-          topicName,
-          partitionId);
-      LOGGER.error(errorMessage);
       throw new VeniceException(errorMessage);
     }
   }

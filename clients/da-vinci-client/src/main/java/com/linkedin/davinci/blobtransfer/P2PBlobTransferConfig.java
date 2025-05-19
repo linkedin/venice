@@ -16,8 +16,6 @@ public class P2PBlobTransferConfig {
   private final int snapshotRetentionTimeInMin;
   // Max timeout for blob transfer in minutes in server side, to avoid endless sending files.
   private final int blobTransferMaxTimeoutInMin;
-  // Max timeout for blob receive in minutes in client side, to avoid endless receiving files.
-  private final int blobReceiveMaxTimeoutInMin;
   // Table format
   private final BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat;
   // Peers connectivity records freshness in seconds.
@@ -36,7 +34,6 @@ public class P2PBlobTransferConfig {
       int maxConcurrentSnapshotUser,
       int snapshotRetentionTimeInMin,
       int blobTransferMaxTimeoutInMin,
-      int blobReceiveMaxTimeoutInMin,
       BlobTransferUtils.BlobTransferTableFormat transferSnapshotTableFormat,
       int peersConnectivityFreshnessInSeconds,
       long blobTransferClientReadLimitBytesPerSec,
@@ -48,7 +45,6 @@ public class P2PBlobTransferConfig {
     this.maxConcurrentSnapshotUser = maxConcurrentSnapshotUser;
     this.snapshotRetentionTimeInMin = snapshotRetentionTimeInMin;
     this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
-    this.blobReceiveMaxTimeoutInMin = blobReceiveMaxTimeoutInMin;
     this.transferSnapshotTableFormat = transferSnapshotTableFormat;
     this.peersConnectivityFreshnessInSeconds = peersConnectivityFreshnessInSeconds;
     this.blobTransferClientReadLimitBytesPerSec = blobTransferClientReadLimitBytesPerSec;
@@ -78,10 +74,6 @@ public class P2PBlobTransferConfig {
 
   public int getBlobTransferMaxTimeoutInMin() {
     return blobTransferMaxTimeoutInMin;
-  }
-
-  public int getBlobReceiveTimeoutInMin() {
-    return blobReceiveMaxTimeoutInMin;
   }
 
   public BlobTransferUtils.BlobTransferTableFormat getTransferSnapshotTableFormat() {

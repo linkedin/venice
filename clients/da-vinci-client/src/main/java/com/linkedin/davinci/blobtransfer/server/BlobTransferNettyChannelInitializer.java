@@ -20,6 +20,7 @@ import java.util.Optional;
 public class BlobTransferNettyChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final String baseDir;
   private final int blobTransferMaxTimeoutInMin;
+  private final int maxAllowedConcurrentSnapshotUsers;
   private BlobSnapshotManager blobSnapshotManager;
   private Optional<SSLFactory> sslFactory;
   private Optional<BlobTransferAclHandler> aclHandler;
@@ -33,13 +34,15 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
       BlobSnapshotManager blobSnapshotManager,
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
       Optional<SSLFactory> sslFactory,
-      Optional<BlobTransferAclHandler> aclHandler) {
+      Optional<BlobTransferAclHandler> aclHandler,
+      int maxAllowedConcurrentSnapshotUsers) {
     this.baseDir = baseDir;
     this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
     this.blobSnapshotManager = blobSnapshotManager;
     this.globalChannelTrafficShapingHandler = globalChannelTrafficShapingHandler;
     this.sslFactory = sslFactory;
     this.aclHandler = aclHandler;
+    this.maxAllowedConcurrentSnapshotUsers = maxAllowedConcurrentSnapshotUsers;
   }
 
   @Override
@@ -67,6 +70,10 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
         // for handling p2p file transfer
         .addLast(
             "p2pFileTransferHandler",
-            new P2PFileTransferServerHandler(baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager));
+            new P2PFileTransferServerHandler(
+                baseDir,
+                blobTransferMaxTimeoutInMin,
+                blobSnapshotManager,
+                maxAllowedConcurrentSnapshotUsers));
   }
 }
