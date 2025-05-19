@@ -184,7 +184,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         clientStats.recordNoAvailableReplicaRequest();
       }
 
-      int retrySuccessKeyCount = 0;
       if (requestContext instanceof GetRequestContext) {
         GetRequestContext getRequestContext = (GetRequestContext) requestContext;
 
