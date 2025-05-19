@@ -72,7 +72,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   // CachingDaVinciClientFactory used instead of DaVinciClientFactory, so we have the ability to close down the client
   private final CachingDaVinciClientFactory daVinciClientFactory;
   private final DaVinciClient<Object, Object> daVinciClient;
-  private boolean isStarted = false;
+  private AtomicBoolean isStarted = new AtomicBoolean(false);
   private final CountDownLatch startLatch = new CountDownLatch(1);
   // Using a dedicated thread pool for CompletableFutures created by this class to avoid potential thread starvation
   // issues in the default ForkJoinPool
@@ -121,12 +121,12 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
   @Override
   public synchronized CompletableFuture<Void> start(Set<Integer> partitions) {
-    if (isStarted) {
+    if (isStarted.get()) {
       throw new VeniceException("BootstrappingVeniceChangelogConsumer is already started!");
     }
 
     daVinciClient.start();
-    isStarted = true;
+    isStarted.set(true);
 
     // If a user passes in empty partitions set, we subscribe to all partitions
     if (partitions.isEmpty()) {
@@ -185,7 +185,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   @Override
   public void stop() throws Exception {
     daVinciClientFactory.close();
-    isStarted = false;
+    isStarted.set(false);
   }
 
   @Override
