@@ -120,7 +120,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   }
 
   @Override
-  public CompletableFuture<Void> start(Set<Integer> partitions) {
+  public synchronized CompletableFuture<Void> start(Set<Integer> partitions) {
     if (isStarted) {
       throw new VeniceException("BootstrappingVeniceChangelogConsumer is already started!");
     }
