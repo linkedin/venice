@@ -3255,7 +3255,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(adminSpy, times(5)).getCurrentVersionsForMultiColos(clusterName, storeName);
   }
 
-  @Test
+  @Test(expectedExceptions = AdminMessageConsumptionTimeoutException.class)
   public void testDeleteStoreAdminMessageTimeout() {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
 
