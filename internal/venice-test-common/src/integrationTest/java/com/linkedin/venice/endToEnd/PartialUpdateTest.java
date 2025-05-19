@@ -2329,7 +2329,6 @@ public class PartialUpdateTest {
       VeniceSystemFactory factory = new VeniceSystemFactory();
       Version.PushType pushType = Version.PushType.BATCH;
       Map<String, String> samzaConfig = getSamzaProducerConfig(veniceClusterWrapper, storeName, pushType);
-      // final boolean veniceAggregate = config.getBoolean(prefix + VENICE_AGGREGATE, false);
       samzaConfig.put("systems.venice." + VENICE_AGGREGATE, "true");
       samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
       samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);

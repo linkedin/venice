@@ -1413,12 +1413,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
-    sendPushJobDetailsToLocalRT(key, value);
     if (isParent()) {
       String lastDualWriteError = "";
       for (Map.Entry<String, ControllerClient> entry: getControllerClientMap(getPushJobStatusStoreClusterName())
           .entrySet()) {
-        LOGGER.info("Sending push job details: {} to region: {} for: {}", value, entry.getKey(), key);
+        LOGGER.info(
+            "Sending controller request to send push job details: {} to region: {} for: {}",
+            value,
+            entry.getKey(),
+            key);
         ControllerResponse response = entry.getValue()
             .sendPushJobDetails(
                 key.storeName.toString(),
@@ -1438,7 +1441,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       }
       throw new VeniceException(
-          "Unable to dual write push job details to any child region with last error:" + lastDualWriteError);
+          "Unable to write push job details to any child region with last error:" + lastDualWriteError);
+    } else {
+      LOGGER.info("Sending push job details: {} for: {}", value, key);
+      sendPushJobDetailsToLocalRT(key, value);
     }
   }
 

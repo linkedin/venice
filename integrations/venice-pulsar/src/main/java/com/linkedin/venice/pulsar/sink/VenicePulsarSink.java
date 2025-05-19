@@ -4,7 +4,6 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CONTROLLER_DISCOVERY_URL;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_ROUTER_URL;
@@ -237,7 +236,6 @@ public class VenicePulsarSink implements Sink<GenericObject> {
     String configPrefix = SYSTEMS_PREFIX + systemName + DOT;
     config.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.INCREMENTAL.toString());
     config.put(configPrefix + VENICE_STORE, veniceCfg.getStoreName());
-    config.put(configPrefix + VENICE_AGGREGATE, "false");
 
     config.put("venice.discover.urls", veniceCfg.getVeniceDiscoveryUrl());
     config.put(VENICE_CONTROLLER_DISCOVERY_URL, veniceCfg.getVeniceDiscoveryUrl());

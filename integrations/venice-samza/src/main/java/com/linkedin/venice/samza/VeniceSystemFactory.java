@@ -75,10 +75,6 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   /**
    * Whether to leverage Venice aggregation.
    * By default, it is 'false'.
-   *
-   * When the Samza application decides to leverage Venice aggregation, all the messages
-   * will be produced to Venice Parent cluster, otherwise, all the messages will be produced
-   * to local cluster.
    */
   public static final String VENICE_AGGREGATE = "aggregate";
 

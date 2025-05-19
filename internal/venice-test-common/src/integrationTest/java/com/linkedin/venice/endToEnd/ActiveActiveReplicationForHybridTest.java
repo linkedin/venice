@@ -16,7 +16,6 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
@@ -358,7 +357,6 @@ public class ActiveActiveReplicationForHybridTest {
           String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
           samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
           samzaConfig.put(configPrefix + VENICE_STORE, storeName);
-          samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
           samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDataCenter.getZkServerWrapper().getAddress());
           samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
           samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());

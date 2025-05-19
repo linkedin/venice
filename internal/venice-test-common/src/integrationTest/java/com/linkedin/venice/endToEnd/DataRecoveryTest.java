@@ -15,7 +15,6 @@ import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARE
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
@@ -323,7 +322,6 @@ public class DataRecoveryTest {
       String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
       samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
       samzaConfig.put(configPrefix + VENICE_STORE, storeName);
-      samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
       samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
       samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
       samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentControllers.get(0).getZkAddress());
