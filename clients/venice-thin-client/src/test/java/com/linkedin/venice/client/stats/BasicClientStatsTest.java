@@ -275,21 +275,16 @@ public class BasicClientStatsTest {
             "key_count",
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
-            "Count of keys during response handling along with response codes",
-            Utils.setOf(
-                VENICE_STORE_NAME,
-                VENICE_REQUEST_METHOD,
-                HTTP_RESPONSE_STATUS_CODE,
-                HTTP_RESPONSE_STATUS_CODE_CATEGORY,
-                VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+            "Count of keys for venice client request and response",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)));
     expectedMetrics.put(
         BasicClientStats.BasicClientMetricEntity.KEY_COUNT_DVC,
         new MetricEntity(
             "key_count",
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
-            "Count of keys for all DaVinci Client responses",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+            "Count of keys for all DaVinci Client request and response",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)));
 
     Set<String> uniqueMetricEntitiesNames = new HashSet<>();
     for (BasicClientStats.BasicClientMetricEntity metric: BasicClientStats.BasicClientMetricEntity.values()) {
