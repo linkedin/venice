@@ -10,6 +10,8 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEV
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.pubsub.PubSubConstants.getPubsubOffsetApiTimeoutDurationDefaultValue;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
@@ -190,17 +192,31 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       Integer upstreamPartition) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
-      VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
-      if (!versionSwap.isRepush) {
-        // Clean up all local data and seek existing
-        storageMetadataService.clearStoreVersionState(localStateTopicName);
-        this.storageService.cleanupAllStores(this.configLoader);
-        seekToBeginningOfPush(Collections.singleton(pubSubTopicPartition.getPartitionNumber()));
+      try {
+        VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
+        if (!versionSwap.isRepush) {
+          // Clean up all local data and seek existing
+          storageMetadataService.clearStoreVersionState(localStateTopicName);
+          this.storageService.cleanupAllStores(this.configLoader);
+          seekToBeginningOfPush(Collections.singleton(pubSubTopicPartition.getPartitionNumber()));
+        }
+
+        if (changeCaptureStats != null) {
+          changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
+        }
+        return true;
+      } catch (Exception error) {
+        LOGGER.error(
+            "Version Swap failed when switching to topic: {} for partition: {}",
+            pubSubTopicPartition.getTopicName(),
+            pubSubTopicPartition.getPartitionNumber());
+
+        if (changeCaptureStats != null) {
+          changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
+        }
+        throw error;
       }
-
-      return true;
     }
-
     return false;
   }
 

@@ -8,6 +8,8 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -703,11 +705,19 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       messagesMap = pubSubConsumer.poll(timeoutInMs);
     } catch (Exception e) {
       LOGGER.error("Error polling records with exception:", e);
+      if (changeCaptureStats != null) {
+        changeCaptureStats.emitPollCallCountMetrics(FAIL);
+      }
     } finally {
       if (lockAcquired) {
         subscriptionLock.writeLock().unlock();
       }
     }
+
+    if (changeCaptureStats != null) {
+      changeCaptureStats.emitPollCallCountMetrics(SUCCESS);
+    }
+
     for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messagesMap.entrySet()) {
       PubSubTopicPartition pubSubTopicPartition = entry.getKey();
       List<DefaultPubSubMessage> messageList = entry.getValue();
@@ -743,7 +753,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
     }
     if (changeCaptureStats != null) {
-      changeCaptureStats.recordRecordsConsumed(pubSubMessages.size());
+      changeCaptureStats.emitRecordsConsumedCountMetrics(pubSubMessages.size());
     }
     if (changelogClientConfig.shouldCompactMessages()) {
       Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
@@ -899,18 +909,37 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         compressor = compressorMap.get(pubSubTopicPartition.getPartitionNumber());
       }
 
-      ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
-          pubSubTopicPartition,
-          put.getSchemaId(),
-          keyBytes,
-          put.getPutValue(),
-          message.getPosition().getNumericOffset(),
-          compressor);
-      if (assembledRecord == null) {
-        // bufferAndAssembleRecord may have only buffered records and not returned anything yet because
-        // it's waiting for more input. In this case, just return an empty optional for now.
-        return Optional.empty();
+      ByteBufferValueRecord<ByteBuffer> assembledRecord;
+      try {
+        assembledRecord = chunkAssembler.bufferAndAssembleRecord(
+            pubSubTopicPartition,
+            put.getSchemaId(),
+            keyBytes,
+            put.getPutValue(),
+            message.getPosition().getNumericOffset(),
+            compressor);
+
+        if (changeCaptureStats != null && chunkAssembler.isChunkedRecord(put.getSchemaId())) {
+          changeCaptureStats.emitChunkedRecordCountMetrics(SUCCESS);
+        }
+
+        if (assembledRecord == null) {
+          // bufferAndAssembleRecord may have only buffered records and not returned anything yet because
+          // it's waiting for more input. In this case, just return an empty optional for now.
+          return Optional.empty();
+        }
+      } catch (Exception exception) {
+        LOGGER.error(
+            "Encountered an exception when processing a record in ChunkAssembler for topic: {} and partition: {}",
+            pubSubTopicPartition.getTopicName(),
+            pubSubTopicPartition.getPartitionNumber());
+
+        if (changeCaptureStats != null && chunkAssembler.isChunkedRecord(put.getSchemaId())) {
+          changeCaptureStats.emitChunkedRecordCountMetrics(FAIL);
+        }
+        throw exception;
       }
+
       if (readerSchemaId < 0) {
         // This was a chunk manifest and the actual writer schema needs to be retrieved
         readerSchemaId = assembledRecord.writerSchemaId();
@@ -1032,40 +1061,59 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       Integer upstreamPartition) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
-      VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
-      LOGGER.info(
-          "Obtain version swap message: {} and versions swap high watermarks: {} for: {}",
-          versionSwap,
-          versionSwap.getLocalHighWatermarks(),
-          pubSubTopicPartition);
-      PubSubTopic newServingVersionTopic =
-          pubSubTopicRepository.getTopic(versionSwap.newServingVersionTopic.toString());
+      try {
+        VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
+        LOGGER.info(
+            "Obtain version swap message: {} and versions swap high watermarks: {} for: {}",
+            versionSwap,
+            versionSwap.getLocalHighWatermarks(),
+            pubSubTopicPartition);
+        PubSubTopic newServingVersionTopic =
+            pubSubTopicRepository.getTopic(versionSwap.newServingVersionTopic.toString());
 
-      // TODO: There seems to exist a condition in the server where highwatermark offsets may regress when transmitting
-      // the version swap message
-      // it seems like this can potentially happen if a repush occurs and no data is consumed on that previous version.
-      // To make the client
-      // handle this gracefully, we instate the below condition that says the hwm in the client should never go
-      // backwards.
-      List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
-          .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
-          .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);
-      // safety checks
-      if (localOffset == null) {
-        localOffset = new ArrayList<>();
-      }
-      List<Long> highWatermarkOffsets = versionSwap.localHighWatermarks == null
-          ? new ArrayList<>()
-          : new ArrayList<>(versionSwap.getLocalHighWatermarks());
-      if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
+        // TODO: There seems to exist a condition in the server where highwatermark offsets may regress when
+        // transmitting
+        // the version swap message
+        // it seems like this can potentially happen if a repush occurs and no data is consumed on that previous
+        // version.
+        // To make the client
+        // handle this gracefully, we instate the below condition that says the hwm in the client should never go
+        // backwards.
+        List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
+            .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
+            .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);
+        // safety checks
+        if (localOffset == null) {
+          localOffset = new ArrayList<>();
+        }
+        List<Long> highWatermarkOffsets = versionSwap.localHighWatermarks == null
+            ? new ArrayList<>()
+            : new ArrayList<>(versionSwap.getLocalHighWatermarks());
+        if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
 
-        currentVersionHighWatermarks.putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
-        currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
-            .put(upstreamPartition, highWatermarkOffsets);
+          currentVersionHighWatermarks
+              .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
+          currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
+              .put(upstreamPartition, highWatermarkOffsets);
+        }
+        switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
+        chunkAssembler.clearBuffer();
+
+        if (changeCaptureStats != null) {
+          changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
+        }
+        return true;
+      } catch (Exception exception) {
+        LOGGER.error(
+            "Version Swap failed when switching to topic: {} for partition: {}",
+            pubSubTopicPartition.getTopicName(),
+            pubSubTopicPartition.getPartitionNumber());
+
+        if (changeCaptureStats != null) {
+          changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
+        }
+        throw exception;
       }
-      switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
-      chunkAssembler.clearBuffer();
-      return true;
     }
     return false;
   }
@@ -1267,8 +1315,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
 
       // Record max and min consumed versions
-      changeCaptureStats.recordMaximumConsumingVersion(maxVersion);
-      changeCaptureStats.recordMinimumConsumingVersion(minVersion);
+      changeCaptureStats.emitCurrentConsumingVersionMetrics(minVersion, maxVersion);
     }
   }
 }

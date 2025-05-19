@@ -10,8 +10,10 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
+import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
@@ -19,10 +21,10 @@ import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.metrics.MetricsRepository;
-import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.Max;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -41,11 +43,12 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   private final MetricEntityStateBase heartBeatDelayMetric;
-
-  private final Sensor recordsConsumed;
-  private final Sensor maximumConsumingVersion;
-
-  private final Sensor minimumConsumingVersion;
+  private final MetricEntityStateBase minimumConsumingVersionMetric;
+  private final MetricEntityStateBase maximumConsumingVersionMetric;
+  private final MetricEntityStateBase recordsConsumedCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> pollCallCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordCountMetric;
 
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final boolean emitOpenTelemetryMetrics;
@@ -85,32 +88,92 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         baseDimensionsMap,
         baseAttributes);
 
-    recordsConsumed = registerSensor("records_consumed", new Avg(), new Max());
-    maximumConsumingVersion = registerSensor("maximum_consuming_version", new Gauge());
-    minimumConsumingVersion = registerSensor("minimum_consuming_version", new Gauge());
+    minimumConsumingVersionMetric = MetricEntityStateBase.create(
+        BasicConsumerMetricEntity.CURRENT_CONSUMING_VERSION.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        BasicConsumerTehutiMetricName.MAXIMUM_CONSUMING_VERSION,
+        Collections.singletonList(new Gauge()),
+        baseDimensionsMap,
+        baseAttributes);
+
+    maximumConsumingVersionMetric = MetricEntityStateBase.create(
+        BasicConsumerMetricEntity.CURRENT_CONSUMING_VERSION.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        BasicConsumerTehutiMetricName.MAXIMUM_CONSUMING_VERSION,
+        Collections.singletonList(new Gauge()),
+        baseDimensionsMap,
+        baseAttributes);
+
+    recordsConsumedCountMetric = MetricEntityStateBase.create(
+        BasicConsumerMetricEntity.RECORDS_CONSUMED_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        BasicConsumerTehutiMetricName.RECORDS_CONSUMED,
+        Arrays.asList(new Avg(), new Max()),
+        baseDimensionsMap,
+        baseAttributes);
+
+    pollCallCountMetric = MetricEntityStateOneEnum.create(
+        BasicConsumerMetricEntity.POLL_CALL_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        BasicConsumerTehutiMetricName.POLL_CALL_COUNT,
+        Collections.singletonList(new Avg()),
+        baseDimensionsMap,
+        VeniceResponseStatusCategory.class);
+
+    versionSwapCountMetric = MetricEntityStateOneEnum.create(
+        BasicConsumerMetricEntity.VERSION_SWAP_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        BasicConsumerTehutiMetricName.VERSION_SWAP_COUNT,
+        Collections.singletonList(new Avg()),
+        baseDimensionsMap,
+        VeniceResponseStatusCategory.class);
+
+    chunkedRecordCountMetric = MetricEntityStateOneEnum.create(
+        BasicConsumerMetricEntity.CHUNKED_RECORD_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        BasicConsumerTehutiMetricName.CHUNKED_RECORD_COUNT,
+        Collections.singletonList(new Avg()),
+        baseDimensionsMap,
+        VeniceResponseStatusCategory.class);
   }
 
-  public void recordMaximumConsumingVersion(int version) {
-    maximumConsumingVersion.record(version);
+  public void emitCurrentConsumingVersionMetrics(int minVersion, int maxVersion) {
+    minimumConsumingVersionMetric.record(minVersion);
+    maximumConsumingVersionMetric.record(maxVersion);
   }
 
-  public void recordMinimumConsumingVersion(int version) {
-    minimumConsumingVersion.record(version);
-  }
-
-  public void emitHeartBeatDelayMetrics(Long heartBeatDelay) {
+  public void emitHeartBeatDelayMetrics(long heartBeatDelay) {
     heartBeatDelayMetric.record(heartBeatDelay);
   }
 
-  public void recordRecordsConsumed(int count) {
-    recordsConsumed.record(count);
+  public void emitRecordsConsumedCountMetrics(int count) {
+    recordsConsumedCountMetric.record(count);
+  }
+
+  public void emitPollCallCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
+    pollCallCountMetric.record(1, responseStatusCategory);
+  }
+
+  public void emitVersionSwapCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
+    versionSwapCountMetric.record(1, responseStatusCategory);
+  }
+
+  public void emitChunkedRecordCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
+    chunkedRecordCountMetric.record(1, responseStatusCategory);
   }
 
   /**
    * Metric names for tehuti metrics used in this class.
    */
   public enum BasicConsumerTehutiMetricName implements TehutiMetricNameEnum {
-    MAX_PARTITION_LAG, RECORDS_CONSUMED, MAXIMUM_CONSUMING_VERSION, MINIMUM_CONSUMING_VERSION;
+    MAX_PARTITION_LAG, RECORDS_CONSUMED, MAXIMUM_CONSUMING_VERSION, MINIMUM_CONSUMING_VERSION, POLL_CALL_COUNT,
+    VERSION_SWAP_COUNT, CHUNKED_RECORD_COUNT;
 
     private final String metricName;
 
@@ -160,10 +223,10 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     ),
     /**
-     * Measures the count of chunks consumed
+     * Measures the count of chunked records consumed
      */
-    RECORD_CHUNK_COUNT(
-        MetricType.COUNTER, MetricUnit.NUMBER, "Measures the count of chunks consumed",
+    CHUNKED_RECORD_COUNT(
+        MetricType.COUNTER, MetricUnit.NUMBER, "Measures the count of chunked records consumed",
         setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     );
 

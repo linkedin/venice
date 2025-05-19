@@ -654,8 +654,7 @@ public class VeniceChangelogConsumerImplTest {
     topicPartitionSet.add(new PubSubTopicPartitionImpl(oldVersionTopic, 1));
 
     reporterThread.recordStats(lastHeartbeat, consumerStats, topicPartitionSet);
-    Mockito.verify(consumerStats).recordMaximumConsumingVersion(1);
-    Mockito.verify(consumerStats).recordMinimumConsumingVersion(1);
+    Mockito.verify(consumerStats).emitCurrentConsumingVersionMetrics(1, 1);
 
     reporterThread.start();
     reporterThread.interrupt();
