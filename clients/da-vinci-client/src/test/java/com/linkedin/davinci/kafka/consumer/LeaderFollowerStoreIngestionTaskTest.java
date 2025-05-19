@@ -482,10 +482,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
     DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
     LeaderProducedRecordContext context = mock(LeaderProducedRecordContext.class);
-    PubSubPosition position = mock(PubSubPosition.class);
+    PubSubPosition positionMock = mock(PubSubPosition.class);
+    doReturn(positionMock).when(context).getConsumedPosition();
     doReturn(partition).when(mockTopicPartition).getPartitionNumber();
-    doReturn(offset).when(position).getNumericOffset();
-    doReturn(position).when(mockMessage).getPosition();
+    doReturn(offset).when(positionMock).getNumericOffset();
+    doReturn(positionMock).when(mockMessage).getPosition();
     doReturn(mockTopicPartition).when(mockMessage).getTopicPartition();
     doReturn(messageTime).when(mockMessage).getPubSubMessageTime();
     VeniceWriter mockWriter = mock(VeniceWriter.class);

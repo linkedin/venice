@@ -1,6 +1,7 @@
 package com.linkedin.venice.memory;
 
 import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.kafka.consumer.LeaderProducedRecordContext;
 import com.linkedin.davinci.kafka.consumer.SBSQueueNodeFactory;
@@ -15,6 +16,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
@@ -119,9 +121,10 @@ public class InstanceSizeEstimatorTest extends HeapSizeEstimatorTest {
       }
     }
 
+    PubSubPosition consumedPositionMock = mock(PubSubPosition.class);
     int kafkaClusterId = 0;
-    Supplier<LeaderProducedRecordContext> leaderProducedRecordContextSupplierForPut =
-        () -> LeaderProducedRecordContext.newPutRecord(kafkaClusterId, 0, new byte[10], vtPutSupplier.get());
+    Supplier<LeaderProducedRecordContext> leaderProducedRecordContextSupplierForPut = () -> LeaderProducedRecordContext
+        .newPutRecord(kafkaClusterId, consumedPositionMock, new byte[10], vtPutSupplier.get());
     List<Supplier<LeaderProducedRecordContext>> leaderProducedRecordContextSuppliers = new ArrayList<>();
     leaderProducedRecordContextSuppliers.add(leaderProducedRecordContextSupplierForPut);
 

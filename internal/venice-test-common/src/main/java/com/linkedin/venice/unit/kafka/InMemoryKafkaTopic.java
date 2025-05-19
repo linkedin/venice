@@ -29,10 +29,11 @@ class InMemoryKafkaTopic {
    * @return the offset of the produced message
    * @throws IllegalArgumentException if the partition does not exist
    */
-  synchronized long produce(int partition, InMemoryKafkaMessage message) throws IllegalArgumentException {
+  synchronized InMemoryPubSubPosition produce(int partition, InMemoryKafkaMessage message)
+      throws IllegalArgumentException {
     checkPartitionCount(partition);
     ArrayList<InMemoryKafkaMessage> partitionQueue = partitions[partition];
-    long nextOffset = partitionQueue.size();
+    InMemoryPubSubPosition nextOffset = new InMemoryPubSubPosition(partitionQueue.size());
     partitionQueue.add(message);
     return nextOffset;
   }

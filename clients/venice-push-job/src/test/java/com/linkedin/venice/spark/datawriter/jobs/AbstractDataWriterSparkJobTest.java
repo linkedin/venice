@@ -83,6 +83,7 @@ public class AbstractDataWriterSparkJobTest {
     File inputDir = TestWriteUtils.getTempDataDirectory();
     Schema dataSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir);
     PushJobSetting setting = getDefaultPushJobSetting(inputDir, dataSchema);
+    setting.replicationMetadataSchemaString = "";
     Properties properties = new Properties();
     try (DataWriterComputeJob computeJob = new InvalidKeySchemaDataWriterSparkJob()) {
       computeJob.configure(new VeniceProperties(properties), setting);

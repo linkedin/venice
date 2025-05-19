@@ -48,4 +48,14 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
       StreamingCallback<GenericRecord, GenericRecord> callback) {
     throw new VeniceClientException("ComputeWithKeyPrefixFilter is not supported by Venice Avro Store Client");
   }
+
+  /**
+   * This method is mainly for internal use.
+   * The default {#start()} method will not throw an exception if the client fails to start since it is a best
+   * effort to make it compatible with the existing usage of the client (customers can trigger the start() method
+   * even before the dependency is ready).
+   * This method is mainly used to the internal startupAware callback, and it will indicate the startup failure
+   * by throwing an exception.
+   */
+  public abstract void startWithExceptionThrownWhenFail();
 }

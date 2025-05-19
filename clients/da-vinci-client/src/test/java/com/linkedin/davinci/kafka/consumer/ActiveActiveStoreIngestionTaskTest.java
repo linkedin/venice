@@ -392,10 +392,11 @@ public class ActiveActiveStoreIngestionTaskTest {
     updatedPut.replicationMetadataVersionId = rmdProtocolVersionID;
     updatedPut.replicationMetadataPayload = updatedRmdBytes;
     LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
-        .newPutRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), updatedKeyBytes, updatedPut);
+        .newPutRecord(kafkaClusterId, consumerRecord.getPosition(), updatedKeyBytes, updatedPut);
 
+    PubSubPosition consumedPositionMock = mock(PubSubPosition.class);
     PartitionConsumptionState.TransientRecord transientRecord =
-        new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, 0);
+        new PartitionConsumptionState.TransientRecord(new byte[] { 0xa }, 0, 0, 0, 0, consumedPositionMock);
 
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
     when(partitionConsumptionState.getTransientRecord(any())).thenReturn(transientRecord);

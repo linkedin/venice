@@ -1519,14 +1519,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // Leader will only update the offset from leaderProducedRecordContext in VT.
     if (leaderProducedRecordContext != null) {
       if (leaderProducedRecordContext.hasCorrespondingUpstreamMessage()) {
-        updateVersionTopicOffsetFunction.apply(leaderProducedRecordContext.getProducedOffset());
+        updateVersionTopicOffsetFunction.apply(leaderProducedRecordContext.getProducedPosition().getNumericOffset());
         OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
         PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
         if (upstreamTopic == null) {
           upstreamTopic = versionTopic;
         }
-        updateUpstreamTopicOffsetFunction
-            .apply(upstreamKafkaURL, upstreamTopic, leaderProducedRecordContext.getConsumedOffset());
+        updateUpstreamTopicOffsetFunction.apply(
+            upstreamKafkaURL,
+            upstreamTopic,
+            leaderProducedRecordContext.getConsumedPosition().getNumericOffset());
       }
     } else {
       // Ideally this should never happen.
@@ -2509,11 +2511,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         boolean producedFinally = true;
         ControlMessage controlMessage = (ControlMessage) kafkaValue.getPayloadUnion();
         ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
-        leaderProducedRecordContext = LeaderProducedRecordContext.newControlMessageRecord(
-            kafkaClusterId,
-            consumerRecord.getPosition().getNumericOffset(),
-            kafkaKey.getKey(),
-            controlMessage);
+        leaderProducedRecordContext = LeaderProducedRecordContext
+            .newControlMessageRecord(kafkaClusterId, consumerRecord.getPosition(), kafkaKey.getKey(), controlMessage);
         switch (controlMessageType) {
           case START_OF_PUSH:
             /**
@@ -3301,7 +3300,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (isTransientRecordBufferUsed(partitionConsumptionState)) {
           partitionConsumptionState.setTransientRecord(
               kafkaClusterId,
-              consumerRecord.getPosition().getNumericOffset(),
+              consumerRecord.getPosition(),
               keyBytes,
               putValue.array(),
               putValue.position(),
@@ -3391,7 +3390,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         } else {
           partitionConsumptionState.setTransientRecord(
               kafkaClusterId,
-              consumerRecord.getPosition().getNumericOffset(),
+              consumerRecord.getPosition(),
               keyBytes,
               updatedValueBytes,
               0,
@@ -3435,7 +3434,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          */
         if (isTransientRecordBufferUsed(partitionConsumptionState)) {
           partitionConsumptionState
-              .setTransientRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), keyBytes, -1, null);
+              .setTransientRecord(kafkaClusterId, consumerRecord.getPosition(), keyBytes, -1, null);
         }
         return new PubSubMessageProcessedResult(new WriteComputeResultWrapper(null, null, false, oldValueProvider));
 
@@ -3520,8 +3519,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     Put newPut = writeComputeResultWrapper.getNewPut();
     switch (msgType) {
       case PUT:
-        leaderProducedRecordContext = LeaderProducedRecordContext
-            .newPutRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), keyBytes, newPut);
+        leaderProducedRecordContext =
+            LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getPosition(), keyBytes, newPut);
         produceToLocalKafka(
             consumerRecord,
             partitionConsumptionState,
@@ -3571,8 +3570,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         break;
 
       case UPDATE:
-        leaderProducedRecordContext = LeaderProducedRecordContext
-            .newPutRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), keyBytes, newPut);
+        leaderProducedRecordContext =
+            LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getPosition(), keyBytes, newPut);
         BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction =
             (callback, leaderMetadataWrapper) -> partitionConsumptionState.getVeniceWriterLazyRef()
                 .get()
@@ -3599,11 +3598,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         break;
 
       case DELETE:
-        leaderProducedRecordContext = LeaderProducedRecordContext.newDeleteRecord(
-            kafkaClusterId,
-            consumerRecord.getPosition().getNumericOffset(),
-            keyBytes,
-            (Delete) kafkaValue.payloadUnion);
+        leaderProducedRecordContext = LeaderProducedRecordContext
+            .newDeleteRecord(kafkaClusterId, consumerRecord.getPosition(), keyBytes, (Delete) kafkaValue.payloadUnion);
         produceToLocalKafka(
             consumerRecord,
             partitionConsumptionState,
@@ -3771,7 +3767,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         divMessage,
         partitionConsumptionState,
         LeaderProducedRecordContext
-            .newPutRecord(context.getConsumedKafkaClusterId(), context.getConsumedOffset(), keyBytes, put),
+            .newPutRecord(context.getConsumedKafkaClusterId(), context.getConsumedPosition(), keyBytes, put),
         partition,
         brokerUrl,
         beforeProcessingRecordTimestampNs);

@@ -24,7 +24,6 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -486,8 +485,8 @@ public class TestStreaming {
               .setForceClusterDiscoveryAtStartTime(true));
       fail("An exception is expected here");
     } catch (Throwable t) {
-      if (!(t instanceof VeniceException) || !t.getMessage().contains("Failed to initializing Venice Client")) {
-        fail("Unexpected exception received: " + t.getClass());
+      if (!(t instanceof VeniceClientException) || !t.getMessage().contains("Failed to find d2 service")) {
+        fail("Unexpected exception received: " + t.getClass() + " with message: " + t.getMessage());
       }
     } finally {
       Utils.closeQuietlyWithErrorLogged(d2StoreClient);

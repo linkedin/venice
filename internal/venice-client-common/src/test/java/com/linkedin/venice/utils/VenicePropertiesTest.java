@@ -89,6 +89,16 @@ public class VenicePropertiesTest {
   }
 
   @Test
+  public void testGetOrDefaultString() {
+    Map<CharSequence, CharSequence> props = new HashMap<>();
+    props.put("Foo", "bar");
+    VeniceProperties veniceProperties = VeniceProperties.fromCharSequenceMap(props);
+
+    assertEquals(veniceProperties.getOrDefault("Foo", "yuck"), "bar");
+    assertEquals(veniceProperties.getOrDefault("Bar", "Foo"), "Foo");
+  }
+
+  @Test
   public void testClipAndFilterNamespaceSingleNamespace() {
     Map<CharSequence, CharSequence> props = new HashMap<>();
     props.put("kafka.key1", "value1");

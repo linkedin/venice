@@ -5,6 +5,7 @@ import com.linkedin.avroutil1.compatibility.AvroSchemaUtil;
 import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.input.recordreader.AbstractVeniceRecordReader;
 import com.linkedin.venice.writer.update.UpdateBuilder;
@@ -26,6 +27,7 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
 
   private final int keyFieldPos;
   private final int valueFieldPos;
+  private int timestampFieldPos;
   private final Schema valueSchema;
 
   private final boolean generatePartialUpdateRecordFromInput;
@@ -41,12 +43,25 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
       Schema dataSchema,
       String keyFieldStr,
       String valueFieldStr,
+      String timestampFieldStr,
       ETLValueSchemaTransformation etlValueSchemaTransformation,
       Schema updateSchema) {
     this.dataSchema = dataSchema;
     Schema.Field keyField = getField(dataSchema, keyFieldStr);
     keyFieldPos = keyField.pos();
     Schema keySchema = keyField.schema();
+
+    // The timestamp field is optional
+    if (!timestampFieldStr.isEmpty()) {
+      try {
+        Schema.Field timestampField = getField(dataSchema, timestampFieldStr);
+        timestampFieldPos = timestampField.pos();
+      } catch (VeniceSchemaFieldNotFoundException e) {
+        timestampFieldPos = -1;
+      }
+    } else {
+      timestampFieldPos = -1;
+    }
 
     Schema outputSchema;
     if (!etlValueSchemaTransformation.equals(ETLValueSchemaTransformation.NONE)) {
@@ -127,6 +142,21 @@ public abstract class AbstractAvroRecordReader<INPUT_KEY, INPUT_VALUE>
     }
 
     return keyDatum;
+  }
+
+  @Override
+  public Long getRecordTimestamp(INPUT_KEY inputKey, INPUT_VALUE inputValue) {
+    if (timestampFieldPos == -1) {
+      return -1L;
+    }
+
+    Object timestampDatum = getRecordDatum(inputKey, inputValue).get(timestampFieldPos);
+    if (!(timestampDatum instanceof Long)) {
+      throw new VeniceInvalidInputException(
+          "Timestamp must be non null and of type long!!  Instead got:" + timestampDatum);
+    }
+
+    return (Long) timestampDatum;
   }
 
   @Override

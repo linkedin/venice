@@ -33,19 +33,18 @@ public class DuplicatingPollStrategy extends AbstractPollStrategy {
       return null;
     }
 
-    PubSubTopicPartition PubSubTopicPartition = nextPoll.getPubSubTopicPartition();
+    PubSubTopicPartition topicPartition = nextPoll.getPubSubTopicPartition();
     long offset = nextPoll.getOffset();
-    offset += getAmountOfDupes(PubSubTopicPartition);
+    offset += getAmountOfDupes(topicPartition);
 
-    PubSubTopicPartitionOffset nextPollWithAdjustedOffset =
-        new PubSubTopicPartitionOffset(PubSubTopicPartition, offset);
+    PubSubTopicPartitionOffset nextPollWithAdjustedOffset = new PubSubTopicPartitionOffset(topicPartition, offset);
 
     if (PubSubTopicPartitionOffsetsToDuplicate.contains(nextPoll)) {
-      if (!amountOfIntroducedDupes.containsKey(PubSubTopicPartition)) {
-        amountOfIntroducedDupes.put(PubSubTopicPartition, 0L);
+      if (!amountOfIntroducedDupes.containsKey(topicPartition)) {
+        amountOfIntroducedDupes.put(topicPartition, 0L);
       }
-      long previousAmountOfDupes = getAmountOfDupes(PubSubTopicPartition);
-      amountOfIntroducedDupes.put(PubSubTopicPartition, previousAmountOfDupes + 1);
+      long previousAmountOfDupes = getAmountOfDupes(topicPartition);
+      amountOfIntroducedDupes.put(topicPartition, previousAmountOfDupes + 1);
       PubSubTopicPartitionOffsetsToDuplicate.remove(nextPoll);
     }
 

@@ -42,6 +42,7 @@ import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -391,11 +392,15 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     reducer.configure(setupJobConf(100));
 
     reducer.reduce(keyWritable1, values1.iterator(), mockCollector, mockReporter);
-    PubSubProduceResult produceResult1 = new SimplePubSubProduceResultImpl("topic-name", TASK_ID, 1, 1);
+    PubSubPosition pubSubPosition1Mock = mock(PubSubPosition.class);
+    PubSubProduceResult produceResult1 =
+        new SimplePubSubProduceResultImpl("topic-name", TASK_ID, pubSubPosition1Mock, 1);
     reducer.getCallback().onCompletion(produceResult1, null);
 
     reducer.reduce(keyWritable2, values2.iterator(), mockCollector, mockReporter);
-    PubSubProduceResult produceResult2 = new SimplePubSubProduceResultImpl("topic-name", TASK_ID, 2, 1);
+    PubSubPosition pubSubPosition2Mock = mock(PubSubPosition.class);
+    PubSubProduceResult produceResult2 =
+        new SimplePubSubProduceResultImpl("topic-name", TASK_ID, pubSubPosition2Mock, 1);
     reducer.getCallback().onCompletion(produceResult2, null);
 
     reducer.close();
@@ -523,6 +528,18 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
       }
 
       @Override
+      public CompletableFuture<PubSubProduceResult> put(
+          Object key,
+          Object value,
+          int valueSchemaId,
+          long logicalTimestamp,
+          PubSubProducerCallback callback,
+          PutMetadata putMetadata) {
+        callback.onCompletion(null, new VeniceException("Fake exception"));
+        return null;
+      }
+
+      @Override
       public CompletableFuture<PubSubProduceResult> delete(
           Object key,
           PubSubProducerCallback callback,
@@ -579,6 +596,18 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
           Object key,
           Object value,
           int valueSchemaId,
+          PubSubProducerCallback callback,
+          PutMetadata putMetadata) {
+        callback.onCompletion(null, new VeniceException("Some writer exception"));
+        return null;
+      }
+
+      @Override
+      public CompletableFuture<PubSubProduceResult> put(
+          Object key,
+          Object value,
+          int valueSchemaId,
+          long logicalTimestamp,
           PubSubProducerCallback callback,
           PutMetadata putMetadata) {
         callback.onCompletion(null, new VeniceException("Some writer exception"));
