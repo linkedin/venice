@@ -852,9 +852,7 @@ public class VenicePushJob implements AutoCloseable {
         } else if (e instanceof VeniceInvalidInputException) {
           /**
            * We use {@link PushJobCheckpoints.INVALID_INPUT_FILE} for the scenario where the input
-           * data path contains no data as well in the avro flow. Note this is at the beginning of data input
-           * validation flow as opposed to the later stages where certain stage can genuinely have no data as part
-           * of its input
+           * data path contains no data as well in the avro flow.
            */
           updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
         }

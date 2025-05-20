@@ -106,8 +106,7 @@ public class TestDefaultInputDataInfoProvider {
     VeniceProperties props = VeniceProperties.empty();
     try (DefaultInputDataInfoProvider provider = new DefaultInputDataInfoProvider(pushJobSetting, props)) {
       File inputDir = getTempDataDirectory();
-      InputDataInfoProvider.InputDataInfo inputDataInfo =
-          provider.validateInputAndGetInfo("file://" + inputDir.getAbsolutePath());
+      provider.validateInputAndGetInfo("file://" + inputDir.getAbsolutePath());
     }
   }
 }
