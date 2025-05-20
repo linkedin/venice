@@ -302,6 +302,11 @@ public class VeniceMetricsConfig {
       return this;
     }
 
+    public Builder setOtelHeaders(Map<String, String> otelHeaders) {
+      this.otelHeaders = otelHeaders;
+      return this;
+    }
+
     /**
      * Extract and set otel configs
      */
