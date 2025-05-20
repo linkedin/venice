@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.logcompaction;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
@@ -11,8 +12,10 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -28,11 +31,16 @@ public class CompactionManager {
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
 
   private final RepushOrchestrator repushOrchestrator;
-  private final long timeSinceLastLogCompactionThresholdMs;
+  private final long timeSinceLastLogCompactionThreshold;
+  private Map<String, LogCompactionStats> statsMap = new HashMap<>();
 
-  public CompactionManager(RepushOrchestrator repushOrchestrator, long timeSinceLastLogCompactionThresholdMs) {
+  public CompactionManager(
+      RepushOrchestrator repushOrchestrator,
+      long timeSinceLastLogCompactionThreshold,
+      Map<String, LogCompactionStats> statsMap) {
     this.repushOrchestrator = repushOrchestrator;
-    this.timeSinceLastLogCompactionThresholdMs = timeSinceLastLogCompactionThresholdMs;
+    this.timeSinceLastLogCompactionThreshold = timeSinceLastLogCompactionThreshold;
+    this.statsMap = statsMap;
   }
 
   /**
@@ -55,13 +63,20 @@ public class CompactionManager {
     }
 
     // filter for stores ready for log compaction
-    return filterStoresForCompaction(storeInfoList);
+    return filterStoresForCompaction(storeInfoList, clusterName);
   }
 
   // public for testing
   @VisibleForTesting
-  List<StoreInfo> filterStoresForCompaction(List<StoreInfo> storeInfoList) {
-    return storeInfoList.stream().filter(this::isCompactionReady).collect(Collectors.toList());
+  List<StoreInfo> filterStoresForCompaction(List<StoreInfo> storeInfoList, String clusterName) {
+    List<StoreInfo> storesReadyForCompaction = new ArrayList<>();
+    for (StoreInfo storeInfo: storeInfoList) {
+      if (isCompactionReady(storeInfo)) {
+        storesReadyForCompaction.add(storeInfo);
+        // TODO: emit metric to record which stores are nominated for compaction
+      }
+    }
+    return storesReadyForCompaction;
   }
 
   /**
@@ -73,8 +88,7 @@ public class CompactionManager {
   //
   public boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
-
-    return isHybridStore && isLastCompactionTimeOlderThanThreshold(timeSinceLastLogCompactionThresholdMs, storeInfo);
+    return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(timeSinceLastLogCompactionThreshold, storeInfo);
   }
 
   /**
