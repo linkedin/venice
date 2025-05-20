@@ -1279,7 +1279,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   /**
    * Process {@link TopicSwitch} control message at given partition offset for a specific {@link PartitionConsumptionState}.
-   * Return whether we need to execute additional ready-to-serve check after this message is processed.
    */
   @Override
   protected void processTopicSwitch(
@@ -2141,7 +2140,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // if lag is acceptable and is a hybrid standby or DaVinciClient: check and
     // override it based on leader follower state
-    if (isLagAcceptable && isHybridFollower && getServerConfig().isLeaderCompleteStateCheckInFollowerEnabled()) {
+    if (isLagAcceptable && isHybridFollower) {
       isLagAcceptable = pcs.isLeaderCompleted()
           && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
               .getLeaderCompleteStateCheckInFollowerValidIntervalMs());

@@ -1123,7 +1123,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   /**
    * Process {@link TopicSwitch} control message at given partition offset for a specific {@link PartitionConsumptionState}.
-   * Return whether we need to execute additional ready-to-serve check after this message is processed.
    */
   @Override
   protected void processTopicSwitch(

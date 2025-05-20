@@ -73,10 +73,10 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   public static final String VENICE_STORE = "store";
 
   /**
-   * Whether to leverage Venice aggregation.
-   * By default, it is 'false'.
+   * Whether to talk to parent region controller.
+   * By default, it is 'false'. This will should only be set to true when using non-STREAM push type in multi-region setup.
    */
-  public static final String VENICE_AGGREGATE = "aggregate";
+  public static final String VENICE_USE_PARENT_REGION_CONTROLLER = "aggregate";
 
   /**
    * D2 ZK hosts for Venice Child Cluster.
@@ -300,7 +300,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   public SystemProducer getProducer(
       String systemName,
       String storeName,
-      boolean veniceAggregate,
+      boolean useParentRegionController,
       String pushTypeString,
       Config config) {
     if (isEmpty(storeName)) {
@@ -352,7 +352,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
 
       LOGGER.info("Configs for {} producer: ", systemName);
       LOGGER.info("{}{}: {}", prefix, VENICE_STORE, storeName);
-      LOGGER.info("{}{}: {}", prefix, VENICE_AGGREGATE, veniceAggregate);
+      LOGGER.info("{}{}: {}", prefix, VENICE_USE_PARENT_REGION_CONTROLLER, useParentRegionController);
       LOGGER.info("{}{}: {}", prefix, VENICE_PUSH_TYPE, venicePushType);
       LOGGER.info("{}: {}", VENICE_CONTROLLER_DISCOVERY_URL, discoveryUrl.get());
       LOGGER.info("{}: {}", VENICE_ROUTER_URL, routerUrl);
@@ -406,7 +406,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
 
     LOGGER.info("Configs for {} producer: ", systemName);
     LOGGER.info("{}{}: {}", prefix, VENICE_STORE, storeName);
-    LOGGER.info("{}{}: {}", prefix, VENICE_AGGREGATE, veniceAggregate);
+    LOGGER.info("{}{}: {}", prefix, VENICE_USE_PARENT_REGION_CONTROLLER, useParentRegionController);
     LOGGER.info("{}{}: {}", prefix, VENICE_PUSH_TYPE, venicePushType);
     LOGGER.info("{}: {}", VENICE_PARENT_D2_ZK_HOSTS, veniceParentZKHosts);
     LOGGER.info("{}: {}", VENICE_CHILD_D2_ZK_HOSTS, localVeniceZKHosts);
@@ -415,7 +415,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
 
     String primaryControllerColoD2ZKHost;
     String primaryControllerD2Service;
-    if (veniceAggregate) {
+    if (useParentRegionController) {
       primaryControllerColoD2ZKHost = veniceParentZKHosts;
       primaryControllerD2Service = parentControllerD2Service;
     } else {
@@ -453,9 +453,9 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   public SystemProducer getProducer(String systemName, Config config, MetricsRegistry registry) {
     final String prefix = SYSTEMS_PREFIX + systemName + DOT;
     final String storeName = config.get(prefix + VENICE_STORE);
-    final boolean veniceAggregate = config.getBoolean(prefix + VENICE_AGGREGATE, false);
+    final boolean useParentRegionController = config.getBoolean(prefix + VENICE_USE_PARENT_REGION_CONTROLLER, false);
     final String pushTypeString = config.get(prefix + VENICE_PUSH_TYPE);
-    return getProducer(systemName, storeName, veniceAggregate, pushTypeString, config);
+    return getProducer(systemName, storeName, useParentRegionController, pushTypeString, config);
   }
 
   /**

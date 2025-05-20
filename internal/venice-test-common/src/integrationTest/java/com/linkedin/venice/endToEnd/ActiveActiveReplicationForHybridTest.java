@@ -175,7 +175,7 @@ public class ActiveActiveReplicationForHybridTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testEnableActiveActiveReplicationForCluster() {
     String storeName1 = Utils.getUniqueString("test-batch-store");
-    String storeName2 = Utils.getUniqueString("test-hybrid-non-agg-store");
+    String storeName2 = Utils.getUniqueString("test-hybrid-store");
     try {
       createAndVerifyStoreInAllRegions(storeName1, parentControllerClient, dcControllerClientList);
       createAndVerifyStoreInAllRegions(storeName2, parentControllerClient, dcControllerClientList);

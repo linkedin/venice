@@ -5,7 +5,6 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDB
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.AAConfig.AA_OFF;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.AAConfig.AA_ON;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.HybridConfig.HYBRID;
-import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.LeaderCompleteCheck.LEADER_COMPLETE_CHECK_ON;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.DA_VINCI;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.FOLLOWER;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.LEADER;
@@ -23,7 +22,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAF
 import static com.linkedin.venice.ConfigKeys.SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
-import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
@@ -136,7 +134,6 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataRecoveryVersionConfig;
 import com.linkedin.venice.meta.DataRecoveryVersionConfigImpl;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -314,8 +311,7 @@ public abstract class StoreIngestionTaskTest {
 
   @DataProvider
   public static Object[][] nodeTypeAndAAConfigAndDRPProvider() {
-    return DataProviderUtils
-        .allPermutationGenerator(NodeType.values(), AAConfig.values(), DataReplicationPolicy.values());
+    return DataProviderUtils.allPermutationGenerator(NodeType.values(), AAConfig.values());
   }
 
   @DataProvider
@@ -3135,7 +3131,7 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test(dataProvider = "nodeTypeAndAAConfigAndDRPProvider")
-  public void testIsReadyToServe(NodeType nodeType, AAConfig aaConfig, DataReplicationPolicy dataReplicationPolicy) {
+  public void testIsReadyToServe(NodeType nodeType, AAConfig aaConfig) {
     int partitionCount = 2;
 
     VenicePartitioner partitioner = getVenicePartitioner(); // Only get base venice partitioner
@@ -3159,7 +3155,6 @@ public abstract class StoreIngestionTaskTest {
     Map<String, Object> extraServerProperties = new HashMap<>();
     extraServerProperties.put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000L);
     extraServerProperties.put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, 5000L);
-    extraServerProperties.put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED, true);
 
     StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
         new RandomPollStrategy(),
@@ -3475,25 +3470,17 @@ public abstract class StoreIngestionTaskTest {
 
   @DataProvider
   public static Object[][] testCheckAndLogIfLagIsAcceptableForHybridStoreProvider() {
-    return DataProviderUtils.allPermutationGenerator(
-        LagType.values(),
-        new NodeType[] { DA_VINCI, FOLLOWER },
-        AAConfig.values(),
-        LeaderCompleteCheck.values());
+    return DataProviderUtils
+        .allPermutationGenerator(LagType.values(), new NodeType[] { DA_VINCI, FOLLOWER }, AAConfig.values());
   }
 
   /**
    * @param lagType N.B. this only affects cosmetic logging details at the level where we mock it
    * @param nodeType Can be either DVC or follower
    * @param aaConfig AA on/off
-   * @param leaderCompleteCheck Whether followers/DVC should wait for the leader to be complete
    */
   @Test(dataProvider = "testCheckAndLogIfLagIsAcceptableForHybridStoreProvider")
-  public void testCheckAndLogIfLagIsAcceptableForHybridStore(
-      LagType lagType,
-      NodeType nodeType,
-      AAConfig aaConfig,
-      LeaderCompleteCheck leaderCompleteCheck) {
+  public void testCheckAndLogIfLagIsAcceptableForHybridStore(LagType lagType, NodeType nodeType, AAConfig aaConfig) {
     int partitionCount = 2;
     VenicePartitioner partitioner = getVenicePartitioner();
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
@@ -3516,8 +3503,6 @@ public abstract class StoreIngestionTaskTest {
     Map<String, Object> serverProperties = new HashMap<>();
     serverProperties.put(SERVER_INGESTION_HEARTBEAT_INTERVAL_MS, 5000L);
     serverProperties.put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, 5000L);
-    serverProperties
-        .put(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED, leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON);
 
     StoreIngestionTaskFactory ingestionTaskFactory = getIngestionTaskFactoryBuilder(
         new RandomPollStrategy(),
@@ -3594,14 +3579,13 @@ public abstract class StoreIngestionTaskTest {
 
     // Case 4: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     doReturn(STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
-    assertEquals(
+    assertFalse(
         storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
             mockPartitionConsumptionState,
             offsetLag,
             offsetThreshold,
             false,
-            lagType),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON));
+            lagType));
 
     // Case 5: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and leaderCompleteState is LEADER_COMPLETED and last update time is within threshold
@@ -3621,26 +3605,24 @@ public abstract class StoreIngestionTaskTest {
     // and leaderCompleteState is LEADER_COMPLETED and last update time is more than threshold
     doReturn(System.currentTimeMillis() - 6000).when(mockPartitionConsumptionState)
         .getLastLeaderCompleteStateUpdateInMs();
-    assertEquals(
+    assertFalse(
         storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
             mockPartitionConsumptionState,
             offsetLag,
             offsetThreshold,
             false,
-            lagType),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON));
+            lagType));
 
     // Case 7: offsetLag <= offsetThreshold and instance is a standby or DaVinciClient
     // and leaderCompleteState is LEADER_NOT_COMPLETED and leader is not completed
     doReturn(LEADER_NOT_COMPLETED).when(mockPartitionConsumptionState).getLeaderCompleteState();
-    assertEquals(
+    assertFalse(
         storeIngestionTaskUnderTest.checkAndLogIfLagIsAcceptableForHybridStore(
             mockPartitionConsumptionState,
             offsetLag,
             offsetThreshold,
             false,
-            lagType),
-        !(leaderCompleteCheck == LEADER_COMPLETE_CHECK_ON));
+            lagType));
   }
 
   @DataProvider
