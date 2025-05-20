@@ -91,9 +91,8 @@ public class LogCompactionService extends AbstractVeniceService {
     private void compactStoresInClusters() {
       for (String clusterName: clusters) {
         if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionSchedulingEnabled()) {
-          int maxRepushes =
+          int repushesRemaining =
               multiClusterConfigs.getControllerConfig(clusterName).getLogCompactionMaxRepushPerCompactionCycle();
-          int repushCount = 0;
           for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
             try {
               RepushJobResponse response =
@@ -111,7 +110,7 @@ public class LogCompactionService extends AbstractVeniceService {
                   e);
               // TODO LC: add metrics for log compaction failures
             }
-            if (++repushCount >= maxRepushes) {
+            if (--repushesRemaining <= 0) {
               break;
             }
           }
