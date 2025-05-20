@@ -5248,7 +5248,6 @@ public class VeniceParentHelixAdmin implements Admin {
     // what's been passed in (parent getting a request for a repush in a child colo should forward that along) OR the
     // parent should just abort the request and return an error.
     try {
-      System.out.println("VeniceParentHelixAdmin::repushStore()");
       RepushJobResponse response = veniceHelixAdmin.repushStore(repushJobRequest);
       logCompactionStatsMap.get(repushJobRequest.getClusterName())
           .recordRepushStoreCall(
