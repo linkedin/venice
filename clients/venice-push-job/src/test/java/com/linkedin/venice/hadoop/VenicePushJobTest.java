@@ -39,7 +39,6 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
@@ -292,7 +291,7 @@ public class VenicePushJobTest {
     Properties props = getVpjRequiredProperties();
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
-    props.put(DATA_WRITER_COMPUTE_JOB_CLASS, dataWriterJobClass.getName());
+    props.put(DATA_WRITER_COMPUTE_JOB_CLASS, dataWriterJobClass.getCanonicalName());
     ControllerClient client = getClient();
     JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
     doReturn("UNKNOWN").when(response).getStatus();
@@ -313,8 +312,8 @@ public class VenicePushJobTest {
       } catch (VeniceException e) {
         Assert.assertTrue(e.getMessage().contains("push job is still in unknown state."));
       }
-      verify(pushJob, atLeast(1)).cancel();
-      verify(pushJob, atLeast(1)).killDataWriterJob();
+      verify(pushJob, times(1)).cancel();
+      verify(pushJob, times(2)).killDataWriterJob();
     }
   }
 
@@ -348,7 +347,7 @@ public class VenicePushJobTest {
       /*
        * 1. Data writer job starts and status is set to RUNNING.
        * 2. Timeout thread kills the data writer job and status is set to KILLED.
-       * The latch is used to stall the validateJob() method until the data writer job is killed.
+       * The latch is used to stall the runComputeJob() method until the data writer job is killed.
        */
       Answer<Void> stallDataWriterJob = invocation -> {
         // At this point, the data writer job status is already set to RUNNING.
@@ -379,8 +378,8 @@ public class VenicePushJobTest {
       } catch (VeniceException e) {
         // Expected, because the data writer job is not configured to run successfully in this unit test environment
       }
-      verify(pushJob, atLeast(1)).cancel();
-      verify(pushJob, atLeast(1)).killDataWriterJob();
+      verify(pushJob, times(1)).cancel();
+      verify(pushJob, times(2)).killDataWriterJob();
       assertEquals(pushJob.getDataWriterComputeJob().getStatus(), DataWriterComputeJob.Status.KILLED);
     }
   }
