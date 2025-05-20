@@ -27,6 +27,7 @@ import org.testng.annotations.Test;
 
 public class TestCompactionManager {
   private static final long TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD = 24; // 24 hours ago
+  private static final String TEST_CLUSTER_NAME = "test-cluster";
   private CompactionManager testCompactionManager;
   private RepushOrchestrator mockRepushOrchestrator;
 
@@ -110,7 +111,7 @@ public class TestCompactionManager {
 
     // Create a RepushJobRequest
     RepushJobRequest repushJobRequest =
-        new RepushJobRequest(Utils.getUniqueString("store"), RepushJobRequest.MANUAL_TRIGGER);
+        new RepushJobRequest(TEST_CLUSTER_NAME, Utils.getUniqueString("store"), RepushJobRequest.MANUAL_TRIGGER);
 
     // Call the repushStore method and expect a VeniceException
     testCompactionManager.repushStore(repushJobRequest);

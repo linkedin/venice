@@ -8312,7 +8312,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public List<StoreInfo> getStoresForCompaction(String clusterName) {
-    Assert.isTrue(multiClusterConfigs.isLogCompactionEnabled(), "Log compaction is not enabled for this cluster!");
+    Assert.isTrue(
+        multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled(),
+        "Log compaction is not enabled for this cluster!");
     try {
       Map<String, ControllerClient> childControllers = getControllerClientMap(clusterName);
       return compactionManager.getStoresForCompaction(clusterName, childControllers);
@@ -8331,7 +8333,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception {
-    Assert.isTrue(multiClusterConfigs.isLogCompactionEnabled(), "Log compaction is not enabled for this cluster!");
+    Assert.isTrue(
+        multiClusterConfigs.getControllerConfig(repushJobRequest.getClusterName()).isLogCompactionEnabled(),
+        "Log compaction is not enabled for this cluster!");
     try {
       return compactionManager.repushStore(repushJobRequest);
     } catch (Exception e) {
