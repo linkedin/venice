@@ -217,7 +217,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.expectedChecksumSupplier = Optional.empty();
     this.rocksDBThrottler = rocksDbThrottler;
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeNameAndVersion, partitionId);
-    this.fullPathForPartitionDBSnapshot = RocksDBUtils.composeSnapshotDir(dbDir, storeNameAndVersion, partitionId);
+    this.fullPathForPartitionDBSnapshot =
+        blobTransferEnabled ? RocksDBUtils.composeSnapshotDir(dbDir, storeNameAndVersion, partitionId) : null;
 
     if (deferredWrite) {
       this.rocksDBSstFileWriter = new RocksDBSstFileWriter(
@@ -354,6 +355,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   protected EnvOptions getEnvOptions() {
     return envOptions;
+  }
+
+  protected Boolean getBlobTransferEnabled() {
+    return blobTransferEnabled;
   }
 
   protected Options getStoreOptions(StoragePartitionConfig storagePartitionConfig, boolean isRMD) {
@@ -513,7 +518,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void createSnapshot() {
-    createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
+    if (blobTransferEnabled) {
+      createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
+    }
   }
 
   @Override
