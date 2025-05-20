@@ -1099,8 +1099,8 @@ public class RocksDBStoragePartitionTest {
     }
   }
 
-  @Test
-  public void testCreateSnapshot() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testCreateSnapshot(boolean blobTransferEnabled) {
     String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
@@ -1115,6 +1115,9 @@ public class RocksDBStoragePartitionTest {
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
     VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
+
+    // Set the blob transfer enabled flag
+    storeConfig.setBlobTransferEnabled(blobTransferEnabled);
 
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
@@ -1132,8 +1135,13 @@ public class RocksDBStoragePartitionTest {
             return null;
           });
       storagePartition.createSnapshot();
-
-      rocksDBStoragePartition.verify(() -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any()));
+      if (blobTransferEnabled) {
+        rocksDBStoragePartition
+            .verify(() -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any()), Mockito.times(1));
+      } else {
+        rocksDBStoragePartition
+            .verify(() -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any()), Mockito.never());
+      }
     }
 
     if (storagePartition != null) {

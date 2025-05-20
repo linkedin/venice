@@ -1034,6 +1034,7 @@ public abstract class StoreIngestionTaskTest {
     } else {
       mockDeepCopyStorageEngine = spy(new DeepCopyStorageEngine(mockAbstractStorageEngine));
       doReturn(mockDeepCopyStorageEngine).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
+      doNothing().when(mockDeepCopyStorageEngine).createSnapshot(any());
     }
 
     inMemoryLocalKafkaConsumer =
