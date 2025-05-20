@@ -1028,9 +1028,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             shouldLogLag,
             HEARTBEAT_LAG);
       } else {
-        /**
-         * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
-         */
         long offsetThreshold = getOffsetToOnlineLagThresholdPerPartition(hybridStoreConfig, storeName, partitionCount);
         if (offsetThreshold >= 0) {
           isLagAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(

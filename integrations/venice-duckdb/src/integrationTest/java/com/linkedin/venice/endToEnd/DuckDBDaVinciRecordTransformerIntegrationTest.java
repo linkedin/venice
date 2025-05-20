@@ -44,10 +44,10 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.producer.online.OnlineProducerFactory;
 import com.linkedin.venice.producer.online.OnlineVeniceProducer;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -258,7 +258,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
   private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
     long vpjStart = System.currentTimeMillis();
     String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
-    TestWriteUtils.runPushJob(jobName, vpjProperties);
+    IntegrationTestPushUtils.runVPJ(vpjProperties);
     String storeName = (String) vpjProperties.get(VENICE_STORE_NAME_PROP);
     cluster.waitVersion(storeName, expectedVersionNumber);
     LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));

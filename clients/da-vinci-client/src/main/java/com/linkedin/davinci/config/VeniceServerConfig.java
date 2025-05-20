@@ -970,7 +970,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     nonExistingTopicCheckRetryIntervalSecond =
         serverProperties.getInt(SERVER_NON_EXISTING_TOPIC_CHECK_RETRY_INTERNAL_SECOND, 60); // 1min
     leaderCompleteStateCheckInFollowerEnabled =
-        serverProperties.getBoolean(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED, false);
+        serverProperties.getBoolean(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED, true);
     leaderCompleteStateCheckInFollowerValidIntervalMs = serverProperties
         .getLong(SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS, TimeUnit.MINUTES.toMillis(5));
     dedicatedConsumerPoolForAAWCLeaderEnabled =

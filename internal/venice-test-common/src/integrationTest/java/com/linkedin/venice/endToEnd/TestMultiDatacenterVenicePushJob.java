@@ -93,7 +93,7 @@ public class TestMultiDatacenterVenicePushJob {
         NAME_RECORD_V3_SCHEMA.toString(),
         props,
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT)).close();
-    TestWriteUtils.runPushJob("Test push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
       Assert.assertEquals(parentControllerClient.getStore(storeName).getStore().getVersions().size(), 1);
       for (ControllerClient childControllerClient: childControllerClients) {
@@ -121,7 +121,7 @@ public class TestMultiDatacenterVenicePushJob {
             .setHybridRewindSeconds(1000)
             .setActiveActiveReplicationEnabled(true)
             .setHybridOffsetLagThreshold(1000)).close();
-    TestWriteUtils.runPushJob("Test push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
       Assert.assertEquals(parentControllerClient.getStore(storeName).getStore().getVersions().size(), 1);
       Assert.assertNotNull(parentControllerClient.getStore(storeName).getStore().getHybridStoreConfig());

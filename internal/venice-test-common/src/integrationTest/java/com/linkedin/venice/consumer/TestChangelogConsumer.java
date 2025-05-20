@@ -10,7 +10,6 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithLogicalTimestamp;
@@ -64,6 +63,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -96,7 +96,6 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.avro.util.Utf8;
-import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -210,11 +209,9 @@ public class TestChangelogConsumer {
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
 
     // Write Records to the store for version v1, the push job will contain 100 records.
-    TestWriteUtils.runPushJob("Run push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
 
     // Write Records from nearline
-    Map<String, String> samzaConfig = getSamzaProducerConfig(childDatacenters, 0, storeName);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
 
@@ -251,8 +248,7 @@ public class TestChangelogConsumer {
     // in a loop, write a push job, then write some stream data, then poll data with versionTopicConsumer
     for (int i = 0; i < 10; i++) {
       try (VeniceSystemProducer veniceProducer =
-          factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-        veniceProducer.start();
+          IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
         // Run Samza job to send PUT and DELETE requests.
         runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
         // Produce a DELETE record with large timestamp
@@ -260,7 +256,7 @@ public class TestChangelogConsumer {
       }
 
       // run push job
-      TestWriteUtils.runPushJob("Run push job", props);
+      IntegrationTestPushUtils.runVPJ(props);
 
       // Assert the push has gone through
       int expectedVersion = i + 2;
@@ -361,11 +357,8 @@ public class TestChangelogConsumer {
     });
 
     // Write Records to the store for version v1, the push job will contain 100 records.
-    TestWriteUtils.runPushJob("Run push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
 
-    // Write Records from nearline
-    Map<String, String> samzaConfig = getSamzaProducerConfig(childDatacenters, 0, storeName);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
 
@@ -423,9 +416,8 @@ public class TestChangelogConsumer {
     VeniceChangelogConsumer<Utf8, Utf8> veniceChangelogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
     veniceChangelogConsumer.subscribeAll().get();
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
       // Run Samza job to send PUT and DELETE requests.
       runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100);
       // Produce a DELETE record with large timestamp
@@ -502,7 +494,7 @@ public class TestChangelogConsumer {
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     // intentionally stop re-consuming from RT so stale records don't affect the testing results
     props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
-    TestWriteUtils.runPushJob("Run repush job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     ControllerClient controllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     TestUtils.waitForNonDeterministicAssertion(
@@ -553,9 +545,8 @@ public class TestChangelogConsumer {
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
 
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
       // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with
       // larger timestamp
       sendStreamingRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 2, false);
@@ -605,9 +596,8 @@ public class TestChangelogConsumer {
     });
 
     // Write 20 records
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
       // run samza to stream put and delete
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
     }
@@ -629,7 +619,7 @@ public class TestChangelogConsumer {
      */
     // enable repush ttl
     props.setProperty(REPUSH_TTL_ENABLE, "true");
-    TestWriteUtils.runPushJob("Run repush job with TTL", props);
+    IntegrationTestPushUtils.runVPJ(props);
     TestUtils.waitForNonDeterministicAssertion(
         5,
         TimeUnit.SECONDS,
@@ -791,7 +781,7 @@ public class TestChangelogConsumer {
         5,
         controllerClient1 -> setupControllerClient.addValueSchema(storeName, NAME_RECORD_V1_SCHEMA.toString()));
 
-    TestWriteUtils.runPushJob("Run push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
     PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
     Properties consumerProperties = new Properties();
@@ -844,9 +834,8 @@ public class TestChangelogConsumer {
     genericRecordV2.put("lastName", "Spain");
 
     VeniceSystemFactory factory = new VeniceSystemFactory();
-    try (VeniceSystemProducer veniceProducer = factory
-        .getClosableProducer("venice", new MapConfig(getSamzaProducerConfig(childDatacenters, 0, storeName)), null)) {
-      veniceProducer.start();
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
       // Run Samza job to send PUT and DELETE requests.
       sendStreamingRecord(veniceProducer, storeName, Integer.toString(10000), genericRecord, null);
       sendStreamingRecord(veniceProducer, storeName, Integer.toString(10000), genericRecordV2, null);
@@ -907,7 +896,7 @@ public class TestChangelogConsumer {
           "Failed to add schema: " + schema.toString() + " to store " + storeName);
     }
 
-    TestWriteUtils.runPushJob("Run push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
     PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
     Properties consumerProperties = new Properties();
@@ -963,10 +952,8 @@ public class TestChangelogConsumer {
     genericRecordV2.put("firstName", "Barcelona");
     genericRecordV2.put("lastName", "Spain");
 
-    VeniceSystemFactory factory = new VeniceSystemFactory();
-    try (VeniceSystemProducer veniceProducer = factory
-        .getClosableProducer("venice", new MapConfig(getSamzaProducerConfig(childDatacenters, 0, storeName)), null)) {
-      veniceProducer.start();
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
       // Run Samza job to send PUT and DELETE requests.
       sendStreamingRecord(veniceProducer, storeName, Integer.toString(10000), genericRecord, null);
       sendStreamingRecord(veniceProducer, storeName, Integer.toString(10000), genericRecordV2, null);
