@@ -235,6 +235,11 @@
       "doc": "The last offset consumed successfully in this partition from the version topic. This is used during resubscription when the Global RT DIV feature is enabled.",
       "type": "long",
       "default": -1
+    }, {
+      "name": "heartbeatTimestamp",
+      "doc": "The most stale heartbeat timestamp among all the regions in this partition for fast online transition during server restart.",
+      "type": "long",
+      "default": -1
     }
   ]
 }
