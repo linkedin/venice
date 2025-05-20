@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller.logcompaction;
 
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
@@ -36,16 +36,16 @@ public class LogCompactionService extends AbstractVeniceService {
 
   private final Admin admin;
   private final String clusterName;
-  private final VeniceControllerMultiClusterConfig multiClusterConfigs;
+  private final VeniceControllerClusterConfig clusterConfigs;
   final ScheduledExecutorService executor;
 
-  public LogCompactionService(Admin admin, String clusterName, VeniceControllerMultiClusterConfig multiClusterConfigs) {
+  public LogCompactionService(Admin admin, String clusterName, VeniceControllerClusterConfig clusterConfigs) {
     this.admin = admin;
     this.clusterName = clusterName;
 
-    this.multiClusterConfigs = multiClusterConfigs;
+    this.clusterConfigs = clusterConfigs;
 
-    executor = Executors.newScheduledThreadPool(multiClusterConfigs.getLogCompactionThreadCount());
+    executor = Executors.newScheduledThreadPool(clusterConfigs.getLogCompactionThreadCount());
   }
 
   @Override
@@ -53,7 +53,7 @@ public class LogCompactionService extends AbstractVeniceService {
     executor.scheduleAtFixedRate(
         new LogCompactionTask(clusterName),
         PRE_EXECUTION_DELAY_MS,
-        multiClusterConfigs.getLogCompactionIntervalMS(),
+        clusterConfigs.getLogCompactionIntervalMS(),
         TimeUnit.MILLISECONDS);
     LOGGER.info("log compaction service is started");
     return true;
@@ -82,7 +82,7 @@ public class LogCompactionService extends AbstractVeniceService {
 
     @Override
     public void run() {
-      LogContext.setStructuredLogContext(multiClusterConfigs.getLogContext());
+      LogContext.setStructuredLogContext(clusterConfigs.getLogContext());
       try {
         compactStoresInClusters();
       } catch (Throwable e) {
@@ -91,7 +91,7 @@ public class LogCompactionService extends AbstractVeniceService {
     }
 
     private void compactStoresInClusters() {
-      if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionSchedulingEnabled()) {
+      if (clusterConfigs.isLogCompactionSchedulingEnabled()) {
         for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
           try {
             RepushJobResponse response =

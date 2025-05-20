@@ -230,7 +230,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
     }
 
     if (config.isParent() && config.isLogCompactionSchedulingEnabled()) {
-      this.logCompactionService = new LogCompactionService(admin, clusterName, admin.getMultiClusterConfigs());
+      this.logCompactionService = new LogCompactionService(admin, clusterName, config);
     } else {
       this.logCompactionService = null;
     }
