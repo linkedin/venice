@@ -15,6 +15,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Objects;
 import java.util.Properties;
 import javax.annotation.Nonnull;
+import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 
 
@@ -245,8 +246,26 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  /**
+   * If you're using the experimental client, and you want to deserialize your keys into
+   * {@link org.apache.avro.specific.SpecificRecord} thenr set this configuration.
+   */
+  public ChangelogClientConfig setSpecificKey(Class specificKey) {
+    this.innerClientConfig.setSpecificKeyClass(specificKey);
+    return this;
+  }
+
   public ChangelogClientConfig setSpecificValue(Class<T> specificValue) {
     this.innerClientConfig.setSpecificValueClass(specificValue);
+    return this;
+  }
+
+  /**
+   * If you're using the experimental client, and you want to deserialize your values into
+   * {@link org.apache.avro.specific.SpecificRecord} then set this configuration.
+   */
+  public ChangelogClientConfig setSpecificValueSchema(Schema specificValueSchema) {
+    this.innerClientConfig.setSpecificValueSchema(specificValueSchema);
     return this;
   }
 
@@ -280,7 +299,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setIsExperimentalClientEnabled(config.isExperimentalClientEnabled())
         .setMaxBufferSize(config.getMaxBufferSize())
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
-        .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords());
+        .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords())
+        .setInnerClientConfig(config.getInnerClientConfig());
     return newConfig;
   }
 
@@ -364,5 +384,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   protected PubSubTopicRepository getPubSubTopicRepository() {
     return pubSubTopicRepository;
+  }
+
+  private ChangelogClientConfig setInnerClientConfig(ClientConfig<T> innerClientConfig) {
+    this.innerClientConfig = innerClientConfig;
+    return this;
   }
 }
