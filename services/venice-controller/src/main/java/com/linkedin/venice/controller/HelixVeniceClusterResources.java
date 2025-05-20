@@ -68,13 +68,13 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final PushMonitorDelegator pushMonitor;
   private final LeakedPushStatusCleanUpService leakedPushStatusCleanUpService;
   private final ProtocolVersionAutoDetectionService protocolVersionAutoDetectionService;
+  private final LogCompactionService logCompactionService;
   private final ZkRoutersClusterManager routersClusterManager;
   private final AggPartitionHealthStats aggPartitionHealthStats;
   private final ZkStoreConfigAccessor storeConfigAccessor;
   private final Optional<DynamicAccessController> accessController;
   private final ExecutorService errorPartitionResetExecutorService = Executors.newSingleThreadExecutor();
   private final StoragePersonaRepository storagePersonaRepository;
-  private final LogCompactionService logCompactionService;
 
   private ErrorPartitionResetTask errorPartitionResetTask = null;
 
@@ -395,6 +395,28 @@ public class HelixVeniceClusterResources implements VeniceResource {
         protocolVersionAutoDetectionService.stop();
       } catch (Exception e) {
         LOGGER.error("Error when stopping protocol version auto detection service for cluster: {}", clusterName);
+      }
+    }
+  }
+
+  /**
+   * Cause {@link LogCompactionService} service to begin executing.
+   */
+  public void startLogCompactionService() {
+    if (logCompactionService != null) {
+      logCompactionService.start();
+    }
+  }
+
+  /**
+   * Cause {@link LogCompactionService} service to stop executing.
+   */
+  public void stopLogCompactionService() {
+    if (logCompactionService != null) {
+      try {
+        logCompactionService.stop();
+      } catch (Exception e) {
+        LOGGER.error("Error when stopping log compaction service for cluster: {}", clusterName);
       }
     }
   }

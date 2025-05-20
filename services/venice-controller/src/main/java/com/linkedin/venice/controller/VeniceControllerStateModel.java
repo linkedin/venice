@@ -260,6 +260,7 @@ public class VeniceControllerStateModel extends StateModel {
     clusterResources.startDeadStoreStatsPreFetchTask();
     clusterResources.startLeakedPushStatusCleanUpService();
     clusterResources.startProtocolVersionAutoDetectionService();
+    clusterResources.startLogCompactionService();
   }
 
   /**
@@ -372,6 +373,7 @@ public class VeniceControllerStateModel extends StateModel {
   private synchronized void clearResources() {
     if (clusterResources != null) {
       clusterResources.stopProtocolVersionAutoDetectionService();
+      clusterResources.stopLogCompactionService();
       /**
        * Leaked push status clean up service depends on VeniceHelixAdmin, so VeniceHelixAdmin should be stopped after
        * its dependent service.
