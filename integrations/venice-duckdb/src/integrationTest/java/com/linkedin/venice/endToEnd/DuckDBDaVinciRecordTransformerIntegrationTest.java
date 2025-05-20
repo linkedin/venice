@@ -257,7 +257,6 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
 
   private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
     long vpjStart = System.currentTimeMillis();
-    String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
     IntegrationTestPushUtils.runVPJ(vpjProperties);
     String storeName = (String) vpjProperties.get(VENICE_STORE_NAME_PROP);
     cluster.waitVersion(storeName, expectedVersionNumber);

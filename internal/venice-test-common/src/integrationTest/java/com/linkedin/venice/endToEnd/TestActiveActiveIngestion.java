@@ -45,7 +45,6 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
@@ -314,7 +313,6 @@ public class TestActiveActiveIngestion {
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     IntegrationTestPushUtils.runVPJ(props);
 
-    VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
     // Add a marker record to make sure we have consumed to all the RT record.

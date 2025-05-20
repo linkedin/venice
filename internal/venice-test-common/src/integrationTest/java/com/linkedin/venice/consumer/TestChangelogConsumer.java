@@ -61,7 +61,6 @@ import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
@@ -833,7 +832,6 @@ public class TestChangelogConsumer {
     genericRecordV2.put("firstName", "Barcelona");
     genericRecordV2.put("lastName", "Spain");
 
-    VeniceSystemFactory factory = new VeniceSystemFactory();
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
       // Run Samza job to send PUT and DELETE requests.
