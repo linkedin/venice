@@ -849,6 +849,12 @@ public class VenicePushJob implements AutoCloseable {
       try {
         if (e instanceof VeniceResourceAccessException) {
           updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.WRITE_ACL_FAILED);
+        } else if (e instanceof VeniceInvalidInputException) {
+          /**
+           * We use {@link PushJobCheckpoints.INVALID_INPUT_FILE} for the scenario where the input
+           * data path contains no data as well in the avro flow.
+           */
+          updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
         }
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
