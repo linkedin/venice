@@ -156,11 +156,28 @@ public class BasicClientStatsTest {
     Assert.assertFalse(metrics.get(".test_store--request.OccurrenceRate").value() > 0.0);
   }
 
+  @Test
+  public void testEmitRequestRetryMetrics() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    ClientStats stats = createClientStats(inMemoryMetricReader, THIN_CLIENT);
+    stats.recordRequestRetryCount();
+    Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+    Assert.assertTrue(metrics.get(".test_store--request_retry_count.OccurrenceRate").value() > 0);
+  }
+
   private BasicClientStats createStats(InMemoryMetricReader inMemoryMetricReader, ClientType clientType) {
     String storeName = "test_store";
     VeniceMetricsRepository metricsRepository =
         getVeniceMetricsRepository(clientType, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
     return BasicClientStats
+        .getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName), clientType);
+  }
+
+  private ClientStats createClientStats(InMemoryMetricReader inMemoryMetricReader, ClientType clientType) {
+    String storeName = "test_store";
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepository(clientType, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
+    return ClientStats
         .getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName), clientType);
   }
 

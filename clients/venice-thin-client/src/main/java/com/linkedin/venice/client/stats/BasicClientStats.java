@@ -34,6 +34,8 @@ import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -61,7 +63,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
 
   private static final MetricsRepository dummySystemStoreMetricRepo = new MetricsRepository();
 
-  private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
+  protected final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   private final Sensor requestSensor; // will be a derived metric in otel: healthy + unhealthy
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyRequestMetric;
@@ -78,9 +80,11 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   private final Sensor successRequestKeyRatioSensor;
   private final Rate requestRate = new OccurrenceRate();
   private final Rate successRequestKeyCountRate = new Rate();
-  private final VeniceOpenTelemetryMetricsRepository otelRepository;
+  protected final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final boolean emitOpenTelemetryMetrics;
-  private final ClientType clientType;
+  protected final ClientType clientType;
+
+  protected final Attributes baseAttributes;
 
   public static BasicClientStats getClientStats(
       MetricsRepository metricsRepository,
@@ -113,14 +117,23 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         baseDimensionsMap = new HashMap<>();
         baseDimensionsMap.put(VENICE_STORE_NAME, storeName);
         baseDimensionsMap.put(VENICE_REQUEST_METHOD, requestType.getDimensionValue());
+
+        // build base attributes.
+        AttributesBuilder baseAttributesBuilder = Attributes.builder();
+        baseAttributesBuilder.put(otelRepository.getDimensionName(VENICE_STORE_NAME), storeName);
+        baseAttributesBuilder
+            .put(otelRepository.getDimensionName(VENICE_REQUEST_METHOD), requestType.getDimensionValue());
+        baseAttributes = baseAttributesBuilder.build();
       } else {
         otelRepository = null;
         baseDimensionsMap = null;
+        baseAttributes = null;
       }
     } else {
       emitOpenTelemetryMetrics = false;
       otelRepository = null;
       baseDimensionsMap = null;
+      baseAttributes = null;
     }
 
     // QPS

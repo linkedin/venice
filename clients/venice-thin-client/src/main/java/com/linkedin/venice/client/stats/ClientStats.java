@@ -1,9 +1,13 @@
 package com.linkedin.venice.client.stats;
 
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_COUNT;
+import static com.linkedin.venice.client.stats.ClientTehutiMetricName.REQUEST_RETRY_COUNT;
+
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -12,12 +16,12 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
+import java.util.Collections;
 import java.util.Map;
 
 
 public class ClientStats extends BasicClientStats {
   private final Map<Integer, Sensor> httpStatusSensorMap = new VeniceConcurrentHashMap<>();
-  private final Sensor requestRetryCountSensor;
   private final Sensor successRequestDuplicateKeyCountSensor;
   private final Sensor requestSerializationTime;
   private final Sensor requestSubmissionToResponseHandlingTime;
@@ -38,6 +42,8 @@ public class ClientStats extends BasicClientStats {
    * Tracks the number of keys handled via MultiGet fallback mechanism for Client-Compute.
    */
   private final Sensor multiGetFallbackSensor;
+
+  private MetricEntityStateBase requestRetry;
 
   public static ClientStats getClientStats(
       MetricsRepository metricsRepository,
@@ -63,7 +69,14 @@ public class ClientStats extends BasicClientStats {
      */
     Rate requestRetryCountRate = new OccurrenceRate();
 
-    requestRetryCountSensor = registerSensor("request_retry_count", requestRetryCountRate);
+    requestRetry = MetricEntityStateBase.create(
+        RETRY_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        REQUEST_RETRY_COUNT,
+        Collections.singletonList(requestRetryCountRate),
+        baseDimensionsMap,
+        baseAttributes);
 
     successRequestDuplicateKeyCountSensor = registerSensor("success_request_duplicate_key_count", new Rate());
     /**
@@ -130,7 +143,10 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordRequestRetryCount() {
-    requestRetryCountSensor.record();
+    // This is only for thin-client. For fast client, the retry count is derived from long tail retry and error retry.
+    if (clientType == ClientType.THIN_CLIENT) {
+      requestRetry.record(1);
+    }
   }
 
   public void recordSuccessDuplicateRequestKeyCount(int duplicateKeyCount) {
