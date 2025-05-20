@@ -73,6 +73,7 @@ import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.AddVersionLatencyStats;
 import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -269,6 +270,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
@@ -631,7 +633,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         new DataRecoveryManager(this, icProvider, pubSubTopicRepository, participantStoreClientsManager);
 
     if (multiClusterConfigs.isLogCompactionEnabled()) {
-      // TODO LC: extends interchangeable with implements?
       Class<? extends RepushOrchestrator> repushOrchestratorClass =
           ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
       try {
@@ -639,8 +640,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             repushOrchestratorClass,
             new Class[] { VeniceProperties.class },
             new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
-        compactionManager =
-            new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
+        compactionManager = new CompactionManager(
+            repushOrchestrator,
+            multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS(),
+            multiClusterConfigs.getClusters()
+                .stream()
+                .collect(
+                    Collectors.toMap(
+                        Function.identity(),
+                        clusterName -> new LogCompactionStats(metricsRepository, clusterName))));
       } catch (Exception e) {
         LOGGER.error("Failed to enable " + LogCompactionService.class.getSimpleName(), e);
         throw new VeniceException(e);
