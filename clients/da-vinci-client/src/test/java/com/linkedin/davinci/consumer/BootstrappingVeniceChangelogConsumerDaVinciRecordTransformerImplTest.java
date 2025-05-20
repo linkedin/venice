@@ -44,6 +44,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
@@ -148,7 +149,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     Field isStartedField =
         BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("isStarted");
     isStartedField.setAccessible(true);
-    assertTrue((Boolean) isStartedField.get(bootstrappingVeniceChangelogConsumer), "isStarted should be true");
+    AtomicBoolean isStarted = (AtomicBoolean) isStartedField.get(bootstrappingVeniceChangelogConsumer);
+    assertTrue(isStarted.get(), "isStarted should be true");
 
     verify(mockDaVinciClient).start();
 
@@ -165,7 +167,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     Field isStartedField =
         BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("isStarted");
     isStartedField.setAccessible(true);
-    assertTrue((Boolean) isStartedField.get(bootstrappingVeniceChangelogConsumer), "isStarted should be true");
+    AtomicBoolean isStarted = (AtomicBoolean) isStartedField.get(bootstrappingVeniceChangelogConsumer);
+    assertTrue(isStarted.get(), "isStarted should be true");
 
     verify(mockDaVinciClient).start();
 
@@ -183,7 +186,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     Field isStartedField =
         BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("isStarted");
     isStartedField.setAccessible(true);
-    assertTrue((Boolean) isStartedField.get(bootstrappingVeniceChangelogConsumer), "isStarted should be true");
+    AtomicBoolean isStarted = (AtomicBoolean) isStartedField.get(bootstrappingVeniceChangelogConsumer);
+    assertTrue(isStarted.get(), "isStarted should be true");
 
     verify(mockDaVinciClient).start();
 
@@ -215,10 +219,12 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     Field isStartedField =
         BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class.getDeclaredField("isStarted");
     isStartedField.setAccessible(true);
-    assertTrue((Boolean) isStartedField.get(bootstrappingVeniceChangelogConsumer), "isStarted should be true");
+    AtomicBoolean isStarted = (AtomicBoolean) isStartedField.get(bootstrappingVeniceChangelogConsumer);
+    assertTrue(isStarted.get(), "isStarted should be true");
 
     bootstrappingVeniceChangelogConsumer.stop();
-    assertFalse((Boolean) isStartedField.get(bootstrappingVeniceChangelogConsumer), "isStarted should be false");
+    isStarted = (AtomicBoolean) isStartedField.get(bootstrappingVeniceChangelogConsumer);
+    assertFalse(isStarted.get(), "isStarted should be false");
 
     verify(daVinciClientFactoryMock).close();
   }
