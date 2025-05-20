@@ -4,6 +4,7 @@ import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
@@ -73,6 +74,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final Optional<DynamicAccessController> accessController;
   private final ExecutorService errorPartitionResetExecutorService = Executors.newSingleThreadExecutor();
   private final StoragePersonaRepository storagePersonaRepository;
+  private final LogCompactionService logCompactionService;
 
   private ErrorPartitionResetTask errorPartitionResetTask = null;
 
@@ -225,6 +227,12 @@ public class HelixVeniceClusterResources implements VeniceResource {
           config.getProtocolVersionAutoDetectionSleepMS());
     } else {
       this.protocolVersionAutoDetectionService = null;
+    }
+
+    if (config.isParent() && config.isLogCompactionSchedulingEnabled()) {
+      this.logCompactionService = new LogCompactionService(admin, clusterName, admin.getMultiClusterConfigs());
+    } else {
+      this.logCompactionService = null;
     }
 
     veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
