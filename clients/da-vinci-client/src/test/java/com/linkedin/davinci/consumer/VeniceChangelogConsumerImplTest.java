@@ -287,10 +287,11 @@ public class VeniceChangelogConsumerImplTest {
     topicPartitionList.add(partition1);
     topicPartitionList.add(partition2);
 
+    long offset = 1L;
     PubSubPosition aheadPosition = new PubSubPosition() {
       @Override
       public long getNumericOffset() {
-        return 2;
+        return offset + 1; // greater than 1
       }
 
       @Override
@@ -307,7 +308,7 @@ public class VeniceChangelogConsumerImplTest {
     PubSubPosition behindPosition = new PubSubPosition() {
       @Override
       public long getNumericOffset() {
-        return 1;
+        return offset;
       }
 
       @Override
@@ -336,7 +337,7 @@ public class VeniceChangelogConsumerImplTest {
     PubSubPosition newerAheadPosition = new PubSubPosition() {
       @Override
       public long getNumericOffset() {
-        return 3; // greater than 2
+        return offset + 2; // greater than 1
       }
 
       @Override
