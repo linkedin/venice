@@ -236,8 +236,8 @@
       "type": "long",
       "default": -1
     }, {
-      "name": "heartbeatLag",
-      "doc": "The last heartbeat lag in this partition for fast online transition in server restart.",
+      "name": "heartbeatTimestamp",
+      "doc": "The most stale heartbeat timestamp among all the regions in this partition for fast online transition during server restart.",
       "type": "long",
       "default": -1
     }
