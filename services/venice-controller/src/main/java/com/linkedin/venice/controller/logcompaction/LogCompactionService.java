@@ -91,24 +91,22 @@ public class LogCompactionService extends AbstractVeniceService {
     }
 
     private void compactStoresInClusters() {
-      if (clusterConfigs.isLogCompactionSchedulingEnabled()) {
-        for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
-          try {
-            RepushJobResponse response = admin.repushStore(
-                new RepushJobRequest(clusterName, storeInfo.getName(), RepushJobRequest.SCHEDULED_TRIGGER));
-            LOGGER.info(
-                "log compaction triggered for cluster: {} store: {} | execution ID: {}",
-                clusterName,
-                response.getName(),
-                response.getExecutionId());
-          } catch (Exception e) {
-            LOGGER.error(
-                "Error checking if store is ready for log compaction for cluster: {} store: {}",
-                clusterName,
-                storeInfo.getName(),
-                e);
-            // TODO LC: add metrics for log compaction failures
-          }
+      for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
+        try {
+          RepushJobResponse response = admin
+              .repushStore(new RepushJobRequest(clusterName, storeInfo.getName(), RepushJobRequest.SCHEDULED_TRIGGER));
+          LOGGER.info(
+              "log compaction triggered for cluster: {} store: {} | execution ID: {}",
+              clusterName,
+              response.getName(),
+              response.getExecutionId());
+        } catch (Exception e) {
+          LOGGER.error(
+              "Error checking if store is ready for log compaction for cluster: {} store: {}",
+              clusterName,
+              storeInfo.getName(),
+              e);
+          // TODO LC: add metrics for log compaction failures
         }
       }
     }
