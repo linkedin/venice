@@ -18,10 +18,6 @@ import java.util.Optional;
 
 
 public class BlobTransferNettyChannelInitializer extends ChannelInitializer<SocketChannel> {
-  private final String baseDir;
-  private final int blobTransferMaxTimeoutInMin;
-  private final int maxAllowedConcurrentSnapshotUsers;
-  private BlobSnapshotManager blobSnapshotManager;
   private Optional<SSLFactory> sslFactory;
   private Optional<BlobTransferAclHandler> aclHandler;
 
@@ -37,13 +33,9 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
       Optional<SSLFactory> sslFactory,
       Optional<BlobTransferAclHandler> aclHandler,
       int maxAllowedConcurrentSnapshotUsers) {
-    this.baseDir = baseDir;
-    this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
-    this.blobSnapshotManager = blobSnapshotManager;
     this.globalChannelTrafficShapingHandler = globalChannelTrafficShapingHandler;
     this.sslFactory = sslFactory;
     this.aclHandler = aclHandler;
-    this.maxAllowedConcurrentSnapshotUsers = maxAllowedConcurrentSnapshotUsers;
     this.p2pFileTransferServerHandler = new P2PFileTransferServerHandler(
         baseDir,
         blobTransferMaxTimeoutInMin,

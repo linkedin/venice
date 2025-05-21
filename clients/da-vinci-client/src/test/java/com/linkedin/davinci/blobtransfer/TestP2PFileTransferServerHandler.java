@@ -123,7 +123,6 @@ public class TestP2PFileTransferServerHandler {
     Files.createDirectories(snapshotDir);
     Path file1 = snapshotDir.resolve("file1");
     Files.write(file1.toAbsolutePath(), "hello".getBytes());
-    String file1ChecksumHeader = BlobTransferUtils.generateFileChecksum(file1);
     Mockito.doNothing().when(blobSnapshotManager).createSnapshot(Mockito.anyString(), Mockito.anyInt());
 
     // Send maxAllowedConcurrentSnapshotUsers + 1 requests
