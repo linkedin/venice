@@ -668,8 +668,7 @@ public class VenicePushJob implements AutoCloseable {
           pushJobSetting.storeName,
           pushJobSetting.clusterName);
 
-      long bootstrapToOnlineTimeoutInHours =
-          getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
+      long bootstrapToOnlineTimeoutInHours = getBootstrapToOnlineTimeoutInHours();
       timeoutExecutor.schedule(() -> {
         cancel();
         throw new VeniceException(
@@ -2643,6 +2642,12 @@ public class VenicePushJob implements AutoCloseable {
       throw new VeniceException("The push job is not initialized yet");
     }
     return getTopicToMonitor(this.pushJobSetting);
+  }
+
+  // Visible for testing
+  public long getBootstrapToOnlineTimeoutInHours() {
+    // getStoreResponse() is necessary because this is called at the very start of the job
+    return getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
   }
 
   private String getTopicToMonitor(PushJobSetting pushJobSetting) {
