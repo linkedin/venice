@@ -445,7 +445,8 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
-  public void testConsumeAfterImage() throws ExecutionException, InterruptedException {
+  public void testConsumeAfterImage()
+      throws ExecutionException, InterruptedException, NoSuchFieldException, IllegalAccessException {
     D2ControllerClient d2ControllerClient = mock(D2ControllerClient.class);
     StoreResponse storeResponse = mock(StoreResponse.class);
     StoreInfo storeInfo = mock(StoreInfo.class);
@@ -466,8 +467,15 @@ public class VeniceChangelogConsumerImplTest {
     PubSubTopic oldVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
     ChangelogClientConfig changelogClientConfig = getChangelogClientConfig(d2ControllerClient).setViewName("");
+    changelogClientConfig.getInnerClientConfig()
+        .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CLIENT_METRIC_ENTITIES, true));
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
+
+    BasicConsumerStats consumerStats = spy(veniceChangelogConsumer.getChangeCaptureStats());
+    Field changeCaptureStatsField = VeniceChangelogConsumerImpl.class.getDeclaredField("changeCaptureStats");
+    changeCaptureStatsField.setAccessible(true);
+    changeCaptureStatsField.set(veniceChangelogConsumer, consumerStats);
 
     NativeMetadataRepositoryViewAdapter mockRepository = mock(NativeMetadataRepositoryViewAdapter.class);
     Store store = mock(Store.class);
@@ -488,6 +496,10 @@ public class VeniceChangelogConsumerImplTest {
 
     List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
+
+    verify(consumerStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+    verify(consumerStats).emitRecordsConsumedCountMetrics(pubSubMessages.size());
+
     for (int i = 0; i < 5; i++) {
       PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i);
       Utf8 messageStr = pubSubMessage.getValue().getCurrentValue();
