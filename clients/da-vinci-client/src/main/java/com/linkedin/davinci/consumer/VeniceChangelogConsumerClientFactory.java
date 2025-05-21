@@ -66,14 +66,17 @@ public class VeniceChangelogConsumerClientFactory {
    * Creates a VeniceChangelogConsumer with consumer id. This is used to create multiple consumers so that
    * each consumer can only subscribe to certain partitions. Multiple such consumers can work in parallel.
    */
-  public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName, String consumerId, Class clazz) {
-    return getChangelogConsumer(storeName, consumerId, clazz, globalChangelogClientConfig.getViewName());
+  public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(
+      String storeName,
+      String consumerId,
+      Class<V> valueClass) {
+    return getChangelogConsumer(storeName, consumerId, valueClass, globalChangelogClientConfig.getViewName());
   }
 
   public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(
       String storeName,
       String consumerId,
-      Class clazz,
+      Class<V> valueClass,
       String viewNameOverride) {
     String adjustedConsumerId;
     if (!StringUtils.isEmpty(viewNameOverride)) {
@@ -87,7 +90,7 @@ public class VeniceChangelogConsumerClientFactory {
     }
     return storeClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, adjustedConsumerId), name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
-          getNewStoreChangelogClientConfig(storeName).setSpecificValue(clazz);
+          getNewStoreChangelogClientConfig(storeName).setSpecificValue(valueClass);
       newStoreChangelogClientConfig.setConsumerName(name);
       newStoreChangelogClientConfig.setViewName(viewNameOverride);
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
