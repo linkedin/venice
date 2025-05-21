@@ -260,6 +260,7 @@ public class VeniceControllerStateModel extends StateModel {
     clusterResources.startDeadStoreStatsPreFetchTask();
     clusterResources.startLeakedPushStatusCleanUpService();
     clusterResources.startProtocolVersionAutoDetectionService();
+    clusterResources.startMultiTaskSchedulerService();
   }
 
   /**

@@ -2711,7 +2711,6 @@ public class ConfigKeys {
    * If enabled, the controller's get dead store endpoint will be enabled.
    */
   public static final String CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED = "controller.dead.store.endpoint.enabled";
-
   /**
    * (Only matters if CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED true). Class name of {@link com.linkedin.venice.controller.stats.DeadStoreStats} implementation
    */
@@ -2769,4 +2768,17 @@ public class ConfigKeys {
    */
   public static final String SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED =
       "server.use.heartbeat.lag.for.ready.to.serve.check.enabled";
+
+  /**
+   * If enabled, the parent-controller's multitask scheduler service would be enabled
+   */
+  public static final String MULTITASK_SCHEDULER_SERVICE_ENABLED = "multitask.scheduler.service.enabled";
+  /**
+   * (Only matters if MULTITASK_SCHEDULER_SERVICE_ENABLED true). Class name of {@link com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService} implementation
+   */
+  public static final String STORE_MIGRATION_THREAD_POOL_SIZE = "store.migration.thread.pool.size";
+  /**
+   * (Only matters if MULTITASK_SCHEDULER_SERVICE_ENABLED true). Class name of {@link com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService} implementation
+   */
+  public static final String STORE_MIGRATION_MAX_RETRY_ATTEMPTS = "store.migration.max.retry.attempts";
 }

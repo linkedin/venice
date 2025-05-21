@@ -25,6 +25,19 @@ public class StoreMigrationTestUtil {
     AdminTool.main(startMigrationArgs);
   }
 
+  public static void autoStoreMigration(
+      String controllerUrl,
+      String storeName,
+      String srcClusterName,
+      String destClusterName,
+      String initialStep,
+      String abortOnFailure) throws Exception {
+    String[] autoStoreMigrationArgs =
+        { "--auto-migrate-store", "--url", controllerUrl, "--store", storeName, "--cluster-src", srcClusterName,
+            "--cluster-dest", destClusterName, "--initial-step", initialStep, "--abort-on-failure", abortOnFailure };
+    AdminTool.main(autoStoreMigrationArgs);
+  }
+
   public static void checkMigrationStatus(
       String controllerUrl,
       String storeName,

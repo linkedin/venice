@@ -178,6 +178,13 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void abortMigration(String srcClusterName, String destClusterName, String storeName);
 
+  void autoMigrateStore(
+      String srcClusterName,
+      String destClusterName,
+      String storeName,
+      int currStep,
+      boolean abortOnFailure);
+
   /**
   * Delete the entire store including both metadata and real user's data. Before deleting a store, we should disable
   * the store manually to ensure there is no reading/writing request hitting this tore.

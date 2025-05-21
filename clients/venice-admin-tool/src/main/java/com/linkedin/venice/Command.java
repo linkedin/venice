@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import static com.linkedin.venice.Arg.ABORT_ON_FAILURE;
 import static com.linkedin.venice.Arg.ACCESS_CONTROL;
 import static com.linkedin.venice.Arg.ACL_PERMS;
 import static com.linkedin.venice.Arg.ACTIVE_ACTIVE_REPLICATION_ENABLED;
@@ -56,6 +57,7 @@ import static com.linkedin.venice.Arg.HYBRID_TIME_LAG;
 import static com.linkedin.venice.Arg.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.Arg.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.Arg.INFILE;
+import static com.linkedin.venice.Arg.INITIAL_STEP;
 import static com.linkedin.venice.Arg.INSTANCES;
 import static com.linkedin.venice.Arg.INTERVAL;
 import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
@@ -389,6 +391,10 @@ public enum Command {
   MIGRATE_STORE(
       "migrate-store", "Migrate store from one cluster to another within the same fabric",
       new Arg[] { URL, STORE, CLUSTER_SRC, CLUSTER_DEST }
+  ),
+  AUTO_MIGRATE_STORE(
+      "auto-migrate-store", "Auto migrate store from one cluster to another cluster",
+      new Arg[] { URL, STORE, CLUSTER_SRC, CLUSTER_DEST, INITIAL_STEP, ABORT_ON_FAILURE }
   ),
   MIGRATION_STATUS(
       "migration-status", "Get store migration status", new Arg[] { URL, STORE, CLUSTER_SRC, CLUSTER_DEST }

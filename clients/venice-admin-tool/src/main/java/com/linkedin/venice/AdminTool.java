@@ -450,6 +450,9 @@ public class AdminTool {
         case QUERY_KAFKA_TOPIC:
           queryKafkaTopic(cmd, pubSubClientsFactory);
           break;
+        case AUTO_MIGRATE_STORE:
+          autoMigrateStore(cmd);
+          break;
         case MIGRATE_STORE:
           migrateStore(cmd);
           break;
@@ -1889,6 +1892,22 @@ public class AdminTool {
     checkWhetherStoreMigrationIsAllowed(destClient);
   }
 
+  private static void storeIsMigrating(ControllerClient controllerClient, String storeName) {
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    if (storeResponse.isError()) {
+      printObject(storeResponse);
+    } else {
+      // Store migration should not be started already.
+      if (storeResponse.getStore().isMigrating()) {
+        System.err.println(
+            String.format(
+                "ERROR: store %s is migrating. Finish the current migration before starting a new one.",
+                storeName));
+
+      }
+    }
+  }
+
   private static void migrateStore(CommandLine cmd) {
     String veniceUrl = getRequiredArgument(cmd, Arg.URL);
     String storeName = getRequiredArgument(cmd, Arg.STORE);
@@ -1901,19 +1920,7 @@ public class AdminTool {
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
     checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
-
-    StoreResponse storeResponse = srcControllerClient.getStore(storeName);
-    if (storeResponse.isError()) {
-      printObject(storeResponse);
-      return;
-    } else {
-      // Store migration should not be started already.
-      if (storeResponse.getStore().isMigrating()) {
-        System.err.println(
-            "ERROR: store " + storeName + " is migrating. Finish the current migration before starting a new one.");
-        return;
-      }
-    }
+    storeIsMigrating(srcControllerClient, storeName);
 
     StoreMigrationResponse storeMigrationResponse = srcControllerClient.migrateStore(storeName, destClusterName);
     printObject(storeMigrationResponse);
@@ -2411,6 +2418,34 @@ public class AdminTool {
         storeName,
         new UpdateStoreQueryParams().setStoreMigration(false).setMigrationDuplicateStore(false));
     printObject(controllerResponse);
+  }
+
+  public static void autoMigrateStore(CommandLine cmd) {
+    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
+    String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
+    boolean abortOnFailure = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.ABORT_ON_FAILURE, "false"));
+    int currStep = Integer.parseInt(getOptionalArgument(cmd, Arg.INITIAL_STEP, "0"));
+
+    if (srcClusterName.equals(destClusterName)) {
+      throw new VeniceException("Source and destination cluster cannot be the same!");
+    }
+
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
+    checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
+    storeIsMigrating(srcControllerClient, storeName);
+
+    StoreMigrationResponse storeMigrationResponse =
+        srcControllerClient.autoMigrateStore(storeName, destClusterName, currStep, abortOnFailure);
+    printObject(storeMigrationResponse);
+
+    if (storeMigrationResponse.isError()) {
+      System.err.println("ERROR: Auto store migration failed!");
+      return;
+    }
+    System.err.println("\nThe auto store migration request has been submitted successfully.\n");
   }
 
   private static void sendEndOfPush(CommandLine cmd) {

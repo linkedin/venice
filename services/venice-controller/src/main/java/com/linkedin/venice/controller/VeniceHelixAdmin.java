@@ -66,6 +66,8 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
+import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
+import com.linkedin.venice.controller.multitaskscheduler.StoreMigrationManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.AddVersionLatencyStats;
@@ -9235,6 +9237,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }, 3, Duration.ofSeconds(1), Collections.singletonList(VeniceException.class));
     } catch (VeniceException e) {
       return -1;
+    }
+  }
+
+  @Override
+  public void autoMigrateStore(
+      String srcClusterName,
+      String destClusterName,
+      String storeName,
+      int currStep,
+      boolean abortOnFailure) {
+    checkControllerLeadershipFor(srcClusterName);
+    Optional<MultiTaskSchedulerService> multiTaskSchedulerService =
+        getHelixVeniceClusterResources(srcClusterName).getMultiTaskSchedulerService();
+    if (multiTaskSchedulerService.isPresent()) {
+      StoreMigrationManager storeMigrationManager = multiTaskSchedulerService.get().getStoreMigrationManager();
+      storeMigrationManager.scheduleMigration(storeName, srcClusterName, destClusterName, currStep, 0);
+    } else {
+      throw new VeniceException("Store migration is not supported in this cluster: " + srcClusterName);
     }
   }
 
