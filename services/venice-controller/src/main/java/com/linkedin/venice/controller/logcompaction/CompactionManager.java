@@ -29,8 +29,8 @@ import org.apache.logging.log4j.Logger;
 public class CompactionManager {
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
 
-  private RepushOrchestrator repushOrchestrator;
-  private long timeSinceLastLogCompactionThreshold;
+  private final RepushOrchestrator repushOrchestrator;
+  private final long timeSinceLastLogCompactionThreshold;
 
   public CompactionManager(RepushOrchestrator repushOrchestrator, long timeSinceLastLogCompactionThreshold) {
     this.repushOrchestrator = repushOrchestrator;
@@ -88,7 +88,6 @@ public class CompactionManager {
   private boolean isLastCompactionTimeOlderThanThresholdHours(long compactionThresholdHours, StoreInfo storeInfo) {
     // get the last compaction time
     Version largestVersion = Collections.max(storeInfo.getVersions(), Comparator.comparingInt(Version::getNumber));
-    ;
 
     long lastCompactionTime = largestVersion.getCreatedTime();
     long currentTime = System.currentTimeMillis();
