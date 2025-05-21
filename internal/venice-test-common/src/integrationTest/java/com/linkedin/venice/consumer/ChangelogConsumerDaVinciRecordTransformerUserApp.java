@@ -1,5 +1,6 @@
 package com.linkedin.venice.consumer;
 
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CLIENT_METRIC_ENTITIES;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
@@ -21,6 +22,8 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
+import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
 import static com.linkedin.venice.utils.SslUtils.LOCAL_PASSWORD;
 
@@ -76,7 +79,8 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
         .setZkStartupTimeout(3, TimeUnit.SECONDS)
         .build();
     D2ClientUtils.startClient(d2Client);
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CLIENT_METRIC_ENTITIES, true);
 
     Properties consumerProperties = new Properties();
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);

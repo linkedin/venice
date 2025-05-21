@@ -1,6 +1,9 @@
 package com.linkedin.davinci.consumer;
 
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CLIENT_METRIC_ENTITIES;
 import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME;
+import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
@@ -28,7 +31,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
-import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -95,7 +97,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
         .setIsExperimentalClientEnabled(true);
     assertEquals(changelogClientConfig.getMaxBufferSize(), 1000, "Default max buffer size should be 1000");
     changelogClientConfig.setMaxBufferSize(MAX_BUFFER_SIZE);
-    changelogClientConfig.getInnerClientConfig().setMetricsRepository(new MetricsRepository());
+    changelogClientConfig.getInnerClientConfig()
+        .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CLIENT_METRIC_ENTITIES, true));
 
     bootstrappingVeniceChangelogConsumer =
         new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<>(changelogClientConfig);

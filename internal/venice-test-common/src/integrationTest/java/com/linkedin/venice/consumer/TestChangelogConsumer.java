@@ -1,5 +1,6 @@
 package com.linkedin.venice.consumer;
 
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CLIENT_METRIC_ENTITIES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
@@ -9,6 +10,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROC
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
+import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
+import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
@@ -196,7 +199,8 @@ public class TestChangelogConsumer {
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
         .setPartitionCount(3);
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CLIENT_METRIC_ENTITIES, true);
     ControllerClient setupControllerClient =
         createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
 
@@ -309,7 +313,8 @@ public class TestChangelogConsumer {
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
         .setPartitionCount(3);
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CLIENT_METRIC_ENTITIES, true);
     ControllerClient setupControllerClient =
         createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
     UpdateStoreQueryParams storeParams1 = new UpdateStoreQueryParams().setStoreViews(viewConfig);
@@ -781,7 +786,8 @@ public class TestChangelogConsumer {
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
         .setPartitionCount(3);
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CLIENT_METRIC_ENTITIES, true);
     ControllerClient setupControllerClient =
         createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
     setupControllerClient
@@ -892,7 +898,8 @@ public class TestChangelogConsumer {
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
         .setPartitionCount(3);
-    MetricsRepository metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CLIENT_METRIC_ENTITIES, true);
     ControllerClient setupControllerClient =
         createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
     TestUtils.assertCommand(
