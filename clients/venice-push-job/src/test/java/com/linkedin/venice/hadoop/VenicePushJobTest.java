@@ -335,6 +335,11 @@ public class VenicePushJobTest {
     doReturn(response).when(client).killOfflinePushJob(anyString());
 
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      StoreInfo storeInfo = new StoreInfo();
+      storeInfo.setBootstrapToOnlineTimeoutInHours(0);
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      pushJobSetting.storeResponse = new StoreResponse();
+      pushJobSetting.storeResponse.setStore(storeInfo);
       CountDownLatch runningJobLatch = new CountDownLatch(1);
       CountDownLatch killedJobLatch = new CountDownLatch(1);
       skipVPJValidation(pushJob);
@@ -364,7 +369,6 @@ public class VenicePushJobTest {
 
       try {
         doCallRealMethod().when(pushJob).runJobAndUpdateStatus();
-        doReturn(0L).when(pushJob).getBootstrapToOnlineTimeoutInHours(); // timeoutExecutor can immediately run
         DataWriterComputeJob dataWriterJob = spy(pushJob.getDataWriterComputeJob());
         pushJob.setDataWriterComputeJob(dataWriterJob);
         doNothing().when(dataWriterJob).validateJob();
