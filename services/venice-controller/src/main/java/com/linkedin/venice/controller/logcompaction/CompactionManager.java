@@ -8,7 +8,10 @@ import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -84,20 +87,15 @@ public class CompactionManager {
    */
   private boolean isLastCompactionTimeOlderThanThresholdHours(long compactionThresholdHours, StoreInfo storeInfo) {
     // get the last compaction time
-    int currentVersionNumber = storeInfo.getCurrentVersion();
+    Version largestVersion = Collections.max(storeInfo.getVersions(), Comparator.comparingInt(Version::getNumber));
+    ;
 
-    return storeInfo.getVersion(currentVersionNumber).map(v -> {
-      // calculate hours since last compaction
-      long lastCompactionTime = v.getCreatedTime();
-      long currentTime = System.currentTimeMillis();
-      long millisecondsSinceLastCompaction = currentTime - lastCompactionTime;
-      long hoursSinceLastCompaction = TimeUnit.MILLISECONDS.toHours(millisecondsSinceLastCompaction);
+    long lastCompactionTime = largestVersion.getCreatedTime();
+    long currentTime = System.currentTimeMillis();
+    long millisecondsSinceLastCompaction = currentTime - lastCompactionTime;
+    long hoursSinceLastCompaction = TimeUnit.MILLISECONDS.toHours(millisecondsSinceLastCompaction);
 
-      return hoursSinceLastCompaction >= compactionThresholdHours;
-    }).orElseGet(() -> {
-      LOGGER.warn("Couldn't find current version: {} from store: {}", currentVersionNumber, storeInfo.getName());
-      return false; // invalid store because no current version, this store is not eligible for compaction
-    });
+    return hoursSinceLastCompaction >= compactionThresholdHours;
   }
 
   /**
