@@ -92,6 +92,18 @@ public class OffsetRecord {
     return this.partitionState.offset;
   }
 
+  public void setCheckpointLocalVersionTopicOffset(long offset, ByteBuffer pubSubPositionBytes) {
+    this.partitionState.offset = offset;
+    this.partitionState.lastProcessedVersionTopicPubSubPosition = pubSubPositionBytes;
+  }
+
+  /**
+   * @return the checkpoint PubSubPosition of the local version topic.
+   */
+  public ByteBuffer getLocalVersionTopicPubSubPosition() {
+    return this.partitionState.lastProcessedVersionTopicPubSubPosition;
+  }
+
   public void setPreviousStatusesEntry(String key, String value) {
     partitionState.getPreviousStatuses().put(key, value);
   }
@@ -100,16 +112,20 @@ public class OffsetRecord {
     return partitionState.getPreviousStatuses().getOrDefault(key, NULL_STRING).toString();
   }
 
-  public void setCheckpointLocalVersionTopicOffset(long offset) {
-    this.partitionState.offset = offset;
-  }
-
   public long getCheckpointUpstreamVersionTopicOffset() {
     return this.partitionState.upstreamVersionTopicOffset;
   }
 
+  public ByteBuffer getCheckpointUpstreamVersionTopicPubSubPosition() {
+    return this.partitionState.upstreamVersionTopicPubSubPosition;
+  }
+
   public void setCheckpointUpstreamVersionTopicOffset(long upstreamVersionTopicOffset) {
     this.partitionState.upstreamVersionTopicOffset = upstreamVersionTopicOffset;
+  }
+
+  public void setCheckpointUpstreamVersionTopicPubSubPosition(ByteBuffer pubSubPosition) {
+    this.partitionState.upstreamVersionTopicPubSubPosition = pubSubPosition;
   }
 
   public long getOffsetLag() {

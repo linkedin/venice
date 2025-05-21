@@ -37,6 +37,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.TestUtils;
@@ -451,8 +452,9 @@ public class TestPartitionTracker {
     PubSubTopicPartition pubSubTopicPartition = getPubSubTopicPartition(type);
     Segment firstSegment = new Segment(partitionId, 0, checkSumType);
     Segment secondSegment = new Segment(partitionId, 1, checkSumType);
-    long offset = 10;
-    OffsetRecord record = TestUtils.getOffsetRecord(offset);
+    PubSubPosition pubSubPosition = ApacheKafkaOffsetPosition.of(10);
+    OffsetRecord record =
+        TestUtils.getOffsetRecord(pubSubPosition.getNumericOffset(), pubSubPosition.getWireFormatBytes());
 
     // Send SOS with check sum type set to checkpoint-able checkSumType.
     ControlMessage startOfSegment = getStartOfSegment(checkSumType);
@@ -462,7 +464,7 @@ public class TestPartitionTracker {
         getControlMessageKey(startOfSegmentMessage),
         startOfSegmentMessage,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.of(offset++),
+        pubSubPosition,
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, controlMessageConsumerRecord, true, Lazy.FALSE);
@@ -484,7 +486,7 @@ public class TestPartitionTracker {
         firstMessageKey,
         firstMessage,
         pubSubTopicPartition,
-        ApacheKafkaOffsetPosition.of(offset),
+        ApacheKafkaOffsetPosition.of(pubSubPosition.getNumericOffset() + 1),
         System.currentTimeMillis() + 1000,
         0);
     partitionTracker.validateMessage(type, firstConsumerRecord, true, Lazy.TRUE);
