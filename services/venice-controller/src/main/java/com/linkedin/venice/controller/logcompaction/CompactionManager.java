@@ -14,7 +14,6 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -30,11 +29,11 @@ public class CompactionManager {
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
 
   private final RepushOrchestrator repushOrchestrator;
-  private final long timeSinceLastLogCompactionThreshold;
+  private final long timeSinceLastLogCompactionThresholdMs;
 
-  public CompactionManager(RepushOrchestrator repushOrchestrator, long timeSinceLastLogCompactionThreshold) {
+  public CompactionManager(RepushOrchestrator repushOrchestrator, long timeSinceLastLogCompactionThresholdMs) {
     this.repushOrchestrator = repushOrchestrator;
-    this.timeSinceLastLogCompactionThreshold = timeSinceLastLogCompactionThreshold;
+    this.timeSinceLastLogCompactionThresholdMs = timeSinceLastLogCompactionThresholdMs;
   }
 
   /**
@@ -76,25 +75,29 @@ public class CompactionManager {
   public boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
 
-    return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(timeSinceLastLogCompactionThreshold, storeInfo);
+    return isHybridStore && isLastCompactionTimeOlderThanThreshold(timeSinceLastLogCompactionThresholdMs, storeInfo);
   }
 
   /**
    * This function checks if the last compaction time is older than the threshold.
-   * @param compactionThresholdHours, the number of hours that the last compaction time should be older than
+   * @param compactionThresholdMs, the number of hours that the last compaction time should be older than
    * @param storeInfo, the store to check the last compaction time for
    * @return true if the last compaction time is older than the threshold, false otherwise
    */
-  private boolean isLastCompactionTimeOlderThanThresholdHours(long compactionThresholdHours, StoreInfo storeInfo) {
-    // get the last compaction time
+  private boolean isLastCompactionTimeOlderThanThreshold(long compactionThresholdMs, StoreInfo storeInfo) {
+    /**
+     *  Reason for getting the largest version:
+     *  The largest version may be larger than the current version if there is an ongoing push.
+     *  The purpose of this function is to check if the last compaction time is older than the threshold.
+     *  An ongoing push is regarded as the most recent compaction
+     */
     Version largestVersion = Collections.max(storeInfo.getVersions(), Comparator.comparingInt(Version::getNumber));
 
     long lastCompactionTime = largestVersion.getCreatedTime();
     long currentTime = System.currentTimeMillis();
-    long millisecondsSinceLastCompaction = currentTime - lastCompactionTime;
-    long hoursSinceLastCompaction = TimeUnit.MILLISECONDS.toHours(millisecondsSinceLastCompaction);
+    long timeSinceLastCompactionMs = currentTime - lastCompactionTime;
 
-    return hoursSinceLastCompaction >= compactionThresholdHours;
+    return timeSinceLastCompactionMs >= compactionThresholdMs;
   }
 
   /**
