@@ -41,7 +41,8 @@ public class P2PBlobTransferService extends AbstractVeniceService {
       BlobSnapshotManager blobSnapshotManager,
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
       Optional<SSLFactory> sslFactory,
-      Optional<BlobTransferAclHandler> aclHandler) {
+      Optional<BlobTransferAclHandler> aclHandler,
+      int maxAllowedConcurrentSnapshotUsers) {
     this.port = port;
     this.serverBootstrap = new ServerBootstrap();
     this.blobSnapshotManager = blobSnapshotManager;
@@ -66,7 +67,8 @@ public class P2PBlobTransferService extends AbstractVeniceService {
                 blobSnapshotManager,
                 globalChannelTrafficShapingHandler,
                 sslFactory,
-                aclHandler))
+                aclHandler,
+                maxAllowedConcurrentSnapshotUsers))
         .option(ChannelOption.SO_BACKLOG, 1000)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
