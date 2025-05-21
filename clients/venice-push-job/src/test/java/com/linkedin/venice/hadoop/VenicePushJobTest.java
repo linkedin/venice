@@ -307,6 +307,8 @@ public class VenicePushJobTest {
       pushJobSetting.storeResponse.setStore(storeInfo);
       skipVPJValidation(pushJob);
       try {
+        DataWriterComputeJob dataWriterJob = spy(pushJob.getDataWriterComputeJob());
+        pushJob.setDataWriterComputeJob(dataWriterJob);
         pushJob.run();
         fail("Test should fail because pollStatusUntilComplete() never saw COMPLETE status, but doesn't.");
       } catch (VeniceException e) {
@@ -379,7 +381,6 @@ public class VenicePushJobTest {
         // Expected, because the data writer job is not configured to run successfully in this unit test environment
       }
       verify(pushJob, times(1)).cancel();
-      verify(pushJob.getDataWriterComputeJob(), times(1)).kill();
       assertEquals(pushJob.getDataWriterComputeJob().getStatus(), DataWriterComputeJob.Status.KILLED);
     }
   }
