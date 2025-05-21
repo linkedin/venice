@@ -120,19 +120,17 @@ public class ChangelogConsumerDaVinciRecordTransformerUserApp {
             .setD2Client(d2Client)
             .setIsExperimentalClientEnabled(true);
 
-    if (useSpecificRecord) {
-      globalChangelogClientConfig.setSpecificKey(TestChangelogKey.class)
-          .setSpecificValue(TestChangelogValue.class)
-          .setSpecificValueSchema(TestChangelogValue.SCHEMA$);
-    }
-
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
     BootstrappingVeniceChangelogConsumer bootstrappingVeniceChangelogConsumer;
 
     if (useSpecificRecord) {
-      bootstrappingVeniceChangelogConsumer = veniceChangelogConsumerClientFactory
-          .getBootstrappingChangelogConsumer(storeName, Integer.toString(0), TestChangelogValue.class);
+      bootstrappingVeniceChangelogConsumer = veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(
+          storeName,
+          Integer.toString(0),
+          TestChangelogKey.class,
+          TestChangelogValue.class,
+          TestChangelogValue.SCHEMA$);
     } else {
       bootstrappingVeniceChangelogConsumer =
           veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(storeName, Integer.toString(0));

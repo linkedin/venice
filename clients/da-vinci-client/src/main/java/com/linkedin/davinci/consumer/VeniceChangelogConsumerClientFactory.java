@@ -14,6 +14,8 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
+import org.apache.avro.Schema;
+import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
 
 
@@ -114,16 +116,22 @@ public class VeniceChangelogConsumerClientFactory {
   }
 
   /**
-   * Creates a BootstrappingVeniceChangelogConsumer with consumer id. This is used to create multiple
-   * consumers so that each consumer can only subscribe to certain partitions.
+   * Use this if you're using the experimental client
+   * @param keyClass The {@link SpecificRecord} class for your key
+   * @param valueClass The {@link SpecificRecord} class for your value
+   * @param valueSchema The {@link Schema} for your values
    */
   public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
       String storeName,
       String consumerId,
-      Class clazz) {
+      Class<K> keyClass,
+      Class<V> valueClass,
+      Schema valueSchema) {
     return storeBootstrappingClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
-          getNewStoreChangelogClientConfig(storeName).setSpecificValue(clazz);
+          getNewStoreChangelogClientConfig(storeName).setSpecificKey(keyClass)
+              .setSpecificValue(valueClass)
+              .setSpecificValueSchema(valueSchema);
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
       String consumerName = suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
 
@@ -139,6 +147,17 @@ public class VeniceChangelogConsumerClientFactory {
             consumerId);
       }
     });
+  }
+
+  /**
+   * Creates a BootstrappingVeniceChangelogConsumer with consumer id. This is used to create multiple
+   * consumers so that each consumer can only subscribe to certain partitions.
+   */
+  public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
+      String storeName,
+      String consumerId,
+      Class<V> valueClass) {
+    return getBootstrappingChangelogConsumer(storeName, consumerId, null, valueClass, null);
   }
 
   public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
