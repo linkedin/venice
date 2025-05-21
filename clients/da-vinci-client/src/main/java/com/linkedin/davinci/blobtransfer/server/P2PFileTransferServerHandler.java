@@ -137,7 +137,13 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
         ctx.channel().attr(SUCCESS_COUNTED).set(successCountedAsActiveCurrentUser);
         ctx.channel().attr(BLOB_TRANSFER_REQUEST).set(blobTransferRequest);
         if (successCountedAsActiveCurrentUser.get()) {
-          globalConcurrentTransferRequests.incrementAndGet();
+          if (globalConcurrentTransferRequests.incrementAndGet() >= maxAllowedConcurrentSnapshotUsers) {
+            String errMessage =
+                "The number of concurrent snapshot users exceeds the limit of " + maxAllowedConcurrentSnapshotUsers
+                    + ", wont be able to process the request for " + blobTransferRequest.getFullResourceName();
+            LOGGER.error(errMessage);
+            setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
+          }
         }
       } catch (Exception e) {
         setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);

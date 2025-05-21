@@ -27,6 +27,7 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
 
   private final GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler;
   private final VerifySslHandler verifySsl = new VerifySslHandler();
+  private final P2PFileTransferServerHandler p2pFileTransferServerHandler;
 
   public BlobTransferNettyChannelInitializer(
       String baseDir,
@@ -43,6 +44,11 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
     this.sslFactory = sslFactory;
     this.aclHandler = aclHandler;
     this.maxAllowedConcurrentSnapshotUsers = maxAllowedConcurrentSnapshotUsers;
+    this.p2pFileTransferServerHandler = new P2PFileTransferServerHandler(
+        baseDir,
+        blobTransferMaxTimeoutInMin,
+        blobSnapshotManager,
+        maxAllowedConcurrentSnapshotUsers);
   }
 
   @Override
@@ -68,12 +74,6 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
         // for safe writing of chunks for responses
         .addLast("chunker", new ChunkedWriteHandler())
         // for handling p2p file transfer
-        .addLast(
-            "p2pFileTransferHandler",
-            new P2PFileTransferServerHandler(
-                baseDir,
-                blobTransferMaxTimeoutInMin,
-                blobSnapshotManager,
-                maxAllowedConcurrentSnapshotUsers));
+        .addLast("p2pFileTransferHandler", p2pFileTransferServerHandler);
   }
 }
