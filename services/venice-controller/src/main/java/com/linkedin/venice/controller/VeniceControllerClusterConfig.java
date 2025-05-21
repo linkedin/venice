@@ -144,7 +144,6 @@ import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE
 import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_MAX_REPUSH_PER_COMPACTION_CYCLE;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
@@ -596,7 +595,6 @@ public class VeniceControllerClusterConfig {
   private final int logCompactionThreadCount;
   private final long logCompactionIntervalMS;
   private final long timeSinceLastLogCompactionThresholdMS;
-  private final int logCompactionMaxRepushPerCompactionCycle;
 
   /**
    * Configs for Dead Store Endpoint
@@ -1076,7 +1074,6 @@ public class VeniceControllerClusterConfig {
     this.logCompactionIntervalMS = props.getLong(LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
     this.timeSinceLastLogCompactionThresholdMS =
         props.getLong(TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
-    this.logCompactionMaxRepushPerCompactionCycle = props.getInt(LOG_COMPACTION_MAX_REPUSH_PER_COMPACTION_CYCLE, 3);
 
     this.isDeadStoreEndpointEnabled = props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED, false);
     this.deadStoreStatsClassName = props.getString(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_CLASS_NAME, "");
@@ -2053,10 +2050,6 @@ public class VeniceControllerClusterConfig {
 
   public long getTimeSinceLastLogCompactionThresholdMS() {
     return timeSinceLastLogCompactionThresholdMS;
-  }
-
-  public int getLogCompactionMaxRepushPerCompactionCycle() {
-    return logCompactionMaxRepushPerCompactionCycle;
   }
 
   public boolean isDeadStoreEndpointEnabled() {

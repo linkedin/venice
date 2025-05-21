@@ -445,9 +445,6 @@ public class ConfigKeys {
   public static final String TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS =
       "log.compaction.time.since.last.compaction.threshold.ms";
 
-  public static final String LOG_COMPACTION_MAX_REPUSH_PER_COMPACTION_CYCLE =
-      "log.compaction.max.repush.per.compaction.cycle";
-
   /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
    * And this is used to decide whether the topic is deprecated or not during topic cleanup.
