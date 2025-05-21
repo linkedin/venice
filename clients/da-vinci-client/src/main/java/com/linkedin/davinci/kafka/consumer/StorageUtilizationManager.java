@@ -324,6 +324,14 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
    * partition without affecting partition subscription
    */
   private void pausePartition(int partition, String consumingTopic) {
+    if (Version.isRealTimeTopic(consumingTopic) && !Version.isIncrementalPushTopic(consumingTopic)) {
+      // We do not pause consumption from real time topics. The intent of this is that we still should drain
+      // the messages which have been submitted to the queue as best as we are able to. Ideally our mechanisms
+      // which kill the producer upstream have kicked in within a timely manner. We don't give the same preferential
+      // treatment to incremental push jobs as those have a lower priority and if we pause ingestion the job will
+      // at some point terminate.
+      return;
+    }
     pausePartition.execute(consumingTopic, partition);
     this.pausedPartitions.add(partition);
   }

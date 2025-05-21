@@ -452,10 +452,15 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return "";
   }
 
-  static boolean isRealTimeTopic(String kafkaTopic) {
-    String topicWithoutVersionSuffix = removeRTVersionSuffix(kafkaTopic);
+  static boolean isRealTimeTopic(String topicName) {
+    String topicWithoutVersionSuffix = removeRTVersionSuffix(topicName);
     return topicWithoutVersionSuffix.endsWith(REAL_TIME_TOPIC_SUFFIX)
         || topicWithoutVersionSuffix.endsWith(SEPARATE_REAL_TIME_TOPIC_SUFFIX);
+  }
+
+  static boolean isIncrementalPushTopic(String topicName) {
+    String topicWithoutVersionSuffix = removeRTVersionSuffix(topicName);
+    return topicWithoutVersionSuffix.endsWith(SEPARATE_REAL_TIME_TOPIC_SUFFIX);
   }
 
   static boolean isStreamReprocessingTopic(String kafkaTopic) {
