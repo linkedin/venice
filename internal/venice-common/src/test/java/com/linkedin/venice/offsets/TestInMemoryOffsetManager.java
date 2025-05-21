@@ -1,5 +1,7 @@
 package com.linkedin.venice.offsets;
 
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import org.testng.Assert;
@@ -9,15 +11,19 @@ import org.testng.annotations.Test;
 public class TestInMemoryOffsetManager {
   @Test
   public void canSaveOffsets() {
+    PubSubPosition position1 = ApacheKafkaOffsetPosition.of(1234L);
+    PubSubPosition position2 = ApacheKafkaOffsetPosition.of(234L);
+    PubSubPosition position3 = ApacheKafkaOffsetPosition.of(11234L);
+
     String topic = Utils.getUniqueString("topic");
 
     OffsetManager om = new InMemoryOffsetManager();
     OffsetRecord record = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-    record.setCheckpointLocalVersionTopicOffset(1234);
+    record.setCheckpointLocalVersionTopicOffset(position1.getNumericOffset(), position1.getWireFormatBytes());
     OffsetRecord oldRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-    oldRecord.setCheckpointLocalVersionTopicOffset(234);
+    oldRecord.setCheckpointLocalVersionTopicOffset(position2.getNumericOffset(), position2.getWireFormatBytes());
     OffsetRecord newRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-    newRecord.setCheckpointLocalVersionTopicOffset(11234);
+    newRecord.setCheckpointLocalVersionTopicOffset(position3.getNumericOffset(), position3.getWireFormatBytes());
 
     om.put(topic, 0, record);
     Assert.assertEquals(om.getLastOffset(topic, 0), record);

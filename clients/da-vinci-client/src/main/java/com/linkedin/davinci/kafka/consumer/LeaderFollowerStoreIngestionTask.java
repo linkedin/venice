@@ -1381,7 +1381,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * metadata after successfully produce a corresponding message.
        */
       KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
-      updateVersionTopicOffsetFunction.apply(consumerRecord.getPosition().getNumericOffset());
+      updateVersionTopicOffsetFunction.apply(consumerRecord.getPosition());
 
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       // DaVinci clients don't need to maintain leader production states
@@ -1390,6 +1390,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (shouldUpdateUpstreamOffset(consumerRecord)) {
           final String sourceKafkaUrl = sourceKafkaUrlSupplier.get();
           final long newUpstreamOffset = kafkaValue.leaderMetadataFooter.upstreamOffset;
+          final ByteBuffer upstreamPositionBytes = kafkaValue.leaderMetadataFooter.getUpstreamPubSubPosition();
           PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
           if (upstreamTopic == null) {
             upstreamTopic = versionTopic;
@@ -1408,7 +1409,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
              * to the true leader when the old leader doesn't stop producing.
              */
-            updateUpstreamTopicOffsetFunction.apply(sourceKafkaUrl, upstreamTopic, newUpstreamOffset);
+            updateUpstreamTopicOffsetFunction
+                .apply(sourceKafkaUrl, upstreamTopic, newUpstreamOffset, upstreamPositionBytes);
           }
         }
         if (!dryRun) {
@@ -1433,8 +1435,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected void updateOffsetMetadataInOffsetRecord(PartitionConsumptionState partitionConsumptionState) {
     OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-    offsetRecord
-        .setCheckpointLocalVersionTopicOffset(partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
+    partitionConsumptionState.checkpointLocalVersionTopicPosition();
+
     // DaVinci clients don't need to maintain leader production states
     if (isDaVinciClient) {
       return;
@@ -1463,7 +1465,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     // Leader will only update the offset from leaderProducedRecordContext in VT.
     if (leaderProducedRecordContext != null) {
       if (leaderProducedRecordContext.hasCorrespondingUpstreamMessage()) {
-        updateVersionTopicOffsetFunction.apply(leaderProducedRecordContext.getProducedPosition().getNumericOffset());
+        updateVersionTopicOffsetFunction.apply(leaderProducedRecordContext.getProducedPosition());
         OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
         PubSubTopic upstreamTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
         if (upstreamTopic == null) {
@@ -1472,7 +1474,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         updateUpstreamTopicOffsetFunction.apply(
             upstreamKafkaURL,
             upstreamTopic,
-            leaderProducedRecordContext.getConsumedPosition().getNumericOffset());
+            leaderProducedRecordContext.getConsumedPosition().getNumericOffset(),
+            leaderProducedRecordContext.getConsumedPosition().getWireFormatBytes());
       }
     } else {
       // Ideally this should never happen.
@@ -1496,11 +1499,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         consumerRecordWrapper,
         leaderProducedRecordContext,
         partitionConsumptionState::updateLatestProcessedLocalVersionTopicOffset,
-        (sourceKafkaUrl, upstreamTopic, upstreamTopicOffset) -> {
+        (sourceKafkaUrl, upstreamTopic, upstreamTopicOffset, upstreamPubSubPositionBytes) -> {
           if (upstreamTopic.isRealTime()) {
             partitionConsumptionState.updateLatestProcessedUpstreamRTOffset(sourceKafkaUrl, upstreamTopicOffset);
           } else {
-            partitionConsumptionState.updateLatestProcessedUpstreamVersionTopicOffset(upstreamTopicOffset);
+            partitionConsumptionState
+                .updateLatestProcessedUpstreamVersionTopicOffset(upstreamTopicOffset, upstreamPubSubPositionBytes);
           }
         },
         (sourceKafkaUrl, upstreamTopic) -> upstreamTopic.isRealTime()
@@ -1516,6 +1520,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       final long newUpstreamOffset,
       final long previousUpstreamOffset,
       LeaderFollowerStoreIngestionTask ingestionTask) {
+    // TODO(sushantmane): Update this to use PubSubPosition
     if (newUpstreamOffset >= previousUpstreamOffset) {
       return; // Rewind did not happen
     }
@@ -3852,7 +3857,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @FunctionalInterface
   interface UpdateVersionTopicOffset {
-    void apply(long versionTopicOffset);
+    void apply(PubSubPosition positionInVersionTopic);
   }
 
   /**
@@ -3860,7 +3865,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @FunctionalInterface
   interface UpdateUpstreamTopicOffset {
-    void apply(String sourceKafkaUrl, PubSubTopic upstreamTopic, long upstreamTopicOffset);
+    void apply(
+        String sourceKafkaUrl,
+        PubSubTopic upstreamTopic,
+        long upstreamTopicOffset,
+        ByteBuffer upstreamPubSubPosition);
   }
 
   /**
