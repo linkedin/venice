@@ -3255,7 +3255,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(adminSpy, times(5)).getCurrentVersionsForMultiColos(clusterName, storeName);
   }
 
-  @Test(expectedExceptions = AdminMessageConsumptionTimeoutException.class)
+  @Test
   public void testDeleteStoreAdminMessageTimeout() {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
 
@@ -3265,11 +3265,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
     doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
 
-    AdminMessageConsumptionTimeoutException exception =
+    AdminMessageConsumptionTimeoutException expectedException =
         new AdminMessageConsumptionTimeoutException("timed out!", new Exception());
-    doThrow(exception).when(adminSpy).sendAdminMessageAndWaitForConsumed(any(), any(), any());
-    adminSpy.deleteStore(clusterName, storeName, false, 0, true);
-    verify(adminSpy, times(1)).deleteAclsForStore(store, storeName);
+    doThrow(expectedException).when(adminSpy).sendAdminMessageAndWaitForConsumed(any(), any(), any());
+    try {
+      adminSpy.deleteStore(clusterName, storeName, false, 0, true);
+      Assert.fail("Delete store should time out");
+    } catch (AdminMessageConsumptionTimeoutException e) {
+      Assert.assertEquals(e, expectedException);
+      verify(adminSpy, times(1)).deleteAclsForStore(store, storeName);
+    }
   }
 
   private Store setupForStoreViewConfigUpdateTest(String storeName) {
