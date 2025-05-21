@@ -170,8 +170,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
     // Insert the first 300 [0, 300) entries with blob db disabled
     for (int i = 0; i < 300; i++) {
       storagePartition.put(largeEntryList.get(i).getKey().getBytes(), largeEntryList.get(i).getValue().getBytes());
@@ -196,8 +195,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
     // Insert [300, 700) entries with blob db enabled
     for (int i = 300; i < 700; i++) {
       storagePartition.put(largeEntryList.get(i).getKey().getBytes(), largeEntryList.get(i).getValue().getBytes());
@@ -238,8 +236,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
     // Insert [700, 1000) entries with blob db enabled
     for (int i = 700; i < 1000; i++) {
       storagePartition.put(largeEntryList.get(i).getKey().getBytes(), largeEntryList.get(i).getValue().getBytes());
@@ -308,8 +305,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
 
@@ -355,8 +351,7 @@ public class RocksDBStoragePartitionTest {
                 DATA_BASE_DIR,
                 null,
                 ROCKSDB_THROTTLER,
-                rocksDBServerConfig,
-                storeConfig);
+                rocksDBServerConfig);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
@@ -433,8 +428,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
 
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
@@ -476,8 +470,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
     final int syncPerRecords = 100;
     final int interruptedRecord1 = 345;
     final int interruptedRecord2 = 645;
@@ -516,8 +509,7 @@ public class RocksDBStoragePartitionTest {
             DATA_BASE_DIR,
             null,
             ROCKSDB_THROTTLER,
-            rocksDBServerConfig,
-            storeConfig);
+            rocksDBServerConfig);
         Options storeOptions = storagePartition.getOptions();
         Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
         if (sorted) {
@@ -571,8 +563,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
 
     storagePartition.rocksDB.compactRange();
 
@@ -655,8 +646,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
 
@@ -701,8 +691,7 @@ public class RocksDBStoragePartitionTest {
                 DATA_BASE_DIR,
                 null,
                 ROCKSDB_THROTTLER,
-                rocksDBServerConfig,
-                storeConfig);
+                rocksDBServerConfig);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
@@ -758,8 +747,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
     Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes()));
@@ -792,8 +780,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
 
     Optional<Supplier<byte[]>> checksumSupplier = Optional.of(() -> new byte[16]);
     storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier);
@@ -828,8 +815,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
 
     storagePartition.close();
     try {
@@ -867,8 +853,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
 
     StoragePartitionConfig testConfig = new StoragePartitionConfig(storeName, partitionId);
     testConfig.setReadWriteLeaderForRMDCF(true);
@@ -898,8 +883,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
 
     testConfig = new StoragePartitionConfig(storeName, partitionId);
     testConfig.setReadWriteLeaderForRMDCF(true);
@@ -948,8 +932,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
 
     // By default, it is write only
     Options writeOnlyOptions = storagePartition.getOptions();
@@ -970,8 +953,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
     Options readWriteOptions = storagePartition.getOptions();
     Assert.assertEquals(readWriteOptions.level0FileNumCompactionTrigger(), 10);
     Assert.assertEquals(readWriteOptions.level0SlowdownWritesTrigger(), 20);
@@ -1046,8 +1028,7 @@ public class RocksDBStoragePartitionTest {
           DATA_BASE_DIR,
           null,
           ROCKSDB_THROTTLER,
-          rocksDBServerConfig,
-          storeConfig);
+          rocksDBServerConfig);
       RocksDBStoragePartition finalStoragePartition = storagePartition;
       Assert.expectThrows(MemoryLimitExhaustedException.class, () -> {
         String keyPrefix = "key_prefix_";
@@ -1088,8 +1069,7 @@ public class RocksDBStoragePartitionTest {
               DATA_BASE_DIR,
               null,
               ROCKSDB_THROTTLER,
-              finalRocksDBServerConfig,
-              storeConfig));
+              finalRocksDBServerConfig));
     } finally {
       if (storagePartition != null) {
         storagePartition.close();
@@ -1099,8 +1079,8 @@ public class RocksDBStoragePartitionTest {
     }
   }
 
-  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void testCreateSnapshot(boolean blobTransferEnabled) {
+  @Test
+  public void testCreateSnapshot() {
     String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);
     int partitionId = 0;
@@ -1116,17 +1096,13 @@ public class RocksDBStoragePartitionTest {
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
     VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
 
-    // Set the blob transfer enabled flag
-    storeConfig.setBlobTransferEnabled(blobTransferEnabled);
-
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
 
     try (MockedStatic<RocksDBStoragePartition> rocksDBStoragePartition =
         Mockito.mockStatic(RocksDBStoragePartition.class)) {
@@ -1135,13 +1111,9 @@ public class RocksDBStoragePartitionTest {
             return null;
           });
       storagePartition.createSnapshot();
-      if (blobTransferEnabled) {
-        rocksDBStoragePartition
-            .verify(() -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any()), Mockito.times(1));
-      } else {
-        rocksDBStoragePartition
-            .verify(() -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any()), Mockito.never());
-      }
+
+      rocksDBStoragePartition
+          .verify(() -> RocksDBStoragePartition.createSnapshot(Mockito.any(), Mockito.any()), Mockito.times(1));
     }
 
     if (storagePartition != null) {
@@ -1258,8 +1230,7 @@ public class RocksDBStoragePartitionTest {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
 
     // DiskLimitExhaustedException
     try {

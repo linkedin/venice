@@ -116,8 +116,7 @@ public class RocksDBLookupApiBenchmark {
         DATA_BASE_DIR,
         null,
         new RocksDBThrottler(3),
-        new RocksDBServerConfig(veniceServerProperties),
-        storeConfig);
+        new RocksDBServerConfig(veniceServerProperties));
 
     // Populate the database
     for (int i = 0; i < ROW_CNT; ++i) {

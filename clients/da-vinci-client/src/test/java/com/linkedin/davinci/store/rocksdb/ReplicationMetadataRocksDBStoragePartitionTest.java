@@ -179,8 +179,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
 
     Map<String, Pair<String, String>> inputRecords = generateInputWithMetadata(100);
     for (Map.Entry<String, Pair<String, String>> entry: inputRecords.entrySet()) {
@@ -312,8 +311,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
 
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
@@ -371,8 +369,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
                 DATA_BASE_DIR,
                 null,
                 ROCKSDB_THROTTLER,
-                rocksDBServerConfig,
-                storeConfig);
+                rocksDBServerConfig);
             Options storeOptions = storagePartition.getOptions();
             Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
           }
@@ -444,8 +441,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
     Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes()));

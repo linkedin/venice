@@ -136,8 +136,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
           rocksDbPath,
           memoryStats,
           rocksDbThrottler,
-          rocksDBServerConfig,
-          storeConfig);
+          rocksDBServerConfig);
     } else {
       return new ReplicationMetadataRocksDBStoragePartition(
           storagePartitionConfig,
@@ -145,8 +144,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
           rocksDbPath,
           memoryStats,
           rocksDbThrottler,
-          rocksDBServerConfig,
-          storeConfig);
+          rocksDBServerConfig);
     }
   }
 
