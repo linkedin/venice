@@ -1032,35 +1032,6 @@ public class VeniceChangelogConsumerImplTest {
     return new ImmutablePubSubMessage(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, mockPubSubPosition, 0, 0);
   }
 
-  private DefaultPubSubMessage constructChangeCaptureConsumerRecord(
-      PubSubTopic changeCaptureVersionTopic,
-      int partition,
-      byte[] value,
-      byte[] key,
-      List<Long> replicationCheckpointVector) {
-    ValueBytes newValueBytes = new ValueBytes();
-    newValueBytes.schemaId = 1;
-    newValueBytes.value = ByteBuffer.wrap(value);
-    RecordChangeEvent recordChangeEvent = new RecordChangeEvent();
-    recordChangeEvent.currentValue = newValueBytes;
-    recordChangeEvent.key = ByteBuffer.wrap(key);
-    recordChangeEvent.replicationCheckpointVector = replicationCheckpointVector;
-    final RecordSerializer<RecordChangeEvent> recordChangeSerializer = FastSerializerDeserializerFactory
-        .getFastAvroGenericSerializer(AvroProtocolDefinition.RECORD_CHANGE_EVENT.getCurrentProtocolVersionSchema());
-    recordChangeSerializer.serialize(recordChangeEvent);
-    ProducerMetadata producerMetadata = new ProducerMetadata();
-    producerMetadata.setMessageTimestamp(1000L);
-    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope(
-        MessageType.PUT.getValue(),
-        producerMetadata,
-        new Put(ByteBuffer.wrap(recordChangeSerializer.serialize(recordChangeEvent)), 1, 0, ByteBuffer.allocate(0)),
-        null);
-    kafkaMessageEnvelope.setProducerMetadata(producerMetadata);
-    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, key);
-    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(changeCaptureVersionTopic, partition);
-    return new ImmutablePubSubMessage(kafkaKey, kafkaMessageEnvelope, pubSubTopicPartition, mockPubSubPosition, 0, 0);
-  }
-
   private DefaultPubSubMessage constructConsumerRecord(
       PubSubTopic changeCaptureVersionTopic,
       int partition,
