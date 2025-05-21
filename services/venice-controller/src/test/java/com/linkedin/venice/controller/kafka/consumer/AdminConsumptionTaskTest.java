@@ -18,6 +18,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_DATA_REPLICATION_POLICY;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
@@ -68,7 +69,6 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -945,7 +945,7 @@ public class AdminConsumptionTaskTest {
     hybridConfig.rewindTimeInSeconds = 123L;
     hybridConfig.offsetLagThresholdToGoOnline = 1000L;
     hybridConfig.producerTimestampLagThresholdToGoOnlineInSeconds = 300L;
-    hybridConfig.dataReplicationPolicy = DataReplicationPolicy.AGGREGATE.getValue();
+    hybridConfig.dataReplicationPolicy = DEFAULT_DATA_REPLICATION_POLICY.getValue();
     hybridConfig.realTimeTopicName = DEFAULT_REAL_TIME_TOPIC_NAME;
     setStore.hybridStoreConfig = hybridConfig;
 

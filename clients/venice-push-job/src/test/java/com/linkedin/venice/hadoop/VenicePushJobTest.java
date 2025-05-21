@@ -237,7 +237,7 @@ public class VenicePushJobTest {
       Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
       storeInfo.setWriteComputationEnabled(true);
       storeInfo.setVersions(Collections.singletonList(version));
-      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
+      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null));
     });
     try (VenicePushJob pushJob = getSpyVenicePushJobWithD2Routing(new Properties(), client)) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
@@ -262,7 +262,7 @@ public class VenicePushJobTest {
       Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
       storeInfo.setWriteComputationEnabled(true);
       storeInfo.setVersions(Collections.singletonList(version));
-      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
+      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null));
     });
     try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
@@ -764,7 +764,7 @@ public class VenicePushJobTest {
     props.put(VALUE_FIELD_PROP, "name");
     props.put(TARGETED_REGION_PUSH_ENABLED, true);
     ControllerClient client = getClient(storeInfo -> {
-      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
+      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null));
     }, true);
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       skipVPJValidation(pushJob);

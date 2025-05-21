@@ -30,7 +30,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
@@ -124,7 +123,6 @@ public class TestHybridMultiRegion {
           streamingRewindSeconds,
           streamingMessageLag,
           HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-          DataReplicationPolicy.NON_AGGREGATE,
           REWIND_FROM_EOP);
       // There should be no version on the store yet
       assertEquals(

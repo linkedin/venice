@@ -73,12 +73,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   public static final String VENICE_STORE = "store";
 
   /**
-   * Whether to leverage Venice aggregation.
-   * By default, it is 'false'.
-   *
-   * When the Samza application decides to leverage Venice aggregation, all the messages
-   * will be produced to Venice Parent cluster, otherwise, all the messages will be produced
-   * to local cluster.
+   * Whether to talk to parent region controller.
+   * By default, it is 'false'. This will should only be set to true when using non-STREAM push type in multi-region setup.
    */
   public static final String VENICE_AGGREGATE = "aggregate";
 
@@ -457,9 +453,9 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   public SystemProducer getProducer(String systemName, Config config, MetricsRegistry registry) {
     final String prefix = SYSTEMS_PREFIX + systemName + DOT;
     final String storeName = config.get(prefix + VENICE_STORE);
-    final boolean veniceAggregate = config.getBoolean(prefix + VENICE_AGGREGATE, false);
+    final boolean useParentRegionController = config.getBoolean(prefix + VENICE_AGGREGATE, false);
     final String pushTypeString = config.get(prefix + VENICE_PUSH_TYPE);
-    return getProducer(systemName, storeName, veniceAggregate, pushTypeString, config);
+    return getProducer(systemName, storeName, useParentRegionController, pushTypeString, config);
   }
 
   /**

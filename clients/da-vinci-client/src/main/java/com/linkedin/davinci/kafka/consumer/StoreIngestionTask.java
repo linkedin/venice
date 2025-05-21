@@ -84,7 +84,6 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -974,8 +973,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract boolean isHybridFollower(PartitionConsumptionState partitionConsumptionState);
 
-  protected abstract boolean shouldCheckLeaderCompleteStateInFollower();
-
   /**
    * Checks whether the lag is acceptable for hybrid stores
    */
@@ -1031,9 +1028,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             shouldLogLag,
             HEARTBEAT_LAG);
       } else {
-        /**
-         * If offset lag threshold is set to -1, time lag threshold will be the only criterion for going online.
-         */
         long offsetThreshold = getOffsetToOnlineLagThresholdPerPartition(hybridStoreConfig, storeName, partitionCount);
         if (offsetThreshold >= 0) {
           isLagAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
@@ -2098,36 +2092,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         ingestionNotificationDispatcher.reportRestarted(newPartitionConsumptionState);
       }
-      /**
-       * If StoreVersionState doesn't exist, we would create it when we process
-       * START_OF_PUSH message for the first time.
-       */
     }
-    /**
-     * TODO: The behavior for completed partition is not consistent here.
-     *
-     * When processing subscription action for restart scenario, {@link #consumer} won't subscribe the topic
-     * partition if it is already completed.
-     * In normal case (not completed right away), {@link #consumer} will continue subscribing the topic partition
-     * even after receiving the 'EOP' control message (no auto-unsubscription happens).
-     *
-     * From my understanding, at least we should keep them consistent to avoid confusion.
-     *
-     * Possible proposals:
-     * 1. (Preferred) Auto-unsubscription when receiving EOP for batch store. With this way,
-     * the unused consumer thread (not processing any kafka message) will be collected.
-     * 2. Always keep subscription no matter what happens.
-     */
-
-    // Second, take care of informing the controller about our status, and starting consumption
-    /**
-     * There could be two cases in this scenario:
-     * 1. The job is completed, so Controller will ignore any status message related to the completed/archived job.
-     * 2. The job is still running: some partitions are in 'ONLINE' state, but other partitions are still in
-     * 'BOOTSTRAP' state.
-     * In either case, StoreIngestionTask should report 'started' => ['progress' => ] 'completed' to accomplish
-     * task state transition in Controller.
-     */
     try {
       // Compare the offset lag is acceptable or not, if acceptable, report completed directly, otherwise rely on the
       // normal ready-to-server checker.
@@ -2160,7 +2125,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       // This ready-to-serve check is acceptable in SIT thread as it happens before subscription.
       if (!isCompletedReport) {
-        defaultReadyToServeChecker.apply(newPartitionConsumptionState);
+        getDefaultReadyToServeChecker().apply(newPartitionConsumptionState);
       }
     } catch (VeniceInconsistentStoreMetadataException e) {
       hostLevelIngestionStats.recordInconsistentStoreMetadata();
@@ -2687,7 +2652,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long syncBytesInterval = getSyncBytesInterval(partitionConsumptionState);
     boolean recordsProcessedAboveSyncIntervalThreshold = (syncBytesInterval > 0
         && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval));
-    defaultReadyToServeChecker.apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
+    getDefaultReadyToServeChecker().apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
 
     /**
      * Syncing offset checking in syncOffset() should be the very last step for processing a record.
@@ -3214,7 +3179,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // NoOp
   }
 
-  protected boolean processTopicSwitch(
+  protected void processTopicSwitch(
       ControlMessage controlMessage,
       int partition,
       long offset,
@@ -3228,14 +3193,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * In this method, we pass both offset and partitionConsumptionState(ps). The reason behind it is that ps's
    * offset is stale and is not updated until the very end
    */
-  private boolean processControlMessage(
+  private void processControlMessage(
       KafkaKey kafkaKey,
       KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
       long offset,
       PartitionConsumptionState partitionConsumptionState) {
-    boolean checkReadyToServeAfterProcess = false;
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
      * them to version topic; however, START_OF_SEGMENT and END_OF_SEGMENT should not be forwarded
@@ -3289,23 +3253,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionConsumptionState.getReplicaId(),
             offset,
             topicSwitch.getSourceKafkaServers());
-        checkReadyToServeAfterProcess =
-            processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
+        processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
         break;
       default:
         throw new UnsupportedMessageTypeException(
             "Unrecognized Control message type " + controlMessage.controlMessageType);
     }
     processControlMessageForViews(kafkaKey, kafkaMessageEnvelope, controlMessage, partition, partitionConsumptionState);
-    return checkReadyToServeAfterProcess;
   }
 
   /**
    * Sync the metadata about offset in {@link OffsetRecord}.
    * {@link PartitionConsumptionState} will pass through some information to {@link OffsetRecord} for persistence and
    * Offset rewind/split brain has been guarded in {@link #updateLatestInMemoryProcessedOffset}.
-   *
-   * @param partitionConsumptionState
    */
   protected abstract void updateOffsetMetadataInOffsetRecord(PartitionConsumptionState partitionConsumptionState);
 
@@ -3338,7 +3298,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaKey kafkaKey = consumerRecord.getKey();
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     int sizeOfPersistedData = 0;
-    boolean checkReadyToServeAfterProcess = false;
     try {
       long currentTimeMs = System.currentTimeMillis();
       if (recordLevelMetricEnabled.get()) {
@@ -3373,7 +3332,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         ControlMessage controlMessage = (leaderProducedRecordContext == null
             ? (ControlMessage) kafkaValue.payloadUnion
             : (ControlMessage) leaderProducedRecordContext.getValueUnion());
-        checkReadyToServeAfterProcess = processControlMessage(
+        processControlMessage(
             kafkaKey,
             kafkaValue,
             controlMessage,
@@ -3468,9 +3427,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           leaderProducedRecordContext,
           kafkaUrl,
           false);
-      if (checkReadyToServeAfterProcess) {
-        defaultReadyToServeChecker.apply(partitionConsumptionState);
-      }
     }
     return sizeOfPersistedData;
   }
@@ -4847,19 +4803,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isDaVinciClient;
   }
 
-  boolean isHybridAggregateMode() {
-    return hybridStoreConfig.isPresent()
-        && hybridStoreConfig.get().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE);
-  }
-
   ReadyToServeCheck getReadyToServeChecker() {
     return defaultReadyToServeChecker;
-  }
-
-  void maybeApplyReadyToServeCheck(PartitionConsumptionState partitionConsumptionState) {
-    if (isHybridAggregateMode()) {
-      getReadyToServeChecker().apply(partitionConsumptionState);
-    }
   }
 
   VeniceConcurrentHashMap<String, Long> getConsumedBytesSinceLastSync() {

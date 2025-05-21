@@ -1413,12 +1413,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
-    sendPushJobDetailsToLocalRT(key, value);
     if (isParent()) {
       String lastDualWriteError = "";
       for (Map.Entry<String, ControllerClient> entry: getControllerClientMap(getPushJobStatusStoreClusterName())
           .entrySet()) {
-        LOGGER.info("Sending push job details: {} to region: {} for: {}", value, entry.getKey(), key);
+        LOGGER.info(
+            "Sending controller request to send push job details: {} to region: {} for: {}",
+            value,
+            entry.getKey(),
+            key);
         ControllerResponse response = entry.getValue()
             .sendPushJobDetails(
                 key.storeName.toString(),
@@ -1438,7 +1441,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       }
       throw new VeniceException(
-          "Unable to dual write push job details to any child region with last error:" + lastDualWriteError);
+          "Unable to write push job details to any child region with last error:" + lastDualWriteError);
+    } else {
+      LOGGER.info("Sending push job details: {} for: {}", value, key);
+      sendPushJobDetailsToLocalRT(key, value);
     }
   }
 
@@ -3209,15 +3215,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return false;
     }
 
-    // Child controllers always create real-time topics for hybrid stores in their region
-    if (!isParent()) {
-      return true;
-    }
-
-    // Parent controllers create real-time topics in the parent region only under certain conditions
-    return !store.isActiveActiveReplicationEnabled()
-        && (store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE
-            || store.isIncrementalPushEnabled());
+    // Only child regions need realtime topic.
+    return !isParent();
   }
 
   /**
@@ -5772,17 +5771,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 DEFAULT_REWIND_TIME_IN_SECONDS,
                 DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD,
                 DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-                DataReplicationPolicy.NON_AGGREGATE,
                 null));
-      } else if (hybridStoreConfig.getDataReplicationPolicy() == null) {
-        store.setHybridStoreConfig(
-            new HybridStoreConfigImpl(
-                hybridStoreConfig.getRewindTimeInSeconds(),
-                hybridStoreConfig.getOffsetLagThresholdToGoOnline(),
-                hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(),
-                DataReplicationPolicy.NON_AGGREGATE,
-                hybridStoreConfig.getBufferReplayPolicy(),
-                hybridStoreConfig.getRealTimeTopicName()));
       }
       return store;
     });
@@ -8219,11 +8208,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         default:
           break;
       }
-      // Filter out aggregate mode store explicitly.
-      if (enableActiveActiveReplicationForCluster && originalStore.isHybrid()
-          && originalStore.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
-        shouldUpdateActiveActiveReplication = false;
-      }
       if (shouldUpdateActiveActiveReplication) {
         LOGGER.info("Will enable active active replication for store: {}", storeName.get());
         setActiveActiveReplicationEnabled(clusterName, storeName.get(), enableActiveActiveReplicationForCluster);
@@ -8266,11 +8250,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           throw new VeniceException("Unsupported store type." + storeType);
       }
 
-      // Filter out aggregate mode store explicitly.
       storesToBeConfigured = storesToBeConfigured.stream()
-          .filter(
-              store -> !(store.isHybrid()
-                  && store.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)))
           .filter(
               store -> !((VeniceSystemStoreType.getSystemStoreType(store.getName()) != null)
                   && (VeniceSystemStoreType.getSystemStoreType(store.getName()).isStoreZkShared())))

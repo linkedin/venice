@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static java.util.Objects.requireNonNull;
@@ -88,7 +87,7 @@ public class TestIncrementalPush {
     Properties propsBatch = IntegrationTestPushUtils.defaultVPJProps(cluster, inputDirPathBatch, storeName);
     TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDirBatch);
     ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
-    runVPJ(propsBatch, 1, controllerClient);
+    IntegrationTestPushUtils.runVPJ(propsBatch, 1, controllerClient);
     String incPushTopic = "TEST_INC_PUSH";
 
     storeInfo.set(controllerClient.getStore(storeName).getStore());

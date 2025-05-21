@@ -101,7 +101,7 @@ public class TestUnusedValueSchemaCleanup {
       createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V1_SCHEMA.toString(), props, storeParms).close();
       parentControllerClient.addValueSchema(storeName, NAME_RECORD_V2_SCHEMA.toString());
       parentControllerClient.addValueSchema(storeName, NAME_RECORD_V3_SCHEMA.toString());
-      TestWriteUtils.runPushJob("Test push job", props);
+      IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,

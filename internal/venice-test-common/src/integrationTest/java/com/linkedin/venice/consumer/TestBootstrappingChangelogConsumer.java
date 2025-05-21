@@ -24,7 +24,6 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithLogicalTimestamp;
@@ -67,11 +66,11 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.PushInputSchemaBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestMockTime;
@@ -98,7 +97,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
-import org.apache.samza.config.MapConfig;
+import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -159,8 +158,6 @@ public class TestBootstrappingChangelogConsumer {
   public void testVeniceChangelogConsumer(int consumerCount) throws Exception {
     String storeName = Utils.getUniqueString("store");
     String inputDirPath = setUpStore(storeName, false);
-    Map<String, String> samzaConfig = getSamzaProducerConfig(clusterWrapper, storeName, Version.PushType.STREAM);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
 
     try (PubSubBrokerWrapper localKafka = ServiceFactory.getPubSubBroker(
         new PubSubBrokerConfigs.Builder().setZkWrapper(clusterWrapper.getZk())
@@ -189,8 +186,7 @@ public class TestBootstrappingChangelogConsumer {
       }
 
       try (VeniceSystemProducer veniceProducer =
-          factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-        veniceProducer.start();
+          IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
         // Run Samza job to send PUT and DELETE requests.
         runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, false);
         // Produce a DELETE record with large timestamp
@@ -271,8 +267,6 @@ public class TestBootstrappingChangelogConsumer {
     String storeName = Utils.getUniqueString("store");
     boolean useSpecificRecord = false;
     String inputDirPath = setUpStore(storeName, useSpecificRecord);
-    Map<String, String> samzaConfig = getSamzaProducerConfig(clusterWrapper, storeName, Version.PushType.STREAM);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
 
     try (PubSubBrokerWrapper localKafka = ServiceFactory.getPubSubBroker(
         new PubSubBrokerConfigs.Builder().setZkWrapper(clusterWrapper.getZk())
@@ -303,8 +297,7 @@ public class TestBootstrappingChangelogConsumer {
               veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(storeName, Integer.toString(0)));
 
       try (VeniceSystemProducer veniceProducer =
-          factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-        veniceProducer.start();
+          IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
         // Run Samza job to send PUT and DELETE requests.
         runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, useSpecificRecord);
         // Produce a DELETE record with large timestamp
@@ -350,7 +343,7 @@ public class TestBootstrappingChangelogConsumer {
 
       // Create new version
       Properties props = defaultVPJProps(clusterWrapper, inputDirPath, storeName);
-      TestWriteUtils.runPushJob("Run push job v2", props);
+      IntegrationTestPushUtils.runVPJ(props);
 
       clusterWrapper.useControllerClient(controllerClient -> {
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
@@ -372,7 +365,7 @@ public class TestBootstrappingChangelogConsumer {
       props.setProperty(SOURCE_KAFKA, "true");
       props.setProperty(KAFKA_INPUT_BROKER_URL, clusterWrapper.getPubSubBrokerWrapper().getAddress());
       props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-      TestWriteUtils.runPushJob("Run repush job v3", props);
+      IntegrationTestPushUtils.runVPJ(props);
 
       clusterWrapper.useControllerClient(controllerClient -> {
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
@@ -420,8 +413,6 @@ public class TestBootstrappingChangelogConsumer {
     boolean useSpecificRecord = false;
     String inputDirPath1 = setUpStore(storeName, useSpecificRecord);
     String inputDirPath2 = Utils.getTempDataDirectory().getAbsolutePath();
-    Map<String, String> samzaConfig = getSamzaProducerConfig(clusterWrapper, storeName, Version.PushType.STREAM);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
     int port1 = TestUtils.getFreePort();
     int port2 = TestUtils.getFreePort();
     while (port1 == port2) {
@@ -473,7 +464,7 @@ public class TestBootstrappingChangelogConsumer {
               veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(storeName, Integer.toString(0)));
 
       try (VeniceSystemProducer veniceProducer =
-          factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+          IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
         veniceProducer.start();
         // Run Samza job to send PUT and DELETE requests.
         runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, useSpecificRecord);
@@ -547,8 +538,6 @@ public class TestBootstrappingChangelogConsumer {
     String storeName = Utils.getUniqueString("store");
     boolean useSpecificRecord = true;
     String inputDirPath = setUpStore(storeName, useSpecificRecord);
-    Map<String, String> samzaConfig = getSamzaProducerConfig(clusterWrapper, storeName, Version.PushType.STREAM);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
 
     try (PubSubBrokerWrapper localKafka = ServiceFactory.getPubSubBroker(
         new PubSubBrokerConfigs.Builder().setZkWrapper(clusterWrapper.getZk())
@@ -580,8 +569,7 @@ public class TestBootstrappingChangelogConsumer {
                   .getBootstrappingChangelogConsumer(storeName, Integer.toString(0), TestChangelogValue.class));
 
       try (VeniceSystemProducer veniceProducer =
-          factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-        veniceProducer.start();
+          IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
         // Run Samza job to send PUT and DELETE requests.
         runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, useSpecificRecord);
       }
@@ -637,8 +625,6 @@ public class TestBootstrappingChangelogConsumer {
     boolean useSpecificRecord = true;
     String inputDirPath1 = setUpStore(storeName, useSpecificRecord);
     String inputDirPath2 = Utils.getTempDataDirectory().getAbsolutePath();
-    Map<String, String> samzaConfig = getSamzaProducerConfig(clusterWrapper, storeName, Version.PushType.STREAM);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
     int port1 = TestUtils.getFreePort();
     int port2 = TestUtils.getFreePort();
     while (port1 == port2) {
@@ -694,7 +680,7 @@ public class TestBootstrappingChangelogConsumer {
                   .getBootstrappingChangelogConsumer(storeName, Integer.toString(0), TestChangelogValue.class));
 
       try (VeniceSystemProducer veniceProducer =
-          factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+          IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
         veniceProducer.start();
         // Run Samza job to send PUT and DELETE requests.
         runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 100, useSpecificRecord);
@@ -809,7 +795,7 @@ public class TestBootstrappingChangelogConsumer {
   }
 
   private void runSamzaStreamJob(
-      VeniceSystemProducer veniceProducer,
+      SystemProducer veniceProducer,
       String storeName,
       Time mockedTime,
       int numPuts,
@@ -914,7 +900,7 @@ public class TestBootstrappingChangelogConsumer {
       clusterWrapper.createPushStatusSystemStore(storeName);
       TestUtils.assertCommand(controllerClient.updateStore(storeName, storeParms));
       TestUtils.assertCommand(controllerClient.addValueSchema(storeName, valueSchemaStr));
-      TestWriteUtils.runPushJob("Run push job", props);
+      IntegrationTestPushUtils.runVPJ(props);
     }
 
     return inputDirPath;
@@ -930,16 +916,13 @@ public class TestBootstrappingChangelogConsumer {
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsMap,
       List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsList,
       List<BootstrappingVeniceChangelogConsumer<Utf8, Utf8>> bootstrappingVeniceChangelogConsumerList) {
-    Map<String, String> samzaConfig = getSamzaProducerConfig(clusterWrapper, storeName, Version.PushType.STREAM);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
     // Half puts and half deletes
     int recordsToProduce = 20;
     int numPuts = recordsToProduce / 2;
     int numDeletes = recordsToProduce / 2;
 
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       // Run Samza job to send PUT and DELETE requests.
       runSamzaStreamJob(veniceProducer, storeName, null, numPuts, numDeletes, startIndex, false);
     }
@@ -980,16 +963,13 @@ public class TestBootstrappingChangelogConsumer {
       Map<String, PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsMap,
       List<PubSubMessage<TestChangelogKey, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsList,
       List<BootstrappingVeniceChangelogConsumer<TestChangelogKey, TestChangelogValue>> bootstrappingVeniceChangelogConsumerList) {
-    Map<String, String> samzaConfig = getSamzaProducerConfig(clusterWrapper, storeName, Version.PushType.STREAM);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
     // Half puts and half deletes
     int recordsToProduce = 20;
     int numPuts = recordsToProduce / 2;
     int numDeletes = recordsToProduce / 2;
 
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
       // Run Samza job to send PUT and DELETE requests.
       runSamzaStreamJob(veniceProducer, storeName, null, numPuts, numDeletes, startIndex, true);
     }

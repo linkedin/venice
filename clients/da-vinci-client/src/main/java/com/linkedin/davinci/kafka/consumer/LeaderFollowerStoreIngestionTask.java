@@ -60,7 +60,6 @@ import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -722,15 +721,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   AbstractStorageEngine.StoragePartitionAdjustmentTrigger.PROMOTE_TO_LEADER,
                   getStoragePartitionConfig(partitionConsumptionState));
             }
-
-            /**
-             * The topic switch operation will be recorded but the actual topic switch happens only after the replica
-             * is promoted to leader; we should check whether it's ready to serve after switching topic.
-             *
-             * In extreme case, if there is no message in real-time topic, there will be no new message after leader switch
-             * to the real-time topic, so `isReadyToServe()` check will never be invoked.
-             */
-            maybeApplyReadyToServeCheck(partitionConsumptionState);
           }
           break;
 
@@ -1046,10 +1036,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
 
     prepareOffsetCheckpointAndStartConsumptionAsLeader(newSourceTopic, partitionConsumptionState, false);
-
-    // In case new topic is empty and leader can never become online
-    // TODO: Remove this once after AGG store migration.
-    maybeApplyReadyToServeCheck(partitionConsumptionState);
   }
 
   /**
@@ -1293,10 +1279,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   /**
    * Process {@link TopicSwitch} control message at given partition offset for a specific {@link PartitionConsumptionState}.
-   * Return whether we need to execute additional ready-to-serve check after this message is processed.
    */
   @Override
-  protected boolean processTopicSwitch(
+  protected void processTopicSwitch(
       ControlMessage controlMessage,
       int partition,
       long offset,
@@ -1341,16 +1326,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * For follower, just keep track of what leader is doing now.
        */
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
-      /**
-       * We need to measure offset lag after processing TopicSwitch for follower; if real-time topic is empty and never
-       * gets any new message, follower replica will never become online.
-       * If we measure lag here for follower, follower might become online faster than leader in extreme case:
-       * Real time topic for that partition is empty or the rewind start offset is very closed to the end, followers
-       * calculate the lag of the leader and decides the lag is small enough.
-       */
-      return isHybridAggregateMode();
     }
-    return false;
   }
 
   protected void syncTopicSwitchToIngestionMetadataService(
@@ -2144,16 +2120,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * For non AA hybrid stores with AGGREGATE DRP, SIT reads from parent RT while the HB is written to the child RTs.
-   * Once all hybrid stores are either AA for cross colo replication and non AA otherwise, DRP and this extra
-   * check can also be removed.
-   */
-  protected boolean shouldCheckLeaderCompleteStateInFollower() {
-    return (getServerConfig().isLeaderCompleteStateCheckInFollowerEnabled() && this.hybridStoreConfig.isPresent()
-        && this.hybridStoreConfig.get().getDataReplicationPolicy() != DataReplicationPolicy.AGGREGATE);
-  }
-
-  /**
    * Checks whether the lag is acceptable for hybrid stores
    * <p>
    * If the instance is a hybrid standby or DaVinciClient: Also check if <br>
@@ -2174,7 +2140,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
     // if lag is acceptable and is a hybrid standby or DaVinciClient: check and
     // override it based on leader follower state
-    if (isLagAcceptable && isHybridFollower && shouldCheckLeaderCompleteStateInFollower()) {
+    if (isLagAcceptable && isHybridFollower) {
       isLagAcceptable = pcs.isLeaderCompleted()
           && ((System.currentTimeMillis() - pcs.getLastLeaderCompleteStateUpdateInMs()) <= getServerConfig()
               .getLeaderCompleteStateCheckInFollowerValidIntervalMs());

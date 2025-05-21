@@ -24,7 +24,6 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -262,8 +261,7 @@ public class HeartbeatMonitoringServiceTest {
   public void testAddLeaderLagMonitor(boolean enableSepRT) {
 
     // Default hybrid store config
-    HybridStoreConfig hybridStoreConfig =
-        new HybridStoreConfigImpl(1L, 1L, 1L, DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_SOP);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
     // Version configs
     Version backupVersion = new VersionImpl(TEST_STORE, 1, "1"); // Non-hybrid version
     Version currentVersion = new VersionImpl(TEST_STORE, 2, "2"); // hybrid version, active/active

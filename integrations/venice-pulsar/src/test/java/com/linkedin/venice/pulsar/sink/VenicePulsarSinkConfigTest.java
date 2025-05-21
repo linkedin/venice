@@ -46,7 +46,6 @@ public class VenicePulsarSinkConfigTest {
 
     assertEquals(props.get("systems.test-system.push.type"), "INCREMENTAL");
     assertEquals(props.get("systems.test-system.store"), "test-store");
-    assertEquals(props.get("systems.test-system.aggregate"), "false");
   }
 
   @Test
@@ -85,7 +84,6 @@ public class VenicePulsarSinkConfigTest {
 
     assertEquals(props.get("systems.test-system.push.type"), "INCREMENTAL");
     assertEquals(props.get("systems.test-system.store"), "test-store");
-    assertEquals(props.get("systems.test-system.aggregate"), "false");
   }
 
   @Test

@@ -65,7 +65,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -161,7 +160,18 @@ public class IntegrationTestPushUtils {
   }
 
   /**
-   * Blocking, waits for new version to go online
+   * Run VPJ and blocking wait for complete.
+   */
+  public static void runVPJ(Properties props) {
+    try (VenicePushJob job = new VenicePushJob(
+        "venice-push-job-" + props.get(VENICE_STORE_NAME_PROP) + "-" + System.currentTimeMillis(),
+        props)) {
+      job.run();
+    }
+  }
+
+  /**
+   * Run VPJ and blocking wait for complete. Validate expected current version with provided controller client.
    */
   public static void runVPJ(Properties vpjProperties, int expectedVersionNumber, ControllerClient controllerClient) {
     runVPJ(vpjProperties, expectedVersionNumber, controllerClient, Optional.empty());
@@ -173,7 +183,7 @@ public class IntegrationTestPushUtils {
       ControllerClient controllerClient,
       Optional<DaVinciClientDiskFullTest.SentPushJobDetailsTrackerImpl> pushJobDetailsTracker) {
     long vpjStart = System.currentTimeMillis();
-    String jobName = Utils.getUniqueString("hybrid-job-" + expectedVersionNumber);
+    String jobName = Utils.getUniqueString("venice-push-job-" + expectedVersionNumber);
     try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
       pushJobDetailsTracker.ifPresent(job::setSentPushJobDetailsTracker);
       job.run();
@@ -227,9 +237,9 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, type.toString());
     samzaConfig.put(configPrefix + VENICE_STORE, storeName);
     samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, venice.getZk().getAddress());
-    samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, VeniceControllerWrapper.D2_SERVICE_NAME);
+    samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
     samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_zk_address");
-    samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, "invalid_parent_d2_service");
+    samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
     samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
     samzaConfig.put(SSL_ENABLED, "false");
     samzaConfig.putAll(
@@ -237,19 +247,16 @@ public class IntegrationTestPushUtils {
     return samzaConfig;
   }
 
-  /**
-   *  Create Samza Producer config for multi cluster setup.
-   */
-  public static Map<String, String> getSamzaProducerConfig(
-      List<VeniceMultiClusterWrapper> dataCenters,
+  private static Map<String, String> getSamzaProducerConfig(
+      VeniceTwoLayerMultiRegionMultiClusterWrapper clusterWrapper,
       int index,
       String storeName) {
     Map<String, String> samzaConfig = new HashMap<>();
     String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
     samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
     samzaConfig.put(configPrefix + VENICE_STORE, storeName);
-    samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
-    samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, dataCenters.get(index).getZkServerWrapper().getAddress());
+    samzaConfig
+        .put(VENICE_CHILD_D2_ZK_HOSTS, clusterWrapper.getChildRegions().get(index).getZkServerWrapper().getAddress());
     samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
     samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_d2_service");
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
@@ -258,8 +265,29 @@ public class IntegrationTestPushUtils {
     return samzaConfig;
   }
 
+  private static Map<String, String> getSamzaProducerConfigForBatch(
+      VeniceTwoLayerMultiRegionMultiClusterWrapper clusterWrapper,
+      String storeName) {
+    Map<String, String> samzaConfig = new HashMap<>();
+    String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
+    samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.BATCH.toString());
+    samzaConfig.put(configPrefix + VENICE_STORE, storeName);
+    samzaConfig
+        .put(VENICE_CHILD_D2_ZK_HOSTS, clusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress());
+    samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
+    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, clusterWrapper.getZkServerWrapper().getAddress());
+    samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
+    samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
+    samzaConfig.put(SSL_ENABLED, "false");
+    samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
+    return samzaConfig;
+  }
+
+  /**
+   * Create Samza Producer in Single-Region setup with optional configs.
+   */
   @SafeVarargs
-  public static SystemProducer getSamzaProducer(
+  public static VeniceSystemProducer getSamzaProducer(
       VeniceClusterWrapper venice,
       String storeName,
       Version.PushType type,
@@ -269,7 +297,39 @@ public class IntegrationTestPushUtils {
       samzaConfig.put(config.getFirst(), config.getSecond());
     }
     VeniceSystemFactory factory = new VeniceSystemFactory();
-    SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+    VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
+    veniceProducer.start();
+    return veniceProducer;
+  }
+
+  /**
+   *  Create Samza Producer for multi-region setup BATCH write.
+   */
+  public static VeniceSystemProducer getSamzaProducerForBatch(
+      VeniceTwoLayerMultiRegionMultiClusterWrapper venice,
+      String storeName) {
+    Map<String, String> samzaConfig = getSamzaProducerConfigForBatch(venice, storeName);
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
+    veniceProducer.start();
+    return veniceProducer;
+  }
+
+  /**
+   *  Create Samza Producer for multi-region setup STREAM write.
+   */
+  @SafeVarargs
+  public static VeniceSystemProducer getSamzaProducerForStream(
+      VeniceTwoLayerMultiRegionMultiClusterWrapper venice,
+      int regionId,
+      String storeName,
+      Pair<String, String>... optionalConfigs) {
+    Map<String, String> samzaConfig = getSamzaProducerConfig(venice, regionId, storeName);
+    for (Pair<String, String> config: optionalConfigs) {
+      samzaConfig.put(config.getFirst(), config.getSecond());
+    }
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
     veniceProducer.start();
     return veniceProducer;
   }
@@ -372,7 +432,7 @@ public class IntegrationTestPushUtils {
   }
 
   public static void sendStreamingRecordWithLogicalTimestamp(
-      VeniceSystemProducer veniceProducer,
+      SystemProducer veniceProducer,
       String storeName,
       int index,
       long logicalTimestamp,
@@ -539,4 +599,5 @@ public class IntegrationTestPushUtils {
       Assert.assertEquals(replicaPerRegionCount, expectedReplicaNumPerRegion);
     }
   }
+
 }

@@ -101,12 +101,12 @@ public class BlobP2PTransferAmongServersTest {
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
         File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
-        Boolean fileExisted = Files.exists(file.toPath());
+        boolean fileExisted = Files.exists(file.toPath());
         Assert.assertTrue(fileExisted);
         // ensure the snapshot file is not generated
         File snapshotFile =
             new File(RocksDBUtils.composeSnapshotDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
-        Boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
+        boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
         Assert.assertFalse(snapshotFileExisted);
         // at that moment, the path 2 snapshot should be created
         String snapshotPath2 = RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId);
@@ -169,13 +169,13 @@ public class BlobP2PTransferAmongServersTest {
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
       for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
         File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
-        Boolean fileExisted = Files.exists(file.toPath());
+        boolean fileExisted = Files.exists(file.toPath());
         Assert.assertTrue(fileExisted);
         // the snapshot from server 2 should not be generated as it should throw 404 error once detect the table format
         // is not match.
         File snapshotFile =
             new File(RocksDBUtils.composeSnapshotDir(path2 + "/rocksdb", storeName + "_v1", partitionId));
-        Boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
+        boolean snapshotFileExisted = Files.exists(snapshotFile.toPath());
         Assert.assertFalse(snapshotFileExisted);
       }
     });
@@ -288,15 +288,14 @@ public class BlobP2PTransferAmongServersTest {
 
   private static void runVPJ(Properties vpjProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
     long vpjStart = System.currentTimeMillis();
-    String jobName = Utils.getUniqueString("batch-job-" + expectedVersionNumber);
-    TestWriteUtils.runPushJob(jobName, vpjProperties);
+    IntegrationTestPushUtils.runVPJ(vpjProperties);
     String storeName = (String) vpjProperties.get(VENICE_STORE_NAME_PROP);
     cluster.waitVersion(storeName, expectedVersionNumber);
     LOGGER.info("**TIME** VPJ" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - vpjStart));
   }
 
   @Test(singleThreaded = true, timeOut = 240000)
-  public void testBlobP2PTransferAmongServersForHybridStore() throws Exception {
+  public void testBlobP2PTransferAmongServersForHybridStore() {
     cluster = initializeVeniceCluster();
 
     ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
@@ -334,7 +333,7 @@ public class BlobP2PTransferAmongServersTest {
     // No need to check the snapshot as when server 1 and 2 initially started, blob transfer is not generated.
     for (int partitionId = 0; partitionId < PARTITION_COUNT; partitionId++) {
       File file = new File(RocksDBUtils.composePartitionDbDir(path1 + "/rocksdb", storeName + "_v1", partitionId));
-      Boolean fileExisted = Files.exists(file.toPath());
+      boolean fileExisted = Files.exists(file.toPath());
       Assert.assertTrue(fileExisted);
     }
 
