@@ -313,7 +313,7 @@ public class VenicePushJobTest {
         Assert.assertTrue(e.getMessage().contains("push job is still in unknown state."));
       }
       verify(pushJob, times(1)).cancel();
-      verify(pushJob, times(2)).killDataWriterJob();
+      verify(pushJob.getDataWriterComputeJob(), times(1)).kill();
     }
   }
 
@@ -379,7 +379,7 @@ public class VenicePushJobTest {
         // Expected, because the data writer job is not configured to run successfully in this unit test environment
       }
       verify(pushJob, times(1)).cancel();
-      verify(pushJob, times(2)).killDataWriterJob();
+      verify(pushJob.getDataWriterComputeJob(), times(1)).kill();
       assertEquals(pushJob.getDataWriterComputeJob().getStatus(), DataWriterComputeJob.Status.KILLED);
     }
   }
