@@ -557,16 +557,17 @@ public class TestBootstrappingChangelogConsumer {
               .setControllerRequestRetryCount(3)
               .setBootstrapFileSystemPath(inputDirPath)
               .setIsExperimentalClientEnabled(true)
-              .setSpecificKey(TestChangelogKey.class)
-              .setSpecificValue(TestChangelogValue.class)
-              .setSpecificValueSchema(TestChangelogValue.SCHEMA$)
               .setD2Client(d2Client);
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
           new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
       List<BootstrappingVeniceChangelogConsumer<TestChangelogKey, TestChangelogValue>> bootstrappingVeniceChangelogConsumerList =
           Collections.singletonList(
-              veniceChangelogConsumerClientFactory
-                  .getBootstrappingChangelogConsumer(storeName, Integer.toString(0), TestChangelogValue.class));
+              veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(
+                  storeName,
+                  Integer.toString(0),
+                  TestChangelogKey.class,
+                  TestChangelogValue.class,
+                  TestChangelogValue.SCHEMA$));
 
       try (VeniceSystemProducer veniceProducer =
           IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
@@ -667,17 +668,18 @@ public class TestBootstrappingChangelogConsumer {
               .setControllerRequestRetryCount(3)
               .setBootstrapFileSystemPath(inputDirPath1)
               .setD2Client(d2Client)
-              .setIsExperimentalClientEnabled(true)
-              .setSpecificKey(TestChangelogKey.class)
-              .setSpecificValue(TestChangelogValue.class)
-              .setSpecificValueSchema(TestChangelogValue.SCHEMA$);
+              .setIsExperimentalClientEnabled(true);
 
       VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
           new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
       List<BootstrappingVeniceChangelogConsumer<TestChangelogKey, TestChangelogValue>> bootstrappingVeniceChangelogConsumerList =
           Collections.singletonList(
-              veniceChangelogConsumerClientFactory
-                  .getBootstrappingChangelogConsumer(storeName, Integer.toString(0), TestChangelogValue.class));
+              veniceChangelogConsumerClientFactory.getBootstrappingChangelogConsumer(
+                  storeName,
+                  Integer.toString(0),
+                  TestChangelogKey.class,
+                  TestChangelogValue.class,
+                  TestChangelogValue.SCHEMA$));
 
       try (VeniceSystemProducer veniceProducer =
           IntegrationTestPushUtils.getSamzaProducer(clusterWrapper, storeName, Version.PushType.STREAM)) {
