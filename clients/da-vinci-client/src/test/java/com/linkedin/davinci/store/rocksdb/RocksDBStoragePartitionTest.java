@@ -163,7 +163,6 @@ public class RocksDBStoragePartitionTest {
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -188,7 +187,6 @@ public class RocksDBStoragePartitionTest {
     rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
     serverConfig = new VeniceServerConfig(veniceServerProperties);
     factory = new RocksDBStorageEngineFactory(serverConfig);
-    storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -229,7 +227,6 @@ public class RocksDBStoragePartitionTest {
     rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
     serverConfig = new VeniceServerConfig(veniceServerProperties);
     factory = new RocksDBStorageEngineFactory(serverConfig);
-    storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -298,7 +295,6 @@ public class RocksDBStoragePartitionTest {
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -463,7 +459,6 @@ public class RocksDBStoragePartitionTest {
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -639,7 +634,6 @@ public class RocksDBStoragePartitionTest {
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -773,7 +767,6 @@ public class RocksDBStoragePartitionTest {
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -808,7 +801,6 @@ public class RocksDBStoragePartitionTest {
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -846,7 +838,6 @@ public class RocksDBStoragePartitionTest {
     partitionConfig.setWriteOnlyConfig(true);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -876,7 +867,6 @@ public class RocksDBStoragePartitionTest {
         new RocksDBServerConfig(AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties));
     serverConfig = new VeniceServerConfig(veniceServerProperties);
     factory = new RocksDBStorageEngineFactory(serverConfig);
-    storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -925,7 +915,6 @@ public class RocksDBStoragePartitionTest {
     partitionConfig.setWriteOnlyConfig(true);
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -1014,7 +1003,6 @@ public class RocksDBStoragePartitionTest {
 
       RocksDBMemoryStats mockMemoryStats = mock(RocksDBMemoryStats.class);
       VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-      VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
       RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(
           serverConfig,
           mockMemoryStats,
@@ -1094,7 +1082,6 @@ public class RocksDBStoragePartitionTest {
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
-    VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
 
     RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
         partitionConfig,
