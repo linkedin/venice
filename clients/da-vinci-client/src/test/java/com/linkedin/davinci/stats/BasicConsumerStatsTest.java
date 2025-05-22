@@ -55,7 +55,7 @@ public class BasicConsumerStatsTest {
   String storeName;
 
   @BeforeMethod
-  private void setUp() {
+  public void setUp() {
     ClientType clientType = CHANGE_DATA_CAPTURE_CLIENT;
     tehutiMetricPrefix = "." + clientType;
     otelMetricPrefix = CHANGE_DATA_CAPTURE_CLIENT.getMetricsPrefix();
