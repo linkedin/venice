@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_INPUT_FILE_DATA_SIZE;
@@ -28,7 +29,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
@@ -48,7 +48,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
@@ -152,6 +151,16 @@ public class TestWriteUtils {
       new PushInputSchemaBuilder().setKeySchema(INT_SCHEMA).setValueSchema(INT_SCHEMA).build();
   public static final Schema STRING_TO_STRING_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(STRING_SCHEMA).build();
+  public static final Schema STRING_TO_STRING_WITH_TIMESTAMP = new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
+      .setValueSchema(STRING_SCHEMA)
+      .setFieldSchema(DEFAULT_TIMESTAMP_FIELD_PROP, Schema.create(Schema.Type.LONG))
+      .build();
+
+  public static final Schema STRING_TO_NAME_WITH_TIMESTAMP_RECORD_V1_SCHEMA =
+      new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
+          .setValueSchema(NAME_RECORD_V1_SCHEMA)
+          .setFieldSchema(DEFAULT_TIMESTAMP_FIELD_PROP, Schema.create(Schema.Type.LONG))
+          .build();
 
   public static final Schema STRING_TO_NAME_RECORD_V1_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(NAME_RECORD_V1_SCHEMA).build();
@@ -240,6 +249,22 @@ public class TestWriteUtils {
 
   public static Schema writeSimpleAvroFileWithStringToStringSchema(File parentDir) throws IOException {
     return writeSimpleAvroFileWithStringToStringSchema(parentDir, DEFAULT_USER_DATA_RECORD_COUNT);
+  }
+
+  public static void writeSimpleAvroFileWithStringToStringAndTimestampSchema(
+      File parentDir,
+      int recordCount,
+      String fileName,
+      long timestamp) throws IOException {
+    writeAvroFile(parentDir, fileName, STRING_TO_STRING_WITH_TIMESTAMP, (recordSchema, writer) -> {
+      for (int i = 1; i <= recordCount; ++i) {
+        GenericRecord user = new GenericData.Record(recordSchema);
+        user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
+        user.put(DEFAULT_TIMESTAMP_FIELD_PROP, timestamp);
+        writer.append(user);
+      }
+    });
   }
 
   public static Schema writeSimpleAvroFileWithStringToStringSchema(File parentDir, int recordCount) throws IOException {
@@ -586,24 +611,6 @@ public class TestWriteUtils {
       floatsArray.add(RandomGenUtils.getRandomFloat());
     }
     user.put(DEFAULT_VALUE_FIELD_PROP, floatsArray);
-    user.put("age", index);
-    return user;
-  }
-
-  public static GenericRecord getRecordWithStringMap(Schema recordSchema, int index, int count) {
-    GenericRecord user = new GenericData.Record(recordSchema);
-    user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(index)); // DEFAULT_KEY_FIELD_PROP is the key
-    String valuePayloadBase = "1234567890";
-    StringBuilder valuePayloadBuilder = new StringBuilder();
-    for (int i = 0; i < 10; i++) {
-      valuePayloadBuilder.append(valuePayloadBase);
-    }
-
-    Map<String, String> stringMap = new HashMap<>();
-    for (int j = 0; j < count; j++) {
-      stringMap.put("item_" + j, valuePayloadBuilder.toString());
-    }
-    user.put(DEFAULT_VALUE_FIELD_PROP, stringMap);
     user.put("age", index);
     return user;
   }
@@ -1208,16 +1215,5 @@ public class TestWriteUtils {
                 .setName("metadata")
                 .setSchema(Schema.createMap(Schema.create(Schema.Type.STRING)))
                 .build()));
-  }
-
-  public static void runPushJob(String jobId, Properties props) {
-    runPushJob(jobId, props, noOp -> {});
-  }
-
-  public static void runPushJob(String jobId, Properties props, Consumer<VenicePushJob> jobTransformer) {
-    try (VenicePushJob job = new VenicePushJob(jobId, props)) {
-      jobTransformer.accept(job);
-      job.run();
-    }
   }
 }

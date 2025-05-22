@@ -1,8 +1,10 @@
 package com.linkedin.venice.hadoop.task.datawriter;
 
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_OFFSET;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_PUBSUB_POSITION;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -71,7 +73,7 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       V value,
       int valueSchemaId,
       PubSubProducerCallback callback) {
-    return compositePut(key, value, valueSchemaId, callback, null);
+    return compositePut(key, value, APP_DEFAULT_LOGICAL_TS, valueSchemaId, callback, null);
   }
 
   @Override
@@ -81,7 +83,18 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       int valueSchemaId,
       PubSubProducerCallback callback,
       PutMetadata putMetadata) {
-    return compositePut(key, value, valueSchemaId, callback, putMetadata);
+    return compositePut(key, value, APP_DEFAULT_LOGICAL_TS, valueSchemaId, callback, putMetadata);
+  }
+
+  @Override
+  public CompletableFuture<PubSubProduceResult> put(
+      K key,
+      V value,
+      int valueSchemaId,
+      long logicalTimestamp,
+      PubSubProducerCallback callback,
+      PutMetadata putMetadata) {
+    return compositePut(key, value, logicalTimestamp, valueSchemaId, callback, putMetadata);
   }
 
   /**
@@ -131,6 +144,7 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
   private CompletableFuture<PubSubProduceResult> compositePut(
       K key,
       V value,
+      long logicalTimestamp,
       int valueSchemaId,
       PubSubProducerCallback mainWriterCallback,
       PutMetadata putMetadata) {
@@ -153,10 +167,17 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
           childCallback,
           putMetadata);
     }
-    LeaderMetadataWrapper leaderMetadataWrapper =
-        new LeaderMetadataWrapper(DEFAULT_UPSTREAM_OFFSET, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID, viewPartitionMap);
+    LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(
+        DEFAULT_UPSTREAM_OFFSET,
+        DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
+        DEFAULT_TERM_ID,
+        DEFAULT_UPSTREAM_PUBSUB_POSITION,
+        viewPartitionMap);
+    // We only need to pass the logical timestamp to the main writer as it's only used for write conflict resolution
+    // in the venice server or TTL repush. So we don't need to pass it to view topics.
+    long passedTimestamp = logicalTimestamp > 0 ? logicalTimestamp : APP_DEFAULT_LOGICAL_TS;
     CompletableFuture<PubSubProduceResult> mainFuture = mainWriter
-        .put(key, value, valueSchemaId, mainWriterCallback, leaderMetadataWrapper, APP_DEFAULT_LOGICAL_TS, putMetadata);
+        .put(key, value, valueSchemaId, mainWriterCallback, leaderMetadataWrapper, passedTimestamp, putMetadata);
     CompletableFuture.allOf(childFutures).whenCompleteAsync((ignored, writeException) -> {
       if (writeException == null) {
         try {

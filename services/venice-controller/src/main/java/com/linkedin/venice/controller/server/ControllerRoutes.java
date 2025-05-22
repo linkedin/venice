@@ -25,7 +25,6 @@ import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.PubSubTopicConfigResponse;
 import com.linkedin.venice.controllerapi.StoppableNodeStatusResponse;
 import com.linkedin.venice.exceptions.ErrorType;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
@@ -34,7 +33,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
-import java.net.URL;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -258,22 +256,11 @@ public class ControllerRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         String clusterName = request.queryParams(CLUSTER);
-        String currentUrl = getRequestURL(request);
-
         responseObject.setCluster(clusterName);
-        Map<String, Long> controllerUrlToVersionMap = admin.getAdminOperationVersionFromControllers(clusterName);
-        responseObject.setControllerUrlToVersionMap(controllerUrlToVersionMap);
-        responseObject.setRequestUrl(currentUrl);
-
-        if (controllerUrlToVersionMap.containsKey(currentUrl)) {
-          responseObject.setLocalAdminOperationProtocolVersion(controllerUrlToVersionMap.get(currentUrl));
-        } else {
-          // Should not happen
-          throw new VeniceException(
-              "The current controller URL: " + currentUrl + " is not in the urlToVersionMap in the response "
-                  + controllerUrlToVersionMap);
-        }
-
+        Map<String, Long> controllerNameToVersionMap = admin.getAdminOperationVersionFromControllers(clusterName);
+        responseObject.setControllerNameToVersionMap(controllerNameToVersionMap);
+        responseObject.setLocalControllerName(admin.getControllerName());
+        responseObject.setLocalAdminOperationProtocolVersion(admin.getLocalAdminOperationProtocolVersion());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
@@ -292,29 +279,13 @@ public class ControllerRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         responseObject.setLocalAdminOperationProtocolVersion(admin.getLocalAdminOperationProtocolVersion());
-        responseObject.setRequestUrl(getRequestURL(request));
+        responseObject.setLocalControllerName(admin.getControllerName());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
-  }
-
-  /**
-   * Get the request base URL from the request object.
-   * Example:
-   * request.url() = https://localhost:8080/venice/cluster/clusterName/leaderController?param1=value1&param2=value2
-   * base URL: https://localhost:8080
-   * @return the base URL
-   */
-  private String getRequestURL(Request request) {
-    try {
-      URL url = new URL(request.url());
-      return url.getProtocol() + "://" + url.getHost() + (url.getPort() != -1 ? ":" + url.getPort() : "");
-    } catch (Exception e) {
-      throw new VeniceException("Invalid URL: " + request.url(), e);
-    }
   }
 
   @FunctionalInterface

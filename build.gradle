@@ -55,7 +55,7 @@ def hadoopVersion = '2.10.2'
 def apacheSparkVersion = '3.3.3'
 def antlrVersion = '4.8'
 def scala = '2.12'
-def openTelemetryVersion = '1.33.0'
+def openTelemetryVersion = '1.47.0'
 
 ext.libraries = [
     alpnAgent: "org.mortbay.jetty.alpn:jetty-alpn-agent:${alpnAgentVersion}",
@@ -319,7 +319,6 @@ subprojects {
     doFirst {
       def versionOverrides = [
 //        project(':internal:venice-common').file('src/main/resources/avro/StoreVersionState/v5', PathValidation.DIRECTORY)
-        project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v11', PathValidation.DIRECTORY)
       ]
 
       def schemaDirs = [sourceDir]

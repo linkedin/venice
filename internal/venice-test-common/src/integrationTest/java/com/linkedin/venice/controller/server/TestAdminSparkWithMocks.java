@@ -18,7 +18,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -84,7 +83,6 @@ public class TestAdminSparkWithMocks {
             25L,
             100L,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
     Version hybridVersion = new VersionImpl("store", 1, "pushJobId-1234", 33);
     hybridVersion.setHybridStoreConfig(mockStore.getHybridStoreConfig());
@@ -157,7 +155,6 @@ public class TestAdminSparkWithMocks {
             25L,
             100L,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
@@ -226,7 +223,6 @@ public class TestAdminSparkWithMocks {
             25L,
             100L,
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
     mockStore.setActiveActiveReplicationEnabled(true);
     mockStore.setIncrementalPushEnabled(true);
@@ -319,12 +315,10 @@ public class TestAdminSparkWithMocks {
 
   /**
    * @param samzaPolicy true means it's running in AGGREGATE mode, otherwise running in NON_AGGREGATE mode.
-   * @param storePolicy true means store is configured in AGGREGATE mode, otherwise configured in NON_AGGREGATE mode.
    * @throws Exception
    */
-  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testSamzaReplicationPolicyMode(boolean samzaPolicy, boolean storePolicy, boolean aaEnabled)
-      throws Exception {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testSamzaReplicationPolicyMode(boolean samzaPolicy, boolean aaEnabled) throws Exception {
     // setup server with mock admin, note returns topic "store_rt"
     Store mockStore = new ZKStore(
         "store",
@@ -335,23 +329,12 @@ public class TestAdminSparkWithMocks {
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
         1);
-    if (storePolicy) {
-      mockStore.setHybridStoreConfig(
-          new HybridStoreConfigImpl(
-              25L,
-              100L,
-              HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-              DataReplicationPolicy.AGGREGATE,
-              BufferReplayPolicy.REWIND_FROM_EOP));
-    } else {
-      mockStore.setHybridStoreConfig(
-          new HybridStoreConfigImpl(
-              25L,
-              100L,
-              HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-              DataReplicationPolicy.NON_AGGREGATE,
-              BufferReplayPolicy.REWIND_FROM_EOP));
-    }
+    mockStore.setHybridStoreConfig(
+        new HybridStoreConfigImpl(
+            25L,
+            100L,
+            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+            BufferReplayPolicy.REWIND_FROM_EOP));
     Version hybridVersion = new VersionImpl("store", 1, "pushJobId-1234", 33);
     hybridVersion.setHybridStoreConfig(mockStore.getHybridStoreConfig());
     hybridVersion.setStatus(VersionStatus.ONLINE);
@@ -399,8 +382,7 @@ public class TestAdminSparkWithMocks {
     }
 
     // verify response, note we expect same topic, "store_rt"
-
-    if ((storePolicy && samzaPolicy) || (!storePolicy && !samzaPolicy) || aaEnabled) {
+    if (!samzaPolicy) {
       Assert.assertFalse(responseObject.isError(), "unexpected error: " + responseObject.getError());
       Assert.assertEquals(responseObject.getKafkaTopic(), "store_rt");
     } else {

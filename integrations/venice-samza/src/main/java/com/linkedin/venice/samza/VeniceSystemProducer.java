@@ -89,11 +89,10 @@ import org.apache.samza.system.SystemProducer;
  *
  * The primary controller should be:
  * 1. The parent controller when the Venice system is deployed in a multi-colo mode and either:
- *     a. {@link Version.PushType} is {@link PushType.BATCH} or {@link PushType.STREAM_REPROCESSING}; or
- *     b. @deprecated {@link Version.PushType} is {@link PushType.STREAM} and the job is configured to write data in AGGREGATE mode
+ *     a. {@link Version.PushType} is {@link Version.PushType#BATCH} or {@link Version.PushType#STREAM_REPROCESSING};
  * 2. The child controller when either:
  *     a. The Venice system is deployed in a single-colo mode; or
- *     b. The {@link Version.PushType} is {@link PushType.STREAM} and the job is configured to write data in NON_AGGREGATE mode
+ *     b. The {@link Version.PushType} is {@link Version.PushType#STREAM} and the job is configured to write data in NON_AGGREGATE mode
  */
 public class VeniceSystemProducer implements SystemProducer, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemProducer.class);

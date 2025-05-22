@@ -19,6 +19,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_S
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -43,6 +44,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.status.PushJobDetailsStatus;
@@ -294,34 +297,55 @@ public class TestFatalDataValidationExceptionHandling {
     vw3.broadcastStartOfPush(false, Collections.emptyMap());
     vw3.flush();
 
+    PubSubPosition pubSubPosition0 = new ApacheKafkaOffsetPosition(0);
     vw1.put(
         stringSerializer.serialize("key_writer_1"),
         stringSerializer.serialize("value_writer_1"),
         1,
         null,
-        new LeaderMetadataWrapper(0, 0));
+        new LeaderMetadataWrapper(
+            pubSubPosition0.getNumericOffset(),
+            0,
+            DEFAULT_TERM_ID,
+            pubSubPosition0.getWireFormatBytes()));
     vw1.flush();
 
+    PubSubPosition pubSubPosition1 = new ApacheKafkaOffsetPosition(1);
     vw2.put(
         stringSerializer.serialize("key_writer_2"),
         stringSerializer.serialize("value_writer_2"),
         1,
         null,
-        new LeaderMetadataWrapper(1, 0));
+        new LeaderMetadataWrapper(
+            pubSubPosition1.getNumericOffset(),
+            0,
+            DEFAULT_TERM_ID,
+            pubSubPosition1.getWireFormatBytes()));
+
+    PubSubPosition pubSubPosition2 = new ApacheKafkaOffsetPosition(2);
     vw2.put(
         stringSerializer.serialize("key_writer_3"),
         stringSerializer.serialize("value_writer_3"),
         1,
         null,
-        new LeaderMetadataWrapper(2, 0));
+        new LeaderMetadataWrapper(
+            pubSubPosition2.getNumericOffset(),
+            0,
+            DEFAULT_TERM_ID,
+            pubSubPosition2.getWireFormatBytes()));
     vw2.flush();
 
+    PubSubPosition pubSubPosition3 = new ApacheKafkaOffsetPosition(3);
     vw1.put(
         stringSerializer.serialize("key_writer_4"),
         stringSerializer.serialize("value_writer_4"),
         1,
         null,
-        new LeaderMetadataWrapper(3, 0));
+        new LeaderMetadataWrapper(
+            pubSubPosition3.getNumericOffset(),
+            0,
+            DEFAULT_TERM_ID,
+            pubSubPosition3.getWireFormatBytes()));
     vw1.flush();
     vw1.closePartition(0);
     vw1.flush();

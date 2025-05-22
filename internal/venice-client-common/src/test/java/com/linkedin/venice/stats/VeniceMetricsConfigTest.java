@@ -203,4 +203,14 @@ public class VeniceMetricsConfigTest {
         .extractAndSetOtelConfigs(otelConfigs)
         .build();
   }
+
+  @Test
+  public void testSetOtelHeaders() {
+    Map<String, String> otelHeaders = new HashMap<>();
+    otelHeaders.put("key1", "value1");
+
+    VeniceMetricsConfig config =
+        new Builder().setServiceName("TestService").setMetricPrefix("TestPrefix").setOtelHeaders(otelHeaders).build();
+    assertEquals(config.getOtelHeaders().get("key1"), "value1");
+  }
 }

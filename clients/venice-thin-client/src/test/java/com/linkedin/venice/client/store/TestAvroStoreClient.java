@@ -49,7 +49,10 @@ public class TestAvroStoreClient {
     doReturn(mockTransportClient).when(mockTransportClient).getCopyIfNotUsableInCallback();
 
     byte[] schemaResponseInBytes = StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, KEY_SCHEMA_STR);
-    setupSchemaResponse(schemaResponseInBytes, RouterBackedSchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
+    StoreClientTestUtils.setupSchemaResponse(
+        mockTransportClient,
+        schemaResponseInBytes,
+        RouterBackedSchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
     genericStoreClient =
         new AvroGenericStoreClientImpl(mockTransportClient, ClientConfig.defaultGenericClientConfig(STORE_NAME));
   }
@@ -65,11 +68,6 @@ public class TestAvroStoreClient {
   }
 
   @Test
-  public void testStartClient() throws VeniceClientException {
-    genericStoreClient.start();
-  }
-
-  @Test(dependsOnMethods = { "testStartClient" })
   public void testGet() {
     genericStoreClient.start();
 
@@ -94,18 +92,14 @@ public class TestAvroStoreClient {
     verify(mockTransportClient, atLeast(2)).get(any());
   }
 
-  @Test(dependsOnMethods = { "testStartClient" })
+  @Test
   public void testFetchRecordDeserializer() throws IOException {
     // Setup multi-schema response
-    Map schemas = new HashMap<>();
-    schemas.put(1, TestValueRecord.SCHEMA$.toString());
-    schemas.put(2, TestValueRecordWithMoreFields.SCHEMA$.toString());
-    byte[] multiSchemasInBytes = StoreClientTestUtils.constructMultiSchemaResponseInBytes(STORE_NAME, schemas);
-    setupSchemaResponse(multiSchemasInBytes, RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME);
+    Map<Integer, Schema> schemas = new HashMap<>();
+    schemas.put(1, TestValueRecord.SCHEMA$);
+    schemas.put(2, TestValueRecordWithMoreFields.SCHEMA$);
 
-    // Setup individual schema responses
-    setupSchemaResponse(1, TestValueRecord.SCHEMA$);
-    setupSchemaResponse(2, TestValueRecordWithMoreFields.SCHEMA$);
+    StoreClientTestUtils.setupMultiValueSchemaResponse(mockTransportClient, STORE_NAME, schemas);
 
     genericStoreClient.start();
 
@@ -138,28 +132,13 @@ public class TestAvroStoreClient {
     specificStoreClient.close();
   }
 
-  private void setupSchemaResponse(int schemaId, Schema schema) throws IOException {
-    byte[] schemaResponseInBytes =
-        StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, schemaId, schema.toString());
-    setupSchemaResponse(
-        schemaResponseInBytes,
-        RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + schemaId);
-  }
-
-  private void setupSchemaResponse(byte[] response, String path) {
-    CompletableFuture<TransportClientResponse> transportFuture = new CompletableFuture<>();
-    transportFuture.complete(new TransportClientResponse(-1, CompressionStrategy.NO_OP, response));
-    doReturn(transportFuture).when(mockTransportClient).get(path);
-  }
-
   @Test
   public void testDeserializeWriterSchemaMissingReaderNamespace() throws IOException {
     Schema schemaWithoutNamespace = Utils.getSchemaFromResource("testSchemaWithoutNamespace.avsc");
-    byte[] singleSchemaResponseInBytes =
-        StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, schemaWithoutNamespace.toString());
-    setupSchemaResponse(
-        singleSchemaResponseInBytes,
-        RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + 1);
+
+    Map<Integer, Schema> valueSchemas = new HashMap<>();
+    valueSchemas.put(1, schemaWithoutNamespace);
+    StoreClientTestUtils.setupMultiValueSchemaResponse(mockTransportClient, STORE_NAME, valueSchemas);
 
     AvroSpecificStoreClientImpl specificStoreClient = new AvroSpecificStoreClientImpl(
         mockTransportClient,

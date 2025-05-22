@@ -55,9 +55,9 @@ public class D2ServiceDiscovery {
     for (int attempt = 0; attempt < maxAttempts; ++attempt) {
       try {
         if (attempt > 0) {
-          time.sleep(TimeUnit.SECONDS.toMillis(3));
+          time.sleep(100);
         }
-        TransportClientResponse response = client.get(requestPath, requestHeaders).get(3, TimeUnit.SECONDS);
+        TransportClientResponse response = client.get(requestPath, requestHeaders).get(1, TimeUnit.SECONDS);
 
         if (response == null) {
           /**

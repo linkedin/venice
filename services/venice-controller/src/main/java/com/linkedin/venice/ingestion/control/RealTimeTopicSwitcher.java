@@ -9,7 +9,6 @@ import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_REPLICATI
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -336,8 +335,6 @@ public class RealTimeTopicSwitcher {
 
     if (version.isActiveActiveReplicationEnabled()) {
       remoteKafkaUrls.addAll(activeActiveRealTimeSourceKafkaURLs);
-    } else if (version.isNativeReplicationEnabled() && (isAggregate(store) || (isIncrementalPush(version)))) {
-      remoteKafkaUrls.add(aggregateRealTimeSourceKafkaUrl);
     }
     LOGGER.info(
         "Will send {} into '{}' instructing to switch to '{}' with a rewindStartTimestamp of {}.",
@@ -346,14 +343,6 @@ public class RealTimeTopicSwitcher {
         realTimeTopic,
         rewindStartTimestamp);
     sendTopicSwitch(realTimeTopic, finalTopicWhereToSendTheTopicSwitch, rewindStartTimestamp, remoteKafkaUrls);
-  }
-
-  private static boolean isAggregate(Store store) {
-    return store.getHybridStoreConfig().getDataReplicationPolicy() == DataReplicationPolicy.AGGREGATE;
-  }
-
-  private static boolean isIncrementalPush(Version version) {
-    return version.isIncrementalPushEnabled();
   }
 
   /**

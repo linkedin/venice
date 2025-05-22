@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -146,7 +147,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
          * Otherwise, queue the chunks and manifest individually to drainer service.
          */
         if (chunkedValueManifest == null) {
-          leaderProducedRecordContext.setProducedOffset(produceResult.getOffset());
+          leaderProducedRecordContext.setProducedPosition(produceResult.getPubSubPosition());
           ingestionTask.produceToStoreBufferService(
               sourceConsumerRecord,
               leaderProducedRecordContext,
@@ -180,11 +181,11 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
           manifestPut.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
           LeaderProducedRecordContext producedRecordForManifest = LeaderProducedRecordContext.newPutRecordWithFuture(
               leaderProducedRecordContext.getConsumedKafkaClusterId(),
-              leaderProducedRecordContext.getConsumedOffset(),
+              leaderProducedRecordContext.getConsumedPosition(),
               key,
               manifestPut,
               leaderProducedRecordContext.getPersistedToDBFuture());
-          producedRecordForManifest.setProducedOffset(produceResult.getOffset());
+          producedRecordForManifest.setProducedPosition(produceResult.getPubSubPosition());
           ingestionTask.produceToStoreBufferService(
               sourceConsumerRecord,
               producedRecordForManifest,
@@ -314,7 +315,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       chunkPut.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
       LeaderProducedRecordContext producedRecordForChunk =
           LeaderProducedRecordContext.newChunkPutRecord(ByteUtils.extractByteArray(chunkKey), chunkPut);
-      producedRecordForChunk.setProducedOffset(-1);
+      producedRecordForChunk.setProducedPosition(PubSubSymbolicPosition.EARLIEST);
       ingestionTask.produceToStoreBufferService(
           sourceConsumerRecord,
           producedRecordForChunk,
@@ -340,7 +341,7 @@ public class LeaderProducerCallback implements ChunkAwareCallback {
       chunkDelete.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
       LeaderProducedRecordContext producedRecordForChunk =
           LeaderProducedRecordContext.newChunkDeleteRecord(ByteUtils.extractByteArray(chunkKey), chunkDelete);
-      producedRecordForChunk.setProducedOffset(-1);
+      producedRecordForChunk.setProducedPosition(PubSubSymbolicPosition.EARLIEST);
       ingestionTask.produceToStoreBufferService(
           sourceConsumerRecord,
           producedRecordForChunk,

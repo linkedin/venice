@@ -35,6 +35,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -49,6 +50,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
@@ -68,12 +70,12 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   // A buffer of messages that will be returned to the user
   private final BlockingQueue<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages;
   // Determines what version per partition is currently serving
-  private final ConcurrentHashMap<Integer, Integer> partitionToVersionToServe;
+  private final Map<Integer, Integer> partitionToVersionToServe;
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   // CachingDaVinciClientFactory used instead of DaVinciClientFactory, so we have the ability to close down the client
   private final CachingDaVinciClientFactory daVinciClientFactory;
   private final DaVinciClient<Object, Object> daVinciClient;
-  private boolean isStarted = false;
+  private AtomicBoolean isStarted = new AtomicBoolean(false);
   private final CountDownLatch startLatch = new CountDownLatch(1);
   // Using a dedicated thread pool for CompletableFutures created by this class to avoid potential thread starvation
   // issues in the default ForkJoinPool
@@ -85,6 +87,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
   private final BackgroundReporterThread backgroundReporterThread;
   private final BasicConsumerStats changeCaptureStats;
+  private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
 
   public BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl(ChangelogClientConfig changelogClientConfig) {
     this.changelogClientConfig = changelogClientConfig;
@@ -101,6 +104,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
          * DVRT implmentation. This is to prevent the local state from being wiped everytime a change is deployed
          */
         .setSkipCompatibilityChecks(true)
+        .setKeyClass(innerClientConfig.getSpecificKeyClass())
+        .setOutputValueClass(innerClientConfig.getSpecificValueClass())
+        .setOutputValueSchema(innerClientConfig.getSpecificValueSchema())
         .build();
     daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
 
@@ -130,24 +136,23 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
   @Override
   public synchronized CompletableFuture<Void> start(Set<Integer> partitions) {
-    internalStart();
-    subscribedPartitions.addAll(partitions);
+    if (isStarted.get()) {
+      throw new VeniceException("BootstrappingVeniceChangelogConsumer is already started!");
+    }
 
-    /*
-     * Avoid waiting on the CompletableFuture to prevent a circular dependency.
-     * When subscribe is called, DVRT scans the entire storage engine and fills pubSubMessages.
-     * Because pubSubMessages has limited capacity, blocking on the CompletableFuture
-     * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
-     * will wait forever for capacity to become available. This leads to a deadlock.
-     */
-    daVinciClient.subscribe(partitions).whenComplete((result, error) -> {
-      if (error != null) {
-        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", partitions, storeName, error);
-        throw new VeniceException(error);
+    daVinciClient.start();
+    isStarted.set(true);
+
+    // If a user passes in empty partitions set, we subscribe to all partitions
+    if (partitions.isEmpty()) {
+      for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
+        subscribedPartitions.add(i);
       }
-    });
+    } else {
+      subscribedPartitions.addAll(partitions);
+    }
 
-    return CompletableFuture.supplyAsync(() -> {
+    CompletableFuture<Void> startFuture = CompletableFuture.supplyAsync(() -> {
       try {
         /*
          * When this latch gets released, this means there's at least one message in pubSubMessages. So when the user
@@ -166,24 +171,40 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       }
       return null;
     }, completableFutureThreadPool);
+
+    /*
+     * Avoid waiting on the CompletableFuture to prevent a circular dependency.
+     * When subscribe is called, DVRT scans the entire storage engine and fills pubSubMessages.
+     * Because pubSubMessages has limited capacity, blocking on the CompletableFuture
+     * prevents the user from calling poll to drain pubSubMessages, so the threads populating pubSubMessages
+     * will wait forever for capacity to become available. This leads to a deadlock.
+     */
+    daVinciClient.subscribe(subscribedPartitions).whenComplete((result, error) -> {
+      if (error != null) {
+        LOGGER.error("Failed to subscribe to partitions: {} for store: {}", subscribedPartitions, storeName, error);
+        startFuture.completeExceptionally(new VeniceException(error));
+        return;
+      }
+
+      isCaughtUp.set(true);
+      LOGGER.info(
+          "BootstrappingVeniceChangelogConsumer is caught up for store: {} for partitions: {}",
+          storeName,
+          subscribedPartitions);
+    });
+
+    return startFuture;
   }
 
   @Override
   public CompletableFuture<Void> start() {
-    internalStart();
-
-    Set<Integer> allPartitions = new HashSet<>();
-    for (int i = 0; i < daVinciClient.getPartitionCount(); i++) {
-      allPartitions.add(i);
-    }
-
-    return this.start(allPartitions);
+    return this.start(Collections.emptySet());
   }
 
   @Override
   public void stop() throws Exception {
     daVinciClientFactory.close();
-    isStarted = false;
+    isStarted.set(false);
   }
 
   @Override
@@ -243,13 +264,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     }
   }
 
-  private void internalStart() {
-    if (isStarted) {
-      return;
-    }
-
-    daVinciClient.start();
-    isStarted = true;
+  @Override
+  public boolean isCaughtUp() {
+    return isCaughtUp.get();
   }
 
   private VeniceProperties buildVeniceConfig() {

@@ -73,6 +73,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUS
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
@@ -325,6 +326,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.jobServerName = props.getString(JOB_SERVER_NAME, "unknown_job_server");
     pushJobSettingToReturn.veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     pushJobSettingToReturn.enableSSL = props.getBoolean(ENABLE_SSL, DEFAULT_SSL_ENABLED);
+    pushJobSettingToReturn.timestampField = props.getOrDefault(TIMESTAMP_FIELD_PROP, "");
     if (pushJobSettingToReturn.enableSSL) {
       VPJSSLUtils.validateSslProperties(props);
     }
@@ -716,7 +718,10 @@ public class VenicePushJob implements AutoCloseable {
         }
 
         validateKeySchema(pushJobSetting);
-        validateValueSchema(controllerClient, pushJobSetting, pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
+        validateAndRetrieveValueSchemas(
+            controllerClient,
+            pushJobSetting,
+            pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
@@ -844,6 +849,12 @@ public class VenicePushJob implements AutoCloseable {
       try {
         if (e instanceof VeniceResourceAccessException) {
           updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.WRITE_ACL_FAILED);
+        } else if (e instanceof VeniceInvalidInputException) {
+          /**
+           * We use {@link PushJobCheckpoints.INVALID_INPUT_FILE} for the scenario where the input
+           * data path contains no data as well in the avro flow.
+           */
+          updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
         }
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
@@ -1804,12 +1815,11 @@ public class VenicePushJob implements AutoCloseable {
   /***
    * This method will talk to controller to validate value schema.
    */
-  void validateValueSchema(
+  void validateAndRetrieveValueSchemas(
       ControllerClient controllerClient,
       PushJobSetting setting,
       boolean schemaAutoRegisterFromPushJobEnabled) {
     LOGGER.info("Validating value schema: {} for store: {}", pushJobSetting.valueSchemaString, setting.storeName);
-
     SchemaResponse getValueSchemaIdResponse;
     if (setting.enableWriteCompute) {
       if (!isUpdateSchema(pushJobSetting.valueSchemaString)) {
@@ -1907,6 +1917,29 @@ public class VenicePushJob implements AutoCloseable {
       // Get value schema ID successfully
       setSchemaIdPropInPushJobSetting(pushJobSetting, getValueSchemaIdResponse, setting.enableWriteCompute);
     }
+
+    // Retrieve metadata and timestamp schemas, we should do this last as this is pending potentially newly registered
+    // schemas
+    // with the push job
+    MultiSchemaResponse replicationSchemasResponse = ControllerClient.retryableRequest(
+        controllerClient,
+        setting.controllerRetries,
+        c -> c.getAllReplicationMetadataSchemas(setting.storeName));
+    if (replicationSchemasResponse.isError()) {
+      LOGGER.error("Failed to fetch replication metadata schemas!" + replicationSchemasResponse.getError());
+    } else {
+      // We only need a single valid schema, so getting the first one is good enough.
+      if (replicationSchemasResponse.getSchemas() != null && replicationSchemasResponse.getSchemas().length > 0) {
+        pushJobSetting.replicationMetadataSchemaString = replicationSchemasResponse.getSchemas()[0].getSchemaStr();
+        LOGGER.info(
+            "Retrieved and using schema with id: {}, and string: {}",
+            replicationSchemasResponse.getSchemas()[0].getId(),
+            pushJobSetting.replicationMetadataSchemaString);
+      } else {
+        LOGGER.info("No replication schemas associated with the store!");
+      }
+    }
+
     LOGGER.info(
         "Got schema id: {} for value schema: {} of store: {}",
         pushJobSetting.valueSchemaId,

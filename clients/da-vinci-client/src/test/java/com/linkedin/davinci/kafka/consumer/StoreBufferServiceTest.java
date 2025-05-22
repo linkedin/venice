@@ -52,11 +52,11 @@ public class StoreBufferServiceTest {
   private final KafkaMessageEnvelope value =
       new KafkaMessageEnvelope(MessageType.PUT.getValue(), new ProducerMetadata(), put, null);
   private final LeaderProducedRecordContext leaderContext =
-      LeaderProducedRecordContext.newPutRecord(0, 0, key.getKey(), put);
+      LeaderProducedRecordContext.newPutRecord(0, mock(PubSubPosition.class), key.getKey(), put);
   private static final int TIMEOUT_IN_MS = 1000;
   private final MetricsRepository mockMetricRepo = mock(MetricsRepository.class);
   private StoreBufferServiceStats mockedStats;
-  PubSubPosition mockPosition;
+  private PubSubPosition mockPosition;
 
   @BeforeMethod
   public void setUp() {

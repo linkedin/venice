@@ -510,7 +510,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (initRoutineForPushJobDetailsSystemStore != null) {
       if (initializePushJobDetailsStore) {
         UpdateStoreQueryParams updateStoreQueryParamsForPushJobDetails =
-            new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
+            new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
         initRoutineForPushJobDetailsSystemStore.setDelegate(
             new SharedInternalRTStoreInitializationRoutine(
                 pushJobDetailsStoreClusterName,
@@ -4545,6 +4545,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public long getLocalAdminOperationProtocolVersion() {
     return getVeniceHelixAdmin().getLocalAdminOperationProtocolVersion();
+  }
+
+  @Override
+  public String getControllerName() {
+    return getVeniceHelixAdmin().getControllerName();
   }
 
   /**

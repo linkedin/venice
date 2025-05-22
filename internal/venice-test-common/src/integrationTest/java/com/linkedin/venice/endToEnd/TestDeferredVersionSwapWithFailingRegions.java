@@ -92,7 +92,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
       // Start push job with target region push enabled and check that it fails
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       try {
-        TestWriteUtils.runPushJob("Test push job", props);
+        IntegrationTestPushUtils.runVPJ(props);
       } catch (Exception e) {
         assertEquals(e.getClass(), VeniceException.class);
       }
@@ -178,7 +178,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props.put(TARGETED_REGION_PUSH_LIST, FAILED_REGION);
       try {
-        TestWriteUtils.runPushJob("Test push job", props);
+        IntegrationTestPushUtils.runVPJ(props);
       } catch (Exception e) {
         assertEquals(e.getClass(), VeniceException.class);
       }
@@ -244,7 +244,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, valueSchemaStr, props, storeParms).close();
-      TestWriteUtils.runPushJob("Test push job", props);
+      IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
@@ -296,7 +296,7 @@ public class TestDeferredVersionSwapWithFailingRegions {
       props2.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props2.put(TARGETED_REGION_PUSH_LIST, FAILED_REGION);
       try {
-        TestWriteUtils.runPushJob("Test push job", props2);
+        IntegrationTestPushUtils.runVPJ(props2);
       } catch (Exception e) {
         assertEquals(e.getClass(), VeniceException.class);
       }

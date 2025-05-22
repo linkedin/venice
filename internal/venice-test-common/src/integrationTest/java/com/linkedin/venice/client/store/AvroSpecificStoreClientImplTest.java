@@ -125,6 +125,11 @@ public class AvroSpecificStoreClientImplTest {
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
 
+    FullHttpResponse multiValueSchemaIDResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaIDPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaIDPath, multiValueSchemaIDResponse);
+
     // Push store record
     TestKeyRecord testKey = new TestKeyRecord();
     testKey.long_field = 100;
@@ -171,6 +176,11 @@ public class AvroSpecificStoreClientImplTest {
         StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + RouterBackedSchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
+
+    FullHttpResponse multiValueSchemaIDResponse =
+        StoreClientTestUtils.constructHttpMultiSchemaIdResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaIDPath = "/" + RouterBackedSchemaReader.TYPE_ALL_VALUE_SCHEMA_IDS + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaIDPath, multiValueSchemaIDResponse);
 
     // Push store record
     TestKeyRecord testKey = new TestKeyRecord();

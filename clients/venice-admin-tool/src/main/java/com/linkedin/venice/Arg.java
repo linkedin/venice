@@ -44,7 +44,7 @@ public enum Arg {
   PARTITIONER_PARAMS("partitioner-params", "pp", true, "Additional parameters for partitioner."),
   READABILITY("readability", "rb", true, "store's readability"),
   WRITEABILITY("writeability", "wb", true, "store's writeability"),
-  STORAGE_QUOTA("storage-quota", "sq", true, "maximum capacity a store version or storage persona could have"),
+  STORAGE_QUOTA("storage-quota", "sq", true, "maximum capacity a store version or storage persona could have in bytes"),
   STORAGE_NODE_READ_QUOTA_ENABLED(
       "storage-node-read-quota-enabled", "snrqe", true, "whether storage node read quota is enabled for this store"
   ),

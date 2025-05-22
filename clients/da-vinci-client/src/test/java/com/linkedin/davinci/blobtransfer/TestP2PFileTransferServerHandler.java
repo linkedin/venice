@@ -4,6 +4,7 @@ import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_STATUS;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BLOB_TRANSFER_TYPE;
 import static com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferType;
+import static com.linkedin.venice.response.VeniceReadResponseStatus.TOO_MANY_REQUESTS;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.davinci.blobtransfer.server.P2PFileTransferServerHandler;
@@ -52,6 +53,7 @@ public class TestP2PFileTransferServerHandler {
   P2PFileTransferServerHandler serverHandler;
   BlobSnapshotManager blobSnapshotManager;
   StorageEngineRepository storageEngineRepository;
+  int maxAllowedConcurrentSnapshotUsers = 20;
 
   @BeforeMethod
   public void setUp() throws IOException {
@@ -61,8 +63,11 @@ public class TestP2PFileTransferServerHandler {
     storageEngineRepository = Mockito.mock(StorageEngineRepository.class);
 
     blobSnapshotManager = Mockito.spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
-    serverHandler =
-        new P2PFileTransferServerHandler(baseDir.toString(), blobTransferMaxTimeoutInMin, blobSnapshotManager);
+    serverHandler = new P2PFileTransferServerHandler(
+        baseDir.toString(),
+        blobTransferMaxTimeoutInMin,
+        blobSnapshotManager,
+        maxAllowedConcurrentSnapshotUsers);
     ch = new EmbeddedChannel(serverHandler);
   }
 
@@ -95,6 +100,56 @@ public class TestP2PFileTransferServerHandler {
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 500);
+  }
+
+  @Test
+  public void testRejectTooManyRequest() throws IOException {
+    AbstractStorageEngine localStorageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.doReturn(localStorageEngine).when(storageEngineRepository).getLocalStorageEngine(Mockito.any());
+    Mockito.doReturn(true).when(localStorageEngine).containsPartition(Mockito.anyInt());
+
+    // prepare response from metadata service
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
+    offsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(offsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+
+    // prepare the file request
+    Path snapshotDir = Paths.get(RocksDBUtils.composeSnapshotDir(baseDir.toString(), "myStore_v1", 10));
+    Files.createDirectories(snapshotDir);
+    Path file1 = snapshotDir.resolve("file1");
+    Files.write(file1.toAbsolutePath(), "hello".getBytes());
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(Mockito.anyString(), Mockito.anyInt());
+
+    // Send maxAllowedConcurrentSnapshotUsers + 1 requests
+    for (int requestCount = 0; requestCount < maxAllowedConcurrentSnapshotUsers; requestCount++) {
+      FullHttpRequest request =
+          new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/myStore/1/10/BLOCK_BASED_TABLE");
+      ch.writeInbound(request);
+    }
+
+    // Read all outbound responses and check if at least one is 429
+    boolean foundTooManyRequestsResponse = false;
+    while (true) {
+      Object outbound = ch.readOutbound();
+      if (outbound == null) {
+        break;
+      }
+
+      if (outbound instanceof FullHttpResponse) {
+        FullHttpResponse httpResponse = (FullHttpResponse) outbound;
+        if (httpResponse.status().code() == TOO_MANY_REQUESTS) {
+          foundTooManyRequestsResponse = true;
+          break;
+        }
+      }
+    }
+
+    Assert.assertTrue(foundTooManyRequestsResponse);
   }
 
   @Test
@@ -168,6 +223,8 @@ public class TestP2PFileTransferServerHandler {
     ch.writeInbound(request);
     FullHttpResponse response = ch.readOutbound();
     Assert.assertEquals(response.status().code(), 500);
+    // make the ch inactive
+    ch.pipeline().fireUserEventTriggered(IdleStateEvent.ALL_IDLE_STATE_EVENT);
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
   }
 
@@ -236,6 +293,8 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(endOfTransfer.headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
     // end of STATUS response
 
+    // make the ch inactive
+    ch.pipeline().fireUserEventTriggered(IdleStateEvent.ALL_IDLE_STATE_EVENT);
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
   }
 
@@ -329,6 +388,8 @@ public class TestP2PFileTransferServerHandler {
     Assert.assertEquals(endOfTransfer.headers().get(BLOB_TRANSFER_STATUS), BLOB_TRANSFER_COMPLETED);
     // end of STATUS response
 
+    // make the ch inactive
+    ch.pipeline().fireUserEventTriggered(IdleStateEvent.ALL_IDLE_STATE_EVENT);
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers("myStore_v1", 10), 0);
   }
 

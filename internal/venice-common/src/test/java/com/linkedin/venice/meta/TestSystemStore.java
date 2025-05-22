@@ -33,13 +33,8 @@ public class TestSystemStore {
         null,
         3);
     zkSharedSystemStore.setLargestUsedVersionNumber(-1);
-    zkSharedSystemStore.setHybridStoreConfig(
-        new HybridStoreConfigImpl(
-            100,
-            100,
-            100,
-            DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP));
+    zkSharedSystemStore
+        .setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, 100, BufferReplayPolicy.REWIND_FROM_EOP));
     zkSharedSystemStore.setWriteComputationEnabled(true);
     zkSharedSystemStore.setPartitionCount(1);
     // Setup a regular Venice store

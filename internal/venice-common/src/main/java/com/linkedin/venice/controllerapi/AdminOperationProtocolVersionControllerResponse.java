@@ -6,8 +6,8 @@ import java.util.Map;
 
 public class AdminOperationProtocolVersionControllerResponse extends ControllerResponse {
   private long localAdminOperationProtocolVersion = -1;
-  private String requestUrl = "";
-  private Map<String, Long> controllerUrlToVersionMap = new HashMap<>();
+  private String localControllerName = "";
+  private Map<String, Long> controllerNameToVersionMap = new HashMap<>();
 
   public void setLocalAdminOperationProtocolVersion(long adminOperationProtocolVersion) {
     this.localAdminOperationProtocolVersion = adminOperationProtocolVersion;
@@ -17,19 +17,19 @@ public class AdminOperationProtocolVersionControllerResponse extends ControllerR
     return localAdminOperationProtocolVersion;
   }
 
-  public void setRequestUrl(String url) {
-    this.requestUrl = url;
+  public void setLocalControllerName(String controllerName) {
+    this.localControllerName = controllerName;
   }
 
-  public String getRequestUrl() {
-    return requestUrl;
+  public String getLocalControllerName() {
+    return localControllerName;
   }
 
-  public void setControllerUrlToVersionMap(Map<String, Long> urlToVersionMap) {
-    this.controllerUrlToVersionMap = urlToVersionMap;
+  public void setControllerNameToVersionMap(Map<String, Long> controllerNameToVersionMap) {
+    this.controllerNameToVersionMap = controllerNameToVersionMap;
   }
 
-  public Map<String, Long> getControllerUrlToVersionMap() {
-    return controllerUrlToVersionMap;
+  public Map<String, Long> getControllerNameToVersionMap() {
+    return controllerNameToVersionMap;
   }
 }
