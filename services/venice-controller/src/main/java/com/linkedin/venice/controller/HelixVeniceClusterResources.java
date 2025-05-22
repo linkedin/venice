@@ -4,6 +4,7 @@ import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
@@ -81,6 +82,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final VeniceAdminStats veniceAdminStats;
   private final VeniceHelixAdmin admin;
+  private final Optional<MultiTaskSchedulerService> multiTaskSchedulerService;
 
   public HelixVeniceClusterResources(
       String clusterName,
@@ -105,6 +107,19 @@ public class HelixVeniceClusterResources implements VeniceResource {
     } else {
       metaStoreWriter = Optional.empty();
     }
+
+    /**
+     *  MultiTaskSchedulerService is only initialized parent cluster.
+     */
+    if (config.isParent() && config.isMultiTaskSchedulerServiceEnabled()) {
+      this.multiTaskSchedulerService = Optional.of(
+          new MultiTaskSchedulerService(
+              config.getStoreMigrationThreadPoolSize(),
+              config.getStoreMigrationMaxRetryAttempts()));
+    } else {
+      this.multiTaskSchedulerService = Optional.empty();
+    }
+
     /**
      * ClusterLockManager is created per cluster and shared between {@link VeniceHelixAdmin},
      * {@link com.linkedin.venice.pushmonitor.AbstractPushMonitor} and {@link HelixReadWriteStoreRepository}.
@@ -356,6 +371,16 @@ public class HelixVeniceClusterResources implements VeniceResource {
     }
   }
 
+  public void startMultiTaskSchedulerService() {
+    if (multiTaskSchedulerService.isPresent()) {
+      try {
+        multiTaskSchedulerService.get().start();
+      } catch (Exception e) {
+        LOGGER.error("Error when starting multitask scheduler service for cluster: {}", clusterName);
+      }
+    }
+  }
+
   /**
    * Cause {@link LeakedPushStatusCleanUpService} service to stop executing.
    */
@@ -450,6 +475,10 @@ public class HelixVeniceClusterResources implements VeniceResource {
 
   public StoragePersonaRepository getStoragePersonaRepository() {
     return storagePersonaRepository;
+  }
+
+  public Optional<MultiTaskSchedulerService> getMultiTaskSchedulerService() {
+    return multiTaskSchedulerService;
   }
 
   /**
