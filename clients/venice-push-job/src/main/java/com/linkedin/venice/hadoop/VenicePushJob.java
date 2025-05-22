@@ -98,6 +98,7 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceResourceAccessException;
+import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
@@ -668,19 +669,11 @@ public class VenicePushJob implements AutoCloseable {
           pushJobSetting.storeName,
           pushJobSetting.clusterName);
 
-      long bootstrapToOnlineTimeoutInHours =
-          getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
-      timeoutExecutor.schedule(() -> {
-        cancel();
-        throw new VeniceException(
-            "Failing push-job for store " + pushJobSetting.storeName + " which is still running after "
-                + bootstrapToOnlineTimeoutInHours + " hours.");
-      }, bootstrapToOnlineTimeoutInHours, TimeUnit.HOURS);
-
       if (pushJobSetting.isSourceKafka) {
         initKIFRepushDetails();
       }
 
+      setupJobTimeoutMonitor();
       initPushJobDetails();
       logGreeting();
       sendPushJobDetailsToController();
@@ -870,8 +863,8 @@ public class VenicePushJob implements AutoCloseable {
             ex);
       } finally {
         try {
-          // killJob(pushJobSetting, controllerClient);
-          // LOGGER.info("Successfully killed the failed push job.");
+          killJob(pushJobSetting, controllerClient);
+          LOGGER.info("Successfully killed the failed push job.");
         } catch (Exception ex) {
           LOGGER.info("Failed to stop and cleanup the job. New pushes might be blocked.", ex);
         }
@@ -888,6 +881,20 @@ public class VenicePushJob implements AutoCloseable {
         HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
       }
     }
+  }
+
+  /**
+   * Timeout on the entire push job that kills the job if it runs longer than the store's configured bootstrap timeout.
+   */
+  private void setupJobTimeoutMonitor() {
+    long bootstrapToOnlineTimeoutInHours =
+        getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
+    timeoutExecutor.schedule(() -> {
+      cancel();
+      throw new VeniceTimeoutException(
+          "Failing push-job for store " + pushJobSetting.storeName + " which is still running after "
+              + bootstrapToOnlineTimeoutInHours + " hours.");
+    }, bootstrapToOnlineTimeoutInHours, TimeUnit.HOURS);
   }
 
   private void buildHDFSSchemaDir() throws IOException {

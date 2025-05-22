@@ -39,7 +39,6 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
@@ -309,11 +308,12 @@ public class VenicePushJobTest {
       skipVPJValidation(pushJob);
       try {
         DataWriterComputeJob dataWriterJob = spy(pushJob.getDataWriterComputeJob());
+        doNothing().when(dataWriterJob).configure(any(), any()); // the spark job takes a long time to configure
         pushJob.setDataWriterComputeJob(dataWriterJob);
         pushJob.run();
         fail("Test should fail because pollStatusUntilComplete() never saw COMPLETE status, but doesn't.");
       } catch (VeniceException e) {
-        Assert.assertTrue(e.getMessage().contains("push job is still in unknown state."));
+        Assert.assertTrue(e.getMessage().contains("push job is still in unknown state."), e.getMessage());
       }
       verify(pushJob, times(1)).cancel();
       verify(pushJob.getDataWriterComputeJob(), times(1)).kill();
@@ -343,9 +343,9 @@ public class VenicePushJobTest {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       pushJobSetting.storeResponse = new StoreResponse();
       pushJobSetting.storeResponse.setStore(storeInfo);
+
       CountDownLatch runningJobLatch = new CountDownLatch(1);
       CountDownLatch killedJobLatch = new CountDownLatch(1);
-      skipVPJValidation(pushJob);
 
       /*
        * 1. Data writer job starts and status is set to RUNNING.
@@ -372,22 +372,21 @@ public class VenicePushJobTest {
 
       DataWriterComputeJob dataWriterJob = spy(pushJob.getDataWriterComputeJob());
       try {
+        skipVPJValidation(pushJob);
         doCallRealMethod().when(pushJob).runJobAndUpdateStatus();
         pushJob.setDataWriterComputeJob(dataWriterJob);
         doNothing().when(dataWriterJob).validateJob();
-        doNothing().when(dataWriterJob).configure(any(), any()); // takes a long time for the spark job
+        doNothing().when(dataWriterJob).configure(any(), any()); // the spark job takes a long time to configure
         doAnswer(stallDataWriterJob).when(dataWriterJob).runComputeJob();
         doAnswer(killDataWriterJob).when(pushJob).killJob(any(), any());
         pushJob.run(); // data writer job will run in this main test thread
       } catch (VeniceException e) {
         // Expected, because the data writer job is not configured to run successfully in this unit test environment
       }
-      assertEquals(runningJobLatch.getCount(), 0);
+      assertEquals(runningJobLatch.getCount(), 0); // killDataWriterJob() does not occur in the main test thread
       assertEquals(killedJobLatch.getCount(), 0);
       verify(pushJob, times(1)).cancel();
-      verify(pushJob, times(1)).killJob(any(), any());
-      verify(pushJob, times(1)).killDataWriterJob();
-      verify(dataWriterJob, atLeast(1)).kill();
+      verify(dataWriterJob, times(1)).kill();
       assertEquals(pushJob.getDataWriterComputeJob().getStatus(), DataWriterComputeJob.Status.KILLED);
     }
   }
