@@ -181,8 +181,6 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       unhealthyRequestMetric = null;
       healthyLatencyMetric = null;
       unhealthyLatencyMetric = null;
-      requestKeyCount = null;
-      responseKeyCount = null;
     } else {
       healthyRequestMetric = MetricEntityStateThreeEnums.create(
           BasicClientMetricEntity.CALL_COUNT.getMetricEntity(),
@@ -233,31 +231,30 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
           HttpResponseStatusEnum.class,
           HttpResponseStatusCodeCategory.class,
           VeniceResponseStatusCategory.class);
-
-      // request key count
-      requestKeyCount = MetricEntityStateOneEnum.create(
-          BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
-          getOtelRepository(),
-          this::registerSensor,
-          BasicClientTehutiMetricName.REQUEST_KEY_COUNT,
-          Arrays.asList(requestKeyCountRate, new Avg(), new Max()),
-          baseDimensionsMap,
-          MessageType.class);
-
-      responseKeyCount = MetricEntityStateOneEnum.create(
-          BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
-          otelRepository,
-          this::registerSensor,
-          BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT,
-          Arrays.asList(successRequestKeyCountRate, new Avg(), new Max()),
-          baseDimensionsMap,
-          MessageType.class);
-
       healthyRequestMetricForDavinciClient = null;
       unhealthyRequestMetricForDavinciClient = null;
       healthyLatencyMetricForDavinciClient = null;
       unhealthyLatencyMetricForDavinciClient = null;
     }
+
+    // request key count
+    requestKeyCount = MetricEntityStateOneEnum.create(
+        BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
+        getOtelRepository(),
+        this::registerSensor,
+        BasicClientTehutiMetricName.REQUEST_KEY_COUNT,
+        Arrays.asList(requestKeyCountRate, new Avg(), new Max()),
+        baseDimensionsMap,
+        MessageType.class);
+
+    responseKeyCount = MetricEntityStateOneEnum.create(
+        BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT,
+        Arrays.asList(successRequestKeyCountRate, new Avg(), new Max()),
+        baseDimensionsMap,
+        MessageType.class);
 
     // successRequestRatioSensor will be a derived metric in OTel
     successRequestRatioSensor =

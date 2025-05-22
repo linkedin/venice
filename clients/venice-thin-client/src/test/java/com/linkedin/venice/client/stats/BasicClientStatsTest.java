@@ -151,35 +151,39 @@ public class BasicClientStatsTest {
   }
 
   @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void testKeyCountMetricsForDaVinciClient(boolean isRequest) {
-    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
-    BasicClientStats stats = createStats(inMemoryMetricReader, DAVINCI_CLIENT);
+  public void testKeyCountMetrics(boolean isRequest) {
+    for (ClientType client: ClientType.values()) {
+      // verify that the following works for all client types.
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      BasicClientStats stats = createStats(inMemoryMetricReader, client);
 
-    int keyCount = 10;
+      int keyCount = 10;
 
-    if (isRequest) {
-      stats.recordRequestKeyCount(keyCount);
-    } else {
-      stats.recordResponseKeyCount(keyCount);
+      if (isRequest) {
+        stats.recordRequestKeyCount(keyCount);
+      } else {
+        stats.recordResponseKeyCount(keyCount);
+      }
+
+      // Check Tehuti metrics
+      Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+      String storeName = "test_store";
+      if (isRequest) {
+        Assert
+            .assertEquals((int) metrics.get(String.format(".%s--request_key_count.Max", storeName)).value(), keyCount);
+      } else {
+        Assert.assertEquals(
+            (int) metrics.get(String.format(".%s--success_request_key_count.Max", storeName)).value(),
+            keyCount);
+      }
+
+      // Check OpenTelemetry metrics
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+      Attributes expectedAttr = getAttributes(storeName, isRequest ? REQUEST : RESPONSE);
+      ExponentialHistogramPointData data =
+          getExponentialHistogramPointData(metricsData, "key_count", client.getMetricsPrefix());
+      validateExponentialHistogramPointData(data, keyCount, keyCount, 1, keyCount, expectedAttr);
     }
-
-    // Check Tehuti metrics
-    Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
-    String storeName = "test_store";
-    if (isRequest) {
-      Assert.assertEquals((int) metrics.get(String.format(".%s--request_key_count.Max", storeName)).value(), keyCount);
-    } else {
-      Assert.assertEquals(
-          (int) metrics.get(String.format(".%s--success_request_key_count.Max", storeName)).value(),
-          keyCount);
-    }
-
-    // Check OpenTelemetry metrics
-    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
-    Attributes expectedAttr = getAttributes(storeName, isRequest ? REQUEST : RESPONSE);
-    ExponentialHistogramPointData data =
-        getExponentialHistogramPointData(metricsData, "key_count", DAVINCI_CLIENT.getMetricsPrefix());
-    validateExponentialHistogramPointData(data, keyCount, keyCount, 1, keyCount, expectedAttr);
   }
 
   private BasicClientStats createStats(InMemoryMetricReader inMemoryMetricReader, ClientType clientType) {
