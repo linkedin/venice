@@ -280,7 +280,7 @@ public class VenicePushJobTest {
 
   @DataProvider(name = "DataWriterJobClasses")
   public Object[][] getDataWriterJobClasses() {
-    return new Object[][] { { DataWriterSparkJob.class }, { DataWriterMRJob.class } };
+    return new Object[][] { { DataWriterMRJob.class }, { DataWriterSparkJob.class } };
   }
 
   /**
@@ -375,16 +375,17 @@ public class VenicePushJobTest {
         doCallRealMethod().when(pushJob).runJobAndUpdateStatus();
         pushJob.setDataWriterComputeJob(dataWriterJob);
         doNothing().when(dataWriterJob).validateJob();
+        doNothing().when(dataWriterJob).configure(any(), any()); // takes a long time for the spark job
         doAnswer(stallDataWriterJob).when(dataWriterJob).runComputeJob();
         doAnswer(killDataWriterJob).when(pushJob).killJob(any(), any());
         pushJob.run(); // data writer job will run in this main test thread
       } catch (VeniceException e) {
         // Expected, because the data writer job is not configured to run successfully in this unit test environment
       }
-      verify(pushJob, times(1)).cancel();
-      verify(pushJob, times(1)).killJob(any(), any());
       assertEquals(runningJobLatch.getCount(), 0);
       assertEquals(killedJobLatch.getCount(), 0);
+      verify(pushJob, times(1)).cancel();
+      verify(pushJob, times(1)).killJob(any(), any());
       verify(pushJob, times(1)).killDataWriterJob();
       verify(dataWriterJob, atLeast(1)).kill();
       assertEquals(pushJob.getDataWriterComputeJob().getStatus(), DataWriterComputeJob.Status.KILLED);
