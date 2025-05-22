@@ -383,8 +383,8 @@ public class VenicePushJobTest {
       }
       verify(pushJob, times(1)).cancel();
       verify(pushJob, times(1)).killJob(any(), any());
-      verify(runningJobLatch, times(1)).countDown();
-      verify(killedJobLatch, times(1)).countDown();
+      assertEquals(runningJobLatch.getCount(), 0);
+      assertEquals(killedJobLatch.getCount(), 0);
       verify(pushJob, times(1)).killDataWriterJob();
       verify(dataWriterJob, atLeast(1)).kill();
       assertEquals(pushJob.getDataWriterComputeJob().getStatus(), DataWriterComputeJob.Status.KILLED);
