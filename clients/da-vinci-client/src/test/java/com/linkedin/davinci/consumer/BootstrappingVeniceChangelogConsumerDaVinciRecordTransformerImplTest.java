@@ -518,8 +518,6 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     recordTransformer.onStartVersionIngestion(true);
     futureRecordTransformer.onStartVersionIngestion(false);
 
-    int value = 2;
-    Lazy<Integer> lazyValue = Lazy.of(() -> value);
     int partitionId = 0;
     recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
 

@@ -624,6 +624,7 @@ public class VeniceChangelogConsumerImplTest {
         Exception.class,
         () -> veniceChangelogConsumer.internalPoll(timeout, topicSuffix, includeControlMessage));
     verify(consumerStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.FAIL);
+    verify(consumerStats, times(0)).emitRecordsConsumedCountMetrics(anyInt());
   }
 
   @Test
@@ -844,8 +845,11 @@ public class VeniceChangelogConsumerImplTest {
         .convertPubSubMessageToPubSubChangeEventMessage(pubSubMessage, topicPartition);
     veniceChangelogConsumer.convertPubSubMessageToPubSubChangeEventMessage(pubSubMessage, topicPartition);
 
-    veniceChangelogConsumer.convertPubSubMessageToPubSubChangeEventMessage(pubSubMessage, topicPartition);
     put.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    veniceChangelogConsumer.convertPubSubMessageToPubSubChangeEventMessage(pubSubMessage, topicPartition);
+
+    put.schemaId = 1;
+    veniceChangelogConsumer.convertPubSubMessageToPubSubChangeEventMessage(pubSubMessage, topicPartition);
 
     verify(consumerStats, times(2)).emitChunkedRecordCountMetrics(VeniceResponseStatusCategory.SUCCESS);
   }

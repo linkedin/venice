@@ -179,6 +179,9 @@ public class BasicConsumerStats extends AbstractVeniceStats {
     maximumConsumingVersionMetric.record(maxVersion);
   }
 
+  /**
+   * This won't be emitted by DVRT CDC, since it doesn't have context into heartbeat delay.
+   */
   public void emitHeartBeatDelayMetrics(long heartBeatDelay) {
     heartBeatDelayMetric.record(heartBeatDelay);
   }
@@ -203,6 +206,9 @@ public class BasicConsumerStats extends AbstractVeniceStats {
     }
   }
 
+  /**
+   * This won't be emitted by DVRT CDC, since it doesn't have context into chunked records.
+   */
   public void emitChunkedRecordCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
     if (responseStatusCategory == SUCCESS) {
       chunkedRecordSuccessCountMetric.record(1, responseStatusCategory);
@@ -220,7 +226,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
    * Metric names for tehuti metrics used in this class.
    */
   public enum BasicConsumerTehutiMetricName implements TehutiMetricNameEnum {
-    MAX_PARTITION_LAG, RECORDS_CONSUMED, MAXIMUM_CONSUMING_VERSION, MINIMUM_CONSUMING_VERSION, POLL_SUCCESS_CALL_COUNT,
+    MAX_PARTITION_LAG, RECORDS_CONSUMED, MINIMUM_CONSUMING_VERSION, MAXIMUM_CONSUMING_VERSION, POLL_SUCCESS_CALL_COUNT,
     POLL_FAIL_CALL_COUNT, VERSION_SWAP_SUCCESS_COUNT, VERSION_SWAP_FAIL_COUNT, CHUNKED_RECORD_SUCCESS_COUNT,
     CHUNKED_RECORD_FAIL_COUNT;
 

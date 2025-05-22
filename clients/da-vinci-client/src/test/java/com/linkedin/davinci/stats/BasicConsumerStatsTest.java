@@ -26,6 +26,7 @@ import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getLongP
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointData;
 import static org.testng.Assert.assertEquals;
+import static org.testng.AssertJUnit.assertFalse;
 
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.stats.ClientType;
@@ -40,7 +41,6 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
 import java.util.Map;
-import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -158,7 +158,7 @@ public class BasicConsumerStatsTest {
 
     Attributes expectedAttributes = getExpectedBaseAttributes(storeName);
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
-    Assert.assertFalse(metricsData.isEmpty());
+    assertFalse(metricsData.isEmpty());
 
     HistogramPointData minMaxCountSumPointData = getHistogramPointData(metricsData, metricName, otelMetricPrefix);
 
@@ -179,7 +179,7 @@ public class BasicConsumerStatsTest {
 
     Attributes expectedAttributes = getExpectedAttributes(storeName, responseStatusCategory);
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
-    Assert.assertFalse(metricsData.isEmpty());
+    assertFalse(metricsData.isEmpty());
 
     LongPointData longCounterData = getLongPointData(metricsData, metricName, otelMetricPrefix);
     validateLongPointData(longCounterData, (long) expectedValue, expectedAttributes);
