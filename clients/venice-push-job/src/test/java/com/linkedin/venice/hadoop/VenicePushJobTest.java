@@ -8,6 +8,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_UPDATE_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DATA_WRITER_COMPUTE_JOB_CLASS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFER_VERSION_SWAP;
@@ -71,7 +72,9 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceValidationException;
+import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.MaterializedViewParameters;
@@ -83,6 +86,7 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -96,12 +100,15 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
+import org.mockito.stubbing.Answer;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -270,60 +277,117 @@ public class VenicePushJobTest {
     }
   }
 
-  @Test
-  public void testPushJobPollStatus() {
-    Properties vpjProps = new Properties();
-    vpjProps.setProperty(HEARTBEAT_ENABLED_CONFIG.getConfigName(), "true");
-    ControllerClient client = mock(ControllerClient.class);
+  @DataProvider(name = "DataWriterJobClasses")
+  public Object[][] getDataWriterJobClasses() {
+    return new Object[][] { { DataWriterMRJob.class }, { DataWriterSparkJob.class } };
+  }
+
+  /**
+   * Test that VenicePushJob.cancel() is called after bootstrapToOnlineTimeoutInHours is reached.
+   * UNKNOWN status is returned for pollStatusUntilComplete() to stall the job until cancel() can be called.
+   */
+  @Test(dataProvider = "DataWriterJobClasses")
+  public void testPushJobTimeout(Class<? extends DataWriterComputeJob> dataWriterJobClass) throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(DATA_WRITER_COMPUTE_JOB_CLASS, dataWriterJobClass.getCanonicalName());
+    ControllerClient client = getClient();
     JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
     doReturn("UNKNOWN").when(response).getStatus();
-    doReturn(response).when(client).queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null), anyBoolean());
-    try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
+    doReturn(response).when(client).killOfflinePushJob(anyString());
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
-      pushJobSetting.jobStatusInUnknownStateTimeoutMs = 10;
-      Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
-      pushJobSetting.version = 1;
-      pushJobSetting.topic = "abc";
-      pushJobSetting.storeResponse = new StoreResponse();
-      pushJobSetting.storeResponse.setName("abc");
+      pushJobSetting.jobStatusInUnknownStateTimeoutMs = 100; // give some time for the timeout to run on the executor
       StoreInfo storeInfo = new StoreInfo();
       storeInfo.setBootstrapToOnlineTimeoutInHours(0);
+      pushJobSetting.storeResponse = new StoreResponse();
       pushJobSetting.storeResponse.setStore(storeInfo);
-      VeniceException exception = Assert.expectThrows(
-          VeniceException.class,
-          () -> pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false, false));
-      Assert
-          .assertEquals(exception.getMessage(), "Failing push-job for store abc which is still running after 0 hours.");
+      skipVPJValidation(pushJob);
+      try {
+        DataWriterComputeJob dataWriterJob = spy(pushJob.getDataWriterComputeJob());
+        doNothing().when(dataWriterJob).configure(any(), any()); // the spark job takes a long time to configure
+        pushJob.setDataWriterComputeJob(dataWriterJob);
+        pushJob.run();
+        fail("Test should fail because pollStatusUntilComplete() never saw COMPLETE status, but doesn't.");
+      } catch (VeniceException e) {
+        Assert.assertTrue(e.getMessage().contains("push job is still in unknown state."), e.getMessage());
+      }
+      verify(pushJob, times(1)).cancel();
+      verify(pushJob.getDataWriterComputeJob(), times(1)).kill();
     }
   }
 
-  @Test
-  public void testPushJobUnknownPollStatusDoesWaiting() {
-    Properties vpjProps = new Properties();
-    vpjProps.setProperty(HEARTBEAT_ENABLED_CONFIG.getConfigName(), "true");
-    ControllerClient client = mock(ControllerClient.class);
-    JobStatusQueryResponse unknownResponse = mock(JobStatusQueryResponse.class);
-    doReturn("UNKNOWN").when(unknownResponse).getStatus();
-    JobStatusQueryResponse completedResponse = mock(JobStatusQueryResponse.class);
-    doReturn("COMPLETED").when(completedResponse).getStatus();
-    doReturn(unknownResponse).doReturn(unknownResponse)
-        .doReturn(completedResponse)
-        .when(client)
-        .queryOverallJobStatus(anyString(), eq(Optional.empty()), eq(null), anyBoolean());
-    try (VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client)) {
-      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
-      pushJobSetting.jobStatusInUnknownStateTimeoutMs = 100_000_000;
-      Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
-      pushJobSetting.version = 1;
-      pushJobSetting.topic = "abc";
-      pushJobSetting.storeResponse = new StoreResponse();
-      pushJobSetting.storeResponse.setName("abc");
+  /**
+   * Ensures that the data writer job is killed if the job times out. Uses an Answer to stall the data writer job
+   * while it's running in order for it to get killed properly.
+   */
+  @Test(dataProvider = "DataWriterJobClasses")
+  public void testDataWriterComputeJobTimeout(Class<? extends DataWriterComputeJob> dataWriterJobClass)
+      throws Exception {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(DATA_WRITER_COMPUTE_JOB_CLASS, dataWriterJobClass.getCanonicalName());
+    ControllerClient client = getClient();
+    JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
+    doReturn("SUCCESS").when(response).getStatus();
+    doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), any(), anyBoolean());
+    doReturn(response).when(client).killOfflinePushJob(anyString());
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       StoreInfo storeInfo = new StoreInfo();
-      storeInfo.setBootstrapToOnlineTimeoutInHours(10);
+      storeInfo.setBootstrapToOnlineTimeoutInHours(0);
+      PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+      pushJobSetting.storeResponse = new StoreResponse();
       pushJobSetting.storeResponse.setStore(storeInfo);
-      pushJob.pollStatusUntilComplete(null, client, pushJobSetting, null, false, false);
-    } catch (Exception e) {
-      fail("The test should be completed successfully without any timeout exception");
+
+      CountDownLatch runningJobLatch = new CountDownLatch(1);
+      CountDownLatch killedJobLatch = new CountDownLatch(1);
+
+      /*
+       * 1. Data writer job starts and status is set to RUNNING.
+       * 2. Timeout thread kills the data writer job and status is set to KILLED.
+       * The latch is used to stall the runComputeJob() method until the data writer job is killed.
+       */
+      Answer<Void> stallDataWriterJob = invocation -> {
+        // At this point, the data writer job status is already set to RUNNING.
+        runningJobLatch.countDown(); // frees VenicePushJob.killJob()
+        if (!killedJobLatch.await(10, TimeUnit.SECONDS)) { // waits for this data writer job to be killed
+          fail("Timed out waiting for the data writer job to be killed.");
+        }
+        throw new VeniceException("No data found at source path");
+      };
+
+      Answer<Void> killDataWriterJob = invocation -> {
+        if (!runningJobLatch.await(10, TimeUnit.SECONDS)) { // waits for job status to be set to RUNNING
+          fail("Timed out waiting for the data writer job status to be set to RUNNING");
+        }
+        pushJob.killDataWriterJob(); // sets job status to KILLED
+        killedJobLatch.countDown(); // frees DataWriterComputeJob.runComputeJob()
+        return null;
+      };
+
+      DataWriterComputeJob dataWriterJob = spy(pushJob.getDataWriterComputeJob());
+      try {
+        skipVPJValidation(pushJob);
+        doCallRealMethod().when(pushJob).runJobAndUpdateStatus();
+        pushJob.setDataWriterComputeJob(dataWriterJob);
+        doNothing().when(dataWriterJob).validateJob();
+        doNothing().when(dataWriterJob).configure(any(), any()); // the spark job takes a long time to configure
+        doAnswer(stallDataWriterJob).when(dataWriterJob).runComputeJob();
+        doAnswer(killDataWriterJob).when(pushJob).killJob(any(), any());
+        pushJob.run(); // data writer job will run in this main test thread
+      } catch (VeniceException e) {
+        // Expected, because the data writer job is not configured to run successfully in this unit test environment
+      }
+      assertEquals(runningJobLatch.getCount(), 0); // killDataWriterJob() does not occur in the main test thread
+      assertEquals(killedJobLatch.getCount(), 0);
+      verify(pushJob, times(1)).cancel();
+      verify(dataWriterJob, times(1)).kill();
+      assertEquals(pushJob.getDataWriterComputeJob().getStatus(), DataWriterComputeJob.Status.KILLED);
     }
   }
 
