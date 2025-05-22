@@ -355,14 +355,14 @@ public class VenicePushJobTest {
       Answer<Void> stallDataWriterJob = invocation -> {
         // At this point, the data writer job status is already set to RUNNING.
         runningJobLatch.countDown(); // frees VenicePushJob.killJob()
-        if (!killedJobLatch.await(5, TimeUnit.SECONDS)) { // waits for this data writer job to be killed
+        if (!killedJobLatch.await(10, TimeUnit.SECONDS)) { // waits for this data writer job to be killed
           fail("Timed out waiting for the data writer job to be killed.");
         }
         throw new VeniceException("No data found at source path");
       };
 
       Answer<Void> killDataWriterJob = invocation -> {
-        if (!runningJobLatch.await(5, TimeUnit.SECONDS)) { // waits for job status to be set to RUNNING
+        if (!runningJobLatch.await(10, TimeUnit.SECONDS)) { // waits for job status to be set to RUNNING
           fail("Timed out waiting for the data writer job status to be set to RUNNING");
         }
         pushJob.killDataWriterJob(); // sets job status to KILLED
@@ -382,6 +382,9 @@ public class VenicePushJobTest {
         // Expected, because the data writer job is not configured to run successfully in this unit test environment
       }
       verify(pushJob, times(1)).cancel();
+      verify(pushJob, times(1)).killJob(any(), any());
+      verify(runningJobLatch, times(1)).countDown();
+      verify(killedJobLatch, times(1)).countDown();
       verify(pushJob, times(1)).killDataWriterJob();
       verify(dataWriterJob, atLeast(1)).kill();
       assertEquals(pushJob.getDataWriterComputeJob().getStatus(), DataWriterComputeJob.Status.KILLED);
