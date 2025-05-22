@@ -292,8 +292,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     return recordTransformerConfig;
   }
 
-  protected class BackgroundReporterThread extends Thread {
-    protected BackgroundReporterThread() {
+  private class BackgroundReporterThread extends Thread {
+    private BackgroundReporterThread() {
       super("Change-Data-CaptureBackground-Reporter-Thread");
     }
 
@@ -301,7 +301,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     public void run() {
       while (!Thread.interrupted()) {
         try {
-          recordStats(changeCaptureStats, partitionToVersionToServe);
+          recordStats();
           TimeUnit.SECONDS.sleep(backgroundReporterThreadSleepInterval);
         } catch (InterruptedException e) {
           LOGGER.warn("BackgroundReporterThread interrupted!  Shutting down...", e);
@@ -310,14 +310,14 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       }
     }
 
-    protected void recordStats(BasicConsumerStats changeCaptureStats, Map<Integer, Integer> partitionToVersionToServe) {
-      int maxVersion = -1;
+    private void recordStats() {
       int minVersion = Integer.MAX_VALUE;
+      int maxVersion = -1;
 
       Map<Integer, Integer> partitionToVersionToServeCopy = new HashMap<>(partitionToVersionToServe);
       for (Integer version: partitionToVersionToServeCopy.values()) {
-        maxVersion = Math.max(maxVersion, version);
         minVersion = Math.min(minVersion, version);
+        maxVersion = Math.max(maxVersion, version);
       }
       if (minVersion == Integer.MAX_VALUE) {
         minVersion = -1;
@@ -329,7 +329,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   }
 
   @VisibleForTesting
-  public void setBackgroundReporterThreadSleepInterval(long interval) {
+  protected void setBackgroundReporterThreadSleepInterval(long interval) {
     backgroundReporterThreadSleepInterval = interval;
   }
 
@@ -461,9 +461,10 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         if (futureVersion == getStoreVersion()) {
           partitionToVersionToServe.put(partitionId, futureVersion);
           LOGGER.info(
-              "Swapped from version: {} to version: {} for partitionId: {}",
+              "Swapped from version: {} to version: {} for store: {} for partition: {}",
               currentVersion,
               futureVersion,
+              storeName,
               partitionId);
 
           if (changeCaptureStats != null) {
@@ -472,7 +473,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         }
       } catch (Exception exception) {
         LOGGER.error(
-            "Encountered an exception when processing Version Swap from version: {} to version: {} for store: {} for partitionId: {}",
+            "Encountered an exception when processing Version Swap from version: {} to version: {} for store: {} for partition: {}",
             currentVersion,
             futureVersion,
             storeName,

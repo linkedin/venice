@@ -757,11 +757,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       if (changelogClientConfig.shouldCompactMessages()) {
         Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
         // The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
-        // replaced,
-        // it's put in at the position of the first insertion. This isn't quite what we want, we want to keep only
-        // a single key (just as a map would), but we want to keep the position of the last insertion as well. So in
-        // order
-        // to do that, we remove the entry before inserting it.
+        // replaced, it's put in at the position of the first insertion. This isn't quite what we want, we want to keep
+        // only a single key (just as a map would), but we want to keep the position of the last insertion as well
+        // So in order to do that, we remove the entry before inserting it.
         for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: pubSubMessages) {
           if (tempMap.containsKey(message.getKey())) {
             tempMap.remove(message.getKey());
@@ -847,10 +845,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   // This function exists for wrappers of this class to be able to do any kind of preprocessing on the raw bytes of the
-  // data consumed
-  // in the change stream so as to avoid having to do any duplicate deserialization/serialization. Wrappers which depend
-  // on solely
-  // on the data post deserialization
+  // data consumed in the change stream to avoid having to do any duplicate deserialization/serialization.
+  // Wrappers which depend on solely on the data post deserialization
   protected <T> T processRecordBytes(
       ByteBuffer decompressedBytes,
       T deserializedValue,
@@ -1086,13 +1082,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             pubSubTopicRepository.getTopic(versionSwap.newServingVersionTopic.toString());
 
         // TODO: There seems to exist a condition in the server where highwatermark offsets may regress when
-        // transmitting
-        // the version swap message
-        // it seems like this can potentially happen if a repush occurs and no data is consumed on that previous
-        // version.
-        // To make the client
-        // handle this gracefully, we instate the below condition that says the hwm in the client should never go
-        // backwards.
+        // transmitting the version swap message it seems like this can potentially happen if a repush occurs
+        // and no data is consumed on that previous version.
+        // To make the client handle this gracefully, we instate the below condition that says the hwm in the
+        // client should never go backwards.
         List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
             .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
             .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);

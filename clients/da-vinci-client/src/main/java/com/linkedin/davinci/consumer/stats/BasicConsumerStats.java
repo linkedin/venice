@@ -42,29 +42,29 @@ public class BasicConsumerStats extends AbstractVeniceStats {
       getUniqueMetricEntities(BasicConsumerMetricEntity.class);
 
   private final Attributes baseAttributes;
-  private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   private final MetricEntityStateBase heartBeatDelayMetric;
   private final MetricEntityStateBase minimumConsumingVersionMetric;
   private final MetricEntityStateBase maximumConsumingVersionMetric;
   private final MetricEntityStateBase recordsConsumedCountMetric;
-  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> pollCallSuccessCountMetric;
-  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> pollCallFailCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> pollSuccessCallCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> pollFailCallCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapSuccessCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapFailCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordSuccessCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordFailCountMetric;
 
-  private final VeniceOpenTelemetryMetricsRepository otelRepository;
-  private final boolean emitOpenTelemetryMetrics;
+  public BasicConsumerStats(MetricsRepository metricsRepository, String consumerName, String storeName) {
+    super(metricsRepository, consumerName);
 
-  public BasicConsumerStats(MetricsRepository metricsRepository, String name, String storeName) {
-    super(metricsRepository, name);
+    boolean emitOpenTelemetryMetrics;
+    VeniceOpenTelemetryMetricsRepository otelRepository;
+    Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
     if (metricsRepository instanceof VeniceMetricsRepository) {
       VeniceMetricsRepository veniceMetricsRepository = (VeniceMetricsRepository) metricsRepository;
       VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
-      emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics() && !isTotalStats();
+      emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
       if (emitOpenTelemetryMetrics) {
         otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
         baseDimensionsMap = new HashMap<>();
@@ -78,7 +78,6 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         baseAttributes = null;
       }
     } else {
-      emitOpenTelemetryMetrics = false;
       otelRepository = null;
       baseDimensionsMap = null;
       baseAttributes = null;
@@ -120,20 +119,20 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         baseDimensionsMap,
         baseAttributes);
 
-    pollCallSuccessCountMetric = MetricEntityStateOneEnum.create(
+    pollSuccessCallCountMetric = MetricEntityStateOneEnum.create(
         BasicConsumerMetricEntity.POLL_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        BasicConsumerTehutiMetricName.POLL_CALL_SUCCESS_COUNT,
+        BasicConsumerTehutiMetricName.POLL_SUCCESS_CALL_COUNT,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
-    pollCallFailCountMetric = MetricEntityStateOneEnum.create(
+    pollFailCallCountMetric = MetricEntityStateOneEnum.create(
         BasicConsumerMetricEntity.POLL_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        BasicConsumerTehutiMetricName.POLL_CALL_FAIL_COUNT,
+        BasicConsumerTehutiMetricName.POLL_FAIL_CALL_COUNT,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
@@ -190,9 +189,9 @@ public class BasicConsumerStats extends AbstractVeniceStats {
 
   public void emitPollCallCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
     if (responseStatusCategory == SUCCESS) {
-      pollCallSuccessCountMetric.record(1, responseStatusCategory);
+      pollSuccessCallCountMetric.record(1, responseStatusCategory);
     } else {
-      pollCallFailCountMetric.record(1, responseStatusCategory);
+      pollFailCallCountMetric.record(1, responseStatusCategory);
     }
   }
 
@@ -221,8 +220,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
    * Metric names for tehuti metrics used in this class.
    */
   public enum BasicConsumerTehutiMetricName implements TehutiMetricNameEnum {
-    MAX_PARTITION_LAG, RECORDS_CONSUMED, MAXIMUM_CONSUMING_VERSION, MINIMUM_CONSUMING_VERSION, POLL_CALL_SUCCESS_COUNT,
-    POLL_CALL_FAIL_COUNT, VERSION_SWAP_SUCCESS_COUNT, VERSION_SWAP_FAIL_COUNT, CHUNKED_RECORD_SUCCESS_COUNT,
+    MAX_PARTITION_LAG, RECORDS_CONSUMED, MAXIMUM_CONSUMING_VERSION, MINIMUM_CONSUMING_VERSION, POLL_SUCCESS_CALL_COUNT,
+    POLL_FAIL_CALL_COUNT, VERSION_SWAP_SUCCESS_COUNT, VERSION_SWAP_FAIL_COUNT, CHUNKED_RECORD_SUCCESS_COUNT,
     CHUNKED_RECORD_FAIL_COUNT;
 
     private final String metricName;
