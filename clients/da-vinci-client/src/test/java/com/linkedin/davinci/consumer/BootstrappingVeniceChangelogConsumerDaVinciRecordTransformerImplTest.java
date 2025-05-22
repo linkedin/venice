@@ -85,7 +85,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   private DaVinciClient mockDaVinciClient;
   private CompletableFuture<Void> daVinciClientSubscribeFuture;
   private List<Lazy<Integer>> keys;
-  private BasicConsumerStats consumerStats;
+  private BasicConsumerStats changeCaptureStats;
   private Set<Integer> partitionSet;
 
   @BeforeMethod
@@ -145,8 +145,10 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
         Field changeCaptureStatsField = BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.class
             .getDeclaredField("changeCaptureStats");
         changeCaptureStatsField.setAccessible(true);
-        consumerStats = spy((BasicConsumerStats) changeCaptureStatsField.get(bootstrappingVeniceChangelogConsumer));
-        changeCaptureStatsField.set(bootstrappingVeniceChangelogConsumer, consumerStats);
+        changeCaptureStats =
+            spy((BasicConsumerStats) changeCaptureStatsField.get(bootstrappingVeniceChangelogConsumer));
+        changeCaptureStatsField.set(bootstrappingVeniceChangelogConsumer, changeCaptureStats);
+
       } catch (NoSuchFieldException | IllegalAccessException e) {
         throw new RuntimeException(e);
       }
@@ -315,7 +317,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     }
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      verify(consumerStats, times(PARTITION_COUNT)).emitVersionSwapCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+      verify(changeCaptureStats, times(PARTITION_COUNT))
+          .emitVersionSwapCountMetrics(VeniceResponseStatusCategory.SUCCESS);
     });
 
     verifyPuts(futureVersionValue, false);
@@ -331,7 +334,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     assertThrows(
         Exception.class,
         () -> futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0));
-    verify(consumerStats).emitVersionSwapCountMetrics(FAIL);
+    verify(changeCaptureStats).emitVersionSwapCountMetrics(FAIL);
   }
 
   @Test
@@ -506,8 +509,10 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   }
 
   @Test
-  public void testMetricReportingThread() throws InterruptedException {
-    verify(consumerStats, times(0)).emitCurrentConsumingVersionMetrics(anyInt(), anyInt());
+  public void testMetricReportingThread() {
+    bootstrappingVeniceChangelogConsumer.setBackgroundReporterThreadSleepInterval(1L);
+
+    verify(changeCaptureStats, times(0)).emitCurrentConsumingVersionMetrics(anyInt(), anyInt());
     bootstrappingVeniceChangelogConsumer.start();
 
     recordTransformer.onStartVersionIngestion(true);
@@ -519,16 +524,14 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     recordTransformer.processPut(keys.get(partitionId), lazyValue, partitionId);
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      verify(consumerStats).emitCurrentConsumingVersionMetrics(CURRENT_STORE_VERSION, CURRENT_STORE_VERSION);
+      verify(changeCaptureStats).emitCurrentConsumingVersionMetrics(CURRENT_STORE_VERSION, CURRENT_STORE_VERSION);
     });
 
     // Perform version swap on one partition
     futureRecordTransformer.onVersionSwap(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION, 0);
 
-    TimeUnit.SECONDS.sleep(60L);
-
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      verify(consumerStats).emitCurrentConsumingVersionMetrics(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION);
+      verify(changeCaptureStats).emitCurrentConsumingVersionMetrics(CURRENT_STORE_VERSION, FUTURE_STORE_VERSION);
     });
   }
 
@@ -560,16 +563,16 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
   }
 
   private void verifyPuts(int value, boolean compactionEvent) {
-    clearInvocations(consumerStats);
+    clearInvocations(changeCaptureStats);
     Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =
         bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT);
 
     if (compactionEvent) {
-      verify(consumerStats).emitRecordsConsumedCountMetrics(PARTITION_COUNT * 2);
+      verify(changeCaptureStats).emitRecordsConsumedCountMetrics(PARTITION_COUNT * 2);
     } else {
-      verify(consumerStats).emitRecordsConsumedCountMetrics(PARTITION_COUNT);
+      verify(changeCaptureStats).emitRecordsConsumedCountMetrics(PARTITION_COUNT);
     }
-    verify(consumerStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+    verify(changeCaptureStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
     assertEquals(pubSubMessages.size(), PARTITION_COUNT);
 
     int i = 0;
@@ -581,18 +584,18 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
       i++;
     }
 
-    clearInvocations(consumerStats);
+    clearInvocations(changeCaptureStats);
     assertEquals(bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT).size(), 0, "Buffer should be empty");
-    verify(consumerStats).emitRecordsConsumedCountMetrics(0);
-    verify(consumerStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+    verify(changeCaptureStats).emitRecordsConsumedCountMetrics(0);
+    verify(changeCaptureStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
   }
 
   private void verifyDeletes() {
-    clearInvocations(consumerStats);
+    clearInvocations(changeCaptureStats);
     Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =
         bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT);
-    verify(consumerStats).emitRecordsConsumedCountMetrics(PARTITION_COUNT);
-    verify(consumerStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+    verify(changeCaptureStats).emitRecordsConsumedCountMetrics(PARTITION_COUNT);
+    verify(changeCaptureStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
     assertEquals(pubSubMessages.size(), PARTITION_COUNT);
 
     int i = 0;
@@ -604,9 +607,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
       i++;
     }
 
-    clearInvocations(consumerStats);
+    clearInvocations(changeCaptureStats);
     assertEquals(bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT).size(), 0, "Buffer should be empty");
-    verify(consumerStats).emitRecordsConsumedCountMetrics(0);
-    verify(consumerStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+    verify(changeCaptureStats).emitRecordsConsumedCountMetrics(0);
+    verify(changeCaptureStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
   }
 }

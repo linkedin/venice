@@ -699,78 +699,92 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap = Collections.EMPTY_MAP;
     boolean lockAcquired = false;
+    boolean exceptionOccurred = false;
+
     try {
-      // the pubsubconsumer internally is completely unthreadsafe, so we need an exclusive lock to poll (ugh)
-      lockAcquired = subscriptionLock.writeLock().tryLock(timeoutInMs, TimeUnit.MILLISECONDS);
-      messagesMap = pubSubConsumer.poll(timeoutInMs);
-    } catch (Exception e) {
-      LOGGER.error("Error polling records with exception:", e);
+      try {
+        // the pubsubconsumer internally is completely unthreadsafe, so we need an exclusive lock to poll (ugh)
+        lockAcquired = subscriptionLock.writeLock().tryLock(timeoutInMs, TimeUnit.MILLISECONDS);
+        messagesMap = pubSubConsumer.poll(timeoutInMs);
+      } catch (InterruptedException exception) {
+        LOGGER.info("Thread was interrupted", exception);
+        // Restore the interrupt status
+        Thread.currentThread().interrupt();
+      } finally {
+        if (lockAcquired) {
+          subscriptionLock.writeLock().unlock();
+        }
+      }
+      for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messagesMap.entrySet()) {
+        PubSubTopicPartition pubSubTopicPartition = entry.getKey();
+        List<DefaultPubSubMessage> messageList = entry.getValue();
+        for (DefaultPubSubMessage message: messageList) {
+          maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
+          if (message.getKey().isControlMessage()) {
+            ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
+            if (handleControlMessage(
+                controlMessage,
+                pubSubTopicPartition,
+                topicSuffix,
+                message.getKey().getKey(),
+                message.getValue().getProducerMetadata().getMessageTimestamp())) {
+              break;
+            }
+            if (includeControlMessage) {
+              pubSubMessages.add(
+                  new ImmutableChangeCapturePubSubMessage<>(
+                      null,
+                      null,
+                      message.getTopicPartition(),
+                      message.getPosition(),
+                      0,
+                      0,
+                      false));
+            }
+
+          } else {
+            Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage =
+                convertPubSubMessageToPubSubChangeEventMessage(message, pubSubTopicPartition);
+            pubSubMessage.ifPresent(pubSubMessages::add);
+          }
+        }
+      }
+
       if (changeCaptureStats != null) {
-        changeCaptureStats.emitPollCallCountMetrics(FAIL);
+        changeCaptureStats.emitRecordsConsumedCountMetrics(pubSubMessages.size());
       }
+
+      if (changelogClientConfig.shouldCompactMessages()) {
+        Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
+        // The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
+        // replaced,
+        // it's put in at the position of the first insertion. This isn't quite what we want, we want to keep only
+        // a single key (just as a map would), but we want to keep the position of the last insertion as well. So in
+        // order
+        // to do that, we remove the entry before inserting it.
+        for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: pubSubMessages) {
+          if (tempMap.containsKey(message.getKey())) {
+            tempMap.remove(message.getKey());
+          }
+          tempMap.put(message.getKey(), message);
+        }
+        return tempMap.values();
+      }
+      return pubSubMessages;
+    } catch (Exception exception) {
+      LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
+      exceptionOccurred = true;
+      throw exception;
     } finally {
-      if (lockAcquired) {
-        subscriptionLock.writeLock().unlock();
-      }
-    }
-
-    if (changeCaptureStats != null) {
-      changeCaptureStats.emitPollCallCountMetrics(SUCCESS);
-    }
-
-    for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messagesMap.entrySet()) {
-      PubSubTopicPartition pubSubTopicPartition = entry.getKey();
-      List<DefaultPubSubMessage> messageList = entry.getValue();
-      for (DefaultPubSubMessage message: messageList) {
-        maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
-        if (message.getKey().isControlMessage()) {
-          ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
-          if (handleControlMessage(
-              controlMessage,
-              pubSubTopicPartition,
-              topicSuffix,
-              message.getKey().getKey(),
-              message.getValue().getProducerMetadata().getMessageTimestamp())) {
-            break;
-          }
-          if (includeControlMessage) {
-            pubSubMessages.add(
-                new ImmutableChangeCapturePubSubMessage<>(
-                    null,
-                    null,
-                    message.getTopicPartition(),
-                    message.getPosition(),
-                    0,
-                    0,
-                    false));
-          }
-
+      if (changeCaptureStats != null) {
+        if (exceptionOccurred) {
+          changeCaptureStats.emitPollCallCountMetrics(FAIL);
         } else {
-          Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage =
-              convertPubSubMessageToPubSubChangeEventMessage(message, pubSubTopicPartition);
-          pubSubMessage.ifPresent(pubSubMessages::add);
+          changeCaptureStats.emitPollCallCountMetrics(SUCCESS);
         }
       }
     }
-    if (changeCaptureStats != null) {
-      changeCaptureStats.emitRecordsConsumedCountMetrics(pubSubMessages.size());
-    }
-    if (changelogClientConfig.shouldCompactMessages()) {
-      Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
-      // The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
-      // replaced,
-      // it's put in at the position of the first insertion. This isn't quite what we want, we want to keep only
-      // a single key (just as a map would), but we want to keep the position of the last insertion as well. So in order
-      // to do that, we remove the entry before inserting it.
-      for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: pubSubMessages) {
-        if (tempMap.containsKey(message.getKey())) {
-          tempMap.remove(message.getKey());
-        }
-        tempMap.put(message.getKey(), message);
-      }
-      return tempMap.values();
-    }
-    return pubSubMessages;
+
   }
 
   void maybeUpdatePartitionToBootstrapMap(DefaultPubSubMessage message, PubSubTopicPartition pubSubTopicPartition) {

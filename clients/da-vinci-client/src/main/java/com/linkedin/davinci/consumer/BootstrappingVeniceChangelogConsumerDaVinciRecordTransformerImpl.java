@@ -75,7 +75,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   // CachingDaVinciClientFactory used instead of DaVinciClientFactory, so we have the ability to close down the client
   private final CachingDaVinciClientFactory daVinciClientFactory;
   private final DaVinciClient<Object, Object> daVinciClient;
-  private AtomicBoolean isStarted = new AtomicBoolean(false);
+  private final AtomicBoolean isStarted = new AtomicBoolean(false);
   private final CountDownLatch startLatch = new CountDownLatch(1);
   // Using a dedicated thread pool for CompletableFutures created by this class to avoid potential thread starvation
   // issues in the default ForkJoinPool
@@ -86,6 +86,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
   private final BackgroundReporterThread backgroundReporterThread;
+  private long backgroundReporterThreadSleepInterval = 60L;
   private final BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
 
@@ -301,7 +302,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       while (!Thread.interrupted()) {
         try {
           recordStats(changeCaptureStats, partitionToVersionToServe);
-          TimeUnit.SECONDS.sleep(60L);
+          TimeUnit.SECONDS.sleep(backgroundReporterThreadSleepInterval);
         } catch (InterruptedException e) {
           LOGGER.warn("BackgroundReporterThread interrupted!  Shutting down...", e);
           break;
@@ -325,6 +326,11 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       // Record max and min consumed versions
       changeCaptureStats.emitCurrentConsumingVersionMetrics(minVersion, maxVersion);
     }
+  }
+
+  @VisibleForTesting
+  public void setBackgroundReporterThreadSleepInterval(long interval) {
+    backgroundReporterThreadSleepInterval = interval;
   }
 
   public class DaVinciRecordTransformerBootstrappingChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
