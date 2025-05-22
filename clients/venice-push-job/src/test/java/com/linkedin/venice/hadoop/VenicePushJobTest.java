@@ -39,6 +39,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
@@ -329,7 +330,7 @@ public class VenicePushJobTest {
     Properties props = getVpjRequiredProperties();
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
-    props.put(DATA_WRITER_COMPUTE_JOB_CLASS, dataWriterJobClass.getName());
+    props.put(DATA_WRITER_COMPUTE_JOB_CLASS, dataWriterJobClass.getCanonicalName());
     ControllerClient client = getClient();
     JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
     doReturn("SUCCESS").when(response).getStatus();
@@ -369,9 +370,9 @@ public class VenicePushJobTest {
         return null;
       };
 
+      DataWriterComputeJob dataWriterJob = spy(pushJob.getDataWriterComputeJob());
       try {
         doCallRealMethod().when(pushJob).runJobAndUpdateStatus();
-        DataWriterComputeJob dataWriterJob = spy(pushJob.getDataWriterComputeJob());
         pushJob.setDataWriterComputeJob(dataWriterJob);
         doNothing().when(dataWriterJob).validateJob();
         doAnswer(stallDataWriterJob).when(dataWriterJob).runComputeJob();
@@ -381,6 +382,8 @@ public class VenicePushJobTest {
         // Expected, because the data writer job is not configured to run successfully in this unit test environment
       }
       verify(pushJob, times(1)).cancel();
+      verify(pushJob, times(1)).killDataWriterJob();
+      verify(dataWriterJob, atLeast(1)).kill();
       assertEquals(pushJob.getDataWriterComputeJob().getStatus(), DataWriterComputeJob.Status.KILLED);
     }
   }

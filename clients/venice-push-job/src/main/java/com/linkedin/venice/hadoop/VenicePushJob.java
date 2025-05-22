@@ -870,8 +870,8 @@ public class VenicePushJob implements AutoCloseable {
             ex);
       } finally {
         try {
-          killJob(pushJobSetting, controllerClient);
-          LOGGER.info("Successfully killed the failed push job.");
+          // killJob(pushJobSetting, controllerClient);
+          // LOGGER.info("Successfully killed the failed push job.");
         } catch (Exception ex) {
           LOGGER.info("Failed to stop and cleanup the job. New pushes might be blocked.", ex);
         }
