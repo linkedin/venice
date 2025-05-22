@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -91,13 +92,21 @@ public class CompactionManager {
      *  The purpose of this function is to check if the last compaction time is older than the threshold.
      *  An ongoing push is regarded as the most recent compaction
      */
-    Version largestVersion = Collections.max(storeInfo.getVersions(), Comparator.comparingInt(Version::getNumber));
+    Version largestVersion = getLargestNonFailedVersion(storeInfo);
 
     long lastCompactionTime = largestVersion.getCreatedTime();
     long currentTime = System.currentTimeMillis();
     long timeSinceLastCompactionMs = currentTime - lastCompactionTime;
 
     return timeSinceLastCompactionMs >= compactionThresholdMs;
+  }
+
+  private Version getLargestNonFailedVersion(StoreInfo storeInfo) {
+    Version version = Collections.max(storeInfo.getVersions(), Comparator.comparingInt(Version::getNumber));
+    while ((version.getStatus() == VersionStatus.ERROR) || (version.getStatus() == VersionStatus.KILLED)) {
+      version = storeInfo.getVersion(version.getNumber() - 1).get();
+    }
+    return version;
   }
 
   /**
