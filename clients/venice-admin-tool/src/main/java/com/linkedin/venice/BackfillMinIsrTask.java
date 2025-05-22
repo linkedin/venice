@@ -37,7 +37,7 @@ public class BackfillMinIsrTask implements Function<String, Boolean> {
 
     StoreInfo store = storeResponse.getStore();
 
-    int currentVersionNum = store.getLargestUsedVersionNumber();
+    int currentVersionNum = store.getCurrentVersion();
     Optional<Version> currentVersion = store.getVersion(currentVersionNum);
 
     if (!currentVersion.isPresent()) {

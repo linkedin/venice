@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -16,7 +17,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -110,7 +110,6 @@ public class RealTimeTopicSwitcherTest {
     doReturn(version).when(mockStore).getVersionOrThrow(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
     doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
-    doReturn(DataReplicationPolicy.AGGREGATE).when(mockHybridConfig).getDataReplicationPolicy();
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createVeniceWriter(any(VeniceWriterOptions.class));
@@ -123,7 +122,7 @@ public class RealTimeTopicSwitcherTest {
         Collections.emptyList());
 
     List<CharSequence> expectedSourceClusters = new ArrayList<>();
-    expectedSourceClusters.add(aggregateRealTimeSourceKafkaUrl);
+    expectedSourceClusters.add("dummy");
     verify(mockVeniceWriter).broadcastTopicSwitch(eq(expectedSourceClusters), eq(srcTopic.getName()), anyLong(), any());
   }
 
@@ -133,10 +132,26 @@ public class RealTimeTopicSwitcherTest {
 
     Store mockStore = mock(Store.class);
     when(mockStore.getName()).thenReturn(storeName);
-    Version version1 = new VersionImpl(storeName, 1, "push1");
-    Version version2 = new VersionImpl(storeName, 2, "push2");
-    Version version3 = new VersionImpl(storeName, 3, "push3");
-    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version1));
+    Version version1 = mock(Version.class, RETURNS_DEEP_STUBS);
+    Version version2 = mock(Version.class, RETURNS_DEEP_STUBS);
+    Version version3 = mock(Version.class, RETURNS_DEEP_STUBS);
+    when(version1.isHybrid()).thenReturn(true);
+    when(version2.isHybrid()).thenReturn(true);
+    when(version3.isHybrid()).thenReturn(true);
+    String realTimeTopicName = Utils.composeRealTimeTopic(storeName, 1);
+    when(version1.getNumber()).thenReturn(1);
+    when(version2.getNumber()).thenReturn(2);
+    when(version3.getNumber()).thenReturn(3);
+    when(version1.getStoreName()).thenReturn(storeName);
+    when(version2.getStoreName()).thenReturn(storeName);
+    when(version3.getStoreName()).thenReturn(storeName);
+    when(version1.kafkaTopicName()).thenReturn(Version.composeKafkaTopic(storeName, 1));
+    when(version2.kafkaTopicName()).thenReturn(Version.composeKafkaTopic(storeName, 2));
+    when(version3.kafkaTopicName()).thenReturn(Version.composeKafkaTopic(storeName, 3));
+    when(version1.getHybridStoreConfig().getRealTimeTopicName()).thenReturn(realTimeTopicName);
+    when(version2.getHybridStoreConfig().getRealTimeTopicName()).thenReturn(realTimeTopicName);
+    when(version3.getHybridStoreConfig().getRealTimeTopicName()).thenReturn(realTimeTopicName);
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(realTimeTopicName);
 
     when(mockStore.getVersionOrThrow(1)).thenReturn(version1);
     when(mockStore.getVersionOrThrow(2)).thenReturn(version2);

@@ -35,6 +35,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PROPERTY_NAME;
@@ -220,6 +221,9 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       jobConf.set(DERIVED_SCHEMA_ID_PROP, pushJobSetting.derivedSchemaId);
     }
     jobConf.set(ENABLE_WRITE_COMPUTE, pushJobSetting.enableWriteCompute);
+    if (pushJobSetting.replicationMetadataSchemaString != null) {
+      jobConf.set(RMD_SCHEMA_PROP, pushJobSetting.replicationMetadataSchemaString);
+    }
 
     if (!props.containsKey(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS)) {
       // If the push job plug-in doesn't specify the request timeout config, default will be infinite
@@ -319,7 +323,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
   }
 
   @Override
-  protected void runComputeJob() {
+  public void runComputeJob() {
     // Load data from input path
     Dataset<Row> dataFrame = getInputDataFrame();
     validateDataFrame(dataFrame);

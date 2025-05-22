@@ -98,20 +98,20 @@ public class TestStoreBackupVersionDeletion {
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
-      TestWriteUtils.runPushJob("Test push job 1", props);
+      IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
           30,
           TimeUnit.SECONDS);
-      TestWriteUtils.runPushJob("Test repush job 2", props);
+      IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
           parentControllerClient,
           20,
           TimeUnit.SECONDS);
       props.put(SOURCE_KAFKA, "true");
-      TestWriteUtils.runPushJob("Test repush job", props);
+      IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 3),
           parentControllerClient,

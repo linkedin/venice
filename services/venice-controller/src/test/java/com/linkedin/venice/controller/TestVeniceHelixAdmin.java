@@ -41,7 +41,6 @@ import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.MaterializedViewParameters;
@@ -202,26 +201,12 @@ public class TestVeniceHelixAdmin {
     // Case 3: Both store and version are hybrid && controller is child
     doReturn(true).when(store).isHybrid();
     doReturn(true).when(version).isHybrid();
-    assertTrue(veniceHelixAdmin.isRealTimeTopicRequired(store, version));
     doReturn(false).when(veniceHelixAdmin).isParent();
     assertTrue(veniceHelixAdmin.isRealTimeTopicRequired(store, version));
 
-    // Case 4: Both store and version are hybrid && controller is parent && AA is enabled
+    // Case 4: Both store and version are hybrid && controller is parent
     doReturn(true).when(veniceHelixAdmin).isParent();
-    doReturn(true).when(store).isActiveActiveReplicationEnabled();
     assertFalse(veniceHelixAdmin.isRealTimeTopicRequired(store, version));
-
-    // Case 5: Both store and version are hybrid && controller is parent && AA is disabled and IncPush is enabled
-    doReturn(false).when(store).isActiveActiveReplicationEnabled();
-    doReturn(true).when(store).isIncrementalPushEnabled();
-    when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(DataReplicationPolicy.NON_AGGREGATE);
-    assertTrue(veniceHelixAdmin.isRealTimeTopicRequired(store, version));
-
-    // Case 6: Both store and version are hybrid && controller is parent && AA is disabled and IncPush is disabled but
-    // DRP is AGGREGATE
-    doReturn(false).when(store).isIncrementalPushEnabled();
-    when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(DataReplicationPolicy.AGGREGATE);
-    assertTrue(veniceHelixAdmin.isRealTimeTopicRequired(store, version));
   }
 
   @Test
@@ -1035,6 +1020,9 @@ public class TestVeniceHelixAdmin {
     when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
     doCallRealMethod().when(veniceParentHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
     doCallRealMethod().when(veniceHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
+    doReturn(Optional.empty()).when(veniceHelixAdmin).getSslFactory();
+    doReturn("leaderHost_1234").when(veniceHelixAdmin).getControllerName();
+    doNothing().when(veniceHelixAdmin).checkControllerLeadershipFor(clusterName);
 
     // Mock current version in leader is 2
     when(veniceHelixAdmin.getLocalAdminOperationProtocolVersion()).thenReturn(2L);
@@ -1042,10 +1030,10 @@ public class TestVeniceHelixAdmin {
     // Mock response for standby controllers
     AdminOperationProtocolVersionControllerResponse response1 = new AdminOperationProtocolVersionControllerResponse();
     response1.setLocalAdminOperationProtocolVersion(1);
-    response1.setRequestUrl("http://standbyHost1:1234");
+    response1.setLocalControllerName("standbyHost1_1234");
     AdminOperationProtocolVersionControllerResponse response2 = new AdminOperationProtocolVersionControllerResponse();
     response2.setLocalAdminOperationProtocolVersion(2);
-    response2.setRequestUrl("http://standbyHost2:1234");
+    response2.setLocalControllerName("standbyHost2_1234");
 
     List<Instance> standbyControllers = new ArrayList<>();
     standbyControllers.add(new Instance("1", "standbyHost1", 1234));
@@ -1063,16 +1051,18 @@ public class TestVeniceHelixAdmin {
       when(client.getLocalAdminOperationProtocolVersion("http://standbyHost1:1234")).thenReturn(response1);
       when(client.getLocalAdminOperationProtocolVersion("http://standbyHost2:1234")).thenReturn(response2);
 
-      Map<String, Long> urlToVersionMap = veniceParentHelixAdmin.getAdminOperationVersionFromControllers(clusterName);
-      assertEquals(urlToVersionMap.size(), 3);
+      Map<String, Long> controllerNameToVersionMap =
+          veniceParentHelixAdmin.getAdminOperationVersionFromControllers(clusterName);
+      assertEquals(controllerNameToVersionMap.size(), 3);
       assertTrue(
-          urlToVersionMap.containsKey("http://standbyHost1:1234")
-              && urlToVersionMap.get("http://standbyHost1:1234") == 1L);
+          controllerNameToVersionMap.containsKey("standbyHost1_1234")
+              && controllerNameToVersionMap.get("standbyHost1_1234") == 1L);
       assertTrue(
-          urlToVersionMap.containsKey("http://standbyHost2:1234")
-              && urlToVersionMap.get("http://standbyHost2:1234") == 2L);
+          controllerNameToVersionMap.containsKey("standbyHost2_1234")
+              && controllerNameToVersionMap.get("standbyHost2_1234") == 2L);
       assertTrue(
-          urlToVersionMap.containsKey("http://leaderHost:1234") && urlToVersionMap.get("http://leaderHost:1234") == 2L);
+          controllerNameToVersionMap.containsKey("leaderHost_1234")
+              && controllerNameToVersionMap.get("leaderHost_1234") == 2L);
     }
   }
 
@@ -1081,6 +1071,8 @@ public class TestVeniceHelixAdmin {
     VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
+    doReturn(Optional.empty()).when(veniceHelixAdmin).getSslFactory();
+    doReturn("leaderHost_1234").when(veniceHelixAdmin).getControllerName();
     doCallRealMethod().when(veniceParentHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
     doCallRealMethod().when(veniceHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
 
@@ -1094,7 +1086,7 @@ public class TestVeniceHelixAdmin {
 
     AdminOperationProtocolVersionControllerResponse response1 = new AdminOperationProtocolVersionControllerResponse();
     response1.setLocalAdminOperationProtocolVersion(1);
-    response1.setRequestUrl("http://standbyHost1:1234");
+    response1.setLocalControllerName("standbyHost1_1234");
     AdminOperationProtocolVersionControllerResponse failedResponse =
         new AdminOperationProtocolVersionControllerResponse();
     failedResponse.setError("Failed to get version");

@@ -10,6 +10,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -144,9 +145,9 @@ public class PartitionConsumptionState {
 
   /**
    * This hash map will keep a temporary mapping between a key and it's value.
-   * get {@link #getTransientRecord(byte[])} and put {@link #setTransientRecord(int, long, byte[], int, GenericRecord)}
+   * get {@link #getTransientRecord(byte[])} and put {@link #setTransientRecord(int, PubSubPosition, byte[], int, GenericRecord)}
    * operation on this map will be invoked from kafka consumer thread.
-   * delete {@link #mayRemoveTransientRecord(int, long, byte[])} operation will be invoked from drainer thread after persisting it in DB.
+   * delete {@link #mayRemoveTransientRecord(int, PubSubPosition, byte[])} operation will be invoked from drainer thread after persisting it in DB.
    * because of the properties of the above operations the caller is guaranteed to get the latest value for a key either from
    * this map or from the DB.
    */
@@ -567,24 +568,16 @@ public class PartitionConsumptionState {
 
   public void setTransientRecord(
       int kafkaClusterId,
-      long kafkaConsumedOffset,
+      PubSubPosition consumedPosition,
       byte[] key,
       int valueSchemaId,
       GenericRecord replicationMetadataRecord) {
-    setTransientRecord(
-        kafkaClusterId,
-        kafkaConsumedOffset,
-        key,
-        null,
-        -1,
-        -1,
-        valueSchemaId,
-        replicationMetadataRecord);
+    setTransientRecord(kafkaClusterId, consumedPosition, key, null, -1, -1, valueSchemaId, replicationMetadataRecord);
   }
 
   public void setTransientRecord(
       int kafkaClusterId,
-      long kafkaConsumedOffset,
+      PubSubPosition consumedPosition,
       byte[] key,
       byte[] value,
       int valueOffset,
@@ -592,7 +585,7 @@ public class PartitionConsumptionState {
       int valueSchemaId,
       GenericRecord replicationMetadataRecord) {
     TransientRecord transientRecord =
-        new TransientRecord(value, valueOffset, valueLen, valueSchemaId, kafkaClusterId, kafkaConsumedOffset);
+        new TransientRecord(value, valueOffset, valueLen, valueSchemaId, kafkaClusterId, consumedPosition);
     if (replicationMetadataRecord != null) {
       transientRecord.setReplicationMetadataRecord(replicationMetadataRecord);
     }
@@ -612,9 +605,9 @@ public class PartitionConsumptionState {
    * @param key
    * @return
    */
-  public TransientRecord mayRemoveTransientRecord(int kafkaClusterId, long kafkaConsumedOffset, byte[] key) {
+  public TransientRecord mayRemoveTransientRecord(int kafkaClusterId, PubSubPosition kafkaConsumedOffset, byte[] key) {
     return transientRecordMap.computeIfPresent(ByteArrayKey.wrap(key), (k, v) -> {
-      if (v.kafkaClusterId == kafkaClusterId && v.kafkaConsumedOffset == kafkaConsumedOffset) {
+      if (v.kafkaClusterId == kafkaClusterId && v.consumedPosition == kafkaConsumedOffset) {
         return null;
       } else {
         return v;
@@ -665,7 +658,7 @@ public class PartitionConsumptionState {
     private final int valueLen;
     private final int valueSchemaId;
     private final int kafkaClusterId;
-    private final long kafkaConsumedOffset;
+    private final PubSubPosition consumedPosition;
     private GenericRecord replicationMetadataRecord;
 
     private ChunkedValueManifest valueManifest;
@@ -677,13 +670,13 @@ public class PartitionConsumptionState {
         int valueLen,
         int valueSchemaId,
         int kafkaClusterId,
-        long kafkaConsumedOffset) {
+        PubSubPosition consumedPosition) {
       this.value = value;
       this.valueOffset = valueOffset;
       this.valueLen = valueLen;
       this.valueSchemaId = valueSchemaId;
       this.kafkaClusterId = kafkaClusterId;
-      this.kafkaConsumedOffset = kafkaConsumedOffset;
+      this.consumedPosition = consumedPosition;
     }
 
     public ChunkedValueManifest getRmdManifest() {

@@ -166,7 +166,7 @@ public class TestMaterializedViewEndToEnd {
         Assert.assertEquals(viewConfigMap.get(testViewName).getViewParameters().size(), 3);
       });
 
-      TestWriteUtils.runPushJob("Run push job", props);
+      IntegrationTestPushUtils.runVPJ(props);
       // TODO we will verify the actual content once the DVC consumption part of the view topic is completed.
       // For now just check for topic existence and that they contain some records.
       String viewTopicName =
@@ -182,7 +182,7 @@ public class TestMaterializedViewEndToEnd {
           multiRegionMultiClusterWrapper.getPubSubClientProperties());
       rePushProps.setProperty(SOURCE_KAFKA, "true");
       rePushProps.setProperty(KAFKA_INPUT_BROKER_URL, childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
-      TestWriteUtils.runPushJob("Run push job", rePushProps);
+      IntegrationTestPushUtils.runVPJ(rePushProps);
       String rePushViewTopicName =
           Version.composeKafkaTopic(storeName, 2) + VIEW_NAME_SEPARATOR + testViewName + MATERIALIZED_VIEW_TOPIC_SUFFIX;
       String rePushVersionTopicName = Version.composeKafkaTopic(storeName, 2);
@@ -228,7 +228,7 @@ public class TestMaterializedViewEndToEnd {
             MaterializedView.class.getCanonicalName());
       });
     }
-    TestWriteUtils.runPushJob("Run push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     // Start a DVC client that's subscribed to partition 0 of the store's materialized view. The DVC client should
     // contain all data records.
     VeniceProperties backendConfig =
@@ -277,7 +277,7 @@ public class TestMaterializedViewEndToEnd {
           newPushInputDirPath,
           storeName,
           multiRegionMultiClusterWrapper.getPubSubClientProperties());
-      TestWriteUtils.runPushJob("Run another push job", newPushProps);
+      IntegrationTestPushUtils.runVPJ(newPushProps);
       TestUtils.waitForNonDeterministicAssertion(
           10,
           TimeUnit.SECONDS,
@@ -363,7 +363,7 @@ public class TestMaterializedViewEndToEnd {
             MaterializedView.class.getCanonicalName());
       });
     }
-    TestWriteUtils.runPushJob("Run push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     // Start a DVC client that's subscribed to all partitions of the store's materialized view. The DVC client should
     // contain all data records.
     VeniceProperties backendConfig =
@@ -437,7 +437,7 @@ public class TestMaterializedViewEndToEnd {
             MaterializedView.class.getCanonicalName());
       });
     }
-    TestWriteUtils.runPushJob("Run push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     // Start a CC consumer in remote region to make sure it can consume all the records properly.
     Properties consumerProperties = new Properties();
     consumerProperties.put(
@@ -519,7 +519,7 @@ public class TestMaterializedViewEndToEnd {
             MaterializedView.class.getCanonicalName());
       });
     }
-    TestWriteUtils.runPushJob("Run push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     String viewTopicName =
         Version.composeKafkaTopic(storeName, 1) + VIEW_NAME_SEPARATOR + testViewName + MATERIALIZED_VIEW_TOPIC_SUFFIX;
     // View topic partitions should be mostly empty based on the TestValueBasedPartitioner logic.
@@ -566,7 +566,7 @@ public class TestMaterializedViewEndToEnd {
         multiRegionMultiClusterWrapper.getPubSubClientProperties());
     rePushProps.setProperty(SOURCE_KAFKA, "true");
     rePushProps.setProperty(KAFKA_INPUT_BROKER_URL, childDatacenters.get(0).getPubSubBrokerWrapper().getAddress());
-    TestWriteUtils.runPushJob("Run push job", rePushProps);
+    IntegrationTestPushUtils.runVPJ(rePushProps);
   }
 
   private double getMetric(MetricsRepository metricsRepository, String metricName, String storeName) {

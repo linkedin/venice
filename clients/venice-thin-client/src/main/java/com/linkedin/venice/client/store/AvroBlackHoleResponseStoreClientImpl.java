@@ -8,7 +8,6 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.read.RequestHeadersProvider;
-import com.linkedin.venice.serializer.RecordSerializer;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -54,7 +53,6 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
   }
 
   private byte[] serializeComputeRequest(ComputeRequestWrapper computeRequestWrapper, Collection<K> keys) {
-    RecordSerializer keySerializer = getKeySerializerWithoutRetry();
     List<ByteBuffer> serializedKeyList = new ArrayList<>(keys.size());
     ByteBuffer serializedComputeRequest = ByteBuffer.wrap(computeRequestWrapper.serialize());
     for (K key: keys) {

@@ -653,7 +653,6 @@ public class AdminExecutionTask implements Callable<Void> {
         storeName,
         clusterName,
         versionNumber);
-
     if (isParentController) {
       if (checkPreConditionForReplicateAddVersion(clusterName, storeName)) {
         // Parent controller mirrors new version to src or dest cluster if the store is migrating

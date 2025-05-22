@@ -574,7 +574,8 @@ public class Utils {
 
   /** This method should only be used for system stores.
    * For other stores, use {@link Utils#getRealTimeTopicName(Store)}, {@link Utils#getRealTimeTopicName(StoreInfo)} or
-   * {@link Utils#getRealTimeTopicName(Version)}
+   * {@link Utils#getRealTimeTopicName(Version)} in source code.
+   * For tests, use {@link Utils#composeRealTimeTopic(String, int)}
    */
   public static String composeRealTimeTopic(String storeName) {
     return storeName + REAL_TIME_TOPIC_SUFFIX;

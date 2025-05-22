@@ -569,17 +569,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       if (updatedValueBytes == null) {
         hostLevelIngestionStats.recordTombstoneCreatedDCR();
         aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
-        partitionConsumptionState.setTransientRecord(
-            kafkaClusterId,
-            consumerRecord.getPosition().getNumericOffset(),
-            keyBytes,
-            valueSchemaId,
-            rmdRecord);
+        partitionConsumptionState
+            .setTransientRecord(kafkaClusterId, consumerRecord.getPosition(), keyBytes, valueSchemaId, rmdRecord);
       } else {
         int valueLen = updatedValueBytes.remaining();
         partitionConsumptionState.setTransientRecord(
             kafkaClusterId,
-            consumerRecord.getPosition().getNumericOffset(),
+            consumerRecord.getPosition(),
             keyBytes,
             updatedValueBytes.array(),
             updatedValueBytes.position(),
@@ -870,8 +866,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                   new DeleteMetadata(valueSchemaId, rmdProtocolVersionId, updatedRmdBytes),
                   oldValueManifest,
                   oldRmdManifest);
-      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
-          .newDeleteRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), key, deletePayload);
+      LeaderProducedRecordContext leaderProducedRecordContext =
+          LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getPosition(), key, deletePayload);
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
@@ -901,8 +897,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
-          LeaderProducedRecordContext
-              .newPutRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), key, updatedPut),
+          LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getPosition(), key, updatedPut),
           produceToTopicFunction,
           partition,
           kafkaUrl,
@@ -1128,10 +1123,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   /**
    * Process {@link TopicSwitch} control message at given partition offset for a specific {@link PartitionConsumptionState}.
-   * Return whether we need to execute additional ready-to-serve check after this message is processed.
    */
   @Override
-  protected boolean processTopicSwitch(
+  protected void processTopicSwitch(
       ControlMessage controlMessage,
       int partition,
       long offset,
@@ -1149,7 +1143,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (!isLeader(partitionConsumptionState)) {
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     }
-    return false;
   }
 
   @Override
@@ -1299,11 +1292,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   public boolean isTransientRecordBufferUsed(PartitionConsumptionState partitionConsumptionState) {
     return partitionConsumptionState.isEndOfPushReceived();
-  }
-
-  @Override
-  protected boolean shouldCheckLeaderCompleteStateInFollower() {
-    return getServerConfig().isLeaderCompleteStateCheckInFollowerEnabled();
   }
 
   @Override

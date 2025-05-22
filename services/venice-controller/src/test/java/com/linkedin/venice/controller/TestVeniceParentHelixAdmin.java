@@ -61,7 +61,6 @@ import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -80,6 +79,7 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
 import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -142,7 +142,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testDualWriteSendPushJobDetails() {
+  public void testSendPushJobDetailsToChildRegions() {
     parentAdmin.initStorageCluster(clusterName);
     PushJobStatusRecordKey key = new PushJobStatusRecordKey();
     key.versionNumber = 1;
@@ -165,7 +165,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn("test-cluster").when(internalAdmin).getPushJobStatusStoreClusterName();
     parentAdmin.sendPushJobDetails(key, value);
     verify(internalAdmin, atLeast(1)).sendPushJobDetails(key, value);
-    verify(internalAdmin, atLeast(1)).sendPushJobDetailsToLocalRT(any(), any());
+    // Parent does not write push job details to parent region RT anymore.
+    verify(internalAdmin, never()).sendPushJobDetailsToLocalRT(any(), any());
     verify(controllerClient, atLeast(1)).sendPushJobDetails(anyString(), anyInt(), any());
     doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
 
@@ -255,7 +256,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Optional<Long> hybridRewindSeconds = params.getHybridRewindSeconds();
       Optional<Long> hybridOffsetLagThreshold = params.getHybridOffsetLagThreshold();
       Optional<Long> hybridTimeLagThreshold = params.getHybridTimeLagThreshold();
-      Optional<DataReplicationPolicy> hybridDataReplicationPolicy = params.getHybridDataReplicationPolicy();
       Optional<BufferReplayPolicy> hybridBufferReplayPolicy = params.getHybridBufferReplayPolicy();
 
       if (!systemStores.containsKey(storeName)) {
@@ -263,8 +263,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       }
       if (hybridRewindSeconds.isPresent() && hybridOffsetLagThreshold.isPresent()) {
         final long finalHybridTimeLagThreshold = hybridTimeLagThreshold.orElse(DEFAULT_HYBRID_TIME_LAG_THRESHOLD);
-        final DataReplicationPolicy finalHybridDataReplicationPolicy =
-            hybridDataReplicationPolicy.orElse(DataReplicationPolicy.NON_AGGREGATE);
         final BufferReplayPolicy finalHybridBufferReplayPolicy =
             hybridBufferReplayPolicy.orElse(BufferReplayPolicy.REWIND_FROM_EOP);
         systemStores.get(storeName)
@@ -273,7 +271,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
                     hybridRewindSeconds.get(),
                     hybridOffsetLagThreshold.get(),
                     finalHybridTimeLagThreshold,
-                    finalHybridDataReplicationPolicy,
                     finalHybridBufferReplayPolicy));
       }
     }
@@ -299,9 +296,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testAddStore() {
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
             AdminTopicMetadataAccessor.generateMetadataMap(
@@ -394,7 +393,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       when(veniceWriter.put(any(), any(), anyInt())).then(invocation -> {
         // Once we send message to topic through venice writer, return offset 1
         CompletableFuture future = mock(CompletableFuture.class);
-        doReturn(new SimplePubSubProduceResultImpl(adminTopic, partitionId, 1, -1)).when(future).get();
+        doReturn(new SimplePubSubProduceResultImpl(adminTopic, partitionId, mock(PubSubPosition.class), -1))
+            .when(future)
+            .get();
         return future;
       });
 
@@ -446,9 +447,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String storeName = "test-store";
     when(internalAdmin.getLastExceptionForStore(clusterName, storeName)).thenReturn(null)
         .thenReturn(new VeniceException("mock exception"));
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -475,9 +478,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testSetStorePartitionCount() {
     String storeName = "test-store";
     when(internalAdmin.getLastExceptionForStore(clusterName, storeName)).thenReturn(null);
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(
         AdminTopicMetadataAccessor.generateMetadataMap(
             Optional.of(1L),
@@ -514,9 +519,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             DirectionalSchemaCompatibilityType.FULL);
     doReturn(valueSchemaId).when(internalAdmin).getValueSchemaId(clusterName, storeName, valueSchemaStr);
 
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -571,9 +578,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new GeneratedSchemaID(valueSchemaId, derivedSchemaId)).when(internalAdmin)
         .getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
 
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -604,9 +613,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testDisableStoreRead() {
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -645,9 +656,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testDisableStoreWrite() {
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -690,9 +703,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doThrow(new VeniceNoStoreException(storeName)).when(internalAdmin)
         .checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     parentAdmin.initStorageCluster(clusterName);
     assertThrows(VeniceNoStoreException.class, () -> parentAdmin.setStoreWriteability(clusterName, storeName, false));
@@ -700,9 +715,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testEnableStoreRead() {
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -741,9 +758,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testEnableStoreWrite() {
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -784,9 +803,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic("test_store_v1");
     doReturn(new HashSet<>(Arrays.asList(pubSubTopic))).when(topicManager).listTopics();
 
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -856,9 +877,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
 
-      doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-          .when(veniceWriter)
-          .put(any(), any(), anyInt());
+      doReturn(
+          CompletableFuture.completedFuture(
+              new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                  .when(veniceWriter)
+                  .put(any(), any(), anyInt());
       when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
           .thenReturn(
               AdminTopicMetadataAccessor.generateMetadataMap(
@@ -994,9 +1017,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
-      doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-          .when(veniceWriter)
-          .put(any(), any(), anyInt());
+      doReturn(
+          CompletableFuture.completedFuture(
+              new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                  .when(veniceWriter)
+                  .put(any(), any(), anyInt());
       Version newVersion = partialMockParentAdmin.incrementVersionIdempotent(
           clusterName,
           storeName,
@@ -1086,9 +1111,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
-      doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-          .when(veniceWriter)
-          .put(any(), any(), anyInt());
+      doReturn(
+          CompletableFuture.completedFuture(
+              new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                  .when(veniceWriter)
+                  .put(any(), any(), anyInt());
       when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
           .thenReturn(
               AdminTopicMetadataAccessor.generateMetadataMap(
@@ -1899,9 +1926,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -2035,9 +2064,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -2065,9 +2096,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -2096,22 +2129,18 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
 
-    store.setHybridStoreConfig(
-        new HybridStoreConfigImpl(
-            1000,
-            100,
-            -1,
-            DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(1000, 100, -1, BufferReplayPolicy.REWIND_FROM_EOP));
     store.setActiveActiveReplicationEnabled(true);
     store.setIncrementalPushEnabled(true);
     store.setNativeReplicationEnabled(true);
     store.setChunkingEnabled(true);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -2286,9 +2315,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), Collections.emptyMap())));
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -2323,9 +2354,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     parentAdmin.initStorageCluster(clusterName);
 
@@ -2373,9 +2406,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
     doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
 
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -2720,9 +2755,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       partialMockParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
-      doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-          .when(veniceWriter)
-          .put(any(), any(), anyInt());
+      doReturn(
+          CompletableFuture.completedFuture(
+              new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                  .when(veniceWriter)
+                  .put(any(), any(), anyInt());
       mockControllerClients(storeName);
 
       when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
@@ -2846,9 +2883,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(store).when(internalAdmin).getStore(clusterName, storeA);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeB);
     doReturn(0).when(store).getLargestUsedRTVersionNumber();
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(
         AdminTopicMetadataAccessor.generateMetadataMap(
@@ -2899,9 +2938,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -2937,13 +2978,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 60);
 
     store.setActiveActiveReplicationEnabled(aaEnabled);
-    store.setHybridStoreConfig(
-        new HybridStoreConfigImpl(
-            60,
-            20000,
-            0,
-            DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP));
+    store.setHybridStoreConfig(new HybridStoreConfigImpl(60, 20000, 0, BufferReplayPolicy.REWIND_FROM_EOP));
     // Incremental push can be enabled on a hybrid store, default inc push policy is inc push to RT now
     if (aaEnabled) {
       parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
@@ -2970,9 +3005,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testSendAdminMessageAcquiresClusterReadLock() {
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
             AdminTopicMetadataAccessor.generateMetadataMap(
@@ -3223,9 +3260,11 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     store.setChunkingEnabled(true);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(

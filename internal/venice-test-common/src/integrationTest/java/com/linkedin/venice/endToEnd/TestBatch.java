@@ -13,9 +13,6 @@ import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCount
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.updateStore;
-import static com.linkedin.venice.utils.TestUtils.deleteDirectory;
-import static com.linkedin.venice.utils.TestUtils.directoryContainsFolder;
-import static com.linkedin.venice.utils.TestUtils.findFoldersWithFileExtension;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_KEY_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_WITHOUT_NULL_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_WITH_NULL_SCHEMA;
@@ -77,9 +74,9 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -89,8 +86,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.text.DecimalFormat;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -917,11 +912,11 @@ public abstract class TestBatch {
       }
     }
 
-    TestWriteUtils.runPushJob("Test Batch push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
 
     if (multiPushJobs) {
-      TestWriteUtils.runPushJob("Test Batch push job 2", props);
-      TestWriteUtils.runPushJob("Test Batch push job 3", props);
+      IntegrationTestPushUtils.runVPJ(props);
+      IntegrationTestPushUtils.runVPJ(props);
     }
 
     veniceCluster.refreshAllRouterMetaData();
@@ -1457,64 +1452,5 @@ public abstract class TestBatch {
           .getCurrentVersion(veniceCluster.getClusterName(), storeName);
       Assert.assertEquals(version, 2);
     });
-  }
-
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testBatchJobSnapshots(Boolean isKafkaPush) throws Exception {
-
-    VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
-      for (int i = 1; i <= 100; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-      }
-    };
-
-    String storeName = testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
-        properties -> {},
-        validator);
-
-    verifySnapshotFolders();
-
-    deleteDirectory(Paths.get(BASE_DATA_PATH_1).toFile());
-    deleteDirectory(Paths.get(BASE_DATA_PATH_2).toFile());
-
-    if (isKafkaPush) {
-      testRepush(storeName, validator);
-    } else {
-      testBatchStore(
-          inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithStringToStringSchema(inputDir)),
-          properties -> {},
-          validator,
-          storeName,
-          new UpdateStoreQueryParams());
-    }
-
-    verifySnapshotFolders();
-  }
-
-  private void verifySnapshotFolders() {
-    Path folderPath1 = Paths.get(BASE_DATA_PATH_1);
-    Path folderPath2 = Paths.get(BASE_DATA_PATH_2);
-
-    List<String> directories = findFoldersWithFileExtension(folderPath1.toFile(), ".sst");
-    directories.addAll(findFoldersWithFileExtension(folderPath2.toFile(), ".sst"));
-
-    for (String directoryPath: directories) {
-      // the directories containing .sst files should contain the ".snapshot" folder
-      boolean containsSnapshotFolder = directoryContainsFolder(directoryPath, ".snapshot_files");
-
-      // base path 2's blob transfer is disabled, and we shouldn't find a snapshot file
-      if (directoryPath.startsWith(BASE_DATA_PATH_2)) {
-        Assert.assertFalse(containsSnapshotFolder);
-        continue;
-      }
-
-      Assert.assertTrue(containsSnapshotFolder);
-
-      // .snapshot_files folder should contain the .sst files
-      Path snapshotPath = Paths.get(directoryPath + "/.snapshot_files");
-      List<String> snapshots = findFoldersWithFileExtension(snapshotPath.toFile(), ".sst");
-      Assert.assertTrue(snapshots.size() > 0);
-    }
   }
 }

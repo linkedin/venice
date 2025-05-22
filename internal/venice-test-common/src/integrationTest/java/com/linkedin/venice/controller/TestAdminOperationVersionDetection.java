@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 
@@ -36,8 +37,10 @@ public class TestAdminOperationVersionDetection {
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     // Create multi-region multi-cluster setup
-    Properties parentControllerProperties = new Properties();
+    Properties controllerProperties = new Properties();
+    controllerProperties.put(CONTROLLER_SSL_ENABLED, "false");
     Properties serverProperties = new Properties();
+    serverProperties.put(CONTROLLER_SSL_ENABLED, "false");
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
@@ -50,7 +53,8 @@ public class TestAdminOperationVersionDetection {
             .sslToStorageNodes(true)
             .forkServer(false)
             .serverProperties(serverProperties)
-            .parentControllerProperties(parentControllerProperties);
+            .parentControllerProperties(controllerProperties)
+            .childControllerProperties(controllerProperties);
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
   }
@@ -73,8 +77,8 @@ public class TestAdminOperationVersionDetection {
     assertEquals(
         response.getLocalAdminOperationProtocolVersion(),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Map<String, Long> urlToVersionMap = response.getControllerUrlToVersionMap();
-    assertEquals(urlToVersionMap.size(), 2);
+    Map<String, Long> controllerNameToVersionMap = response.getControllerNameToVersionMap();
+    assertEquals(controllerNameToVersionMap.size(), 2);
     assertEquals(response.getCluster(), clusterName);
   }
 
@@ -97,8 +101,8 @@ public class TestAdminOperationVersionDetection {
     assertEquals(
         response.getLocalAdminOperationProtocolVersion(),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Map<String, Long> urlToVersionMap = response.getControllerUrlToVersionMap();
-    assertEquals(urlToVersionMap.size(), 2);
+    Map<String, Long> controllerNameToVersionMap = response.getControllerNameToVersionMap();
+    assertEquals(controllerNameToVersionMap.size(), 2);
     assertEquals(response.getCluster(), clusterName);
   }
 }

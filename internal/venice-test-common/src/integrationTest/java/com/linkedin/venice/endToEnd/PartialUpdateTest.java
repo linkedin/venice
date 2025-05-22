@@ -2,17 +2,11 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RMD_SIZE_IN_BYTES;
 import static com.linkedin.venice.endToEnd.TestBatch.TEST_TIMEOUT;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.verifyConsumerThreadPoolFor;
@@ -37,7 +31,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TI
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SPARK_NATIVE_INPUT_FORMAT_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -69,7 +62,6 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -86,7 +78,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
@@ -129,7 +121,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
-import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -162,6 +153,10 @@ public class PartialUpdateTest {
     return false;
   }
 
+  protected boolean isHeartbeatReadyToServeCheckEnabled() {
+    return false;
+  }
+
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties serverProperties = new Properties();
@@ -172,6 +167,9 @@ public class PartialUpdateTest {
     serverProperties.put(
         ConfigKeys.SERVER_AA_WC_WORKLOAD_PARALLEL_PROCESSING_ENABLED,
         Boolean.toString(isAAWCParallelProcessingEnabled()));
+    serverProperties.put(
+        ConfigKeys.SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED,
+        Boolean.toString(isHeartbeatReadyToServeCheckEnabled()));
     Properties controllerProps = new Properties();
     controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
     controllerProps.put(ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED, false);
@@ -249,7 +247,7 @@ public class PartialUpdateTest {
       props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
       // intentionally stop re-consuming from RT so stale records don't affect the testing results
       // props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
-      TestWriteUtils.runPushJob("Run repush job 1", props);
+      IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
           parentControllerClient,
@@ -277,7 +275,7 @@ public class PartialUpdateTest {
         // Perform one time repush to make sure repush can handle chunks data correctly.
         // intentionally stop re-consuming from RT so stale records don't affect the testing results
         props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
-        TestWriteUtils.runPushJob("Run repush job 2", props);
+        IntegrationTestPushUtils.runVPJ(props);
 
         TestUtils.waitForNonDeterministicPushCompletion(
             Version.composeKafkaTopic(storeName, 3),
@@ -365,7 +363,7 @@ public class PartialUpdateTest {
       // VPJ push
       String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
       try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
-        runVPJ(vpjProperties, 1, childControllerClient);
+        IntegrationTestPushUtils.runVPJ(vpjProperties, 1, childControllerClient);
       }
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
       veniceClusterWrapper.waitVersion(storeName, 1);
@@ -514,7 +512,7 @@ public class PartialUpdateTest {
       // VPJ push
       String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
       try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
-        runVPJ(vpjProperties, 1, childControllerClient);
+        IntegrationTestPushUtils.runVPJ(vpjProperties, 1, childControllerClient);
       }
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
       veniceClusterWrapper.waitVersion(storeName, 1);
@@ -580,7 +578,7 @@ public class PartialUpdateTest {
       // VPJ push
       String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
       try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
-        runVPJ(vpjProperties, 1, childControllerClient);
+        IntegrationTestPushUtils.runVPJ(vpjProperties, 1, childControllerClient);
       }
       veniceClusterWrapper.waitVersion(storeName, 1);
       // Produce partial updates on batch pushed keys
@@ -646,7 +644,7 @@ public class PartialUpdateTest {
       // VPJ push
       String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
       try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
-        runVPJ(vpjProperties, 1, childControllerClient);
+        IntegrationTestPushUtils.runVPJ(vpjProperties, 1, childControllerClient);
       }
       veniceClusterWrapper.waitVersion(storeName, 1);
       // Produce partial updates on batch pushed keys
@@ -962,7 +960,7 @@ public class PartialUpdateTest {
       props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
       // intentionally stop re-consuming from RT so stale records don't affect the testing results
       props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
-      TestWriteUtils.runPushJob("Run repush job", props);
+      IntegrationTestPushUtils.runVPJ(props);
 
       ControllerClient controllerClient =
           new ControllerClient("venice-cluster0", childDatacenters.get(0).getControllerConnectString());
@@ -1286,7 +1284,7 @@ public class PartialUpdateTest {
     props.setProperty(REPUSH_TTL_START_TIMESTAMP, String.valueOf(FRESH_TS));
     // Override the rewind time to make sure not to consume 24hrs data from RT topic.
     props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
-    TestWriteUtils.runPushJob("Run repush job 1", props);
+    IntegrationTestPushUtils.runVPJ(props);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
@@ -1575,7 +1573,7 @@ public class PartialUpdateTest {
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-    TestWriteUtils.runPushJob("Run repush job 1", props);
+    IntegrationTestPushUtils.runVPJ(props);
     PubSubTopic storeVersionTopicV3 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 3));
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       TestUtils.waitForNonDeterministicPushCompletion(
@@ -1844,7 +1842,7 @@ public class PartialUpdateTest {
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-    TestWriteUtils.runPushJob("Run repush job 1", props);
+    IntegrationTestPushUtils.runVPJ(props);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
@@ -1996,7 +1994,7 @@ public class PartialUpdateTest {
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
 
       // Step 1. Put a value record.
-      veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+      veniceProducer = IntegrationTestPushUtils.getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
       String key = "key1";
       GenericRecord value = new GenericData.Record(valueSchemaV1);
       value.put(valueFieldName, "Lebron");
@@ -2108,7 +2106,7 @@ public class PartialUpdateTest {
         // VPJ push
         String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
         try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
-          runVPJ(vpjProperties, 1, childControllerClient);
+          IntegrationTestPushUtils.runVPJ(vpjProperties, 1, childControllerClient);
         }
         veniceClusterWrapper.waitVersion(storeName, 1);
         try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
@@ -2275,8 +2273,6 @@ public class PartialUpdateTest {
 
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testWriteComputeWithSamzaBatchJob() throws Exception {
-
-    SystemProducer veniceProducer = null;
     long streamingRewindSeconds = 10L;
     long streamingMessageLag = 2L;
 
@@ -2319,17 +2315,6 @@ public class PartialUpdateTest {
       // Run empty push to create a version and get everything created
       controllerClient.sendEmptyPushAndWait(storeName, "foopush", 10000, 60 * Time.MS_PER_SECOND);
 
-      VeniceSystemFactory factory = new VeniceSystemFactory();
-      Version.PushType pushType = Version.PushType.BATCH;
-      Map<String, String> samzaConfig = getSamzaProducerConfig(veniceClusterWrapper, storeName, pushType);
-      // final boolean veniceAggregate = config.getBoolean(prefix + VENICE_AGGREGATE, false);
-      samzaConfig.put("systems.venice." + VENICE_AGGREGATE, "true");
-      samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
-      samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
-      samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
-      veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
-      veniceProducer.start();
-
       // build partial update
       char[] chars = new char[5];
       Arrays.fill(chars, 'f');
@@ -2342,13 +2327,15 @@ public class PartialUpdateTest {
       updateBuilder.setNewFieldValue("lastName", lastName);
       GenericRecord partialUpdateRecord = updateBuilder.build();
 
-      for (int i = 0; i < 10; i++) {
-        String key = String.valueOf(i);
-        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
+      try (VeniceSystemProducer veniceProducer =
+          IntegrationTestPushUtils.getSamzaProducerForBatch(multiRegionMultiClusterWrapper, storeName)) {
+        for (int i = 0; i < 10; i++) {
+          String key = String.valueOf(i);
+          sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
+        }
+        // send end of push
+        controllerClient.writeEndOfPush(storeName, 2);
       }
-
-      // send end of push
-      controllerClient.writeEndOfPush(storeName, 2);
 
       try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
@@ -2367,26 +2354,6 @@ public class PartialUpdateTest {
           }
         });
       }
-    } finally {
-      if (veniceProducer != null) {
-        veniceProducer.stop();
-      }
-    }
-  }
-
-  /**
-   * Blocking, waits for new version to go online
-   */
-  private void runVPJ(Properties vpjProperties, int expectedVersionNumber, ControllerClient controllerClient) {
-    String jobName = Utils.getUniqueString("write-compute-job-" + expectedVersionNumber);
-    try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
-      job.run();
-      TestUtils.waitForNonDeterministicCompletion(
-          60,
-          TimeUnit.SECONDS,
-          () -> controllerClient.getStore((String) vpjProperties.get(VENICE_STORE_NAME_PROP))
-              .getStore()
-              .getCurrentVersion() == expectedVersionNumber);
     }
   }
 

@@ -143,7 +143,7 @@ public class TestDeferredVersionSwap {
       // Start push job with target region push enabled
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props.put(TARGETED_REGION_PUSH_LIST, targetRegions);
-      TestWriteUtils.runPushJob("Test push job", props);
+      IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
@@ -217,7 +217,7 @@ public class TestDeferredVersionSwap {
       // Start push job with target region push enabled
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props.put(TARGETED_REGION_PUSH_LIST, targetRegions);
-      TestWriteUtils.runPushJob("Test push job", props);
+      IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
@@ -286,7 +286,7 @@ public class TestDeferredVersionSwap {
       // Start push job with target region push enabled
       props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props.put(TARGETED_REGION_PUSH_LIST, REGION1);
-      TestWriteUtils.runPushJob("Test push job", props);
+      IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
@@ -403,7 +403,7 @@ public class TestDeferredVersionSwap {
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, valueSchemaStr, props, storeParms).close();
-      TestWriteUtils.runPushJob("Test push job", props);
+      IntegrationTestPushUtils.runVPJ(props);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 1),
           parentControllerClient,
@@ -451,7 +451,7 @@ public class TestDeferredVersionSwap {
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       props2.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
       props2.put(TARGETED_REGION_PUSH_LIST, REGION1);
-      TestWriteUtils.runPushJob("Test push job", props2);
+      IntegrationTestPushUtils.runVPJ(props2);
       TestUtils.waitForNonDeterministicPushCompletion(
           Version.composeKafkaTopic(storeName, 2),
           parentControllerClient,

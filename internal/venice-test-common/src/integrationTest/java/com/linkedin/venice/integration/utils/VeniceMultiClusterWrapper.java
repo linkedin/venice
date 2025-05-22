@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
 import static com.linkedin.venice.ConfigKeys.LOCAL_REGION_NAME;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
@@ -130,6 +131,9 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       }
       // Specify the system store cluster name
       Properties extraProperties = options.getExtraProperties();
+      extraProperties.setProperty(
+          CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
+          VeniceClusterWrapper.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING_IN_TESTS);
       extraProperties.put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
       extraProperties.putAll(KafkaTestUtils.getLocalCommonKafkaSSLConfig(SslUtils.getTlsConfiguration()));
       pubBrokerDetails.forEach((key, value) -> extraProperties.putIfAbsent(key, value));

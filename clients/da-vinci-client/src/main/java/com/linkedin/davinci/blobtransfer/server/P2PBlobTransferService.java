@@ -28,6 +28,7 @@ public class P2PBlobTransferService extends AbstractVeniceService {
   private EventLoopGroup workerGroup;
   private final int port;
   private ChannelFuture channelFuture;
+  private BlobSnapshotManager blobSnapshotManager;
   // TODO 1: Quota support
   // TODO 2: consider adding support for HTTP2
   // TODO 3: add compression support
@@ -40,9 +41,11 @@ public class P2PBlobTransferService extends AbstractVeniceService {
       BlobSnapshotManager blobSnapshotManager,
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
       Optional<SSLFactory> sslFactory,
-      Optional<BlobTransferAclHandler> aclHandler) {
+      Optional<BlobTransferAclHandler> aclHandler,
+      int maxAllowedConcurrentSnapshotUsers) {
     this.port = port;
     this.serverBootstrap = new ServerBootstrap();
+    this.blobSnapshotManager = blobSnapshotManager;
 
     Class<? extends ServerChannel> socketChannelClass = NioServerSocketChannel.class;
 
@@ -64,7 +67,8 @@ public class P2PBlobTransferService extends AbstractVeniceService {
                 blobSnapshotManager,
                 globalChannelTrafficShapingHandler,
                 sslFactory,
-                aclHandler))
+                aclHandler,
+                maxAllowedConcurrentSnapshotUsers))
         .option(ChannelOption.SO_BACKLOG, 1000)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
@@ -82,6 +86,9 @@ public class P2PBlobTransferService extends AbstractVeniceService {
   @Override
   public void stopInner() throws Exception {
     LOGGER.info("Shutting down NettyP2PBlobTransferManager");
+    if (blobSnapshotManager != null) {
+      blobSnapshotManager.shutdown();
+    }
     bossGroup.shutdownGracefully();
     workerGroup.shutdownGracefully();
     channelFuture.channel().closeFuture().sync();
