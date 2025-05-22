@@ -2,9 +2,11 @@ package com.linkedin.davinci.consumer.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface.getUniqueMetricEntities;
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
 
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
@@ -46,9 +48,12 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   private final MetricEntityStateBase minimumConsumingVersionMetric;
   private final MetricEntityStateBase maximumConsumingVersionMetric;
   private final MetricEntityStateBase recordsConsumedCountMetric;
-  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> pollCallCountMetric;
-  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapCountMetric;
-  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> pollCallSuccessCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> pollCallFailCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapSuccessCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapFailCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordSuccessCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordFailCountMetric;
 
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final boolean emitOpenTelemetryMetrics;
@@ -115,29 +120,56 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         baseDimensionsMap,
         baseAttributes);
 
-    pollCallCountMetric = MetricEntityStateOneEnum.create(
+    pollCallSuccessCountMetric = MetricEntityStateOneEnum.create(
         BasicConsumerMetricEntity.POLL_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        BasicConsumerTehutiMetricName.POLL_CALL_COUNT,
+        BasicConsumerTehutiMetricName.POLL_CALL_SUCCESS_COUNT,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
-    versionSwapCountMetric = MetricEntityStateOneEnum.create(
+    pollCallFailCountMetric = MetricEntityStateOneEnum.create(
+        BasicConsumerMetricEntity.POLL_CALL_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        BasicConsumerTehutiMetricName.POLL_CALL_FAIL_COUNT,
+        Collections.singletonList(new Avg()),
+        baseDimensionsMap,
+        VeniceResponseStatusCategory.class);
+
+    versionSwapSuccessCountMetric = MetricEntityStateOneEnum.create(
         BasicConsumerMetricEntity.VERSION_SWAP_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        BasicConsumerTehutiMetricName.VERSION_SWAP_COUNT,
+        BasicConsumerTehutiMetricName.VERSION_SWAP_SUCCESS_COUNT,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
-    chunkedRecordCountMetric = MetricEntityStateOneEnum.create(
+    versionSwapFailCountMetric = MetricEntityStateOneEnum.create(
+        BasicConsumerMetricEntity.VERSION_SWAP_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        BasicConsumerTehutiMetricName.VERSION_SWAP_FAIL_COUNT,
+        Collections.singletonList(new Avg()),
+        baseDimensionsMap,
+        VeniceResponseStatusCategory.class);
+
+    chunkedRecordSuccessCountMetric = MetricEntityStateOneEnum.create(
         BasicConsumerMetricEntity.CHUNKED_RECORD_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        BasicConsumerTehutiMetricName.CHUNKED_RECORD_COUNT,
+        BasicConsumerTehutiMetricName.CHUNKED_RECORD_SUCCESS_COUNT,
+        Collections.singletonList(new Avg()),
+        baseDimensionsMap,
+        VeniceResponseStatusCategory.class);
+
+    chunkedRecordFailCountMetric = MetricEntityStateOneEnum.create(
+        BasicConsumerMetricEntity.CHUNKED_RECORD_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        BasicConsumerTehutiMetricName.CHUNKED_RECORD_FAIL_COUNT,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
@@ -157,23 +189,41 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   }
 
   public void emitPollCallCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
-    pollCallCountMetric.record(1, responseStatusCategory);
+    if (responseStatusCategory == SUCCESS) {
+      pollCallSuccessCountMetric.record(1, responseStatusCategory);
+    } else {
+      pollCallFailCountMetric.record(1, responseStatusCategory);
+    }
   }
 
   public void emitVersionSwapCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
-    versionSwapCountMetric.record(1, responseStatusCategory);
+    if (responseStatusCategory == SUCCESS) {
+      versionSwapSuccessCountMetric.record(1, responseStatusCategory);
+    } else {
+      versionSwapFailCountMetric.record(1, responseStatusCategory);
+    }
   }
 
   public void emitChunkedRecordCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
-    chunkedRecordCountMetric.record(1, responseStatusCategory);
+    if (responseStatusCategory == SUCCESS) {
+      chunkedRecordSuccessCountMetric.record(1, responseStatusCategory);
+    } else {
+      chunkedRecordFailCountMetric.record(1, responseStatusCategory);
+    }
+  }
+
+  @VisibleForTesting
+  public Attributes getBaseAttributes() {
+    return baseAttributes;
   }
 
   /**
    * Metric names for tehuti metrics used in this class.
    */
   public enum BasicConsumerTehutiMetricName implements TehutiMetricNameEnum {
-    MAX_PARTITION_LAG, RECORDS_CONSUMED, MAXIMUM_CONSUMING_VERSION, MINIMUM_CONSUMING_VERSION, POLL_CALL_COUNT,
-    VERSION_SWAP_COUNT, CHUNKED_RECORD_COUNT;
+    MAX_PARTITION_LAG, RECORDS_CONSUMED, MAXIMUM_CONSUMING_VERSION, MINIMUM_CONSUMING_VERSION, POLL_CALL_SUCCESS_COUNT,
+    POLL_CALL_FAIL_COUNT, VERSION_SWAP_SUCCESS_COUNT, VERSION_SWAP_FAIL_COUNT, CHUNKED_RECORD_SUCCESS_COUNT,
+    CHUNKED_RECORD_FAIL_COUNT;
 
     private final String metricName;
 
