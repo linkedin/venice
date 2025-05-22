@@ -78,8 +78,6 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> unhealthyLatencyMetricForDavinciClient;
   private final MetricEntityStateOneEnum<MessageType> requestKeyCount;
   private final MetricEntityStateOneEnum<MessageType> responseKeyCount;
-  private final MetricEntityStateOneEnum<MessageType> requestKeyCountDvc;
-  private final MetricEntityStateOneEnum<MessageType> responseKeyCountDvc;
   private final Sensor successRequestRatioSensor;
   private final Sensor successRequestKeyRatioSensor;
   private final Rate requestRate = new OccurrenceRate();
@@ -179,24 +177,6 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
           getBaseDimensionsMap(),
           VeniceResponseStatusCategory.class);
 
-      requestKeyCountDvc = MetricEntityStateOneEnum.create(
-          BasicClientMetricEntity.KEY_COUNT_DVC.getMetricEntity(),
-          getOtelRepository(),
-          this::registerSensor,
-          BasicClientTehutiMetricName.REQUEST_KEY_COUNT,
-          Arrays.asList(requestKeyCountRate, new Avg(), new Max()),
-          baseDimensionsMap,
-          MessageType.class);
-
-      responseKeyCountDvc = MetricEntityStateOneEnum.create(
-          BasicClientMetricEntity.KEY_COUNT_DVC.getMetricEntity(),
-          otelRepository,
-          this::registerSensor,
-          BasicClientTehutiMetricName.SUCCESS_REQUEST_KEY_COUNT,
-          Arrays.asList(successRequestKeyCountRate, new Avg(), new Max()),
-          baseDimensionsMap,
-          MessageType.class);
-
       healthyRequestMetric = null;
       unhealthyRequestMetric = null;
       healthyLatencyMetric = null;
@@ -277,8 +257,6 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
       unhealthyRequestMetricForDavinciClient = null;
       healthyLatencyMetricForDavinciClient = null;
       unhealthyLatencyMetricForDavinciClient = null;
-      requestKeyCountDvc = null;
-      responseKeyCountDvc = null;
     }
 
     // successRequestRatioSensor will be a derived metric in OTel
@@ -339,15 +317,11 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   }
 
   public void recordRequestKeyCount(int keyCount) {
-    MetricEntityStateOneEnum<MessageType> keyCountMetric =
-        ClientType.isDavinciClient(this.clientType) ? requestKeyCountDvc : requestKeyCount;
-    keyCountMetric.record(keyCount, REQUEST);
+    requestKeyCount.record(keyCount, REQUEST);
   }
 
   public void recordResponseKeyCount(int keyCount) {
-    MetricEntityStateOneEnum<MessageType> keyCountMetric =
-        ClientType.isDavinciClient(this.clientType) ? responseKeyCountDvc : responseKeyCount;
-    keyCountMetric.record(keyCount, RESPONSE);
+    responseKeyCount.record(keyCount, RESPONSE);
   }
 
   protected final Rate getRequestRate() {
@@ -471,14 +445,6 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         CALL_TIME.name().toLowerCase(), MetricType.HISTOGRAM, MetricUnit.MILLISECOND,
         "Latency for all DaVinci Client responses",
         setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
-    ),
-    /**
-     * Count of keys for all DaVinci Client request and response
-     */
-    KEY_COUNT_DVC(
-        KEY_COUNT.name().toLowerCase(), MetricType.HISTOGRAM, MetricUnit.NUMBER,
-        "Count of keys for all DaVinci Client request and response",
-        setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)
     );
 
     private final MetricEntity metricEntity;

@@ -8,9 +8,17 @@ import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetrics
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
 import static com.linkedin.venice.stats.dimensions.MessageType.*;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.*;
-import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.*;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.*;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_MESSAGE_TYPE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
+import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getExponentialHistogramPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getLongPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointData;
 import static org.apache.http.HttpStatus.SC_OK;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -276,14 +284,6 @@ public class BasicClientStatsTest {
             MetricType.HISTOGRAM,
             MetricUnit.NUMBER,
             "Count of keys for venice client request and response",
-            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)));
-    expectedMetrics.put(
-        BasicClientStats.BasicClientMetricEntity.KEY_COUNT_DVC,
-        new MetricEntity(
-            "key_count",
-            MetricType.HISTOGRAM,
-            MetricUnit.NUMBER,
-            "Count of keys for all DaVinci Client request and response",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)));
 
     Set<String> uniqueMetricEntitiesNames = new HashSet<>();

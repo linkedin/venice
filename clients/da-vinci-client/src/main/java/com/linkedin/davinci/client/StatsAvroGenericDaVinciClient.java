@@ -81,9 +81,8 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
   public CompletableFuture<V> get(K key, V reusableValue) {
     clientStatsForSingleGet.recordRequestKeyCount(1);
     return trackRequest(clientStatsForSingleGet, () -> super.get(key, reusableValue)).whenComplete((v, throwable) -> {
-      if (throwable == null && v != null) {
-        clientStatsForSingleGet.recordResponseKeyCount(1);
-      }
+      int responseKeyCount = (throwable == null && v != null) ? 1 : 0;
+      clientStatsForSingleGet.recordResponseKeyCount(responseKeyCount);
     });
   }
 
@@ -91,9 +90,9 @@ public class StatsAvroGenericDaVinciClient<K, V> extends DelegatingAvroGenericDa
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) {
     clientStatsForBatchGet.recordRequestKeyCount(keys.size());
     return trackRequest(clientStatsForBatchGet, () -> super.batchGet(keys)).whenComplete((v, throwable) -> {
-      if (v != null) {
-        clientStatsForBatchGet.recordResponseKeyCount(v.size());
-      }
+      // Always record the response key count number, no matter the request is healthy or not.
+      int responseKeyCount = (v != null) ? v.size() : 0;
+      clientStatsForBatchGet.recordResponseKeyCount(responseKeyCount);
     });
   }
 }
