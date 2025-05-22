@@ -41,7 +41,6 @@ import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.MaterializedViewParameters;
@@ -202,26 +201,12 @@ public class TestVeniceHelixAdmin {
     // Case 3: Both store and version are hybrid && controller is child
     doReturn(true).when(store).isHybrid();
     doReturn(true).when(version).isHybrid();
-    assertTrue(veniceHelixAdmin.isRealTimeTopicRequired(store, version));
     doReturn(false).when(veniceHelixAdmin).isParent();
     assertTrue(veniceHelixAdmin.isRealTimeTopicRequired(store, version));
 
-    // Case 4: Both store and version are hybrid && controller is parent && AA is enabled
+    // Case 4: Both store and version are hybrid && controller is parent
     doReturn(true).when(veniceHelixAdmin).isParent();
-    doReturn(true).when(store).isActiveActiveReplicationEnabled();
     assertFalse(veniceHelixAdmin.isRealTimeTopicRequired(store, version));
-
-    // Case 5: Both store and version are hybrid && controller is parent && AA is disabled and IncPush is enabled
-    doReturn(false).when(store).isActiveActiveReplicationEnabled();
-    doReturn(true).when(store).isIncrementalPushEnabled();
-    when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(DataReplicationPolicy.NON_AGGREGATE);
-    assertTrue(veniceHelixAdmin.isRealTimeTopicRequired(store, version));
-
-    // Case 6: Both store and version are hybrid && controller is parent && AA is disabled and IncPush is disabled but
-    // DRP is AGGREGATE
-    doReturn(false).when(store).isIncrementalPushEnabled();
-    when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(DataReplicationPolicy.AGGREGATE);
-    assertTrue(veniceHelixAdmin.isRealTimeTopicRequired(store, version));
   }
 
   @Test

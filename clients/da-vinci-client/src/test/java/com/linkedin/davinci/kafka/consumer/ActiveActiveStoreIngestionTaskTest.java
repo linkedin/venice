@@ -53,7 +53,6 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -223,12 +222,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     builder.setStorageEngineRepository(storageEngineRepository);
 
     // Set up version config and store config
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
-        100L,
-        100L,
-        100L,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig =
+        new HybridStoreConfigImpl(100L, 100L, 100L, BufferReplayPolicy.REWIND_FROM_EOP);
 
     StorageService storageService = mock(StorageService.class);
     Store store = new ZKStore(

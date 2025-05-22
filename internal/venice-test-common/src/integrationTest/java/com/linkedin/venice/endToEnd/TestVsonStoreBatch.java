@@ -31,6 +31,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -343,7 +344,7 @@ public class TestVsonStoreBatch {
       }
 
       LOGGER.info("Start of push job #" + testBatchStoreRunCount.get());
-      TestWriteUtils.runPushJob("Test Batch push job", props);
+      IntegrationTestPushUtils.runVPJ(props);
       LOGGER.info("End of push job #" + testBatchStoreRunCount.get());
       MetricsRepository metricsRepository = new MetricsRepository();
       avroClient = ClientFactory.getAndStartGenericAvroClient(

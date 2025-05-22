@@ -24,6 +24,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -108,7 +109,7 @@ public class VeniceGrpcEndToEndTest {
     // 3. Run a push job to push the data to Venice (VPJ)
     Properties vpjProps = TestWriteUtils
         .defaultVPJProps(cluster.getRandomRouterURL(), inputDirPath, storeName, cluster.getPubSubClientProperties());
-    TestWriteUtils.runPushJob("test push job", vpjProps);
+    IntegrationTestPushUtils.runVPJ(vpjProps);
 
     cluster.useControllerClient(
         controllerClient -> TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {

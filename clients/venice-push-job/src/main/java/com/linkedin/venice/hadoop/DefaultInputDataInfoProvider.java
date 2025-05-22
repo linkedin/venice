@@ -13,6 +13,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
+import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.input.recordreader.VeniceRecordIterator;
 import com.linkedin.venice.hadoop.input.recordreader.avro.HdfsAvroUtils;
@@ -83,7 +84,14 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
 
     if (fileStatuses == null || fileStatuses.length == 0) {
-      throw new VeniceException("No data found at source path: " + srcPath);
+      /*
+       * In order to avoid introducing new checkpoint, we resort to using the existing checkpoint
+       * to categorize no data at the source as invalid input. Venice supports multiple InputDataInfoProvider
+       * and currently other implementations do not adhere to same contract and input validation mechanisms like
+       * throwing same type of exceptions and error categorization. We need to revisit this as this might be a larger
+       * scope of change for the current issue.
+       */
+      throw new VeniceInvalidInputException("No data found at source path: " + srcPath);
     }
 
     if (pushJobSetting.isZstdDictCreationRequired) {

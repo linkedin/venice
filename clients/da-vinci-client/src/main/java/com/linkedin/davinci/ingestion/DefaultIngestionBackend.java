@@ -133,7 +133,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
     if (storageEngine != null) {
       storageEngine.dropPartition(partitionId, false);
     }
-    LOGGER.info("Clean up the offset and delete partition folder for topic {} partition {}", kafkaTopic, partitionId);
+    LOGGER.info(
+        "Clean up the offset and delete partition folder for topic {} partition {} before bootstrap from blob transfer",
+        kafkaTopic,
+        partitionId);
 
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
         .handle((inputStream, throwable) -> {

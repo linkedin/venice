@@ -139,9 +139,9 @@ public class TestStoreMigrationMultiRegion {
     Properties props = createAndPushStore(srcClusterName, storeName);
 
     // Push v1
-    TestWriteUtils.runPushJob("Test push job 1", props);
+    IntegrationTestPushUtils.runVPJ(props);
     // Push v2
-    TestWriteUtils.runPushJob("Test push job 2", props);
+    IntegrationTestPushUtils.runVPJ(props);
     // Push v3, failed on dc-1
     pushJob("Test push job 3", props, srcClusterName, storeName, 3);
     // Push v4, failed on dc-1

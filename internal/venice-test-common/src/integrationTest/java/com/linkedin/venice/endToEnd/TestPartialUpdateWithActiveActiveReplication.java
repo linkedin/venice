@@ -27,7 +27,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
-import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -52,7 +51,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -181,12 +179,9 @@ public class TestPartialUpdateWithActiveActiveReplication {
   // Create one system producer per region
   private void startVeniceSystemProducers() {
     systemProducerMap = new HashMap<>(NUMBER_OF_CHILD_DATACENTERS);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
     for (int dcId = 0; dcId < NUMBER_OF_CHILD_DATACENTERS; dcId++) {
-      Map<String, String> samzaConfig =
-          IntegrationTestPushUtils.getSamzaProducerConfig(childDatacenters, dcId, storeName);
-      VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
-      veniceProducer.start();
+      VeniceSystemProducer veniceProducer =
+          IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, dcId, storeName);
       systemProducerMap.put(childDatacenters.get(dcId), veniceProducer);
     }
   }

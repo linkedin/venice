@@ -18,14 +18,12 @@ import java.util.Optional;
 
 
 public class BlobTransferNettyChannelInitializer extends ChannelInitializer<SocketChannel> {
-  private final String baseDir;
-  private final int blobTransferMaxTimeoutInMin;
-  private BlobSnapshotManager blobSnapshotManager;
   private Optional<SSLFactory> sslFactory;
   private Optional<BlobTransferAclHandler> aclHandler;
 
   private final GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler;
   private final VerifySslHandler verifySsl = new VerifySslHandler();
+  private final P2PFileTransferServerHandler p2pFileTransferServerHandler;
 
   public BlobTransferNettyChannelInitializer(
       String baseDir,
@@ -33,13 +31,16 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
       BlobSnapshotManager blobSnapshotManager,
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
       Optional<SSLFactory> sslFactory,
-      Optional<BlobTransferAclHandler> aclHandler) {
-    this.baseDir = baseDir;
-    this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
-    this.blobSnapshotManager = blobSnapshotManager;
+      Optional<BlobTransferAclHandler> aclHandler,
+      int maxAllowedConcurrentSnapshotUsers) {
     this.globalChannelTrafficShapingHandler = globalChannelTrafficShapingHandler;
     this.sslFactory = sslFactory;
     this.aclHandler = aclHandler;
+    this.p2pFileTransferServerHandler = new P2PFileTransferServerHandler(
+        baseDir,
+        blobTransferMaxTimeoutInMin,
+        blobSnapshotManager,
+        maxAllowedConcurrentSnapshotUsers);
   }
 
   @Override
@@ -65,8 +66,6 @@ public class BlobTransferNettyChannelInitializer extends ChannelInitializer<Sock
         // for safe writing of chunks for responses
         .addLast("chunker", new ChunkedWriteHandler())
         // for handling p2p file transfer
-        .addLast(
-            "p2pFileTransferHandler",
-            new P2PFileTransferServerHandler(baseDir, blobTransferMaxTimeoutInMin, blobSnapshotManager));
+        .addLast("p2pFileTransferHandler", p2pFileTransferServerHandler);
   }
 }

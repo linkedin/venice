@@ -22,10 +22,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZ
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGETED_REGIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_EOP;
-import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
-import static com.linkedin.venice.meta.DataReplicationPolicy.AGGREGATE;
-import static com.linkedin.venice.meta.DataReplicationPolicy.NONE;
-import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
 import static com.linkedin.venice.meta.Version.PushType.BATCH;
 import static com.linkedin.venice.meta.Version.PushType.INCREMENTAL;
 import static com.linkedin.venice.meta.Version.PushType.STREAM;
@@ -62,7 +58,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -355,12 +350,7 @@ public class CreateVersionTest {
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
     store.setHybridStoreConfig(
-        new HybridStoreConfigImpl(
-            0,
-            1,
-            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            NON_AGGREGATE,
-            REWIND_FROM_EOP));
+        new HybridStoreConfigImpl(0, 1, HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD, REWIND_FROM_EOP));
     return store;
   }
 
@@ -504,49 +494,23 @@ public class CreateVersionTest {
 
   @Test
   public void testValidatePushTypeForStreamPushType() {
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
-
     // push type is STREAM and store is not hybrid
     Store store1 = mock(Store.class);
     when(store1.isHybrid()).thenReturn(false);
-    Exception e = expectThrows(VeniceException.class, () -> createVersion.validatePushType(STREAM, store1));
+    Exception e = expectThrows(VeniceException.class, () -> CreateVersion.validatePushType(STREAM, store1));
     assertTrue(e.getMessage().contains("which is not configured to be a hybrid store"));
 
     // push type is STREAM and store is AA enabled hybrid
     Store store2 = mock(Store.class);
     when(store2.isHybrid()).thenReturn(true);
     when(store2.isActiveActiveReplicationEnabled()).thenReturn(true);
-    createVersion.validatePushType(STREAM, store2);
+    CreateVersion.validatePushType(STREAM, store2);
 
-    // push type is STREAM and store is not AA enabled hybrid but has NON_AGGREGATE replication policy
+    // push type is STREAM and store is not AA enabled hybrid.
     Store store3 = mock(Store.class);
     when(store3.isHybrid()).thenReturn(true);
     when(store3.isActiveActiveReplicationEnabled()).thenReturn(false);
-    when(store3.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, NON_AGGREGATE, REWIND_FROM_EOP));
-    createVersion.validatePushType(STREAM, store3);
-
-    // push type is STREAM and store is not AA enabled hybrid but has AGGREGATE replication policy
-    Store store4 = mock(Store.class);
-    when(store4.isHybrid()).thenReturn(true);
-    when(store4.isActiveActiveReplicationEnabled()).thenReturn(false);
-    when(store4.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, AGGREGATE, REWIND_FROM_EOP));
-    createVersion.validatePushType(STREAM, store4);
-
-    // push type is STREAM and store is not AA enabled hybrid but has NONE replication policy
-    Store store5 = mock(Store.class);
-    when(store5.isHybrid()).thenReturn(true);
-    when(store5.isActiveActiveReplicationEnabled()).thenReturn(false);
-    when(store5.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, NONE, REWIND_FROM_EOP));
-    Exception e5 = expectThrows(VeniceException.class, () -> createVersion.validatePushType(STREAM, store5));
-    assertTrue(e5.getMessage().contains("which is configured to have a hybrid data replication policy"));
-
-    // push type is STREAM and store is not AA enabled hybrid but has ACTIVE_ACTIVE replication policy
-    Store store6 = mock(Store.class);
-    when(store6.isHybrid()).thenReturn(true);
-    when(store6.isActiveActiveReplicationEnabled()).thenReturn(false);
-    when(store6.getHybridStoreConfig()).thenReturn(new HybridStoreConfigImpl(0, 1, 0, ACTIVE_ACTIVE, REWIND_FROM_EOP));
-    Exception e6 = expectThrows(VeniceException.class, () -> createVersion.validatePushType(STREAM, store6));
-    assertTrue(e6.getMessage().contains("which is configured to have a hybrid data replication policy"));
+    CreateVersion.validatePushType(STREAM, store3);
   }
 
   @Test
@@ -861,110 +825,43 @@ public class CreateVersionTest {
     Admin admin = mock(Admin.class);
     Store store = mock(Store.class);
     when(store.getName()).thenReturn(STORE_NAME);
-    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
-    when(store.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
     RequestTopicForPushRequest request = new RequestTopicForPushRequest("CLUSTER_NAME", STORE_NAME, STREAM, "JOB_ID");
     VersionCreationResponse response = new VersionCreationResponse();
 
-    // Case 1: Parent region; With stream pushes disabled
     when(admin.isParent()).thenReturn(true);
     CreateVersion createVersionNotOk = new CreateVersion(true, Optional.of(accessClient), false, true);
-    VeniceException ex1 = expectThrows(
+    VeniceException ex = expectThrows(
         VeniceException.class,
-        () -> createVersionNotOk.handleStreamPushType(admin, store, request, response, Lazy.of(() -> false)));
+        () -> createVersionNotOk.handleStreamPushType(admin, store, request, response));
     assertTrue(
-        ex1.getMessage().contains("Write operations to the parent region are not permitted with push type: STREAM"));
-
-    CreateVersion createVersionOk = new CreateVersion(true, Optional.of(accessClient), false, false);
-
-    // Case 2: Parent region; Non-aggregate mode in parent with no AA replication
-    when(admin.isParent()).thenReturn(true);
-    when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(NON_AGGREGATE);
-    VeniceException ex2 = expectThrows(
-        VeniceException.class,
-        () -> createVersionOk.handleStreamPushType(admin, store, request, response, Lazy.of(() -> false)));
-    assertTrue(ex2.getMessage().contains("Store is not in aggregate mode!"));
-
-    // Case 3: Parent region; Non-aggregate mode but AA replication enabled and no hybrid version
-    when(admin.isParent()).thenReturn(true);
-    when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(NON_AGGREGATE);
-    when(store.isActiveActiveReplicationEnabled()).thenReturn(true);
-    when(admin.getReferenceVersionForStreamingWrites(anyString(), anyString(), anyString())).thenReturn(null);
-    VeniceException ex3 = expectThrows(
-        VeniceException.class,
-        () -> createVersionOk.handleStreamPushType(admin, store, request, response, Lazy.of(() -> true)));
-    assertTrue(ex3.getMessage().contains("No hybrid version found for store"), "Got: " + ex3.getMessage());
-
-    // Case 4: Parent region; Aggregate mode but no hybrid version
-    when(admin.isParent()).thenReturn(true);
-    when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(AGGREGATE);
-    when(store.isActiveActiveReplicationEnabled()).thenReturn(false);
-    when(admin.getReferenceVersionForStreamingWrites(anyString(), anyString(), anyString())).thenReturn(null);
-    VeniceException ex4 = expectThrows(
-        VeniceException.class,
-        () -> createVersionOk.handleStreamPushType(admin, store, request, response, Lazy.of(() -> true)));
-    assertTrue(ex4.getMessage().contains("No hybrid version found for store"), "Got: " + ex4.getMessage());
-
-    // Case 5: Parent region; Aggregate mode and there is a hybrid version
-    Version mockVersion = mock(Version.class);
-    when(mockVersion.getPartitionCount()).thenReturn(42);
-    when(mockVersion.getStoreName()).thenReturn(STORE_NAME);
-    when(admin.isParent()).thenReturn(true);
-    when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(AGGREGATE);
-    when(admin.getReferenceVersionForStreamingWrites(anyString(), anyString(), anyString())).thenReturn(mockVersion);
-    createVersionOk.handleStreamPushType(admin, store, request, response, Lazy.of(() -> true));
-    assertEquals(response.getPartitions(), 42);
-    assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
-    assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));
+        ex.getMessage().contains("Write operations to the parent region are not permitted with push type: STREAM"));
   }
 
-  @Test
-  public void testHandleStreamPushTypeInChildController() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testHandleStreamPushTypeInChildController(boolean aaEnabled) {
     Admin admin = mock(Admin.class);
     Store store = mock(Store.class);
     when(store.getName()).thenReturn(STORE_NAME);
-    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
-    when(store.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
     RequestTopicForPushRequest request = new RequestTopicForPushRequest("CLUSTER_NAME", STORE_NAME, STREAM, "JOB_ID");
     VersionCreationResponse response = new VersionCreationResponse();
     CreateVersion createVersionOk = new CreateVersion(true, Optional.of(accessClient), false, false);
 
-    // Case 1: Child region; Aggregate mode in child and AA not enabled
+    // Case 1: No hybrid version
     when(admin.isParent()).thenReturn(false);
-    when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(DataReplicationPolicy.AGGREGATE);
-    when(store.isActiveActiveReplicationEnabled()).thenReturn(false);
-    VeniceException ex5 = expectThrows(
-        VeniceException.class,
-        () -> createVersionOk.handleStreamPushType(admin, store, request, response, Lazy.of(() -> false)));
-    assertTrue(ex5.getMessage().contains("Store is in aggregate mode and AA is not enabled"));
-
-    // Case 2: Child region; Aggregate mode but AA is enabled in all regions but no hybrid version
-    when(admin.isParent()).thenReturn(false);
-    when(store.isActiveActiveReplicationEnabled()).thenReturn(true);
-    when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(DataReplicationPolicy.AGGREGATE);
+    when(store.isActiveActiveReplicationEnabled()).thenReturn(aaEnabled);
     when(admin.getReferenceVersionForStreamingWrites(anyString(), anyString(), anyString())).thenReturn(null);
-    VeniceException ex6 = expectThrows(
+    VeniceException ex = expectThrows(
         VeniceException.class,
-        () -> createVersionOk.handleStreamPushType(admin, store, request, response, Lazy.of(() -> true)));
-    assertTrue(ex6.getMessage().contains("No hybrid version found"), "Got: " + ex6.getMessage());
+        () -> createVersionOk.handleStreamPushType(admin, store, request, response));
+    assertTrue(ex.getMessage().contains("No hybrid version found"), "Got: " + ex.getMessage());
 
-    // Case 3: Child region; Non-aggregate mode but no hybrid version
-    when(admin.isParent()).thenReturn(false);
-    when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(DataReplicationPolicy.NON_AGGREGATE);
-    when(admin.getReferenceVersionForStreamingWrites(anyString(), anyString(), anyString())).thenReturn(null);
-    VeniceException ex7 = expectThrows(
-        VeniceException.class,
-        () -> createVersionOk.handleStreamPushType(admin, store, request, response, Lazy.of(() -> true)));
-    assertTrue(ex7.getMessage().contains("No hybrid version found"), "Got: " + ex7.getMessage());
-
-    // Case 4: Child region; Non-aggregate mode and there is a hybrid version
+    // Case 2: There is a hybrid version
     Version mockVersion = mock(Version.class);
     when(mockVersion.getStoreName()).thenReturn(STORE_NAME);
     when(mockVersion.getPartitionCount()).thenReturn(42);
     when(admin.isParent()).thenReturn(false);
-    when(store.getHybridStoreConfig().getDataReplicationPolicy()).thenReturn(DataReplicationPolicy.NON_AGGREGATE);
     when(admin.getReferenceVersionForStreamingWrites(anyString(), anyString(), anyString())).thenReturn(mockVersion);
-    createVersionOk.handleStreamPushType(admin, store, request, response, Lazy.of(() -> true));
+    createVersionOk.handleStreamPushType(admin, store, request, response);
     assertEquals(response.getPartitions(), 42);
     assertEquals(response.getCompressionStrategy(), CompressionStrategy.NO_OP);
     assertEquals(response.getKafkaTopic(), Utils.getRealTimeTopicName(mockVersion));

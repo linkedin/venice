@@ -684,9 +684,9 @@ public class TestParentControllerWithMultiDataCenter {
         new UpdateStoreQueryParams().setPartitionCount(1).setBootstrapToOnlineTimeoutInHours(1);
     createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, valueSchemaStr, props, storeParms).close();
 
-    TestWriteUtils.runPushJob("Test push job 1", props);
+    IntegrationTestPushUtils.runVPJ(props);
     try {
-      TestWriteUtils.runPushJob("Test push job 2", props);
+      IntegrationTestPushUtils.runVPJ(props);
       fail("Deferred version swap should fail second push");
     } catch (Exception e) {
       Assert.assertTrue(e.getMessage().contains("Unable to start the push with pushJobId"));

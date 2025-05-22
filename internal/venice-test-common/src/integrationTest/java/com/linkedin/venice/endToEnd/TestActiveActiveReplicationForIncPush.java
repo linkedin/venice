@@ -41,7 +41,6 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
-import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -51,7 +50,6 @@ import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
@@ -60,7 +58,6 @@ import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.config.MapConfig;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -241,32 +238,30 @@ public class TestActiveActiveReplicationForIncPush {
         assertEquals(version.get().getPartitionCount(), 3, "Partition count is not 3.");
       });
 
-      VeniceSystemFactory factory = new VeniceSystemFactory();
-      Map<String, String> samzaConfig = IntegrationTestPushUtils.getSamzaProducerConfig(childDatacenters, 1, storeName);
-      VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);
-      veniceProducer.start();
+      try (VeniceSystemProducer veniceProducer =
+          IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 1, storeName)) {
+        Optional<Version> version = parentControllerClient.getStore(storeName).getStore().getVersion(2);
+        PubSubTopicRepository pubSubTopicRepository =
+            childDatacenters.get(1).getClusters().get(clusterName).getPubSubTopicRepository();
+        PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version.get()));
 
-      Optional<Version> version = parentControllerClient.getStore(storeName).getStore().getVersion(2);
-      PubSubTopicRepository pubSubTopicRepository =
-          childDatacenters.get(1).getClusters().get(clusterName).getPubSubTopicRepository();
-      PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(version.get()));
+        // wait for 120 secs and check producer getTopicName
+        waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+          assertEquals(veniceProducer.getTopicName(), realTimeTopic.getName());
+        });
 
-      // wait for 120 secs and check producer getTopicName
-      waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
-        assertEquals(veniceProducer.getTopicName(), realTimeTopic.getName());
-      });
-
-      try (TopicManager topicManager =
-          IntegrationTestPushUtils
-              .getTopicManagerRepo(
-                  PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
-                  100,
-                  0l,
-                  childDatacenters.get(1).getClusters().get(clusterName).getPubSubBrokerWrapper(),
-                  pubSubTopicRepository)
-              .getLocalTopicManager()) {
-        int partitionCount = topicManager.getPartitionCount(realTimeTopic);
-        assertEquals(partitionCount, 3, "Partition count is not 3.");
+        try (TopicManager topicManager =
+            IntegrationTestPushUtils
+                .getTopicManagerRepo(
+                    PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
+                    100,
+                    0L,
+                    childDatacenters.get(1).getClusters().get(clusterName).getPubSubBrokerWrapper(),
+                    pubSubTopicRepository)
+                .getLocalTopicManager()) {
+          int partitionCount = topicManager.getPartitionCount(realTimeTopic);
+          assertEquals(partitionCount, 3, "Partition count is not 3.");
+        }
       }
     }
   }

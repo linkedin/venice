@@ -15,7 +15,6 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.StoreJSONSerializer;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -497,12 +496,7 @@ public class RouterBackedSchemaReaderTest {
     Version version = new VersionImpl(storeName, 1, "test-job-id");
     version.setPartitionCount(partitionCount);
 
-    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
-        1000,
-        1000,
-        -1,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1000, 1000, -1, BufferReplayPolicy.REWIND_FROM_EOP);
 
     ZKStore store = new ZKStore(
         storeName,

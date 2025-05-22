@@ -38,7 +38,6 @@ public class BlobSnapshotManager {
   private static final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
       AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
   private final static int DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN = 30;
-  public final static int DEFAULT_MAX_CONCURRENT_USERS = 5;
   public final static int DEFAULT_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS = 120;
 
   // A map to keep track of the number of hosts using a snapshot for a particular topic and partition, use to restrict
@@ -60,7 +59,6 @@ public class BlobSnapshotManager {
 
   private final StorageEngineRepository storageEngineRepository;
   private final StorageMetadataService storageMetadataService;
-  private final int maxConcurrentUsers;
   private final long snapshotRetentionTimeInMillis;
   private final int snapshotCleanupIntervalInMins;
   private final BlobTransferUtils.BlobTransferTableFormat blobTransferTableFormat;
@@ -72,13 +70,11 @@ public class BlobSnapshotManager {
   public BlobSnapshotManager(
       StorageEngineRepository storageEngineRepository,
       StorageMetadataService storageMetadataService,
-      int maxConcurrentUsers,
       int snapshotRetentionTimeInMin,
       BlobTransferUtils.BlobTransferTableFormat transferTableFormat,
       int snapshotCleanupIntervalInMins) {
     this.storageEngineRepository = storageEngineRepository;
     this.storageMetadataService = storageMetadataService;
-    this.maxConcurrentUsers = maxConcurrentUsers;
     this.snapshotRetentionTimeInMillis = TimeUnit.MINUTES.toMillis(snapshotRetentionTimeInMin);
     this.blobTransferTableFormat = transferTableFormat;
     this.snapshotCleanupIntervalInMins = snapshotCleanupIntervalInMins;
@@ -106,7 +102,6 @@ public class BlobSnapshotManager {
     this(
         storageEngineRepository,
         storageMetadataService,
-        DEFAULT_MAX_CONCURRENT_USERS,
         DEFAULT_SNAPSHOT_RETENTION_TIME_IN_MIN,
         BlobTransferUtils.BlobTransferTableFormat.BLOCK_BASED_TABLE,
         DEFAULT_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS);
@@ -114,12 +109,11 @@ public class BlobSnapshotManager {
 
   /**
    * Get the transfer metadata for a particular payload
-   * 1. throttle the request if many concurrent users.
-   * 2. check snapshot staleness
-   *     2.1. if stale:
-   *            2.1.1. if it does not have active users: recreate the snapshot and metadata, then return the metadata
-   *            2.1.2. if it has active users: no need to recreate the snapshot, throw an exception to let the client move to next candidate.
-   *     2.2. if not stale, directly return the metadata
+   * 1. check snapshot staleness
+   *     1.1. if stale:
+   *            1.1.1. if it does not have active users: recreate the snapshot and metadata, then return the metadata
+   *            1.1.2. if it has active users: no need to recreate the snapshot, throw an exception to let the client move to next candidate.
+   *     1.2. if not stale, directly return the metadata
    *
    * @param payload the blob transfer payload
    * @param successCountedAsActiveCurrentUser Indicates whether this request has been successfully counted as an active user.
@@ -146,9 +140,6 @@ public class BlobSnapshotManager {
 
     ReentrantLock lock = getSnapshotLock(topicName, partitionId);
     try (AutoCloseableLock ignored = AutoCloseableLock.of(lock)) {
-      // 1. check if the concurrent user count exceeds the limit
-      checkIfConcurrentUserExceedsLimit(topicName, partitionId);
-
       initializeTrackingValues(topicName, partitionId);
 
       boolean havingActiveUsers = getConcurrentSnapshotUsers(topicName, partitionId) > 0;
@@ -156,7 +147,7 @@ public class BlobSnapshotManager {
       increaseConcurrentUserCount(topicName, partitionId);
       successCountedAsActiveCurrentUser.set(true);
 
-      // 2. Check if the snapshot is stale and needs to be recreated.
+      // 1. Check if the snapshot is stale and needs to be recreated.
       // If the snapshot is stale and there are active users, throw an exception to exit early, allowing the client to
       // try the next available peer.
       // Even if creating a snapshot is fast, the stale snapshot may still be in use and transferring data for a
@@ -206,25 +197,6 @@ public class BlobSnapshotManager {
       String errorMessage =
           String.format("Failed to create snapshot for topic %s partition %d", topicName, partitionId);
       LOGGER.error(errorMessage, e);
-      throw new VeniceException(errorMessage);
-    }
-  }
-
-  /**
-   * Check if the concurrent user count exceeds the limit
-   * @param topicName the topic name
-   * @param partitionId the partition id
-   * @throws VeniceException if the concurrent user count exceeds the limit
-   */
-  private void checkIfConcurrentUserExceedsLimit(String topicName, int partitionId) throws VeniceException {
-    boolean exceededMaxConcurrentUsers = getConcurrentSnapshotUsers(topicName, partitionId) >= maxConcurrentUsers;
-    if (exceededMaxConcurrentUsers) {
-      String errorMessage = String.format(
-          "Exceeded the maximum number of concurrent users %d for topic %s partition %d",
-          maxConcurrentUsers,
-          topicName,
-          partitionId);
-      LOGGER.error(errorMessage);
       throw new VeniceException(errorMessage);
     }
   }

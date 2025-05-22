@@ -9,6 +9,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
+import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -95,6 +96,17 @@ public class TestDefaultInputDataInfoProvider {
       byte[] dictionary = provider.trainZstdDictionary();
       assertNotNull(dictionary);
       assertNotEquals(dictionary.length, 0);
+    }
+  }
+
+  @Test(expectedExceptions = VeniceInvalidInputException.class)
+  public void testInvalidInputSource() throws Exception {
+    PushJobSetting pushJobSetting = new PushJobSetting();
+
+    VeniceProperties props = VeniceProperties.empty();
+    try (DefaultInputDataInfoProvider provider = new DefaultInputDataInfoProvider(pushJobSetting, props)) {
+      File inputDir = getTempDataDirectory();
+      provider.validateInputAndGetInfo("file://" + inputDir.getAbsolutePath());
     }
   }
 }

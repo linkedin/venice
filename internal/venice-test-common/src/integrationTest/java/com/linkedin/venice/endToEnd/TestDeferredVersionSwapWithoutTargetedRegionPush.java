@@ -221,7 +221,7 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush {
         props,
         new UpdateStoreQueryParams().setPartitionCount(1)).close();
 
-    TestWriteUtils.runPushJob("Test push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     TestUtils.waitForNonDeterministicPushCompletion(
         Version.composeKafkaTopic(storeName, NEW_VERSION),
         parentClient,
