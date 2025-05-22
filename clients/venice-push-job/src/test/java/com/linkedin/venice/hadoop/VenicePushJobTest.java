@@ -280,7 +280,7 @@ public class VenicePushJobTest {
 
   @DataProvider(name = "DataWriterJobClasses")
   public Object[][] getDataWriterJobClasses() {
-    return new Object[][] { { DataWriterMRJob.class }, { DataWriterSparkJob.class } };
+    return new Object[][] { { DataWriterSparkJob.class }, { DataWriterMRJob.class } };
   }
 
   /**
