@@ -188,54 +188,59 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
-    try {
-      bufferLock.lock();
+    boolean exceptionOccurred = false;
 
-      // Wait until pubSubMessages becomes full, or until the timeout is reached
-      if (pubSubMessages.remainingCapacity() > 0) {
-        bufferIsFullCondition.await(timeoutInMs, TimeUnit.MILLISECONDS);
+    try {
+      try {
+        bufferLock.lock();
+
+        // Wait until pubSubMessages becomes full, or until the timeout is reached
+        if (pubSubMessages.remainingCapacity() > 0) {
+          bufferIsFullCondition.await(timeoutInMs, TimeUnit.MILLISECONDS);
+        }
+      } catch (InterruptedException exception) {
+        LOGGER.info("Thread was interrupted", exception);
+        // Restore the interrupt status
+        Thread.currentThread().interrupt();
+      } finally {
+        bufferLock.unlock();
       }
-    } catch (InterruptedException exception) {
-      LOGGER.info("Thread was interrupted", exception);
-      // Restore the interrupt status
-      Thread.currentThread().interrupt();
-    } catch (Exception exception) {
-      LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
+
+      List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> drainedPubSubMessages = new ArrayList<>();
+      pubSubMessages.drainTo(drainedPubSubMessages);
 
       if (changeCaptureStats != null) {
-        changeCaptureStats.emitPollCallCountMetrics(FAIL);
+        changeCaptureStats.emitRecordsConsumedCountMetrics(drainedPubSubMessages.size());
       }
+
+      if (changelogClientConfig.shouldCompactMessages()) {
+        Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
+        /*
+         * The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
+         * replaced, it's put in at the position of the first insertion. This isn't quite what we want, we want to keep
+         * only a single key (just as a map would), but we want to keep the position of the last insertion as well. So in
+         * order to do that, we remove the entry before inserting it.
+         */
+        for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: drainedPubSubMessages) {
+          tempMap.remove(message.getKey());
+          tempMap.put(message.getKey(), message);
+        }
+        return tempMap.values();
+      }
+      return drainedPubSubMessages;
+    } catch (Exception exception) {
+      LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
+      exceptionOccurred = true;
       throw exception;
     } finally {
-      bufferLock.unlock();
-    }
-
-    if (changeCaptureStats != null) {
-      changeCaptureStats.emitPollCallCountMetrics(SUCCESS);
-    }
-
-    List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> drainedPubSubMessages = new ArrayList<>();
-    pubSubMessages.drainTo(drainedPubSubMessages);
-
-    if (changeCaptureStats != null) {
-      changeCaptureStats.emitRecordsConsumedCountMetrics(pubSubMessages.size());
-    }
-
-    if (changelogClientConfig.shouldCompactMessages()) {
-      Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
-      /*
-       * The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
-       * replaced, it's put in at the position of the first insertion. This isn't quite what we want, we want to keep
-       * only a single key (just as a map would), but we want to keep the position of the last insertion as well. So in
-       * order to do that, we remove the entry before inserting it.
-       */
-      for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: drainedPubSubMessages) {
-        tempMap.remove(message.getKey());
-        tempMap.put(message.getKey(), message);
+      if (changeCaptureStats != null) {
+        if (exceptionOccurred) {
+          changeCaptureStats.emitPollCallCountMetrics(FAIL);
+        } else {
+          changeCaptureStats.emitPollCallCountMetrics(SUCCESS);
+        }
       }
-      return tempMap.values();
     }
-    return drainedPubSubMessages;
   }
 
   private void internalStart() {
