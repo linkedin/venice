@@ -1,6 +1,7 @@
 package com.linkedin.venice.client.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.CollectionUtils.setOf;
 
@@ -18,7 +19,7 @@ public enum ClientMetricEntity implements ModuleMetricEntityInterface {
    */
   RETRY_COUNT(
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of all retry requests for client",
-      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD)
+      setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)
   );
 
   private final MetricEntity entity;

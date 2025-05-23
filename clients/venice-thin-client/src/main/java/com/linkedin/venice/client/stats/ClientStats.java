@@ -2,12 +2,14 @@ package com.linkedin.venice.client.stats;
 
 import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_COUNT;
 import static com.linkedin.venice.client.stats.ClientTehutiMetricName.REQUEST_RETRY_COUNT;
+import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.TehutiUtils;
-import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
+import com.linkedin.venice.stats.dimensions.RequestRetryType;
+import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -43,7 +45,7 @@ public class ClientStats extends BasicClientStats {
    */
   private final Sensor multiGetFallbackSensor;
 
-  private MetricEntityStateBase requestRetry;
+  private MetricEntityStateOneEnum<RequestRetryType> requestErrorRetry;
 
   public static ClientStats getClientStats(
       MetricsRepository metricsRepository,
@@ -69,14 +71,14 @@ public class ClientStats extends BasicClientStats {
      */
     Rate requestRetryCountRate = new OccurrenceRate();
 
-    requestRetry = MetricEntityStateBase.create(
+    requestErrorRetry = MetricEntityStateOneEnum.create(
         RETRY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         REQUEST_RETRY_COUNT,
         Collections.singletonList(requestRetryCountRate),
         baseDimensionsMap,
-        baseAttributes);
+        RequestRetryType.class);
 
     successRequestDuplicateKeyCountSensor = registerSensor("success_request_duplicate_key_count", new Rate());
     /**
@@ -145,7 +147,7 @@ public class ClientStats extends BasicClientStats {
   public void recordRequestRetryCount() {
     // This is only for thin-client. For fast client, the retry count is derived from long tail retry and error retry.
     if (clientType == ClientType.THIN_CLIENT) {
-      requestRetry.record(1);
+      requestErrorRetry.record(1, ERROR_RETRY);
     }
   }
 

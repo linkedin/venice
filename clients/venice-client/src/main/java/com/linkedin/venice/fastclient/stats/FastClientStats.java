@@ -1,6 +1,6 @@
 package com.linkedin.venice.fastclient.stats;
 
-import static com.linkedin.venice.fastclient.stats.FastClientMetricEntity.RETRY_COUNT;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_COUNT;
 import static com.linkedin.venice.fastclient.stats.FastClientTehutiMetricName.ERROR_RETRY_REQUEST;
 import static com.linkedin.venice.fastclient.stats.FastClientTehutiMetricName.LONG_TAIL_RETRY_REQUEST;
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
