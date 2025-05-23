@@ -274,7 +274,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private void handleControllerLookup(ChannelHandlerContext ctx) throws IOException {
     LeaderControllerResponse responseObject = new LeaderControllerResponse();
     responseObject.setCluster(clusterName);
-    responseObject.setUrl(routingDataRepository.getLeaderController().getUrl());
+    responseObject.setUrl(routingDataRepository.getLeaderController().getUrl(isSslToKafka));
     LOGGER.info(
         "For cluster: {}, the leader controller url: {}, last refreshed at {}",
         responseObject.getCluster(),
