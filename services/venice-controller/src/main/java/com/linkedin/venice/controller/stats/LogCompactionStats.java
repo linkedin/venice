@@ -29,6 +29,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
 
   /** metrics */
   private final MetricEntityStateGeneric repushStoreCallCountMetric;
+  private final MetricEntityStateGeneric storeNominatedForScheduledCompactionMetric;
 
   public LogCompactionStats(MetricsRepository metricsRepository, String clusterName) {
     super(metricsRepository, "LogCompactionStats");
@@ -62,24 +63,52 @@ public class LogCompactionStats extends AbstractVeniceStats {
         ControllerTehutiMetricNameEnum.REPUSH_STORE_ENDPOINT_CALL_COUNT,
         Collections.singletonList(new Count()),
         baseDimensionsMap);
+
+    storeNominatedForScheduledCompactionMetric = MetricEntityStateGeneric.create(
+        ControllerMetricEntity.STORE_NOMINATED_FOR_SCHEDULED_COMPACTION.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        ControllerTehutiMetricNameEnum.STORE_NOMINATED_FOR_SCHEDULED_COMPACTION,
+        Collections.singletonList(new Count()),
+        baseDimensionsMap);
   }
 
   public void recordRepushStoreCall(
       String storeName,
       RepushStoreTriggerSource triggerSource,
       VeniceResponseStatusCategory responseStatusCategory) {
-    repushStoreCallCountMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
+    storeNominatedForScheduledCompactionMetric
+        .record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
+          {
+            put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
+            put(VeniceMetricsDimensions.REPUSH_STORE_TRIGGER_SOURCE, triggerSource.getDimensionValue());
+            put(
+                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY,
+                responseStatusCategory.getDimensionValue());
+          }
+        });
+  }
+
+  public void recordStoreNominatedForScheduledCompaction(String storeName) {
+    storeNominatedForScheduledCompactionMetric
+        .record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
+          {
+            put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
+          }
+        });
+  }
+
+  public void recordStoreRepushedSuccessfullyForScheduledCompaction(String storeName) {
+    repushStoreCallCountMetric.record(0, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
       {
         put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-        put(VeniceMetricsDimensions.REPUSH_STORE_TRIGGER_SOURCE, triggerSource.getDimensionValue());
-        put(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY, responseStatusCategory.getDimensionValue());
       }
     });
   }
 
   enum ControllerTehutiMetricNameEnum implements TehutiMetricNameEnum {
     /** for {@link ControllerMetricEntity#REPUSH_STORE_ENDPOINT_CALL_COUNT} */
-    REPUSH_STORE_ENDPOINT_CALL_COUNT;
+    REPUSH_STORE_ENDPOINT_CALL_COUNT, STORE_NOMINATED_FOR_SCHEDULED_COMPACTION;
 
     private final String metricName;
 
