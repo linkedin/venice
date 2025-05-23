@@ -41,13 +41,13 @@ public class TestCompactionManager {
 
   /**
    * Expected result
-     * store1 (eligible): isHybrid = true, lastCompactionTime >= threshold, AA store
-     * store2 (eligible): isHybrid = true, lastCompactionTime >= threshold, AA store
-     * store3 (ineligible): isHybrid = false (ineligiblity reason), lastCompactionTime <= threshold, AA store
-     * store4 (ineligible): isHybrid = true, lastCompactionTime >= threshold, AA store, Note: has 2 versions;
-      * ongoing push version: lastCompactionTime <= threshold (ineligiblity reason)
-      * current version: lastCompactionTime >= threshold
-     * store5 (ineligible): isHybrid = false, lastCompactionTime <= threshold, non-AA store (ineligiblity reason)
+   * store1 (eligible): isHybrid = true, lastCompactionTime >= threshold, AA store
+   * store2 (eligible): isHybrid = true, lastCompactionTime >= threshold, AA store
+   * store3 (ineligible): isHybrid = false (ineligiblity reason), lastCompactionTime <= threshold, AA store
+   * store4 (ineligible): isHybrid = true, lastCompactionTime >= threshold, AA store, Note: has 2 versions;
+   * ongoing push version: lastCompactionTime <= threshold (ineligiblity reason)
+   * current version: lastCompactionTime >= threshold
+   * store5 (ineligible): isHybrid = false, lastCompactionTime <= threshold, non-AA store (ineligiblity reason)
    *
    */
   @Test
@@ -78,19 +78,19 @@ public class TestCompactionManager {
     when(version1.getCreatedTime()).thenReturn(version1CreationTime); // 25hrs ago
     when(version2.getCreatedTime()).thenReturn(
         System.currentTimeMillis() - TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD * 2)); // 48hrs
-                                                                                                                   // ago
+    // ago
     when(version3.getCreatedTime()).thenReturn(
         System.currentTimeMillis() - TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD - 1)); // 23hrs
-                                                                                                                   // ago
+    // ago
     when(version4.getCreatedTime()).thenReturn(
         System.currentTimeMillis() - TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD * 2)); // 48hrs
-                                                                                                                   // ago
+    // ago
     when(ongoingPushVersion.getCreatedTime()).thenReturn(
         System.currentTimeMillis() - TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD - 1)); // 23hrs
 
     when(version5.getCreatedTime()).thenReturn(
         System.currentTimeMillis() - TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD - 1)); // 23hrs
-                                                                                                                   // ago
+    // ago
 
     // Mock StoreInfo instances
     StoreInfo store1 = new StoreInfo();
@@ -138,7 +138,7 @@ public class TestCompactionManager {
     Assert.assertTrue(testCompactionManager.isCompactionReady(store2)); // compacted more than threshold time (>24hrs)
     Assert.assertFalse(testCompactionManager.isCompactionReady(store3)); // compacted within threshold time (<24hrs)
     Assert.assertFalse(testCompactionManager.isCompactionReady(store4)); // ongoing push version within threshold time
-                                                                         // (<24hrs)
+    // (<24hrs)
     Assert.assertFalse(testCompactionManager.isCompactionReady(store5)); // non-AA store
 
     // Test
