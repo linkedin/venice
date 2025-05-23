@@ -77,16 +77,13 @@ public class LogCompactionStats extends AbstractVeniceStats {
       String storeName,
       RepushStoreTriggerSource triggerSource,
       VeniceResponseStatusCategory responseStatusCategory) {
-    storeNominatedForScheduledCompactionMetric
-        .record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
-          {
-            put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-            put(VeniceMetricsDimensions.REPUSH_STORE_TRIGGER_SOURCE, triggerSource.getDimensionValue());
-            put(
-                VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY,
-                responseStatusCategory.getDimensionValue());
-          }
-        });
+    repushStoreCallCountMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
+      {
+        put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
+        put(VeniceMetricsDimensions.REPUSH_STORE_TRIGGER_SOURCE, triggerSource.getDimensionValue());
+        put(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY, responseStatusCategory.getDimensionValue());
+      }
+    });
   }
 
   public void recordStoreNominatedForScheduledCompaction(String storeName) {
@@ -98,7 +95,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
         });
   }
 
-  public void recordStoreRepushedSuccessfullyForScheduledCompaction(String storeName) {
+  public void recordStoreRepushedForScheduledCompaction(String storeName) {
     repushStoreCallCountMetric.record(0, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
       {
         put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
