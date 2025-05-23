@@ -11,8 +11,6 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -92,21 +90,35 @@ public class CompactionManager {
      *  The purpose of this function is to check if the last compaction time is older than the threshold.
      *  An ongoing push is regarded as the most recent compaction
      */
-    Version largestVersion = getLargestNonFailedVersion(storeInfo);
+    Version mostRecentPushedVersion = getLargestNonFailedVersion(storeInfo);
 
-    long lastCompactionTime = largestVersion.getCreatedTime();
+    long lastCompactionTime = mostRecentPushedVersion.getCreatedTime();
     long currentTime = System.currentTimeMillis();
     long timeSinceLastCompactionMs = currentTime - lastCompactionTime;
 
     return timeSinceLastCompactionMs >= compactionThresholdMs;
   }
 
+  /**
+   * This function gets the most recent version that is not in ERROR or KILLED status.
+   * This can be a version that is:
+   * - in an ongoing push
+   * - pushed but not yet online
+   * - online
+   * @param storeInfo
+   * @return
+   */
   private Version getLargestNonFailedVersion(StoreInfo storeInfo) {
-    Version version = Collections.max(storeInfo.getVersions(), Comparator.comparingInt(Version::getNumber));
-    while ((version.getStatus() == VersionStatus.ERROR) || (version.getStatus() == VersionStatus.KILLED)) {
-      version = storeInfo.getVersion(version.getNumber() - 1).get();
+    Version largestVersion = null;
+    for (Version version: storeInfo.getVersions()) {
+      VersionStatus versionStatus = version.getStatus();
+      if (versionStatus != VersionStatus.ERROR && versionStatus != VersionStatus.KILLED) {
+        if (largestVersion == null || version.getNumber() > largestVersion.getNumber()) {
+          largestVersion = version;
+        }
+      }
     }
-    return version;
+    return largestVersion;
   }
 
   /**
