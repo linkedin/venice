@@ -133,12 +133,8 @@ public class VeniceMetadataRepositoryBuilder {
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
         new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, systemSchemaClusterName);
 
-    HelixReadOnlyStoreRepository readOnlyStoreRepository = new HelixReadOnlyStoreRepository(
-        zkClient,
-        adapter,
-        clusterName,
-        clusterConfig.getRefreshAttemptsForZkReconnect(),
-        clusterConfig.getRefreshIntervalForZkReconnectInMs());
+    HelixReadOnlyStoreRepository readOnlyStoreRepository =
+        new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName);
 
     storeRepo = new HelixReadOnlyStoreRepositoryAdapter(
         readOnlyZKSharedSystemStoreRepository,
@@ -155,8 +151,7 @@ public class VeniceMetadataRepositoryBuilder {
         zkClient,
         adapter,
         systemSchemaClusterName,
-        clusterConfig.getRefreshAttemptsForZkReconnect(),
-        clusterConfig.getRefreshIntervalForZkReconnectInMs());
+        clusterConfig.getRefreshAttemptsForZkReconnect());
     schemaRepo = new HelixReadOnlySchemaRepositoryAdapter(
         readOnlyZKSharedSchemaRepository,
         new HelixReadOnlySchemaRepository(
@@ -164,8 +159,7 @@ public class VeniceMetadataRepositoryBuilder {
             zkClient,
             adapter,
             clusterName,
-            clusterConfig.getRefreshAttemptsForZkReconnect(),
-            clusterConfig.getRefreshIntervalForZkReconnectInMs()));
+            clusterConfig.getRefreshAttemptsForZkReconnect()));
     schemaRepo.refresh();
 
     liveClusterConfigRepo = new HelixReadOnlyLiveClusterConfigRepository(zkClient, adapter, clusterName);

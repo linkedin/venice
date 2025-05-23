@@ -14,6 +14,7 @@ import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -45,9 +46,8 @@ public class HelixOfflinePushMonitorAccessorTest {
         clusterName,
         zkClient,
         new HelixAdapterSerializer(),
-        1,
-        0,
-        LogContext.EMPTY);
+        LogContext.EMPTY,
+        VeniceProperties.empty());
   }
 
   @AfterMethod

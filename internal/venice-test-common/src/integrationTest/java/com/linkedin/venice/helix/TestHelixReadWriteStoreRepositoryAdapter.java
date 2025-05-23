@@ -80,7 +80,7 @@ public class TestHelixReadWriteStoreRepositoryAdapter {
     s1.setReadComputationEnabled(true);
     writeRepo.addStore(s1);
 
-    readOnlyRepo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster, 1, 1000);
+    readOnlyRepo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster);
     readOnlyRepo.refresh();
   }
 

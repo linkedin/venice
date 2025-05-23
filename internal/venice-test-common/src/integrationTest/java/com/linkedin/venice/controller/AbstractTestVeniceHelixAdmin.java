@@ -165,9 +165,8 @@ class AbstractTestVeniceHelixAdmin {
         clusterName,
         new ZkClient(zkAddress),
         new HelixAdapterSerializer(),
-        3,
-        1000,
-        LogContext.EMPTY);
+        LogContext.EMPTY,
+        VeniceProperties.empty());
 
     MockTestStateModelFactory stateModelFactory;
 

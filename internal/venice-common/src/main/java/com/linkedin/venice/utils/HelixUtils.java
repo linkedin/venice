@@ -240,6 +240,7 @@ public final class HelixUtils {
    */
   private static void handleFailedHelixOperation(String path, String helixOperation, int attempt, int retryCount) {
     if (attempt < retryCount) {
+      // Is empty if the caller doesn't operate on a specific ZK path (like connectHelixManager and checkClusterSetup)
       if (!path.isEmpty()) {
         path = " with path " + path;
       }

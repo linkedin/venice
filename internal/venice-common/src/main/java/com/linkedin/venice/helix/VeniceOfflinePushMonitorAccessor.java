@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.zk.VeniceZkPaths.OFFLINE_PUSHES;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -14,12 +15,12 @@ import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PathResourceRegistry;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -46,8 +47,6 @@ import org.apache.zookeeper.data.Stat;
  */
 public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   public static final String OFFLINE_PUSH_SUB_PATH = OFFLINE_PUSHES;
-  private static final int DEFAULT_ZK_REFRESH_ATTEMPTS = 3;
-  private static final long DEFAULT_ZK_REFRESH_INTERVAL = TimeUnit.SECONDS.toMillis(10);
 
   private static final Logger LOGGER = LogManager.getLogger(VeniceOfflinePushMonitorAccessor.class);
   private final String clusterName;
@@ -68,23 +67,20 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
   private final int refreshAttemptsForZkReconnect;
 
-  private final long refreshIntervalForZkReconnectInMs;
-
   public VeniceOfflinePushMonitorAccessor(
       String clusterName,
       ZkClient zkClient,
       HelixAdapterSerializer adapter,
       LogContext logContext) {
-    this(clusterName, zkClient, adapter, DEFAULT_ZK_REFRESH_ATTEMPTS, DEFAULT_ZK_REFRESH_INTERVAL, logContext);
+    this(clusterName, zkClient, adapter, logContext, VeniceProperties.empty());
   }
 
   public VeniceOfflinePushMonitorAccessor(
       String clusterName,
       ZkClient zkClient,
       HelixAdapterSerializer adapter,
-      int refreshAttemptsForZkReconnect,
-      long refreshIntervalForZkReconnectInMs,
-      Object logContext) {
+      Object logContext,
+      VeniceProperties props) {
     this.clusterName = clusterName;
     this.offlinePushStatusParentPath = getOfflinePushStatuesParentPath();
     this.zkClient = zkClient;
@@ -94,8 +90,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     this.partitionStatusAccessor = new ZkBaseDataAccessor<>(zkClient);
     this.listenerManager = new ListenerManager<>(logContext);
     this.partitionStatusZkListener = new PartitionStatusZkListener(logContext);
-    this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
-    this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
+    this.refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 9);
   }
 
   /**
@@ -105,7 +100,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       String clusterName,
       ZkBaseDataAccessor<OfflinePushStatus> offlinePushStatusAccessor,
       ZkBaseDataAccessor<PartitionStatus> partitionStatusAccessor,
-      LogContext logContext) {
+      LogContext logContext,
+      VeniceProperties props) {
     this.clusterName = clusterName;
     this.offlinePushStatusAccessor = offlinePushStatusAccessor;
     this.partitionStatusAccessor = partitionStatusAccessor;
@@ -113,8 +109,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     this.zkClient = null;
     this.listenerManager = new ListenerManager<>(logContext);
     this.partitionStatusZkListener = new PartitionStatusZkListener(logContext);
-    this.refreshAttemptsForZkReconnect = DEFAULT_ZK_REFRESH_ATTEMPTS;
-    this.refreshIntervalForZkReconnectInMs = DEFAULT_ZK_REFRESH_INTERVAL;
+    this.refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 9);
   }
 
   private void registerSerializers(HelixAdapterSerializer adapter) {

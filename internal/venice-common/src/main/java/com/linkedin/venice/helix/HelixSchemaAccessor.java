@@ -7,7 +7,6 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -18,9 +17,6 @@ import org.apache.logging.log4j.Logger;
 
 public class HelixSchemaAccessor {
   private static final Logger logger = LogManager.getLogger(HelixSchemaAccessor.class);
-
-  private static final int DEFAULT_ZK_REFRESH_ATTEMPTS = 3;
-  private static final long DEFAULT_ZK_REFRESH_INTERVAL = TimeUnit.SECONDS.toMillis(10);
 
   // Key schema path name
   private static final String KEY_SCHEMA_PATH = "key-schema";
@@ -45,22 +41,20 @@ public class HelixSchemaAccessor {
   private final String clusterName;
 
   private final int refreshAttemptsForZkReconnect;
-  private final long refreshIntervalForZkReconnectInMs;
 
   public HelixSchemaAccessor(ZkClient zkClient, HelixAdapterSerializer helixAdapterSerializer, String clusterName) {
-    this(zkClient, helixAdapterSerializer, clusterName, DEFAULT_ZK_REFRESH_ATTEMPTS, DEFAULT_ZK_REFRESH_INTERVAL);
+    // TODO: refactor hard-coded refreshAttemptsForZkReconnect
+    this(zkClient, helixAdapterSerializer, clusterName, 9);
   }
 
   public HelixSchemaAccessor(
       ZkClient zkClient,
       HelixAdapterSerializer helixAdapterSerializer,
       String clusterName,
-      int refreshAttemptsForZkReconnect,
-      long refreshIntervalForZkReconnectInMs) {
+      int refreshAttemptsForZkReconnect) {
     this.clusterName = clusterName;
 
     this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
-    this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
 
     registerSerializerForSchema(zkClient, helixAdapterSerializer);
     schemaAccessor = new ZkBaseDataAccessor<>(zkClient);
