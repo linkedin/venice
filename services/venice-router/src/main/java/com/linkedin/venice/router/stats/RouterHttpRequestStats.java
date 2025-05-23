@@ -114,7 +114,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor findUnhealthyHostRequestSensor;
   // Reflect the real request usage, e.g count each key as an unit of request usage.
   private final Sensor requestUsageSensor;
-  private final Sensor requestUsageQPSSensor;
+  private final Sensor callCountSensor;
   private final Sensor requestParsingLatencySensor;
   private final Sensor requestRoutingLatencySensor;
   private final Sensor unAvailableRequestSensor;
@@ -426,7 +426,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
      * A count version of this sensor is needed, as an internal system depends on the sensor to be
      * of type Count to measure QPS.
      */
-    requestUsageQPSSensor = registerSensor("request_usage_qps", new Count());
+    callCountSensor = registerSensor("call_count", new Count());
 
     multiGetFallbackSensor = registerSensor("multiget_fallback", new Total(), new OccurrenceRate());
 
@@ -658,7 +658,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordRequestUsage(int usage) {
     requestUsageSensor.record(usage);
-    requestUsageQPSSensor.record();
+    callCountSensor.record();
   }
 
   public void recordMultiGetFallback(int keyCount) {
