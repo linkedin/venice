@@ -91,16 +91,16 @@ public class CompactionManager {
      *  An ongoing push is regarded as the most recent compaction
      */
     Version mostRecentPushedVersion = getLargestNonFailedVersion(storeInfo);
-    try {
-      long lastCompactionTime = mostRecentPushedVersion.getCreatedTime();
-      long currentTime = System.currentTimeMillis();
-      long timeSinceLastCompactionMs = currentTime - lastCompactionTime;
-
-      return timeSinceLastCompactionMs >= compactionThresholdMs;
-    } catch (NullPointerException e) {
-      LOGGER.warn("Store {} has never had an active version", storeInfo.getName(), e);
+    if (mostRecentPushedVersion == null) {
+      LOGGER.warn("Store {} has never had an active version", storeInfo.getName());
       return false;
     }
+
+    long lastCompactionTime = mostRecentPushedVersion.getCreatedTime();
+    long currentTime = System.currentTimeMillis();
+    long timeSinceLastCompactionMs = currentTime - lastCompactionTime;
+
+    return timeSinceLastCompactionMs >= compactionThresholdMs;
   }
 
   /**
