@@ -42,7 +42,11 @@ public class LogCompactionService extends AbstractVeniceService {
   final ScheduledExecutorService executor;
   private LogCompactionStats stats; // TODO: map
 
-  public LogCompactionService(Admin admin, String clusterName, VeniceControllerClusterConfig clusterConfigs, MetricsRepository metricsRepository) {
+  public LogCompactionService(
+      Admin admin,
+      String clusterName,
+      VeniceControllerClusterConfig clusterConfigs,
+      MetricsRepository metricsRepository) {
     this.admin = admin;
     this.clusterName = clusterName;
 
