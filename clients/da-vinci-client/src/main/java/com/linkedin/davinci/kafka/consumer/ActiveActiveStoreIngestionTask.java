@@ -539,9 +539,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();
-      // Record the last ignored offset
-      partitionConsumptionState
-          .updateLatestIgnoredUpstreamRTOffset(kafkaClusterIdToUrlMap.get(kafkaClusterId), sourceOffset);
       return new PubSubMessageProcessedResult(
           new MergeConflictResultWrapper(
               mergeConflictResult,
@@ -907,34 +904,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
-  protected void produceToLocalKafka(
-      DefaultPubSubMessage consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
-      int partition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
-    super.produceToLocalKafka(
-        consumerRecord,
-        partitionConsumptionState,
-        leaderProducedRecordContext,
-        produceFunction,
-        partition,
-        kafkaUrl,
-        kafkaClusterId,
-        beforeProcessingRecordTimestampNs);
-    // Update the partition consumption state to say that we've transmitted the message to kafka (but haven't
-    // necessarily received an ack back yet).
-    if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
-        && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-      partitionConsumptionState
-          .updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getPosition().getNumericOffset());
-    }
-  }
-
-  @Override
   protected Map<String, Long> calculateLeaderUpstreamOffsetWithTopicSwitch(
       PartitionConsumptionState partitionConsumptionState,
       PubSubTopic newSourceTopic,
@@ -1230,7 +1199,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected long getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String upstreamKafkaUrl) {
-    return pcs.getLatestProcessedUpstreamRTOffsetWithIgnoredMessages(upstreamKafkaUrl);
+    return pcs.getLatestProcessedUpstreamRTOffset(upstreamKafkaUrl);
   }
 
   /**

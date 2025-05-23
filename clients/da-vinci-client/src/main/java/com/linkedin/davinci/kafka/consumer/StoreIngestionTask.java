@@ -1241,8 +1241,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long beforeProcessingPerRecordTimestampNs = System.nanoTime();
       partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       if (!shouldProcessRecord(record)) {
-        partitionConsumptionState
-            .updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getPosition().getNumericOffset());
         continue;
       }
 
@@ -1307,10 +1305,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       }
       if (!shouldProcessRecord(record)) {
-        if (partitionConsumptionState != null) {
-          partitionConsumptionState
-              .updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getPosition().getNumericOffset());
-        }
         continue;
       }
       waitReadyToProcessRecord(record);
