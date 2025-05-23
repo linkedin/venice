@@ -287,20 +287,11 @@ public class VeniceChangelogConsumerImplTest {
     topicPartitionList.add(partition1);
     topicPartitionList.add(partition2);
 
+    long offset = 1L;
     PubSubPosition aheadPosition = new PubSubPosition() {
       @Override
-      public int comparePosition(PubSubPosition other) {
-        return 1;
-      }
-
-      @Override
-      public long diff(PubSubPosition other) {
-        return 0;
-      }
-
-      @Override
       public long getNumericOffset() {
-        return 0;
+        return offset + 1; // greater than 1
       }
 
       @Override
@@ -316,18 +307,8 @@ public class VeniceChangelogConsumerImplTest {
 
     PubSubPosition behindPosition = new PubSubPosition() {
       @Override
-      public int comparePosition(PubSubPosition other) {
-        return -1;
-      }
-
-      @Override
-      public long diff(PubSubPosition other) {
-        return 0;
-      }
-
-      @Override
       public long getNumericOffset() {
-        return 0;
+        return offset;
       }
 
       @Override
@@ -352,13 +333,29 @@ public class VeniceChangelogConsumerImplTest {
     checkpoints.put(1, behindCoordinate);
     checkpoints.put(2, otherCoordinate);
 
-    // the heartbeat is ahead
-    Mockito.when(mockConsumer.getPositionByTimestamp(partition0, 1L)).thenReturn(aheadPosition);
+    // The heartbeat is ahead of the checkpoint — should update
+    PubSubPosition newerAheadPosition = new PubSubPosition() {
+      @Override
+      public long getNumericOffset() {
+        return offset + 2; // greater than 1
+      }
 
-    // the heartbeat is behind
+      @Override
+      public PubSubPositionWireFormat getPositionWireFormat() {
+        return null;
+      }
+
+      @Override
+      public int getHeapSize() {
+        return 0;
+      }
+    };
+    Mockito.when(mockConsumer.getPositionByTimestamp(partition0, 1L)).thenReturn(newerAheadPosition);
+
+    // The heartbeat is behind the checkpoint — should not update
     Mockito.when(mockConsumer.getPositionByTimestamp(partition1, 2L)).thenReturn(behindPosition);
 
-    // the heartbeat doesn't exist
+    // The heartbeat exists, but EOP already exists — and heartbeat is not newer — should not update
     Mockito.when(mockConsumer.getPositionByTimestamp(partition2, 1L)).thenReturn(aheadPosition);
 
     VeniceAfterImageConsumerImpl.adjustSeekCheckPointsBasedOnHeartbeats(
@@ -367,28 +364,33 @@ public class VeniceChangelogConsumerImplTest {
         mockConsumer,
         topicPartitionList);
 
-    Assert.assertNotEquals(checkpoints.get(0), aheadCoordinate);
-    Assert.assertEquals(checkpoints.get(1), behindCoordinate);
-    Assert.assertEquals(checkpoints.get(2), otherCoordinate);
+    // Should replace with a new VeniceChangeCoordinate (same data but different object)
+    Assert.assertNotSame(checkpoints.get(0), aheadCoordinate, "Expected new coordinate at partition 0");
 
+    // Should remain unchanged
+    Assert.assertEquals(checkpoints.get(1), behindCoordinate, "Coordinate at partition 1 should not change");
+    Assert.assertEquals(checkpoints.get(2), otherCoordinate, "Coordinate at partition 2 should not change");
+
+    // Test case: checkpoint is removed; fallback to heartbeat
     checkpoints.remove(1);
-
     VeniceAfterImageConsumerImpl.adjustSeekCheckPointsBasedOnHeartbeats(
         checkpoints,
         currentVersionLastHeartbeat,
         mockConsumer,
         topicPartitionList);
+    Assert.assertEquals(
+        checkpoints.get(1).getPosition().getNumericOffset(),
+        behindPosition.getNumericOffset(),
+        "Partition 1 should have fallback heartbeat checkpoint added");
 
-    Assert.assertNotEquals(checkpoints.get(0), aheadCoordinate);
-
-    // Let's throw some nulls at it now
+    // Simulate all heartbeat positions as null
     Mockito.when(mockConsumer.getPositionByTimestamp(partition0, 1L)).thenReturn(null);
     Mockito.when(mockConsumer.getPositionByTimestamp(partition1, 2L)).thenReturn(null);
     Mockito.when(mockConsumer.getPositionByTimestamp(partition2, 1L)).thenReturn(null);
 
-    VeniceChangeCoordinate formerCorodinate0 = checkpoints.get(0);
-    VeniceChangeCoordinate formerCorodinate1 = checkpoints.get(1);
-    VeniceChangeCoordinate formerCorodinate2 = checkpoints.get(2);
+    VeniceChangeCoordinate formerCoordinate0 = checkpoints.get(0);
+    VeniceChangeCoordinate formerCoordinate1 = checkpoints.get(1);
+    VeniceChangeCoordinate formerCoordinate2 = checkpoints.get(2);
 
     VeniceAfterImageConsumerImpl.adjustSeekCheckPointsBasedOnHeartbeats(
         checkpoints,
@@ -396,11 +398,10 @@ public class VeniceChangelogConsumerImplTest {
         mockConsumer,
         topicPartitionList);
 
-    // This should have left everything the same
-    Assert.assertEquals(checkpoints.get(0), formerCorodinate0);
-    Assert.assertEquals(checkpoints.get(1), formerCorodinate1);
-    Assert.assertEquals(checkpoints.get(2), formerCorodinate2);
-
+    // Nothing should change because no heartbeat positions were available
+    Assert.assertEquals(checkpoints.get(0), formerCoordinate0);
+    Assert.assertEquals(checkpoints.get(1), formerCoordinate1);
+    Assert.assertEquals(checkpoints.get(2), formerCoordinate2);
   }
 
   @Test
