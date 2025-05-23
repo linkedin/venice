@@ -56,7 +56,7 @@ public class SQLUtils {
   @Nonnull
   public static String createTableStatement(TableDefinition tableDefinition) {
     StringBuffer stringBuffer = new StringBuffer();
-    stringBuffer.append("CREATE TABLE " + cleanTableName(tableDefinition.getName()) + "(");
+    stringBuffer.append("CREATE TABLE " + cleanTableName(tableDefinition.getName()) + " (");
     boolean firstColumn = true;
 
     for (ColumnDefinition columnDefinition: tableDefinition.getColumns()) {
@@ -66,7 +66,7 @@ public class SQLUtils {
         stringBuffer.append(", ");
       }
 
-      stringBuffer.append(cleanColumnName(columnDefinition.getName()) + " " + columnDefinition.getType().name());
+      stringBuffer.append(columnDefinition.getName() + " " + columnDefinition.getType().name());
     }
 
     firstColumn = true;
@@ -78,7 +78,7 @@ public class SQLUtils {
         } else {
           stringBuffer.append(", ");
         }
-        stringBuffer.append(cleanColumnName(columnDefinition.getName()));
+        stringBuffer.append(columnDefinition.getName());
       }
       stringBuffer.append(")");
     }
@@ -91,8 +91,12 @@ public class SQLUtils {
    * This function should encapsulate the handling of any illegal characters (by either failing or converting them).
    */
   @Nonnull
-  static String cleanTableName(@Nonnull String avroRecordName) {
-    return Objects.requireNonNull(avroRecordName);
+  public static String cleanTableName(@Nonnull String avroRecordName) {
+    Objects.requireNonNull(avroRecordName, "Table name cannot be null");
+    if (avroRecordName.isEmpty()) {
+      throw new IllegalArgumentException("Table name cannot be empty");
+    }
+    return "\"" + avroRecordName + "\"";
   }
 
   /**
@@ -100,7 +104,11 @@ public class SQLUtils {
    */
   @Nonnull
   static String cleanColumnName(@Nonnull String avroFieldName) {
-    return Objects.requireNonNull(avroFieldName);
+    Objects.requireNonNull(avroFieldName, "Column name cannot be null");
+    if (avroFieldName.isEmpty()) {
+      throw new IllegalArgumentException("Column name cannot be empty");
+    }
+    return "\"" + avroFieldName + "\"";
   }
 
   /**

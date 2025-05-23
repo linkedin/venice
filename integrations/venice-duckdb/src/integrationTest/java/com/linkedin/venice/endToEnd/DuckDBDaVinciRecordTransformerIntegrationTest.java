@@ -119,7 +119,7 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
     DaVinciConfig clientConfig = new DaVinciConfig();
 
     File tmpDir = Utils.getTempDataDirectory();
-    String storeName = Utils.getUniqueString("test_store");
+    String storeName = Utils.getUniqueString("test-store");
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
@@ -184,9 +184,10 @@ public class DuckDBDaVinciRecordTransformerIntegrationTest {
 
   private void assertRowCount(String duckDBUrl, String storeName, int expectedCount, String assertionErrorMsg)
       throws SQLException {
+    String selectStatement = "SELECT count(*) FROM \"%s\";";
     try (Connection connection = DriverManager.getConnection(duckDBUrl);
         Statement statement = connection.createStatement();
-        ResultSet rs = statement.executeQuery("SELECT count(*) FROM " + storeName)) {
+        ResultSet rs = statement.executeQuery(String.format(selectStatement, storeName))) {
       assertTrue(rs.next());
       int rowCount = rs.getInt(1);
       assertEquals(
