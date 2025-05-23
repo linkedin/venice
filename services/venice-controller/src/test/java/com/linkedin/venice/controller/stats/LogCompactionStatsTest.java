@@ -85,8 +85,11 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
     VeniceControllerMultiClusterConfig parentMultiClusterConfigs = getParentAdmin().getMultiClusterConfigs();
     when(parentMultiClusterConfigs.isLogCompactionEnabled()).thenReturn(true);
     when(parentMultiClusterConfigs.getLogCompactionIntervalMS()).thenReturn(TimeUnit.HOURS.toMillis(1));
-    this.logCompactionService =
-        new LogCompactionService(getParentAdmin(), parentMultiClusterConfigs, metricsRepository);
+    this.logCompactionService = new LogCompactionService(
+        getParentAdmin(),
+        clusterName,
+        getParentAdmin().getControllerConfig(clusterName),
+        metricsRepository);
   }
 
   /**

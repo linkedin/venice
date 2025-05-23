@@ -15,8 +15,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -88,7 +86,7 @@ public class CompactionManager {
   //
   public boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
-    return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(timeSinceLastLogCompactionThreshold, storeInfo);
+    return isHybridStore && isLastCompactionTimeOlderThanThreshold(timeSinceLastLogCompactionThreshold, storeInfo);
   }
 
   /**
