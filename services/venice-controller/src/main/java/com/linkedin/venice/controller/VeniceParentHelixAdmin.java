@@ -3878,14 +3878,16 @@ public class VeniceParentHelixAdmin implements Admin {
       parentStore.updateVersionStatus(versionNum, PUSHED);
       repository.updateStore(parentStore);
       LOGGER.info(
-          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          "Updating parent store: {} version {} status to {} for target region push w/ deferred swap",
+          parentStore.getName(),
           versionNum,
           PUSHED);
     } else if (failedRegions.size() > 0) {
       parentStore.updateVersionStatus(versionNum, ERROR);
       repository.updateStore(parentStore);
       LOGGER.info(
-          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          "Updating parent store: {} version {} status to {} for target region push w/ deferred swap",
+          parentStore.getName(),
           versionNum,
           ERROR);
     }
