@@ -1018,6 +1018,7 @@ public class TestVeniceHelixAdmin {
     VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
+    when(veniceHelixAdmin.getSslFactory()).thenReturn(Optional.empty());
     doCallRealMethod().when(veniceParentHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
     doCallRealMethod().when(veniceHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
     doReturn(Optional.empty()).when(veniceHelixAdmin).getSslFactory();
