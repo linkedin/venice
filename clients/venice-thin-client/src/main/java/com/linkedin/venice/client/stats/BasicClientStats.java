@@ -133,7 +133,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
     Rate healthyRequestRate = new OccurrenceRate();
     Rate requestKeyCountRate = new Rate();
 
-    if (clientType.equals(ClientType.DAVINCI_CLIENT)) {
+    if (ClientType.isDavinciClient(clientType)) {
       healthyRequestMetricForDavinciClient = MetricEntityStateOneEnum.create(
           BasicClientMetricEntity.CALL_COUNT_DVC.getMetricEntity(),
           otelRepository,
