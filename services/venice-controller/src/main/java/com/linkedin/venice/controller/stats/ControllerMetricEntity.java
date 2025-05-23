@@ -17,7 +17,13 @@ public enum ControllerMetricEntity {
   REPUSH_STORE_ENDPOINT_CALL_COUNT(
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of all calls to a controller endpoint",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, REPUSH_STORE_TRIGGER_SOURCE, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
-  );
+  ),
+  STORE_NOMINATED_FOR_SCHEDULED_COMPACTION(
+      MetricType.GAUGE, MetricUnit.NUMBER,
+      "When a store is nominated for scheduled compaction and remains uncompacted, this metric will be at 1."
+          + " When the store is compacted, this metric will return to 0.",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
+  ),;
 
   private final MetricEntity metricEntity;
   private final String metricName;
