@@ -36,7 +36,8 @@ public class TestCompactionManager {
     mockRepushOrchestrator = mock(RepushOrchestrator.class);
     testCompactionManager = new CompactionManager(
         mockRepushOrchestrator,
-        TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD));
+        TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD),
+        Collections.emptyMap());
   }
 
   /**
@@ -142,7 +143,8 @@ public class TestCompactionManager {
     Assert.assertFalse(testCompactionManager.isCompactionReady(store5)); // non-AA store
 
     // Test
-    List<StoreInfo> compactionReadyStores = testCompactionManager.filterStoresForCompaction(storeInfoList);
+    List<StoreInfo> compactionReadyStores =
+        testCompactionManager.filterStoresForCompaction(storeInfoList, TEST_CLUSTER_NAME);
 
     // Test validation
     assertEquals(compactionReadyStores.size(), 2); // change if the number of eligible test stores in the list changes

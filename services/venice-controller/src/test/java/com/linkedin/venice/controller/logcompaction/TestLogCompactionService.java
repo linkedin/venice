@@ -14,6 +14,7 @@ import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -42,7 +43,8 @@ public class TestLogCompactionService {
     this.mockAdmin = mock(Admin.class);
 
     // create LogCompactionService
-    this.logCompactionService = new LogCompactionService(mockAdmin, CLUSTER_VENICE_0, mockClusterConfig);
+    this.logCompactionService =
+        new LogCompactionService(mockAdmin, CLUSTER_VENICE_0, mockClusterConfig, mock(MetricsRepository.class));
   }
 
   @Test
