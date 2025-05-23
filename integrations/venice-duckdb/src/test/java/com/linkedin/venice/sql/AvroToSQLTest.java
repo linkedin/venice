@@ -14,36 +14,35 @@ import org.testng.annotations.Test;
 
 
 public class AvroToSQLTest {
-  private static final String EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES = "CREATE TABLE MyRecord(" //
-      + "key1 INTEGER, " //
-      + "fixedField BINARY, " //
-      + "stringField VARCHAR, " //
-      + "bytesField VARBINARY, "//
-      + "intField INTEGER, " //
-      + "longField BIGINT, " //
-      + "floatField FLOAT, " //
-      + "doubleField DOUBLE, " //
-      + "booleanField BOOLEAN, " //
-      // + "nullField NULL, " //
-      + "fixedFieldUnion1 BINARY, " //
-      + "fixedFieldUnion2 BINARY, " //
-      + "stringFieldUnion1 VARCHAR, " //
-      + "stringFieldUnion2 VARCHAR, " //
-      + "bytesFieldUnion1 VARBINARY, " //
-      + "bytesFieldUnion2 VARBINARY, " //
-      + "intFieldUnion1 INTEGER, " //
-      + "intFieldUnion2 INTEGER, " //
-      + "longFieldUnion1 BIGINT, " //
-      + "longFieldUnion2 BIGINT, " //
-      + "floatFieldUnion1 FLOAT, " //
-      + "floatFieldUnion2 FLOAT, " //
-      + "doubleFieldUnion1 DOUBLE, " //
-      + "doubleFieldUnion2 DOUBLE, " //
-      + "booleanFieldUnion1 BOOLEAN, " //
-      + "booleanFieldUnion2 BOOLEAN);";
+  private static final String EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES = "CREATE TABLE \"MyRecord\" (" //
+      + "\"key1\" INTEGER, " //
+      + "\"fixedField\" BINARY, " //
+      + "\"stringField\" VARCHAR, " //
+      + "\"bytesField\" VARBINARY, "//
+      + "\"intField\" INTEGER, " //
+      + "\"longField\" BIGINT, " //
+      + "\"floatField\" FLOAT, " //
+      + "\"doubleField\" DOUBLE, " //
+      + "\"booleanField\" BOOLEAN, " //
+      + "\"fixedFieldUnion1\" BINARY, " //
+      + "\"fixedFieldUnion2\" BINARY, " //
+      + "\"stringFieldUnion1\" VARCHAR, " //
+      + "\"stringFieldUnion2\" VARCHAR, " //
+      + "\"bytesFieldUnion1\" VARBINARY, " //
+      + "\"bytesFieldUnion2\" VARBINARY, " //
+      + "\"intFieldUnion1\" INTEGER, " //
+      + "\"intFieldUnion2\" INTEGER, " //
+      + "\"longFieldUnion1\" BIGINT, " //
+      + "\"longFieldUnion2\" BIGINT, " //
+      + "\"floatFieldUnion1\" FLOAT, " //
+      + "\"floatFieldUnion2\" FLOAT, " //
+      + "\"doubleFieldUnion1\" DOUBLE, " //
+      + "\"doubleFieldUnion2\" DOUBLE, " //
+      + "\"booleanFieldUnion1\" BOOLEAN, " //
+      + "\"booleanFieldUnion2\" BOOLEAN);";
 
   private static final String EXPECTED_UPSERT_STATEMENT_WITH_ALL_TYPES =
-      "INSERT OR REPLACE INTO MyRecord VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+      "INSERT OR REPLACE INTO \"MyRecord\" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
   @Test
   public void testValidCreateTable() {
@@ -72,7 +71,8 @@ public class AvroToSQLTest {
         FAIL,
         true);
     String createTableWithPrimaryKey = SQLUtils.createTableStatement(tableDefinitionWithPrimaryKey);
-    String expectedCreateTable = EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES.replace(");", ", PRIMARY KEY(key1));");
+    String expectedCreateTable =
+        EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES.replace(");", ", PRIMARY KEY(\"key1\"));");
     assertEquals(createTableWithPrimaryKey, expectedCreateTable);
 
     // Composite primary key
@@ -90,8 +90,8 @@ public class AvroToSQLTest {
         true);
     String createTableWithCompositePrimaryKey = SQLUtils.createTableStatement(tableDefinitionWithCompositePrimaryKey);
     String expectedCreateTableWithCompositePK =
-        EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES.replace("key1 INTEGER", "key1 INTEGER, key2 BIGINT")
-            .replace(");", ", PRIMARY KEY(key1, key2));");
+        EXPECTED_CREATE_TABLE_STATEMENT_WITH_ALL_TYPES.replace("\"key1\" INTEGER", "\"key1\" INTEGER, \"key2\" BIGINT")
+            .replace(");", ", PRIMARY KEY(\"key1\", \"key2\"));");
     assertEquals(createTableWithCompositePrimaryKey, expectedCreateTableWithCompositePK);
   }
 

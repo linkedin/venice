@@ -35,7 +35,7 @@ public class SQLUtils {
       throws SQLException {
     try (PreparedStatement preparedStatement =
         connection.prepareStatement("SELECT * FROM (SHOW TABLES) WHERE name = ?;")) {
-      preparedStatement.setString(1, cleanTableName(tableName));
+      preparedStatement.setString(1, tableName);
       try (ResultSet resultSet = preparedStatement.executeQuery()) {
         if (!resultSet.next()) {
           return null;
