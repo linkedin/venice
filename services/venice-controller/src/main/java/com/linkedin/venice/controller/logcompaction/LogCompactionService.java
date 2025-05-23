@@ -99,7 +99,6 @@ public class LogCompactionService extends AbstractVeniceService {
     }
 
     private void compactStoresInClusters() {
-<<<<<<< Updated upstream
       for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
         try {
           RepushJobResponse response = admin
@@ -117,32 +116,6 @@ public class LogCompactionService extends AbstractVeniceService {
               e);
           // TODO LC: add metrics for log compaction failures
         }
-=======
-      for (String clusterName: clusters) {
-        if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionSchedulingEnabled()) {
-          int repushesRemaining = multiClusterConfigs.getControllerConfig(clusterName).getLogCompactionMaxRepushPerCompactionCycle();
-          for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
-            try {
-              RepushJobResponse response =
-                  admin.repushStore(new RepushJobRequest(storeInfo.getName(), RepushJobRequest.SCHEDULED_TRIGGER));
-              LOGGER.info(
-                  "log compaction triggered for cluster: {} store: {} | execution ID: {}",
-                  clusterName,
-                  response.getName(),
-                  response.getExecutionId());
-            } catch (Exception e) {
-              LOGGER.error(
-                  "Error checking if store is ready for log compaction for cluster: {} store: {}",
-                  clusterName,
-                  storeInfo.getName(),
-                  e);
-              // TODO LC: add metrics for log compaction failures
-            }
-            if (--repushesRemaining <= 0) {
-              break;
-            }
-          }
->>>>>>> Stashed changes
       }
     }
   }
