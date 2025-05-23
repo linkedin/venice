@@ -102,8 +102,7 @@ public class ReplicationConsumptionBenchmark {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
     syncPerRecords = 10000;
 
     // JMH benchmark relies on System.exit to finish one round of benchmark run, otherwise it will hang there.
@@ -165,8 +164,7 @@ public class ReplicationConsumptionBenchmark {
         DATA_BASE_DIR,
         null,
         ROCKSDB_THROTTLER,
-        rocksDBServerConfig,
-        storeConfig);
+        rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
     storagePartition.delete(toBeDeletedKey.getBytes());
