@@ -31,7 +31,6 @@ import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -517,15 +516,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS))
             .setHybridOffsetLagThreshold(1000L));
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybrid());
-
-    // test updating hybrid data replication policy
-    veniceAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE));
-    Assert.assertEquals(
-        veniceAdmin.getStore(clusterName, storeName).getHybridStoreConfig().getDataReplicationPolicy(),
-        DataReplicationPolicy.AGGREGATE);
 
     // test reverting hybrid store back to batch-only store; negative config value will undo hybrid setting
     veniceAdmin.updateStore(

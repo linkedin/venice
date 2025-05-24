@@ -29,7 +29,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.etl.ETLUtils;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
@@ -49,7 +48,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
@@ -253,12 +251,12 @@ public class TestWriteUtils {
     return writeSimpleAvroFileWithStringToStringSchema(parentDir, DEFAULT_USER_DATA_RECORD_COUNT);
   }
 
-  public static Schema writeSimpleAvroFileWithStringToStringAndTimestampSchema(
+  public static void writeSimpleAvroFileWithStringToStringAndTimestampSchema(
       File parentDir,
       int recordCount,
       String fileName,
       long timestamp) throws IOException {
-    return writeAvroFile(parentDir, fileName, STRING_TO_STRING_WITH_TIMESTAMP, (recordSchema, writer) -> {
+    writeAvroFile(parentDir, fileName, STRING_TO_STRING_WITH_TIMESTAMP, (recordSchema, writer) -> {
       for (int i = 1; i <= recordCount; ++i) {
         GenericRecord user = new GenericData.Record(recordSchema);
         user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
@@ -613,24 +611,6 @@ public class TestWriteUtils {
       floatsArray.add(RandomGenUtils.getRandomFloat());
     }
     user.put(DEFAULT_VALUE_FIELD_PROP, floatsArray);
-    user.put("age", index);
-    return user;
-  }
-
-  public static GenericRecord getRecordWithStringMap(Schema recordSchema, int index, int count) {
-    GenericRecord user = new GenericData.Record(recordSchema);
-    user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(index)); // DEFAULT_KEY_FIELD_PROP is the key
-    String valuePayloadBase = "1234567890";
-    StringBuilder valuePayloadBuilder = new StringBuilder();
-    for (int i = 0; i < 10; i++) {
-      valuePayloadBuilder.append(valuePayloadBase);
-    }
-
-    Map<String, String> stringMap = new HashMap<>();
-    for (int j = 0; j < count; j++) {
-      stringMap.put("item_" + j, valuePayloadBuilder.toString());
-    }
-    user.put(DEFAULT_VALUE_FIELD_PROP, stringMap);
     user.put("age", index);
     return user;
   }
@@ -1235,16 +1215,5 @@ public class TestWriteUtils {
                 .setName("metadata")
                 .setSchema(Schema.createMap(Schema.create(Schema.Type.STRING)))
                 .build()));
-  }
-
-  public static void runPushJob(String jobId, Properties props) {
-    runPushJob(jobId, props, noOp -> {});
-  }
-
-  public static void runPushJob(String jobId, Properties props, Consumer<VenicePushJob> jobTransformer) {
-    try (VenicePushJob job = new VenicePushJob(jobId, props)) {
-      jobTransformer.accept(job);
-      job.run();
-    }
   }
 }

@@ -2,7 +2,6 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
@@ -12,19 +11,7 @@ import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
-import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
-import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
@@ -74,7 +61,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptio
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
@@ -86,7 +72,6 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.server.VeniceServer;
@@ -125,7 +110,6 @@ import org.apache.avro.util.Utf8;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -305,7 +289,7 @@ public class TestPushJobWithNativeReplication {
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          Thread pushJobThread = new Thread(() -> TestWriteUtils.runPushJob("Test push job", props));
+          Thread pushJobThread = new Thread(() -> IntegrationTestPushUtils.runVPJ(props));
           pushJobThread.start();
           try {
             /**
@@ -397,44 +381,23 @@ public class TestPushJobWithNativeReplication {
         "testNativeReplicationForHybrid",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
             .setHybridRewindSeconds(TEST_TIMEOUT)
-            .setHybridOffsetLagThreshold(2)
-            .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE),
+            .setHybridOffsetLagThreshold(2),
         50,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           // Write batch data
-          TestWriteUtils.runPushJob("Test push job", props);
+          IntegrationTestPushUtils.runVPJ(props);
 
           // Verify version level hybrid config is set correctly. The current version should be 1.
-          VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
+          VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
           Version version =
               childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
           HybridStoreConfig hybridConfig = version.getHybridStoreConfig();
           Assert.assertNotNull(hybridConfig);
           Assert.assertEquals(hybridConfig.getRewindTimeInSeconds(), TEST_TIMEOUT);
           Assert.assertEquals(hybridConfig.getOffsetLagThresholdToGoOnline(), 2);
-          Assert.assertEquals(hybridConfig.getDataReplicationPolicy(), DataReplicationPolicy.AGGREGATE);
 
-          // Write Samza data (aggregated mode)
-          Map<String, String> samzaConfig = new HashMap<>();
-          String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
-          samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
-          samzaConfig.put(configPrefix + VENICE_STORE, storeName);
-          samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
-          samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
-          samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-          samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
-          samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
-          samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
-          samzaConfig.put(SSL_ENABLED, "false");
-          VeniceSystemFactory factory = new VeniceSystemFactory();
           try (VeniceSystemProducer veniceProducer =
-              factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-            veniceProducer.start();
-
-            // Verify the kafka URL being returned to Samza is the same as parent region kafka url.
-            Assert.assertEquals(
-                veniceProducer.getKafkaBootstrapServers(),
-                multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
+              IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
 
             for (int i = 1; i <= 10; i++) {
               sendStreamingRecord(veniceProducer, storeName, i);
@@ -607,7 +570,7 @@ public class TestPushJobWithNativeReplication {
     Properties props = IntegrationTestPushUtils.defaultVPJProps(childDatacenters.get(0), inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
 
-    TestWriteUtils.runPushJob("Test push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

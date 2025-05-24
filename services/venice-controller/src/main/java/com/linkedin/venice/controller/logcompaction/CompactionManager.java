@@ -8,10 +8,11 @@ import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -26,12 +27,12 @@ import org.apache.logging.log4j.Logger;
 public class CompactionManager {
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
 
-  private RepushOrchestrator repushOrchestrator;
-  private long timeSinceLastLogCompactionThreshold;
+  private final RepushOrchestrator repushOrchestrator;
+  private final long timeSinceLastLogCompactionThresholdMs;
 
-  public CompactionManager(RepushOrchestrator repushOrchestrator, long timeSinceLastLogCompactionThreshold) {
+  public CompactionManager(RepushOrchestrator repushOrchestrator, long timeSinceLastLogCompactionThresholdMs) {
     this.repushOrchestrator = repushOrchestrator;
-    this.timeSinceLastLogCompactionThreshold = timeSinceLastLogCompactionThreshold;
+    this.timeSinceLastLogCompactionThresholdMs = timeSinceLastLogCompactionThresholdMs;
   }
 
   /**
@@ -73,31 +74,55 @@ public class CompactionManager {
   public boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
 
-    return isHybridStore && isLastCompactionTimeOlderThanThresholdHours(timeSinceLastLogCompactionThreshold, storeInfo);
+    return isHybridStore && isLastCompactionTimeOlderThanThreshold(timeSinceLastLogCompactionThresholdMs, storeInfo);
   }
 
   /**
    * This function checks if the last compaction time is older than the threshold.
-   * @param compactionThresholdHours, the number of hours that the last compaction time should be older than
+   * @param compactionThresholdMs, the number of hours that the last compaction time should be older than
    * @param storeInfo, the store to check the last compaction time for
    * @return true if the last compaction time is older than the threshold, false otherwise
    */
-  private boolean isLastCompactionTimeOlderThanThresholdHours(long compactionThresholdHours, StoreInfo storeInfo) {
-    // get the last compaction time
-    int currentVersionNumber = storeInfo.getCurrentVersion();
+  private boolean isLastCompactionTimeOlderThanThreshold(long compactionThresholdMs, StoreInfo storeInfo) {
+    /**
+     *  Reason for getting the largest version:
+     *  The largest version may be larger than the current version if there is an ongoing push.
+     *  The purpose of this function is to check if the last compaction time is older than the threshold.
+     *  An ongoing push is regarded as the most recent compaction
+     */
+    Version mostRecentPushedVersion = getLargestNonFailedVersion(storeInfo);
+    if (mostRecentPushedVersion == null) {
+      LOGGER.warn("Store {} has never had an active version", storeInfo.getName());
+      return false;
+    }
 
-    return storeInfo.getVersion(currentVersionNumber).map(v -> {
-      // calculate hours since last compaction
-      long lastCompactionTime = v.getCreatedTime();
-      long currentTime = System.currentTimeMillis();
-      long millisecondsSinceLastCompaction = currentTime - lastCompactionTime;
-      long hoursSinceLastCompaction = TimeUnit.MILLISECONDS.toHours(millisecondsSinceLastCompaction);
+    long lastCompactionTime = mostRecentPushedVersion.getCreatedTime();
+    long currentTime = System.currentTimeMillis();
+    long timeSinceLastCompactionMs = currentTime - lastCompactionTime;
 
-      return hoursSinceLastCompaction >= compactionThresholdHours;
-    }).orElseGet(() -> {
-      LOGGER.warn("Couldn't find current version: {} from store: {}", currentVersionNumber, storeInfo.getName());
-      return false; // invalid store because no current version, this store is not eligible for compaction
-    });
+    return timeSinceLastCompactionMs >= compactionThresholdMs;
+  }
+
+  /**
+   * This function gets the most recent version that is not in ERROR or KILLED status.
+   * This can be a version that is:
+   * - in an ongoing push
+   * - pushed but not yet online
+   * - online
+   * @param storeInfo
+   * @return
+   */
+  private Version getLargestNonFailedVersion(StoreInfo storeInfo) {
+    Version largestVersion = null;
+    for (Version version: storeInfo.getVersions()) {
+      VersionStatus versionStatus = version.getStatus();
+      if (versionStatus != VersionStatus.ERROR && versionStatus != VersionStatus.KILLED) {
+        if (largestVersion == null || version.getNumber() > largestVersion.getNumber()) {
+          largestVersion = version;
+        }
+      }
+    }
+    return largestVersion;
   }
 
   /**

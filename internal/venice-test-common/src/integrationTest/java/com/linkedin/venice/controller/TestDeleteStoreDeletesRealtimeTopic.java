@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.makeStoreHybrid;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static org.testng.Assert.assertEquals;
@@ -23,6 +22,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -32,7 +32,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.system.SystemProducer;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -78,15 +77,10 @@ public class TestDeleteStoreDeletesRealtimeTopic {
         .assertCommand(controllerClient.sendEmptyPushAndWait(storeName, Utils.getUniqueString("push-id"), 1000, 60000));
 
     // write streaming records
-    SystemProducer veniceProducer = null;
-    try {
-      veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM)) {
       for (int i = 1; i <= 10; i++) {
         sendStreamingRecord(veniceProducer, storeName, i);
-      }
-    } finally {
-      if (veniceProducer != null) {
-        veniceProducer.stop();
       }
     }
     AtomicReference<StoreInfo> storeInfo = new AtomicReference<>();

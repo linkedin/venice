@@ -37,16 +37,6 @@ final class LatestPosition implements PubSubPosition {
   }
 
   @Override
-  public int comparePosition(PubSubPosition other) {
-    throw new UnsupportedOperationException("Cannot compare LATEST position");
-  }
-
-  @Override
-  public long diff(PubSubPosition other) {
-    throw new UnsupportedOperationException("Cannot diff LATEST position");
-  }
-
-  @Override
   public PubSubPositionWireFormat getPositionWireFormat() {
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.setType(LATEST_POSITION_RESERVED_TYPE_ID);

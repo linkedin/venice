@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -143,7 +144,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         // No need to do anything here, we already have the EOP checkpoint, so we'll default to that
       } else {
         PubSubPosition eopPosition = checkpoints.get(topicPartition.getPartitionNumber()).getPosition();
-        if (heartbeatTimestampPosition.comparePosition(eopPosition) > 0) {
+        if (PubSubUtil.comparePubSubPositions(heartbeatTimestampPosition, eopPosition) > 0) {
           checkpoints.put(
               topicPartition.getPartitionNumber(),
               new VeniceChangeCoordinate(

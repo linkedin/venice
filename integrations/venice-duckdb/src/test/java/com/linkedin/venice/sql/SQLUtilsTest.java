@@ -146,13 +146,13 @@ public abstract class SQLUtilsTest {
       String differentTable = "not_the_table_we_want";
       statement.execute(
           "CREATE TABLE " + differentTable + " (" + KEY1_NAME + " INTEGER, " + KEY2_NAME + " BIGINT, " + VAL1_NAME
-              + " VARCHAR UNIQUE, " + VAL2_NAME + " DOUBLE, PRIMARY KEY (key1, key2));");
+              + " VARCHAR UNIQUE, " + VAL2_NAME + " DOUBLE, PRIMARY KEY (" + KEY1_NAME + ", " + KEY2_NAME + "));");
 
       assertNull(SQLUtils.getTableDefinition(TABLE_NAME, connection));
 
       statement.execute(
           "CREATE TABLE " + TABLE_NAME + " (" + KEY1_NAME + " INTEGER, " + KEY2_NAME + " BIGINT, " + VAL1_NAME
-              + " VARCHAR, " + VAL2_NAME + " DOUBLE, PRIMARY KEY (key1, key2));");
+              + " VARCHAR, " + VAL2_NAME + " DOUBLE, PRIMARY KEY (" + KEY1_NAME + ", " + KEY2_NAME + "));");
 
       TableDefinition tableDefinition = SQLUtils.getTableDefinition(TABLE_NAME, connection);
       assertNotNull(tableDefinition);

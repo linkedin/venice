@@ -24,7 +24,6 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
@@ -44,6 +43,7 @@ import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
@@ -166,6 +166,7 @@ public class TopicManagerTest {
     recordValue.producerMetadata.messageTimestamp = producerTimestamp;
     recordValue.leaderMetadataFooter = new LeaderMetadata();
     recordValue.leaderMetadataFooter.hostName = "localhost";
+    recordValue.leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.LATEST.getWireFormatBytes();
 
     if (isDataRecord) {
       Put put = new Put();
@@ -718,12 +719,8 @@ public class TopicManagerTest {
     storeProperties.createdTime = System.currentTimeMillis();
     storeProperties.bootstrapToOnlineTimeoutInHours = 12;
     Store store = new ZKStore(storeProperties);
-    HybridStoreConfig hybridStoreConfig2DayRewind = new HybridStoreConfigImpl(
-        2 * Time.SECONDS_PER_DAY,
-        20000,
-        -1,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig2DayRewind =
+        new HybridStoreConfigImpl(2 * Time.SECONDS_PER_DAY, 20000, -1, BufferReplayPolicy.REWIND_FROM_EOP);
 
     // Since bootstrapToOnlineTimeout + rewind time + buffer (2 days) < 5 days, retention will be set to 5 days
     Assert
@@ -738,12 +735,8 @@ public class TopicManagerTest {
     storeProperties.createdTime = System.currentTimeMillis();
     storeProperties.bootstrapToOnlineTimeoutInHours = 3 * Time.HOURS_PER_DAY;
     Store store = new ZKStore(storeProperties);
-    HybridStoreConfig hybridStoreConfig2DayRewind = new HybridStoreConfigImpl(
-        2 * Time.SECONDS_PER_DAY,
-        20000,
-        -1,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig2DayRewind =
+        new HybridStoreConfigImpl(2 * Time.SECONDS_PER_DAY, 20000, -1, BufferReplayPolicy.REWIND_FROM_EOP);
 
     // Since bootstrapToOnlineTimeout + rewind time + buffer (2 days) > 5 days, retention will be set to the computed
     // value

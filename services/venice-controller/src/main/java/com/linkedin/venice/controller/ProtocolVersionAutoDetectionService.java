@@ -55,7 +55,7 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     LOGGER.info("Starting {}", getClass().getSimpleName());
-    executor.scheduleAtFixedRate(getRunnableTask(), 0, sleepIntervalInMs, TimeUnit.MILLISECONDS);
+    executor.scheduleAtFixedRate(getRunnableTask(), sleepIntervalInMs, sleepIntervalInMs, TimeUnit.MILLISECONDS);
     return true;
   }
 
@@ -96,8 +96,8 @@ public class ProtocolVersionAutoDetectionService extends AbstractVeniceService {
             "Failed to get admin operation protocol version from child controller " + entry.getKey() + ": "
                 + response.getError());
       }
-      Map<String, Long> controllerUrlToVersionMap = response.getControllerUrlToVersionMap();
-      regionToControllerToVersionMap.put(entry.getKey(), controllerUrlToVersionMap);
+      Map<String, Long> controllerNameToVersionMap = response.getControllerNameToVersionMap();
+      regionToControllerToVersionMap.put(entry.getKey(), controllerNameToVersionMap);
     }
 
     LOGGER.info("All controller versions for cluster {}: {}", clusterName, regionToControllerToVersionMap);

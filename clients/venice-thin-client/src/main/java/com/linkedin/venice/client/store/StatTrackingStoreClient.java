@@ -169,11 +169,11 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   public void recordRetryCount(RequestType requestType) {
     if (requestType == RequestType.SINGLE_GET) {
-      singleGetStats.recordRequestRetryCount();
+      singleGetStats.recordErrorRetryRequest();
     } else if (requestType == RequestType.MULTI_GET) {
-      multiGetStats.recordRequestRetryCount();
+      multiGetStats.recordErrorRetryRequest();
     } else if (requestType == RequestType.COMPUTE) {
-      computeStats.recordRequestRetryCount();
+      computeStats.recordErrorRetryRequest();
     }
   }
 

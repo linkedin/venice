@@ -59,13 +59,13 @@ import org.apache.http.HttpStatus;
  */
 public class BasicClientStats extends AbstractVeniceHttpStats {
   public static final Collection<MetricEntity> CLIENT_METRIC_ENTITIES =
-      getUniqueMetricEntities(BasicClientMetricEntity.class);
+      getUniqueMetricEntities(BasicClientMetricEntity.class, ClientMetricEntity.class);
 
   private static final String SYSTEM_STORE_NAME_PREFIX = "venice_system_store_";
 
   private static final MetricsRepository dummySystemStoreMetricRepo = new MetricsRepository();
 
-  private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
+  protected final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   private final Sensor requestSensor; // will be a derived metric in otel: healthy + unhealthy
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> healthyRequestMetric;
@@ -77,14 +77,14 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> healthyLatencyMetricForDavinciClient;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> unhealthyLatencyMetricForDavinciClient;
   private final MetricEntityStateOneEnum<MessageType> requestKeyCount;
-  private final MetricEntityStateOneEnum<MessageType> responseKeyCount;
+  private final MetricEntityStateOneEnum<MessageType> successResponseKeyCount;
   private final Sensor successRequestRatioSensor;
   private final Sensor successRequestKeyRatioSensor;
   private final Rate requestRate = new OccurrenceRate();
   private final Rate successRequestKeyCountRate = new Rate();
-  private final VeniceOpenTelemetryMetricsRepository otelRepository;
+  protected final VeniceOpenTelemetryMetricsRepository otelRepository;
   private final boolean emitOpenTelemetryMetrics;
-  private final ClientType clientType;
+  protected final ClientType clientType;
 
   public static BasicClientStats getClientStats(
       MetricsRepository metricsRepository,
@@ -247,7 +247,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
         baseDimensionsMap,
         MessageType.class);
 
-    responseKeyCount = MetricEntityStateOneEnum.create(
+    successResponseKeyCount = MetricEntityStateOneEnum.create(
         BasicClientMetricEntity.KEY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
@@ -318,7 +318,7 @@ public class BasicClientStats extends AbstractVeniceHttpStats {
   }
 
   public void recordResponseKeyCount(int keyCount) {
-    responseKeyCount.record(keyCount, RESPONSE);
+    successResponseKeyCount.record(keyCount, RESPONSE);
   }
 
   protected final Rate getRequestRate() {

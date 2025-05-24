@@ -1,7 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -41,6 +40,10 @@ public class TestProtocolVersionAutoDetection {
     Properties parentControllerProps = new Properties();
     parentControllerProps.put(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED, true);
     parentControllerProps.put(CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS, SERVICE_INTERVAL_MS);
+    parentControllerProps.put(CONTROLLER_SSL_ENABLED, "false");
+
+    Properties childControllerProps = new Properties();
+    childControllerProps.put(CONTROLLER_SSL_ENABLED, "false");
 
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
@@ -51,7 +54,9 @@ public class TestProtocolVersionAutoDetection {
             .numberOfRouters(1)
             .replicationFactor(1)
             .forkServer(false)
-            .parentControllerProperties(parentControllerProps);
+            .sslToStorageNodes(true)
+            .parentControllerProperties(parentControllerProps)
+            .childControllerProperties(childControllerProps);
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
@@ -100,7 +105,7 @@ public class TestProtocolVersionAutoDetection {
       AdminOperationProtocolVersionControllerResponse parentResponse =
           parentControllerClient.getAdminOperationProtocolVersionFromControllers(clusterName);
       assertEquals(parentResponse.getLocalAdminOperationProtocolVersion(), LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-      assertEquals(parentResponse.getControllerUrlToVersionMap().size(), 2);
+      assertEquals(parentResponse.getControllerNameToVersionMap().size(), 2);
     }
 
     // child controller
@@ -109,7 +114,7 @@ public class TestProtocolVersionAutoDetection {
       AdminOperationProtocolVersionControllerResponse childResponse =
           dc0ControllerClient.getAdminOperationProtocolVersionFromControllers(clusterName);
       assertEquals(childResponse.getLocalAdminOperationProtocolVersion(), LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-      assertEquals(childResponse.getControllerUrlToVersionMap().size(), 2);
+      assertEquals(childResponse.getControllerNameToVersionMap().size(), 2);
     }
   }
 }

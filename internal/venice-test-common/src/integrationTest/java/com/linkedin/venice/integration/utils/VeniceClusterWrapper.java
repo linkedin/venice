@@ -1240,7 +1240,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       Properties props = IntegrationTestPushUtils.defaultVPJProps(veniceClusterWrapper, inputDirPath, storeName);
-      TestWriteUtils.runPushJob("Test Batch push job", props);
+      IntegrationTestPushUtils.runVPJ(props);
 
       propertyBuilder.put(FORKED_PROCESS_STORE_NAME, storeName);
       propertyBuilder.put(FORKED_PROCESS_ZK_ADDRESS, veniceClusterWrapper.getZk().getAddress());

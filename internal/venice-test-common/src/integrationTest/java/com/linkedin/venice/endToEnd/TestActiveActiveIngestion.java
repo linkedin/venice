@@ -9,7 +9,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_ALLOCATION_STR
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.generateInput;
@@ -46,13 +45,13 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -78,7 +77,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
-import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -193,10 +191,8 @@ public class TestActiveActiveIngestion {
       storeParms.setNearlineProducerCompressionEnabled(false);
     }
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
-    TestWriteUtils.runPushJob("Run push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
 
-    Map<String, String> samzaConfig = getSamzaProducerConfig(childDatacenters, 0, storeName);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
     // set up mocked time for Samza records so some records can be stale intentionally.
     List<Long> mockTimestampInMs = new LinkedList<>();
     List<Long> mockTimestampInMsInThePast = new LinkedList<>();
@@ -211,9 +207,8 @@ public class TestActiveActiveIngestion {
     Time mockTime = new MockCircularTime(mockTimestampInMs);
     Time mockPastime = new MockCircularTime(mockTimestampInMsInThePast);
 
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
       // Run Samza job to send PUT and DELETE requests with a mix of records that will land and some which won't.
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 0, 20);
 
@@ -247,22 +242,21 @@ public class TestActiveActiveIngestion {
       Assert.assertEquals(validGet, 10);
     }
 
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
       // Run Samza job to send PUT requests
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 0, 80);
     }
 
     // Alright. For our last trick, we'll try and push a version which has timestamps specified in the job from spark.
-    Long newTimestamp = System.currentTimeMillis() + TimeUnit.DAYS.toMillis(1000);
-    Long oldTimestamp = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1000);
+    long newTimestamp = System.currentTimeMillis() + TimeUnit.DAYS.toMillis(1000);
+    long oldTimestamp = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1000);
     TestWriteUtils
         .writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, 100, "string2string.avro", oldTimestamp);
     props.setProperty(DATA_WRITER_COMPUTE_JOB_CLASS, DataWriterSparkJob.class.getCanonicalName());
     props.setProperty(SPARK_NATIVE_INPUT_FORMAT_ENABLED, String.valueOf(true));
     props.setProperty(TIMESTAMP_FIELD_PROP, "timestamp");
-    TestWriteUtils.runPushJob("Run push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
 
     // All streaming writes should succeed
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
@@ -278,7 +272,7 @@ public class TestActiveActiveIngestion {
 
     TestWriteUtils
         .writeSimpleAvroFileWithStringToStringAndTimestampSchema(inputDir, 100, "string2string.avro", newTimestamp);
-    TestWriteUtils.runPushJob("Run push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
 
     // All of these writes should fail now
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
@@ -317,20 +311,19 @@ public class TestActiveActiveIngestion {
     }
     MetricsRepository metricsRepository = new MetricsRepository();
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
-    TestWriteUtils.runPushJob("Run push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
 
-    Map<String, String> samzaConfig = getSamzaProducerConfig(childDatacenters, 0, storeName);
-    // Enable concurrent producer
-    samzaConfig.put(VeniceWriter.PRODUCER_THREAD_COUNT, "2");
-    VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
     // Add a marker record to make sure we have consumed to all the RT record.
     int putWithRmdKeyIndex = 1001;
 
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
+    // Enable concurrent producer
+    try (VeniceSystemProducer veniceProducer = IntegrationTestPushUtils.getSamzaProducerForStream(
+        multiRegionMultiClusterWrapper,
+        0,
+        storeName,
+        new Pair<>(VeniceWriter.PRODUCER_THREAD_COUNT, "2"))) {
       // Run Samza job to send PUT and DELETE requests.
       runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
       // Produce a DELETE record with large timestamp
@@ -355,7 +348,7 @@ public class TestActiveActiveIngestion {
     props.setProperty(TARGETED_REGION_PUSH_ENABLED, "true");
     // intentionally stop re-consuming from RT so stale records don't affect the testing results
     props.setProperty(REWIND_TIME_IN_SECONDS_OVERRIDE, "0");
-    TestWriteUtils.runPushJob("Run repush job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     ControllerClient controllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     TestUtils.waitForNonDeterministicAssertion(
@@ -392,9 +385,8 @@ public class TestActiveActiveIngestion {
         }
       });
     }
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
       // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with
       // larger
       // timestamp
@@ -433,14 +425,13 @@ public class TestActiveActiveIngestion {
     mockTimestampInMs.add(past.toEpochMilli());
     Time mockTime = new MockCircularTime(mockTimestampInMs);
 
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
       // run samza to stream put and delete
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
     }
 
-    TestWriteUtils.runPushJob("Run repush job with TTL", props);
+    IntegrationTestPushUtils.runVPJ(props);
     TestUtils.waitForNonDeterministicAssertion(
         5,
         TimeUnit.SECONDS,
@@ -611,6 +602,6 @@ public class TestActiveActiveIngestion {
     UpdateStoreQueryParams storeParms =
         new UpdateStoreQueryParams().setNativeReplicationEnabled(true).setPartitionCount(10);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
-    TestWriteUtils.runPushJob("Run push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
   }
 }

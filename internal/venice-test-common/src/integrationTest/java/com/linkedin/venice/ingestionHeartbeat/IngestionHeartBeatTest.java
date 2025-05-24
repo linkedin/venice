@@ -128,11 +128,9 @@ public class IngestionHeartBeatTest {
         .allPermutationGenerator(DataProviderUtils.BOOLEAN, DataProviderUtils.BOOLEAN, DataReplicationPolicy.values());
   }
 
-  @Test(dataProvider = "AAConfigAndIncPushAndDRPProvider", timeOut = TEST_TIMEOUT_MS)
-  public void testIngestionHeartBeat(
-      boolean isActiveActiveEnabled,
-      boolean isIncrementalPushEnabled,
-      DataReplicationPolicy dataReplicationPolicy) throws IOException, InterruptedException {
+  @Test(dataProvider = "Two-True-and-False", timeOut = TEST_TIMEOUT_MS, dataProviderClass = DataProviderUtils.class)
+  public void testIngestionHeartBeat(boolean isActiveActiveEnabled, boolean isIncrementalPushEnabled)
+      throws IOException, InterruptedException {
     storeName = Utils.getUniqueString("ingestionHeartBeatTest");
     String parentControllerUrl = parentController.getControllerUrl();
     File inputDir = getTempDataDirectory();
@@ -159,8 +157,7 @@ public class IngestionHeartBeatTest {
               .setPartitionCount(2)
               .setReplicationFactor(2)
               .setNativeReplicationEnabled(true)
-              .setActiveActiveReplicationEnabled(isActiveActiveEnabled)
-              .setHybridDataReplicationPolicy(dataReplicationPolicy);
+              .setActiveActiveReplicationEnabled(isActiveActiveEnabled);
 
       ControllerResponse updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
@@ -227,25 +224,11 @@ public class IngestionHeartBeatTest {
                     .build())) {
           for (int partition = 0; partition < response.getPartitions(); partition++) {
             // RT: verify HB is received
-            verifyHBinKafkaTopic(
-                pubSubConsumer,
-                storeInfo,
-                partition,
-                isActiveActiveEnabled,
-                isIncrementalPushEnabled,
-                dataReplicationPolicy,
-                true);
+            verifyHBinKafkaTopic(pubSubConsumer, storeInfo, partition, isIncrementalPushEnabled, true);
 
             // VT: verify leader topic partition receives HB from RT, and is forwarded with leader completed
             // header to all VT.
-            verifyHBinKafkaTopic(
-                pubSubConsumer,
-                storeInfo,
-                partition,
-                isActiveActiveEnabled,
-                isIncrementalPushEnabled,
-                dataReplicationPolicy,
-                false);
+            verifyHBinKafkaTopic(pubSubConsumer, storeInfo, partition, isIncrementalPushEnabled, false);
           }
         }
       }
@@ -256,9 +239,7 @@ public class IngestionHeartBeatTest {
       PubSubConsumerAdapter pubSubConsumer,
       StoreInfo storeInfo,
       int partition,
-      boolean isActiveActiveEnabled,
       boolean isIncrementalPushEnabled,
-      DataReplicationPolicy dataReplicationPolicy,
       boolean isRealTime) throws InterruptedException {
     String topicToSubscribeTo = isRealTime
         ? Utils.getRealTimeTopicName(storeInfo)
@@ -292,50 +273,25 @@ public class IngestionHeartBeatTest {
           break;
         }
       }
-      if ((!isIncrementalPushEnabled || isActiveActiveEnabled)
-          && (isActiveActiveEnabled || dataReplicationPolicy != DataReplicationPolicy.AGGREGATE)) {
-        assertTrue(
-            isHBFound.get(),
-            String.format("Heartbeat not found in %s partition %d", isRealTime ? "RT" : "VT", partition));
-        if (isRealTime) {
-          assertFalse(
-              isLeaderCompletionHeaderFound.get(),
-              String.format("Leader completed header found in RT partition %d", partition));
-          assertFalse(
-              isLeaderCompleted.get(),
-              String.format("Leader completed header set to completed in RT partition %d", partition));
-        } else {
-          assertTrue(
-              isLeaderCompletionHeaderFound.get(),
-              String.format("Leader completed header not found in VT partition %d", partition));
-          assertTrue(
-              isLeaderCompleted.get(),
-              String.format("Leader completed header not set to completed in VT partition %d", partition));
-        }
-      } else {
-        // If AA is not enabled: SIT reads from parent RT but HB is sent to local RT, so HB is never propagated to VT
-        if (isRealTime) {
-          assertTrue(
-              isHBFound.get(),
-              String.format("Heartbeat not found in RT partition %d with AA not enabled", partition));
-        } else {
-          assertFalse(
-              isHBFound.get(),
-              String.format("Heartbeat found in VT partition %d with AA not enabled", partition));
-        }
+      assertTrue(
+          isHBFound.get(),
+          String.format("Heartbeat not found in %s partition %d", isRealTime ? "RT" : "VT", partition));
+      if (isRealTime) {
         assertFalse(
             isLeaderCompletionHeaderFound.get(),
-            String.format(
-                "Leader completed header found in %s partition %d with AA not enabled",
-                isRealTime ? "RT" : "VT",
-                partition));
+            String.format("Leader completed header found in RT partition %d", partition));
         assertFalse(
             isLeaderCompleted.get(),
-            String.format(
-                "Leader completed header set to completed in %s partition %d with AA not enabled",
-                isRealTime ? "RT" : "VT",
-                partition));
+            String.format("Leader completed header set to completed in RT partition %d", partition));
+      } else {
+        assertTrue(
+            isLeaderCompletionHeaderFound.get(),
+            String.format("Leader completed header not found in VT partition %d", partition));
+        assertTrue(
+            isLeaderCompleted.get(),
+            String.format("Leader completed header not set to completed in VT partition %d", partition));
       }
+
     });
 
     pubSubConsumer

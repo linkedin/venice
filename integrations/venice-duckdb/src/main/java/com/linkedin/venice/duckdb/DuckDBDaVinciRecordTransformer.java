@@ -28,8 +28,8 @@ public class DuckDBDaVinciRecordTransformer
     extends DaVinciRecordTransformer<GenericRecord, GenericRecord, GenericRecord> {
   private static final Logger LOGGER = LogManager.getLogger(DuckDBDaVinciRecordTransformer.class);
   private static final String duckDBFilePath = "my_database.duckdb";
-  private static final String createViewStatementTemplate = "CREATE OR REPLACE VIEW %s AS SELECT * FROM %s;";
-  private static final String dropTableStatementTemplate = "DROP TABLE %s;";
+  private static final String createViewStatementTemplate = "CREATE OR REPLACE VIEW \"%s\" AS SELECT * FROM \"%s\";";
+  private static final String dropTableStatementTemplate = "DROP TABLE \"%s\";";
   private final String storeNameWithoutVersionInfo;
   private final String versionTableName;
   private final String duckDBUrl;

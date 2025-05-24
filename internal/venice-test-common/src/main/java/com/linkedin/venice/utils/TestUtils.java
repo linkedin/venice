@@ -53,7 +53,6 @@ import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataRecoveryVersionConfig;
 import com.linkedin.venice.meta.DataRecoveryVersionConfigImpl;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -584,7 +583,6 @@ public class TestUtils {
         random.nextLong(),
         random.nextLong(),
         random.nextInt(),
-        DataReplicationPolicy.AGGREGATE,
         BufferReplayPolicy.REWIND_FROM_SOP);
     hybridStoreConfig.setRealTimeTopicName(Long.toString(random.nextLong()));
     return hybridStoreConfig;

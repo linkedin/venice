@@ -24,6 +24,7 @@ import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -161,7 +162,7 @@ public class TestProduceWithSSL {
         "Push has not been start, current should be 0");
 
     // First push to verify regular push job works fine
-    TestWriteUtils.runPushJob("Test push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
       return currentVersion == 1;
@@ -170,7 +171,7 @@ public class TestProduceWithSSL {
     // Re-push with Kafka Input Format
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_BROKER_URL, cluster.getPubSubBrokerWrapper().getSSLAddress());
-    TestWriteUtils.runPushJob("Test Kafka re-push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
       return currentVersion == 2;
@@ -184,7 +185,7 @@ public class TestProduceWithSSL {
       throw new VeniceException(response.getError());
     }
     props.setProperty(SOURCE_KAFKA, "false");
-    TestWriteUtils.runPushJob("Test push job with dictionary compression", props);
+    IntegrationTestPushUtils.runVPJ(props);
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
       return currentVersion == 3;
@@ -192,7 +193,7 @@ public class TestProduceWithSSL {
 
     // Re-push with Kafka Input Format and dictionary compression enabled
     props.setProperty(SOURCE_KAFKA, "true");
-    TestWriteUtils.runPushJob("Test Kafka re-push job with dictionary compression", props);
+    IntegrationTestPushUtils.runVPJ(props);
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
       return currentVersion == 4;
