@@ -1,7 +1,6 @@
 package com.linkedin.venice.client.stats;
 
 import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_COUNT;
-import static com.linkedin.venice.client.stats.ClientTehutiMetricName.REQUEST_RETRY_COUNT;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
 
 import com.linkedin.venice.client.store.ClientConfig;
@@ -10,6 +9,7 @@ import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -45,7 +45,7 @@ public class ClientStats extends BasicClientStats {
    */
   private final Sensor multiGetFallbackSensor;
 
-  private MetricEntityStateOneEnum<RequestRetryType> requestErrorRetry;
+  private MetricEntityStateOneEnum<RequestRetryType> errorRetryRequest;
 
   public static ClientStats getClientStats(
       MetricsRepository metricsRepository,
@@ -71,11 +71,11 @@ public class ClientStats extends BasicClientStats {
      */
     Rate requestRetryCountRate = new OccurrenceRate();
 
-    requestErrorRetry = MetricEntityStateOneEnum.create(
+    errorRetryRequest = MetricEntityStateOneEnum.create(
         RETRY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        REQUEST_RETRY_COUNT,
+        ClientTehutiMetricName.REQUEST_RETRY_COUNT,
         Collections.singletonList(requestRetryCountRate),
         baseDimensionsMap,
         RequestRetryType.class);
@@ -144,11 +144,8 @@ public class ClientStats extends BasicClientStats {
         .record();
   }
 
-  public void recordRequestRetryCount() {
-    // This is only for thin-client. For fast client, the retry count is derived from long tail retry and error retry.
-    if (clientType == ClientType.THIN_CLIENT) {
-      requestErrorRetry.record(1, ERROR_RETRY);
-    }
+  public void recordErrorRetryRequest() {
+    errorRetryRequest.record(1, ERROR_RETRY);
   }
 
   public void recordSuccessDuplicateRequestKeyCount(int duplicateKeyCount) {
@@ -213,5 +210,23 @@ public class ClientStats extends BasicClientStats {
 
   public void recordMultiGetFallback(int keyCount) {
     multiGetFallbackSensor.record(keyCount);
+  }
+
+  /**
+   * Metric names for tehuti metrics used in this class.
+   */
+  public enum ClientTehutiMetricName implements TehutiMetricNameEnum {
+    REQUEST_RETRY_COUNT;
+
+    private final String metricName;
+
+    ClientTehutiMetricName() {
+      this.metricName = name().toLowerCase();
+    }
+
+    @Override
+    public String getMetricName() {
+      return this.metricName;
+    }
   }
 }

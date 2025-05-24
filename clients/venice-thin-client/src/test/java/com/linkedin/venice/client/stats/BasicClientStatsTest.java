@@ -160,7 +160,7 @@ public class BasicClientStatsTest {
   public void testEmitRequestRetryMetrics() {
     InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
     ClientStats stats = createClientStats(inMemoryMetricReader, THIN_CLIENT);
-    stats.recordRequestRetryCount();
+    stats.recordErrorRetryRequest();
     Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
     Assert.assertTrue(metrics.get(".test_store--request_retry_count.OccurrenceRate").value() > 0);
   }

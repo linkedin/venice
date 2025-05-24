@@ -55,7 +55,7 @@ import org.apache.http.HttpStatus;
  */
 public class BasicClientStats extends AbstractVeniceHttpStats {
   public static final Collection<MetricEntity> CLIENT_METRIC_ENTITIES =
-      getUniqueMetricEntities(BasicClientMetricEntity.class);
+      getUniqueMetricEntities(BasicClientMetricEntity.class, ClientMetricEntity.class);
 
   private static final String SYSTEM_STORE_NAME_PREFIX = "venice_system_store_";
 
