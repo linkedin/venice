@@ -10,6 +10,7 @@ import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transf
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getExponentialHistogramPointData;
@@ -28,6 +29,7 @@ import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -225,7 +227,7 @@ public class BasicClientStatsTest {
 
   @Test
   public void testClientMetricEntities() {
-    Map<BasicClientStats.BasicClientMetricEntity, MetricEntity> expectedMetrics = new HashMap<>();
+    Map<ModuleMetricEntityInterface, MetricEntity> expectedMetrics = new HashMap<>();
     expectedMetrics.put(
         BasicClientStats.BasicClientMetricEntity.CALL_COUNT,
         new MetricEntity(
@@ -268,30 +270,29 @@ public class BasicClientStatsTest {
             MetricUnit.MILLISECOND,
             "Latency for all DaVinci Client responses",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    expectedMetrics.put(
+        ClientMetricEntity.RETRY_COUNT,
+        new MetricEntity(
+            "retry_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of all retry requests for client",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)));
 
     Set<String> uniqueMetricEntitiesNames = new HashSet<>();
-    for (BasicClientStats.BasicClientMetricEntity metric: BasicClientStats.BasicClientMetricEntity.values()) {
-      uniqueMetricEntitiesNames.add(metric.getMetricEntity().getMetricName());
-      MetricEntity actual = metric.getMetricEntity();
-      MetricEntity expected = expectedMetrics.get(metric);
 
-      assertNotNull(expected, "No expected definition for " + metric.name());
-      assertNotNull(actual.getMetricName(), "Metric name should not be null for " + metric.name());
-      assertEquals(actual.getMetricName(), expected.getMetricName(), "Unexpected metric name for " + metric.name());
-      assertNotNull(actual.getMetricType(), "Metric type should not be null for " + metric.name());
-      assertEquals(actual.getMetricType(), expected.getMetricType(), "Unexpected metric type for " + metric.name());
-      assertNotNull(actual.getUnit(), "Metric unit should not be null for " + metric.name());
-      assertEquals(actual.getUnit(), expected.getUnit(), "Unexpected metric unit for " + metric.name());
-      assertNotNull(actual.getDescription(), "Metric description should not be null for " + metric.name());
-      assertEquals(
-          actual.getDescription(),
-          expected.getDescription(),
-          "Unexpected metric description for " + metric.name());
-      assertNotNull(actual.getDimensionsList(), "Metric dimensions should not be null for " + metric.name());
-      assertEquals(
-          actual.getDimensionsList(),
-          expected.getDimensionsList(),
-          "Unexpected metric dimensions for " + metric.name());
+    // Verify BasicClientMetricEntity.
+    for (BasicClientStats.BasicClientMetricEntity metric: BasicClientStats.BasicClientMetricEntity.values()) {
+      MetricEntity entity = metric.getMetricEntity();
+      uniqueMetricEntitiesNames.add(entity.getMetricName());
+      verifyMetricEntity(entity, expectedMetrics.get(metric), entity.getMetricName());
+    }
+
+    // Verify ClientMetricEntity.
+    for (ClientMetricEntity metric: ClientMetricEntity.values()) {
+      MetricEntity entity = metric.getMetricEntity();
+      uniqueMetricEntitiesNames.add(entity.getMetricName());
+      verifyMetricEntity(entity, expectedMetrics.get(metric), entity.getMetricName());
     }
 
     // Convert expectedMetrics to a Collection for comparison
@@ -314,6 +315,20 @@ public class BasicClientStatsTest {
       }
       assertTrue(found, "Unexpected MetricEntity found: " + actual.getMetricName());
     }
+  }
+
+  private void verifyMetricEntity(MetricEntity actual, MetricEntity expected, String name) {
+    assertNotNull(expected, "No expected definition for " + name);
+    assertNotNull(actual.getMetricName(), "Metric name should not be null for " + name);
+    assertEquals(actual.getMetricName(), expected.getMetricName(), "Unexpected metric name for " + name);
+    assertNotNull(actual.getMetricType(), "Metric type should not be null for " + name);
+    assertEquals(actual.getMetricType(), expected.getMetricType(), "Unexpected metric type for " + name);
+    assertNotNull(actual.getUnit(), "Metric unit should not be null for " + name);
+    assertEquals(actual.getUnit(), expected.getUnit(), "Unexpected metric unit for " + name);
+    assertNotNull(actual.getDescription(), "Metric description should not be null for " + name);
+    assertEquals(actual.getDescription(), expected.getDescription(), "Unexpected metric description for " + name);
+    assertNotNull(actual.getDimensionsList(), "Metric dimensions should not be null for " + name);
+    assertEquals(actual.getDimensionsList(), expected.getDimensionsList(), "Unexpected metric dimensions for " + name);
   }
 
   private boolean metricEntitiesEqual(MetricEntity actual, MetricEntity expected) {
