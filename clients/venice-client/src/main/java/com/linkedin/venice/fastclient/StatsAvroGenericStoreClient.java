@@ -176,8 +176,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
         if (requestContext.responseDeserializationTime > 0) {
           clientStats.recordResponseDeserializationTime(requestContext.responseDeserializationTime);
         }
-        clientStats.recordSuccessRequestKeyCount(requestContext.successRequestKeyCount.get());
       }
+      // We want to record the response key count number, no matter the request is healthy or unhealthy.
+      clientStats.recordResponseKeyCount(requestContext.successRequestKeyCount.get());
 
       if (requestContext.noAvailableReplica) {
         clientStats.recordNoAvailableReplicaRequest();

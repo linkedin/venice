@@ -264,7 +264,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     } else {
       clientStats.emitHealthyRequestMetrics(latency, successKeyCnt);
     }
-    clientStats.recordSuccessRequestKeyCount(successKeyCnt);
+    clientStats.recordResponseKeyCount(successKeyCnt);
     clientStats.recordSuccessDuplicateRequestKeyCount(duplicateEntryCnt);
   }
 
@@ -289,7 +289,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       }
 
       clientStats.emitHealthyRequestMetrics(latency, value);
-      clientStats.recordSuccessRequestKeyCount(getSuccessfulKeyCount(value));
+      clientStats.recordResponseKeyCount(getSuccessfulKeyCount(value));
       return value;
     };
   }

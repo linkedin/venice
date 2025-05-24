@@ -7,12 +7,15 @@ import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformIntToHttpResponseStatusEnum;
+import static com.linkedin.venice.stats.dimensions.MessageType.*;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_MESSAGE_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getExponentialHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getLongPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
@@ -25,12 +28,14 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -86,13 +91,7 @@ public class BasicClientStatsTest {
     stats.emitHealthyRequestMetrics(90.0, 2);
 
     validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", true, 90.0);
-    validateOtelMetrics(
-        inMemoryMetricReader,
-        "test_store",
-        SC_OK,
-        VeniceResponseStatusCategory.SUCCESS,
-        90.0,
-        THIN_CLIENT.getMetricsPrefix());
+    validateOtelMetrics(inMemoryMetricReader, "test_store", SC_OK, SUCCESS, 90.0, THIN_CLIENT.getMetricsPrefix());
   }
 
   @Test
@@ -102,12 +101,7 @@ public class BasicClientStatsTest {
     stats.emitHealthyRequestMetricsForDavinciClient(90.0);
 
     validateTehutiMetrics(stats.getMetricsRepository(), ".test_store", true, 90.0);
-    validateOtelMetrics(
-        inMemoryMetricReader,
-        "test_store",
-        VeniceResponseStatusCategory.SUCCESS,
-        90.0,
-        DAVINCI_CLIENT.getMetricsPrefix());
+    validateOtelMetrics(inMemoryMetricReader, "test_store", SUCCESS, 90.0, DAVINCI_CLIENT.getMetricsPrefix());
   }
 
   @Test
@@ -157,6 +151,42 @@ public class BasicClientStatsTest {
     stats.emitUnhealthyRequestMetricsForDavinciClient(90.0);
     Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
     Assert.assertFalse(metrics.get(".test_store--request.OccurrenceRate").value() > 0.0);
+  }
+
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testKeyCountMetrics(boolean isRequest) {
+    for (ClientType client: ClientType.values()) {
+      // verify that the following works for all client types.
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      BasicClientStats stats = createStats(inMemoryMetricReader, client);
+
+      int keyCount = 10;
+
+      if (isRequest) {
+        stats.recordRequestKeyCount(keyCount);
+      } else {
+        stats.recordResponseKeyCount(keyCount);
+      }
+
+      // Check Tehuti metrics
+      Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+      String storeName = "test_store";
+      if (isRequest) {
+        Assert
+            .assertEquals((int) metrics.get(String.format(".%s--request_key_count.Max", storeName)).value(), keyCount);
+      } else {
+        Assert.assertEquals(
+            (int) metrics.get(String.format(".%s--success_request_key_count.Max", storeName)).value(),
+            keyCount);
+      }
+
+      // Check OpenTelemetry metrics
+      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+      Attributes expectedAttr = getAttributes(storeName, isRequest ? REQUEST : RESPONSE);
+      ExponentialHistogramPointData data =
+          getExponentialHistogramPointData(metricsData, "key_count", client.getMetricsPrefix());
+      validateExponentialHistogramPointData(data, keyCount, keyCount, 1, keyCount, expectedAttr);
+    }
   }
 
   @Test
@@ -300,6 +330,14 @@ public class BasicClientStatsTest {
             "Latency for all DaVinci Client responses",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
     expectedMetrics.put(
+        BasicClientStats.BasicClientMetricEntity.KEY_COUNT,
+        new MetricEntity(
+            "key_count",
+            MetricType.HISTOGRAM,
+            MetricUnit.NUMBER,
+            "Count of keys for venice client request and response",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)));
+    expectedMetrics.put(
         ClientMetricEntity.RETRY_COUNT,
         new MetricEntity(
             "retry_count",
@@ -403,6 +441,14 @@ public class BasicClientStatsTest {
     if (retryType != null) {
       builder.put(VENICE_REQUEST_RETRY_TYPE.getDimensionNameInDefaultFormat(), retryType.getDimensionValue());
     }
+    return builder.build();
+  }
+
+  private Attributes getAttributes(String storeName, MessageType type) {
+    AttributesBuilder builder = Attributes.builder()
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
+        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
+        .put(VENICE_MESSAGE_TYPE.getDimensionNameInDefaultFormat(), type.getDimensionValue());
     return builder.build();
   }
 }
