@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.REPUS
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_VERSION;
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -22,7 +23,7 @@ public enum ControllerMetricEntity {
       MetricType.GAUGE, MetricUnit.NUMBER,
       "When a store is nominated for scheduled compaction and remains uncompacted, this metric will be at 1."
           + " When the store is compacted, this metric will return to 0.",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_STORE_VERSION)
   ),;
 
   private final MetricEntity metricEntity;
