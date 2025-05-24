@@ -25,6 +25,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
@@ -165,6 +166,14 @@ public class BasicClientStatsTest {
     stats.recordErrorRetryRequest();
     Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
     Assert.assertTrue(metrics.get(".test_store--request_retry_count.OccurrenceRate").value() > 0);
+    validateOtelMetrics(
+        inMemoryMetricReader,
+        "test_store",
+        RequestRetryType.ERROR_RETRY,
+        THIN_CLIENT.getMetricsPrefix(),
+        1,
+        "retry_count",
+        1);
   }
 
   private BasicClientStats createStats(InMemoryMetricReader inMemoryMetricReader, ClientType clientType) {
@@ -223,6 +232,26 @@ public class BasicClientStatsTest {
       String otelPrefix) {
     // Overload for Davinci client where httpStatus is not applicable
     validateOtelMetrics(inMemoryMetricReader, storeName, -1, category, latency, otelPrefix);
+  }
+
+  private void validateOtelMetrics(
+      InMemoryMetricReader inMemoryMetricReader,
+      String storeName,
+      RequestRetryType retryType,
+      String otelPrefix,
+      int expectedDataSize,
+      String expectedMetricName,
+      long expectedValue) {
+    Attributes expectedAttributes = getExpectedAttributes(storeName, retryType);
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    Assert.assertFalse(metricsData.isEmpty());
+    assertEquals(
+        metricsData.size(),
+        expectedDataSize,
+        String.format("There should be %d metrics recorded", expectedDataSize));
+
+    LongPointData callCountData = getLongPointData(metricsData, expectedMetricName, otelPrefix);
+    validateLongPointData(callCountData, expectedValue, expectedAttributes);
   }
 
   @Test
@@ -342,12 +371,26 @@ public class BasicClientStatsTest {
       String storeName,
       int httpStatus,
       VeniceResponseStatusCategory veniceStatusCategory) {
+    return getExpectedAttributes(storeName, httpStatus, veniceStatusCategory, null);
+  }
+
+  private Attributes getExpectedAttributes(String storeName, RequestRetryType retryType) {
+    return getExpectedAttributes(storeName, -1, null, retryType);
+  }
+
+  private Attributes getExpectedAttributes(
+      String storeName,
+      int httpStatus,
+      VeniceResponseStatusCategory veniceStatusCategory,
+      RequestRetryType retryType) {
     AttributesBuilder builder = Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
-        .put(
-            VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
-            veniceStatusCategory.getDimensionValue());
+        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue());
+    if (veniceStatusCategory != null) {
+      builder.put(
+          VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+          veniceStatusCategory.getDimensionValue());
+    }
     if (httpStatus > -1) {
       builder
           .put(
@@ -356,6 +399,9 @@ public class BasicClientStatsTest {
           .put(
               HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
               getVeniceHttpResponseStatusCodeCategory(httpStatus).getDimensionValue());
+    }
+    if (retryType != null) {
+      builder.put(VENICE_REQUEST_RETRY_TYPE.getDimensionNameInDefaultFormat(), retryType.getDimensionValue());
     }
     return builder.build();
   }
