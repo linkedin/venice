@@ -106,4 +106,9 @@ public abstract class ChunkAssembler {
   public void clearBuffer() {
     bufferStorageEngine.drop();
   }
+
+  public boolean isChunkedRecord(int schemaId) {
+    return schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
+        || schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+  }
 }
