@@ -72,7 +72,8 @@ public class CompactionManager {
     for (StoreInfo storeInfo: storeInfoList) {
       if (isCompactionReady(storeInfo)) {
         storesReadyForCompaction.add(storeInfo);
-        // TODO: emit metric to record which stores are nominated for compaction
+        statsMap.get(clusterName)
+            .recordStoreNominatedForScheduledCompaction(storeInfo.getName(), storeInfo.getCurrentVersion());
       }
     }
     return storesReadyForCompaction;
