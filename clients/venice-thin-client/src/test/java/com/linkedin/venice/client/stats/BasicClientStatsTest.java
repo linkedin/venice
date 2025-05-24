@@ -10,6 +10,7 @@ import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transf
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getExponentialHistogramPointData;
@@ -24,10 +25,12 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -156,11 +159,36 @@ public class BasicClientStatsTest {
     Assert.assertFalse(metrics.get(".test_store--request.OccurrenceRate").value() > 0.0);
   }
 
+  @Test
+  public void testEmitRequestRetryMetrics() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    ClientStats stats = createClientStats(inMemoryMetricReader, THIN_CLIENT);
+    stats.recordErrorRetryRequest();
+    Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+    Assert.assertTrue(metrics.get(".test_store--request_retry_count.OccurrenceRate").value() > 0);
+    validateOtelMetrics(
+        inMemoryMetricReader,
+        "test_store",
+        RequestRetryType.ERROR_RETRY,
+        THIN_CLIENT.getMetricsPrefix(),
+        1,
+        "retry_count",
+        1);
+  }
+
   private BasicClientStats createStats(InMemoryMetricReader inMemoryMetricReader, ClientType clientType) {
     String storeName = "test_store";
     VeniceMetricsRepository metricsRepository =
         getVeniceMetricsRepository(clientType, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
     return BasicClientStats
+        .getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName), clientType);
+  }
+
+  private ClientStats createClientStats(InMemoryMetricReader inMemoryMetricReader, ClientType clientType) {
+    String storeName = "test_store";
+    VeniceMetricsRepository metricsRepository =
+        getVeniceMetricsRepository(clientType, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
+    return ClientStats
         .getClientStats(metricsRepository, storeName, SINGLE_GET, new ClientConfig(storeName), clientType);
   }
 
@@ -206,9 +234,29 @@ public class BasicClientStatsTest {
     validateOtelMetrics(inMemoryMetricReader, storeName, -1, category, latency, otelPrefix);
   }
 
+  private void validateOtelMetrics(
+      InMemoryMetricReader inMemoryMetricReader,
+      String storeName,
+      RequestRetryType retryType,
+      String otelPrefix,
+      int expectedDataSize,
+      String expectedMetricName,
+      long expectedValue) {
+    Attributes expectedAttributes = getExpectedAttributes(storeName, retryType);
+    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
+    Assert.assertFalse(metricsData.isEmpty());
+    assertEquals(
+        metricsData.size(),
+        expectedDataSize,
+        String.format("There should be %d metrics recorded", expectedDataSize));
+
+    LongPointData callCountData = getLongPointData(metricsData, expectedMetricName, otelPrefix);
+    validateLongPointData(callCountData, expectedValue, expectedAttributes);
+  }
+
   @Test
   public void testClientMetricEntities() {
-    Map<BasicClientStats.BasicClientMetricEntity, MetricEntity> expectedMetrics = new HashMap<>();
+    Map<ModuleMetricEntityInterface, MetricEntity> expectedMetrics = new HashMap<>();
     expectedMetrics.put(
         BasicClientStats.BasicClientMetricEntity.CALL_COUNT,
         new MetricEntity(
@@ -251,30 +299,29 @@ public class BasicClientStatsTest {
             MetricUnit.MILLISECOND,
             "Latency for all DaVinci Client responses",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_RESPONSE_STATUS_CODE_CATEGORY)));
+    expectedMetrics.put(
+        ClientMetricEntity.RETRY_COUNT,
+        new MetricEntity(
+            "retry_count",
+            MetricType.COUNTER,
+            MetricUnit.NUMBER,
+            "Count of all retry requests for client",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)));
 
     Set<String> uniqueMetricEntitiesNames = new HashSet<>();
-    for (BasicClientStats.BasicClientMetricEntity metric: BasicClientStats.BasicClientMetricEntity.values()) {
-      uniqueMetricEntitiesNames.add(metric.getMetricEntity().getMetricName());
-      MetricEntity actual = metric.getMetricEntity();
-      MetricEntity expected = expectedMetrics.get(metric);
 
-      assertNotNull(expected, "No expected definition for " + metric.name());
-      assertNotNull(actual.getMetricName(), "Metric name should not be null for " + metric.name());
-      assertEquals(actual.getMetricName(), expected.getMetricName(), "Unexpected metric name for " + metric.name());
-      assertNotNull(actual.getMetricType(), "Metric type should not be null for " + metric.name());
-      assertEquals(actual.getMetricType(), expected.getMetricType(), "Unexpected metric type for " + metric.name());
-      assertNotNull(actual.getUnit(), "Metric unit should not be null for " + metric.name());
-      assertEquals(actual.getUnit(), expected.getUnit(), "Unexpected metric unit for " + metric.name());
-      assertNotNull(actual.getDescription(), "Metric description should not be null for " + metric.name());
-      assertEquals(
-          actual.getDescription(),
-          expected.getDescription(),
-          "Unexpected metric description for " + metric.name());
-      assertNotNull(actual.getDimensionsList(), "Metric dimensions should not be null for " + metric.name());
-      assertEquals(
-          actual.getDimensionsList(),
-          expected.getDimensionsList(),
-          "Unexpected metric dimensions for " + metric.name());
+    // Verify BasicClientMetricEntity.
+    for (BasicClientStats.BasicClientMetricEntity metric: BasicClientStats.BasicClientMetricEntity.values()) {
+      MetricEntity entity = metric.getMetricEntity();
+      uniqueMetricEntitiesNames.add(entity.getMetricName());
+      verifyMetricEntity(entity, expectedMetrics.get(metric), entity.getMetricName());
+    }
+
+    // Verify ClientMetricEntity.
+    for (ClientMetricEntity metric: ClientMetricEntity.values()) {
+      MetricEntity entity = metric.getMetricEntity();
+      uniqueMetricEntitiesNames.add(entity.getMetricName());
+      verifyMetricEntity(entity, expectedMetrics.get(metric), entity.getMetricName());
     }
 
     // Convert expectedMetrics to a Collection for comparison
@@ -299,6 +346,20 @@ public class BasicClientStatsTest {
     }
   }
 
+  private void verifyMetricEntity(MetricEntity actual, MetricEntity expected, String name) {
+    assertNotNull(expected, "No expected definition for " + name);
+    assertNotNull(actual.getMetricName(), "Metric name should not be null for " + name);
+    assertEquals(actual.getMetricName(), expected.getMetricName(), "Unexpected metric name for " + name);
+    assertNotNull(actual.getMetricType(), "Metric type should not be null for " + name);
+    assertEquals(actual.getMetricType(), expected.getMetricType(), "Unexpected metric type for " + name);
+    assertNotNull(actual.getUnit(), "Metric unit should not be null for " + name);
+    assertEquals(actual.getUnit(), expected.getUnit(), "Unexpected metric unit for " + name);
+    assertNotNull(actual.getDescription(), "Metric description should not be null for " + name);
+    assertEquals(actual.getDescription(), expected.getDescription(), "Unexpected metric description for " + name);
+    assertNotNull(actual.getDimensionsList(), "Metric dimensions should not be null for " + name);
+    assertEquals(actual.getDimensionsList(), expected.getDimensionsList(), "Unexpected metric dimensions for " + name);
+  }
+
   private boolean metricEntitiesEqual(MetricEntity actual, MetricEntity expected) {
     return Objects.equals(actual.getMetricName(), expected.getMetricName())
         && actual.getMetricType() == expected.getMetricType() && actual.getUnit() == expected.getUnit()
@@ -310,12 +371,26 @@ public class BasicClientStatsTest {
       String storeName,
       int httpStatus,
       VeniceResponseStatusCategory veniceStatusCategory) {
+    return getExpectedAttributes(storeName, httpStatus, veniceStatusCategory, null);
+  }
+
+  private Attributes getExpectedAttributes(String storeName, RequestRetryType retryType) {
+    return getExpectedAttributes(storeName, -1, null, retryType);
+  }
+
+  private Attributes getExpectedAttributes(
+      String storeName,
+      int httpStatus,
+      VeniceResponseStatusCategory veniceStatusCategory,
+      RequestRetryType retryType) {
     AttributesBuilder builder = Attributes.builder()
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), storeName)
-        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue())
-        .put(
-            VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
-            veniceStatusCategory.getDimensionValue());
+        .put(VENICE_REQUEST_METHOD.getDimensionNameInDefaultFormat(), SINGLE_GET.getDimensionValue());
+    if (veniceStatusCategory != null) {
+      builder.put(
+          VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+          veniceStatusCategory.getDimensionValue());
+    }
     if (httpStatus > -1) {
       builder
           .put(
@@ -324,6 +399,9 @@ public class BasicClientStatsTest {
           .put(
               HTTP_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
               getVeniceHttpResponseStatusCodeCategory(httpStatus).getDimensionValue());
+    }
+    if (retryType != null) {
+      builder.put(VENICE_REQUEST_RETRY_TYPE.getDimensionNameInDefaultFormat(), retryType.getDimensionValue());
     }
     return builder.build();
   }
