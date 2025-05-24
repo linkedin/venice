@@ -1312,8 +1312,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       return valueSchemaId;
     }
-    ControllerClient controllerClient = ControllerClient
-        .constructClusterControllerClient(clusterName, getLeaderController(clusterName).getUrl(false), sslFactory);
+
+    ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(
+        clusterName,
+        getLeaderController(clusterName).getUrl(getSslFactory().isPresent()),
+        sslFactory);
     SchemaResponse response = controllerClient.getValueSchemaID(storeName, valueSchemaStr);
     if (response.isError()) {
       throw new VeniceException(
@@ -1675,7 +1678,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       this.setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
     }
 
-    String destControllerUrl = this.getLeaderController(destClusterName).getUrl(false);
+    String destControllerUrl = this.getLeaderController(destClusterName).getUrl(getSslFactory().isPresent());
     ControllerClient destControllerClient =
         ControllerClient.constructClusterControllerClient(destClusterName, destControllerUrl, sslFactory);
 
@@ -2304,7 +2307,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           // Mirror new pushes back to the source cluster in case we abort migration after completion.
           ControllerClient sourceClusterControllerClient = ControllerClient.constructClusterControllerClient(
               sourceCluster,
-              getLeaderController(sourceCluster).getUrl(false),
+              getLeaderController(sourceCluster).getUrl(getSslFactory().isPresent()),
               sslFactory);
           VersionResponse response = sourceClusterControllerClient.addVersionAndStartIngestion(
               storeName,
@@ -2326,7 +2329,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Migration is still in progress and we need to mirror new version signal from source to dest.
         ControllerClient destClusterControllerClient = ControllerClient.constructClusterControllerClient(
             destinationCluster,
-            getLeaderController(destinationCluster).getUrl(false),
+            getLeaderController(destinationCluster).getUrl(sslFactory.isPresent()),
             sslFactory);
         VersionResponse response = destClusterControllerClient.addVersionAndStartIngestion(
             storeName,
@@ -5789,8 +5792,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Migration has completed in this colo but the overall migration is still in progress.
         if (clusterName.equals(destinationCluster)) {
           // Mirror new updates back to the source cluster in case we abort migration after completion.
-          ControllerClient sourceClusterControllerClient =
-              new ControllerClient(sourceCluster, getLeaderController(sourceCluster).getUrl(false), sslFactory);
+          ControllerClient sourceClusterControllerClient = new ControllerClient(
+              sourceCluster,
+              getLeaderController(sourceCluster).getUrl(getSslFactory().isPresent()),
+              sslFactory);
           ControllerResponse response = sourceClusterControllerClient.updateStore(storeName, params);
           if (response.isError()) {
             LOGGER.warn(
@@ -5801,8 +5806,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
         }
       } else if (clusterName.equals(sourceCluster)) {
-        ControllerClient destClusterControllerClient =
-            new ControllerClient(destinationCluster, getLeaderController(destinationCluster).getUrl(false), sslFactory);
+        ControllerClient destClusterControllerClient = new ControllerClient(
+            destinationCluster,
+            getLeaderController(destinationCluster).getUrl(getSslFactory().isPresent()),
+            sslFactory);
         ControllerResponse response = destClusterControllerClient.updateStore(storeName, params);
         if (response.isError()) {
           LOGGER.warn(
