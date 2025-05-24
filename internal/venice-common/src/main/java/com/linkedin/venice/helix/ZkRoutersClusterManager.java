@@ -62,8 +62,7 @@ public class ZkRoutersClusterManager
     adapter.registerSerializer(getRouterRootPath(), new RouterClusterConfigJSONSerializer());
     zkClient.setZkSerializer(adapter);
     dataAccessor = new ZkBaseDataAccessor<>(zkClient);
-    zkStateListener =
-        new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
+    zkStateListener = new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect);
     isConnected.set(zkClient.getConnection().getZookeeperState().isAlive());
     this.zkClient.subscribeStateChanges(this);
   }

@@ -20,22 +20,19 @@ import org.apache.zookeeper.Watcher;
 public class CachedResourceZkStateListener implements IZkStateListener {
   private final Logger logger;
   public static final int DEFAULT_RETRY_LOAD_ATTEMPTS = 1;
-  public static final long DEFAULT_RETRY_LOAD_INTERVAL_IN_MS = TimeUnit.SECONDS.toMillis(10);
   private final VeniceResource resource;
-  private final int retryLoadAttempts;
-  private final long retryLoadIntervalInMs;
+  private final int refreshAttemptsForZkReconnect;
   private volatile boolean disconnected = false;
 
   public CachedResourceZkStateListener(VeniceResource resource) {
     // By default, we only retry once after connection is reconnected.
-    this(resource, DEFAULT_RETRY_LOAD_ATTEMPTS, DEFAULT_RETRY_LOAD_INTERVAL_IN_MS);
+    this(resource, DEFAULT_RETRY_LOAD_ATTEMPTS);
   }
 
-  public CachedResourceZkStateListener(VeniceResource resource, int retryLoadAttempts, long retryLoadIntervalInMs) {
+  public CachedResourceZkStateListener(VeniceResource resource, int refreshAttemptsForZkReconnect) {
     this.resource = resource;
     this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + getResourceName() + "]");
-    this.retryLoadAttempts = retryLoadAttempts;
-    this.retryLoadIntervalInMs = retryLoadIntervalInMs;
+    this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
   }
 
   /**
@@ -62,20 +59,22 @@ public class CachedResourceZkStateListener implements IZkStateListener {
           // retryLoadAttempts with retryLoadIntervalInMs between each two loading.
           // Sleep a random time(no more than retryLoadIntervalInMs) to avoid thunderstorm issue that all nodes are
           // trying to refresh resource at the same time if there is a network issue in that DC.
+          // TODO: refactor to use exponential backoff like implemented in HelixUtils
+          long retryLoadIntervalInMs = TimeUnit.SECONDS.toMillis(2);
           Utils.sleep((long) (Math.random() * retryLoadIntervalInMs));
           int attempt = 1;
-          while (attempt <= retryLoadAttempts) {
+          while (attempt <= refreshAttemptsForZkReconnect) {
             logger.info(
                 "Attempt #{} of {}: Refresh resource after connection is reconnected.",
                 attempt,
-                retryLoadAttempts);
+                refreshAttemptsForZkReconnect);
             try {
               resource.refresh();
-              logger.info("Attempt #{} of {}: Refresh completed.", attempt, retryLoadAttempts);
+              logger.info("Attempt #{} of {}: Refresh completed.", attempt, refreshAttemptsForZkReconnect);
               return;
             } catch (Exception e) {
               logger.error("Can not refresh resource correctly after client is reconnected", e);
-              if (attempt < retryLoadAttempts) {
+              if (attempt < refreshAttemptsForZkReconnect) {
                 logger.info("Will retry after {} ms", retryLoadIntervalInMs);
                 Utils.sleep(retryLoadIntervalInMs);
               }
