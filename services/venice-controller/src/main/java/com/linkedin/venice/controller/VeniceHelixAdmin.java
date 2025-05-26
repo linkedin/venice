@@ -7801,7 +7801,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         getSslFactory());
 
     // Get version for standby controllers
-    List<Instance> standbyControllers = getControllersByHelixState(clusterName, HelixState.STANDBY_STATE);
+    List<Instance> standbyControllers = new ArrayList<>();
+    try {
+      standbyControllers = getControllersByHelixState(clusterName, HelixState.STANDBY_STATE);
+    } catch (VeniceException e) {
+      LOGGER.warn("No standby controllers found for cluster: {}. Error: {}", clusterName, e.getMessage());
+    }
 
     for (Instance standbyController: standbyControllers) {
       // In production, leader and standby share the secure port but have different hostnames—no conflict.
