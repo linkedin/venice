@@ -592,7 +592,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         zkClient,
         adapterSerializer,
         commonConfig.getSystemSchemaClusterName(),
-        commonConfig.getRefreshAttemptsForZkReconnect());
+        commonConfig.getRefreshAttemptsForZkReconnect(),
+        commonConfig.getRefreshIntervalForZkReconnectInMs());
     metaStoreWriter = new MetaStoreWriter(
         topicManagerRepository.getLocalTopicManager(),
         veniceWriterFactory,

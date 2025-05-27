@@ -264,26 +264,22 @@ public final class HelixUtils {
    * it is going to block and wait if connection fails.
    *
    * @param manager    HelixManager instance
-   * @param retryCount retry time
+   * @param maxRetries retry time
    * @throws VeniceException if connection keeps failing after certain number of retry
    */
-  public static void connectHelixManager(SafeHelixManager manager, int retryCount) {
-    int attempt = 0;
-    while (attempt < retryCount) {
+  public static void connectHelixManager(SafeHelixManager manager, int maxRetries) {
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         manager.connect();
-        // Connection established.
-        break;
+        return; // Success, exit immediately
       } catch (Exception e) {
-        attempt++;
-        if (attempt < retryCount) {
-          handleFailedHelixOperation("", "connectHelixManager", attempt, retryCount);
-        } else {
+        if (attempt == maxRetries) {
           throw new VeniceException(
-              "Error connecting to Helix Manager for Cluster '" + manager.getClusterName() + "' after " + retryCount
+              "Error connecting to Helix Manager for Cluster '" + manager.getClusterName() + "' after " + maxRetries
                   + " attempts.",
               e);
         }
+        handleFailedHelixOperation("", "connectHelixManager", attempt, maxRetries);
       }
     }
   }

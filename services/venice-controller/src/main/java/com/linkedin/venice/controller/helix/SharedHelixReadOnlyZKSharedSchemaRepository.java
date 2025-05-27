@@ -22,8 +22,15 @@ public class SharedHelixReadOnlyZKSharedSchemaRepository extends HelixReadOnlyZK
       ZkClient zkClient,
       HelixAdapterSerializer adapter,
       String systemStoreClusterName,
-      int refreshAttemptsForZkReconnect) {
-    super(storeRepository, zkClient, adapter, systemStoreClusterName, refreshAttemptsForZkReconnect);
+      int refreshAttemptsForZkReconnect,
+      long refreshIntervalForZkReconnectInterval) {
+    super(
+        storeRepository,
+        zkClient,
+        adapter,
+        systemStoreClusterName,
+        refreshAttemptsForZkReconnect,
+        refreshIntervalForZkReconnectInterval);
   }
 
   @Override
