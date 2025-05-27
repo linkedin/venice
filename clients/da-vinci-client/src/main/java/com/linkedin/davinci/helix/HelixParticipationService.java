@@ -304,7 +304,10 @@ public class HelixParticipationService extends AbstractVeniceService
     HelixAdmin admin = new ZKHelixAdmin(zkAddress);
     try {
       // Check whether the cluster is ready or not at first to prevent zk no node exception.
-      HelixUtils.checkClusterSetup(admin, clusterName, 9);
+      HelixUtils.checkClusterSetup(
+          admin,
+          clusterName,
+          veniceConfigLoader.getCombinedProperties().getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 9));
       List<String> instances = admin.getInstancesInCluster(clusterName);
       if (instances.contains(instance.getNodeId())) {
         LOGGER.info("{} is not a new node to cluster: {}, skip the cleaning up.", instance.getNodeId(), clusterName);

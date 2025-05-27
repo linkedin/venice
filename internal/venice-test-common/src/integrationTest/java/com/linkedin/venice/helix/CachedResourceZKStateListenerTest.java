@@ -38,9 +38,8 @@ public class CachedResourceZKStateListenerTest {
     MockVeniceResourceWillThrowExceptionWhileRefreshing resource =
         new MockVeniceResourceWillThrowExceptionWhileRefreshing();
     int refreshAttemptsForZkReconnect = 3;
-    long refreshIntervalForZkReconnect = TimeUnit.SECONDS.toMillis(10);
     CachedResourceZkStateListener listener =
-        new CachedResourceZkStateListener(resource, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnect);
+        new CachedResourceZkStateListener(resource, refreshAttemptsForZkReconnect, 100);
     zkClient.subscribeStateChanges(listener);
     // zkClient.close();
     // zkClient.connect(WAIT_TIME, zkClient);
