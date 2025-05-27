@@ -60,7 +60,7 @@ public class TestHelixReadOnlySchemaRepository {
     storeRORepo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster);
     storeRORepo.refresh();
     schemaRWRepo = new HelixReadWriteSchemaRepository(storeRWRepo, zkClient, adapter, cluster, Optional.empty());
-    schemaRORepo = new HelixReadOnlySchemaRepository(storeRORepo, zkClient, adapter, cluster, 9);
+    schemaRORepo = new HelixReadOnlySchemaRepository(storeRORepo, zkClient, adapter, cluster, 9, 10000);
   }
 
   @AfterMethod

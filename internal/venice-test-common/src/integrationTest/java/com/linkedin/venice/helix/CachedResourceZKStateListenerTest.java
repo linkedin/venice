@@ -37,8 +37,10 @@ public class CachedResourceZKStateListenerTest {
   public void testReconnectWithRefreshFailed() throws Exception {
     MockVeniceResourceWillThrowExceptionWhileRefreshing resource =
         new MockVeniceResourceWillThrowExceptionWhileRefreshing();
-    int retryAttempts = 3;
-    CachedResourceZkStateListener listener = new CachedResourceZkStateListener(resource, retryAttempts);
+    int refreshAttemptsForZkReconnect = 3;
+    long refreshIntervalForZkReconnect = TimeUnit.SECONDS.toMillis(10);
+    CachedResourceZkStateListener listener =
+        new CachedResourceZkStateListener(resource, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnect);
     zkClient.subscribeStateChanges(listener);
     // zkClient.close();
     // zkClient.connect(WAIT_TIME, zkClient);
@@ -51,23 +53,25 @@ public class CachedResourceZKStateListenerTest {
     TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.MILLISECONDS, new BooleanSupplier() {
       @Override
       public boolean getAsBoolean() {
-        return resource.refreshCount == retryAttempts;
+        return resource.refreshCount == refreshAttemptsForZkReconnect;
       }
     });
     Assert.assertFalse(listener.isDisconnected(), "Client should be reconnected");
     Assert.assertFalse(resource.isRefreshed, "Reconnected, resource should not be refreshed correctly.");
     Assert.assertEquals(
         resource.refreshCount,
-        retryAttempts,
-        "Should retry +" + retryAttempts
+        refreshAttemptsForZkReconnect,
+        "Should retry +" + refreshAttemptsForZkReconnect
             + " to avoid non-deterministic issue that zk could return partial result after getting reconnected. ");
   }
 
   @Test
   public void testReconnectWithRefresh() {
     MockVeniceResource resource = new MockVeniceResource();
-    int retryAttempts = 3;
-    CachedResourceZkStateListener listener = new CachedResourceZkStateListener(resource, retryAttempts);
+    int refreshAttemptsForZkReconnect = 3;
+    long refreshIntervalForZkReconnect = TimeUnit.SECONDS.toMillis(10);
+    CachedResourceZkStateListener listener =
+        new CachedResourceZkStateListener(resource, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnect);
     zkClient.subscribeStateChanges(listener);
     WatchedEvent disconnectEvent = new WatchedEvent(null, Watcher.Event.KeeperState.Disconnected, null);
     WatchedEvent connectEvent = new WatchedEvent(null, Watcher.Event.KeeperState.SyncConnected, null);
@@ -93,7 +97,8 @@ public class CachedResourceZKStateListenerTest {
   public void testHandleStateChanged() throws Exception {
     MockVeniceResourceWillThrowExceptionWhileRefreshing resource =
         new MockVeniceResourceWillThrowExceptionWhileRefreshing();
-    CachedResourceZkStateListener listener = new CachedResourceZkStateListener(resource, 1);
+    CachedResourceZkStateListener listener =
+        new CachedResourceZkStateListener(resource, 1, TimeUnit.SECONDS.toMillis(10));
 
     listener.handleStateChanged(Watcher.Event.KeeperState.SyncConnected);
     Assert.assertFalse(listener.isDisconnected(), "It's the first to connect, but not the reconnecting.");

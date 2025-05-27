@@ -345,13 +345,15 @@ public class RouterServer extends AbstractVeniceService {
             zkClient,
             adapter,
             config.getSystemSchemaClusterName(),
-            config.getRefreshAttemptsForZkReconnect()),
+            config.getRefreshAttemptsForZkReconnect(),
+            config.getRefreshIntervalForZkReconnectInMs()),
         new HelixReadOnlySchemaRepository(
             readOnlyStoreRepository,
             zkClient,
             adapter,
             config.getClusterName(),
-            config.getRefreshAttemptsForZkReconnect()));
+            config.getRefreshAttemptsForZkReconnect(),
+            config.getRefreshIntervalForZkReconnectInMs()));
     this.metaStoreShadowReader = config.isMetaStoreShadowReadEnabled()
         ? Optional.of(new MetaStoreShadowReader(this.schemaRepository))
         : Optional.empty();

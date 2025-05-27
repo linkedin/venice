@@ -94,13 +94,15 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       ZkClient zkClient,
       HelixAdapterSerializer adapter,
       String clusterName,
-      int refreshAttemptsForZkReconnect) {
+      int refreshAttemptsForZkReconnect,
+      long refreshIntervalForZkReconnectInMs) {
     this.storeRepository = storeRepository;
     this.zkClient = zkClient;
     this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName, refreshAttemptsForZkReconnect);
 
     storeRepository.registerStoreDataChangedListener(this);
-    this.zkStateListener = new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect);
+    this.zkStateListener =
+        new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
   }
 
   /** test-only */
@@ -108,12 +110,14 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       ReadOnlyStoreRepository storeRepository,
       ZkClient zkClient,
       HelixSchemaAccessor accessor,
-      int refreshAttemptsForZkReconnect) {
+      int refreshAttemptsForZkReconnect,
+      long refreshIntervalForZkReconnectInMs) {
     this.storeRepository = storeRepository;
     this.zkClient = zkClient;
     this.accessor = accessor;
     storeRepository.registerStoreDataChangedListener(this);
-    this.zkStateListener = new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect);
+    this.zkStateListener =
+        new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
   }
 
   /**
