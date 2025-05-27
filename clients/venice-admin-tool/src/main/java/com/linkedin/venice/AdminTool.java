@@ -2432,8 +2432,10 @@ public class AdminTool {
       throw new VeniceException("Source and destination cluster cannot be the same!");
     }
 
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
+    ControllerClient srcControllerClient =
+        ControllerClientFactory.getControllerClient(srcClusterName, veniceUrl, sslFactory);
+    ControllerClient destControllerClient =
+        ControllerClientFactory.getControllerClient(destClusterName, veniceUrl, sslFactory);
     checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
     storeIsMigrating(srcControllerClient, storeName);
 
