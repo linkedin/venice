@@ -5229,14 +5229,23 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getDeadStores(clusterName, storeName, includeSystemStores);
   }
 
-  /**
-   * @return the largest used version number for the given store from the store graveyard.
-   */
   @Override
   public int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName) {
     Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    int aggregatedLargestUsedVersionNumber =
-        getVeniceHelixAdmin().getStoreGraveyard().getLargestUsedVersionNumber(storeName);
+    int aggregatedLargestUsedVersionNumber = getStoreGraveyard().getLargestUsedVersionNumber(storeName);
+    for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
+      VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
+      if (response.getVersion() > aggregatedLargestUsedVersionNumber) {
+        aggregatedLargestUsedVersionNumber = response.getVersion();
+      }
+    }
+    return aggregatedLargestUsedVersionNumber;
+  }
+
+  @Override
+  public int getLargestUsedVersion(String clusterName, String storeName) {
+    Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    int aggregatedLargestUsedVersionNumber = getVeniceHelixAdmin().getLargestUsedVersion(clusterName, storeName);
     for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
       VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
       if (response.getVersion() > aggregatedLargestUsedVersionNumber) {

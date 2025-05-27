@@ -953,9 +953,12 @@ public interface Admin extends AutoCloseable, Closeable {
   CompactionManager getCompactionManager();
 
   /**
-   * @return the largest used version number for the given store from store graveyard.
+   * Deprecated but remain here to keep compatibility until {@link #getLargestUsedVersion(String, String)} is used.
    */
+  @Deprecated
   int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName);
+
+  int getLargestUsedVersion(String clusterName, String storeName);
 
   /**
    * @return list of stores infos that are considered dead. A store is considered dead if it exists but has no

@@ -9033,12 +9033,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return adminTopicConsumptionEnabled;
   }
 
-  /**
-   * @return the largest used version number for the given store from store graveyard.
-   */
   @Override
   public int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName) {
     return getStoreGraveyard().getLargestUsedVersionNumber(storeName);
+  }
+
+  @Override
+  public int getLargestUsedVersion(String clusterName, String storeName) {
+    Store store = getStore(clusterName, storeName);
+    // If the store does not exist, check the store graveyard.
+    if (store == null) {
+      return getStoreGraveyard().getLargestUsedVersionNumber(storeName);
+    }
+    return store.getLargestUsedVersionNumber();
   }
 
   /**

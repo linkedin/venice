@@ -26,8 +26,8 @@ import org.apache.logging.log4j.Logger;
 /**
  * This class tries to scan all cluster which current parent controller is the leader controller.
  * It will perform the following action for each system store of each cluster:
- * 1. Check system store is created / has current version.
- * 2. Send heartbeat to system store and check if heartbeat is received.
+ * 1. Check system store is created.
+ * 2. Send heartbeat to system store and check if heartbeat is received after certain wait period.
  * 3. If system store failed any of the check in (1) / (2), it will try to run empty push to repair the system store,
  * until maximum retry of repair is reached.
  * It will emit metrics to indicate bad system store counts per cluster and how many stores are not fixable by the task.
@@ -192,11 +192,6 @@ public class SystemStoreRepairTask implements Runnable {
       }
       // We will not check newly created system stores.
       if (isStoreNewlyCreated(userStoreToCreationTimestampMap.getOrDefault(store.getName(), 0L))) {
-        continue;
-      }
-      // System store does not have an online serving version.
-      if (store.getCurrentVersion() == 0) {
-        newUnhealthySystemStoreSet.add(store.getName());
         continue;
       }
 

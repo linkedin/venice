@@ -189,22 +189,28 @@ public class SystemStoreRepairTaskTest {
     when(systemStoreRepairTask.shouldContinue(cluster)).thenReturn(true);
     systemStoreRepairTask
         .checkAndSendHeartbeatToSystemStores(cluster, newUnhealthySystemStoreSet, systemStoreToHeartbeatTimestampMap);
-    Assert.assertEquals(newUnhealthySystemStoreSet.size(), 4);
-    Assert.assertTrue(
-        newUnhealthySystemStoreSet.contains(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore1)));
-    Assert.assertTrue(
-        newUnhealthySystemStoreSet
-            .contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore2)));
+    /**
+     * It is expected to NOT check current version as it is always 0 in parent controller.
+     */
+    Assert.assertEquals(newUnhealthySystemStoreSet.size(), 2);
     Assert.assertTrue(
         newUnhealthySystemStoreSet.contains(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore3)));
     Assert.assertTrue(
         newUnhealthySystemStoreSet
             .contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore3)));
 
-    Assert.assertEquals(systemStoreToHeartbeatTimestampMap.size(), 2);
+    /**
+     * All other stores should have new timestamp sent.
+     */
+    Assert.assertEquals(systemStoreToHeartbeatTimestampMap.size(), 4);
     Assert.assertNotNull(
         systemStoreToHeartbeatTimestampMap
             .get(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore1)));
+    Assert.assertNotNull(
+        systemStoreToHeartbeatTimestampMap.get(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore1)));
+    Assert.assertNotNull(
+        systemStoreToHeartbeatTimestampMap
+            .get(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore2)));
     Assert.assertNotNull(
         systemStoreToHeartbeatTimestampMap.get(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore2)));
   }
