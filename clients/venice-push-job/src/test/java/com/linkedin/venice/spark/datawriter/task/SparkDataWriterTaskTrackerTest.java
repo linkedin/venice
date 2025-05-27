@@ -18,7 +18,9 @@ public class SparkDataWriterTaskTrackerTest {
 
   @AfterClass(alwaysRun = true)
   public void tearDown() {
-    spark.stop();
+    if (spark != null) {
+      spark.stop();
+    }
   }
 
   @Test

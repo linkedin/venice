@@ -1975,9 +1975,10 @@ public class ConfigKeys {
   // this is a config to decide whether the snapshot is expired and need to be recreated.
   public static final String BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN =
       "blob.transfer.snapshot.retention.time.in.min";
-  // this is a config to decide the max allowed concurrent snapshot user
+  // this is a config to decide the max allowed concurrent snapshot user per host level, it is used to limit how many
+  // requests can be concurrently served for a host globally.
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
-  // this is a config to decide max file transfer timeout time in minutes
+  // this is a config to decide max file transfer timeout time in minutes in server side.
   public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
   // this is a config to decide the max allowed offset lag to use kafka, even if the blob transfer is enable.
   public static final String BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD =
@@ -2339,16 +2340,6 @@ public class ConfigKeys {
    * with SOS, EOS or skipped records.
    */
   public static final String SERVER_INGESTION_HEARTBEAT_INTERVAL_MS = "server.ingestion.heartbeat.interval.ms";
-
-  /**
-   * Whether to check LeaderCompleteState in the follower replica and davinci replica before marking the follower
-   * completed. This is to avoid the case that the follower replica is marked completed before the leader replica
-   * and transitions to leader if the leader replicas goes down.
-   * <p>
-   * Default to false. Should be enabled only after Venice tag 0.4.154 is fully rolled out.
-   */
-  public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED =
-      "server.leader.complete.state.check.in.follower.enabled";
 
   /**
    * Follower replicas and DavinciClient will only consider heartbeats received within

@@ -87,7 +87,9 @@ public class InstanceSizeEstimatorTest extends HeapSizeEstimatorTest {
         new LeaderMetadata(
             null, // shared instance
             0L,
-            0));
+            0,
+            null,
+            -1L));
     kmeSuppliers.add(rtKmeSupplier);
     kmeSuppliers.add(vtKmeSupplier);
     // TODO: Add updates, deletes...

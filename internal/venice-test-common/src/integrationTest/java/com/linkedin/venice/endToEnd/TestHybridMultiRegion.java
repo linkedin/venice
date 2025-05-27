@@ -14,6 +14,7 @@ import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_EOP;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
@@ -29,7 +30,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
@@ -39,6 +39,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
@@ -121,7 +123,6 @@ public class TestHybridMultiRegion {
           streamingRewindSeconds,
           streamingMessageLag,
           HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-          DataReplicationPolicy.NON_AGGREGATE,
           REWIND_FROM_EOP);
       // There should be no version on the store yet
       assertEquals(
@@ -262,44 +263,73 @@ public class TestHybridMultiRegion {
          * key_9: value_9 with upstream offset: 14
          */
 
+        PubSubPosition upstreamPosition1 = new ApacheKafkaOffsetPosition(0);
         // Sending out dummy records first to push out SOS messages first.
         veniceWriter1.put(
             stringSerializer.serialize("key_writer_1"),
             stringSerializer.serialize("value_writer_1"),
             1,
             null,
-            new LeaderMetadataWrapper(0, 0));
+            new LeaderMetadataWrapper(
+                upstreamPosition1.getNumericOffset(),
+                0,
+                DEFAULT_TERM_ID,
+                upstreamPosition1.getWireFormatBytes()));
         veniceWriter1.flush();
+
+        PubSubPosition upstreamPosition2 = new ApacheKafkaOffsetPosition(1);
         veniceWriter2.put(
             stringSerializer.serialize("key_writer_2"),
             stringSerializer.serialize("value_writer_2"),
             1,
             null,
-            new LeaderMetadataWrapper(1, 0));
+            new LeaderMetadataWrapper(
+                upstreamPosition2.getNumericOffset(),
+                0,
+                DEFAULT_TERM_ID,
+                upstreamPosition2.getWireFormatBytes()));
         veniceWriter2.flush();
 
+        PubSubPosition upstreamPositionIPlusFive;
         for (int i = 0; i < 5; ++i) {
+          upstreamPositionIPlusFive = new ApacheKafkaOffsetPosition(i + 5);
           veniceWriter1.put(
               stringSerializer.serialize("key_" + i),
               stringSerializer.serialize("value_" + i),
               1,
               null,
-              new LeaderMetadataWrapper(i + 5, 0));
+              new LeaderMetadataWrapper(
+                  upstreamPositionIPlusFive.getNumericOffset(),
+                  0,
+                  DEFAULT_TERM_ID,
+                  upstreamPositionIPlusFive.getWireFormatBytes()));
         }
         veniceWriter1.flush();
+
+        PubSubPosition upstreamPosition3 = new ApacheKafkaOffsetPosition(2);
         veniceWriter2.put(
             stringSerializer.serialize("key_" + 0),
             stringSerializer.serialize("value_x"),
             1,
             null,
-            new LeaderMetadataWrapper(3, 0));
+            new LeaderMetadataWrapper(
+                upstreamPosition3.getNumericOffset(),
+                0,
+                DEFAULT_TERM_ID,
+                upstreamPosition3.getWireFormatBytes()));
+
         for (int i = 5; i < 10; ++i) {
+          upstreamPositionIPlusFive = new ApacheKafkaOffsetPosition(i + 5);
           veniceWriter2.put(
               stringSerializer.serialize("key_" + i),
               stringSerializer.serialize("value_" + i),
               1,
               null,
-              new LeaderMetadataWrapper(i + 5, 0));
+              new LeaderMetadataWrapper(
+                  upstreamPositionIPlusFive.getNumericOffset(),
+                  0,
+                  DEFAULT_TERM_ID,
+                  upstreamPositionIPlusFive.getWireFormatBytes()));
         }
         veniceWriter2.flush();
         veniceWriter1.broadcastEndOfPush(Collections.emptyMap());

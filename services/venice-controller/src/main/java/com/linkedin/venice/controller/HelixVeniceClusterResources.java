@@ -4,6 +4,7 @@ import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats;
@@ -68,6 +69,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final PushMonitorDelegator pushMonitor;
   private final LeakedPushStatusCleanUpService leakedPushStatusCleanUpService;
   private final ProtocolVersionAutoDetectionService protocolVersionAutoDetectionService;
+  private final LogCompactionService logCompactionService;
   private final ZkRoutersClusterManager routersClusterManager;
   private final AggPartitionHealthStats aggPartitionHealthStats;
   private final ZkStoreConfigAccessor storeConfigAccessor;
@@ -242,6 +244,12 @@ public class HelixVeniceClusterResources implements VeniceResource {
       this.protocolVersionAutoDetectionService = null;
     }
 
+    if (config.isParent() && config.isLogCompactionSchedulingEnabled()) {
+      this.logCompactionService = new LogCompactionService(admin, clusterName, config);
+    } else {
+      this.logCompactionService = null;
+    }
+
     veniceAdminStats = new VeniceAdminStats(metricsRepository, "venice-admin-" + clusterName);
     this.storagePersonaRepository =
         new StoragePersonaRepository(clusterName, this.storeMetadataRepository, adapterSerializer, zkClient);
@@ -412,6 +420,28 @@ public class HelixVeniceClusterResources implements VeniceResource {
         protocolVersionAutoDetectionService.stop();
       } catch (Exception e) {
         LOGGER.error("Error when stopping protocol version auto detection service for cluster: {}", clusterName);
+      }
+    }
+  }
+
+  /**
+   * Cause {@link LogCompactionService} service to begin executing.
+   */
+  public void startLogCompactionService() {
+    if (logCompactionService != null) {
+      logCompactionService.start();
+    }
+  }
+
+  /**
+   * Cause {@link LogCompactionService} service to stop executing.
+   */
+  public void stopLogCompactionService() {
+    if (logCompactionService != null) {
+      try {
+        logCompactionService.stop();
+      } catch (Exception e) {
+        LOGGER.error("Error when stopping log compaction service for cluster: {}", clusterName);
       }
     }
   }

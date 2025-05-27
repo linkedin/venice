@@ -247,7 +247,7 @@ public class TestStoreMigration {
           () -> Assert.assertTrue(srcParentControllerClient.getStore(storeName).getStore().isMigrating()));
 
       // Push v2
-      TestWriteUtils.runPushJob("Test push job 2", props);
+      IntegrationTestPushUtils.runVPJ(props);
       // Update store
       srcParentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
 

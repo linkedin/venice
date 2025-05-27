@@ -274,7 +274,7 @@ public class TestDaVinciRequestBasedMetaRepository {
         dataDirPath,
         storeName,
         clusterWrapper.getPubSubClientProperties());
-    TestWriteUtils.runPushJob(storeName + "_" + Utils.getUniqueString("push_job"), props);
+    IntegrationTestPushUtils.runVPJ(props);
   }
 
   private void deleteStore(String storeName) {

@@ -74,9 +74,9 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -912,11 +912,11 @@ public abstract class TestBatch {
       }
     }
 
-    TestWriteUtils.runPushJob("Test Batch push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
 
     if (multiPushJobs) {
-      TestWriteUtils.runPushJob("Test Batch push job 2", props);
-      TestWriteUtils.runPushJob("Test Batch push job 3", props);
+      IntegrationTestPushUtils.runVPJ(props);
+      IntegrationTestPushUtils.runVPJ(props);
     }
 
     veniceCluster.refreshAllRouterMetaData();

@@ -12,26 +12,6 @@ public class InMemoryPubSubPosition implements PubSubPosition {
   }
 
   @Override
-  public int comparePosition(PubSubPosition other) {
-    if (!(other instanceof InMemoryPubSubPosition)) {
-      throw new IllegalArgumentException(
-          "InMemoryPubSubPosition can only be compared with another InMemoryPubSubPosition");
-    }
-    InMemoryPubSubPosition otherPosition = (InMemoryPubSubPosition) other;
-    return Long.compare(this.internalOffset, otherPosition.internalOffset);
-  }
-
-  @Override
-  public long diff(PubSubPosition other) {
-    if (!(other instanceof InMemoryPubSubPosition)) {
-      throw new IllegalArgumentException(
-          "InMemoryPubSubPosition can only be compared with another InMemoryPubSubPosition");
-    }
-    InMemoryPubSubPosition otherPosition = (InMemoryPubSubPosition) other;
-    return this.internalOffset - otherPosition.internalOffset;
-  }
-
-  @Override
   public long getNumericOffset() {
     return internalOffset;
   }

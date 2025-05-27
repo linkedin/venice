@@ -7,7 +7,9 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
@@ -177,5 +179,76 @@ public final class PubSubUtil {
     } catch (IllegalArgumentException e) {
       return false; // or rethrow if desired
     }
+  }
+
+  /**
+   * Computes the difference in numeric offsets between two {@link PubSubPosition} instances.
+   *
+   * <p>If both positions are {@code EARLIEST} or both are {@code LATEST}, returns {@code 0}.</p>
+   * <p>If one of the positions is {@code EARLIEST} and the other is {@code LATEST},
+   * it returns {@code Long.MIN_VALUE} or {@code Long.MAX_VALUE} to represent symbolic extremes.</p>
+   *
+   * @param position1 The first position.
+   * @param position2 The second position.
+   * @return The numeric difference: (position1 - position2).
+   * @throws IllegalArgumentException if either position is {@code null}.
+   */
+  public static long diffPubSubPositions(PubSubPosition position1, PubSubPosition position2) {
+    if (position1 == null || position2 == null) {
+      throw new IllegalArgumentException("Positions cannot be null");
+    }
+
+    if ((position1 == PubSubSymbolicPosition.EARLIEST && position2 == PubSubSymbolicPosition.EARLIEST)
+        || (position1 == PubSubSymbolicPosition.LATEST && position2 == PubSubSymbolicPosition.LATEST)) {
+      return 0;
+    }
+
+    if (position1 == PubSubSymbolicPosition.EARLIEST && position2 == PubSubSymbolicPosition.LATEST) {
+      return Long.MIN_VALUE;
+    }
+
+    if (position1 == PubSubSymbolicPosition.LATEST && position2 == PubSubSymbolicPosition.EARLIEST) {
+      return Long.MAX_VALUE;
+    }
+
+    return position1.getNumericOffset() - position2.getNumericOffset();
+  }
+
+  /**
+   * Compares two {@link PubSubPosition} instances by their symbolic or numeric ordering.
+   *
+   * <p>This method defines the following ordering:
+   * EARLIEST &lt; numeric offsets &lt; LATEST</p>
+   *
+   * @param position1 The first position.
+   * @param position2 The second position.
+   * @return A negative integer, zero, or a positive integer if position1 is less than,
+   *         equal to, or greater than position2, respectively.
+   * @throws IllegalArgumentException if either position is {@code null}.
+   */
+  public static int comparePubSubPositions(PubSubPosition position1, PubSubPosition position2) {
+    if (position1 == null || position2 == null) {
+      throw new IllegalArgumentException("Positions cannot be null");
+    }
+
+    if ((position1 == PubSubSymbolicPosition.EARLIEST && position2 == PubSubSymbolicPosition.EARLIEST)
+        || (position1 == PubSubSymbolicPosition.LATEST && position2 == PubSubSymbolicPosition.LATEST)) {
+      return 0;
+    }
+
+    if (position1 == PubSubSymbolicPosition.EARLIEST) {
+      return -1;
+    }
+    if (position1 == PubSubSymbolicPosition.LATEST) {
+      return 1;
+    }
+    if (position2 == PubSubSymbolicPosition.EARLIEST) {
+      return 1;
+    }
+    if (position2 == PubSubSymbolicPosition.LATEST) {
+      return -1;
+    }
+
+    return Long.compare(position1.getNumericOffset(), position2.getNumericOffset());
   }
 }

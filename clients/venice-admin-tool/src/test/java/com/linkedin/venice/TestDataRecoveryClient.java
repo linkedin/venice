@@ -220,7 +220,7 @@ public class TestDataRecoveryClient {
 
     StoreResponse storeResponse = mock(StoreResponse.class);
     StoreInfo storeInfo = new StoreInfo();
-    storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0L, 0L, 0L, null, null));
+    storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0L, 0L, 0L, null));
     storeInfo.setCurrentVersion(1);
     doReturn(storeInfo).when(storeResponse).getStore();
     doReturn(storeResponse).when(controllerClient).getStore(anyString());

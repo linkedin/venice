@@ -27,6 +27,9 @@ public enum VeniceMetricsDimensions {
   /** {@link RequestRetryType} */
   VENICE_REQUEST_RETRY_TYPE("venice.request.retry_type"),
 
+  /** {@link com.linkedin.venice.stats.dimensions.MessageType} */
+  VENICE_MESSAGE_TYPE("venice.message.type"),
+
   /** {@link RequestRetryAbortReason} */
   VENICE_REQUEST_RETRY_ABORT_REASON("venice.request.retry_abort_reason");
 

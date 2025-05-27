@@ -190,7 +190,7 @@ def integrationTestBuckets = [
       "com.linkedin.venice.samza.*",
       "com.linkedin.venice.writer.*"],
   "1250": [
-      "com.linkedin.venice.endToEnd.PartialUpdateTest"],
+      "com.linkedin.venice.endToEnd.PartialUpdateTest", "com.linkedin.venice.endToEnd.PartialUpdateWithHeartbeatReadyToServeCheckTest"],
   "1260": [
       "com.linkedin.venice.endToEnd.PartialUpdateWithParallelProcessingTest"],
   "1270": [

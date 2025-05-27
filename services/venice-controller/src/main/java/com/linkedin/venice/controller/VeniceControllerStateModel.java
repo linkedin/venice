@@ -260,6 +260,7 @@ public class VeniceControllerStateModel extends StateModel {
     clusterResources.startDeadStoreStatsPreFetchTask();
     clusterResources.startLeakedPushStatusCleanUpService();
     clusterResources.startProtocolVersionAutoDetectionService();
+    clusterResources.startLogCompactionService();
     clusterResources.startMultiTaskSchedulerService();
   }
 
@@ -372,6 +373,7 @@ public class VeniceControllerStateModel extends StateModel {
   /** synchronized because concurrent calls could cause a NPE */
   private synchronized void clearResources() {
     if (clusterResources != null) {
+      clusterResources.stopLogCompactionService();
       clusterResources.stopProtocolVersionAutoDetectionService();
       /**
        * Leaked push status clean up service depends on VeniceHelixAdmin, so VeniceHelixAdmin should be stopped after
