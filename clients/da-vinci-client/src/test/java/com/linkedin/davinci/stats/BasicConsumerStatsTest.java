@@ -21,25 +21,18 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getLongPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointData;
 import static org.testng.Assert.assertEquals;
-import static org.testng.AssertJUnit.assertFalse;
 
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
-import io.opentelemetry.sdk.metrics.data.HistogramPointData;
-import io.opentelemetry.sdk.metrics.data.LongPointData;
-import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Collection;
 import java.util.Map;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -157,18 +150,15 @@ public class BasicConsumerStatsTest {
       double expectedSum) {
 
     Attributes expectedAttributes = getExpectedBaseAttributes(storeName);
-    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
-    assertFalse(metricsData.isEmpty());
-
-    HistogramPointData minMaxCountSumPointData = getHistogramPointData(metricsData, metricName, otelMetricPrefix);
-
     validateHistogramPointData(
-        minMaxCountSumPointData,
+        inMemoryMetricReader,
         expectedMin,
         expectedMax,
         expectedCount,
         expectedSum,
-        expectedAttributes);
+        expectedAttributes,
+        metricName,
+        otelMetricPrefix);
   }
 
   private void validateLongCounterOtelMetrics(
@@ -176,13 +166,8 @@ public class BasicConsumerStatsTest {
       String metricName,
       double expectedValue,
       VeniceResponseStatusCategory responseStatusCategory) {
-
     Attributes expectedAttributes = getExpectedAttributes(storeName, responseStatusCategory);
-    Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
-    assertFalse(metricsData.isEmpty());
-
-    LongPointData longCounterData = getLongPointData(metricsData, metricName, otelMetricPrefix);
-    validateLongPointData(longCounterData, (long) expectedValue, expectedAttributes);
+    validateLongPointData(inMemoryMetricReader, (long) expectedValue, expectedAttributes, metricName, otelMetricPrefix);
   }
 
   private Attributes getExpectedBaseAttributes(String storeName) {

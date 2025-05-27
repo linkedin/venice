@@ -247,7 +247,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
      * Measures the max heartbeat delay across all subscribed partitions
      */
     HEART_BEAT_DELAY(
-        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER,
+        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND,
         "Measures the max heartbeat delay across all subscribed partitions", setOf(VENICE_STORE_NAME)
     ),
     /**
@@ -271,10 +271,10 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     ),
     /**
-     * Measures to count of version swaps
+     * Measures the count of version swaps
      */
     VERSION_SWAP_COUNT(
-        MetricType.COUNTER, MetricUnit.NUMBER, "Measures to count of version swaps",
+        MetricType.COUNTER, MetricUnit.NUMBER, "Measures the count of version swaps",
         setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     ),
     /**

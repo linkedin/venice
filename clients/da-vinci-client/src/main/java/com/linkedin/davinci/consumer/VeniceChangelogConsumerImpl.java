@@ -696,10 +696,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       long timeoutInMs,
       String topicSuffix,
       boolean includeControlMessage) {
-    List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
+    Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap = Collections.EMPTY_MAP;
     boolean lockAcquired = false;
-    boolean exceptionOccurred = false;
 
     try {
       try {
@@ -749,10 +748,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           }
         }
       }
-
-      if (changeCaptureStats != null) {
-        changeCaptureStats.emitRecordsConsumedCountMetrics(pubSubMessages.size());
-      }
+      int messagesPolled = pubSubMessages.size();
 
       if (changelogClientConfig.shouldCompactMessages()) {
         Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
@@ -766,23 +762,22 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           }
           tempMap.put(message.getKey(), message);
         }
-        return tempMap.values();
+        pubSubMessages = tempMap.values();
       }
+
+      if (changeCaptureStats != null) {
+        changeCaptureStats.emitPollCallCountMetrics(SUCCESS);
+        changeCaptureStats.emitRecordsConsumedCountMetrics(messagesPolled);
+      }
+
       return pubSubMessages;
     } catch (Exception exception) {
       LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
-      exceptionOccurred = true;
-      throw exception;
-    } finally {
       if (changeCaptureStats != null) {
-        if (exceptionOccurred) {
-          changeCaptureStats.emitPollCallCountMetrics(FAIL);
-        } else {
-          changeCaptureStats.emitPollCallCountMetrics(SUCCESS);
-        }
+        changeCaptureStats.emitPollCallCountMetrics(FAIL);
       }
+      throw exception;
     }
-
   }
 
   void maybeUpdatePartitionToBootstrapMap(DefaultPubSubMessage message, PubSubTopicPartition pubSubTopicPartition) {
@@ -1290,6 +1285,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           TimeUnit.SECONDS.sleep(60L);
         } catch (InterruptedException e) {
           LOGGER.warn("Lag Monitoring thread interrupted!  Shutting down...", e);
+          Thread.currentThread().interrupt(); // Restore the interrupt status
           break;
         }
       }

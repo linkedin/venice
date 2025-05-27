@@ -1,8 +1,5 @@
 package com.linkedin.venice.stats.metrics;
 
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getExponentialHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getLongPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointData;
@@ -15,9 +12,6 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.sdk.metrics.data.ExponentialHistogramPointData;
-import io.opentelemetry.sdk.metrics.data.HistogramPointData;
-import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.metrics.MetricConfig;
@@ -95,15 +89,24 @@ public class MetricTypeTest {
     assertFalse(metrics.isEmpty(), "Metrics should not be empty");
     assertEquals(metrics.size(), 3, "There should be three metrics recorded");
 
-    LongPointData longPointData = getLongPointData(metrics, "test_metric_counter", "test_prefix");
-    validateLongPointData(longPointData, 150, baseAttributes);
-
-    ExponentialHistogramPointData histogramPointData =
-        getExponentialHistogramPointData(metrics, "test_metric_hist", "test_prefix");
-    validateExponentialHistogramPointData(histogramPointData, 10.0, 50.0, 5, 150.0, baseAttributes);
-
-    HistogramPointData minMaxCountSumPointData =
-        getHistogramPointData(metrics, "test_metric_min_max_count_sum_aggregations", "test_prefix");
-    validateHistogramPointData(minMaxCountSumPointData, 10.0, 50.0, 5, 150.0, baseAttributes);
+    validateLongPointData(inMemoryMetricReader, 150, baseAttributes, "test_metric_counter", "test_prefix");
+    validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        10.0,
+        50.0,
+        5,
+        150.0,
+        baseAttributes,
+        "test_metric_hist",
+        "test_prefix");
+    validateHistogramPointData(
+        inMemoryMetricReader,
+        10.0,
+        50.0,
+        5,
+        150.0,
+        baseAttributes,
+        "test_metric_min_max_count_sum_aggregations",
+        "test_prefix");
   }
 }

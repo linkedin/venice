@@ -39,7 +39,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -210,8 +209,6 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
-    boolean exceptionOccurred = false;
-
     try {
       try {
         bufferLock.lock();
@@ -228,12 +225,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
         bufferLock.unlock();
       }
 
-      List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> drainedPubSubMessages = new ArrayList<>();
+      Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> drainedPubSubMessages = new ArrayList<>();
       pubSubMessages.drainTo(drainedPubSubMessages);
-
-      if (changeCaptureStats != null) {
-        changeCaptureStats.emitRecordsConsumedCountMetrics(drainedPubSubMessages.size());
-      }
+      int messagesPolled = drainedPubSubMessages.size();
 
       if (changelogClientConfig.shouldCompactMessages()) {
         Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
@@ -247,21 +241,22 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
           tempMap.remove(message.getKey());
           tempMap.put(message.getKey(), message);
         }
-        return tempMap.values();
+        drainedPubSubMessages = tempMap.values();
       }
+
+      if (changeCaptureStats != null) {
+        changeCaptureStats.emitRecordsConsumedCountMetrics(messagesPolled);
+        changeCaptureStats.emitPollCallCountMetrics(SUCCESS);
+      }
+
       return drainedPubSubMessages;
     } catch (Exception exception) {
       LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
-      exceptionOccurred = true;
-      throw exception;
-    } finally {
+
       if (changeCaptureStats != null) {
-        if (exceptionOccurred) {
-          changeCaptureStats.emitPollCallCountMetrics(FAIL);
-        } else {
-          changeCaptureStats.emitPollCallCountMetrics(SUCCESS);
-        }
+        changeCaptureStats.emitPollCallCountMetrics(FAIL);
       }
+      throw exception;
     }
   }
 
@@ -305,6 +300,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
           TimeUnit.SECONDS.sleep(backgroundReporterThreadSleepInterval);
         } catch (InterruptedException e) {
           LOGGER.warn("BackgroundReporterThread interrupted!  Shutting down...", e);
+          Thread.currentThread().interrupt(); // Restore the interrupt status
           break;
         }
       }

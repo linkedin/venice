@@ -12,8 +12,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getExponentialHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getLongPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointData;
 import static org.apache.http.HttpStatus.SC_OK;
@@ -31,8 +29,6 @@ import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
-import io.opentelemetry.sdk.metrics.data.ExponentialHistogramPointData;
-import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
@@ -189,11 +185,17 @@ public class BasicClientStatsTest {
     Assert.assertFalse(metricsData.isEmpty());
     assertEquals(metricsData.size(), 2, "There should be two metrics recorded: call_time and call_count");
 
-    LongPointData callCountData = getLongPointData(metricsData, "call_count", otelPrefix);
-    validateLongPointData(callCountData, 1, expectedAttributes);
+    validateLongPointData(inMemoryMetricReader, 1, expectedAttributes, "call_count", otelPrefix);
 
-    ExponentialHistogramPointData callTimeData = getExponentialHistogramPointData(metricsData, "call_time", otelPrefix);
-    validateExponentialHistogramPointData(callTimeData, latency, latency, 1, latency, expectedAttributes);
+    validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        latency,
+        latency,
+        1,
+        latency,
+        expectedAttributes,
+        "call_count",
+        otelPrefix);
   }
 
   private void validateOtelMetrics(
