@@ -142,6 +142,7 @@ public class VeniceOpenTelemetryMetricsRepository {
    */
   private final VeniceConcurrentHashMap<String, DoubleHistogram> histogramMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, LongCounter> guageMap = new VeniceConcurrentHashMap<>();
 
   MetricExporter getOtlpHttpMetricExporter(VeniceMetricsConfig metricsConfig) {
     OtlpHttpMetricExporterBuilder exporterBuilder =
@@ -252,6 +253,19 @@ public class VeniceOpenTelemetryMetricsRepository {
     });
   }
 
+  public LongCounter createGuage(MetricEntity metricEntity) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+    return guageMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
+      String fullMetricName = getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName());
+      LongCounterBuilder builder = meter.counterBuilder(fullMetricName)
+          .setUnit(metricEntity.getUnit().name())
+          .setDescription(metricEntity.getDescription());
+      return builder.build();
+    });
+  }
+
   public Object createInstrument(MetricEntity metricEntity) {
     MetricType metricType = metricEntity.getMetricType();
     switch (metricType) {
@@ -261,6 +275,8 @@ public class VeniceOpenTelemetryMetricsRepository {
 
       case COUNTER:
         return createCounter(metricEntity);
+      case GAUGE:
+        return createGuage(metricEntity);
 
       default:
         throw new VeniceException("Unknown metric type: " + metricType);
