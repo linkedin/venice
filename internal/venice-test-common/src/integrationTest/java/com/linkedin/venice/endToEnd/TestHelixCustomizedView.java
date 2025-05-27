@@ -26,7 +26,6 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
@@ -120,7 +119,7 @@ public class TestHelixCustomizedView {
                 .build());
 
     /**
-     * Explicitly add an emtpy push status ZK path to make both write and read paths are robust to empty push status ZNodes
+     * Explicitly add an empty push status ZK path to make both write and read paths are robust to empty push status ZNodes
      */
     ZkClient zkClient = ZkClientFactory.newZkClient(veniceCluster.getZk().getAddress());
     HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
@@ -129,7 +128,7 @@ public class TestHelixCustomizedView {
         zkClient,
         adapterSerializer,
         veniceCluster.getRegionName(),
-        VeniceProperties.empty());
+        3);
     HelixUtils.create(
         offlinePushStatusAccessor.getOfflinePushStatusAccessor(),
         offlinePushStatusAccessor.getOfflinePushStatuesParentPath() + "/invalid_topic",

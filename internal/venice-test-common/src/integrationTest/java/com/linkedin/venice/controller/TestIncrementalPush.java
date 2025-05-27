@@ -28,7 +28,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.IOException;
@@ -118,7 +117,7 @@ public class TestIncrementalPush {
         zkClient,
         new HelixAdapterSerializer(),
         LogContext.EMPTY,
-        VeniceProperties.empty());
+        1);
 
     // Even after consuming SOIP, we should see replica current status not flipped to non-terminal status
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
