@@ -169,11 +169,11 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   public void recordRetryCount(RequestType requestType) {
     if (requestType == RequestType.SINGLE_GET) {
-      singleGetStats.recordRequestRetryCount();
+      singleGetStats.recordErrorRetryRequest();
     } else if (requestType == RequestType.MULTI_GET) {
-      multiGetStats.recordRequestRetryCount();
+      multiGetStats.recordErrorRetryRequest();
     } else if (requestType == RequestType.COMPUTE) {
-      computeStats.recordRequestRetryCount();
+      computeStats.recordErrorRetryRequest();
     }
   }
 
@@ -264,7 +264,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     } else {
       clientStats.emitHealthyRequestMetrics(latency, successKeyCnt);
     }
-    clientStats.recordSuccessRequestKeyCount(successKeyCnt);
+    clientStats.recordResponseKeyCount(successKeyCnt);
     clientStats.recordSuccessDuplicateRequestKeyCount(duplicateEntryCnt);
   }
 
@@ -289,7 +289,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       }
 
       clientStats.emitHealthyRequestMetrics(latency, value);
-      clientStats.recordSuccessRequestKeyCount(getSuccessfulKeyCount(value));
+      clientStats.recordResponseKeyCount(getSuccessfulKeyCount(value));
       return value;
     };
   }
