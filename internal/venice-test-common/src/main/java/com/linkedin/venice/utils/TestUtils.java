@@ -674,7 +674,7 @@ public class TestUtils {
         new ZkClient(zkAddress),
         new HelixAdapterSerializer(),
         cluster,
-        9);
+        3);
     MockTestStateModelFactory stateModelFactory = new MockTestStateModelFactory(offlinePushStatusAccessor);
     return getParticipant(cluster, nodeId, zkAddress, httpPort, stateModelFactory, stateModelDef);
   }
