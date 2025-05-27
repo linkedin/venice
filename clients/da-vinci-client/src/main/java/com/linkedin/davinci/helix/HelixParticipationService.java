@@ -1,5 +1,7 @@
 package com.linkedin.davinci.helix;
 
+import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
+
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -363,7 +365,7 @@ public class HelixParticipationService extends AbstractVeniceService
         zkClient,
         new HelixAdapterSerializer(),
         veniceServerConfig.getRegionName(),
-        veniceConfigLoader.getCombinedProperties());
+        veniceConfigLoader.getCombinedProperties().getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 9));
 
     /**
      * The accessor can only get created successfully after helix manager is created.

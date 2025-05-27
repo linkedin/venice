@@ -72,7 +72,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       ZkClient zkClient,
       HelixAdapterSerializer adapter,
       LogContext logContext) {
-    this(clusterName, zkClient, adapter, logContext, VeniceProperties.empty());
+    this(clusterName, zkClient, adapter, logContext, 9);
   }
 
   public VeniceOfflinePushMonitorAccessor(
@@ -80,7 +80,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       ZkClient zkClient,
       HelixAdapterSerializer adapter,
       Object logContext,
-      VeniceProperties props) {
+      int refreshAttemptsForZkReconnect) {
     this.clusterName = clusterName;
     this.offlinePushStatusParentPath = getOfflinePushStatuesParentPath();
     this.zkClient = zkClient;
@@ -90,7 +90,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     this.partitionStatusAccessor = new ZkBaseDataAccessor<>(zkClient);
     this.listenerManager = new ListenerManager<>(logContext);
     this.partitionStatusZkListener = new PartitionStatusZkListener(logContext);
-    this.refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 9);
+    this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
   }
 
   /**
