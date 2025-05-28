@@ -118,6 +118,7 @@ public enum ControllerRoute {
 
   STORE_MIGRATION_ALLOWED("/store_migration_allowed", HttpMethod.GET, Collections.singletonList(CLUSTER)),
   MIGRATE_STORE("/migrate_store", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
+  AUTO_MIGRATE_STORE("/auto_migrate_store", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
   COMPLETE_MIGRATION("/complete_migration", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
   ABORT_MIGRATION("/abort_migration", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
   DELETE_STORE("/delete_store", HttpMethod.POST, Collections.singletonList(NAME)),

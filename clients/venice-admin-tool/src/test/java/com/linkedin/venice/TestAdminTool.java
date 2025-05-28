@@ -15,6 +15,7 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -160,6 +161,55 @@ public class TestAdminTool {
   }
 
   @Test
+  public void testAutoMigrateStore() throws ParseException, IOException {
+    String storeName = "testAutoMigrateStore";
+    String srcCluster = "testCluster1";
+    String dstCluster = "testCluster2";
+    String initialStep = "0";
+    String abortOnFailure = "false";
+
+    String[] args = { "--auto-migrate-store", "--url", "controllerUrl", "--store", storeName, "--cluster-src",
+        srcCluster, "--cluster-dest", dstCluster, "--initial-step", initialStep, "--abort-on-failure", abortOnFailure };
+    CommandLine commandLine = AdminTool.getCommandLine(args);
+
+    try (MockedStatic<ControllerClientFactory> controllerClientFactoryMockedStatic =
+        Mockito.mockStatic(ControllerClientFactory.class)) {
+
+      ControllerClient srcControllerClient = mock(ControllerClient.class);
+      ControllerClient destControllerClient = mock(ControllerClient.class);
+
+      StoreMigrationResponse storeMigrationPreconditionCheckResponse = new StoreMigrationResponse();
+      storeMigrationPreconditionCheckResponse.setStoreMigrationAllowed(true);
+      Mockito.when(srcControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationPreconditionCheckResponse);
+      Mockito.when(destControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationPreconditionCheckResponse);
+
+      StoreMigrationResponse storeAutoMigrationResponse = new StoreMigrationResponse();
+      storeAutoMigrationResponse.setSrcClusterName(srcCluster);
+      storeAutoMigrationResponse.setCluster(dstCluster);
+      storeAutoMigrationResponse.setName(storeName);
+      Mockito.when(srcControllerClient.autoMigrateStore(storeName, dstCluster, 0, false))
+          .thenReturn(storeAutoMigrationResponse);
+
+      StoreResponse storeResponse = new StoreResponse();
+      StoreInfo srcStoreInfo = createStore(storeName, true);
+      srcStoreInfo.setMigrating(false);
+      storeResponse.setStore(srcStoreInfo);
+      Mockito.when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
+
+      // Create two different controller clients for the source and destination clusters.
+      controllerClientFactoryMockedStatic
+          .when(() -> ControllerClientFactory.getControllerClient(eq(srcCluster), anyString(), any()))
+          .thenReturn(srcControllerClient);
+      controllerClientFactoryMockedStatic
+          .when(() -> ControllerClientFactory.getControllerClient(eq(dstCluster), anyString(), any()))
+          .thenReturn(destControllerClient);
+
+      AdminTool.autoMigrateStore(commandLine);
+      Mockito.verify(srcControllerClient).autoMigrateStore(storeName, dstCluster, 0, false);
+    }
+  }
+
+  @Test
   public void testAbortMigration() {
     String storeName = "testAbortMigrationStore";
     String srcCluster = "testCluster1";
@@ -205,6 +255,7 @@ public class TestAdminTool {
 
         adminToolMockedStatic.when(() -> AdminTool.userGivesPermission("Do you still want to proceed"))
             .thenReturn(false);
+        // AdminTool.autoMigrateStore("testCluster1", "testCluster2", storeName, false, false, false, false, false,
 
         AdminTool.abortMigration("http://localhost:7036", storeName, srcCluster, dstCluster, false, new boolean[0]);
         Mockito.verify(srcControllerClient, times(0)).discoverCluster(storeName);
