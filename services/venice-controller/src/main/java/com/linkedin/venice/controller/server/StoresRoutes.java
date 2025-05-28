@@ -1018,7 +1018,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#getLargestUsedVersionFromStoreGraveyard(String, String)
+   * @see Admin#getLargestUsedVersion(String, String)
    */
   public Route getStoreLargestUsedVersion(Admin admin) {
     return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
@@ -1027,7 +1027,7 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, GET_STORES_IN_CLUSTER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(STORE_NAME);
-        veniceResponse.setVersion(admin.getLargestUsedVersionFromStoreGraveyard(cluster, storeName));
+        veniceResponse.setVersion(admin.getLargestUsedVersion(cluster, storeName));
       }
     };
   }

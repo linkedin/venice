@@ -610,7 +610,7 @@ public class ConfigKeys {
 
   /**
    * The wait time before validating system store heartbeat during system store health check in parent controller.
-   * Default is 1min.
+   * Default is 10 min.
    */
   public static final String CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS =
       "controller.parent.system.store.heartbeat.check.wait.time.seconds";
