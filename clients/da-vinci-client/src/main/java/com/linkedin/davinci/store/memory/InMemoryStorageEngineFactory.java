@@ -2,7 +2,7 @@ package com.linkedin.davinci.store.memory;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.meta.PersistenceType;
@@ -18,8 +18,7 @@ public class InMemoryStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeConfig)
-      throws StorageInitializationException {
+  public StorageEngine getStorageEngine(VeniceStoreVersionConfig storeConfig) throws StorageInitializationException {
     verifyPersistenceType(storeConfig);
     synchronized (lock) {
       try {
@@ -42,7 +41,7 @@ public class InMemoryStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public void removeStorageEngine(AbstractStorageEngine engine) {
+  public void removeStorageEngine(StorageEngine engine) {
     // Nothing to do here since we do not track the created storage engine
   }
 
@@ -57,7 +56,7 @@ public class InMemoryStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public void closeStorageEngine(AbstractStorageEngine engine) {
+  public void closeStorageEngine(StorageEngine engine) {
     // Nothing to do here since we do not track the created storage engine
   }
 

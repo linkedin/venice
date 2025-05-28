@@ -62,7 +62,7 @@ import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
@@ -786,8 +786,7 @@ public class PartialUpdateTest {
           .get("venice-cluster0")
           .getVeniceServers()
           .get(0);
-      AbstractStorageEngine storageEngine =
-          serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic_v1);
+      StorageEngine storageEngine = serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic_v1);
       ChunkedValueManifest valueManifest = getChunkValueManifest(storageEngine, 0, key, false);
 
       int updateCount = 30;
@@ -927,8 +926,7 @@ public class PartialUpdateTest {
           .get("venice-cluster0")
           .getVeniceServers()
           .get(0);
-      AbstractStorageEngine storageEngine =
-          serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic_v1);
+      StorageEngine storageEngine = serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic_v1);
       ChunkedValueManifest valueManifest = getChunkValueManifest(storageEngine, 0, key, false);
       ChunkedValueManifest rmdManifest = getChunkValueManifest(storageEngine, 0, key, true);
 
@@ -1979,8 +1977,7 @@ public class PartialUpdateTest {
         .getClusters()
         .get("venice-cluster0")
         .getVeniceServers()) {
-      AbstractStorageEngine storageEngine =
-          serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
+      StorageEngine storageEngine = serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
       assertNotNull(storageEngine);
       ValueRecord result = SingleGetChunkingAdapter
           .getReplicationMetadata(storageEngine, 0, serializeStringKeyToByteArray(key), true, null);
@@ -2476,8 +2473,7 @@ public class PartialUpdateTest {
         .getClusters()
         .get("venice-cluster0")
         .getVeniceServers()) {
-      AbstractStorageEngine storageEngine =
-          serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
+      StorageEngine storageEngine = serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
       assertNotNull(storageEngine);
 
       ChunkedValueManifest manifest = getChunkValueManifest(storageEngine, 0, key, false);
@@ -2502,8 +2498,7 @@ public class PartialUpdateTest {
         .getClusters()
         .get("venice-cluster0")
         .getVeniceServers()) {
-      AbstractStorageEngine storageEngine =
-          serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
+      StorageEngine storageEngine = serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
       assertNotNull(storageEngine);
 
       validateChunkDataFromManifest(storageEngine, partition, valueManifest, validationFlow, isAAEnabled);
@@ -2512,7 +2507,7 @@ public class PartialUpdateTest {
   }
 
   private ChunkedValueManifest getChunkValueManifest(
-      AbstractStorageEngine storageEngine,
+      StorageEngine storageEngine,
       int partition,
       String key,
       boolean isRmd) {
@@ -2530,7 +2525,7 @@ public class PartialUpdateTest {
   }
 
   private void validateChunkDataFromManifest(
-      AbstractStorageEngine storageEngine,
+      StorageEngine storageEngine,
       int partition,
       ChunkedValueManifest manifest,
       BiConsumer<byte[], byte[]> validationFlow,

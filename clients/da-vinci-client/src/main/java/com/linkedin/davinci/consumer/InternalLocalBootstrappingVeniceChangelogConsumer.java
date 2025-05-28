@@ -21,7 +21,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -298,7 +298,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
    */
   private void syncOffset(int partitionId, BootstrapState bootstrapState) {
     OffsetRecord lastOffset = storageMetadataService.getLastOffset(localStateTopicName, partitionId);
-    AbstractStorageEngine storageEngineReloadedFromRepo =
+    StorageEngine storageEngineReloadedFromRepo =
         storageService.getStorageEngineRepository().getLocalStorageEngine(localStateTopicName);
     if (storageEngineReloadedFromRepo == null) {
       LOGGER.warn(

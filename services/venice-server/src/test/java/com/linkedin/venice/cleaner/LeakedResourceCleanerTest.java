@@ -12,7 +12,7 @@ import static org.mockito.Mockito.verify;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -41,13 +41,13 @@ public class LeakedResourceCleanerTest {
     }
   }
 
-  private List<AbstractStorageEngine> constructStorageEngineForStore(
+  private List<StorageEngine> constructStorageEngineForStore(
       ReadOnlyStoreRepository storeRepository, // mocked ReadOnlyStoreRepository
       StoreIngestionService ingestionService, // mocked StoreIngestionService
       String storeName,
       boolean returnStore,
       StorageEngineMockConfig... configs) {
-    List<AbstractStorageEngine> mockedEngines = new ArrayList<>();
+    List<StorageEngine> mockedEngines = new ArrayList<>();
     Store store = mock(Store.class);
     if (returnStore) {
       doReturn(store).when(storeRepository).getStoreOrThrow(storeName);
@@ -57,7 +57,7 @@ public class LeakedResourceCleanerTest {
     }
     List<Version> versions = new ArrayList<>();
     for (StorageEngineMockConfig config: configs) {
-      AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+      StorageEngine storageEngine = mock(StorageEngine.class);
       String topic = Version.composeKafkaTopic(storeName, config.version);
       doReturn(topic).when(storageEngine).getStoreVersionName();
       if (config.existingInZK) {
@@ -101,7 +101,7 @@ public class LeakedResourceCleanerTest {
 
     StoreIngestionService ingestionService = mock(StoreIngestionService.class);
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
-    List<AbstractStorageEngine> storageEngineList = new ArrayList<>();
+    List<StorageEngine> storageEngineList = new ArrayList<>();
     /**
      * Store with no version in ZK contains one version on disk, and no running ingestion task.
      */

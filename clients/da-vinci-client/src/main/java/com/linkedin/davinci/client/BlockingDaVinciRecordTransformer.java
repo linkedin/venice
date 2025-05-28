@@ -1,7 +1,7 @@
 package com.linkedin.davinci.client;
 
 import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -81,7 +81,7 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
   }
 
   public void internalOnRecovery(
-      AbstractStorageEngine storageEngine,
+      StorageEngine storageEngine,
       int partitionId,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Lazy<VeniceCompressor> compressor) {

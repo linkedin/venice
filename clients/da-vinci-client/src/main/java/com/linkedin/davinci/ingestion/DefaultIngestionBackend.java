@@ -8,7 +8,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
@@ -34,7 +34,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private final StorageService storageService;
   private final KafkaStoreIngestionService storeIngestionService;
   private final VeniceServerConfig serverConfig;
-  private final Map<String, AtomicReference<AbstractStorageEngine>> topicStorageEngineReferenceMap =
+  private final Map<String, AtomicReference<StorageEngine>> topicStorageEngineReferenceMap =
       new VeniceConcurrentHashMap<>();
   private final BlobTransferManager blobTransferManager;
 
@@ -61,8 +61,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     syncStoreVersionConfig(storeAndVersion.getStore(), storeConfig);
 
     Runnable runnable = () -> {
-      AbstractStorageEngine storageEngine =
-          storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
+      StorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
       topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
         if (storageEngineAtomicReference != null) {
           storageEngineAtomicReference.set(storageEngine);
@@ -129,7 +128,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     // After decide to bootstrap from blobs transfer, close the partition, clean up the offset and partition folder,
     // but the metadata partition is not removed.
     String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
-    AbstractStorageEngine storageEngine = storageService.getStorageEngine(kafkaTopic);
+    StorageEngine storageEngine = storageService.getStorageEngine(kafkaTopic);
     if (storageEngine != null && storageEngine.containsPartition(partitionId)) {
       storageEngine.dropPartition(partitionId, false);
     }
@@ -246,9 +245,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   @Override
-  public void setStorageEngineReference(
-      String topicName,
-      AtomicReference<AbstractStorageEngine> storageEngineReference) {
+  public void setStorageEngineReference(String topicName, AtomicReference<StorageEngine> storageEngineReference) {
     if (storageEngineReference == null) {
       topicStorageEngineReferenceMap.remove(topicName);
     } else {

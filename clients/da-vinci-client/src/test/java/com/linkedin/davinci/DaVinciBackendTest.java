@@ -21,7 +21,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
 import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -170,20 +170,20 @@ public class DaVinciBackendTest {
     StorageService mockStorageService = mock(StorageService.class);
 
     StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
-    AbstractStorageEngine abstractStorageEngine = mock(AbstractStorageEngine.class);
-    mockStorageEngineRepository.addLocalStorageEngine(abstractStorageEngine);
+    StorageEngine storageEngine = mock(StorageEngine.class);
+    mockStorageEngineRepository.addLocalStorageEngine(storageEngine);
     String resourceName = "test_store_v1";
-    when(abstractStorageEngine.getStoreVersionName()).thenReturn(resourceName);
+    when(storageEngine.getStoreVersionName()).thenReturn(resourceName);
 
-    abstractStorageEngine.addStoragePartition(0);
-    abstractStorageEngine.addStoragePartition(1);
+    storageEngine.addStoragePartition(0);
+    storageEngine.addStoragePartition(1);
 
-    List<AbstractStorageEngine> localStorageEngines = new ArrayList<>();
-    localStorageEngines.add(abstractStorageEngine);
+    List<StorageEngine> localStorageEngines = new ArrayList<>();
+    localStorageEngines.add(storageEngine);
 
     when(backend.getStorageService()).thenReturn(mockStorageService);
     when(mockStorageService.getStorageEngineRepository()).thenReturn(mockStorageEngineRepository);
-    when(mockStorageService.getStorageEngine(resourceName)).thenReturn(abstractStorageEngine);
+    when(mockStorageService.getStorageEngine(resourceName)).thenReturn(storageEngine);
     when(mockStorageEngineRepository.getAllLocalStorageEngines()).thenReturn(localStorageEngines);
     when(backend.isIsolatedIngestion()).thenReturn(false);
 

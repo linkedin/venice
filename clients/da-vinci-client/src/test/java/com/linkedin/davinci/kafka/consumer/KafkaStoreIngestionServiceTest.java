@@ -27,8 +27,8 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
@@ -109,7 +109,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     mockStorageService = mock(StorageService.class);
     mockStorageEngineRepository = mock(StorageEngineRepository.class);
     when(mockStorageService.getStorageEngineRepository()).thenReturn(mockStorageEngineRepository);
-    doReturn(mock(AbstractStorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());
+    doReturn(mock(StorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());
     storageMetadataService = mock(StorageMetadataService.class);
     mockClusterInfoProvider = mock(ClusterInfoProvider.class);
     mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
@@ -395,7 +395,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     Mockito.when(mockSchemaEntry.getSchema()).thenReturn(Schema.create(Schema.Type.STRING));
     Mockito.when(mockSchemaRepo.getKeySchema(topicName)).thenReturn(Mockito.mock(SchemaEntry.class));
 
-    AbstractStorageEngine storageEngine1 = mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine1 = mock(StorageEngine.class);
     Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine1);
 
     mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
@@ -410,7 +410,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     StoreIngestionTask closedStoreIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     assertNull(closedStoreIngestionTask);
 
-    AbstractStorageEngine storageEngine2 = mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine2 = mock(StorageEngine.class);
     Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine2);
     kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0);
     StoreIngestionTask newStoreIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
@@ -467,7 +467,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
 
-    AbstractStorageEngine storageEngine1 = mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine1 = mock(StorageEngine.class);
     Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine1);
 
     mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
@@ -637,7 +637,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
 
-    AbstractStorageEngine storageEngine1 = mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine1 = mock(StorageEngine.class);
     Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine1);
 
     mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));

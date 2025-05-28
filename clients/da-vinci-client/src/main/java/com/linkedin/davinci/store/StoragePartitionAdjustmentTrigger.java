@@ -1,0 +1,5 @@
+package com.linkedin.davinci.store;
+
+public enum StoragePartitionAdjustmentTrigger {
+  CHECK_DATABASE_INTEGRITY, BEGIN_BATCH_PUSH, END_BATCH_PUSH, PREPARE_FOR_READ, PROMOTE_TO_LEADER, DEMOTE_TO_FOLLOWER
+}
