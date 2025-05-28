@@ -96,8 +96,7 @@ public class SystemStoreRepairTask implements Runnable {
         }
         String pushJobId = SYSTEM_STORE_REPAIR_JOB_PREFIX + System.currentTimeMillis();
         try {
-          Version version = UserSystemStoreLifeCycleHelper
-              .materializeSystemStore(getParentAdmin(), clusterName, systemStoreName, pushJobId);
+          Version version = getNewSystemStoreVersion(clusterName, systemStoreName, pushJobId);
           systemStoreToRepairJobVersionMap.put(systemStoreName, version.getNumber());
         } catch (Exception e) {
           LOGGER.warn("Unable to run empty push job for store: {} in cluster: {}", systemStoreName, clusterName, e);
@@ -368,5 +367,10 @@ public class SystemStoreRepairTask implements Runnable {
 
   int getMaxRepairRetry() {
     return maxRepairRetry;
+  }
+
+  Version getNewSystemStoreVersion(String clusterName, String systemStoreName, String pushJobId) {
+    return UserSystemStoreLifeCycleHelper
+        .materializeSystemStore(getParentAdmin(), clusterName, systemStoreName, pushJobId);
   }
 }

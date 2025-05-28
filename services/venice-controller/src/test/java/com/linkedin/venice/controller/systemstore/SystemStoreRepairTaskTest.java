@@ -1,22 +1,27 @@
 package com.linkedin.venice.controller.systemstore;
 
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.stats.SystemStoreHealthCheckStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Arrays;
@@ -213,5 +218,34 @@ public class SystemStoreRepairTaskTest {
             .get(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(testStore2)));
     Assert.assertNotNull(
         systemStoreToHeartbeatTimestampMap.get(VeniceSystemStoreType.META_STORE.getSystemStoreName(testStore2)));
+  }
+
+  @Test
+  public void testRepairSystemStore() {
+    String clusterName = "test-cluster";
+    SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
+    doCallRealMethod().when(systemStoreRepairTask).repairBadSystemStore(anyString(), anySet(), anySet(), anyInt());
+    doReturn(true).when(systemStoreRepairTask).shouldContinue(anyString());
+    String systemStore = VeniceSystemStoreUtils.getMetaStoreName("testStore");
+    Set<String> unhealthySystemStoreSet = new HashSet<>();
+    unhealthySystemStoreSet.add(systemStore);
+    Set<String> unreachableSystemStoreSet = new HashSet<>();
+    Version version = mock(Version.class);
+    doReturn(5).when(version).getNumber();
+    doReturn(version).when(systemStoreRepairTask).getNewSystemStoreVersion(anyString(), anyString(), anyString());
+    // Poll throws exception, should be caught inside.
+    doThrow(VeniceException.class).when(systemStoreRepairTask)
+        .pollSystemStorePushStatusUntilCompleted(clusterName, systemStore, 5);
+    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet, unreachableSystemStoreSet, 1);
+    Assert.assertFalse(unhealthySystemStoreSet.isEmpty());
+    // Poll is bad, should not throw exception.
+    doThrow(VeniceException.class).when(systemStoreRepairTask)
+        .pollSystemStorePushStatusUntilCompleted(clusterName, systemStore, 5);
+    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet, unreachableSystemStoreSet, 1);
+    Assert.assertFalse(unhealthySystemStoreSet.isEmpty());
+    // Poll is good, should not throw exception.
+    doReturn(true).when(systemStoreRepairTask).pollSystemStorePushStatusUntilCompleted(clusterName, systemStore, 5);
+    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet, unreachableSystemStoreSet, 1);
+    Assert.assertTrue(unhealthySystemStoreSet.isEmpty());
   }
 }
