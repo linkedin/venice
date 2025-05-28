@@ -104,9 +104,17 @@ public class SystemStoreRepairTask implements Runnable {
         }
       }
       for (Map.Entry<String, Integer> entry: systemStoreToRepairJobVersionMap.entrySet()) {
-        if (pollSystemStorePushStatusUntilCompleted(clusterName, entry.getKey(), entry.getValue())) {
-          unhealthySystemStoreSet.remove(entry.getKey());
-          LOGGER.info("System store: {} in cluster: {} has been fixed by repair job.", entry.getKey(), clusterName);
+        try {
+          if (pollSystemStorePushStatusUntilCompleted(clusterName, entry.getKey(), entry.getValue())) {
+            unhealthySystemStoreSet.remove(entry.getKey());
+            LOGGER.info("System store: {} in cluster: {} has been fixed by repair job.", entry.getKey(), clusterName);
+          }
+        } catch (Exception e) {
+          LOGGER.warn(
+              "Caught exception when trying to poll system store: {} repair job in cluster: {}.",
+              entry.getKey(),
+              clusterName,
+              e);
         }
       }
     }
