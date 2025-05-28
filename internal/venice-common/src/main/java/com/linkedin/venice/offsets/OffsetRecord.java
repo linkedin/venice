@@ -120,6 +120,14 @@ public class OffsetRecord {
     this.partitionState.offsetLag = offsetLag;
   }
 
+  public long getHeartbeatTimestamp() {
+    return this.partitionState.heartbeatTimestamp;
+  }
+
+  public void setHeartbeatTimestamp(long heartbeatTimestamp) {
+    this.partitionState.heartbeatTimestamp = heartbeatTimestamp;
+  }
+
   /**
    * @return the last messageTimeStamp across all producers tracked by this OffsetRecord
    */
