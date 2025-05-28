@@ -16,8 +16,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getExponentialHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getLongPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointData;
 import static org.apache.http.HttpStatus.SC_OK;
@@ -179,11 +177,16 @@ public class BasicClientStatsTest {
       }
 
       // Check OpenTelemetry metrics
-      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
       Attributes expectedAttr = getAttributes(storeName, isRequest ? REQUEST : RESPONSE);
-      ExponentialHistogramPointData data =
-          getExponentialHistogramPointData(metricsData, "key_count", client.getMetricsPrefix());
-      validateExponentialHistogramPointData(data, keyCount, keyCount, 1, keyCount, expectedAttr);
+      validateExponentialHistogramPointData(
+          inMemoryMetricReader,
+          keyCount,
+          keyCount,
+          1,
+          keyCount,
+          expectedAttr,
+          "key_count",
+          client.getMetricsPrefix());
     }
   }
 
@@ -284,8 +287,7 @@ public class BasicClientStatsTest {
         expectedDataSize,
         String.format("There should be %d metrics recorded", expectedDataSize));
 
-    LongPointData callCountData = getLongPointData(metricsData, expectedMetricName, otelPrefix);
-    validateLongPointData(callCountData, expectedValue, expectedAttributes);
+    validateLongPointData(inMemoryMetricReader, expectedValue, expectedAttributes, expectedMetricName, otelPrefix);
   }
 
   @Test
