@@ -68,9 +68,8 @@ public class CachedResourceZKStateListenerTest {
   public void testReconnectWithRefresh() {
     MockVeniceResource resource = new MockVeniceResource();
     int refreshAttemptsForZkReconnect = 3;
-    long refreshIntervalForZkReconnect = TimeUnit.SECONDS.toMillis(10);
     CachedResourceZkStateListener listener =
-        new CachedResourceZkStateListener(resource, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnect);
+        new CachedResourceZkStateListener(resource, refreshAttemptsForZkReconnect, 100);
     zkClient.subscribeStateChanges(listener);
     WatchedEvent disconnectEvent = new WatchedEvent(null, Watcher.Event.KeeperState.Disconnected, null);
     WatchedEvent connectEvent = new WatchedEvent(null, Watcher.Event.KeeperState.SyncConnected, null);
@@ -96,8 +95,7 @@ public class CachedResourceZKStateListenerTest {
   public void testHandleStateChanged() throws Exception {
     MockVeniceResourceWillThrowExceptionWhileRefreshing resource =
         new MockVeniceResourceWillThrowExceptionWhileRefreshing();
-    CachedResourceZkStateListener listener =
-        new CachedResourceZkStateListener(resource, 1, TimeUnit.SECONDS.toMillis(10));
+    CachedResourceZkStateListener listener = new CachedResourceZkStateListener(resource, 1, 100);
 
     listener.handleStateChanged(Watcher.Event.KeeperState.SyncConnected);
     Assert.assertFalse(listener.isDisconnected(), "It's the first to connect, but not the reconnecting.");
