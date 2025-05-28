@@ -2,7 +2,7 @@ package com.linkedin.davinci.storage.chunking;
 
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.listener.response.ReadResponseStats;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -103,7 +103,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
   }
 
   public T get(
-      AbstractStorageEngine store,
+      StorageEngine store,
       int partition,
       ByteBuffer key,
       boolean isChunked,
@@ -133,7 +133,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
   }
 
   public ByteBufferValueRecord<T> getWithSchemaId(
-      AbstractStorageEngine store,
+      StorageEngine store,
       int partition,
       ByteBuffer key,
       boolean isChunked,
@@ -158,7 +158,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
   }
 
   public T get(
-      AbstractStorageEngine store,
+      StorageEngine store,
       int partition,
       byte[] key,
       ByteBuffer reusedRawValue,
@@ -187,7 +187,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
   }
 
   public void getByPartialKey(
-      AbstractStorageEngine store,
+      StorageEngine store,
       int userPartition,
       byte[] keyPrefixBytes,
       T reusedValue,

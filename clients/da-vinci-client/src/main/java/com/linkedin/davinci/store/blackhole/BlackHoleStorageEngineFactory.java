@@ -1,7 +1,7 @@
 package com.linkedin.davinci.store.blackhole;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.meta.PersistenceType;
@@ -11,8 +11,7 @@ import java.util.Set;
 
 public class BlackHoleStorageEngineFactory extends StorageEngineFactory {
   @Override
-  public AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeDef)
-      throws StorageInitializationException {
+  public StorageEngine getStorageEngine(VeniceStoreVersionConfig storeDef) throws StorageInitializationException {
     return new BlackHoleStorageEngine(storeDef.getStoreVersionName());
   }
 
@@ -27,7 +26,7 @@ public class BlackHoleStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public void removeStorageEngine(AbstractStorageEngine engine) {
+  public void removeStorageEngine(StorageEngine engine) {
     // Right away!
   }
 
@@ -42,7 +41,7 @@ public class BlackHoleStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public void closeStorageEngine(AbstractStorageEngine engine) {
+  public void closeStorageEngine(StorageEngine engine) {
     // Right away!
   }
 

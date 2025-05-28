@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
@@ -191,11 +192,6 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   @Override
   public ReadWriteLock getRWLockForPartitionOrThrow(int partitionId) {
     return this.delegate.getRWLockForPartitionOrThrow(partitionId);
-  }
-
-  @Override
-  public long getStoreSizeInBytes() {
-    return this.delegate.getStoreSizeInBytes();
   }
 
   @Override

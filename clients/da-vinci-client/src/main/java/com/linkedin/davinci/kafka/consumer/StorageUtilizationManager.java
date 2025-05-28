@@ -3,7 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.venice.utils.RedundantExceptionFilter.getRedundantExceptionFilter;
 
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.utils.StoragePartitionDiskUsage;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -58,7 +58,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER = getRedundantExceptionFilter();
 
   private final Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
-  private final AbstractStorageEngine storageEngine;
+  private final StorageEngine storageEngine;
   private final Function<Integer, StoragePartitionDiskUsage> storagePartitionDiskUsageFunctionConstructor;
   private final String versionTopic;
   private final String storeName;
@@ -94,7 +94,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
    *              is handled in {@link #handleStoreChanged(Store)}.
    */
   public StorageUtilizationManager(
-      AbstractStorageEngine storageEngine,
+      StorageEngine storageEngine,
       Store store,
       String versionTopic,
       int partitionCount,
@@ -108,7 +108,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     this.partitionConsumptionStateMap = partitionConsumptionStateMap;
     this.storageEngine = storageEngine;
     this.storagePartitionDiskUsageFunctionConstructor =
-        partition -> new StoragePartitionDiskUsage(partition, storageEngine);
+        partition -> new StoragePartitionDiskUsage(() -> getUsageForPartition(partition));
     this.storeName = store.getName();
     this.versionTopic = versionTopic;
     if (partitionCount <= 0) {
@@ -128,6 +128,14 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     setStoreQuota(store);
     Version version = store.getVersion(storeVersion);
     versionIsOnline = isVersionOnline(version);
+  }
+
+  private long getUsageForPartition(int partition) {
+    try {
+      return this.storageEngine.getPartitionOrThrow(partition).getPartitionSizeInBytes();
+    } catch (Exception e) {
+      return 0;
+    }
   }
 
   @Override
@@ -207,7 +215,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   }
 
   public void initPartition(int partition) {
-    partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(partition, storageEngine));
+    partitionConsumptionSizeMap.put(partition, new StoragePartitionDiskUsage(() -> getUsageForPartition(partition)));
   }
 
   public void removePartition(int partition) {

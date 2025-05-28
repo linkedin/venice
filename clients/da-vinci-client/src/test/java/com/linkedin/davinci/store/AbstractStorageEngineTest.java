@@ -27,7 +27,7 @@ import org.testng.annotations.Test;
 
 
 public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
-  protected AbstractStorageEngine testStoreEngine;
+  protected StorageEngine testStoreEngine;
   protected int partitionId;
 
   public static VeniceProperties getServerProperties(PersistenceType type) {
@@ -56,7 +56,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   // creates instance for testStoreEngine
   public abstract void createStorageEngineForTest() throws Exception;
 
-  public AbstractStorageEngine getTestStoreEngine() {
+  public StorageEngine getTestStoreEngine() {
     return testStoreEngine;
   }
 
@@ -216,10 +216,8 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     String storeName = Utils.getUniqueString("dummy_store_name");
     int partitionId = 1;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
-    testStoreEngine.adjustStoragePartition(
-        partitionId,
-        AbstractStorageEngine.StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH,
-        partitionConfig);
+    testStoreEngine
+        .adjustStoragePartition(partitionId, StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH, partitionConfig);
   }
 
   @Test(expectedExceptions = VeniceException.class)
@@ -229,7 +227,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, unknownPartitionId);
     testStoreEngine.adjustStoragePartition(
         unknownPartitionId,
-        AbstractStorageEngine.StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH,
+        StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH,
         partitionConfig);
   }
 
@@ -249,7 +247,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
     testStoreEngine.adjustStoragePartition(
         newPartitionId,
-        AbstractStorageEngine.StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH,
+        StoragePartitionAdjustmentTrigger.BEGIN_BATCH_PUSH,
         deferredWritePartitionConfig);
 
     storagePartition = testStoreEngine.getPartitionOrThrow(newPartitionId);
@@ -276,7 +274,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
     testStoreEngine.adjustStoragePartition(
         newPartitionId,
-        AbstractStorageEngine.StoragePartitionAdjustmentTrigger.END_BATCH_PUSH,
+        StoragePartitionAdjustmentTrigger.END_BATCH_PUSH,
         transactionalPartitionConfig);
 
     storagePartition = testStoreEngine.getPartitionOrThrow(newPartitionId);
@@ -289,8 +287,8 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
   @Test
   public void testIsMetadataPartition() {
-    Assert.assertTrue(AbstractStorageEngine.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID));
-    Assert.assertFalse(AbstractStorageEngine.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID + 1));
+    Assert.assertTrue(StorageEngine.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID));
+    Assert.assertFalse(StorageEngine.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID + 1));
 
   }
 }

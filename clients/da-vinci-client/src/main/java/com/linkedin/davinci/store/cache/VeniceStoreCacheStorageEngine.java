@@ -44,12 +44,6 @@ public class VeniceStoreCacheStorageEngine extends AbstractStorageEngine<VeniceS
   }
 
   @Override
-  public long getStoreSizeInBytes() {
-    // could support this by iterating through the partitions and adding, or, just using a single partition
-    throw new UnsupportedOperationException("Method getStoreSizeInBytes not implemented!!");
-  }
-
-  @Override
   public Set<Integer> getPersistedPartitionIds() {
     return null;
   }

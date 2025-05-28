@@ -18,17 +18,17 @@ public abstract class StorageEngineFactory {
   /**
    * Get an initialized storage implementation
    *
-   * @param storeDef  store definition
+   * @param storeDef store definition
    * @return The storage engine
    */
-  public abstract AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeDef)
+  public abstract StorageEngine getStorageEngine(VeniceStoreVersionConfig storeDef)
       throws StorageInitializationException;
 
   /**
    * Replication metadata is only supported in RocksDB storage engine. For other type of the storage engine, we will
    * throw VeniceException here.
    */
-  public AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeDef, boolean replicationMetadataEnabled) {
+  public StorageEngine getStorageEngine(VeniceStoreVersionConfig storeDef, boolean replicationMetadataEnabled) {
     if (replicationMetadataEnabled) {
       throw new VeniceException("Replication metadata is only supported in RocksDB storage engine!");
     }
@@ -52,7 +52,7 @@ public abstract class StorageEngineFactory {
    *
    * @param engine Specifies the storage engine to be removed
    */
-  public abstract void removeStorageEngine(AbstractStorageEngine engine);
+  public abstract void removeStorageEngine(StorageEngine engine);
 
   /**
    * Remove the storage engine without opening it.
@@ -66,7 +66,7 @@ public abstract class StorageEngineFactory {
    *
    * @param engine Specifies the storage engine to be removed
    */
-  public abstract void closeStorageEngine(AbstractStorageEngine engine);
+  public abstract void closeStorageEngine(StorageEngine engine);
 
   /**
    * Return the persistence type current factory supports.
@@ -83,7 +83,7 @@ public abstract class StorageEngineFactory {
     }
   }
 
-  public void verifyPersistenceType(AbstractStorageEngine engine) {
+  public void verifyPersistenceType(StorageEngine engine) {
     if (!engine.getType().equals(getPersistenceType())) {
       throw new VeniceException(
           "Required store persistence type: " + engine.getType() + " of store: " + engine.getStoreVersionName()

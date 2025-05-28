@@ -1,6 +1,6 @@
 package com.linkedin.davinci.client;
 
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -221,7 +221,7 @@ public abstract class DaVinciRecordTransformer<K, V, O> implements Closeable {
    * Bootstraps the client after it comes online.
    */
   public final void onRecovery(
-      AbstractStorageEngine storageEngine,
+      StorageEngine storageEngine,
       int partitionId,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Lazy<VeniceCompressor> compressor) {

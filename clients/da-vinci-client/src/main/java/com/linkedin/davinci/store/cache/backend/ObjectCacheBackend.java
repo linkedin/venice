@@ -1,7 +1,7 @@
 package com.linkedin.davinci.store.cache.backend;
 
 import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.cache.VeniceStoreCacheStorageEngine;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -95,8 +95,8 @@ public class ObjectCacheBackend {
     return CompletableFuture.completedFuture(new HashMap<K, V>());
   }
 
-  public AbstractStorageEngine getStorageEngine(String topicName) {
-    AbstractStorageEngine engine = versionTopicToCacheEngineMap.get(topicName);
+  public StorageEngine getStorageEngine(String topicName) {
+    StorageEngine engine = versionTopicToCacheEngineMap.get(topicName);
     if (engine != null) {
       return versionTopicToCacheEngineMap.get(topicName);
     }

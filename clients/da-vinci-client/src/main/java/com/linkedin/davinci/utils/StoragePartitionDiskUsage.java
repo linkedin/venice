@@ -1,6 +1,6 @@
 package com.linkedin.davinci.utils;
 
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import java.util.function.LongSupplier;
 
 
 /**
@@ -8,17 +8,15 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
  * Triggered by size and/or time by #getUsage(), it will sync up with real disk usage.
  */
 public class StoragePartitionDiskUsage {
-  private final int partition;
-  private final AbstractStorageEngine storageEngine;
+  private final LongSupplier usageGetter;
 
   /**
    * Disk usage + memory usage since last sync with the disk
    */
   private volatile long combinedPartitionUsage = 0;
 
-  public StoragePartitionDiskUsage(int partition, AbstractStorageEngine storageEngine) {
-    this.partition = partition;
-    this.storageEngine = storageEngine;
+  public StoragePartitionDiskUsage(LongSupplier usageGetter) {
+    this.usageGetter = usageGetter;
     this.syncWithDB();
   }
 
@@ -44,6 +42,6 @@ public class StoragePartitionDiskUsage {
    * sync with real partition DB usage and reset in memory partition usage to be zero
    */
   public final synchronized void syncWithDB() {
-    this.combinedPartitionUsage = storageEngine.getPartitionSizeInBytes(this.partition);
+    this.combinedPartitionUsage = usageGetter.getAsLong();
   }
 }
