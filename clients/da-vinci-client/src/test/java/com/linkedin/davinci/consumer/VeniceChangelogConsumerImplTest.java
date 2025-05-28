@@ -875,7 +875,6 @@ public class VeniceChangelogConsumerImplTest {
     compressorMapField.set(veniceChangelogConsumer, compressorMap);
 
     ChunkAssembler chunkAssembler = mock(ChunkAssembler.class);
-    doCallRealMethod().when(chunkAssembler).isChunkedRecord(anyInt());
     Field chunkAssemblerField = VeniceChangelogConsumerImpl.class.getDeclaredField("chunkAssembler");
     chunkAssemblerField.setAccessible(true);
     chunkAssemblerField.set(veniceChangelogConsumer, chunkAssembler);
