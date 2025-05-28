@@ -271,6 +271,43 @@ public class TestStoreMigration {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreMigrationWithStoreConfigs() throws Exception {
+    String storeName = Utils.getUniqueString("testWithStoreConfigsMigration");
+    createAndPushStore(srcClusterName, storeName);
+
+    try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+        ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
+      ControllerResponse initialUpdate = srcParentControllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setMaxCompactionLagSeconds(1000)
+              .setMinCompactionLagSeconds(500)
+              .setNearlineProducerCountPerWriter(5)
+              .setIsDavinciHeartbeatReported(true));
+      Assert.assertFalse(initialUpdate.isError());
+
+      StoreMigrationTestUtil.startMigration(parentControllerUrl, storeName, srcClusterName, destClusterName);
+      // Ensure migration status is updated in source parent controller
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          () -> Assert.assertTrue(srcParentControllerClient.getStore(storeName).getStore().isMigrating()));
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreInfo srcStore = srcParentControllerClient.getStore(storeName).getStore();
+        StoreInfo destStore = destParentControllerClient.getStore(storeName).getStore();
+        Assert.assertNotNull(srcStore);
+        Assert.assertNotNull(destStore);
+
+        Assert.assertEquals(srcStore.getMaxCompactionLagSeconds(), destStore.getMaxCompactionLagSeconds());
+        Assert.assertEquals(srcStore.getMinCompactionLagSeconds(), destStore.getMinCompactionLagSeconds());
+        Assert
+            .assertEquals(srcStore.getNearlineProducerCountPerWriter(), destStore.getNearlineProducerCountPerWriter());
+        Assert.assertEquals(srcStore.getIsDavinciHeartbeatReported(), destStore.getIsDavinciHeartbeatReported());
+      });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void testStoreMigrationWithMetaSystemStore() throws Exception {
     String storeName = Utils.getUniqueString("testWithMetaSystemStore");
     createAndPushStore(srcClusterName, storeName);
