@@ -839,13 +839,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         return keyStatistics.getTickerCount(COMPACTION_KEY_DROP_NEWER_ENTRY)
             + keyStatistics.getTickerCount(COMPACTION_KEY_DROP_USER);
       }
-      return -1;
+      return 0;
     } finally {
       readCloseRWLock.readLock().unlock();
     }
   }
 
-  public long getKeyCountEstimate() throws RocksDBException {
+  public long getKeyCountEstimate() {
     return getRocksDBStatValue("rocksdb.estimate-num-keys");
   }
 
