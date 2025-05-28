@@ -539,9 +539,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();
-      // Record the last ignored offset
-      partitionConsumptionState
-          .updateLatestIgnoredUpstreamRTOffset(kafkaClusterIdToUrlMap.get(kafkaClusterId), sourceOffset);
       return new PubSubMessageProcessedResult(
           new MergeConflictResultWrapper(
               mergeConflictResult,
@@ -907,34 +904,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
-  protected void produceToLocalKafka(
-      DefaultPubSubMessage consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
-      int partition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
-    super.produceToLocalKafka(
-        consumerRecord,
-        partitionConsumptionState,
-        leaderProducedRecordContext,
-        produceFunction,
-        partition,
-        kafkaUrl,
-        kafkaClusterId,
-        beforeProcessingRecordTimestampNs);
-    // Update the partition consumption state to say that we've transmitted the message to kafka (but haven't
-    // necessarily received an ack back yet).
-    if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
-        && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-      partitionConsumptionState
-          .updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getPosition().getNumericOffset());
-    }
-  }
-
-  @Override
   protected Map<String, Long> calculateLeaderUpstreamOffsetWithTopicSwitch(
       PartitionConsumptionState partitionConsumptionState,
       PubSubTopic newSourceTopic,
@@ -1222,15 +1191,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * For A/A, there are multiple entries in upstreamOffsetMap during RT ingestion.
-   * If the current DataReplicationPolicy is on Aggregate mode, A/A will check the upstream offset lags from all regions;
-   * otherwise, only check the upstream offset lag from the local region.
+   * Returns the latest processed upstream real-time offset for the given region.
+   * This is used to compute hybrid offset lag on a per-region basis, which is then
+   * used in conjunction with lag from other regions to determine ready-to-serve status.
    */
   @Override
   protected long getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String upstreamKafkaUrl) {
-    return pcs.getLatestProcessedUpstreamRTOffsetWithIgnoredMessages(upstreamKafkaUrl);
+    return pcs.getLatestProcessedUpstreamRTOffset(upstreamKafkaUrl);
   }
 
   /**
@@ -1353,9 +1322,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * For stores in aggregate mode this is optimistic and returns the minimum lag of all fabric. This is because in
-   * aggregate mode duplicate msg consumption happen from all fabric. So it should be fine to consider the lowest lag.
-   *
    * For stores in active/active mode, if no fabric is unreachable, return the maximum lag of all fabrics. If only one
    * fabric is unreachable, return the maximum lag of other fabrics. If more than one fabrics are unreachable, return
    * Long.MAX_VALUE, which means the partition is not ready-to-serve.
@@ -1363,7 +1329,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * unreachable fabric and make the decision. For example, we should not let partition ready-to-serve when the only
    * source fabric is unreachable.
    *
-   * In non-aggregate mode of consumption only return the local fabric lag
    * @param sourceRealTimeTopicKafkaURLs
    * @param partitionConsumptionState
    * @param shouldLogLag
