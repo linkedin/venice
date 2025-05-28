@@ -466,6 +466,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
 
+  // Test only.
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
@@ -477,8 +478,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         multiClusterConfigs,
         metricsRepository,
         false,
-        d2Client,
-        null,
+        Collections.singletonMap(multiClusterConfigs.getRegionName(), d2Client),
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
@@ -493,7 +493,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
       boolean sslEnabled,
-      @Nonnull D2Client d2Client,
       Map<String, D2Client> d2Clients,
       Optional<SSLConfig> sslConfig,
       Optional<DynamicAccessController> accessController,
@@ -520,7 +519,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.defaultMaxRecordSizeBytes = multiClusterConfigs.getDefaultMaxRecordSizeBytes();
 
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
+
+    LOGGER.info(
+        "D2 client map: {}, getRegionName: {}, {}",
+        d2Clients,
+        multiClusterConfigs.getParentFabrics(),
+        getRegionName());
     this.d2Client = d2Clients.get(getRegionName());
+    Validate.notNull(this.d2Client);
     this.d2Clients = d2Clients;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.sslEnabled = sslEnabled;
