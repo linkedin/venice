@@ -245,7 +245,6 @@ public class BasicClientStatsTest {
       String otelPrefix) {
     Attributes expectedAttributes = getExpectedAttributes(storeName, httpStatus, category);
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
-    Assert.assertFalse(metricsData.isEmpty());
     assertEquals(metricsData.size(), 2, "There should be two metrics recorded: call_time and call_count");
 
     validateLongPointData(inMemoryMetricReader, 1, expectedAttributes, "call_count", otelPrefix);
@@ -257,7 +256,7 @@ public class BasicClientStatsTest {
         1,
         latency,
         expectedAttributes,
-        "call_count",
+        "call_time",
         otelPrefix);
   }
 
@@ -281,7 +280,6 @@ public class BasicClientStatsTest {
       long expectedValue) {
     Attributes expectedAttributes = getExpectedAttributes(storeName, retryType);
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
-    Assert.assertFalse(metricsData.isEmpty());
     assertEquals(
         metricsData.size(),
         expectedDataSize,
