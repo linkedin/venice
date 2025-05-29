@@ -926,7 +926,7 @@ public class VenicePushJob implements AutoCloseable {
       cancel();
       throw new VeniceTimeoutException(
           "Failing push-job for store " + pushJobSetting.storeName + " which is still running after " + timeoutMs
-              + " ms.");
+              + " ms (" + TimeUnit.MILLISECONDS.toHours(timeoutMs) + " hours)");
     }, timeoutMs, TimeUnit.MILLISECONDS);
   }
 
