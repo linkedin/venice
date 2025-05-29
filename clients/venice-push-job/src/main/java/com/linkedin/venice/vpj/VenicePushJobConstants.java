@@ -247,11 +247,6 @@ public final class VenicePushJobConstants {
    */
   public static final String JOB_EXEC_ID = "job.execution.id";
 
-  /**
-   * Config to enable the service that uploads push job statuses to the controller using
-   * {@code ControllerClient.uploadPushJobStatus()}, the job status is then packaged and sent to dedicated Kafka channel.
-   */
-  public static final String PUSH_JOB_STATUS_UPLOAD_ENABLE = "push.job.status.upload.enable";
   public static final String REDUCER_SPECULATIVE_EXECUTION_ENABLE = "reducer.speculative.execution.enable";
 
   /**

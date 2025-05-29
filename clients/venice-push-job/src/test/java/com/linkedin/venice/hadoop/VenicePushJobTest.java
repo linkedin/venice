@@ -21,7 +21,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OVERRIDE_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
@@ -648,7 +647,6 @@ public class VenicePushJobTest {
     Properties props = getVpjRequiredProperties();
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
-    props.put(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
     ControllerClient client = getClient();
 
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
@@ -684,21 +682,8 @@ public class VenicePushJobTest {
   }
 
   @Test
-  public void testSkipStatusUpdateWhenUploadDisabled() {
-    Properties props = getVpjRequiredProperties();
-    props.put(PUSH_JOB_STATUS_UPLOAD_ENABLE, "false"); // upload disabled
-    ControllerClient client = getClient();
-    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
-      pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.STARTED);
-      pushJob.sendPushJobDetailsToController();
-      verify(client, never()).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
-    }
-  }
-
-  @Test
   public void testSendNonTerminalThenTerminalStatus() {
     Properties props = getVpjRequiredProperties();
-    props.put(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
     ControllerClient client = getClient();
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       PushJobDetails pushJobDetails = pushJob.getPushJobDetails();
@@ -715,7 +700,6 @@ public class VenicePushJobTest {
   @Test
   public void testSendStatusAgainIfDifferentTerminalStatus() {
     Properties props = getVpjRequiredProperties();
-    props.put(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
     ControllerClient client = getClient();
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       PushJobDetails pushJobDetails = pushJob.getPushJobDetails();
@@ -734,7 +718,6 @@ public class VenicePushJobTest {
   @Test
   public void testSkipRepeatedFailedStatus() {
     Properties props = getVpjRequiredProperties();
-    props.put(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
     ControllerClient client = getClient();
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       PushJobDetails pushJobDetails = pushJob.getPushJobDetails();
@@ -751,7 +734,6 @@ public class VenicePushJobTest {
   @Test
   public void testHandleExceptionDuringSendPushDetailsToController() {
     Properties props = getVpjRequiredProperties();
-    props.put(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
     ControllerClient client = mock(ControllerClient.class);
     when(client.sendPushJobDetails(anyString(), anyInt(), any(byte[].class))).thenThrow(new RuntimeException("fake"));
 

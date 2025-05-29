@@ -54,7 +54,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_700;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OVERRIDE_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
@@ -350,7 +349,6 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
-    pushJobSettingToReturn.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
     pushJobSettingToReturn.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
     pushJobSettingToReturn.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
     pushJobSettingToReturn.pollJobStatusIntervalMs =
@@ -1759,15 +1757,6 @@ public class VenicePushJob implements AutoCloseable {
    * @return {@code true} if the status update should be skipped, {@code false} otherwise.
    */
   private boolean shouldSkipPushJobStatusUpdate() {
-    // Check if status upload is enabled
-    if (!pushJobSetting.enablePushJobStatusUpload) {
-      if (!pushJobStatusUploadDisabledHasBeenLogged) {
-        pushJobStatusUploadDisabledHasBeenLogged = true;
-        LOGGER.warn("Skipping push job status update. Feature is disabled via config.");
-      }
-      return true;
-    }
-
     // Check if pushJobDetails is populated
     if (pushJobDetails == null) {
       LOGGER.warn("Unable to send push job details for monitoring purpose. The payload was not populated properly");
@@ -1780,7 +1769,7 @@ public class VenicePushJob implements AutoCloseable {
     // This check is deliberately done outside the synchronized block to avoid locking in no-op paths.
     if (PushJobDetailsStatus.isFailed(currentStatus) && PushJobDetailsStatus.isFailed(lastReportedStatus)) {
       LOGGER.info(
-          "Skipping status update. Already reported terminal failure: {} and current status is also terminal: {}",
+          "Skipping status update. Already reported terminal failure status: {} and current status is also terminal: {}",
           lastReportedStatus,
           currentStatus);
       return true;
