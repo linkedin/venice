@@ -21,6 +21,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OVERRIDE_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
@@ -640,6 +641,128 @@ public class VenicePushJobTest {
     props.put(SOURCE_KAFKA, true);
     props.put(SOURCE_ETL, true);
     new VenicePushJob(PUSH_JOB_ID, props);
+  }
+
+  @Test
+  public void testSendPushJobDetailsStatusWithTerminallyFailedStatus() {
+    Properties props = getVpjRequiredProperties();
+    props.put(KEY_FIELD_PROP, "id");
+    props.put(VALUE_FIELD_PROP, "name");
+    props.put(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
+    ControllerClient client = getClient();
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      // Set up initial state and basic metadata
+      pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.STARTED);
+      PushJobDetails pushJobDetails = pushJob.getPushJobDetails();
+      pushJobDetails.clusterName = TEST_CLUSTER;
+      pushJobDetails.failureDetails = "Test failure details";
+
+      // Send terminal status: ERROR
+      pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.ERROR);
+      pushJob.sendPushJobDetailsToController(); // Should send this
+      verify(client, times(1)).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+
+      // Attempt to send another terminal status: KILLED
+      pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.KILLED);
+      pushJob.sendPushJobDetailsToController(); // Should be skipped (duplicate terminal status)
+      verify(client, times(1)).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+
+      // Call cancel; should not send again since last status was terminal
+      pushJob.cancel();
+      verify(client, times(1)).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+
+      // Send non-terminal status: COMPLETED
+      pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.COMPLETED);
+      pushJob.sendPushJobDetailsToController(); // Should send this
+      verify(client, times(2)).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+
+      // Call cancel again; last status was non-terminal, so this should send KILLED
+      pushJob.cancel();
+      verify(client, times(3)).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+    }
+  }
+
+  @Test
+  public void testSkipStatusUpdateWhenUploadDisabled() {
+    Properties props = getVpjRequiredProperties();
+    props.put(PUSH_JOB_STATUS_UPLOAD_ENABLE, "false"); // upload disabled
+    ControllerClient client = getClient();
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.STARTED);
+      pushJob.sendPushJobDetailsToController();
+      verify(client, never()).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+    }
+  }
+
+  @Test
+  public void testSendNonTerminalThenTerminalStatus() {
+    Properties props = getVpjRequiredProperties();
+    props.put(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
+    ControllerClient client = getClient();
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      PushJobDetails pushJobDetails = pushJob.getPushJobDetails();
+      pushJobDetails.clusterName = TEST_CLUSTER;
+      pushJobDetails.failureDetails = "Test failure details";
+      pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.STARTED);
+      pushJob.sendPushJobDetailsToController();
+      pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.COMPLETED);
+      pushJob.sendPushJobDetailsToController();
+      verify(client, times(2)).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+    }
+  }
+
+  @Test
+  public void testSendStatusAgainIfDifferentTerminalStatus() {
+    Properties props = getVpjRequiredProperties();
+    props.put(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
+    ControllerClient client = getClient();
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      PushJobDetails pushJobDetails = pushJob.getPushJobDetails();
+      pushJobDetails.clusterName = TEST_CLUSTER;
+      pushJobDetails.failureDetails = "Test failure details";
+      pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.STARTED);
+      pushJob.sendPushJobDetailsToController(); // sends STARTED
+      pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.COMPLETED);
+      pushJob.sendPushJobDetailsToController(); // sends COMPLETED
+      pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.KILLED);
+      pushJob.sendPushJobDetailsToController(); // should send again because COMPLETED != KILLED
+      verify(client, times(3)).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+    }
+  }
+
+  @Test
+  public void testSkipRepeatedFailedStatus() {
+    Properties props = getVpjRequiredProperties();
+    props.put(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
+    ControllerClient client = getClient();
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      PushJobDetails pushJobDetails = pushJob.getPushJobDetails();
+      pushJobDetails.clusterName = TEST_CLUSTER;
+      pushJobDetails.failureDetails = "Test failure details";
+      pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.ERROR);
+      pushJob.sendPushJobDetailsToController(); // first send
+      pushJob.addPushJobDetailsOverallStatus(PushJobDetailsStatus.ERROR);
+      pushJob.sendPushJobDetailsToController(); // should skip
+      verify(client, times(1)).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+    }
+  }
+
+  @Test
+  public void testHandleExceptionDuringSendPushDetailsToController() {
+    Properties props = getVpjRequiredProperties();
+    props.put(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
+    ControllerClient client = mock(ControllerClient.class);
+    when(client.sendPushJobDetails(anyString(), anyInt(), any(byte[].class))).thenThrow(new RuntimeException("fake"));
+
+    try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
+      PushJobDetails pushJobDetails = pushJob.getPushJobDetails();
+      pushJobDetails.overallStatus = null;
+      pushJobDetails.clusterName = null;
+      pushJob.sendPushJobDetailsToController(); // expected to throw an exception during serialization of push job
+                                                // details
+      verify(client, never()).sendPushJobDetails(anyString(), anyInt(), any(byte[].class));
+    }
   }
 
   @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)

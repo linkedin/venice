@@ -82,6 +82,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_P
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.PushJobCheckpoints;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -1734,7 +1735,7 @@ public class VenicePushJob implements AutoCloseable {
   private final Object lastReportedStatusLock = new Object();
 
   private static PushJobDetailsStatus getCurrentOverallStatus(PushJobDetails pushJobDetails) {
-    if (pushJobDetails != null && !pushJobDetails.overallStatus.isEmpty()) {
+    if (pushJobDetails != null && pushJobDetails.overallStatus != null && !pushJobDetails.overallStatus.isEmpty()) {
       return PushJobDetailsStatus
           .valueOf(pushJobDetails.overallStatus.get(pushJobDetails.overallStatus.size() - 1).status);
     }
@@ -1788,7 +1789,8 @@ public class VenicePushJob implements AutoCloseable {
     return false;
   }
 
-  private void sendPushJobDetailsToController() {
+  @VisibleForTesting
+  void sendPushJobDetailsToController() {
     if (shouldSkipPushJobStatusUpdate()) {
       return;
     }
@@ -2829,5 +2831,13 @@ public class VenicePushJob implements AutoCloseable {
 
   PushJobDetails getPushJobDetails() {
     return pushJobDetails;
+  }
+
+  @VisibleForTesting
+  void addPushJobDetailsOverallStatus(PushJobDetailsStatus pushJobDetailsStatus) {
+    if (pushJobDetails.overallStatus == null) {
+      pushJobDetails.overallStatus = new ArrayList<>();
+    }
+    pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(pushJobDetailsStatus.getValue()));
   }
 }
