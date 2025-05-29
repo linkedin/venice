@@ -421,8 +421,11 @@ public class ServiceFactory {
       VeniceClusterWrapper cluster,
       String dataBasePath,
       DaVinciConfig daVinciConfig) {
+    Properties pubSubProps = new Properties();
+    pubSubProps.putAll(cluster.getPubSubClientProperties());
     VeniceProperties backendConfig = DaVinciTestContext.getDaVinciPropertyBuilder(cluster.getZk().getAddress())
         .put(DATA_BASE_PATH, dataBasePath)
+        .put(pubSubProps)
         .build();
     return getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig);
   }
@@ -432,6 +435,9 @@ public class ServiceFactory {
       VeniceClusterWrapper cluster,
       DaVinciConfig daVinciConfig,
       VeniceProperties backendConfig) {
+    Properties properties = backendConfig.getPropertiesCopy();
+    properties.putAll(cluster.getPubSubClientProperties());
+    backendConfig = new VeniceProperties(properties);
     return getGenericAvroDaVinciClient(storeName, cluster.getZk().getAddress(), daVinciConfig, backendConfig);
   }
 
@@ -481,10 +487,12 @@ public class ServiceFactory {
       D2Client d2Client,
       MetricsRepository metricsRepository,
       Optional<Set<String>> managedClients,
-      String zkAddress,
+      VeniceClusterWrapper cluster,
       String storeName,
       DaVinciConfig daVinciConfig,
       Map<String, Object> extraBackendProperties) {
+    String zkAddress = cluster.getZk().getAddress();
+    extraBackendProperties.putAll(cluster.getPubSubClientProperties());
     return DaVinciTestContext.getGenericAvroDaVinciFactoryAndClientWithRetries(
         d2Client,
         metricsRepository,

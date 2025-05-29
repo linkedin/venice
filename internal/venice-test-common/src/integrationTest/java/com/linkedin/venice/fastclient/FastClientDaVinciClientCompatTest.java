@@ -4,6 +4,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLO
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.endToEnd.DaVinciClientRecordTransformerTest.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
 import com.linkedin.davinci.client.DaVinciClient;
@@ -91,11 +92,12 @@ public class FastClientDaVinciClientCompatTest extends AbstractClientEndToEndSet
             .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
             .put(DATA_BASE_PATH, dataPath)
             .build();
-    daVinciClientFactory = new CachingDaVinciClientFactory(
+    daVinciClientFactory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         new MetricsRepository(),
-        userStoreDaVinciBackendConfig);
+        userStoreDaVinciBackendConfig,
+        veniceCluster);
     return daVinciClientFactory.getAndStartSpecificAvroClient(storeName, new DaVinciConfig(), TestValueSchema.class);
   }
 
