@@ -509,13 +509,16 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         totalStats,
         () -> totalStats.batchProcessingRequestLatencySensor,
         avgAndMax());
-    this.totalDuplicateKeyCount = registerOnlyTotalSensor(
-        "duplicate_key_count",
+    this.totalDuplicateKeyCount = registerPerStoreAndTotalSensor(
+        "rocksdb_duplicate_key_count",
         totalStats,
         () -> totalStats.totalDuplicateKeyCount,
         avgAndMax());
-    this.totalKeyCountEstimate =
-        registerOnlyTotalSensor("rocksdb_key_count", totalStats, () -> totalStats.totalKeyCountEstimate, avgAndMax());
+    this.totalKeyCountEstimate = registerPerStoreAndTotalSensor(
+        "rocksdb_key_count",
+        totalStats,
+        () -> totalStats.totalKeyCountEstimate,
+        avgAndMax());
   }
 
   /** Record a host-level byte consumption rate across all store versions */
