@@ -35,7 +35,6 @@ import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.endToEnd.TestStringRecordTransformer;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
-import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.utils.SslUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
@@ -118,7 +117,7 @@ public class DaVinciUserApp {
     }
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
-        ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
+        DaVinciTestContext.getGenericAvroDaVinciFactoryAndClientWithRetries(
             d2Client,
             new MetricsRepository(),
             Optional.empty(),
