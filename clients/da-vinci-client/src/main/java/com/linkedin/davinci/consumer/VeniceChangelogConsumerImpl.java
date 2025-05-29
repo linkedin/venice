@@ -766,16 +766,17 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
 
       if (changeCaptureStats != null) {
-        changeCaptureStats.emitPollCallCountMetrics(SUCCESS);
+        changeCaptureStats.emitPollCountMetrics(SUCCESS);
         changeCaptureStats.emitRecordsConsumedCountMetrics(messagesPolled);
       }
 
       return pubSubMessages;
     } catch (Exception exception) {
-      LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
       if (changeCaptureStats != null) {
-        changeCaptureStats.emitPollCallCountMetrics(FAIL);
+        changeCaptureStats.emitPollCountMetrics(FAIL);
       }
+
+      LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
       throw exception;
     }
   }
@@ -924,7 +925,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
             message.getPosition().getNumericOffset(),
             compressor);
 
-        if (changeCaptureStats != null && chunkAssembler.isChunkedRecord(put.getSchemaId())) {
+        if (changeCaptureStats != null && ChunkAssembler.isChunkedRecord(put.getSchemaId())) {
           changeCaptureStats.emitChunkedRecordCountMetrics(SUCCESS);
         }
 
@@ -934,14 +935,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           return Optional.empty();
         }
       } catch (Exception exception) {
+        if (changeCaptureStats != null && ChunkAssembler.isChunkedRecord(put.getSchemaId())) {
+          changeCaptureStats.emitChunkedRecordCountMetrics(FAIL);
+        }
+
         LOGGER.error(
             "Encountered an exception when processing a record in ChunkAssembler for topic: {} and partition: {}",
             pubSubTopicPartition.getTopicName(),
             pubSubTopicPartition.getPartitionNumber());
-
-        if (changeCaptureStats != null && chunkAssembler.isChunkedRecord(put.getSchemaId())) {
-          changeCaptureStats.emitChunkedRecordCountMetrics(FAIL);
-        }
         throw exception;
       }
 
@@ -1106,14 +1107,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
         return true;
       } catch (Exception exception) {
+        if (changeCaptureStats != null) {
+          changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
+        }
+
         LOGGER.error(
             "Version Swap failed when switching to topic: {} for partition: {}",
             pubSubTopicPartition.getTopicName(),
             pubSubTopicPartition.getPartitionNumber());
-
-        if (changeCaptureStats != null) {
-          changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
-        }
         throw exception;
       }
     }

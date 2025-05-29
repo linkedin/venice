@@ -1,6 +1,6 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
 import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
@@ -114,7 +114,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     assertEquals(changelogClientConfig.getMaxBufferSize(), 1000, "Default max buffer size should be 1000");
     changelogClientConfig.setMaxBufferSize(MAX_BUFFER_SIZE);
     changelogClientConfig.getInnerClientConfig()
-        .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CLIENT_METRIC_ENTITIES, true));
+        .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true));
 
     bootstrappingVeniceChangelogConsumer =
         new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<>(changelogClientConfig);
@@ -504,13 +504,13 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     doCallRealMethod().when(bootstrappingVeniceChangelogConsumer).poll(POLL_TIMEOUT);
     assertThrows(Exception.class, () -> bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT));
 
-    verify(consumerStats).emitPollCallCountMetrics(FAIL);
+    verify(consumerStats).emitPollCountMetrics(FAIL);
     verify(consumerStats, times(0)).emitRecordsConsumedCountMetrics(anyInt());
   }
 
   @Test
   public void testMetricReportingThread() {
-    bootstrappingVeniceChangelogConsumer.setBackgroundReporterThreadSleepInterval(1L);
+    bootstrappingVeniceChangelogConsumer.setBackgroundReporterThreadSleepIntervalSeconds(1L);
 
     verify(changeCaptureStats, times(0)).emitCurrentConsumingVersionMetrics(anyInt(), anyInt());
     bootstrappingVeniceChangelogConsumer.start();
@@ -570,7 +570,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     } else {
       verify(changeCaptureStats).emitRecordsConsumedCountMetrics(PARTITION_COUNT);
     }
-    verify(changeCaptureStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+    verify(changeCaptureStats).emitPollCountMetrics(VeniceResponseStatusCategory.SUCCESS);
     assertEquals(pubSubMessages.size(), PARTITION_COUNT);
 
     int i = 0;
@@ -585,7 +585,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     clearInvocations(changeCaptureStats);
     assertEquals(bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT).size(), 0, "Buffer should be empty");
     verify(changeCaptureStats).emitRecordsConsumedCountMetrics(0);
-    verify(changeCaptureStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+    verify(changeCaptureStats).emitPollCountMetrics(VeniceResponseStatusCategory.SUCCESS);
   }
 
   private void verifyDeletes() {
@@ -593,7 +593,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     Collection<PubSubMessage<Integer, ChangeEvent<Integer>, VeniceChangeCoordinate>> pubSubMessages =
         bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT);
     verify(changeCaptureStats).emitRecordsConsumedCountMetrics(PARTITION_COUNT);
-    verify(changeCaptureStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+    verify(changeCaptureStats).emitPollCountMetrics(VeniceResponseStatusCategory.SUCCESS);
     assertEquals(pubSubMessages.size(), PARTITION_COUNT);
 
     int i = 0;
@@ -608,6 +608,6 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImplTes
     clearInvocations(changeCaptureStats);
     assertEquals(bootstrappingVeniceChangelogConsumer.poll(POLL_TIMEOUT).size(), 0, "Buffer should be empty");
     verify(changeCaptureStats).emitRecordsConsumedCountMetrics(0);
-    verify(changeCaptureStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+    verify(changeCaptureStats).emitPollCountMetrics(VeniceResponseStatusCategory.SUCCESS);
   }
 }

@@ -85,7 +85,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
   private final BackgroundReporterThread backgroundReporterThread;
-  private long backgroundReporterThreadSleepInterval = 60L;
+  private long backgroundReporterThreadSleepIntervalSeconds = 60L;
   private final BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
 
@@ -246,16 +246,16 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
       if (changeCaptureStats != null) {
         changeCaptureStats.emitRecordsConsumedCountMetrics(messagesPolled);
-        changeCaptureStats.emitPollCallCountMetrics(SUCCESS);
+        changeCaptureStats.emitPollCountMetrics(SUCCESS);
       }
 
       return drainedPubSubMessages;
     } catch (Exception exception) {
-      LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
-
       if (changeCaptureStats != null) {
-        changeCaptureStats.emitPollCallCountMetrics(FAIL);
+        changeCaptureStats.emitPollCountMetrics(FAIL);
       }
+
+      LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
       throw exception;
     }
   }
@@ -297,7 +297,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       while (!Thread.interrupted()) {
         try {
           recordStats();
-          TimeUnit.SECONDS.sleep(backgroundReporterThreadSleepInterval);
+          TimeUnit.SECONDS.sleep(backgroundReporterThreadSleepIntervalSeconds);
         } catch (InterruptedException e) {
           LOGGER.warn("BackgroundReporterThread interrupted!  Shutting down...", e);
           Thread.currentThread().interrupt(); // Restore the interrupt status
@@ -325,8 +325,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   }
 
   @VisibleForTesting
-  protected void setBackgroundReporterThreadSleepInterval(long interval) {
-    backgroundReporterThreadSleepInterval = interval;
+  protected void setBackgroundReporterThreadSleepIntervalSeconds(long interval) {
+    backgroundReporterThreadSleepIntervalSeconds = interval;
   }
 
   public class DaVinciRecordTransformerBootstrappingChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
@@ -468,15 +468,16 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
           }
         }
       } catch (Exception exception) {
+        if (changeCaptureStats != null) {
+          changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
+        }
+
         LOGGER.error(
             "Encountered an exception when processing Version Swap from version: {} to version: {} for store: {} for partition: {}",
             currentVersion,
             futureVersion,
             storeName,
             partitionId);
-        if (changeCaptureStats != null) {
-          changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
-        }
         throw exception;
       }
     }

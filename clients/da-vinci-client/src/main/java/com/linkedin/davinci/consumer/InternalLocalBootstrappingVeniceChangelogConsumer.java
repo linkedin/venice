@@ -206,14 +206,14 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         }
         return true;
       } catch (Exception error) {
+        if (changeCaptureStats != null) {
+          changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
+        }
+
         LOGGER.error(
             "Version Swap failed when switching to topic: {} for partition: {}",
             pubSubTopicPartition.getTopicName(),
             pubSubTopicPartition.getPartitionNumber());
-
-        if (changeCaptureStats != null) {
-          changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
-        }
         throw error;
       }
     }

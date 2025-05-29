@@ -38,7 +38,7 @@ import java.util.Set;
  *
  */
 public class BasicConsumerStats extends AbstractVeniceStats {
-  public static final Collection<MetricEntity> CLIENT_METRIC_ENTITIES =
+  public static final Collection<MetricEntity> CONSUMER_METRIC_ENTITIES =
       getUniqueMetricEntities(BasicConsumerMetricEntity.class);
 
   private final Attributes baseAttributes;
@@ -47,8 +47,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   private final MetricEntityStateBase minimumConsumingVersionMetric;
   private final MetricEntityStateBase maximumConsumingVersionMetric;
   private final MetricEntityStateBase recordsConsumedCountMetric;
-  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> pollSuccessCallCountMetric;
-  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> pollFailCallCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> pollSuccessCountMetric;
+  private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> pollFailCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapSuccessCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapFailCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordSuccessCountMetric;
@@ -119,20 +119,20 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         baseDimensionsMap,
         baseAttributes);
 
-    pollSuccessCallCountMetric = MetricEntityStateOneEnum.create(
-        BasicConsumerMetricEntity.POLL_CALL_COUNT.getMetricEntity(),
+    pollSuccessCountMetric = MetricEntityStateOneEnum.create(
+        BasicConsumerMetricEntity.POLL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        BasicConsumerTehutiMetricName.POLL_SUCCESS_CALL_COUNT,
+        BasicConsumerTehutiMetricName.POLL_SUCCESS_COUNT,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
-    pollFailCallCountMetric = MetricEntityStateOneEnum.create(
-        BasicConsumerMetricEntity.POLL_CALL_COUNT.getMetricEntity(),
+    pollFailCountMetric = MetricEntityStateOneEnum.create(
+        BasicConsumerMetricEntity.POLL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        BasicConsumerTehutiMetricName.POLL_FAIL_CALL_COUNT,
+        BasicConsumerTehutiMetricName.POLL_FAIL_COUNT,
         Collections.singletonList(new Avg()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
@@ -190,11 +190,11 @@ public class BasicConsumerStats extends AbstractVeniceStats {
     recordsConsumedCountMetric.record(count);
   }
 
-  public void emitPollCallCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
+  public void emitPollCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
     if (responseStatusCategory == SUCCESS) {
-      pollSuccessCallCountMetric.record(1, responseStatusCategory);
+      pollSuccessCountMetric.record(1, responseStatusCategory);
     } else {
-      pollFailCallCountMetric.record(1, responseStatusCategory);
+      pollFailCountMetric.record(1, responseStatusCategory);
     }
   }
 
@@ -226,8 +226,8 @@ public class BasicConsumerStats extends AbstractVeniceStats {
    * Metric names for tehuti metrics used in this class.
    */
   public enum BasicConsumerTehutiMetricName implements TehutiMetricNameEnum {
-    MAX_PARTITION_LAG, RECORDS_CONSUMED, MINIMUM_CONSUMING_VERSION, MAXIMUM_CONSUMING_VERSION, POLL_SUCCESS_CALL_COUNT,
-    POLL_FAIL_CALL_COUNT, VERSION_SWAP_SUCCESS_COUNT, VERSION_SWAP_FAIL_COUNT, CHUNKED_RECORD_SUCCESS_COUNT,
+    MAX_PARTITION_LAG, RECORDS_CONSUMED, MINIMUM_CONSUMING_VERSION, MAXIMUM_CONSUMING_VERSION, POLL_SUCCESS_COUNT,
+    POLL_FAIL_COUNT, VERSION_SWAP_SUCCESS_COUNT, VERSION_SWAP_FAIL_COUNT, CHUNKED_RECORD_SUCCESS_COUNT,
     CHUNKED_RECORD_FAIL_COUNT;
 
     private final String metricName;
@@ -266,7 +266,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
     /**
      * Measures the count of poll invocations
      */
-    POLL_CALL_COUNT(
+    POLL_COUNT(
         MetricType.COUNTER, MetricUnit.NUMBER, "Measures the count of poll invocations",
         setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     ),

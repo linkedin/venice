@@ -3,18 +3,18 @@ package com.linkedin.davinci.stats;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.CHUNKED_RECORD_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.CURRENT_CONSUMING_VERSION;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.HEART_BEAT_DELAY;
-import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.POLL_CALL_COUNT;
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.POLL_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerMetricEntity.VERSION_SWAP_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.CHUNKED_RECORD_FAIL_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.CHUNKED_RECORD_SUCCESS_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.MAXIMUM_CONSUMING_VERSION;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.MAX_PARTITION_LAG;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.MINIMUM_CONSUMING_VERSION;
-import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.POLL_FAIL_CALL_COUNT;
-import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.POLL_SUCCESS_CALL_COUNT;
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.POLL_FAIL_COUNT;
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.POLL_SUCCESS_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.VERSION_SWAP_FAIL_COUNT;
 import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.BasicConsumerTehutiMetricName.VERSION_SWAP_SUCCESS_COUNT;
-import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
@@ -54,7 +54,7 @@ public class BasicConsumerStatsTest {
     otelMetricPrefix = CHANGE_DATA_CAPTURE_CLIENT.getMetricsPrefix();
     storeName = "test_store";
     inMemoryMetricReader = InMemoryMetricReader.create();
-    metricsRepository = getVeniceMetricsRepository(clientType, CLIENT_METRIC_ENTITIES, true, inMemoryMetricReader);
+    metricsRepository = getVeniceMetricsRepository(clientType, CONSUMER_METRIC_ENTITIES, true, inMemoryMetricReader);
     consumerStats = new BasicConsumerStats(metricsRepository, clientType.toString(), storeName);
     baseAttributes = consumerStats.getBaseAttributes();
   }
@@ -95,17 +95,17 @@ public class BasicConsumerStatsTest {
   }
 
   @Test
-  public void testEmitPollSuccessCallCountMetrics() {
-    consumerStats.emitPollCallCountMetrics(SUCCESS);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + POLL_SUCCESS_CALL_COUNT.getMetricName() + ".Avg", 1);
-    validateLongCounterOtelMetrics(storeName, POLL_CALL_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
+  public void testEmitPollSuccessCountMetrics() {
+    consumerStats.emitPollCountMetrics(SUCCESS);
+    validateTehutiMetrics(tehutiMetricPrefix + "--" + POLL_SUCCESS_COUNT.getMetricName() + ".Avg", 1);
+    validateLongCounterOtelMetrics(storeName, POLL_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
   }
 
   @Test
   public void testEmitPollFailCallCountMetrics() {
-    consumerStats.emitPollCallCountMetrics(FAIL);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + POLL_FAIL_CALL_COUNT.getMetricName() + ".Avg", 1);
-    validateLongCounterOtelMetrics(storeName, POLL_CALL_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
+    consumerStats.emitPollCountMetrics(FAIL);
+    validateTehutiMetrics(tehutiMetricPrefix + "--" + POLL_FAIL_COUNT.getMetricName() + ".Avg", 1);
+    validateLongCounterOtelMetrics(storeName, POLL_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
   }
 
   @Test

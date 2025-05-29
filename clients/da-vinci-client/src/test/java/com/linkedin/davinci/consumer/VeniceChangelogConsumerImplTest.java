@@ -1,6 +1,6 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.davinci.consumer.stats.BasicConsumerStats.CONSUMER_METRIC_ENTITIES;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
 import static com.linkedin.venice.stats.VeniceMetricsRepository.getVeniceMetricsRepository;
@@ -469,7 +469,7 @@ public class VeniceChangelogConsumerImplTest {
     prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
     ChangelogClientConfig changelogClientConfig = getChangelogClientConfig(d2ControllerClient).setViewName("");
     changelogClientConfig.getInnerClientConfig()
-        .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CLIENT_METRIC_ENTITIES, true));
+        .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true));
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
 
@@ -498,7 +498,7 @@ public class VeniceChangelogConsumerImplTest {
     List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer.poll(100);
 
-    verify(consumerStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+    verify(consumerStats).emitPollCountMetrics(VeniceResponseStatusCategory.SUCCESS);
     verify(consumerStats).emitRecordsConsumedCountMetrics(pubSubMessages.size());
 
     for (int i = 0; i < 5; i++) {
@@ -553,7 +553,7 @@ public class VeniceChangelogConsumerImplTest {
             .setShouldCompactMessages(true)
             .setViewName("");
     changelogClientConfig.getInnerClientConfig()
-        .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CLIENT_METRIC_ENTITIES, true));
+        .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true));
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
 
@@ -591,7 +591,7 @@ public class VeniceChangelogConsumerImplTest {
     prepareVersionTopicRecordsToBePolled(5L, 15L, mockPubSubConsumer, oldVersionTopic, 0, true);
     pubSubMessages = new ArrayList<>(veniceChangelogConsumer.poll(100));
 
-    verify(consumerStats, times(2)).emitPollCallCountMetrics(VeniceResponseStatusCategory.SUCCESS);
+    verify(consumerStats, times(2)).emitPollCountMetrics(VeniceResponseStatusCategory.SUCCESS);
     verify(consumerStats).emitRecordsConsumedCountMetrics(pubSubMessages.size());
 
     assertFalse(pubSubMessages.isEmpty());
@@ -624,7 +624,7 @@ public class VeniceChangelogConsumerImplTest {
     assertThrows(
         Exception.class,
         () -> veniceChangelogConsumer.internalPoll(timeout, topicSuffix, includeControlMessage));
-    verify(consumerStats).emitPollCallCountMetrics(VeniceResponseStatusCategory.FAIL);
+    verify(consumerStats).emitPollCountMetrics(VeniceResponseStatusCategory.FAIL);
     verify(consumerStats, times(0)).emitRecordsConsumedCountMetrics(anyInt());
   }
 
@@ -1097,7 +1097,7 @@ public class VeniceChangelogConsumerImplTest {
             .setSchemaReader(schemaReader)
             .setStoreName(storeName);
     changelogClientConfig.getInnerClientConfig()
-        .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CLIENT_METRIC_ENTITIES, true));
+        .setMetricsRepository(getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true));
     return changelogClientConfig;
   }
 }
