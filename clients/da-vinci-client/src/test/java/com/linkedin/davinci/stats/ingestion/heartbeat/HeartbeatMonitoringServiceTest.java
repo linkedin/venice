@@ -73,7 +73,12 @@ public class HeartbeatMonitoringServiceTest {
     doCallRealMethod().when(heartbeatMonitoringService)
         .getReplicaLeaderMaxHeartbeatLag(any(), anyString(), anyInt(), anyBoolean());
     doCallRealMethod().when(heartbeatMonitoringService)
+        .getReplicaLeaderMaxHeartbeatLag(any(), anyString(), anyInt(), anyBoolean(), anyLong());
+
+    doCallRealMethod().when(heartbeatMonitoringService)
         .getReplicaFollowerHeartbeatLag(any(), anyString(), anyInt(), anyBoolean());
+    doCallRealMethod().when(heartbeatMonitoringService)
+        .getReplicaFollowerHeartbeatLag(any(), anyString(), anyInt(), anyBoolean(), anyLong());
 
     Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMap =
         new VeniceConcurrentHashMap<>();
