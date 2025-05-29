@@ -20,7 +20,7 @@ public class TopicPartitionIngestionInfoTest {
   public void testJsonParse() throws Exception {
     PubSubTopic versionTopic = pubSubTopicRepository.getTopic("test_store_v1");
     TopicPartitionIngestionInfo topicPartitionIngestionInfo =
-        new TopicPartitionIngestionInfo(0, 1, 2.0, 4.0, "consumerIdStr", 7, versionTopic.getName());
+        new TopicPartitionIngestionInfo(0, 1, 2.0, 4.0, "consumerIdStr", 7, 8, versionTopic.getName());
     String kafkaUrl = "localhost:1234";
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, 0);
     Map<String, Map<String, TopicPartitionIngestionInfo>> topicPartitionIngestionContext = new HashMap<>();
@@ -35,5 +35,49 @@ public class TopicPartitionIngestionInfoTest {
     Assert.assertEquals(
         topicPartitionIngestionContexts.get(kafkaUrl).get(pubSubTopicPartition.toString()),
         topicPartitionIngestionInfo);
+  }
+
+  @Test
+  public void testElapsedTimeSinceLastPolledRecordsInMs() {
+    long elapsedTimeSinceLastPollInMs = 100;
+    long elapsedTimeSinceLastPolledRecordsInMs = 200;
+    TopicPartitionIngestionInfo info = new TopicPartitionIngestionInfo(
+        0,
+        1,
+        2.0,
+        4.0,
+        "testConsumer",
+        elapsedTimeSinceLastPollInMs,
+        elapsedTimeSinceLastPolledRecordsInMs,
+        "test_store_v1");
+
+    Assert.assertEquals(info.getElapsedTimeSinceLastPollInMs(), elapsedTimeSinceLastPollInMs);
+    Assert.assertEquals(info.getElapsedTimeSinceLastPolledRecordsInMs(), elapsedTimeSinceLastPolledRecordsInMs);
+
+    String infoString = info.toString();
+    Assert.assertTrue(
+        infoString.contains("elapsedTimeSinceLastPolledRecordsInMs:" + elapsedTimeSinceLastPolledRecordsInMs));
+
+    TopicPartitionIngestionInfo sameInfo = new TopicPartitionIngestionInfo(
+        0,
+        1,
+        2.0,
+        4.0,
+        "testConsumer",
+        elapsedTimeSinceLastPollInMs,
+        elapsedTimeSinceLastPolledRecordsInMs,
+        "test_store_v1");
+    Assert.assertEquals(info, sameInfo);
+
+    TopicPartitionIngestionInfo differentInfo = new TopicPartitionIngestionInfo(
+        0,
+        1,
+        2.0,
+        4.0,
+        "testConsumer",
+        elapsedTimeSinceLastPollInMs,
+        300,
+        "test_store_v1");
+    Assert.assertNotEquals(info, differentInfo);
   }
 }

@@ -577,9 +577,11 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         double byteRate = partitionStats.getBytesRate();
         long lastSuccessfulPollTimestamp = partitionStats.getLastSuccessfulPollTimestamp();
         long elapsedTimeSinceLastPollInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
+        long elapsedTimeSinceLastPolledRecordsInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
         if (lastSuccessfulPollTimestamp != ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP) {
           elapsedTimeSinceLastPollInMs =
               LatencyUtils.getElapsedTimeFromMsToMs(consumptionTask.getLastSuccessfulPollTimestamp());
+          elapsedTimeSinceLastPolledRecordsInMs = LatencyUtils.getElapsedTimeFromMsToMs(lastSuccessfulPollTimestamp);
         }
         PubSubTopic destinationVersionTopic = consumptionTask.getDestinationIdentifier(topicPartition);
         String destinationVersionTopicName = destinationVersionTopic == null ? "" : destinationVersionTopic.getName();
@@ -590,6 +592,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             byteRate,
             consumerIdStr,
             elapsedTimeSinceLastPollInMs,
+            elapsedTimeSinceLastPolledRecordsInMs,
             destinationVersionTopicName);
         topicPartitionIngestionInfoMap.put(topicPartition, topicPartitionIngestionInfo);
       }
