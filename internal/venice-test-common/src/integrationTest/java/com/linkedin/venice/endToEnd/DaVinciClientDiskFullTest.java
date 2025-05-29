@@ -17,7 +17,6 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -265,7 +264,6 @@ public class DaVinciClientDiskFullTest {
         TestWriteUtils
             .writeSimpleAvroFileWithStringToStringSchema(inputDir, largePushRecordCount, largePushRecordMinSize);
         final Properties vpjPropertiesForV2 = defaultVPJProps(venice, inputDirPath, storeName);
-        vpjPropertiesForV2.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
 
         SentPushJobDetailsTrackerImpl pushJobDetailsTracker = new SentPushJobDetailsTrackerImpl();
 
