@@ -12,10 +12,12 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
   private final Sensor deferredVersionSwapThrowableSensor;
   private final Sensor deferredVersionSwapFailedRollForwardSensor;
   private final Sensor deferredVersionSwapStalledVersionSwapSensor;
+  private final Sensor deferredVersionSwapRunawayVpjSensor;
   private final static String DEFERRED_VERSION_SWAP_ERROR = "deferred_version_swap_error";
   private final static String DEFERRED_VERSION_SWAP_THROWABLE = "deferred_version_swap_throwable";
   private final static String DEFERRED_VERSION_SWAP_FAILED_ROLL_FORWARD = "deferred_version_swap_failed_roll_forward";
   private static final String DEFERRED_VERSION_SWAP_STALLED_VERSION_SWAP = "deferred_version_swap_stalled_version_swap";
+  private static final String DEFERRED_VERSION_SWAP_RUNAWAY_VPJ_SENSOR = "deferred_version_swap_runaway_vpj";
 
   public DeferredVersionSwapStats(MetricsRepository metricsRepository) {
     super(metricsRepository, "DeferredVersionSwap");
@@ -25,6 +27,7 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
         registerSensorIfAbsent(DEFERRED_VERSION_SWAP_FAILED_ROLL_FORWARD, new Count());
     deferredVersionSwapStalledVersionSwapSensor =
         registerSensorIfAbsent(DEFERRED_VERSION_SWAP_STALLED_VERSION_SWAP, new Gauge());
+    deferredVersionSwapRunawayVpjSensor = registerSensorIfAbsent(DEFERRED_VERSION_SWAP_RUNAWAY_VPJ_SENSOR, new Count());
   }
 
   public void recordDeferredVersionSwapErrorSensor() {
@@ -41,5 +44,9 @@ public class DeferredVersionSwapStats extends AbstractVeniceStats {
 
   public void recordDeferredVersionSwapStalledVersionSwapSensor(double value) {
     deferredVersionSwapStalledVersionSwapSensor.record(value);
+  }
+
+  public void recordDeferredVersionSwapRunawayVpjSensor() {
+    deferredVersionSwapRunawayVpjSensor.record();
   }
 }

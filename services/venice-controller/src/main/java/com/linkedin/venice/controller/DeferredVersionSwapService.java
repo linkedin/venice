@@ -270,7 +270,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         return false;
       }
 
-      if (targetRegionVersion.getStatus() != ONLINE || targetRegionVersion.getStatus() != VersionStatus.KILLED) {
+      if (targetRegionVersion.getStatus() != ONLINE && targetRegionVersion.getStatus() != VersionStatus.KILLED) {
         return false;
       }
     }
@@ -304,17 +304,18 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     // push, the parent version status is set to PUSHED in getOfflinePushStatus when this happens or KILLED if the push
     // failed. PUSHED represents when a push successfully completes in all regions and KILLED represents when a push
     // fails in 1+ regions. KILLED is still eligible for a version swap because some non target regions may have
-    // succeeded,
-    // and we need to perform a version swap for those regions
+    // succeeded, and we need to perform a version swap for those regions
     if (targetVersion.getStatus() != VersionStatus.PUSHED && targetVersion.getStatus() != VersionStatus.KILLED) {
       Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetRegionsString);
 
       // Because the parent status is updated when we poll for the job status, the parent status will not always be an
-      // accurate
-      // representation of push status if vpj runs away
-      if (targetVersion.getStatus() == VersionStatus.STARTED
-          && !isVersionOnlineInTargetRegions(targetRegions, clusterName, storeName, targetVersion.getNumber())) {
+      // accurate representation of push status if vpj runs away
+      boolean didPushCompleteInTargetRegions =
+          isVersionOnlineInTargetRegions(targetRegions, clusterName, storeName, targetVersion.getNumber());
+      if (targetVersion.getStatus() == VersionStatus.STARTED && !didPushCompleteInTargetRegions) {
         return false;
+      } else if (targetVersion.getStatus() == VersionStatus.STARTED && didPushCompleteInTargetRegions) {
+        deferredVersionSwapStats.recordDeferredVersionSwapRunawayVpjSensor();
       }
     }
 
