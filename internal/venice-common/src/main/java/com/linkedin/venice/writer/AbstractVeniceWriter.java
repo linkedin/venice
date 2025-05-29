@@ -45,6 +45,14 @@ public abstract class AbstractVeniceWriter<K, V, U> implements Closeable {
       PubSubProducerCallback callback,
       PutMetadata putMetadata);
 
+  public abstract CompletableFuture<PubSubProduceResult> put(
+      K key,
+      V value,
+      int valueSchemaId,
+      long logicalTimestamp,
+      PubSubProducerCallback callback,
+      PutMetadata putMetadata);
+
   public abstract CompletableFuture<PubSubProduceResult> delete(
       K key,
       PubSubProducerCallback callback,

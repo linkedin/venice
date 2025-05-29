@@ -46,7 +46,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     Optional<Long> rewind = Optional.of(123L);
     Optional<Long> lagOffset = Optional.of(1500L);
     Optional<Long> timeLag = Optional.of(300L);
-    Optional<DataReplicationPolicy> dataReplicationPolicy = Optional.of(DataReplicationPolicy.AGGREGATE);
+    Optional<DataReplicationPolicy> dataReplicationPolicy = Optional.of(DataReplicationPolicy.NON_AGGREGATE);
     Optional<BufferReplayPolicy> bufferReplayPolicy = Optional.of(BufferReplayPolicy.REWIND_FROM_EOP);
     Optional<String> realTimeTopicName = Optional.of("storeName_rt");
     HybridStoreConfig hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
@@ -73,7 +73,7 @@ public class TestVeniceHelixAdminWithoutCluster {
     Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 123L);
     Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 1500L);
     Assert.assertEquals(hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds(), 300L);
-    Assert.assertEquals(hybridStoreConfig.getDataReplicationPolicy(), DataReplicationPolicy.AGGREGATE);
+    Assert.assertEquals(hybridStoreConfig.getDataReplicationPolicy(), DataReplicationPolicy.NON_AGGREGATE);
 
     // It's okay that time lag threshold or data replication policy is not specified
     hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(

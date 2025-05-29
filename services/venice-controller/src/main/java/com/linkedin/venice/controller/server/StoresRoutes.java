@@ -65,6 +65,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
@@ -431,6 +432,17 @@ public class StoresRoutes extends AbstractRoute {
           veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
           return;
         }
+        VeniceControllerClusterConfig destClusterConfig = admin.getControllerConfig(destClusterName);
+        // Both source and destination clusters should either have RT versioning enabled or disabled
+        if (destClusterConfig == null) {
+          LOGGER.warn("ClusterConfig for distination cluster {} not found.", destClusterName);
+        } else if (admin.getControllerConfig(srcClusterName).isRealTimeTopicVersioningEnabled() != destClusterConfig
+            .isRealTimeTopicVersioningEnabled()) {
+          veniceResponse
+              .setError("Source cluster and destination cluster both should have RT versioning enabled or disabled ");
+          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
+          return;
+        }
 
         admin.migrateStore(srcClusterName, destClusterName, storeName);
       }
@@ -512,7 +524,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#deleteStore(String, String, int, boolean)
+   * @see Admin#deleteStore(String, String, boolean, int, boolean)
    */
   public Route deleteStore(Admin admin) {
     return new VeniceRouteHandler<TrackableControllerResponse>(TrackableControllerResponse.class) {
@@ -991,11 +1003,13 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, RepushJobResponse veniceResponse) {
         AdminSparkServer.validateParams(request, REPUSH_STORE.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(STORE_NAME);
         String sourceRegion = request.queryParamOrDefault(SOURCE_REGION, null);
         try {
           veniceResponse.copyValueOf(
-              admin.repushStore(new RepushJobRequest(storeName, sourceRegion, RepushJobRequest.MANUAL_TRIGGER)));
+              admin.repushStore(
+                  new RepushJobRequest(cluster, storeName, sourceRegion, RepushJobRequest.MANUAL_TRIGGER)));
         } catch (Exception e) {
           veniceResponse.setError("Failed to compact store: " + storeName, e);
         }
@@ -1004,7 +1018,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#getLargestUsedVersionFromStoreGraveyard(String, String)
+   * @see Admin#getLargestUsedVersion(String, String)
    */
   public Route getStoreLargestUsedVersion(Admin admin) {
     return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
@@ -1013,7 +1027,7 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, GET_STORES_IN_CLUSTER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(STORE_NAME);
-        veniceResponse.setVersion(admin.getLargestUsedVersionFromStoreGraveyard(cluster, storeName));
+        veniceResponse.setVersion(admin.getLargestUsedVersion(cluster, storeName));
       }
     };
   }

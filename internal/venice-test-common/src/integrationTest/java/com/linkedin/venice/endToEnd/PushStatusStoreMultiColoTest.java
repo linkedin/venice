@@ -201,8 +201,7 @@ public class PushStatusStoreMultiColoTest {
     Admin parentAdmin = parentControllers.get(0).getVeniceAdmin();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       assertEquals(
-          parentAdmin
-              .getLargestUsedVersionFromStoreGraveyard(cluster.getClusterName(), daVinciPushStatusSystemStoreName),
+          parentAdmin.getLargestUsedVersion(cluster.getClusterName(), daVinciPushStatusSystemStoreName),
           systemStoreCurrVersionBeforeBeingDeleted);
     });
 

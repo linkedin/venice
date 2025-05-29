@@ -5,21 +5,17 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.ViewConfig;
-import com.linkedin.venice.pubsub.PubSubClientsFactory;
-import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
+import org.apache.avro.Schema;
+import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
 
 
@@ -36,8 +32,6 @@ public class VeniceChangelogConsumerClientFactory {
 
   private PubSubConsumerAdapter consumer;
 
-  private final PubSubPositionDeserializer pubSubPositionDeserializer;
-
   protected ViewClassGetter viewClassGetter;
 
   // TODO: Add PubSubConsumerFactory into the constructor, so that client can choose specific Pub Sub system's consumer.
@@ -47,7 +41,6 @@ public class VeniceChangelogConsumerClientFactory {
     this.globalChangelogClientConfig = globalChangelogClientConfig;
     this.metricsRepository = metricsRepository;
     this.viewClassGetter = getDefaultViewClassGetter();
-    this.pubSubPositionDeserializer = globalChangelogClientConfig.getPubSubPositionDeserializer();
   }
 
   protected void setD2ControllerClient(D2ControllerClient d2ControllerClient) {
@@ -73,14 +66,17 @@ public class VeniceChangelogConsumerClientFactory {
    * Creates a VeniceChangelogConsumer with consumer id. This is used to create multiple consumers so that
    * each consumer can only subscribe to certain partitions. Multiple such consumers can work in parallel.
    */
-  public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(String storeName, String consumerId, Class clazz) {
-    return getChangelogConsumer(storeName, consumerId, clazz, globalChangelogClientConfig.getViewName());
+  public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(
+      String storeName,
+      String consumerId,
+      Class<V> valueClass) {
+    return getChangelogConsumer(storeName, consumerId, valueClass, globalChangelogClientConfig.getViewName());
   }
 
   public <K, V> VeniceChangelogConsumer<K, V> getChangelogConsumer(
       String storeName,
       String consumerId,
-      Class clazz,
+      Class<V> valueClass,
       String viewNameOverride) {
     String adjustedConsumerId;
     if (!StringUtils.isEmpty(viewNameOverride)) {
@@ -94,7 +90,7 @@ public class VeniceChangelogConsumerClientFactory {
     }
     return storeClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, adjustedConsumerId), name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
-          getNewStoreChangelogClientConfig(storeName).setSpecificValue(clazz);
+          getNewStoreChangelogClientConfig(storeName).setSpecificValue(valueClass);
       newStoreChangelogClientConfig.setConsumerName(name);
       newStoreChangelogClientConfig.setViewName(viewNameOverride);
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
@@ -106,17 +102,11 @@ public class VeniceChangelogConsumerClientFactory {
         newStoreChangelogClientConfig.setIsBeforeImageView(true);
         return new VeniceChangelogConsumerImpl(
             newStoreChangelogClientConfig,
-            consumer != null
-                ? consumer
-                : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
-            pubSubPositionDeserializer);
+            consumer != null ? consumer : getPubSubConsumer(newStoreChangelogClientConfig, consumerName));
       }
       return new VeniceAfterImageConsumerImpl(
           newStoreChangelogClientConfig,
-          consumer != null
-              ? consumer
-              : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
-          pubSubPositionDeserializer);
+          consumer != null ? consumer : getPubSubConsumer(newStoreChangelogClientConfig, consumerName));
     });
   }
 
@@ -129,16 +119,22 @@ public class VeniceChangelogConsumerClientFactory {
   }
 
   /**
-   * Creates a BootstrappingVeniceChangelogConsumer with consumer id. This is used to create multiple
-   * consumers so that each consumer can only subscribe to certain partitions.
+   * Use this if you're using the experimental client
+   * @param keyClass The {@link SpecificRecord} class for your key
+   * @param valueClass The {@link SpecificRecord} class for your value
+   * @param valueSchema The {@link Schema} for your values
    */
   public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
       String storeName,
       String consumerId,
-      Class clazz) {
+      Class<K> keyClass,
+      Class<V> valueClass,
+      Schema valueSchema) {
     return storeBootstrappingClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
-          getNewStoreChangelogClientConfig(storeName).setSpecificValue(clazz);
+          getNewStoreChangelogClientConfig(storeName).setSpecificKey(keyClass)
+              .setSpecificValue(valueClass)
+              .setSpecificValueSchema(valueSchema);
       String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
       String consumerName = suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
 
@@ -150,11 +146,21 @@ public class VeniceChangelogConsumerClientFactory {
             newStoreChangelogClientConfig,
             consumer != null
                 ? consumer
-                : getConsumer(newStoreChangelogClientConfig.getConsumerProperties(), consumerName),
-            pubSubPositionDeserializer,
+                : VeniceChangelogConsumerClientFactory.getPubSubConsumer(newStoreChangelogClientConfig, consumerName),
             consumerId);
       }
     });
+  }
+
+  /**
+   * Creates a BootstrappingVeniceChangelogConsumer with consumer id. This is used to create multiple
+   * consumers so that each consumer can only subscribe to certain partitions.
+   */
+  public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
+      String storeName,
+      String consumerId,
+      Class<V> valueClass) {
+    return getBootstrappingChangelogConsumer(storeName, consumerId, null, valueClass, null);
   }
 
   public <K, V> BootstrappingVeniceChangelogConsumer<K, V> getBootstrappingChangelogConsumer(
@@ -211,14 +217,16 @@ public class VeniceChangelogConsumerClientFactory {
     return viewClass;
   }
 
-  static PubSubConsumerAdapter getConsumer(Properties consumerProps, String consumerName) {
-    PubSubMessageDeserializer pubSubMessageDeserializer = new PubSubMessageDeserializer(
-        new OptimizedKafkaValueSerializer(),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    VeniceProperties veniceProperties = new VeniceProperties(consumerProps);
-    return PubSubClientsFactory.createConsumerFactory(veniceProperties)
-        .create(veniceProperties, false, pubSubMessageDeserializer, consumerName);
+  protected static PubSubConsumerAdapter getPubSubConsumer(
+      ChangelogClientConfig changelogClientConfig,
+      String consumerName) {
+    PubSubConsumerAdapterContext context = new PubSubConsumerAdapterContext.Builder().setConsumerName(consumerName)
+        .setVeniceProperties(new VeniceProperties(changelogClientConfig.getConsumerProperties()))
+        .setPubSubMessageDeserializer(changelogClientConfig.getPubSubMessageDeserializer())
+        .setPubSubTopicRepository(changelogClientConfig.getPubSubTopicRepository())
+        .setPubSubPositionTypeRegistry(changelogClientConfig.getPubSubPositionTypeRegistry())
+        .build();
+    return changelogClientConfig.getPubSubConsumerAdapterFactory().create(context);
   }
 
   private String getViewClass(String storeName, String viewName, D2ControllerClient d2ControllerClient, int retries) {

@@ -39,7 +39,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -47,7 +46,6 @@ import org.apache.logging.log4j.Logger;
 public class NettyFileTransferClient {
   private static final Logger LOGGER = LogManager.getLogger(NettyFileTransferClient.class);
   private static final int MAX_METADATA_CONTENT_LENGTH = 1024 * 1024 * 100;
-  private static final int REQUEST_TIMEOUT_IN_MINUTES = 5;
   private static final int CONNECTION_TIMEOUT_IN_MINUTES = 1;
   // Maximum time that Netty will wait to establish the initial connection before failing.
   private static final int CONNECTION_ESTABLISHMENT_TIMEOUT_MS = 30 * 1000;
@@ -285,16 +283,6 @@ public class NettyFileTransferClient {
                   requestedTableFormat));
       // Send a GET request
       ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));
-      // Set a timeout, otherwise if the host is not responding, the future will never complete
-      connectTimeoutScheduler.schedule(() -> {
-        if (!inputStream.toCompletableFuture().isDone()) {
-          inputStream.toCompletableFuture()
-              .completeExceptionally(
-                  new TimeoutException(
-                      "Request timed out for store " + storeName + " version " + version + " partition " + partition
-                          + " table format " + requestedTableFormat + " from host " + host));
-        }
-      }, REQUEST_TIMEOUT_IN_MINUTES, TimeUnit.MINUTES);
     } catch (Exception e) {
       if (!inputStream.toCompletableFuture().isCompletedExceptionally()) {
         inputStream.toCompletableFuture().completeExceptionally(e);

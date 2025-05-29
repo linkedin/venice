@@ -7,11 +7,13 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.FILE_VALUE_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PATH_FILTER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
+import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.input.recordreader.VeniceRecordIterator;
 import com.linkedin.venice.hadoop.input.recordreader.avro.HdfsAvroUtils;
@@ -82,7 +84,14 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
 
     if (fileStatuses == null || fileStatuses.length == 0) {
-      throw new VeniceException("No data found at source path: " + srcPath);
+      /*
+       * In order to avoid introducing new checkpoint, we resort to using the existing checkpoint
+       * to categorize no data at the source as invalid input. Venice supports multiple InputDataInfoProvider
+       * and currently other implementations do not adhere to same contract and input validation mechanisms like
+       * throwing same type of exceptions and error categorization. We need to revisit this as this might be a larger
+       * scope of change for the current issue.
+       */
+      throw new VeniceInvalidInputException("No data found at source path: " + srcPath);
     }
 
     if (pushJobSetting.isZstdDictCreationRequired) {
@@ -130,6 +139,7 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
       // key / value fields are optional for Vson input
       pushJobSetting.keyField = props.getString(KEY_FIELD_PROP, "");
       pushJobSetting.valueField = props.getString(VALUE_FIELD_PROP, "");
+      pushJobSetting.timestampField = props.getString(TIMESTAMP_FIELD_PROP, "");
 
       Pair<VsonSchema, VsonSchema> vsonSchema = checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize);
 
@@ -355,10 +365,12 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   private VeniceAvroRecordReader getVeniceAvroRecordReader(FileSystem fs, Path path) {
     String keyField = props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
     String valueField = props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
+    String timestampField = props.getOrDefault(TIMESTAMP_FIELD_PROP, "");
     return new VeniceAvroRecordReader(
         HdfsAvroUtils.getFileSchema(fs, path),
         keyField,
         valueField,
+        timestampField,
         pushJobSetting.etlValueSchemaTransformation,
         null);
   }

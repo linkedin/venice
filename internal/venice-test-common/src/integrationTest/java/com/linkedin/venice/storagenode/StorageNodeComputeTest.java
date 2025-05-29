@@ -177,7 +177,7 @@ public class StorageNodeComputeTest {
     Assert.assertFalse(newVersion.isError(), "Error creation new version: " + newVersion.getError());
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
-    int keyCount = 10;
+    int keyCount = 11;
     String keyPrefix = "key_";
     String valuePrefix = "value_";
 
@@ -229,7 +229,7 @@ public class StorageNodeComputeTest {
              */
             .get(2, TimeUnit.SECONDS);
 
-        Assert.assertEquals(computeResult.size(), 10);
+        Assert.assertEquals(computeResult.size(), keyCount);
 
         computeResult.forEach((key, value) -> {
           int keyIdx = getKeyIndex(key, keyPrefix);

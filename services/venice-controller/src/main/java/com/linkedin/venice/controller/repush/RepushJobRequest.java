@@ -11,20 +11,27 @@ public class RepushJobRequest {
   public static final String SCHEDULED_TRIGGER = "Scheduled";
   public static final String MANUAL_TRIGGER = "Manual";
 
+  private final String clusterName;
   private final String storeName;
   private final String sourceRegion;
   private final String triggerSource;
 
-  public RepushJobRequest(String storeName, String triggerSource) {
+  public RepushJobRequest(String clusterName, String storeName, String triggerSource) {
+    this.clusterName = clusterName;
     this.storeName = storeName;
     this.sourceRegion = null; // default to null if not specified
     this.triggerSource = triggerSource;
   }
 
-  public RepushJobRequest(String storeName, String sourceRegion, String triggerSource) {
+  public RepushJobRequest(String clusterName, String storeName, String sourceRegion, String triggerSource) {
+    this.clusterName = clusterName;
     this.storeName = storeName;
     this.sourceRegion = sourceRegion;
     this.triggerSource = triggerSource;
+  }
+
+  public String getClusterName() {
+    return clusterName;
   }
 
   public String getStoreName() {

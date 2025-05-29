@@ -31,7 +31,9 @@ public class ClientConfig<T extends SpecificRecord> {
   private String storeName;
   private String veniceURL;
   private String statsPrefix;
+  private Class specificKeyClass = null;
   private Class<T> specificValueClass = null;
+  private Schema specificValueSchema = null;
   private boolean isVsonClient = false;
 
   // D2 specific settings
@@ -44,7 +46,6 @@ public class ClientConfig<T extends SpecificRecord> {
   // Performance-related settings
   private MetricsRepository metricsRepository = null;
   private Executor deserializationExecutor = null;
-  private Executor warmupExecutor = null;
   private BatchDeserializerType batchDeserializerType = BatchDeserializerType.BLOCKING;
   private boolean useFastAvro = true;
   private boolean retryOnRouterError = false;
@@ -97,7 +98,9 @@ public class ClientConfig<T extends SpecificRecord> {
         // Basic settings
         .setStoreName(config.getStoreName())
         .setVeniceURL(config.getVeniceURL())
+        .setSpecificKeyClass(config.getSpecificKeyClass())
         .setSpecificValueClass(config.getSpecificValueClass())
+        .setSpecificValueSchema(config.getSpecificValueSchema())
         .setVsonClient(config.isVsonClient())
 
         // D2 specific settings
@@ -111,7 +114,6 @@ public class ClientConfig<T extends SpecificRecord> {
         // Performance-related settings
         .setMetricsRepository(config.getMetricsRepository())
         .setDeserializationExecutor(config.getDeserializationExecutor())
-        .setWarmupExecutor(config.getWarmupExecutor())
         .setUseFastAvro(config.isUseFastAvro())
         .setRetryOnRouterError(config.isRetryOnRouterErrorEnabled())
         .setRetryOnAllErrors(config.isRetryOnAllErrorsEnabled())
@@ -191,12 +193,30 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public Schema getSpecificValueSchema() {
+    return specificValueSchema;
+  }
+
+  public ClientConfig<T> setSpecificValueSchema(Schema specificValueSchema) {
+    this.specificValueSchema = specificValueSchema;
+    return this;
+  }
+
   public Class<T> getSpecificValueClass() {
     return specificValueClass;
   }
 
   public ClientConfig<T> setSpecificValueClass(Class<T> specificValueClass) {
     this.specificValueClass = specificValueClass;
+    return this;
+  }
+
+  public Class<T> getSpecificKeyClass() {
+    return specificKeyClass;
+  }
+
+  public ClientConfig<T> setSpecificKeyClass(Class specificKeyClass) {
+    this.specificKeyClass = specificKeyClass;
     return this;
   }
 
@@ -332,21 +352,6 @@ public class ClientConfig<T extends SpecificRecord> {
    */
   public ClientConfig<T> setDeserializationExecutor(Executor deserializationExecutor) {
     this.deserializationExecutor = deserializationExecutor;
-    return this;
-  }
-
-  public Executor getWarmupExecutor() {
-    return warmupExecutor;
-  }
-
-  /**
-   * Provide an arbitrary executor to execute client warmup,
-   * rather than letting the client use its own internally-generated executor.
-   * If null, or unset, the client will use {@link java.util.concurrent.Executors#newFixedThreadPool(int)}
-   * with a single thread.
-   */
-  public ClientConfig<T> setWarmupExecutor(Executor warmupExecutor) {
-    this.warmupExecutor = warmupExecutor;
     return this;
   }
 

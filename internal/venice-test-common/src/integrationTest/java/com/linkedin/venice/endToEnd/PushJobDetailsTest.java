@@ -118,7 +118,8 @@ public class PushJobDetailsTest {
 
     VeniceMultiClusterWrapper childRegionMultiClusterWrapper = multiRegionMultiClusterWrapper.getChildRegions().get(0);
     childRegionClusterWrapper = childRegionMultiClusterWrapper.getClusters().get(clusterName);
-    metricsRepository = multiRegionMultiClusterWrapper.getParentControllers().get(0).getMetricRepository();
+    metricsRepository =
+        multiRegionMultiClusterWrapper.getChildRegions().get(0).getLeaderController(clusterName).getMetricRepository();
     controllerClient = new ControllerClient(clusterName, childRegionMultiClusterWrapper.getControllerConnectString());
     parentControllerClient =
         new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString());

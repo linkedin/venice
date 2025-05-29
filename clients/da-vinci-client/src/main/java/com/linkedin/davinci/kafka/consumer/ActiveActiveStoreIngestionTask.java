@@ -539,9 +539,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();
-      // Record the last ignored offset
-      partitionConsumptionState
-          .updateLatestIgnoredUpstreamRTOffset(kafkaClusterIdToUrlMap.get(kafkaClusterId), sourceOffset);
       return new PubSubMessageProcessedResult(
           new MergeConflictResultWrapper(
               mergeConflictResult,
@@ -569,17 +566,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       if (updatedValueBytes == null) {
         hostLevelIngestionStats.recordTombstoneCreatedDCR();
         aggVersionedIngestionStats.recordTombStoneCreationDCR(storeName, versionNumber);
-        partitionConsumptionState.setTransientRecord(
-            kafkaClusterId,
-            consumerRecord.getPosition().getNumericOffset(),
-            keyBytes,
-            valueSchemaId,
-            rmdRecord);
+        partitionConsumptionState
+            .setTransientRecord(kafkaClusterId, consumerRecord.getPosition(), keyBytes, valueSchemaId, rmdRecord);
       } else {
         int valueLen = updatedValueBytes.remaining();
         partitionConsumptionState.setTransientRecord(
             kafkaClusterId,
-            consumerRecord.getPosition().getNumericOffset(),
+            consumerRecord.getPosition(),
             keyBytes,
             updatedValueBytes.array(),
             updatedValueBytes.position(),
@@ -870,8 +863,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                   new DeleteMetadata(valueSchemaId, rmdProtocolVersionId, updatedRmdBytes),
                   oldValueManifest,
                   oldRmdManifest);
-      LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
-          .newDeleteRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), key, deletePayload);
+      LeaderProducedRecordContext leaderProducedRecordContext =
+          LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.getPosition(), key, deletePayload);
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
@@ -901,41 +894,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
-          LeaderProducedRecordContext
-              .newPutRecord(kafkaClusterId, consumerRecord.getPosition().getNumericOffset(), key, updatedPut),
+          LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.getPosition(), key, updatedPut),
           produceToTopicFunction,
           partition,
           kafkaUrl,
           kafkaClusterId,
           beforeProcessingRecordTimestampNs);
-    }
-  }
-
-  @Override
-  protected void produceToLocalKafka(
-      DefaultPubSubMessage consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
-      int partition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
-    super.produceToLocalKafka(
-        consumerRecord,
-        partitionConsumptionState,
-        leaderProducedRecordContext,
-        produceFunction,
-        partition,
-        kafkaUrl,
-        kafkaClusterId,
-        beforeProcessingRecordTimestampNs);
-    // Update the partition consumption state to say that we've transmitted the message to kafka (but haven't
-    // necessarily received an ack back yet).
-    if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
-        && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-      partitionConsumptionState
-          .updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getPosition().getNumericOffset());
     }
   }
 
@@ -1128,10 +1092,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
   /**
    * Process {@link TopicSwitch} control message at given partition offset for a specific {@link PartitionConsumptionState}.
-   * Return whether we need to execute additional ready-to-serve check after this message is processed.
    */
   @Override
-  protected boolean processTopicSwitch(
+  protected void processTopicSwitch(
       ControlMessage controlMessage,
       int partition,
       long offset,
@@ -1149,7 +1112,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (!isLeader(partitionConsumptionState)) {
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
     }
-    return false;
   }
 
   @Override
@@ -1229,15 +1191,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * For A/A, there are multiple entries in upstreamOffsetMap during RT ingestion.
-   * If the current DataReplicationPolicy is on Aggregate mode, A/A will check the upstream offset lags from all regions;
-   * otherwise, only check the upstream offset lag from the local region.
+   * Returns the latest processed upstream real-time offset for the given region.
+   * This is used to compute hybrid offset lag on a per-region basis, which is then
+   * used in conjunction with lag from other regions to determine ready-to-serve status.
    */
   @Override
   protected long getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String upstreamKafkaUrl) {
-    return pcs.getLatestProcessedUpstreamRTOffsetWithIgnoredMessages(upstreamKafkaUrl);
+    return pcs.getLatestProcessedUpstreamRTOffset(upstreamKafkaUrl);
   }
 
   /**
@@ -1302,11 +1264,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
-  protected boolean shouldCheckLeaderCompleteStateInFollower() {
-    return getServerConfig().isLeaderCompleteStateCheckInFollowerEnabled();
-  }
-
-  @Override
   public long getRegionHybridOffsetLag(int regionId) {
     StoreVersionState svs = storageEngine.getStoreVersionState();
     if (svs == null) {
@@ -1365,9 +1322,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * For stores in aggregate mode this is optimistic and returns the minimum lag of all fabric. This is because in
-   * aggregate mode duplicate msg consumption happen from all fabric. So it should be fine to consider the lowest lag.
-   *
    * For stores in active/active mode, if no fabric is unreachable, return the maximum lag of all fabrics. If only one
    * fabric is unreachable, return the maximum lag of other fabrics. If more than one fabrics are unreachable, return
    * Long.MAX_VALUE, which means the partition is not ready-to-serve.
@@ -1375,7 +1329,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * unreachable fabric and make the decision. For example, we should not let partition ready-to-serve when the only
    * source fabric is unreachable.
    *
-   * In non-aggregate mode of consumption only return the local fabric lag
    * @param sourceRealTimeTopicKafkaURLs
    * @param partitionConsumptionState
    * @param shouldLogLag

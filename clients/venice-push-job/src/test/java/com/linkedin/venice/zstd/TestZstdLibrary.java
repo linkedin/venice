@@ -5,6 +5,7 @@ import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PATH_FILTER;
 
 import com.github.luben.zstd.ZstdDictTrainer;
@@ -57,6 +58,7 @@ public class TestZstdLibrary {
             HdfsAvroUtils.getFileSchema(fs, fileStatus.getPath()),
             "key",
             "value",
+            DEFAULT_TIMESTAMP_FIELD_PROP,
             ETLValueSchemaTransformation.NONE,
             null);
         VeniceAvroFileIterator avroFileIterator = new VeniceAvroFileIterator(fs, fileStatus.getPath(), recordReader);
@@ -92,7 +94,7 @@ public class TestZstdLibrary {
         LOGGER.info("Running test with {} samples in 1 File", i);
         runTest(1, i, 1, 1);
       } catch (Exception e) {
-        if (e instanceof ZstdException && e.getMessage().equals("Src size is incorrect")) {
+        if (e instanceof ZstdException && e.getMessage().equals("nb of samples too low")) {
           LOGGER.info("Exception thrown for {} samples", i, e);
           numExceptions++;
         } else {

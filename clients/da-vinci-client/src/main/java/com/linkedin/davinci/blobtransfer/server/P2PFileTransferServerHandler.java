@@ -35,11 +35,14 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.stream.ChunkedFile;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
+import io.netty.util.AttributeKey;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.net.URI;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -55,15 +58,25 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   private final String baseDir;
   // Maximum timeout for blob transfer in minutes per partition
   private final int blobTransferMaxTimeoutInMin;
+  // Max allowed global concurrent snapshot users
+  private final int maxAllowedConcurrentSnapshotUsers;
   private BlobSnapshotManager blobSnapshotManager;
+  // Global counter for all active transfer requests across all topics and partitions
+  private final AtomicInteger globalConcurrentTransferRequests = new AtomicInteger(0);
+  private static final AttributeKey<BlobTransferPayload> BLOB_TRANSFER_REQUEST =
+      AttributeKey.valueOf("blobTransferRequest");
+  private static final AttributeKey<AtomicBoolean> SUCCESS_COUNTED =
+      AttributeKey.valueOf("successCountedAsActiveCurrentUser");
 
   public P2PFileTransferServerHandler(
       String baseDir,
       int blobTransferMaxTimeoutInMin,
-      BlobSnapshotManager blobSnapshotManager) {
+      BlobSnapshotManager blobSnapshotManager,
+      int maxAllowedConcurrentSnapshotUsers) {
     this.baseDir = baseDir;
     this.blobTransferMaxTimeoutInMin = blobTransferMaxTimeoutInMin;
     this.blobSnapshotManager = blobSnapshotManager;
+    this.maxAllowedConcurrentSnapshotUsers = maxAllowedConcurrentSnapshotUsers;
   }
 
   /**
@@ -76,6 +89,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
    */
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest httpRequest) throws Exception {
+    AtomicBoolean successCountedAsActiveCurrentUser = new AtomicBoolean(false);
     // validation
     if (!httpRequest.decoderResult().isSuccess()) {
       setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, "Request decoding failed".getBytes(), false, ctx);
@@ -90,88 +104,127 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
       return;
     }
     BlobTransferPayload blobTransferRequest = null;
+    final File snapshotDir;
+    BlobTransferPartitionMetadata transferPartitionMetadata;
+
     try {
-      final File snapshotDir;
-      BlobTransferPartitionMetadata transferPartitionMetadata;
+      blobTransferRequest = parseBlobTransferPayload(URI.create(httpRequest.uri()));
+      snapshotDir = new File(blobTransferRequest.getSnapshotDir());
+
+      // Check the snapshot table format
+      BlobTransferTableFormat currentSnapshotTableFormat = blobSnapshotManager.getBlobTransferTableFormat();
+      if (blobTransferRequest.getRequestTableFormat() != currentSnapshotTableFormat) {
+        byte[] errBody = ("Table format mismatch for " + blobTransferRequest.getFullResourceName()
+            + ", current snapshot format is " + currentSnapshotTableFormat.name() + ", requested format is "
+            + blobTransferRequest.getRequestTableFormat().name()).getBytes();
+        setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
+        return;
+      }
+
+      // Check the concurrent request limit
+      if (globalConcurrentTransferRequests.get() >= maxAllowedConcurrentSnapshotUsers) {
+        String errMessage =
+            "The number of concurrent snapshot users exceeds the limit of " + maxAllowedConcurrentSnapshotUsers
+                + ", wont be able to process the request for " + blobTransferRequest.getFullResourceName();
+        LOGGER.error(errMessage);
+        setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
+        return;
+      }
 
       try {
-        blobTransferRequest = parseBlobTransferPayload(URI.create(httpRequest.uri()));
-        snapshotDir = new File(blobTransferRequest.getSnapshotDir());
-        try {
-          transferPartitionMetadata = blobSnapshotManager.getTransferMetadata(blobTransferRequest);
-        } catch (Exception e) {
-          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
-          return;
+        transferPartitionMetadata =
+            blobSnapshotManager.getTransferMetadata(blobTransferRequest, successCountedAsActiveCurrentUser);
+        ctx.channel().attr(SUCCESS_COUNTED).set(successCountedAsActiveCurrentUser);
+        ctx.channel().attr(BLOB_TRANSFER_REQUEST).set(blobTransferRequest);
+        if (successCountedAsActiveCurrentUser.get()) {
+          if (globalConcurrentTransferRequests.incrementAndGet() >= maxAllowedConcurrentSnapshotUsers) {
+            String errMessage =
+                "The number of concurrent snapshot users exceeds the limit of " + maxAllowedConcurrentSnapshotUsers
+                    + ", wont be able to process the request for " + blobTransferRequest.getFullResourceName();
+            LOGGER.error(errMessage);
+            setupResponseAndFlush(HttpResponseStatus.TOO_MANY_REQUESTS, errMessage.getBytes(), false, ctx);
+          }
         }
-
-        if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
-          byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
-          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
-          return;
-        }
-
-        // Check the snapshot table format
-        BlobTransferTableFormat currentSnapshotTableFormat = blobSnapshotManager.getBlobTransferTableFormat();
-        if (blobTransferRequest.getRequestTableFormat() != currentSnapshotTableFormat) {
-          byte[] errBody = ("Table format mismatch for " + blobTransferRequest.getFullResourceName()
-              + ", current snapshot format is " + currentSnapshotTableFormat.name() + ", requested format is "
-              + blobTransferRequest.getRequestTableFormat().name()).getBytes();
-          setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
-          return;
-        }
-      } catch (IllegalArgumentException e) {
-        setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, e.getMessage().getBytes(), false, ctx);
-        return;
-      } catch (SecurityException e) {
-        setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, e.getMessage().getBytes(), false, ctx);
+      } catch (Exception e) {
+        setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, e.getMessage().getBytes(), false, ctx);
         return;
       }
 
-      File[] files = snapshotDir.listFiles();
-      if (files == null || files.length == 0) {
-        setupResponseAndFlush(
-            HttpResponseStatus.INTERNAL_SERVER_ERROR,
-            ("Failed to access files at " + snapshotDir).getBytes(),
-            false,
-            ctx);
+      if (!snapshotDir.exists() || !snapshotDir.isDirectory()) {
+        byte[] errBody = ("Snapshot for " + blobTransferRequest.getFullResourceName() + " doesn't exist").getBytes();
+        setupResponseAndFlush(HttpResponseStatus.NOT_FOUND, errBody, false, ctx);
         return;
       }
+    } catch (IllegalArgumentException e) {
+      setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, e.getMessage().getBytes(), false, ctx);
+      return;
+    } catch (SecurityException e) {
+      setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, e.getMessage().getBytes(), false, ctx);
+      return;
+    }
 
-      // Set up the time limitation for the transfer
-      long startTime = System.currentTimeMillis();
+    File[] files = snapshotDir.listFiles();
+    if (files == null || files.length == 0) {
+      setupResponseAndFlush(
+          HttpResponseStatus.INTERNAL_SERVER_ERROR,
+          ("Failed to access files at " + snapshotDir).getBytes(),
+          false,
+          ctx);
+      return;
+    }
 
-      // transfer files
-      for (File file: files) {
-        // check if the transfer for all files is timed out for this partition
-        if (System.currentTimeMillis() - startTime >= TimeUnit.MINUTES.toMillis(blobTransferMaxTimeoutInMin)) {
-          String errMessage = String
-              .format(TRANSFER_TIMEOUT_ERROR_MSG_FORMAT, blobTransferRequest.getFullResourceName(), file.getName());
-          LOGGER.error(errMessage);
-          setupResponseAndFlush(HttpResponseStatus.REQUEST_TIMEOUT, errMessage.getBytes(), false, ctx);
-          return;
-        }
-        // send file
-        sendFile(file, ctx);
+    // Set up the time limitation for the transfer
+    long startTime = System.currentTimeMillis();
+
+    // transfer files
+    for (File file: files) {
+      // check if the transfer for all files is timed out for this partition
+      if (System.currentTimeMillis() - startTime >= TimeUnit.MINUTES.toMillis(blobTransferMaxTimeoutInMin)) {
+        String errMessage =
+            String.format(TRANSFER_TIMEOUT_ERROR_MSG_FORMAT, blobTransferRequest.getFullResourceName(), file.getName());
+        LOGGER.error(errMessage);
+        setupResponseAndFlush(HttpResponseStatus.REQUEST_TIMEOUT, errMessage.getBytes(), false, ctx);
+        return;
       }
+      // send file
+      sendFile(file, ctx);
+    }
 
-      sendMetadata(ctx, transferPartitionMetadata);
+    sendMetadata(ctx, transferPartitionMetadata);
 
-      // end of transfer
-      HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-      endOfTransfer.headers().set(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
-      String fullResourceName = blobTransferRequest.getFullResourceName();
-      ctx.writeAndFlush(endOfTransfer).addListener(future -> {
-        if (future.isSuccess()) {
-          LOGGER.debug("All files sent successfully for {}", fullResourceName);
-        } else {
-          LOGGER.error("Failed to send all files for {}", fullResourceName, future.cause());
-        }
-      });
-    } finally {
-      if (blobTransferRequest != null) {
+    // end of transfer
+    HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    endOfTransfer.headers().set(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
+    String fullResourceName = blobTransferRequest.getFullResourceName();
+    ctx.writeAndFlush(endOfTransfer).addListener(future -> {
+      if (future.isSuccess()) {
+        LOGGER.debug("All files sent successfully for {}", fullResourceName);
+      } else {
+        LOGGER.error("Failed to send all files for {}", fullResourceName, future.cause());
+      }
+    });
+  }
+
+  /**
+   * This method is called when the channel is inactive. It is used to decrease the concurrent user count.
+   * Because the channel is inactive, we can assume that the transfer is complete.
+   * If we decrease the concurrent user at channelRead0, when the connection is break in half, we will not be able to decrease the count in server side
+   * @param ctx
+   */
+  @Override
+  public void channelInactive(ChannelHandlerContext ctx) {
+    AtomicBoolean successCountedAsActiveCurrentUser = ctx.channel().attr(SUCCESS_COUNTED).get();
+    BlobTransferPayload blobTransferRequest = ctx.channel().attr(BLOB_TRANSFER_REQUEST).get();
+    if (successCountedAsActiveCurrentUser != null && successCountedAsActiveCurrentUser.get()
+        && blobTransferRequest != null) {
+      try {
         blobSnapshotManager.decreaseConcurrentUserCount(blobTransferRequest);
+        globalConcurrentTransferRequests.decrementAndGet();
+      } catch (Exception e) {
+        LOGGER.error("Failed to decrease the snapshot concurrent user count for request {}", blobTransferRequest, e);
       }
     }
+    ctx.fireChannelInactive();
   }
 
   /**

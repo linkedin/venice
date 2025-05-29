@@ -10,6 +10,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
@@ -86,6 +87,9 @@ public class PartitionConsumptionStateTest {
   @Test
   public void testTransientRecordMap() {
     PartitionConsumptionState pcs = new PartitionConsumptionState(replicaId, 0, mock(OffsetRecord.class), false);
+    PubSubPosition consumedPosition1Mock = mock(PubSubPosition.class);
+    PubSubPosition consumedPosition2Mock = mock(PubSubPosition.class);
+    PubSubPosition consumedPosition3Mock = mock(PubSubPosition.class);
 
     byte[] key1 = new byte[] { 65, 66, 67, 68 };
     byte[] key2 = new byte[] { 65, 66, 67, 68 };
@@ -97,7 +101,7 @@ public class PartitionConsumptionStateTest {
     Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(schema, 1);
     GenericRecord record = new GenericData.Record(aaSchema);
     // Test removal succeeds if the key is specified with same kafkaConsumedOffset
-    pcs.setTransientRecord(-1, 1, key1, 5, record);
+    pcs.setTransientRecord(-1, consumedPosition1Mock, key1, 5, record);
     PartitionConsumptionState.TransientRecord tr1 = pcs.getTransientRecord(key2);
     Assert.assertEquals(tr1.getValue(), null);
     Assert.assertEquals(tr1.getValueLen(), -1);
@@ -106,17 +110,17 @@ public class PartitionConsumptionStateTest {
     // Assert.assertEquals(tr1.getReplicationMetadata(), replicationMetadataKey1_1);
 
     Assert.assertEquals(pcs.getTransientRecordMapSize(), 1);
-    PartitionConsumptionState.TransientRecord tr2 = pcs.mayRemoveTransientRecord(-1, 1, key1);
+    PartitionConsumptionState.TransientRecord tr2 = pcs.mayRemoveTransientRecord(-1, consumedPosition1Mock, key1);
     Assert.assertNull(tr2);
     Assert.assertEquals(pcs.getTransientRecordMapSize(), 0);
 
     // Test removal fails if the key is specified with same kafkaConsumedOffset
-    pcs.setTransientRecord(-1, 1, key1, value1, 100, value1.length, 5, null);
-    pcs.setTransientRecord(-1, 2, key3, 5, null);
+    pcs.setTransientRecord(-1, consumedPosition1Mock, key1, value1, 100, value1.length, 5, null);
+    pcs.setTransientRecord(-1, consumedPosition2Mock, key3, 5, null);
     Assert.assertEquals(pcs.getTransientRecordMapSize(), 2);
-    pcs.setTransientRecord(-1, 3, key1, value2, 100, value2.length, 5, null);
+    pcs.setTransientRecord(-1, consumedPosition3Mock, key1, value2, 100, value2.length, 5, null);
 
-    tr2 = pcs.mayRemoveTransientRecord(-1, 1, key1);
+    tr2 = pcs.mayRemoveTransientRecord(-1, consumedPosition1Mock, key1);
     Assert.assertNotNull(tr2);
     Assert.assertEquals(tr2.getValue(), value2);
     Assert.assertEquals(tr2.getValueLen(), value2.length);
@@ -124,10 +128,9 @@ public class PartitionConsumptionStateTest {
     Assert.assertEquals(tr2.getValueSchemaId(), 5);
     Assert.assertEquals(pcs.getTransientRecordMapSize(), 2);
 
-    tr2 = pcs.mayRemoveTransientRecord(-1, 3, key1);
+    tr2 = pcs.mayRemoveTransientRecord(-1, consumedPosition3Mock, key1);
     Assert.assertNull(tr2);
     Assert.assertEquals(pcs.getTransientRecordMapSize(), 1);
-
   }
 
   @Test

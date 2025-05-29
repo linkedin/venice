@@ -1,8 +1,15 @@
 package com.linkedin.venice.client.stats;
 
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_COUNT;
+import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
+
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.dimensions.RequestRetryType;
+import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -11,13 +18,12 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
+import java.util.Collections;
 import java.util.Map;
 
 
 public class ClientStats extends BasicClientStats {
-  private final Sensor unhealthyRequestLatencySensor;
   private final Map<Integer, Sensor> httpStatusSensorMap = new VeniceConcurrentHashMap<>();
-  private final Sensor requestRetryCountSensor;
   private final Sensor successRequestDuplicateKeyCountSensor;
   private final Sensor requestSerializationTime;
   private final Sensor requestSubmissionToResponseHandlingTime;
@@ -39,18 +45,25 @@ public class ClientStats extends BasicClientStats {
    */
   private final Sensor multiGetFallbackSensor;
 
+  private MetricEntityStateOneEnum<RequestRetryType> errorRetryRequest;
+
   public static ClientStats getClientStats(
       MetricsRepository metricsRepository,
       String storeName,
       RequestType requestType,
-      ClientConfig clientConfig) {
+      ClientConfig clientConfig,
+      ClientType clientType) {
     String prefix = clientConfig == null ? null : clientConfig.getStatsPrefix();
     String metricName = prefix == null || prefix.isEmpty() ? storeName : prefix + "." + storeName;
-    return new ClientStats(metricsRepository, metricName, requestType);
+    return new ClientStats(metricsRepository, metricName, requestType, clientType);
   }
 
-  protected ClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
-    super(metricsRepository, storeName, requestType);
+  protected ClientStats(
+      MetricsRepository metricsRepository,
+      String storeName,
+      RequestType requestType,
+      ClientType clientType) {
+    super(metricsRepository, storeName, requestType, clientType);
 
     /**
      * Check java doc of function: {@link TehutiUtils.RatioStat} to understand why choosing {@link Rate} instead of
@@ -58,8 +71,15 @@ public class ClientStats extends BasicClientStats {
      */
     Rate requestRetryCountRate = new OccurrenceRate();
 
-    requestRetryCountSensor = registerSensor("request_retry_count", requestRetryCountRate);
-    unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg());
+    errorRetryRequest = MetricEntityStateOneEnum.create(
+        RETRY_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        ClientTehutiMetricName.REQUEST_RETRY_COUNT,
+        Collections.singletonList(requestRetryCountRate),
+        baseDimensionsMap,
+        RequestRetryType.class);
+
     successRequestDuplicateKeyCountSensor = registerSensor("success_request_duplicate_key_count", new Rate());
     /**
      * The time it took to serialize the request, to be sent to the router. This is done in a blocking fashion
@@ -124,12 +144,8 @@ public class ClientStats extends BasicClientStats {
         .record();
   }
 
-  public void recordUnhealthyLatency(double latency) {
-    unhealthyRequestLatencySensor.record(latency);
-  }
-
-  public void recordRequestRetryCount() {
-    requestRetryCountSensor.record();
+  public void recordErrorRetryRequest() {
+    errorRetryRequest.record(1, ERROR_RETRY);
   }
 
   public void recordSuccessDuplicateRequestKeyCount(int duplicateKeyCount) {
@@ -194,5 +210,23 @@ public class ClientStats extends BasicClientStats {
 
   public void recordMultiGetFallback(int keyCount) {
     multiGetFallbackSensor.record(keyCount);
+  }
+
+  /**
+   * Metric names for tehuti metrics used in this class.
+   */
+  public enum ClientTehutiMetricName implements TehutiMetricNameEnum {
+    REQUEST_RETRY_COUNT;
+
+    private final String metricName;
+
+    ClientTehutiMetricName() {
+      this.metricName = name().toLowerCase();
+    }
+
+    @Override
+    public String getMetricName() {
+      return this.metricName;
+    }
   }
 }

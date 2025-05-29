@@ -465,7 +465,14 @@ public class MetaSystemStoreTest {
       NewStoreResponse resp =
           parentControllerClient.createNewStore(storeName, "test_owner", INT_KEY_SCHEMA, valueSchema);
       assertFalse(resp.isError(), "Create new store failed: " + resp.getError());
-      assertFalse(parentControllerClient.emptyPush(storeName, "test-push-job", 100).isError());
+      VersionCreationResponse versionCreationResponse =
+          parentControllerClient.emptyPush(storeName, "test-push-job", 100);
+      assertFalse(versionCreationResponse.isError());
+      TestUtils.waitForNonDeterministicPushCompletion(
+          versionCreationResponse.getKafkaTopic(),
+          parentControllerClient,
+          60,
+          TimeUnit.SECONDS);
     }
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     TestUtils.waitForNonDeterministicPushCompletion(

@@ -173,6 +173,7 @@ import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.exceptions.AdminMessageConsumptionTimeoutException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -510,7 +511,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (initRoutineForPushJobDetailsSystemStore != null) {
       if (initializePushJobDetailsStore) {
         UpdateStoreQueryParams updateStoreQueryParamsForPushJobDetails =
-            new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
+            new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
         initRoutineForPushJobDetailsSystemStore.setDelegate(
             new SharedInternalRTStoreInitializationRoutine(
                 pushJobDetailsStoreClusterName,
@@ -760,7 +761,7 @@ public class VeniceParentHelixAdmin implements Admin {
             "Timed out after waiting for " + waitingTimeForConsumptionMs + "ms for admin consumption to catch up.";
         errMsg += " Consumed execution id: " + consumedExecutionId + ", waiting to be consumed id: " + executionId;
         errMsg += (lastException == null) ? "" : " Last exception: " + lastException.getMessage();
-        throw new VeniceException(errMsg, lastException);
+        throw new AdminMessageConsumptionTimeoutException(errMsg, lastException);
       }
 
       LOGGER.info("Waiting execution id: {} to be consumed, currently at: {}", executionId, consumedExecutionId);
@@ -1012,9 +1013,9 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
     acquireAdminMessageLock(clusterName, storeName);
+    Store store = null;
     try {
       LOGGER.info("Deleting store: {} from cluster: {}", storeName, clusterName);
-      Store store = null;
       try {
         store = getVeniceHelixAdmin().checkPreConditionForDeletion(clusterName, storeName);
       } catch (VeniceNoStoreException e) {
@@ -1033,17 +1034,38 @@ public class VeniceParentHelixAdmin implements Admin {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       // Deleting ACL needs to be the last step in store deletion process.
-      if (store != null) {
-        if (!store.isMigrating()) {
-          cleanUpAclsForStore(storeName, VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
-        } else {
-          LOGGER.info("Store: {} is migrating! Skipping acl deletion!", storeName);
-        }
-      } else {
-        LOGGER.warn("Store object for {} is missing! Skipping acl deletion!", storeName);
-      }
+      deleteAclsForStore(store, storeName);
+    } catch (AdminMessageConsumptionTimeoutException timeoutException) {
+      LOGGER.info(
+          "Timed out while waiting for delete store admin message to be consumed for store: {} in cluster: {}",
+          storeName,
+          clusterName,
+          timeoutException);
+      deleteAclsForStore(store, storeName);
+      throw timeoutException;
+    } catch (Exception e) {
+      LOGGER.info("Caught an exception when deleting store {} in cluster {}", storeName, clusterName, e);
+      throw e;
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
+    }
+  }
+
+  /**
+   * Deletes the acls associated with a store
+   * @param store
+   * @param storeName
+   */
+  protected void deleteAclsForStore(Store store, String storeName) {
+    if (store == null) {
+      LOGGER.warn("Store object for {} is missing! Skipping acl deletion!", storeName);
+      return;
+    }
+
+    if (!store.isMigrating()) {
+      cleanUpAclsForStore(store.getName(), VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
+    } else {
+      LOGGER.info("Store: {} is migrating! Skipping acl deletion!", storeName);
     }
   }
 
@@ -4549,6 +4571,11 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getLocalAdminOperationProtocolVersion();
   }
 
+  @Override
+  public String getControllerName() {
+    return getVeniceHelixAdmin().getControllerName();
+  }
+
   /**
    * Unsupported operation in the parent controller.
    */
@@ -5204,14 +5231,23 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getDeadStores(clusterName, storeName, includeSystemStores);
   }
 
-  /**
-   * @return the largest used version number for the given store from the store graveyard.
-   */
   @Override
   public int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName) {
     Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    int aggregatedLargestUsedVersionNumber =
-        getVeniceHelixAdmin().getStoreGraveyard().getLargestUsedVersionNumber(storeName);
+    int aggregatedLargestUsedVersionNumber = getStoreGraveyard().getLargestUsedVersionNumber(storeName);
+    for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
+      VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
+      if (response.getVersion() > aggregatedLargestUsedVersionNumber) {
+        aggregatedLargestUsedVersionNumber = response.getVersion();
+      }
+    }
+    return aggregatedLargestUsedVersionNumber;
+  }
+
+  @Override
+  public int getLargestUsedVersion(String clusterName, String storeName) {
+    Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    int aggregatedLargestUsedVersionNumber = getVeniceHelixAdmin().getLargestUsedVersion(clusterName, storeName);
     for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
       VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
       if (response.getVersion() > aggregatedLargestUsedVersionNumber) {
@@ -5884,5 +5920,10 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public LogContext getLogContext() {
     return getVeniceHelixAdmin().getLogContext();
+  }
+
+  @Override
+  public VeniceControllerClusterConfig getControllerConfig(String clusterName) {
+    return multiClusterConfigs.getControllerConfig(clusterName);
   }
 }

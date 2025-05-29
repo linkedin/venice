@@ -19,10 +19,11 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -118,7 +119,7 @@ public class EndToEndKafkaWithSASLTest {
         .replicationFactor(1)
         .partitionSize(1)
         .sslToStorageNodes(false)
-        .sslToKafka(false)
+        .sslToKafka(PubSubUtil.isPubSubSslProtocol(securityProtocol))
         .zkServerWrapper(zkServer)
         .kafkaBrokerWrapper(pubSubBrokerWrapper)
         .extraProperties(extraProperties)
@@ -142,7 +143,7 @@ public class EndToEndKafkaWithSASLTest {
         props,
         new UpdateStoreQueryParams()).close();
 
-    TestWriteUtils.runPushJob("Test Batch push job", props);
+    IntegrationTestPushUtils.runVPJ(props);
     veniceCluster.refreshAllRouterMetaData();
 
     MetricsRepository metricsRepository = new MetricsRepository();

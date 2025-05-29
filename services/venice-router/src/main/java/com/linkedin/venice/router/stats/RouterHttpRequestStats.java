@@ -114,6 +114,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor findUnhealthyHostRequestSensor;
   // Reflect the real request usage, e.g count each key as an unit of request usage.
   private final Sensor requestUsageSensor;
+  private final Sensor requestCallCountSensor;
   private final Sensor requestParsingLatencySensor;
   private final Sensor requestRoutingLatencySensor;
   private final Sensor unAvailableRequestSensor;
@@ -299,7 +300,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         singletonList(new Count()),
         baseDimensionsMap,
         RequestRetryType.class);
-    allowedRetryCountMetric = new MetricEntityStateBase(
+    allowedRetryCountMetric = MetricEntityStateBase.create(
         ALLOWED_RETRY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
@@ -308,7 +309,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         baseDimensionsMap,
         baseAttributes);
 
-    disallowedRetryCountMetric = new MetricEntityStateBase(
+    disallowedRetryCountMetric = MetricEntityStateBase.create(
         DISALLOWED_RETRY_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
@@ -317,7 +318,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         baseDimensionsMap,
         baseAttributes);
 
-    retryDelayMetric = new MetricEntityStateBase(
+    retryDelayMetric = MetricEntityStateBase.create(
         RETRY_DELAY.getMetricEntity(),
         otelRepository,
         this::registerSensorFinal,
@@ -420,6 +421,13 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
      * request_usage.Total is incoming KPS while request_usage.OccurrenceRate is QPS
      */
     requestUsageSensor = registerSensor("request_usage", new Total(), new OccurrenceRate());
+
+    /**
+     * A count version of this sensor is needed, as an internal system depends on the sensor to be
+     * of type Count to measure QPS.
+     */
+    requestCallCountSensor = registerSensor("request_call_count", new Count());
+
     multiGetFallbackSensor = registerSensor("multiget_fallback", new Total(), new OccurrenceRate());
 
     requestParsingLatencySensor = registerSensor("request_parse_latency", new Avg());
@@ -650,6 +658,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordRequestUsage(int usage) {
     requestUsageSensor.record(usage);
+    requestCallCountSensor.record();
   }
 
   public void recordMultiGetFallback(int keyCount) {

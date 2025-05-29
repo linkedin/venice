@@ -1,8 +1,5 @@
 package com.linkedin.venice.pubsub.api;
 
-import com.linkedin.venice.annotation.UnderDevelopment;
-
-
 /**
  * An interface implemented by specific PubSubProducerAdapters to return the result of a produce action.
  */
@@ -15,7 +12,6 @@ public interface PubSubProduceResult {
   /**
    * The position of the record in the topic/partition.
    */
-  @UnderDevelopment
   PubSubPosition getPubSubPosition();
 
   /**

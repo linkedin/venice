@@ -6,7 +6,6 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.pubsub.api.EarliestPositionTest.DummyPosition;
 import java.lang.reflect.Constructor;
 import org.testng.annotations.Test;
 
@@ -64,21 +63,5 @@ public class LatestPositionTest {
   public void testNumericOffset() {
     LatestPosition instance = LatestPosition.getInstance();
     assertThrows(UnsupportedOperationException.class, () -> instance.getNumericOffset());
-  }
-
-  @Test
-  public void testComparePositionThrows() {
-    LatestPosition instance = LatestPosition.getInstance();
-    PubSubPosition dummy = new DummyPosition();
-
-    assertThrows(UnsupportedOperationException.class, () -> instance.comparePosition(dummy));
-  }
-
-  @Test
-  public void testDiffThrows() {
-    LatestPosition instance = LatestPosition.getInstance();
-    PubSubPosition dummy = new DummyPosition();
-
-    assertThrows(UnsupportedOperationException.class, () -> instance.diff(dummy));
   }
 }

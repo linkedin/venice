@@ -1,6 +1,15 @@
 package com.linkedin.venice.controller;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
@@ -207,13 +216,13 @@ public class TestProtocolVersionAutoDetectionService {
       for (Map.Entry<String, Long> entry: hostToVersionMap.entrySet()) {
         String hostName = entry.getKey();
         long version = entry.getValue();
-        response.getControllerUrlToVersionMap().put(hostName, version);
+        response.getControllerNameToVersionMap().put(hostName, version);
         if (hostToClusterToLeaderStateMap.containsKey(hostName)) {
           Map<String, Boolean> clusterToStateMap = hostToClusterToLeaderStateMap.get(hostName);
           if (clusterToStateMap.get(clusterName) != null && clusterToStateMap.get(clusterName)) {
             // Add the local version for leader controller
             response.setLocalAdminOperationProtocolVersion(version);
-            response.setRequestUrl(hostName);
+            response.setLocalControllerName(hostName);
             response.setCluster(clusterName);
           }
         }

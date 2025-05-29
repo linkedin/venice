@@ -39,7 +39,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 }
 
 def avroVersion = '1.10.2'
-def avroUtilVersion = '0.4.22'
+def avroUtilVersion = '0.4.30'
 def grpcVersion = '1.49.2'
 // N.B.: The build should also work when substituting Kafka from the Apache fork to LinkedIn's fork:
 def kafkaGroup = 'org.apache.kafka' // 'com.linkedin.kafka'
@@ -55,7 +55,7 @@ def hadoopVersion = '2.10.2'
 def apacheSparkVersion = '3.3.3'
 def antlrVersion = '4.8'
 def scala = '2.12'
-def openTelemetryVersion = '1.33.0'
+def openTelemetryVersion = '1.47.0'
 
 ext.libraries = [
     alpnAgent: "org.mortbay.jetty.alpn:jetty-alpn-agent:${alpnAgentVersion}",
@@ -124,6 +124,7 @@ ext.libraries = [
     opentelemetryExporterLogging: "io.opentelemetry:opentelemetry-exporter-logging:${openTelemetryVersion}",
     opentelemetryExporterOtlp: "io.opentelemetry:opentelemetry-exporter-otlp:${openTelemetryVersion}",
     opentelemetryExporterCommon: "io.opentelemetry:opentelemetry-exporter-common:${openTelemetryVersion}",
+    openTelemetryTestSdk: "io.opentelemetry:opentelemetry-sdk-testing:${openTelemetryVersion}",
     oss: 'org.sonatype.oss:oss-parent:7',
     pulsarClient: "${pulsarGroup}:pulsar-client:${pulsarVersion}",
     pulsarIoCore: "${pulsarGroup}:pulsar-io-core:${pulsarVersion}",
@@ -150,7 +151,7 @@ ext.libraries = [
     xerces: 'xerces:xercesImpl:2.9.1',
     zkclient: 'com.101tec:zkclient:0.7', // For Kafka AdminUtils
     zookeeper: 'org.apache.zookeeper:zookeeper:3.6.3',
-    zstd: 'com.github.luben:zstd-jni:1.5.2-3'
+    zstd: 'com.github.luben:zstd-jni:1.5.6-8'
 ]
 
 group = 'com.linkedin.venice'
@@ -318,7 +319,6 @@ subprojects {
     doFirst {
       def versionOverrides = [
 //        project(':internal:venice-common').file('src/main/resources/avro/StoreVersionState/v5', PathValidation.DIRECTORY)
-        project(':internal:venice-common').file('src/main/resources/avro/KafkaMessageEnvelope/v11', PathValidation.DIRECTORY)
       ]
 
       def schemaDirs = [sourceDir]

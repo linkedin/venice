@@ -168,9 +168,6 @@ public class ConfigKeys {
 
   public static final String KAFKA_CLIENT_ID_CONFIG = ApacheKafkaConsumerConfig.KAFKA_CLIENT_ID_CONFIG;
   public static final String KAFKA_GROUP_ID_CONFIG = ApacheKafkaConsumerConfig.KAFKA_GROUP_ID_CONFIG;
-  public static final String KAFKA_AUTO_OFFSET_RESET_CONFIG = ApacheKafkaConsumerConfig.KAFKA_AUTO_OFFSET_RESET_CONFIG;
-  public static final String KAFKA_ENABLE_AUTO_COMMIT_CONFIG =
-      ApacheKafkaConsumerConfig.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
   public static final String KAFKA_FETCH_MIN_BYTES_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MIN_BYTES_CONFIG;
   public static final String KAFKA_FETCH_MAX_BYTES_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MAX_BYTES_CONFIG;
   public static final String KAFKA_MAX_POLL_RECORDS_CONFIG = ApacheKafkaConsumerConfig.KAFKA_MAX_POLL_RECORDS_CONFIG;
@@ -232,8 +229,30 @@ public class ConfigKeys {
   public static final String KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND =
       "kafka.fetch.quota.unordered.records.per.second";
 
-  // Kafka security protocol
-  public static final String KAFKA_SECURITY_PROTOCOL = "security.protocol";
+  /**
+   * @deprecated This legacy config key was used to specify the security protocol for PubSub clients.
+   * As part of an ongoing effort to namespace all PubSub client configs, this key is being replaced
+   * with a "pubsub."-prefixed version to reduce ambiguity with unrelated configurations.
+   * Use {@link #PUBSUB_SECURITY_PROTOCOL} instead.
+   */
+  @Deprecated
+  public static final String PUBSUB_SECURITY_PROTOCOL_LEGACY = "security.protocol";
+
+  /**
+   * New config key for specifying the PubSub client security protocol.
+   * This is part of a broader effort to namespace all PubSub configs under the "pubsub." prefix.
+   */
+  public static final String PUBSUB_SECURITY_PROTOCOL = PUBSUB_CLIENT_CONFIG_PREFIX + PUBSUB_SECURITY_PROTOCOL_LEGACY;
+
+  /**
+   * @deprecated This legacy config key was used to specify the Kafka security protocol using a "kafka." prefix.
+   * As part of the ongoing effort to unify and namespace all PubSub client configurations under the "pubsub." prefix,
+   * this key is being phased out in favor of {@link #PUBSUB_SECURITY_PROTOCOL}.
+   *
+   * Use {@code pubsub.security.protocol} instead to avoid ambiguity and ensure consistency across client configs.
+   */
+  @Deprecated
+  public static final String KAFKA_SECURITY_PROTOCOL_LEGACY = KAFKA_CONFIG_PREFIX + PUBSUB_SECURITY_PROTOCOL_LEGACY;
 
   /**
    * Number of PubSub consumer clients to be used per topic manager for fetching metadata.
@@ -591,7 +610,7 @@ public class ConfigKeys {
 
   /**
    * The wait time before validating system store heartbeat during system store health check in parent controller.
-   * Default is 1min.
+   * Default is 10 min.
    */
   public static final String CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS =
       "controller.parent.system.store.heartbeat.check.wait.time.seconds";
@@ -1956,9 +1975,10 @@ public class ConfigKeys {
   // this is a config to decide whether the snapshot is expired and need to be recreated.
   public static final String BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN =
       "blob.transfer.snapshot.retention.time.in.min";
-  // this is a config to decide the max allowed concurrent snapshot user
+  // this is a config to decide the max allowed concurrent snapshot user per host level, it is used to limit how many
+  // requests can be concurrently served for a host globally.
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
-  // this is a config to decide max file transfer timeout time in minutes
+  // this is a config to decide max file transfer timeout time in minutes in server side.
   public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
   // this is a config to decide the max allowed offset lag to use kafka, even if the blob transfer is enable.
   public static final String BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD =
@@ -1975,6 +1995,11 @@ public class ConfigKeys {
   // the remote peer.
   public static final String BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC =
       "blob.transfer.service.write.limit.bytes.per.sec";
+
+  // This is the cleanup interval in mins for the blob transfer snapshot. Every interval, the snapshot will be cleaned
+  // up.
+  public static final String BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS =
+      "blob.transfer.snapshot.cleanup.interval.in.mins";
 
   // Enable ssl for the blob transfer
   public static final String BLOB_TRANSFER_SSL_ENABLED = "blob.transfer.ssl.enabled";
@@ -2021,11 +2046,6 @@ public class ConfigKeys {
    * node, and decide whether to send a status update event. This config controls the interval between each check.
    */
   public static final String DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS = "davinci.push.status.check.interval.in.ms";
-
-  /**
-   * The number of threads that will be used to perform SSL handshakes between clients and a router.
-   */
-  public static final String ROUTER_CLIENT_SSL_HANDSHAKE_THREADS = "router.client.ssl.handshake.threads";
 
   /**
    * Config to control the number of threads used for DNS resolution.
@@ -2320,16 +2340,6 @@ public class ConfigKeys {
    * with SOS, EOS or skipped records.
    */
   public static final String SERVER_INGESTION_HEARTBEAT_INTERVAL_MS = "server.ingestion.heartbeat.interval.ms";
-
-  /**
-   * Whether to check LeaderCompleteState in the follower replica and davinci replica before marking the follower
-   * completed. This is to avoid the case that the follower replica is marked completed before the leader replica
-   * and transitions to leader if the leader replicas goes down.
-   * <p>
-   * Default to false. Should be enabled only after Venice tag 0.4.154 is fully rolled out.
-   */
-  public static final String SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_ENABLED =
-      "server.leader.complete.state.check.in.follower.enabled";
 
   /**
    * Follower replicas and DavinciClient will only consider heartbeats received within
@@ -2656,6 +2666,12 @@ public class ConfigKeys {
       "controller.deferred.version.swap.service.enabled";
 
   /**
+   * Specifies after how long the wait time has passed before emitting a stalled version swap metric. Default is value 1.1 where
+   * the buffer time is 10% of the store wait time;
+   */
+  public static final String DEFERRED_VERSION_SWAP_BUFFER_TIME = "deferred.version.swap.buffer.time";
+
+  /**
    * Enables / disables allowing dvc clients to perform a target region push with deferred swap. When enabled, dvc clients
    * will be skipped and target regions will not be set and the deferred version swap service will skip checking stores with
    * isDavinciHeartbeatReported set to true. This is a temporary config until delayed ingestion for dvc is complete. Default value is enabled
@@ -2729,6 +2745,19 @@ public class ConfigKeys {
    */
   public static final String SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS =
       "server.idle.ingestion.task.cleanup.interval.in.seconds";
-
   public static final String PASS_THROUGH_CONFIG_PREFIXES_LIST_KEY = "pass.through.config.prefixes.list";
+  /**
+   * The threshold in ms to consider a subscribed topic partition problematic without a new message polled since it was
+   * subscribed.
+   */
+  public static final String SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS =
+      "server.consumer.poll.tracker.stale.threshold.in.seconds";
+  public static final String SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK =
+      "server.use.heartbeat.lag.for.ready.to.serve.check";
+
+  /**
+   * Use heartbeat lag instead of offset lag for ready-to-serve check.
+   */
+  public static final String SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED =
+      "server.use.heartbeat.lag.for.ready.to.serve.check.enabled";
 }

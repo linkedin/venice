@@ -35,6 +35,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -69,6 +70,7 @@ import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.RunningJob;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -540,6 +542,7 @@ public class TestVenicePushJobCheckpoints {
     ControllerClient controllerClient = mock(ControllerClient.class);
     configureControllerClientMock(controllerClient, props, executionStatus);
     configureClusterDiscoverControllerClient(controllerClient);
+    Mockito.when(controllerClient.getAllReplicationMetadataSchemas(anyString())).thenReturn(new MultiSchemaResponse());
     try (VenicePushJob venicePushJob = new VenicePushJob("job-id", props)) {
       venicePushJob.setControllerClient(controllerClient);
       venicePushJob.setKmeSchemaSystemStoreControllerClient(controllerClient);
@@ -671,6 +674,9 @@ public class TestVenicePushJobCheckpoints {
 
     StoreInfo storeInfo = mock(StoreInfo.class);
     when(controllerClient.getValueSchema(anyString(), anyInt())).thenReturn(mock(SchemaResponse.class));
+
+    MultiSchemaResponse response = new MultiSchemaResponse();
+    when(controllerClient.getAllReplicationMetadataSchemas(anyString())).thenReturn(response);
 
     StorageEngineOverheadRatioResponse storageEngineOverheadRatioResponse =
         mock(StorageEngineOverheadRatioResponse.class);

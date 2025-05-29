@@ -22,8 +22,8 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
+import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -57,6 +57,108 @@ public class HeartbeatMonitoringServiceTest {
     heartbeatMonitoringService.getHeartbeatInfo("", -1, false);
     Mockito.verify(heartbeatMonitoringService, times(2))
         .getHeartbeatInfoFromMap(any(), anyString(), anyLong(), anyString(), anyInt(), anyBoolean());
+  }
+
+  @Test
+  public void testGetHeartbeatLag() {
+    HeartbeatMonitoringService heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
+    doCallRealMethod().when(heartbeatMonitoringService)
+        .getReplicaLeaderMaxHeartbeatLag(any(), anyString(), anyInt(), anyBoolean());
+    doCallRealMethod().when(heartbeatMonitoringService)
+        .getReplicaFollowerHeartbeatLag(any(), anyString(), anyInt(), anyBoolean());
+
+    Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMap =
+        new VeniceConcurrentHashMap<>();
+    Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerMap =
+        new VeniceConcurrentHashMap<>();
+    doReturn(leaderMap).when(heartbeatMonitoringService).getLeaderHeartbeatTimeStamps();
+    doReturn(followerMap).when(heartbeatMonitoringService).getFollowerHeartbeatTimeStamps();
+    doReturn("dc-1").when(heartbeatMonitoringService).getLocalRegionName();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+
+    // Validating Leader Lag
+    String store = "testStore";
+    int version = 1;
+    int partition = 1;
+    doReturn("store_v1-1").when(pcs).getReplicaId();
+    doReturn(partition).when(pcs).getPartition();
+    leaderMap.put(store, new VeniceConcurrentHashMap<>());
+    leaderMap.get(store).put(version, new VeniceConcurrentHashMap<>());
+    leaderMap.get(store).get(version).put(partition, new VeniceConcurrentHashMap<>());
+    leaderMap.get(store)
+        .get(version)
+        .get(partition)
+        .put(
+            "dc-0",
+            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(5), true, true));
+    leaderMap.get(store)
+        .get(version)
+        .get(partition)
+        .put(
+            "dc-1",
+            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(10), true, true));
+    leaderMap.get(store)
+        .get(version)
+        .get(partition)
+        .put(
+            "dc-1_sep",
+            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(100), true, true));
+
+    // Check valid leader lag
+    long lag = heartbeatMonitoringService.getReplicaLeaderMaxHeartbeatLag(pcs, store, version, true);
+    Assert.assertTrue(lag >= TimeUnit.MINUTES.toMillis(10));
+    Assert.assertTrue(lag < TimeUnit.MINUTES.toMillis(11));
+    // Add unavailable region
+    leaderMap.get(store)
+        .get(version)
+        .get(partition)
+        .put(
+            "dc-2",
+            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(20), false, false));
+    lag = heartbeatMonitoringService.getReplicaLeaderMaxHeartbeatLag(pcs, store, version, true);
+    Assert.assertEquals(lag, Long.MAX_VALUE);
+    // Replica not found in leader map.
+    lag = heartbeatMonitoringService.getReplicaLeaderMaxHeartbeatLag(pcs, store, 2, true);
+    Assert.assertEquals(lag, Long.MAX_VALUE);
+
+    /**
+     * Validating Follower Lag
+     */
+    followerMap.put(store, new VeniceConcurrentHashMap<>());
+    followerMap.get(store).put(version, new VeniceConcurrentHashMap<>());
+    followerMap.get(store).get(version).put(partition, new VeniceConcurrentHashMap<>());
+    followerMap.get(store)
+        .get(version)
+        .get(partition)
+        .put(
+            "dc-1",
+            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(10), true, true));
+
+    // Check valid follower lag
+    lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, version, true);
+    Assert.assertTrue(lag >= TimeUnit.MINUTES.toMillis(10));
+    // Add unrelated region
+    followerMap.get(store)
+        .get(version)
+        .get(partition)
+        .put(
+            "dc-0",
+            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(20), true, true));
+    lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, version, true);
+    Assert.assertTrue(lag >= TimeUnit.MINUTES.toMillis(10));
+    Assert.assertTrue(lag < TimeUnit.MINUTES.toMillis(20));
+    // Set local region lag to be invalid
+    followerMap.get(store)
+        .get(version)
+        .get(partition)
+        .put(
+            "dc-1",
+            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(10), true, false));
+    lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, version, true);
+    Assert.assertEquals(lag, Long.MAX_VALUE);
+    // Replica not found in follower map.
+    lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, 2, true);
+    Assert.assertEquals(lag, Long.MAX_VALUE);
   }
 
   @Test
@@ -159,8 +261,7 @@ public class HeartbeatMonitoringServiceTest {
   public void testAddLeaderLagMonitor(boolean enableSepRT) {
 
     // Default hybrid store config
-    HybridStoreConfig hybridStoreConfig =
-        new HybridStoreConfigImpl(1L, 1L, 1L, DataReplicationPolicy.NON_AGGREGATE, BufferReplayPolicy.REWIND_FROM_SOP);
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(1L, 1L, 1L, BufferReplayPolicy.REWIND_FROM_SOP);
     // Version configs
     Version backupVersion = new VersionImpl(TEST_STORE, 1, "1"); // Non-hybrid version
     Version currentVersion = new VersionImpl(TEST_STORE, 2, "2"); // hybrid version, active/active

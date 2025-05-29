@@ -23,14 +23,17 @@ public final class VenicePushJobConstants {
 
   public static final String KEY_FIELD_PROP = "key.field";
   public static final String VALUE_FIELD_PROP = "value.field";
+  public static final String TIMESTAMP_FIELD_PROP = "timestamp.field";
   public static final String DEFAULT_KEY_FIELD_PROP = "key";
   public static final String DEFAULT_VALUE_FIELD_PROP = "value";
+  public static final String DEFAULT_TIMESTAMP_FIELD_PROP = "timestamp";
   public static final boolean DEFAULT_SSL_ENABLED = false;
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP = "kafka.source.key.schema";
   public static final String EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = "extended.schema.validity.check.enabled";
   public static final boolean DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = true;
   public static final String UPDATE_SCHEMA_STRING_PROP = "update.schema";
+  public static final String RMD_SCHEMA_PROP = "rmd.schema";
 
   // This is a temporary config used to rollout the native input format for Spark. This will be removed soon
   public static final String SPARK_NATIVE_INPUT_FORMAT_ENABLED = "spark.native.input.format.enabled";
@@ -219,7 +222,6 @@ public final class VenicePushJobConstants {
   public static final String STORAGE_ENGINE_OVERHEAD_RATIO = "storage_engine_overhead_ratio";
   @Deprecated
   public static final String VSON_PUSH = "vson.push";
-  public static final String KAFKA_SECURITY_PROTOCOL = "SSL";
   public static final String COMPRESSION_STRATEGY = "compression.strategy";
   public static final String KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY = "kafka.input.source.compression.strategy";
   public static final String SSL_CONFIGURATOR_CLASS_CONFIG = "ssl.configurator.class";

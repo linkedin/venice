@@ -136,8 +136,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
           rocksDbPath,
           memoryStats,
           rocksDbThrottler,
-          rocksDBServerConfig,
-          storeConfig);
+          rocksDBServerConfig);
     } else {
       return new ReplicationMetadataRocksDBStoragePartition(
           storagePartitionConfig,
@@ -145,9 +144,46 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
           rocksDbPath,
           memoryStats,
           rocksDbThrottler,
-          rocksDBServerConfig,
-          storeConfig);
+          rocksDBServerConfig);
     }
+  }
+
+  public long getDuplicateKeyCountEstimate() {
+    Set<Integer> partitionIds = super.getPartitionIds();
+    long duplicateCount = 0;
+    for (int partitionId: partitionIds) {
+      RocksDBStoragePartition partition;
+      try {
+        partition = (RocksDBStoragePartition) super.getPartitionOrThrow(partitionId);
+      } catch (VeniceException e) {
+        LOGGER.warn(
+            "Could not find partition {} for store {}",
+            Utils.getReplicaId(getStoreVersionName(), partitionId),
+            super.getStoreVersionName());
+        continue;
+      }
+      duplicateCount += partition.getDuplicateKeyCountEstimate();
+    }
+    return duplicateCount;
+  }
+
+  public long getKeyCountEstimate() {
+    Set<Integer> partitionIds = super.getPartitionIds();
+    long keyCount = 0;
+
+    for (int partitionId: partitionIds) {
+      RocksDBStoragePartition partition;
+      try {
+        partition = (RocksDBStoragePartition) super.getPartitionOrThrow(partitionId);
+        keyCount += partition.getKeyCountEstimate();
+      } catch (Exception e) {
+        LOGGER.warn(
+            "Could not find partition {} for store {}",
+            Utils.getReplicaId(getStoreVersionName(), partitionId),
+            super.getStoreVersionName());
+      }
+    }
+    return keyCount;
   }
 
   @Override

@@ -1,6 +1,6 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertTrue;
 
 import org.apache.hadoop.io.BytesWritable;
 import org.testng.annotations.Test;

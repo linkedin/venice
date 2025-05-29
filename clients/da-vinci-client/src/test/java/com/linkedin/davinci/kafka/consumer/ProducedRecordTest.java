@@ -1,7 +1,10 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.Mockito.mock;
+
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import java.nio.ByteBuffer;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -19,7 +22,8 @@ public class ProducedRecordTest {
     put1.putValue = ByteBuffer.wrap(value1);
     put1.schemaId = 5;
 
-    LeaderProducedRecordContext pr1 = LeaderProducedRecordContext.newPutRecord(-1, 1, key1, put1);
+    PubSubPosition consumedPositionMock = mock(PubSubPosition.class);
+    LeaderProducedRecordContext pr1 = LeaderProducedRecordContext.newPutRecord(-1, consumedPositionMock, key1, put1);
     CompletableFuture.runAsync(() -> pr1.completePersistedToDBFuture(null));
     pr1.getPersistedToDBFuture().get(10, TimeUnit.SECONDS);
   }
@@ -33,7 +37,8 @@ public class ProducedRecordTest {
     put1.putValue = ByteBuffer.wrap(value1);
     put1.schemaId = 5;
 
-    LeaderProducedRecordContext pr1 = LeaderProducedRecordContext.newPutRecord(-1, 1, key1, put1);
+    PubSubPosition consumedPositionMock = mock(PubSubPosition.class);
+    LeaderProducedRecordContext pr1 = LeaderProducedRecordContext.newPutRecord(-1, consumedPositionMock, key1, put1);
     CompletableFuture.runAsync(() -> pr1.completePersistedToDBFuture(new VeniceMessageException("test exception")));
 
     try {

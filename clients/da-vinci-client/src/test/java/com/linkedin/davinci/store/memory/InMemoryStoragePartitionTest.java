@@ -1,7 +1,5 @@
 package com.linkedin.davinci.store.memory;
 
-import static org.testng.Assert.*;
-
 import java.nio.ByteBuffer;
 import org.testng.Assert;
 import org.testng.annotations.Test;

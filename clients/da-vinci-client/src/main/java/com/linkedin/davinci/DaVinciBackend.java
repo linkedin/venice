@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VER
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
+import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
@@ -136,7 +137,7 @@ public class DaVinciBackend implements Closeable {
       writeBatchingPushStatus = backendConfig.getDaVinciPushStatusCheckIntervalInMs() >= 0;
       this.configLoader = configLoader;
       metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
-          .orElse(TehutiUtils.getMetricsRepository("davinci-client"));
+          .orElse(TehutiUtils.getMetricsRepository(DAVINCI_CLIENT.getName()));
       VeniceMetadataRepositoryBuilder veniceMetadataRepositoryBuilder =
           new VeniceMetadataRepositoryBuilder(configLoader, clientConfig, metricsRepository, icProvider, false);
       ClusterInfoProvider clusterInfoProvider = veniceMetadataRepositoryBuilder.getClusterInfoProvider();
@@ -315,7 +316,8 @@ public class DaVinciBackend implements Closeable {
                 : BlobTransferTableFormat.BLOCK_BASED_TABLE,
             backendConfig.getBlobTransferPeersConnectivityFreshnessInSeconds(),
             backendConfig.getBlobTransferClientReadLimitBytesPerSec(),
-            backendConfig.getBlobTransferServiceWriteLimitBytesPerSec());
+            backendConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
+            backendConfig.getSnapshotCleanupIntervalInMins());
 
         blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
             .setClientConfig(clientConfig)

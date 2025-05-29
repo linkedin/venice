@@ -1,7 +1,12 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
+import static com.linkedin.venice.ConfigKeys.ENABLE_GRPC_READ_SERVER;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
@@ -123,6 +128,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   // cluster. e.g. controllers in a multi cluster wrapper.
   private String externalControllerDiscoveryURL = "";
 
+  public static final String CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING_IN_TESTS = "true";
+
   private static final List<AvroProtocolDefinition> CLUSTER_LEADER_INITIALIZATION_ROUTINES = Arrays.asList(
       AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
       AvroProtocolDefinition.PARTITION_STATE,
@@ -177,6 +184,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     Map<Integer, VeniceServerWrapper> veniceServerWrappers = new HashMap<>();
     Map<Integer, VeniceRouterWrapper> veniceRouterWrappers = new HashMap<>();
     Map<String, String> nettyServerToGrpcAddress = new HashMap<>();
+    if (!options.getExtraProperties().containsKey(CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING)) {
+      options.getExtraProperties()
+          .setProperty(
+              CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
+              CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING_IN_TESTS);
+    }
 
     Map<String, String> clusterToD2;
     if (options.getClusterToD2() == null || options.getClusterToD2().isEmpty()) {
@@ -1227,7 +1240,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       Properties props = IntegrationTestPushUtils.defaultVPJProps(veniceClusterWrapper, inputDirPath, storeName);
-      TestWriteUtils.runPushJob("Test Batch push job", props);
+      IntegrationTestPushUtils.runVPJ(props);
 
       propertyBuilder.put(FORKED_PROCESS_STORE_NAME, storeName);
       propertyBuilder.put(FORKED_PROCESS_ZK_ADDRESS, veniceClusterWrapper.getZk().getAddress());

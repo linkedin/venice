@@ -433,15 +433,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
-  /**
-   * Create snapshot for the given partition
-   * @param storagePartitionConfig
-   */
-  public synchronized void createSnapshot(StoragePartitionConfig storagePartitionConfig) {
-    AbstractStoragePartition partition = getPartitionOrThrow(storagePartitionConfig.getPartitionId());
-    partition.createSnapshot();
-  }
-
   private void executeWithSafeGuard(int partitionId, Runnable runnable) {
     executeWithSafeGuard(partitionId, () -> {
       runnable.run();
@@ -764,5 +755,13 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   public AbstractStorageIterator getIterator(int partitionId) {
     throw new UnsupportedOperationException("Method not supported for storage engine");
+  }
+
+  public long getDuplicateKeyCountEstimate() {
+    return -1;
+  }
+
+  public long getKeyCountEstimate() {
+    return -1;
   }
 }

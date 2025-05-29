@@ -73,6 +73,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUS
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
@@ -97,6 +98,7 @@ import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceResourceAccessException;
+import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
@@ -163,6 +165,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -244,6 +248,7 @@ public class VenicePushJob implements AutoCloseable {
   private final PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
   private PushJobHeartbeatSender pushJobHeartbeatSender = null;
   private boolean pushJobStatusUploadDisabledHasBeenLogged = false;
+  private final ScheduledExecutorService timeoutExecutor;
 
   /**
    * @param jobId  id of the job
@@ -252,6 +257,7 @@ public class VenicePushJob implements AutoCloseable {
   public VenicePushJob(String jobId, Properties vanillaProps) {
     this.jobId = jobId;
     this.props = getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null"));
+    this.timeoutExecutor = Executors.newSingleThreadScheduledExecutor();
     LOGGER.info("Constructing {}: {}", VenicePushJob.class.getSimpleName(), props.toString(true));
     this.sslProperties = Lazy.of(() -> {
       try {
@@ -325,6 +331,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.jobServerName = props.getString(JOB_SERVER_NAME, "unknown_job_server");
     pushJobSettingToReturn.veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     pushJobSettingToReturn.enableSSL = props.getBoolean(ENABLE_SSL, DEFAULT_SSL_ENABLED);
+    pushJobSettingToReturn.timestampField = props.getOrDefault(TIMESTAMP_FIELD_PROP, "");
     if (pushJobSettingToReturn.enableSSL) {
       VPJSSLUtils.validateSslProperties(props);
     }
@@ -655,11 +662,7 @@ public class VenicePushJob implements AutoCloseable {
    */
   public void run() {
     try {
-      Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
-          pushJobSetting.enableSSL,
-          props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
-          this.sslProperties);
-      initControllerClient(pushJobSetting.storeName, sslFactory);
+      initControllerClient(pushJobSetting.storeName);
       pushJobSetting.clusterName = controllerClient.getClusterName();
       LOGGER.info(
           "The store {} is discovered in Venice cluster {}",
@@ -670,6 +673,7 @@ public class VenicePushJob implements AutoCloseable {
         initKIFRepushDetails();
       }
 
+      setupJobTimeoutMonitor();
       initPushJobDetails();
       logGreeting();
       sendPushJobDetailsToController();
@@ -716,7 +720,10 @@ public class VenicePushJob implements AutoCloseable {
         }
 
         validateKeySchema(pushJobSetting);
-        validateValueSchema(controllerClient, pushJobSetting, pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
+        validateAndRetrieveValueSchemas(
+            controllerClient,
+            pushJobSetting,
+            pushJobSetting.isSchemaAutoRegisterFromPushJobEnabled);
       }
 
       Optional<ByteBuffer> optionalCompressionDictionary = getCompressionDictionary();
@@ -844,6 +851,12 @@ public class VenicePushJob implements AutoCloseable {
       try {
         if (e instanceof VeniceResourceAccessException) {
           updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.WRITE_ACL_FAILED);
+        } else if (e instanceof VeniceInvalidInputException) {
+          /**
+           * We use {@link PushJobCheckpoints.INVALID_INPUT_FILE} for the scenario where the input
+           * data path contains no data as well in the avro flow.
+           */
+          updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
         }
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
@@ -874,6 +887,20 @@ public class VenicePushJob implements AutoCloseable {
         HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
       }
     }
+  }
+
+  /**
+   * Timeout on the entire push job that kills the job if it runs longer than the store's configured bootstrap timeout.
+   */
+  private void setupJobTimeoutMonitor() {
+    long bootstrapToOnlineTimeoutInHours =
+        getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
+    timeoutExecutor.schedule(() -> {
+      cancel();
+      throw new VeniceTimeoutException(
+          "Failing push-job for store " + pushJobSetting.storeName + " which is still running after "
+              + bootstrapToOnlineTimeoutInHours + " hours.");
+    }, bootstrapToOnlineTimeoutInHours, TimeUnit.HOURS);
   }
 
   private void buildHDFSSchemaDir() throws IOException {
@@ -1188,9 +1215,12 @@ public class VenicePushJob implements AutoCloseable {
    *    2. A mock controller client is provided
    *
    * @param storeName
-   * @param sslFactory
    */
-  private void initControllerClient(String storeName, Optional<SSLFactory> sslFactory) {
+  private void initControllerClient(String storeName) {
+    Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
+        pushJobSetting.enableSSL,
+        props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
+        this.sslProperties);
     final String controllerD2ZkHost;
     if (pushJobSetting.multiRegion) {
       // In multi region mode, push jobs will communicate with parent controller
@@ -1804,12 +1834,11 @@ public class VenicePushJob implements AutoCloseable {
   /***
    * This method will talk to controller to validate value schema.
    */
-  void validateValueSchema(
+  void validateAndRetrieveValueSchemas(
       ControllerClient controllerClient,
       PushJobSetting setting,
       boolean schemaAutoRegisterFromPushJobEnabled) {
     LOGGER.info("Validating value schema: {} for store: {}", pushJobSetting.valueSchemaString, setting.storeName);
-
     SchemaResponse getValueSchemaIdResponse;
     if (setting.enableWriteCompute) {
       if (!isUpdateSchema(pushJobSetting.valueSchemaString)) {
@@ -1907,6 +1936,29 @@ public class VenicePushJob implements AutoCloseable {
       // Get value schema ID successfully
       setSchemaIdPropInPushJobSetting(pushJobSetting, getValueSchemaIdResponse, setting.enableWriteCompute);
     }
+
+    // Retrieve metadata and timestamp schemas, we should do this last as this is pending potentially newly registered
+    // schemas
+    // with the push job
+    MultiSchemaResponse replicationSchemasResponse = ControllerClient.retryableRequest(
+        controllerClient,
+        setting.controllerRetries,
+        c -> c.getAllReplicationMetadataSchemas(setting.storeName));
+    if (replicationSchemasResponse.isError()) {
+      LOGGER.error("Failed to fetch replication metadata schemas!" + replicationSchemasResponse.getError());
+    } else {
+      // We only need a single valid schema, so getting the first one is good enough.
+      if (replicationSchemasResponse.getSchemas() != null && replicationSchemasResponse.getSchemas().length > 0) {
+        pushJobSetting.replicationMetadataSchemaString = replicationSchemasResponse.getSchemas()[0].getSchemaStr();
+        LOGGER.info(
+            "Retrieved and using schema with id: {}, and string: {}",
+            replicationSchemasResponse.getSchemas()[0].getId(),
+            pushJobSetting.replicationMetadataSchemaString);
+      } else {
+        LOGGER.info("No replication schemas associated with the store!");
+      }
+    }
+
     LOGGER.info(
         "Got schema id: {} for value schema: {} of store: {}",
         pushJobSetting.valueSchemaId,
@@ -2279,7 +2331,6 @@ public class VenicePushJob implements AutoCloseable {
      * no more than {@link DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS}.
      */
     long unknownStateStartTimeMs = 0;
-    long pollStartTimeMs = System.currentTimeMillis();
 
     String topicToMonitor = getTopicToMonitor(pushJobSetting);
 
@@ -2348,14 +2399,6 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info("Successfully pushed {} to all the regions", pushJobSetting.topic);
         }
         return;
-      }
-      long bootstrapToOnlineTimeoutInHours =
-          VenicePushJob.this.pushJobSetting.storeResponse.getStore().getBootstrapToOnlineTimeoutInHours();
-      long durationMs = LatencyUtils.getElapsedTimeFromMsToMs(pollStartTimeMs);
-      if (durationMs > TimeUnit.HOURS.toMillis(bootstrapToOnlineTimeoutInHours)) {
-        throw new VeniceException(
-            "Failing push-job for store " + VenicePushJob.this.pushJobSetting.storeResponse.getName()
-                + " which is still running after " + TimeUnit.MILLISECONDS.toHours(durationMs) + " hours.");
       }
       if (!overallStatus.equals(ExecutionStatus.UNKNOWN)) {
         unknownStateStartTimeMs = 0;
@@ -2524,9 +2567,8 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * A cancel method for graceful cancellation of the running Job to be invoked as a result of user actions.
-   *
-   * @throws Exception
+   * A cancel method for graceful cancellation of the running Job to be invoked as a result of user actions or due to
+   * the job exceeding bootstrapToOnlineTimeoutInHours.
    */
   public void cancel() {
     killJob(pushJobSetting, controllerClient);
@@ -2539,7 +2581,7 @@ public class VenicePushJob implements AutoCloseable {
     sendPushJobDetailsToController();
   }
 
-  private void killJob(PushJobSetting pushJobSetting, ControllerClient controllerClient) {
+  void killJob(PushJobSetting pushJobSetting, ControllerClient controllerClient) {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
     killDataWriterJob();
     if (!pushJobSetting.isIncrementalPush) {
@@ -2564,7 +2606,7 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void killDataWriterJob() {
+  void killDataWriterJob() {
     if (dataWriterComputeJob == null) {
       LOGGER.warn("No op to kill a null data writer job");
       return;
@@ -2638,6 +2680,7 @@ public class VenicePushJob implements AutoCloseable {
 
   @Override
   public void close() {
+    timeoutExecutor.shutdownNow();
     closeVeniceWriter();
     Utils.closeQuietlyWithErrorLogged(dataWriterComputeJob);
     Utils.closeQuietlyWithErrorLogged(controllerClient);
@@ -2651,7 +2694,6 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   public static void main(String[] args) {
-
     if (args.length != 1) {
       Utils.exit("USAGE: java -jar venice-push-job-all.jar <VPJ_config_file_path>");
     }

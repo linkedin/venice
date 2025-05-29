@@ -44,7 +44,7 @@ public enum Arg {
   PARTITIONER_PARAMS("partitioner-params", "pp", true, "Additional parameters for partitioner."),
   READABILITY("readability", "rb", true, "store's readability"),
   WRITEABILITY("writeability", "wb", true, "store's writeability"),
-  STORAGE_QUOTA("storage-quota", "sq", true, "maximum capacity a store version or storage persona could have"),
+  STORAGE_QUOTA("storage-quota", "sq", true, "maximum capacity a store version or storage persona could have in bytes"),
   STORAGE_NODE_READ_QUOTA_ENABLED(
       "storage-node-read-quota-enabled", "snrqe", true, "whether storage node read quota is enabled for this store"
   ),
@@ -219,6 +219,9 @@ public enum Arg {
   KAFKA_TOPIC_RETENTION_IN_MS(
       "kafka-topic-retention-in-ms", "ktrim", true, "Kafka topic retention time in milliseconds"
   ), KAFKA_TOPIC_MIN_IN_SYNC_REPLICA("kafka-topic-min-in-sync-replica", "ktmisr", true, "Kafka topic minISR config"),
+  KAFKA_RT_TOPICS_MIN_IN_SYNC_REPLICAS(
+      "kafka-rt-topic-min-in-sync-replica", "krtmisr", true, "Kafka topic rt minISR config"
+  ),
   CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED(
       ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, "atc", true,
       "whether child controller consumes admin topic"

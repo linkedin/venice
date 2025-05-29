@@ -57,26 +57,20 @@ public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   private final ApacheKafkaAdminConfig apacheKafkaAdminConfig;
   private final PubSubTopicRepository pubSubTopicRepository;
 
-  public ApacheKafkaAdminAdapter(
-      ApacheKafkaAdminConfig apacheKafkaAdminConfig,
-      PubSubTopicRepository pubSubTopicRepository) {
+  public ApacheKafkaAdminAdapter(ApacheKafkaAdminConfig apacheKafkaAdminConfig) {
     this(
         AdminClient.create(
             Objects.requireNonNull(
                 apacheKafkaAdminConfig.getAdminProperties(),
                 "Properties for kafka admin construction cannot be null!")),
-        apacheKafkaAdminConfig,
-        pubSubTopicRepository);
+        apacheKafkaAdminConfig);
   }
 
-  ApacheKafkaAdminAdapter(
-      AdminClient internalKafkaAdminClient,
-      ApacheKafkaAdminConfig apacheKafkaAdminConfig,
-      PubSubTopicRepository pubSubTopicRepository) {
+  ApacheKafkaAdminAdapter(AdminClient internalKafkaAdminClient, ApacheKafkaAdminConfig apacheKafkaAdminConfig) {
     this.apacheKafkaAdminConfig = Objects.requireNonNull(apacheKafkaAdminConfig, "Kafka admin config cannot be null!");
     this.internalKafkaAdminClient =
         Objects.requireNonNull(internalKafkaAdminClient, "Kafka admin client cannot be null!");
-    this.pubSubTopicRepository = pubSubTopicRepository;
+    this.pubSubTopicRepository = apacheKafkaAdminConfig.getPubSubTopicRepository();
     LOGGER.info("Created ApacheKafkaAdminAdapter with config: {}", apacheKafkaAdminConfig);
   }
 

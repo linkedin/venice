@@ -1,8 +1,6 @@
 package com.linkedin.venice.pubsub.manager;
 
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_DELETE_RETRY_TIMES;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -13,6 +11,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
@@ -25,15 +24,17 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
-import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubConstantsOverrider;
+import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -42,6 +43,7 @@ import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
@@ -66,6 +68,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -105,15 +108,19 @@ public class TopicManagerTest {
     inMemoryKafkaBroker = new InMemoryKafkaBroker("local");
     PubSubAdminAdapterFactory pubSubAdminAdapterFactory = mock(ApacheKafkaAdminAdapterFactory.class);
     MockInMemoryAdminAdapter mockInMemoryAdminAdapter = new MockInMemoryAdminAdapter(inMemoryKafkaBroker);
-    doReturn(mockInMemoryAdminAdapter).when(pubSubAdminAdapterFactory).create(any(), eq(pubSubTopicRepository));
+    doReturn(mockInMemoryAdminAdapter).when(pubSubAdminAdapterFactory).create(any(PubSubAdminAdapterContext.class));
     MockInMemoryConsumer mockInMemoryConsumer =
         new MockInMemoryConsumer(inMemoryKafkaBroker, new RandomPollStrategy(), mock(PubSubConsumerAdapter.class));
     mockInMemoryConsumer.setMockInMemoryAdminAdapter(mockInMemoryAdminAdapter);
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
-    doReturn(mockInMemoryConsumer).when(pubSubConsumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
+    doReturn(mockInMemoryConsumer).when(pubSubConsumerAdapterFactory).create(any(PubSubConsumerAdapterContext.class));
 
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, inMemoryKafkaBroker.getKafkaBootstrapServer());
+    VeniceProperties pubSubProperties = new VeniceProperties(properties);
     TopicManagerContext topicManagerContext =
-        new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> VeniceProperties.empty())
+        new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> pubSubProperties)
+            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
             .setPubSubTopicRepository(pubSubTopicRepository)
             .setPubSubConsumerAdapterFactory(pubSubConsumerAdapterFactory)
             .setPubSubAdminAdapterFactory(pubSubAdminAdapterFactory)
@@ -159,6 +166,7 @@ public class TopicManagerTest {
     recordValue.producerMetadata.messageTimestamp = producerTimestamp;
     recordValue.leaderMetadataFooter = new LeaderMetadata();
     recordValue.leaderMetadataFooter.hostName = "localhost";
+    recordValue.leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.LATEST.getWireFormatBytes();
 
     if (isDataRecord) {
       Put put = new Put();
@@ -562,8 +570,8 @@ public class TopicManagerTest {
     PubSubAdminAdapterFactory adminAdapterFactory = mock(PubSubAdminAdapterFactory.class);
     PubSubConsumerAdapterFactory consumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
     PubSubConsumerAdapter mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
-    doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
-    doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(), eq(pubSubTopicRepository));
+    doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(PubSubConsumerAdapterContext.class));
+    doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(PubSubAdminAdapterContext.class));
 
     PubSubTopicConfiguration topicProperties =
         new PubSubTopicConfiguration(Optional.of(TimeUnit.DAYS.toMillis(1)), true, Optional.of(1), 4L, Optional.of(5L));
@@ -574,9 +582,13 @@ public class TopicManagerTest {
     doThrow(new PubSubTopicDoesNotExistException("Topic does not exist")).when(mockPubSubAdminAdapter)
         .setTopicConfig(eq(nonExistentTopic), any(PubSubTopicConfiguration.class));
 
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "localhost:1234");
+    VeniceProperties pubSubProperties = new VeniceProperties(properties);
     TopicManagerContext topicManagerContext =
-        new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> VeniceProperties.empty())
+        new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> pubSubProperties)
             .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
             .setPubSubAdminAdapterFactory(adminAdapterFactory)
             .setPubSubConsumerAdapterFactory(consumerAdapterFactory)
             .setTopicDeletionStatusPollIntervalMs(100)
@@ -622,12 +634,16 @@ public class TopicManagerTest {
 
     PubSubAdminAdapterFactory adminAdapterFactory = mock(PubSubAdminAdapterFactory.class);
     PubSubConsumerAdapterFactory consumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
-    doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
-    doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(), eq(pubSubTopicRepository));
+    doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(PubSubConsumerAdapterContext.class));
+    doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(PubSubAdminAdapterContext.class));
 
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "localhost:1234");
+    VeniceProperties pubSubProperties = new VeniceProperties(properties);
     TopicManagerContext topicManagerContext =
-        new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> VeniceProperties.empty())
+        new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> pubSubProperties)
             .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY)
             .setPubSubAdminAdapterFactory(adminAdapterFactory)
             .setPubSubConsumerAdapterFactory(consumerAdapterFactory)
             .setTopicDeletionStatusPollIntervalMs(100)
@@ -703,12 +719,8 @@ public class TopicManagerTest {
     storeProperties.createdTime = System.currentTimeMillis();
     storeProperties.bootstrapToOnlineTimeoutInHours = 12;
     Store store = new ZKStore(storeProperties);
-    HybridStoreConfig hybridStoreConfig2DayRewind = new HybridStoreConfigImpl(
-        2 * Time.SECONDS_PER_DAY,
-        20000,
-        -1,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig2DayRewind =
+        new HybridStoreConfigImpl(2 * Time.SECONDS_PER_DAY, 20000, -1, BufferReplayPolicy.REWIND_FROM_EOP);
 
     // Since bootstrapToOnlineTimeout + rewind time + buffer (2 days) < 5 days, retention will be set to 5 days
     Assert
@@ -723,12 +735,8 @@ public class TopicManagerTest {
     storeProperties.createdTime = System.currentTimeMillis();
     storeProperties.bootstrapToOnlineTimeoutInHours = 3 * Time.HOURS_PER_DAY;
     Store store = new ZKStore(storeProperties);
-    HybridStoreConfig hybridStoreConfig2DayRewind = new HybridStoreConfigImpl(
-        2 * Time.SECONDS_PER_DAY,
-        20000,
-        -1,
-        DataReplicationPolicy.NON_AGGREGATE,
-        BufferReplayPolicy.REWIND_FROM_EOP);
+    HybridStoreConfig hybridStoreConfig2DayRewind =
+        new HybridStoreConfigImpl(2 * Time.SECONDS_PER_DAY, 20000, -1, BufferReplayPolicy.REWIND_FROM_EOP);
 
     // Since bootstrapToOnlineTimeout + rewind time + buffer (2 days) > 5 days, retention will be set to the computed
     // value

@@ -35,7 +35,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
-import com.linkedin.davinci.validation.KafkaDataIntegrityValidator;
+import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -482,10 +482,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
     DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
     PubSubTopicPartition mockTopicPartition = mock(PubSubTopicPartition.class);
     LeaderProducedRecordContext context = mock(LeaderProducedRecordContext.class);
-    PubSubPosition position = mock(PubSubPosition.class);
+    PubSubPosition positionMock = mock(PubSubPosition.class);
+    doReturn(positionMock).when(context).getConsumedPosition();
     doReturn(partition).when(mockTopicPartition).getPartitionNumber();
-    doReturn(offset).when(position).getNumericOffset();
-    doReturn(position).when(mockMessage).getPosition();
+    doReturn(offset).when(positionMock).getNumericOffset();
+    doReturn(positionMock).when(mockMessage).getPosition();
     doReturn(mockTopicPartition).when(mockMessage).getTopicPartition();
     doReturn(messageTime).when(mockMessage).getPubSubMessageTime();
     VeniceWriter mockWriter = mock(VeniceWriter.class);
@@ -554,7 +555,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(LeaderFollowerStateType.STANDBY).when(mockPartitionConsumptionState).getLeaderFollowerState();
     doCallRealMethod().when(mockIngestionTask)
         .delegateConsumerRecord(any(), anyInt(), any(), anyInt(), anyLong(), anyLong());
-    KafkaDataIntegrityValidator consumerDiv = mock(KafkaDataIntegrityValidator.class);
+    DataIntegrityValidator consumerDiv = mock(DataIntegrityValidator.class);
     doReturn(consumerDiv).when(mockIngestionTask).getConsumerDiv();
     doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
 
