@@ -21,6 +21,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OVERRIDE_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
@@ -292,6 +293,7 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(DATA_WRITER_COMPUTE_JOB_CLASS, dataWriterJobClass.getCanonicalName());
+    props.put(PUSH_JOB_TIMEOUT_OVERRIDE_MS, 2);
     ControllerClient client = getClient();
     JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
     doReturn("UNKNOWN").when(response).getStatus();
@@ -331,6 +333,7 @@ public class VenicePushJobTest {
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
     props.put(DATA_WRITER_COMPUTE_JOB_CLASS, dataWriterJobClass.getCanonicalName());
+    props.put(PUSH_JOB_TIMEOUT_OVERRIDE_MS, 5L);
     ControllerClient client = getClient();
     JobStatusQueryResponse response = mock(JobStatusQueryResponse.class);
     doReturn("SUCCESS").when(response).getStatus();
@@ -339,7 +342,7 @@ public class VenicePushJobTest {
 
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       StoreInfo storeInfo = new StoreInfo();
-      storeInfo.setBootstrapToOnlineTimeoutInHours(0);
+      storeInfo.setBootstrapToOnlineTimeoutInHours(1);
       PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
       pushJobSetting.storeResponse = new StoreResponse();
       pushJobSetting.storeResponse.setStore(storeInfo);

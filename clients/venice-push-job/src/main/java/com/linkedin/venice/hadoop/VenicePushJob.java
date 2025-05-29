@@ -55,6 +55,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OVERRIDE_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
@@ -355,6 +356,7 @@ public class VenicePushJob implements AutoCloseable {
         props.getLong(POLL_JOB_STATUS_INTERVAL_MS, DEFAULT_POLL_STATUS_INTERVAL_MS);
     pushJobSettingToReturn.jobStatusInUnknownStateTimeoutMs =
         props.getLong(JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS, DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS);
+    pushJobSettingToReturn.pushJobTimeoutOverrideMs = props.getLong(PUSH_JOB_TIMEOUT_OVERRIDE_MS, -1L);
     pushJobSettingToReturn.sendControlMessagesDirectly = props.getBoolean(SEND_CONTROL_MESSAGES_DIRECTLY, false);
     pushJobSettingToReturn.enableWriteCompute = props.getBoolean(ENABLE_WRITE_COMPUTE, false);
     pushJobSettingToReturn.pushToSeparateRealtimeTopicEnabled =
@@ -890,17 +892,43 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * Timeout on the entire push job that kills the job if it runs longer than the store's configured bootstrap timeout.
+   * Sets up a timeout monitor that will cancel and fail the push job if it runs longer than the allowed time.
+   * The timeout duration is determined by one of the following:
+   * <ul>
+   *   <li>If {@code pushJobSetting.pushJobTimeoutOverrideMs} is set to a positive value, it takes precedence.</li>
+   *   <li>Otherwise, the timeout is derived from the store's {@code bootstrapToOnlineTimeoutInHours} setting.</li>
+   * </ul>
+   *
+   * If the resolved timeout is less than or equal to 0, no timeout monitor is scheduled.
    */
   private void setupJobTimeoutMonitor() {
-    long bootstrapToOnlineTimeoutInHours =
-        getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
+    long timeoutMs;
+
+    if (pushJobSetting.pushJobTimeoutOverrideMs > 0) {
+      timeoutMs = pushJobSetting.pushJobTimeoutOverrideMs;
+      LOGGER.info(
+          "Using overridden push job timeout: {} ms ({} hours)",
+          timeoutMs,
+          TimeUnit.MILLISECONDS.toHours(timeoutMs));
+    } else {
+      long timeoutInHours = getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
+      timeoutMs = TimeUnit.HOURS.toMillis(timeoutInHours);
+      LOGGER.info("Using store-configured push job timeout: {} hours ({} ms)", timeoutInHours, timeoutMs);
+    }
+
+    if (timeoutMs <= 0) {
+      LOGGER.info(
+          "Store: {} does not have a valid bootstrap-to-online timeout configured. Skipping timeout monitor.",
+          pushJobSetting.storeName);
+      return;
+    }
+
     timeoutExecutor.schedule(() -> {
       cancel();
       throw new VeniceTimeoutException(
-          "Failing push-job for store " + pushJobSetting.storeName + " which is still running after "
-              + bootstrapToOnlineTimeoutInHours + " hours.");
-    }, bootstrapToOnlineTimeoutInHours, TimeUnit.HOURS);
+          "Failing push-job for store " + pushJobSetting.storeName + " which is still running after " + timeoutMs
+              + " ms.");
+    }, timeoutMs, TimeUnit.MILLISECONDS);
   }
 
   private void buildHDFSSchemaDir() throws IOException {

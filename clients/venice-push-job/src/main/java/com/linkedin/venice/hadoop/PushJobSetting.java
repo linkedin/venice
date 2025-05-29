@@ -45,6 +45,7 @@ public class PushJobSetting implements Serializable {
   public int controllerStatusPollRetries;
   public long pollJobStatusIntervalMs;
   public long jobStatusInUnknownStateTimeoutMs;
+  public long pushJobTimeoutOverrideMs;
   public boolean sendControlMessagesDirectly;
   public boolean isSourceETL;
   public boolean enableWriteCompute;
