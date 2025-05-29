@@ -251,13 +251,41 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   }
 
   /**
+   * Checks if the version is online in all target regions
+   * @param targetRegions
+   * @param clusterName
+   * @param storeName
+   * @param targetVersionNum
+   * @return
+   */
+  private boolean isVersionOnlineInTargetRegions(
+      Set<String> targetRegions,
+      String clusterName,
+      String storeName,
+      int targetVersionNum) {
+    for (String targetRegion: targetRegions) {
+      Version targetRegionVersion = getVersionFromStoreInRegion(clusterName, targetRegion, storeName, targetVersionNum);
+
+      if (targetRegionVersion == null) {
+        return false;
+      }
+
+      if (targetRegionVersion.getStatus() != ONLINE || targetRegionVersion.getStatus() != VersionStatus.KILLED) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /**
    * Checks if a store version is in a terminal state. It is in a terminal state & eligible for a version swap if targetSwapRegion is not
    * empty and the push job for the current version is completed. It is completed if the version status is either PUSHED or
    * KILLED (see VeniceParentHelixAdmin.getOfflinePushStatus)
    * @param targetVersion the version to check eligibility for
    * @return
    */
-  private boolean isPushInTerminalState(Version targetVersion) {
+  private boolean isPushInTerminalState(Version targetVersion, String clusterName, String storeName) {
     if (targetVersion == null) {
       return false;
     }
@@ -267,15 +295,27 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       return false;
     }
 
+    if (targetVersion.getStatus() == ONLINE && stalledVersionSwapSet.contains(storeName)) {
+      stalledVersionSwapSet.remove(storeName);
+      deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
+    }
+
     // The store is eligible for a version swap if its push job is in terminal status. For a target region
     // push, the parent version status is set to PUSHED in getOfflinePushStatus when this happens or KILLED if the push
     // failed. PUSHED represents when a push successfully completes in all regions and KILLED represents when a push
-    // fails in
-    // 1+ regions. KILLED is still eligible for a version swap because some non target regions may have succeeded, and
-    // we
-    // need to perform a version swap for those regions
+    // fails in 1+ regions. KILLED is still eligible for a version swap because some non target regions may have
+    // succeeded,
+    // and we need to perform a version swap for those regions
     if (targetVersion.getStatus() != VersionStatus.PUSHED && targetVersion.getStatus() != VersionStatus.KILLED) {
-      return false;
+      Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetRegionsString);
+
+      // Because the parent status is updated when we poll for the job status, the parent status will not always be an
+      // accurate
+      // representation of push status if vpj runs away
+      if (targetVersion.getStatus() == VersionStatus.STARTED
+          && !isVersionOnlineInTargetRegions(targetRegions, clusterName, storeName, targetVersion.getNumber())) {
+        return false;
+      }
     }
 
     return true;
@@ -481,7 +521,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             Version targetVersion = parentStore.getVersion(targetVersionNum);
 
             // Check if the target version is in a terminal state (push job completed or failed)
-            if (!isPushInTerminalState(targetVersion)) {
+            if (!isPushInTerminalState(targetVersion, cluster, parentStore.getName())) {
               continue;
             }
 
