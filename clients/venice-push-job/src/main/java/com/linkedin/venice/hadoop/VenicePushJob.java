@@ -247,7 +247,7 @@ public class VenicePushJob implements AutoCloseable {
   private InputStorageQuotaTracker inputStorageQuotaTracker;
   private final PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
   private PushJobHeartbeatSender pushJobHeartbeatSender = null;
-  private boolean pushJobStatusUploadDisabledHasBeenLogged = false;
+  private volatile boolean pushJobStatusUploadDisabledHasBeenLogged = false;
   private final ScheduledExecutorService timeoutExecutor;
 
   /**
@@ -1697,18 +1697,73 @@ public class VenicePushJob implements AutoCloseable {
     return tuple;
   }
 
-  private void sendPushJobDetailsToController() {
+  /**
+   * Tracks the last reported status to prevent duplicate terminal failure updates to the controller.
+   * Duplicate terminal statuses (e.g., ERROR, KILLED) may be misinterpreted in controller-side metrics,
+   * potentially skewing push job SLO calculations and causing confusion.
+   */
+  private volatile PushJobDetailsStatus lastReportedStatus = PushJobDetailsStatus.UNKNOWN;
+  private final Object lastReportedStatusLock = new Object();
+
+  private static PushJobDetailsStatus getCurrentOverallStatus(PushJobDetails pushJobDetails) {
+    if (pushJobDetails != null && !pushJobDetails.overallStatus.isEmpty()) {
+      return PushJobDetailsStatus
+          .valueOf(pushJobDetails.overallStatus.get(pushJobDetails.overallStatus.size() - 1).status);
+    }
+    return PushJobDetailsStatus.UNKNOWN;
+  }
+
+  /**
+   * Determines whether the push job status update should be skipped.
+   *
+   * <p>This method checks for several conditions that would make a status update unnecessary or
+   * potentially harmful:
+   * <ul>
+   *   <li>If status uploads are disabled via config, the update is skipped and a warning is logged
+   *       (only once).</li>
+   *   <li>If the push job details are not initialized, the update is skipped.</li>
+   *   <li>If the last reported status was a terminal failure (ERROR or KILLED) and the current status
+   *       is also a terminal failure, the update is skipped to avoid redundant controller updates,
+   *       which may negatively affect downstream metrics.</li>
+   * </ul>
+   *
+   * @return {@code true} if the status update should be skipped, {@code false} otherwise.
+   */
+  private boolean shouldSkipPushJobStatusUpdate() {
+    // Check if status upload is enabled
     if (!pushJobSetting.enablePushJobStatusUpload) {
       if (!pushJobStatusUploadDisabledHasBeenLogged) {
         pushJobStatusUploadDisabledHasBeenLogged = true;
-        LOGGER.warn("Unable to send push job details for monitoring purpose. Feature is disabled");
+        LOGGER.warn("Skipping push job status update. Feature is disabled via config.");
       }
-      return;
-    } else if (pushJobDetails == null) {
-      LOGGER.warn("Unable to send push job details for monitoring purpose. The payload was not populated properly");
-      return;
+      return true;
     }
 
+    // Check if pushJobDetails is populated
+    if (pushJobDetails == null) {
+      LOGGER.warn("Unable to send push job details for monitoring purpose. The payload was not populated properly");
+      return true;
+    }
+
+    PushJobDetailsStatus currentStatus = getCurrentOverallStatus(this.pushJobDetails);
+
+    // Early exit if both current and last status are terminal failures (ERROR or KILLED)
+    // This check is deliberately done outside the synchronized block to avoid locking in no-op paths.
+    if (PushJobDetailsStatus.isFailed(currentStatus) && PushJobDetailsStatus.isFailed(lastReportedStatus)) {
+      LOGGER.info(
+          "Skipping status update. Already reported terminal failure: {} and current status is also terminal: {}",
+          lastReportedStatus,
+          currentStatus);
+      return true;
+    }
+
+    return false;
+  }
+
+  private void sendPushJobDetailsToController() {
+    if (shouldSkipPushJobStatusUpdate()) {
+      return;
+    }
     // update push job details with more info if needed
     updatePushJobDetailsWithConfigs();
     updatePushJobDetailsWithLivenessHeartbeatException();
@@ -1717,14 +1772,34 @@ public class VenicePushJob implements AutoCloseable {
     try {
       pushJobDetails.reportTimestamp = System.currentTimeMillis();
       int version = pushJobSetting.version <= 0 ? UNCREATED_VERSION_NUMBER : pushJobSetting.version;
-      ControllerResponse response = controllerClient.sendPushJobDetails(
-          pushJobSetting.storeName,
-          version,
-          pushJobDetailsSerializer.serialize(null, pushJobDetails));
-      getSentPushJobDetailsTracker().record(pushJobSetting.storeName, version, pushJobDetails);
-
-      if (response.isError()) {
-        LOGGER.warn("Failed to send push job details. {} Details: {}", NON_CRITICAL_EXCEPTION, response.getError());
+      synchronized (lastReportedStatusLock) {
+        PushJobDetails pushJobDetailsCopy = this.pushJobDetails;
+        PushJobDetailsStatus currentStatus = getCurrentOverallStatus(pushJobDetailsCopy);
+        // Re-check terminal status inside synchronized block for correctness
+        if (PushJobDetailsStatus.isFailed(currentStatus) && PushJobDetailsStatus.isFailed(lastReportedStatus)) {
+          LOGGER.info(
+              "Skipping status update for store: {} version: {}. Already reported terminal failure: {} and current status is also terminal: {}",
+              pushJobSetting.storeName,
+              version,
+              lastReportedStatus,
+              currentStatus);
+          return;
+        }
+        ControllerResponse response = controllerClient.sendPushJobDetails(
+            pushJobSetting.storeName,
+            version,
+            pushJobDetailsSerializer.serialize(null, pushJobDetailsCopy));
+        if (response.isError()) {
+          LOGGER.warn("Failed to send push job details. {} Details: {}", NON_CRITICAL_EXCEPTION, response.getError());
+        } else {
+          LOGGER.info(
+              "Successfully reported push job status: {} for store: {} version: {}",
+              currentStatus,
+              pushJobSetting.storeName,
+              version);
+          lastReportedStatus = currentStatus;
+        }
+        getSentPushJobDetailsTracker().record(pushJobSetting.storeName, version, pushJobDetailsCopy);
       }
     } catch (Exception e) {
       LOGGER.error("Exception caught while sending push job details. {}", NON_CRITICAL_EXCEPTION, e);
