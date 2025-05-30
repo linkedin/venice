@@ -1110,6 +1110,33 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
+  public void testGetAdminOperationVersionsFromControllersWhenNoStandbyFound() {
+    VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
+    doCallRealMethod().when(veniceParentHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
+    doCallRealMethod().when(veniceHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
+    doReturn(Optional.empty()).when(veniceHelixAdmin).getSslFactory();
+    doReturn("leaderHost_1234").when(veniceHelixAdmin).getControllerName();
+    doNothing().when(veniceHelixAdmin).checkControllerLeadershipFor(clusterName);
+
+    // Mock current version in leader is 2
+    when(veniceHelixAdmin.getLocalAdminOperationProtocolVersion()).thenReturn(2L);
+
+    // Mock response for standby controllers
+    when(veniceHelixAdmin.getControllersByHelixState(clusterName, HelixState.STANDBY_STATE))
+        .thenThrow(new VeniceException("No standby controllers found"));
+    when(veniceHelixAdmin.getLeaderController(clusterName)).thenReturn(new Instance("3", "leaderHost", 1234));
+
+    Map<String, Long> controllerNameToVersionMap =
+        veniceParentHelixAdmin.getAdminOperationVersionFromControllers(clusterName);
+    assertEquals(controllerNameToVersionMap.size(), 1);
+    assertTrue(
+        controllerNameToVersionMap.containsKey("leaderHost_1234")
+            && controllerNameToVersionMap.get("leaderHost_1234") == 2L);
+  }
+
+  @Test
   public void testGetLocalAdminOperationProtocolVersion() {
     VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);

@@ -26,7 +26,8 @@ public class TestAdminOperationVersionDetection {
   private static final int TEST_TIMEOUT = 30 * Time.MS_PER_SECOND;
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final int NUMBER_OF_CONTROLLERS = 2;
+  private static final int NUMBER_OF_PARENT_CONTROLLERS = 2;
+  private static final int NUMBER_OF_CHILD_CONTROLLERS = 1;
 
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private static final String[] CLUSTER_NAMES =
@@ -45,8 +46,8 @@ public class TestAdminOperationVersionDetection {
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
             .numberOfClusters(NUMBER_OF_CLUSTERS)
-            .numberOfParentControllers(NUMBER_OF_CONTROLLERS)
-            .numberOfChildControllers(NUMBER_OF_CONTROLLERS)
+            .numberOfParentControllers(NUMBER_OF_PARENT_CONTROLLERS)
+            .numberOfChildControllers(NUMBER_OF_CHILD_CONTROLLERS)
             .numberOfServers(1)
             .numberOfRouters(1)
             .replicationFactor(1)
@@ -82,7 +83,7 @@ public class TestAdminOperationVersionDetection {
     assertEquals(response.getCluster(), clusterName);
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testAdminOperationVersionForChildControllers() {
     String clusterName = CLUSTER_NAMES[0]; // "venice-cluster0"
 
@@ -102,7 +103,10 @@ public class TestAdminOperationVersionDetection {
         response.getLocalAdminOperationProtocolVersion(),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Map<String, Long> controllerNameToVersionMap = response.getControllerNameToVersionMap();
-    assertEquals(controllerNameToVersionMap.size(), 2);
+    // Child controller only have one controller, no standby controller, so the size should be 1.
+    // We will skip standby controllers if we cannot find standby controller in Helix.
+    // If we increase NUMBER_OF_CHILD_CONTROLLERS = 2, then the size will be 2.
+    assertEquals(controllerNameToVersionMap.size(), 1);
     assertEquals(response.getCluster(), clusterName);
   }
 }
