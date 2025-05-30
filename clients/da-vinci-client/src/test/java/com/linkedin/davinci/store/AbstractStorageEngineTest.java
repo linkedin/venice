@@ -12,6 +12,7 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
@@ -26,8 +27,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
-  protected StorageEngine testStoreEngine;
+public abstract class AbstractStorageEngineTest<ASE extends AbstractStorageEngine> extends AbstractStoreTest {
+  protected ASE testStoreEngine;
   protected int partitionId;
 
   public static VeniceProperties getServerProperties(PersistenceType type) {
@@ -287,8 +288,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
   @Test
   public void testIsMetadataPartition() {
-    Assert.assertTrue(StorageEngine.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID));
-    Assert.assertFalse(StorageEngine.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID + 1));
-
+    Assert.assertTrue(StorageService.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID));
+    Assert.assertFalse(StorageService.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID + 1));
   }
 }

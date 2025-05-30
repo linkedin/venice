@@ -113,6 +113,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     return getStoreVersionName();
   }
 
+  public abstract Partition createStoragePartition(StoragePartitionConfig partitionConfig);
+
   /**
    * Load the existing storage partitions.
    * The implementation should decide when to call this function properly to restore partitions.
@@ -149,8 +151,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   // For testing purpose only.
-  @Override
-  public AbstractStoragePartition getMetadataPartition() {
+  protected AbstractStoragePartition getMetadataPartition() {
     return metadataPartition;
   }
 
@@ -194,8 +195,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     addStoragePartition(new StoragePartitionConfig(storeVersionName, partitionId));
   }
 
-  @Override
-  public synchronized void addStoragePartition(StoragePartitionConfig storagePartitionConfig) {
+  synchronized void addStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     validateStoreName(storagePartitionConfig);
     int partitionId = storagePartitionConfig.getPartitionId();
 
@@ -304,8 +304,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
-  @Override
-  public synchronized void dropMetadataPartition() {
+  private synchronized void dropMetadataPartition() {
     if (metadataPartitionCreated()) {
       metadataPartition.drop();
       metadataPartition = null;
@@ -491,14 +490,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     executeWithSafeGuard(partitionId, () -> {
       AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
       partition.putReplicationMetadata(key, replicationMetadata);
-    });
-  }
-
-  @Override
-  public <K, V> void put(int partitionId, K key, V value) {
-    executeWithSafeGuard(partitionId, () -> {
-      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-      partition.put(key, value);
     });
   }
 
@@ -691,7 +682,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    *
    * @return the number of non-null partitions in {@link #partitionList}
    */
-  @Override
   public synchronized long getNumberOfPartitions() {
     return this.partitionList.nonNullSize();
   }
@@ -711,8 +701,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   @Override
-  public AbstractStoragePartition getPartitionOrThrow(int partitionId) {
-    AbstractStoragePartition partition;
+  public Partition getPartitionOrThrow(int partitionId) {
+    Partition partition;
     ReadWriteLock readWriteLock = getRWLockForPartitionOrThrow(partitionId);
     readWriteLock.readLock().lock();
     try {

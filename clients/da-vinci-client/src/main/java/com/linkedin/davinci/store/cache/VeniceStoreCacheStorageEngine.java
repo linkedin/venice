@@ -2,7 +2,6 @@ package com.linkedin.davinci.store.cache;
 
 import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.meta.PersistenceType;
@@ -61,7 +60,7 @@ public class VeniceStoreCacheStorageEngine extends AbstractStorageEngine<VeniceS
   }
 
   @Override
-  public synchronized AbstractStoragePartition getPartitionOrThrow(int partitionId) {
+  public synchronized VeniceStoreCacheStoragePartition getPartitionOrThrow(int partitionId) {
     return omniPartition;
   }
 

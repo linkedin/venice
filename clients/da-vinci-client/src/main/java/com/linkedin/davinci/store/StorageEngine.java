@@ -14,20 +14,11 @@ import java.util.function.Supplier;
 
 
 public interface StorageEngine<Partition extends AbstractStoragePartition> extends Closeable {
-  static boolean isMetadataPartition(int partitionId) {
-    return partitionId == AbstractStorageEngine.METADATA_PARTITION_ID;
-  }
-
   String getStoreVersionName();
 
   PersistenceType getType();
 
   Set<Integer> getPersistedPartitionIds();
-
-  Partition createStoragePartition(StoragePartitionConfig partitionConfig);
-
-  // For testing purpose only.
-  AbstractStoragePartition getMetadataPartition();
 
   /**
    * Adjust the opened storage partition according to the provided storagePartitionConfig.
@@ -41,8 +32,6 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
       StoragePartitionConfig partitionConfig);
 
   void addStoragePartition(int partitionId);
-
-  void addStoragePartition(StoragePartitionConfig storagePartitionConfig);
 
   void closePartition(int partitionId);
 
@@ -62,8 +51,6 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
    * @param dropMetadataPartitionWhenEmpty - if true, the whole store will be dropped if ALL partitions are removed
    */
   void dropPartition(int partitionId, boolean dropMetadataPartitionWhenEmpty);
-
-  void dropMetadataPartition();
 
   /**
    * Drop the whole store
@@ -114,8 +101,6 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
       throws VeniceException;
 
   void putReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata) throws VeniceException;
-
-  <K, V> void put(int partitionId, K key, V value);
 
   byte[] get(int partitionId, byte[] key) throws VeniceException;
 
@@ -176,21 +161,13 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
   boolean containsPartition(int partitionId);
 
   /**
-   * A function which behaves like {@link Map#size()}, in the sense that it ignores empty
-   * (null) slots in the list.
-   *
-   * @return the number of non-null partitions in {@link #partitionList}
-   */
-  long getNumberOfPartitions();
-
-  /**
    * Get all Partition Ids which are assigned to the current Node.
    *
    * @return partition Ids that are hosted in the current Storage Engine.
    */
   Set<Integer> getPartitionIds();
 
-  AbstractStoragePartition getPartitionOrThrow(int partitionId);
+  Partition getPartitionOrThrow(int partitionId);
 
   AbstractStorageIterator getIterator(int partitionId);
 

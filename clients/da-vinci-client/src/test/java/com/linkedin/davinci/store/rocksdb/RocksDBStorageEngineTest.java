@@ -34,7 +34,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
+public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBStorageEngine> {
   private static final int PARTITION_ID = 0;
   private StorageService storageService;
   private VeniceStoreVersionConfig storeConfig;
@@ -62,7 +62,8 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         mockReadOnlyStoreRepository);
     storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
-    testStoreEngine = storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null);
+    testStoreEngine =
+        (RocksDBStorageEngine) storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null);
     createStoreForTest();
   }
 

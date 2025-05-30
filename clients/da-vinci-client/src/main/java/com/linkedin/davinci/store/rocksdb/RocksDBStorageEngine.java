@@ -102,6 +102,11 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     }
   }
 
+  // For testing purpose only.
+  protected AbstractStoragePartition getMetadataPartition() {
+    return super.getMetadataPartition();
+  }
+
   @Override
   public PersistenceType getType() {
     return PersistenceType.ROCKS_DB;

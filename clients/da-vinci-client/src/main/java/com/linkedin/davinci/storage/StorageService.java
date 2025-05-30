@@ -9,6 +9,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
 import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngineFactory;
@@ -193,6 +194,10 @@ public class StorageService extends AbstractVeniceService {
         storeRepository,
         true,
         true);
+  }
+
+  public static boolean isMetadataPartition(int partitionId) {
+    return partitionId == AbstractStorageEngine.METADATA_PARTITION_ID;
   }
 
   /**
@@ -401,7 +406,7 @@ public class StorageService extends AbstractVeniceService {
       if (idealState != null) {
         Map<String, List<String>> listFields = idealState.getRecord().getListFields();
         for (Integer partitionId: storageEnginePartitionIds) {
-          if (StorageEngine.isMetadataPartition(partitionId)) {
+          if (isMetadataPartition(partitionId)) {
             continue;
           }
           String partitionDbName = storeName + "_" + partitionId;
@@ -577,7 +582,7 @@ public class StorageService extends AbstractVeniceService {
        * Isolated process doesn't preload all the on-disk databases at startup time.
        */
       ((Set<Integer>) engine.getPersistedPartitionIds()).stream().forEach(partitionId -> {
-        if (!StorageEngine.isMetadataPartition(partitionId)) {
+        if (!isMetadataPartition(partitionId)) {
           partitionIdSet.add(partitionId);
         }
         storePartitionMapping.put(storeName, partitionIdSet);
