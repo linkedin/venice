@@ -3,7 +3,7 @@ package com.linkedin.venice.cleaner;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 
 import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -114,7 +114,7 @@ public class BackupVersionOptimizationService extends AbstractVeniceService impl
        * Optimize the storage engine for inactive storage partitions
        */
       final Set<String> validResourceSet = new HashSet<>();
-      for (AbstractStorageEngine engine: storageEngineRepository.getAllLocalStorageEngines()) {
+      for (StorageEngine engine: storageEngineRepository.getAllLocalStorageEngines()) {
         String resourceName = engine.getStoreVersionName();
         validResourceSet.add(resourceName);
         String storeName = Version.parseStoreFromVersionTopic(resourceName);

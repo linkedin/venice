@@ -24,7 +24,7 @@ import org.testng.Assert;
  * 4.
  */
 public abstract class AbstractStoreTest {
-  protected AbstractStorageEngine<?> testStore;
+  protected StorageEngine<? extends AbstractStoragePartition> testStore;
   protected int numOfPartitions = 1;
   int keySize = 50;
   int valueSize = 500;

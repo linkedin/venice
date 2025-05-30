@@ -31,7 +31,8 @@ import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.view.ChangeCaptureViewWriter;
@@ -590,7 +591,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           if (partitionConsumptionState.isEndOfPushReceived()) {
             storageEngine.adjustStoragePartition(
                 partition,
-                AbstractStorageEngine.StoragePartitionAdjustmentTrigger.DEMOTE_TO_FOLLOWER,
+                StoragePartitionAdjustmentTrigger.DEMOTE_TO_FOLLOWER,
                 getStoragePartitionConfig(partitionConsumptionState));
           }
         } else {
@@ -718,7 +719,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             if (partitionConsumptionState.isEndOfPushReceived()) {
               storageEngine.adjustStoragePartition(
                   partition,
-                  AbstractStorageEngine.StoragePartitionAdjustmentTrigger.PROMOTE_TO_LEADER,
+                  StoragePartitionAdjustmentTrigger.PROMOTE_TO_LEADER,
                   getStoragePartitionConfig(partitionConsumptionState));
             }
           }
@@ -1609,7 +1610,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       try {
         KafkaKey key = consumerRecord.getKey();
         KafkaMessageEnvelope envelope = consumerRecord.getValue();
-        AbstractStorageEngine storageEngine = ingestionTask.getStorageEngine();
+        StorageEngine storageEngine = ingestionTask.getStorageEngine();
         switch (MessageType.valueOf(envelope)) {
           case PUT:
             // Issue an read to get the current value of the key

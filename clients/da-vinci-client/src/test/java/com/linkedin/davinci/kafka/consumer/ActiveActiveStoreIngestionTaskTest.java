@@ -33,7 +33,7 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -502,7 +502,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     /**
      * The 1st key does not have any chunk but only has a top level key.
      */
-    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = mock(StorageEngine.class);
     ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
     String stringSchema = "\"string\"";
     when(schemaRepository.getSupersetOrLatestValueSchema(storeName))

@@ -8,7 +8,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.notifier.DaVinciPushStatusUpdateTask;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
@@ -61,7 +61,7 @@ public class VersionBackend {
   private final VenicePartitioner partitioner;
   private final boolean reportPushStatus;
   private final boolean suppressLiveUpdates;
-  private final AtomicReference<AbstractStorageEngine> storageEngine = new AtomicReference<>();
+  private final AtomicReference<StorageEngine> storageEngine = new AtomicReference<>();
   private final Map<Integer, CompletableFuture<Void>> partitionFutures = new VeniceConcurrentHashMap<>();
   private final int stopConsumptionTimeoutInSeconds;
   private final StoreBackendStats storeBackendStats;
@@ -162,7 +162,7 @@ public class VersionBackend {
       }
       /**
        * The following function is used to forcibly clean up any leaking data partitions, which are not
-       * visible to the corresponding {@link AbstractStorageEngine} since some data partitions can fail
+       * visible to the corresponding {@link StorageEngine} since some data partitions can fail
        * to open because of DaVinci memory limiter.
        */
       backend.getStorageService().forceStorageEngineCleanup(topicName);
@@ -181,8 +181,8 @@ public class VersionBackend {
     return version;
   }
 
-  private AbstractStorageEngine getStorageEngineOrThrow() {
-    AbstractStorageEngine engine = storageEngine.get();
+  private StorageEngine getStorageEngineOrThrow() {
+    StorageEngine engine = storageEngine.get();
     if (engine == null) {
       throw new VeniceException("Storage engine is not ready, version=" + this);
     }
@@ -363,7 +363,7 @@ public class VersionBackend {
     LOGGER.info("Subscribing to partitions {} of {}", partitionList, this);
     List<CompletableFuture<Void>> futures = new ArrayList<>(partitionList.size());
     for (int partition: partitionList) {
-      AbstractStorageEngine engine = storageEngine.get();
+      StorageEngine engine = storageEngine.get();
       if (partitionFutures.containsKey(partition)) {
         LOGGER.info("Partition {} of {}  is subscribed, ignoring subscribe request.", partition, this);
       } else if (suppressLiveUpdates && engine != null && engine.containsPartition(partition)) {

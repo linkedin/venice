@@ -1,8 +1,5 @@
 package com.linkedin.davinci.utils;
 
-import static org.mockito.Mockito.mock;
-
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -10,16 +7,13 @@ import org.testng.annotations.Test;
 
 @Test
 public class StoragePartitionDiskUsageTest {
-  private final static int partitionNum = 1;
   private final static int smallRecordSizeToBeAdded = 10;
 
-  private AbstractStorageEngine storageEngine;
   private StoragePartitionDiskUsage partitionDiskUsage;
 
   @BeforeMethod
   public void setUp() {
-    storageEngine = mock(AbstractStorageEngine.class);
-    partitionDiskUsage = new StoragePartitionDiskUsage(partitionNum, storageEngine);
+    partitionDiskUsage = new StoragePartitionDiskUsage(() -> 0);
   }
 
   @Test
