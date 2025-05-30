@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -1719,6 +1720,7 @@ public class AdminTool {
             .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties))
             .setTopicMetadataFetcherConsumerPoolSize(1)
             .setTopicMetadataFetcherThreadPoolSize(1)
+            .setVeniceComponent(VeniceComponent.ADMIN_TOOL)
             .build();
 
     try (TopicManager topicManager =

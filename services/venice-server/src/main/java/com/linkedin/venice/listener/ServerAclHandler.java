@@ -81,7 +81,7 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> i
     if (accessApproved == null) {
       X509Certificate clientCert = extractClientCert(ctx);
 
-      accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER, method);
+      accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER.getName(), method);
       originalChannel.attr(SERVER_ACL_APPROVED_ATTRIBUTE_KEY).set(accessApproved);
     }
     if (accessApproved || !failOnAccessRejection) {
@@ -113,7 +113,7 @@ public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> i
         boolean accessApproved = false;
         try {
           X509Certificate clientCert = GrpcUtils.extractGrpcClientCert(call);
-          accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER, method);
+          accessApproved = accessController.hasAccess(clientCert, VeniceComponent.SERVER.getName(), method);
           headers.put(accessApprovedKey, Boolean.toString(accessApproved));
         } catch (SSLPeerUnverifiedException e) {
           LOGGER.error("Failed to extract ssl session from the incoming request", e);
