@@ -576,10 +576,12 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         double msgRate = partitionStats.getMessageRate();
         double byteRate = partitionStats.getBytesRate();
         long lastSuccessfulPollTimestamp = partitionStats.getLastSuccessfulPollTimestamp();
-        long elapsedTimeSinceLastPollInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
-        if (lastSuccessfulPollTimestamp != ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP) {
-          elapsedTimeSinceLastPollInMs =
-              LatencyUtils.getElapsedTimeFromMsToMs(consumptionTask.getLastSuccessfulPollTimestamp());
+        long elapsedTimeSinceLastConsumerPollInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
+        long elapsedTimeSinceLastRecordForPartitionInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
+        if (lastSuccessfulPollTimestamp > 0) {
+          elapsedTimeSinceLastConsumerPollInMs = LatencyUtils.getElapsedTimeFromMsToMs(lastSuccessfulPollTimestamp);
+          elapsedTimeSinceLastRecordForPartitionInMs =
+              LatencyUtils.getElapsedTimeFromMsToMs(lastSuccessfulPollTimestamp);
         }
         PubSubTopic destinationVersionTopic = consumptionTask.getDestinationIdentifier(topicPartition);
         String destinationVersionTopicName = destinationVersionTopic == null ? "" : destinationVersionTopic.getName();
@@ -589,7 +591,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             msgRate,
             byteRate,
             consumerIdStr,
-            elapsedTimeSinceLastPollInMs,
+            elapsedTimeSinceLastConsumerPollInMs,
+            elapsedTimeSinceLastRecordForPartitionInMs,
             destinationVersionTopicName);
         topicPartitionIngestionInfoMap.put(topicPartition, topicPartitionIngestionInfo);
       }
