@@ -323,12 +323,8 @@ public class RouterServer extends AbstractVeniceService {
     this(properties, serviceDiscoveryAnnouncers, accessController, sslFactory, metricsRepository, true);
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
         new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, config.getSystemSchemaClusterName());
-    HelixReadOnlyStoreRepository readOnlyStoreRepository = new HelixReadOnlyStoreRepository(
-        zkClient,
-        adapter,
-        config.getClusterName(),
-        config.getRefreshAttemptsForZkReconnect(),
-        config.getRefreshIntervalForZkReconnectInMs());
+    HelixReadOnlyStoreRepository readOnlyStoreRepository =
+        new HelixReadOnlyStoreRepository(zkClient, adapter, config.getClusterName());
     this.metadataRepository = new HelixReadOnlyStoreRepositoryAdapter(
         readOnlyZKSharedSystemStoreRepository,
         readOnlyStoreRepository,
@@ -951,7 +947,7 @@ public class RouterServer extends AbstractVeniceService {
           // TODO: Remove this check once test constructor is removed or otherwise fixed.
           LOGGER.info("Not connecting to Helix because the HelixManager is null (the test constructor was used)");
         } else {
-          HelixUtils.connectHelixManager(manager, 30, 1);
+          HelixUtils.connectHelixManager(manager, 9);
           LOGGER.info("{} finished connectHelixManager()", this);
         }
       } catch (VeniceException ve) {
