@@ -1136,7 +1136,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 MAX_VERSION_SWAP_RETRIES);
 
             try {
-              Thread.sleep(1000 * attempt);
+              Thread.sleep(1000L * attempt);
             } catch (InterruptedException interruptedException) {
               Thread.currentThread().interrupt(); // Restore interrupt status
             }

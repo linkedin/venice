@@ -234,7 +234,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
                 MAX_VERSION_SWAP_RETRIES);
 
             try {
-              Thread.sleep(1000 * attempt);
+              Thread.sleep(1000L * attempt);
             } catch (InterruptedException interruptedException) {
               Thread.currentThread().interrupt(); // Restore interrupt status
             }
