@@ -16,8 +16,6 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getExponentialHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.getLongPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointData;
 import static org.apache.http.HttpStatus.SC_OK;
@@ -39,8 +37,6 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
-import io.opentelemetry.sdk.metrics.data.ExponentialHistogramPointData;
-import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import io.tehuti.Metric;
@@ -181,11 +177,16 @@ public class BasicClientStatsTest {
       }
 
       // Check OpenTelemetry metrics
-      Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
       Attributes expectedAttr = getAttributes(storeName, isRequest ? REQUEST : RESPONSE);
-      ExponentialHistogramPointData data =
-          getExponentialHistogramPointData(metricsData, "key_count", client.getMetricsPrefix());
-      validateExponentialHistogramPointData(data, keyCount, keyCount, 1, keyCount, expectedAttr);
+      validateExponentialHistogramPointData(
+          inMemoryMetricReader,
+          keyCount,
+          keyCount,
+          1,
+          keyCount,
+          expectedAttr,
+          "key_count",
+          client.getMetricsPrefix());
     }
   }
 
@@ -244,14 +245,19 @@ public class BasicClientStatsTest {
       String otelPrefix) {
     Attributes expectedAttributes = getExpectedAttributes(storeName, httpStatus, category);
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
-    Assert.assertFalse(metricsData.isEmpty());
     assertEquals(metricsData.size(), 2, "There should be two metrics recorded: call_time and call_count");
 
-    LongPointData callCountData = getLongPointData(metricsData, "call_count", otelPrefix);
-    validateLongPointData(callCountData, 1, expectedAttributes);
+    validateLongPointData(inMemoryMetricReader, 1, expectedAttributes, "call_count", otelPrefix);
 
-    ExponentialHistogramPointData callTimeData = getExponentialHistogramPointData(metricsData, "call_time", otelPrefix);
-    validateExponentialHistogramPointData(callTimeData, latency, latency, 1, latency, expectedAttributes);
+    validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        latency,
+        latency,
+        1,
+        latency,
+        expectedAttributes,
+        "call_time",
+        otelPrefix);
   }
 
   private void validateOtelMetrics(
@@ -274,14 +280,12 @@ public class BasicClientStatsTest {
       long expectedValue) {
     Attributes expectedAttributes = getExpectedAttributes(storeName, retryType);
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
-    Assert.assertFalse(metricsData.isEmpty());
     assertEquals(
         metricsData.size(),
         expectedDataSize,
         String.format("There should be %d metrics recorded", expectedDataSize));
 
-    LongPointData callCountData = getLongPointData(metricsData, expectedMetricName, otelPrefix);
-    validateLongPointData(callCountData, expectedValue, expectedAttributes);
+    validateLongPointData(inMemoryMetricReader, expectedValue, expectedAttributes, expectedMetricName, otelPrefix);
   }
 
   @Test

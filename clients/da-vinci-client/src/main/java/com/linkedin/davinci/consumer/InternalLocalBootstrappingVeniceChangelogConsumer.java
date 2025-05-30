@@ -10,6 +10,8 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEV
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.pubsub.PubSubConstants.getPubsubOffsetApiTimeoutDurationDefaultValue;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
@@ -73,7 +75,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
   // make decisions about easily about weather or not to clear out the local state data or not across version for a
   // store (we'll keep the local data in the event of a repush, but clear out if a user push comes through)
   private static final String LOCAL_STATE_TOPIC_SUFFIX = "_Bootstrap_v1";
-
+  private static final int MAX_VERSION_SWAP_RETRIES = 5;
   private final MetricsRepository metricsRepository;
   private final String localStateTopicName;
   private final VeniceConcurrentHashMap<Integer, BootstrapState> bootstrapStateMap;
@@ -190,17 +192,56 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       Integer upstreamPartition) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
-      VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
-      if (!versionSwap.isRepush) {
-        // Clean up all local data and seek existing
-        storageMetadataService.clearStoreVersionState(localStateTopicName);
-        this.storageService.cleanupAllStores(this.configLoader);
-        seekToBeginningOfPush(Collections.singleton(pubSubTopicPartition.getPartitionNumber()));
+      for (int attempt = 0; attempt <= MAX_VERSION_SWAP_RETRIES; attempt++) {
+        try {
+          VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
+          if (!versionSwap.isRepush) {
+            // Clean up all local data and seek existing
+            storageMetadataService.clearStoreVersionState(localStateTopicName);
+            this.storageService.cleanupAllStores(this.configLoader);
+            seekToBeginningOfPush(Collections.singleton(pubSubTopicPartition.getPartitionNumber()));
+          }
+
+          if (changeCaptureStats != null) {
+            changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
+          }
+
+          LOGGER.info(
+              "Version Swap succeeded when switching to topic: {} for partition: {} after {} attempts",
+              pubSubTopicPartition.getTopicName(),
+              pubSubTopicPartition.getPartitionNumber(),
+              attempt);
+
+          return true;
+        } catch (Exception error) {
+          if (attempt == MAX_VERSION_SWAP_RETRIES) {
+            if (changeCaptureStats != null) {
+              changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
+            }
+
+            LOGGER.error(
+                "Version Swap failed when switching to topic: {} for partition: {} after {} attempts",
+                pubSubTopicPartition.getTopicName(),
+                pubSubTopicPartition.getPartitionNumber(),
+                MAX_VERSION_SWAP_RETRIES);
+            throw error;
+          } else {
+            LOGGER.error(
+                "Version Swap failed when switching to topic: {} for partition: {} on attempt {}/{}. Retrying.",
+                pubSubTopicPartition.getTopicName(),
+                pubSubTopicPartition.getPartitionNumber(),
+                attempt,
+                MAX_VERSION_SWAP_RETRIES);
+
+            try {
+              Thread.sleep(1000L * attempt);
+            } catch (InterruptedException interruptedException) {
+              Thread.currentThread().interrupt(); // Restore interrupt status
+            }
+          }
+        }
       }
-
-      return true;
     }
-
     return false;
   }
 
