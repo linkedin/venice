@@ -34,6 +34,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -293,6 +294,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             .setPubSubConsumerAdapterFactory(pubSubClientsFactory.getConsumerAdapterFactory())
             .setTopicMetadataFetcherThreadPoolSize(serverConfig.getTopicManagerMetadataFetcherThreadPoolSize())
             .setTopicMetadataFetcherConsumerPoolSize(serverConfig.getTopicManagerMetadataFetcherConsumerPoolSize())
+            .setVeniceComponent(VeniceComponent.SERVER)
             .build();
     this.topicManagerRepository =
         new TopicManagerRepository(topicManagerContext, serverConfig.getKafkaBootstrapServers());

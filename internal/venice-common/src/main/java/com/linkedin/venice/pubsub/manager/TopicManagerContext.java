@@ -31,7 +31,7 @@ public class TopicManagerContext {
   private final long topicOffsetCheckIntervalMs;
   private final int topicMetadataFetcherConsumerPoolSize;
   private final int topicMetadataFetcherThreadPoolSize;
-  private VeniceComponent veniceComponent;
+  private final VeniceComponent veniceComponent;
 
   private TopicManagerContext(Builder builder) {
     this.pubSubOperationTimeoutMs = builder.pubSubOperationTimeoutMs;
@@ -127,7 +127,7 @@ public class TopicManagerContext {
     private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
     private MetricsRepository metricsRepository;
     private PubSubPropertiesSupplier pubSubPropertiesSupplier;
-    private VeniceComponent veniceComponent = VeniceComponent.SERVER; // Default component
+    private VeniceComponent veniceComponent = VeniceComponent.UNSPECIFIED; // Default component
     private long pubSubOperationTimeoutMs = PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
     private long topicDeletionStatusPollIntervalMs = PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
     private long topicMinLogCompactionLagMs = DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
