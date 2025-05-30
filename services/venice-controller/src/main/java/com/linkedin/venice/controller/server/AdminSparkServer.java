@@ -11,6 +11,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_REMOV
 import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES;
+import static com.linkedin.venice.controllerapi.ControllerRoute.CLEAN_EXECUTION_IDS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_DISCOVERY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
@@ -330,6 +331,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(
         LIST_STORES.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getAllStores(admin)));
+    httpService.get(
+        CLEAN_EXECUTION_IDS.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.cleanExecutionIds(admin)));
     httpService.get(
         CLUSTER_HEALTH_STORES.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getAllStoresStatuses(admin)));
