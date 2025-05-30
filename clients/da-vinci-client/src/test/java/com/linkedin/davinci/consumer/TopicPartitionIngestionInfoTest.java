@@ -39,45 +39,47 @@ public class TopicPartitionIngestionInfoTest {
 
   @Test
   public void testElapsedTimeSinceLastPolledRecordsInMs() {
-    long elapsedTimeSinceLastPollInMs = 100;
-    long elapsedTimeSinceLastPolledRecordsInMs = 200;
+    long elapsedTimeSinceLastConsumerPollInMs = 100;
+    long elapsedTimeSinceLastRecordForPartitionInMs = 200;
     TopicPartitionIngestionInfo info = new TopicPartitionIngestionInfo(
-        0,
-        1,
-        2.0,
-        4.0,
-        "testConsumer",
-        elapsedTimeSinceLastPollInMs,
-        elapsedTimeSinceLastPolledRecordsInMs,
-        "test_store_v1");
-
-    Assert.assertEquals(info.getElapsedTimeSinceLastPollInMs(), elapsedTimeSinceLastPollInMs);
-    Assert.assertEquals(info.getElapsedTimeSinceLastPolledRecordsInMs(), elapsedTimeSinceLastPolledRecordsInMs);
-
+        0L,
+        0L,
+        0.0,
+        0.0,
+        "consumer1",
+        elapsedTimeSinceLastConsumerPollInMs,
+        elapsedTimeSinceLastRecordForPartitionInMs,
+        "test-topic");
+    Assert.assertEquals(info.getElapsedTimeSinceLastConsumerPollInMs(), elapsedTimeSinceLastConsumerPollInMs);
+    Assert
+        .assertEquals(info.getElapsedTimeSinceLastRecordForPartitionInMs(), elapsedTimeSinceLastRecordForPartitionInMs);
     String infoString = info.toString();
     Assert.assertTrue(
-        infoString.contains("elapsedTimeSinceLastPolledRecordsInMs:" + elapsedTimeSinceLastPolledRecordsInMs));
+        infoString.contains("elapsedTimeSinceLastConsumerPollInMs:" + elapsedTimeSinceLastConsumerPollInMs));
+    Assert.assertTrue(
+        infoString
+            .contains("elapsedTimeSinceLastRecordForPartitionInMs:" + elapsedTimeSinceLastRecordForPartitionInMs));
 
     TopicPartitionIngestionInfo sameInfo = new TopicPartitionIngestionInfo(
-        0,
-        1,
-        2.0,
-        4.0,
-        "testConsumer",
-        elapsedTimeSinceLastPollInMs,
-        elapsedTimeSinceLastPolledRecordsInMs,
-        "test_store_v1");
+        0L,
+        0L,
+        0.0,
+        0.0,
+        "consumer1",
+        elapsedTimeSinceLastConsumerPollInMs,
+        elapsedTimeSinceLastRecordForPartitionInMs,
+        "test-topic");
     Assert.assertEquals(info, sameInfo);
 
     TopicPartitionIngestionInfo differentInfo = new TopicPartitionIngestionInfo(
-        0,
-        1,
-        2.0,
-        4.0,
-        "testConsumer",
-        elapsedTimeSinceLastPollInMs,
+        0L,
+        0L,
+        0.0,
+        0.0,
+        "consumer1",
+        elapsedTimeSinceLastConsumerPollInMs,
         300,
-        "test_store_v1");
+        "test-topic");
     Assert.assertNotEquals(info, differentInfo);
   }
 }
