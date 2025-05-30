@@ -625,7 +625,6 @@ public class VeniceChangelogConsumerImplTest {
         new VersionSwapDataChangeListener(mockConsumer, mockRepository, storeName, "");
     changeListener.handleStoreChanged(mockStore);
     Mockito.verify(mockConsumer).internalSeekToEndOfPush(Mockito.anySet(), Mockito.any(), Mockito.anyBoolean());
-
   }
 
   @Test
@@ -650,7 +649,10 @@ public class VeniceChangelogConsumerImplTest {
 
     PubSubTopicRepository pubSubTopicRepository = mock(PubSubTopicRepository.class);
     PubSubTopic pubSubTopic = mock(PubSubTopic.class);
-    when(pubSubTopicRepository.getTopic(anyString())).thenReturn(pubSubTopic);
+    // Throw an exception the first two times to trigger retries
+    when(pubSubTopicRepository.getTopic(anyString())).thenThrow(new RuntimeException("First attempt failed"))
+        .thenThrow(new RuntimeException("Second attempt failed"))
+        .thenReturn(pubSubTopic);
 
     Field pubSubTopicRepositoryField = VeniceChangelogConsumerImpl.class.getDeclaredField("pubSubTopicRepository");
     pubSubTopicRepositoryField.setAccessible(true);
@@ -668,6 +670,7 @@ public class VeniceChangelogConsumerImplTest {
     PubSubTopicPartition pubSubTopicPartition = mock(PubSubTopicPartition.class);
     String topicSuffix = "suffix";
     Integer partition = 1;
+    when(pubSubTopicPartition.getTopicName()).thenReturn((String) versionSwapMessage.newServingVersionTopic);
     when(pubSubTopicPartition.getPartitionNumber()).thenReturn(partition);
 
     doCallRealMethod().when(veniceChangelogConsumer)

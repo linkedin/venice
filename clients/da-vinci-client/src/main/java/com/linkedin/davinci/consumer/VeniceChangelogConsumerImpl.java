@@ -108,6 +108,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
   private static final int MAX_SUBSCRIBE_RETRIES = 5;
+  private static final int MAX_VERSION_SWAP_RETRIES = 5;
   private static final String ROCKSDB_BUFFER_FOLDER = "rocksdb-chunk-buffer";
   protected long subscribeTime = Long.MAX_VALUE;
 
@@ -1067,55 +1068,80 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       Integer upstreamPartition) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
-      try {
-        VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
-        LOGGER.info(
-            "Obtain version swap message: {} and versions swap high watermarks: {} for: {}",
-            versionSwap,
-            versionSwap.getLocalHighWatermarks(),
-            pubSubTopicPartition);
-        PubSubTopic newServingVersionTopic =
-            pubSubTopicRepository.getTopic(versionSwap.newServingVersionTopic.toString());
+      for (int attempt = 0; attempt <= MAX_VERSION_SWAP_RETRIES; attempt++) {
+        try {
+          VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
+          LOGGER.info(
+              "Obtain version swap message: {} and versions swap high watermarks: {} for: {}",
+              versionSwap,
+              versionSwap.getLocalHighWatermarks(),
+              pubSubTopicPartition);
+          PubSubTopic newServingVersionTopic =
+              pubSubTopicRepository.getTopic(versionSwap.newServingVersionTopic.toString());
 
-        // TODO: There seems to exist a condition in the server where highwatermark offsets may regress when
-        // transmitting the version swap message it seems like this can potentially happen if a repush occurs
-        // and no data is consumed on that previous version.
-        // To make the client handle this gracefully, we instate the below condition that says the hwm in the
-        // client should never go backwards.
-        List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
-            .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
-            .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);
-        // safety checks
-        if (localOffset == null) {
-          localOffset = new ArrayList<>();
-        }
-        List<Long> highWatermarkOffsets = versionSwap.localHighWatermarks == null
-            ? new ArrayList<>()
-            : new ArrayList<>(versionSwap.getLocalHighWatermarks());
-        if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
+          // TODO: There seems to exist a condition in the server where highwatermark offsets may regress when
+          // transmitting the version swap message it seems like this can potentially happen if a repush occurs
+          // and no data is consumed on that previous version.
+          // To make the client handle this gracefully, we instate the below condition that says the hwm in the
+          // client should never go backwards.
+          List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
+              .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
+              .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);
+          // safety checks
+          if (localOffset == null) {
+            localOffset = new ArrayList<>();
+          }
+          List<Long> highWatermarkOffsets = versionSwap.localHighWatermarks == null
+              ? new ArrayList<>()
+              : new ArrayList<>(versionSwap.getLocalHighWatermarks());
+          if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
 
-          currentVersionHighWatermarks
-              .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
-          currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
-              .put(upstreamPartition, highWatermarkOffsets);
-        }
-        switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
-        chunkAssembler.clearBuffer();
+            currentVersionHighWatermarks
+                .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
+            currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
+                .put(upstreamPartition, highWatermarkOffsets);
+          }
+          switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
+          chunkAssembler.clearBuffer();
 
-        if (changeCaptureStats != null) {
-          changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
-        }
-        return true;
-      } catch (Exception exception) {
-        if (changeCaptureStats != null) {
-          changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
-        }
+          if (changeCaptureStats != null) {
+            changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
+          }
 
-        LOGGER.error(
-            "Version Swap failed when switching to topic: {} for partition: {}",
-            pubSubTopicPartition.getTopicName(),
-            pubSubTopicPartition.getPartitionNumber());
-        throw exception;
+          LOGGER.info(
+              "Version Swap succeeded when switching to topic: {} for partition: {} after {} attempts",
+              pubSubTopicPartition.getTopicName(),
+              pubSubTopicPartition.getPartitionNumber(),
+              attempt);
+
+          return true;
+        } catch (Exception error) {
+          if (attempt == MAX_VERSION_SWAP_RETRIES) {
+            if (changeCaptureStats != null) {
+              changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
+            }
+
+            LOGGER.error(
+                "Version Swap failed when switching to topic: {} for partition: {} after {} attempts",
+                pubSubTopicPartition.getTopicName(),
+                pubSubTopicPartition.getPartitionNumber(),
+                attempt);
+            throw error;
+          } else {
+            LOGGER.error(
+                "Version Swap failed when switching to topic: {} for partition: {} on attempt {}/{}. Retrying.",
+                pubSubTopicPartition.getTopicName(),
+                pubSubTopicPartition.getPartitionNumber(),
+                attempt,
+                MAX_VERSION_SWAP_RETRIES);
+
+            try {
+              Thread.sleep(1000 * attempt);
+            } catch (InterruptedException interruptedException) {
+              Thread.currentThread().interrupt(); // Restore interrupt status
+            }
+          }
+        }
       }
     }
     return false;
