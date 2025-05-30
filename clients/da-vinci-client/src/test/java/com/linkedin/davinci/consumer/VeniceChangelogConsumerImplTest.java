@@ -856,7 +856,7 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   @Test
-  public void testChunkingFailure2() throws NoSuchFieldException, IllegalAccessException {
+  public void testChunkingFailure() throws NoSuchFieldException, IllegalAccessException {
     VeniceChangelogConsumerImpl veniceChangelogConsumer = mock(VeniceChangelogConsumerImpl.class);
 
     Field changelogClientConfigField = VeniceChangelogConsumerImpl.class.getDeclaredField("changelogClientConfig");
@@ -918,48 +918,6 @@ public class VeniceChangelogConsumerImplTest {
     verify(consumerStats).emitChunkedRecordCountMetrics(FAIL);
     verify(consumerStats).emitPollCountMetrics(FAIL);
     verify(consumerStats, never()).emitRecordsConsumedCountMetrics(anyInt());
-  }
-
-  @Test
-  public void testChunkingFailure() throws NoSuchFieldException, IllegalAccessException {
-    VeniceChangelogConsumerImpl veniceChangelogConsumer = mock(VeniceChangelogConsumerImpl.class);
-
-    DefaultPubSubMessage pubSubMessage = mock(DefaultPubSubMessage.class);
-    when(pubSubMessage.getKey()).thenReturn(mock(KafkaKey.class));
-
-    KafkaMessageEnvelope value = mock(KafkaMessageEnvelope.class);
-    Put put = new Put();
-    put.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
-    value.payloadUnion = put;
-    when(pubSubMessage.getValue()).thenReturn(value);
-
-    HashMap<Integer, VeniceCompressor> compressorMap = mock(HashMap.class);
-    when(compressorMap.get(anyInt())).thenReturn(mock(VeniceCompressor.class));
-    Field compressorMapField = VeniceChangelogConsumerImpl.class.getDeclaredField("compressorMap");
-    compressorMapField.setAccessible(true);
-    compressorMapField.set(veniceChangelogConsumer, compressorMap);
-
-    ChunkAssembler chunkAssembler = mock(ChunkAssembler.class);
-    Field chunkAssemblerField = VeniceChangelogConsumerImpl.class.getDeclaredField("chunkAssembler");
-    chunkAssemblerField.setAccessible(true);
-    chunkAssemblerField.set(veniceChangelogConsumer, chunkAssembler);
-
-    BasicConsumerStats consumerStats = mock(BasicConsumerStats.class);
-    Field changeCaptureStatsField = VeniceChangelogConsumerImpl.class.getDeclaredField("changeCaptureStats");
-    changeCaptureStatsField.setAccessible(true);
-    changeCaptureStatsField.set(veniceChangelogConsumer, consumerStats);
-
-    int partition = 0;
-    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
-    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partition);
-
-    doCallRealMethod().when(veniceChangelogConsumer)
-        .convertPubSubMessageToPubSubChangeEventMessage(pubSubMessage, topicPartition);
-    assertThrows(
-        Exception.class,
-        () -> veniceChangelogConsumer.convertPubSubMessageToPubSubChangeEventMessage(pubSubMessage, topicPartition));
-
-    verify(consumerStats).emitChunkedRecordCountMetrics(VeniceResponseStatusCategory.FAIL);
   }
 
   private void prepareChangeCaptureRecordsToBePolled(
