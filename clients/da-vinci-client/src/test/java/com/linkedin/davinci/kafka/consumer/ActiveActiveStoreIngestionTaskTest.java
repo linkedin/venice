@@ -805,70 +805,185 @@ public class ActiveActiveStoreIngestionTaskTest {
     // PCS == null should not persist.
     Assert.assertEquals(
         ingestionTask.getStorageOperationType(0, null, null),
-        ActiveActiveStoreIngestionTask.StorageOperationType.NONE);
+        ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
     /**
      * Da Vinci case
      */
     doReturn(true).when(ingestionTask).isDaVinciClient();
-    // DELETE with unsorted input.
+
+    // Deferred write = false
+    doReturn(false).when(pcs).isDeferredWrite();
+    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, null, null));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, emptyPayload, null));
+    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, payload, null));
+
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, null, null),
+        ingestionTask.getStorageOperationType(1, null, emptyPayload),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
-    // PUT with unsorted input.
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload));
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, payload, null),
+        ingestionTask.getStorageOperationType(1, payload, emptyPayload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, null, payload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, emptyPayload, payload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, payload, payload),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
 
     doReturn(true).when(pcs).isDeferredWrite();
-    // DELETE with sorted input.
+    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, null, null));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, emptyPayload, null));
+    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, payload, null));
+
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, null, null),
-        ActiveActiveStoreIngestionTask.StorageOperationType.NONE);
-    // PUT with sorted input.
+        ingestionTask.getStorageOperationType(1, null, emptyPayload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload));
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, payload, null),
+        ingestionTask.getStorageOperationType(1, payload, emptyPayload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, null, payload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, emptyPayload, payload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, payload, payload),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
 
     /**
      * Server case
      */
     doReturn(false).when(ingestionTask).isDaVinciClient();
+    // EOP = false, deferred write = false.
+    doReturn(false).when(pcs).isDeferredWrite();
+    doReturn(false).when(pcs).isEndOfPushReceived();
     Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, null, null));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, emptyPayload, null));
     Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, payload, null));
-    // EOP = false, rmdPayload not empty
+
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, null, payload),
-        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
-    Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, payload, payload),
-        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
-    Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, emptyPayload, payload),
-        ActiveActiveStoreIngestionTask.StorageOperationType.RMD_CHUNK);
-    // EOP = false, rmdPayload empty
-    Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload),
+        ingestionTask.getStorageOperationType(1, null, emptyPayload),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload));
     Assert.assertEquals(
         ingestionTask.getStorageOperationType(1, payload, emptyPayload),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
 
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, null, payload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, emptyPayload, payload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.RMD_CHUNK);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, payload, payload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
+
+    // EOP = true, deferred write = false.
+    doReturn(false).when(pcs).isDeferredWrite();
     doReturn(true).when(pcs).isEndOfPushReceived();
+    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, null, null));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, emptyPayload, null));
+    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, payload, null));
+
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, null, emptyPayload));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, payload, emptyPayload));
+
     Assert.assertEquals(
         ingestionTask.getStorageOperationType(1, null, payload),
-        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
-    Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, payload, payload),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
     Assert.assertEquals(
         ingestionTask.getStorageOperationType(1, emptyPayload, payload),
         ActiveActiveStoreIngestionTask.StorageOperationType.RMD_CHUNK);
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload),
-        ActiveActiveStoreIngestionTask.StorageOperationType.RMD_CHUNK);
-    Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, payload, emptyPayload),
+        ingestionTask.getStorageOperationType(1, payload, payload),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
 
+    // EOP = false, deferred write = true.
+    doReturn(true).when(pcs).isDeferredWrite();
+    doReturn(false).when(pcs).isEndOfPushReceived();
+    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, null, null));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, emptyPayload, null));
+    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, payload, null));
+
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, null, emptyPayload));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload));
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, payload, emptyPayload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, null, payload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, emptyPayload, payload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.RMD_CHUNK);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, payload, payload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
+
+    // EOP = true, deferred write = true.
+    doReturn(true).when(pcs).isDeferredWrite();
+    doReturn(true).when(pcs).isEndOfPushReceived();
+    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, null, null));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, emptyPayload, null));
+    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, payload, null));
+
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, null, emptyPayload));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, payload, emptyPayload));
+
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, null, payload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, emptyPayload, payload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.RMD_CHUNK);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, payload, payload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
   }
 }

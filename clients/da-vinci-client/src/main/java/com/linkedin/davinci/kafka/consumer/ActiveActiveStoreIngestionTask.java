@@ -298,39 +298,59 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
   }
 
-  /** @return what kind of storage operation to execute, if any. */
+  /**
+   * This method determines which type of storage operation it is based on input value and RMD payload.
+   */
   StorageOperationType getStorageOperationType(int partition, ByteBuffer valuePayload, ByteBuffer rmdPayload) {
     PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
     if (pcs == null) {
       logStorageOperationWhileUnsubscribed(partition);
-      return StorageOperationType.NONE;
-    }
-    if (isDaVinciClient()) {
-      // When deferred write is true, it must be before EOP so no extra check here.
-      if (valuePayload == null && pcs.isDeferredWrite()) {
-        return StorageOperationType.NONE;
-      }
-      return StorageOperationType.VALUE;
+      return StorageOperationType.SKIP;
     }
     if (rmdPayload == null) {
       throw new IllegalArgumentException("Replication metadata payload not found.");
     }
-    if (pcs.isEndOfPushReceived() || rmdPayload.remaining() > 0) {
-      // value payload == null means it is a DELETE request, while value payload size > 0 means it is a PUT request.
-      if (valuePayload == null || valuePayload.remaining() > 0) {
-        return StorageOperationType.VALUE_AND_RMD;
+    if (valuePayload != null && valuePayload.remaining() == 0 && rmdPayload.remaining() == 0) {
+      throw new IllegalArgumentException("Both value and RMD payload cannot be empty.");
+    }
+
+    if (isDaVinciClient()) {
+      // For Da Vinci Client, DELETE is skipped during deferred write phase. Other operations will be value only
+      // operation.
+      if (valuePayload == null && pcs.isDeferredWrite()) {
+        return StorageOperationType.SKIP;
       }
-      return StorageOperationType.RMD_CHUNK;
-    } else {
+      // For Da Vinci Client, RMD chunk should be ignored.
+      if (valuePayload != null && valuePayload.remaining() == 0) {
+        return StorageOperationType.SKIP;
+      }
       return StorageOperationType.VALUE;
     }
+
+    if (rmdPayload.remaining() == 0) {
+      // DELETE without valid RMD payload after deferred write phase is not valid.
+      if (valuePayload == null && pcs.isDeferredWrite()) {
+        throw new IllegalArgumentException("Delete without RMD in deferred write is not allowed.");
+      }
+      // After EOP, all the payload should carry RMD payload.
+      if (pcs.isEndOfPushReceived()) {
+        throw new IllegalArgumentException("Operation after EOP is expected to carry RMD");
+      }
+      return StorageOperationType.VALUE;
+    }
+    // value payload == null means it is a DELETE request, while value payload size > 0 means it is a PUT request.
+    if (valuePayload == null || valuePayload.remaining() > 0) {
+      return StorageOperationType.VALUE_AND_RMD;
+    }
+    // RMD chunk case.
+    return StorageOperationType.RMD_CHUNK;
   }
 
   enum StorageOperationType {
     VALUE_AND_RMD, // Operate on value associated with RMD
     VALUE, // Operate on full or chunked value
     RMD_CHUNK, // Operate on chunked RMD
-    NONE
+    SKIP // Will skip the storage operation
   }
 
   private byte[] prependReplicationMetadataBytesWithValueSchemaId(ByteBuffer metadata, int valueSchemaId) {

@@ -1,20 +1,19 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.stats.HostLevelIngestionStats.ASSEMBLED_RMD_SIZE_IN_BYTES;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
 import static com.linkedin.venice.endToEnd.TestBatch.TEST_TIMEOUT;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
-import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
@@ -105,7 +104,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.spark.datawriter.jobs.DataWriterSparkJob;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.tehuti.MetricsUtils;
@@ -170,6 +168,7 @@ public class PartialUpdateTest {
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private VeniceControllerWrapper parentController;
   private List<VeniceMultiClusterWrapper> childDatacenters;
+  private D2Client d2ClientDC0;
 
   protected boolean isAAWCParallelProcessingEnabled() {
     return false;
@@ -215,6 +214,12 @@ public class PartialUpdateTest {
       throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
     }
     this.parentController = parentControllers.get(0);
+    this.d2ClientDC0 = new D2ClientBuilder()
+        .setZkHosts(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress())
+        .setZkSessionTimeout(3, TimeUnit.SECONDS)
+        .setZkStartupTimeout(3, TimeUnit.SECONDS)
+        .build();
+    D2ClientUtils.startClient(d2ClientDC0);
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)
@@ -1896,39 +1901,24 @@ public class PartialUpdateTest {
     }
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
-
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
         .build();
 
-    MetricsRepository metricsRepository = new VeniceMetricsRepository(
-        new VeniceMetricsConfig.Builder().setServiceName(DAVINCI_CLIENT.getName())
-            .setMetricPrefix(DAVINCI_CLIENT.getMetricsPrefix())
-            .setEmitOtelMetrics(true)
-            .setMetricEntities(CLIENT_METRIC_ENTITIES)
-            .build());
-
-    D2Client d2Client = new D2ClientBuilder()
-        .setZkHosts(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress())
-        .setZkSessionTimeout(3, TimeUnit.SECONDS)
-        .setZkStartupTimeout(3, TimeUnit.SECONDS)
-        .build();
-    D2ClientUtils.startClient(d2Client);
-    // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
+    MetricsRepository metricsRepository = new VeniceMetricsRepository();
     try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
-        d2Client,
+        d2ClientDC0,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
         backendConfig)) {
-      DaVinciClient<Integer, Object> client1 =
+      DaVinciClient<Integer, Object> client =
           factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig().setStorageClass(StorageClass.DISK));
-
-      // Test non-existent key access
-      client1.subscribeAll().get();
+      client.subscribeAll().get();
     } catch (Exception e) {
       throw new VeniceException(e);
     }
@@ -2420,6 +2410,7 @@ public class PartialUpdateTest {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
+    D2ClientUtils.shutdownClient(d2ClientDC0);
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
