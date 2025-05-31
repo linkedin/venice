@@ -776,8 +776,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
           "Cannot make deletion while database is opened in read-only mode for replica: " + replicaId);
     }
     try {
-      // Regular delete without replication metadata timestamp during deferred write phase should be skipped.
-      if (!deferredWrite) {
+      if (deferredWrite) {
+        throw new VeniceException("Deletion is unexpected in 'deferredWrite' mode");
+      } else {
         rocksDB.delete(key);
       }
     } catch (RocksDBException e) {

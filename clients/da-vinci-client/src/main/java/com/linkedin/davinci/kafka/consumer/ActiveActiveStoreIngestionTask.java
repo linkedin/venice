@@ -299,13 +299,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /** @return what kind of storage operation to execute, if any. */
-  private StorageOperationType getStorageOperationType(int partition, ByteBuffer valuePayload, ByteBuffer rmdPayload) {
-    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partition);
+  StorageOperationType getStorageOperationType(int partition, ByteBuffer valuePayload, ByteBuffer rmdPayload) {
+    PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
     if (pcs == null) {
       logStorageOperationWhileUnsubscribed(partition);
       return StorageOperationType.NONE;
     }
-    if (isDaVinciClient) {
+    if (isDaVinciClient()) {
+      // When deferred write is true, it must be before EOP so no extra check here.
+      if (valuePayload == null && pcs.isDeferredWrite()) {
+        return StorageOperationType.NONE;
+      }
       return StorageOperationType.VALUE;
     }
     if (rmdPayload == null) {
@@ -322,7 +326,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
   }
 
-  private enum StorageOperationType {
+  enum StorageOperationType {
     VALUE_AND_RMD, // Operate on value associated with RMD
     VALUE, // Operate on full or chunked value
     RMD_CHUNK, // Operate on chunked RMD
