@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_OVER_SSL;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
@@ -12,6 +13,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -101,7 +103,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
         Optional.of(Mockito.mock(HelixHybridStoreQuotaRepository.class));
 
     Instance mockControllerInstance = Mockito.mock(Instance.class);
-    doReturn(CONTROLLER).when(mockControllerInstance).getUrl();
+    doReturn(CONTROLLER).when(mockControllerInstance).getUrl(eq(sslToStorageNodes));
     doReturn(mockControllerInstance).when(mockRepo).getLeaderController();
 
     HelixReadOnlyStoreViewConfigRepositoryAdapter mockStoreConfigRepository =
@@ -133,6 +135,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
           .put(ZOOKEEPER_ADDRESS, zkAddress)
           .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
+          .put(KAFKA_OVER_SSL, sslToStorageNodes)
           .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(Collections.singletonMap(clusterName, d2ServiceName)))
           .put(
               CLUSTER_TO_SERVER_D2,
