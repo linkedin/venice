@@ -393,6 +393,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final boolean isControllerClusterHAAS;
   private final String coloLeaderClusterName;
   private final Optional<SSLFactory> sslFactory;
+  private final boolean sslEnabled;
   private final String pushJobStatusStoreClusterName;
   private final PushStatusStoreReader pushStatusStoreReader;
   private final Lazy<PushStatusStoreWriter> pushStatusStoreWriter;
@@ -438,16 +439,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       new VeniceConcurrentHashMap<>();
   private final Map<String, HelixLiveInstanceMonitor> liveInstanceMonitorMap = new HashMap<>();
 
-  private final ClusterLeaderInitializationManager clusterLeaderInitializationManager;
-  private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
+  private final VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
-  private long backupVersionDefaultRetentionMs;
+  private final long backupVersionDefaultRetentionMs;
 
-  private int defaultMaxRecordSizeBytes;
+  private final int defaultMaxRecordSizeBytes;
 
-  private DataRecoveryManager dataRecoveryManager;
+  private final DataRecoveryManager dataRecoveryManager;
   private CompactionManager compactionManager;
-  private ParticipantStoreClientsManager participantStoreClientsManager;
+  private final ParticipantStoreClientsManager participantStoreClientsManager;
   protected final PubSubTopicRepository pubSubTopicRepository;
 
   private final Object PUSH_JOB_DETAILS_CLIENT_LOCK = new Object();
@@ -458,7 +458,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private final Lazy<ByteBuffer> emptyPushZSTDDictionary;
 
-  private Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
+  private final Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
   private final LogContext logContext;
 
   final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
@@ -516,6 +516,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
     this.d2Client = d2Client;
     this.pubSubTopicRepository = pubSubTopicRepository;
+    this.sslEnabled = sslEnabled;
 
     if (sslEnabled) {
       try {
@@ -721,7 +722,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
-    clusterLeaderInitializationManager = new ClusterLeaderInitializationManager(
+    ClusterLeaderInitializationManager clusterLeaderInitializationManager = new ClusterLeaderInitializationManager(
         initRoutines,
         commonConfig.isConcurrentInitRoutinesEnabled(),
         commonConfig.getLogContext());
@@ -1315,10 +1316,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return valueSchemaId;
     }
 
-    ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(
-        clusterName,
-        getLeaderController(clusterName).getUrl(getSslFactory().isPresent()),
-        sslFactory);
+    ControllerClient controllerClient = ControllerClient
+        .constructClusterControllerClient(clusterName, getLeaderController(clusterName).getUrl(sslEnabled), sslFactory);
     SchemaResponse response = controllerClient.getValueSchemaID(storeName, valueSchemaStr);
     if (response.isError()) {
       throw new VeniceException(
@@ -1680,7 +1679,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       this.setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
     }
 
-    String destControllerUrl = this.getLeaderController(destClusterName).getUrl(getSslFactory().isPresent());
+    String destControllerUrl = this.getLeaderController(destClusterName).getUrl(sslEnabled);
     ControllerClient destControllerClient =
         ControllerClient.constructClusterControllerClient(destClusterName, destControllerUrl, sslFactory);
 
@@ -2309,7 +2308,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           // Mirror new pushes back to the source cluster in case we abort migration after completion.
           ControllerClient sourceClusterControllerClient = ControllerClient.constructClusterControllerClient(
               sourceCluster,
-              getLeaderController(sourceCluster).getUrl(getSslFactory().isPresent()),
+              getLeaderController(sourceCluster).getUrl(sslEnabled),
               sslFactory);
           VersionResponse response = sourceClusterControllerClient.addVersionAndStartIngestion(
               storeName,
@@ -2331,7 +2330,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Migration is still in progress and we need to mirror new version signal from source to dest.
         ControllerClient destClusterControllerClient = ControllerClient.constructClusterControllerClient(
             destinationCluster,
-            getLeaderController(destinationCluster).getUrl(sslFactory.isPresent()),
+            getLeaderController(destinationCluster).getUrl(sslEnabled),
             sslFactory);
         VersionResponse response = destClusterControllerClient.addVersionAndStartIngestion(
             storeName,
@@ -5794,10 +5793,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Migration has completed in this colo but the overall migration is still in progress.
         if (clusterName.equals(destinationCluster)) {
           // Mirror new updates back to the source cluster in case we abort migration after completion.
-          ControllerClient sourceClusterControllerClient = new ControllerClient(
-              sourceCluster,
-              getLeaderController(sourceCluster).getUrl(getSslFactory().isPresent()),
-              sslFactory);
+          ControllerClient sourceClusterControllerClient =
+              new ControllerClient(sourceCluster, getLeaderController(sourceCluster).getUrl(sslEnabled), sslFactory);
           ControllerResponse response = sourceClusterControllerClient.updateStore(storeName, params);
           if (response.isError()) {
             LOGGER.warn(
@@ -5810,7 +5807,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       } else if (clusterName.equals(sourceCluster)) {
         ControllerClient destClusterControllerClient = new ControllerClient(
             destinationCluster,
-            getLeaderController(destinationCluster).getUrl(getSslFactory().isPresent()),
+            getLeaderController(destinationCluster).getUrl(sslEnabled),
             sslFactory);
         ControllerResponse response = destClusterControllerClient.updateStore(storeName, params);
         if (response.isError()) {
@@ -7804,10 +7801,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     // Create the controller client to reuse
     // (this is controller client to communicate with other controllers in the same cluster, the same region)
-    ControllerClient localControllerClient = ControllerClient.constructClusterControllerClient(
-        clusterName,
-        leaderController.getUrl(getSslFactory().isPresent()),
-        getSslFactory());
+    ControllerClient localControllerClient = ControllerClient
+        .constructClusterControllerClient(clusterName, leaderController.getUrl(sslEnabled), getSslFactory());
 
     // Get version for standby controllers
     List<Instance> standbyControllers = getControllersByHelixState(clusterName, HelixState.STANDBY_STATE);
@@ -7817,7 +7812,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // In tests, both run on 'localhost' with the same secure port, which confuses routing.
       // Hence, we need to disable SSL for local integration tests.
       // RCA: Helix uses an insecure port from the instance ID, while secure port comes from shared multiClusterConfig.
-      String standbyControllerUrl = standbyController.getUrl(getSslFactory().isPresent());
+      String standbyControllerUrl = standbyController.getUrl(sslEnabled);
 
       // Get the admin operation protocol version from standby controller
       AdminOperationProtocolVersionControllerResponse response =
