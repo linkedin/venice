@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_I
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
+import static com.linkedin.venice.endToEnd.DaVinciClientRecordTransformerTest.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
@@ -170,11 +171,12 @@ public class TestBatchReportIncrementalPush {
 
       D2Client d2Client = D2TestUtils.getAndStartD2Client(
           multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress());
-      try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+      try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
           d2Client,
           VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
           new MetricsRepository(),
-          backendConfig)) {
+          backendConfig,
+          veniceClusterWrapper)) {
         DaVinciClient<Object, Object> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
         client.subscribeAll().get();
         runIncrementalPush(storeName, 1001, 1100, childControllerUrl, veniceClusterWrapper);

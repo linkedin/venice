@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_I
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
+import static com.linkedin.venice.endToEnd.DaVinciClientRecordTransformerTest.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -201,11 +202,12 @@ public class TestBlobDiscovery {
     daVinciD2 = D2TestUtils.getAndStartD2Client(multiClusterVenice.getZkServerWrapper().getAddress());
 
     // create one DVC client which subscribes to all partitions for store 1 and store 2
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         daVinciD2,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         new MetricsRepository(),
-        backendConfig)) {
+        backendConfig,
+        multiClusterVenice)) {
       // subscribe to all partitions for store 1
       List<DaVinciClient<Integer, Object>> clients = new ArrayList<>();
       DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);

@@ -18,6 +18,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICAT
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
+import static com.linkedin.venice.endToEnd.DaVinciClientRecordTransformerTest.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
@@ -234,11 +235,12 @@ public class DaVinciClientMemoryLimitTest {
         ingestionIsolationEnabledInDaVinci,
         useDaVinciSpecificExecutionStatusForError,
         new HashSet<>(Arrays.asList(storeName)));
-    this.factory = new CachingDaVinciClientFactory(
+    this.factory = getCachingDaVinciClientFactory(
         this.d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         new MetricsRepository(),
-        backendConfig);
+        backendConfig,
+        veniceCluster);
 
     DaVinciClient daVinciClient = factory.getGenericAvroClient(
         this.storeName,
@@ -369,11 +371,12 @@ public class DaVinciClientMemoryLimitTest {
       VeniceProperties backendConfig =
           getDaVinciBackendConfig(ingestionIsolationEnabledInDaVinci, useDaVinciSpecificExecutionStatusForError);
       MetricsRepository metricsRepository = new MetricsRepository();
-      try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+      try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
           d2Client,
           VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
           metricsRepository,
-          backendConfig)) {
+          backendConfig,
+          veniceCluster)) {
 
         DaVinciClient daVinciClientForBatchOnlyStore = factory.getGenericAvroClient(
             batchOnlyStoreName,
@@ -535,11 +538,12 @@ public class DaVinciClientMemoryLimitTest {
       // Spin up DaVinci client
       VeniceProperties backendConfig = getDaVinciBackendConfig(ingestionIsolationEnabledInDaVinci, false);
       MetricsRepository metricsRepository = new MetricsRepository();
-      try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+      try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
           d2Client,
           VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
           metricsRepository,
-          backendConfig)) {
+          backendConfig,
+          veniceCluster)) {
 
         DaVinciClient daVinciClientForBatchOnlyStore = factory.getGenericAvroClient(
             batchOnlyStoreName,

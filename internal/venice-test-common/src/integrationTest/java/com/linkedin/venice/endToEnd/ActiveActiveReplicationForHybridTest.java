@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
+import static com.linkedin.venice.endToEnd.DaVinciClientRecordTransformerTest.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -447,11 +448,12 @@ public class ActiveActiveReplicationForHybridTest {
 
       MetricsRepository metricsRepository = new MetricsRepository();
       try (
-          CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+          CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
               d2ClientForDC0Region,
               VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
               metricsRepository,
-              backendConfig);
+              backendConfig,
+              multiRegionMultiClusterWrapper);
           DaVinciClient<String, Object> daVinciClient =
               factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
         daVinciClient.subscribeAll().get();
