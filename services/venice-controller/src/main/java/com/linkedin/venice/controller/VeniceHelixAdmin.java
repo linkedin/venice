@@ -9238,7 +9238,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       StoreMigrationManager storeMigrationManager = multiTaskSchedulerService.get().getStoreMigrationManager();
       storeMigrationManager.scheduleMigration(storeName, srcClusterName, destClusterName, currStep, 0);
     } else {
-      throw new VeniceException("Store migration is not supported in this cluster: " + srcClusterName);
+      throw new VeniceException(
+          "Store migration is not supported in this cluster: " + srcClusterName,
+          ErrorType.INCORRECT_CONTROLLER);
     }
   }
 

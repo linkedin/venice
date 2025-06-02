@@ -440,11 +440,11 @@ public class StoresRoutes extends AbstractRoute {
         VeniceControllerClusterConfig destClusterConfig = admin.getControllerConfig(destClusterName);
         // Both source and destination clusters should either have RT versioning enabled or disabled
         if (destClusterConfig == null) {
-          LOGGER.warn("ClusterConfig for distination cluster {} not found.", destClusterName);
+          LOGGER.warn("ClusterConfig for destination cluster {} not found.", destClusterName);
         } else if (admin.getControllerConfig(srcClusterName).isRealTimeTopicVersioningEnabled() != destClusterConfig
             .isRealTimeTopicVersioningEnabled()) {
           veniceResponse
-              .setError("Source cluster and destination cluster both should have RT versioning enabled or disabled ");
+              .setError("Source cluster and destination cluster both should have RT versioning enabled or disabled.");
           veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
           return;
         }
@@ -534,57 +534,65 @@ public class StoresRoutes extends AbstractRoute {
   public Route autoMigrateStore(Admin admin) {
     return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
       @Override
-      public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-        AdminSparkServer.validateParams(request, MIGRATE_STORE.getParams(), admin);
-        String srcClusterName = request.queryParams(CLUSTER);
-        String destClusterName = request.queryParams(CLUSTER_DEST);
-        String storeName = request.queryParams(NAME);
+      public void internalHandle(Request request, StoreMigrationResponse storeMigrationResponse) {
+        try {
+          // Only allow allowlist users to run this command
+          if (!checkIsAllowListUser(request, storeMigrationResponse, () -> isAllowListUser(request))) {
+            return;
+          }
+          AdminSparkServer.validateParams(request, MIGRATE_STORE.getParams(), admin);
+          String srcClusterName = request.queryParams(CLUSTER);
+          String destClusterName = request.queryParams(CLUSTER_DEST);
+          String storeName = request.queryParams(NAME);
 
-        int currStep = Utils.parseIntFromString(
-            request.queryParams(AUTO_STORE_MIGRATION_CURRENT_STEP),
-            AUTO_STORE_MIGRATION_CURRENT_STEP);
-        boolean abortOnFailure = Utils.parseBooleanOrFalse(
-            request.queryParams(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE),
-            AUTO_STORE_MIGRATION_ABORT_ON_FAILURE);
+          int currStep = Utils.parseIntOrDefault(
+              request.queryParams(AUTO_STORE_MIGRATION_CURRENT_STEP),
+              AUTO_STORE_MIGRATION_CURRENT_STEP,
+              0);
+          boolean abortOnFailure = Utils.parseBooleanOrFalse(
+              request.queryParams(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE),
+              AUTO_STORE_MIGRATION_ABORT_ON_FAILURE);
 
-        veniceResponse.setSrcClusterName(srcClusterName);
-        veniceResponse.setCluster(destClusterName);
-        veniceResponse.setName(storeName);
+          storeMigrationResponse.setSrcClusterName(srcClusterName);
+          storeMigrationResponse.setCluster(destClusterName);
+          storeMigrationResponse.setName(storeName);
 
-        String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
-        // Store should belong to src cluster already
-        if (!clusterDiscovered.equals(srcClusterName)) {
-          veniceResponse.setError(
-              String.format(
-                  "Store %s belongs to cluster %s, which is different from the given src cluster name %s",
-                  storeName,
-                  clusterDiscovered,
-                  srcClusterName));
-          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
-          return;
+          String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          // Store should not belong to dest cluster already
+          if (clusterDiscovered.equals(destClusterName)) {
+            storeMigrationResponse
+                .setError(String.format("Store %s already belongs to cluster %s.", storeName, destClusterName));
+            storeMigrationResponse.setErrorType(ErrorType.BAD_REQUEST);
+            return;
+          }
+          // The store should belong to the source cluster.
+          if (!clusterDiscovered.equals(srcClusterName)) {
+            storeMigrationResponse.setError(
+                String.format(
+                    "Store %s belongs to cluster %s, which is different from the given src cluster name %s.",
+                    storeName,
+                    clusterDiscovered,
+                    srcClusterName));
+            storeMigrationResponse.setErrorType(ErrorType.BAD_REQUEST);
+            return;
+          }
+
+          VeniceControllerClusterConfig destClusterConfig = admin.getControllerConfig(destClusterName);
+          // Both source and destination clusters should either have RT versioning enabled or disabled
+          if (destClusterConfig == null) {
+            LOGGER.warn("ClusterConfig for destination cluster {} not found.", destClusterName);
+          } else if (admin.getControllerConfig(srcClusterName).isRealTimeTopicVersioningEnabled() != destClusterConfig
+              .isRealTimeTopicVersioningEnabled()) {
+            storeMigrationResponse
+                .setError("Source cluster and destination cluster both should have RT versioning enabled or disabled.");
+            storeMigrationResponse.setErrorType(ErrorType.BAD_REQUEST);
+            return;
+          }
+          admin.autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, abortOnFailure);
+        } catch (Throwable e) {
+          // Catch all exceptions and set the error in the response
+          storeMigrationResponse.setError(e);
         }
-        // Store should not belong to dest cluster already
-        if (clusterDiscovered.equals(destClusterName)) {
-          veniceResponse.setError(String.format("Store %s already belongs to cluster %s", storeName, destClusterName));
-          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
-          return;
-        }
-        VeniceControllerClusterConfig destClusterConfig = admin.getControllerConfig(destClusterName);
-        // Both source and destination clusters should either have RT versioning enabled or disabled
-        if (destClusterConfig == null) {
-          LOGGER.warn("ClusterConfig for distination cluster {} not found.", destClusterName);
-        } else if (admin.getControllerConfig(srcClusterName).isRealTimeTopicVersioningEnabled() != destClusterConfig
-            .isRealTimeTopicVersioningEnabled()) {
-          veniceResponse
-              .setError("Source cluster and destination cluster both should have RT versioning enabled or disabled ");
-          veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
-          return;
-        }
-        admin.autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, abortOnFailure);
       }
     };
   }
