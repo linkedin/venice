@@ -59,12 +59,11 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.producer.online.OnlineProducerFactory;
 import com.linkedin.venice.producer.online.OnlineVeniceProducer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
@@ -80,9 +79,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Optional;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
@@ -150,7 +147,7 @@ public class DaVinciClientRecordTransformerTest {
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
@@ -233,7 +230,7 @@ public class DaVinciClientRecordTransformerTest {
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
@@ -313,7 +310,7 @@ public class DaVinciClientRecordTransformerTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     clientConfig.setStorageClass(StorageClass.DISK);
 
-    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
@@ -398,7 +395,7 @@ public class DaVinciClientRecordTransformerTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     clientConfig.setStorageClass(StorageClass.DISK);
 
-    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
@@ -493,7 +490,7 @@ public class DaVinciClientRecordTransformerTest {
         .build();
     clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
-    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
@@ -549,7 +546,7 @@ public class DaVinciClientRecordTransformerTest {
             .build();
     clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
-    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
@@ -593,7 +590,7 @@ public class DaVinciClientRecordTransformerTest {
         .build();
     clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
-    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
@@ -701,7 +698,7 @@ public class DaVinciClientRecordTransformerTest {
         .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
     VeniceProperties backendConfig2 = configBuilder.build();
 
-    try (CachingDaVinciClientFactory factory2 = getCachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory2 = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         new MetricsRepository(),
@@ -896,72 +893,5 @@ public class DaVinciClientRecordTransformerTest {
     }
 
     return backendPropertyBuilder.build();
-  }
-
-  public static CachingDaVinciClientFactory getCachingDaVinciClientFactory(
-      D2Client d2Client,
-      String clusterDiscoveryD2ServiceName,
-      MetricsRepository metricsRepository,
-      VeniceProperties backendConfig,
-      VeniceClusterWrapper clusterWrapper) {
-    return getCachingDaVinciClientFactory(
-        d2Client,
-        clusterDiscoveryD2ServiceName,
-        metricsRepository,
-        backendConfig,
-        clusterWrapper,
-        Optional.empty());
-  }
-
-  public static CachingDaVinciClientFactory getCachingDaVinciClientFactory(
-      D2Client d2Client,
-      String clusterDiscoveryD2ServiceName,
-      MetricsRepository metricsRepository,
-      VeniceProperties backendConfig,
-      VeniceClusterWrapper clusterWrapper,
-      Optional<Set<String>> managedClients) {
-    Properties properties = backendConfig.getPropertiesCopy();
-    properties.putAll(clusterWrapper.getPubSubClientProperties());
-    backendConfig = new VeniceProperties(properties);
-    return new CachingDaVinciClientFactory(
-        d2Client,
-        clusterDiscoveryD2ServiceName,
-        metricsRepository,
-        backendConfig,
-        managedClients);
-  }
-
-  public static CachingDaVinciClientFactory getCachingDaVinciClientFactory(
-      D2Client d2Client,
-      String clusterDiscoveryD2ServiceName,
-      MetricsRepository metricsRepository,
-      VeniceProperties backendConfig,
-      VeniceMultiClusterWrapper clusterWrapper) {
-    Properties properties = backendConfig.getPropertiesCopy();
-    properties.putAll(clusterWrapper.getPubSubClientProperties());
-    backendConfig = new VeniceProperties(properties);
-    return new CachingDaVinciClientFactory(
-        d2Client,
-        clusterDiscoveryD2ServiceName,
-        metricsRepository,
-        backendConfig,
-        Optional.empty());
-  }
-
-  public static CachingDaVinciClientFactory getCachingDaVinciClientFactory(
-      D2Client d2Client,
-      String clusterDiscoveryD2ServiceName,
-      MetricsRepository metricsRepository,
-      VeniceProperties backendConfig,
-      VeniceTwoLayerMultiRegionMultiClusterWrapper clusterWrapper) {
-    Properties properties = backendConfig.getPropertiesCopy();
-    properties.putAll(clusterWrapper.getPubSubClientProperties());
-    backendConfig = new VeniceProperties(properties);
-    return new CachingDaVinciClientFactory(
-        d2Client,
-        clusterDiscoveryD2ServiceName,
-        metricsRepository,
-        backendConfig,
-        Optional.empty());
   }
 }
