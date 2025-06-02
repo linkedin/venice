@@ -332,10 +332,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       if (valuePayload == null && pcs.isDeferredWrite()) {
         throw new IllegalArgumentException("Delete without RMD in deferred write is not allowed.");
       }
-      // After EOP, all the payload should carry RMD payload.
-      if (pcs.isEndOfPushReceived()) {
-        throw new IllegalArgumentException("Operation after EOP is expected to carry RMD");
-      }
       return StorageOperationType.VALUE;
     }
     // value payload == null means it is a DELETE request, while value payload size > 0 means it is a PUT request.
