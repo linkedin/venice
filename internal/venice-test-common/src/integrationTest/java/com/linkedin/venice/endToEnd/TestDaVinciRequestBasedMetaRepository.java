@@ -4,6 +4,7 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLO
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static org.testng.Assert.assertNotNull;
@@ -83,11 +84,12 @@ public class TestDaVinciRequestBasedMetaRepository {
     daVinciConfig.setUseRequestBasedMetaRepository(true);
     daVinciD2RemoteFabric = D2TestUtils.getAndStartD2Client(clusterWrapper.getZk().getAddress());
     dvcMetricsRepo = new MetricsRepository();
-    daVinciClientFactory = new CachingDaVinciClientFactory(
+    daVinciClientFactory = getCachingDaVinciClientFactory(
         daVinciD2RemoteFabric,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         dvcMetricsRepo,
-        backendConfig);
+        backendConfig,
+        clusterWrapper);
   }
 
   @AfterClass(alwaysRun = true)

@@ -11,6 +11,7 @@ import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
+import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
@@ -928,11 +929,12 @@ public class TestPushJobWithNativeReplication {
     MetricsRepository metricsRepository = new MetricsRepository();
     DaVinciConfig clientConfig = new DaVinciConfig();
     clientConfig.setStorageClass(StorageClass.DISK);
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        multiRegionMultiClusterWrapper)) {
       client = factory.getGenericAvroClient(storeName, clientConfig);
       client.start();
       client.subscribeAll().get(30, TimeUnit.SECONDS);
