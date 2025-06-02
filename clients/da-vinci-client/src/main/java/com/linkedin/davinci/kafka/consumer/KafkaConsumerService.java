@@ -578,8 +578,13 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         long lastSuccessfulPollTimestamp = partitionStats.getLastSuccessfulPollTimestamp();
         long elapsedTimeSinceLastConsumerPollInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
         long elapsedTimeSinceLastRecordForPartitionInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
+
+        // Consumer level elapsed time
+        elapsedTimeSinceLastConsumerPollInMs =
+            LatencyUtils.getElapsedTimeFromMsToMs(consumptionTask.getLastSuccessfulPollTimestamp());
+
+        // Partition level elapsed time
         if (lastSuccessfulPollTimestamp > 0) {
-          elapsedTimeSinceLastConsumerPollInMs = LatencyUtils.getElapsedTimeFromMsToMs(lastSuccessfulPollTimestamp);
           elapsedTimeSinceLastRecordForPartitionInMs =
               LatencyUtils.getElapsedTimeFromMsToMs(lastSuccessfulPollTimestamp);
         }
