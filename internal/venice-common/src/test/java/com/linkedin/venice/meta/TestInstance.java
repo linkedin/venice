@@ -18,6 +18,15 @@ public class TestInstance {
   }
 
   @Test
+  public void getSecureUrlWorksRight() {
+    Instance ip4 = new Instance("0", "127.0.0.1", 1234, 2345, 3456, 4567);
+    Assert.assertEquals(ip4.getUrl(true), "https://127.0.0.1:2345");
+
+    Instance ip6 = new Instance("0", "::1", 4567, 5678, 6789, 7890);
+    Assert.assertEquals(ip6.getUrl(true), "https://[::1]:5678");
+  }
+
+  @Test
   public void parsesNodeId() {
     Instance host = Instance.fromNodeId("localhost_1234");
     Assert.assertEquals(host.getHost(), "localhost");
