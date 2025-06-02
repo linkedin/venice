@@ -329,7 +329,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     if (rmdPayload.remaining() == 0) {
       // DELETE without valid RMD payload after deferred write phase is not valid.
-      if (valuePayload == null && pcs.isDeferredWrite()) {
+      if (valuePayload == null && !pcs.isDeferredWrite()) {
         throw new IllegalArgumentException("Delete without RMD in deferred write is not allowed.");
       }
       return StorageOperationType.VALUE;

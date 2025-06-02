@@ -878,9 +878,9 @@ public class ActiveActiveStoreIngestionTaskTest {
         () -> ingestionTask.getStorageOperationType(1, emptyPayload, null));
     Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, payload, null));
 
-    Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, null, emptyPayload),
-        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationType(1, null, emptyPayload));
     Assert.assertThrows(
         IllegalArgumentException.class,
         () -> ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload));
@@ -906,9 +906,9 @@ public class ActiveActiveStoreIngestionTaskTest {
         () -> ingestionTask.getStorageOperationType(1, emptyPayload, null));
     Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, payload, null));
 
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> ingestionTask.getStorageOperationType(1, null, emptyPayload));
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationType(1, null, emptyPayload),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
     Assert.assertThrows(
         IllegalArgumentException.class,
         () -> ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload));
