@@ -45,11 +45,13 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -233,11 +235,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
                 attempt,
                 MAX_VERSION_SWAP_RETRIES);
 
-            try {
-              Thread.sleep(1000L * attempt);
-            } catch (InterruptedException interruptedException) {
-              Thread.currentThread().interrupt(); // Restore interrupt status
-            }
+            Utils.sleep(Duration.ofSeconds(1).toMillis() * attempt);
           }
         }
       }

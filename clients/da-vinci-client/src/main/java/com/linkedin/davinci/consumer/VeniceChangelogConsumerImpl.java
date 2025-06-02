@@ -67,12 +67,14 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.views.VeniceView;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -1135,11 +1137,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 attempt,
                 MAX_VERSION_SWAP_RETRIES);
 
-            try {
-              Thread.sleep(1000L * attempt);
-            } catch (InterruptedException interruptedException) {
-              Thread.currentThread().interrupt(); // Restore interrupt status
-            }
+            Utils.sleep(Duration.ofSeconds(1).toMillis() * attempt);
           }
         }
       }
