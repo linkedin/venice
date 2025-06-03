@@ -130,7 +130,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     // but the metadata partition is not removed.
     String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
     AbstractStorageEngine storageEngine = storageService.getStorageEngine(kafkaTopic);
-    if (storageEngine != null) {
+    if (storageEngine != null && storageEngine.containsPartition(partitionId)) {
       storageEngine.dropPartition(partitionId, false);
     }
     LOGGER.info(
