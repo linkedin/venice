@@ -9,6 +9,7 @@ import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -125,13 +126,13 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
     return currentRow;
   }
 
-  private boolean offsetRemains() {
-    return currentPosition.getNumericOffset() < endingOffset;
+  private boolean isThereMoreToConsume() {
+    return PubSubUtil.comparePubSubPositions(currentPosition, endingPosition) < 0;
   }
 
   @Override
   public boolean next() {
-    if (offsetRemains()) {
+    if (isThereMoreToConsume()) {
       return false;
     }
 
