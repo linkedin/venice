@@ -1,5 +1,8 @@
 package com.linkedin.venice.spark.input.table.rawPubSub;
 
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import org.apache.spark.sql.connector.read.InputPartition;
 
 /*
@@ -13,24 +16,58 @@ public class VeniceBasicPubsubInputPartition implements InputPartition {
   private static final long serialVersionUID = 1L;
 
   private final String region;
-  private final String TopicName;
-  private final int partitionNumber;
+  private final PubSubTopic topic;
+  private final PubSubTopicPartition topicPartition;
+  private final PubSubPosition beginningPosition;
+  private final PubSubPosition endPosition;
 
-  public VeniceBasicPubsubInputPartition(String region, String topicName, int partitionNumber) {
+  public VeniceBasicPubsubInputPartition(
+      String region,
+      PubSubTopic topic,
+      PubSubTopicPartition topicPartition,
+      PubSubPosition beginningPosition,
+      PubSubPosition endPosition) {
     this.region = region;
-    this.TopicName = topicName;
-    this.partitionNumber = partitionNumber;
+    this.topic = topic;
+    this.topicPartition = topicPartition;
+    this.beginningPosition = beginningPosition;
+    this.endPosition = endPosition;
   }
 
   public String getRegion() {
     return region;
   }
 
-  public String getTopicName() {
-    return TopicName;
+  public PubSubTopic getTopic() {
+    return topic;
   }
 
   public int getPartitionNumber() {
-    return partitionNumber;
+    return topicPartition.getPartitionNumber();
   }
+
+  public PubSubTopicPartition getTopicPartition() {
+    return topicPartition;
+  }
+
+  public PubSubPosition getBeginningPosition() {
+    return beginningPosition;
+  }
+
+  public long getBeginningOffset() {
+    return beginningPosition.getNumericOffset();
+  }
+
+  public PubSubPosition getEndPosition() {
+    return endPosition;
+  }
+
+  public long getEndOffset() {
+    return beginningPosition.getNumericOffset();
+  }
+
+  public long getOffsetLength() {
+    return (endPosition.getNumericOffset() - beginningPosition.getNumericOffset());
+  }
+
 }
