@@ -247,8 +247,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void putInStorageEngine(int partition, byte[] keyBytes, Put put) {
     try {
       // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
-      StorageOperationType storageOperationType =
-          getStorageOperationType(partition, put.putValue, put.replicationMetadataPayload);
+      StorageOperationType storageOperationType = getStorageOperationTypeForPut(partition, put);
       switch (storageOperationType) {
         case VALUE_AND_RMD:
           storageEngine.putWithReplicationMetadata(
@@ -279,7 +278,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {
     try {
       // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
-      switch (getStorageOperationType(partition, null, delete.replicationMetadataPayload)) {
+      switch (getStorageOperationTypeForDelete(partition, delete)) {
         case VALUE_AND_RMD:
           byte[] metadataBytesWithValueSchemaId =
               prependReplicationMetadataBytesWithValueSchemaId(delete.replicationMetadataPayload, delete.schemaId);
@@ -297,48 +296,64 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
   }
 
-  /**
-   * This method determines which type of storage operation it is based on input value and RMD payload.
-   */
-  StorageOperationType getStorageOperationType(int partition, ByteBuffer valuePayload, ByteBuffer rmdPayload) {
+  StorageOperationType getStorageOperationTypeForPut(int partition, Put put) {
     PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
     if (pcs == null) {
       logStorageOperationWhileUnsubscribed(partition);
       return StorageOperationType.SKIP;
     }
-    if (rmdPayload == null) {
-      throw new IllegalArgumentException("Replication metadata payload not found.");
-    }
-    if (valuePayload != null && valuePayload.remaining() == 0 && rmdPayload.remaining() == 0) {
-      throw new IllegalArgumentException("Both value and RMD payload cannot be empty.");
-    }
+    ByteBuffer valuePayload = put.putValue;
+    ByteBuffer rmdPayload = put.replicationMetadataPayload;
+    checkStorageOperationCommonInvalidPattern(valuePayload, rmdPayload);
 
     if (isDaVinciClient()) {
-      // For Da Vinci Client, DELETE is skipped during deferred write phase. Other operations will be value only
-      // operation.
-      if (valuePayload == null && pcs.isDeferredWrite()) {
-        return StorageOperationType.SKIP;
-      }
       // For Da Vinci Client, RMD chunk should be ignored.
-      if (valuePayload != null && valuePayload.remaining() == 0) {
+      if (valuePayload.remaining() == 0) {
         return StorageOperationType.SKIP;
       }
       return StorageOperationType.VALUE;
     }
 
     if (rmdPayload.remaining() == 0) {
-      // DELETE without valid RMD payload after deferred write phase is not valid.
-      if (valuePayload == null && !pcs.isDeferredWrite()) {
-        throw new IllegalArgumentException("Delete without RMD in deferred write is not allowed.");
+      return StorageOperationType.VALUE;
+    }
+    if (valuePayload.remaining() > 0) {
+      return StorageOperationType.VALUE_AND_RMD;
+    } else {
+      // RMD chunk case.
+      return StorageOperationType.RMD_CHUNK;
+    }
+  }
+
+  StorageOperationType getStorageOperationTypeForDelete(int partition, Delete delete) {
+    PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
+    if (pcs == null) {
+      logStorageOperationWhileUnsubscribed(partition);
+      return StorageOperationType.SKIP;
+    }
+    ByteBuffer rmdPayload = delete.replicationMetadataPayload;
+    checkStorageOperationCommonInvalidPattern(null, rmdPayload);
+
+    if (isDaVinciClient()) {
+      if (pcs.isDeferredWrite()) {
+        return StorageOperationType.SKIP;
       }
       return StorageOperationType.VALUE;
     }
-    // value payload == null means it is a DELETE request, while value payload size > 0 means it is a PUT request.
-    if (valuePayload == null || valuePayload.remaining() > 0) {
-      return StorageOperationType.VALUE_AND_RMD;
+
+    if (rmdPayload.remaining() == 0) {
+      return StorageOperationType.VALUE;
     }
-    // RMD chunk case.
-    return StorageOperationType.RMD_CHUNK;
+    return StorageOperationType.VALUE_AND_RMD;
+  }
+
+  void checkStorageOperationCommonInvalidPattern(ByteBuffer valuePayload, ByteBuffer rmdPayload) {
+    if (rmdPayload == null) {
+      throw new IllegalArgumentException("Replication metadata payload not found.");
+    }
+    if (valuePayload != null && valuePayload.remaining() == 0 && rmdPayload.remaining() == 0) {
+      throw new IllegalArgumentException("Both value and RMD payload cannot be empty.");
+    }
   }
 
   enum StorageOperationType {

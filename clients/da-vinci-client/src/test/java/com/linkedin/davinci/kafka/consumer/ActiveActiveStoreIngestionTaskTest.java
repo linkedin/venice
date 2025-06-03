@@ -800,11 +800,36 @@ public class ActiveActiveStoreIngestionTaskTest {
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
     partitionConsumptionStateMap.put(1, pcs);
     ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
-    doCallRealMethod().when(ingestionTask).getStorageOperationType(anyInt(), any(), any());
+    doCallRealMethod().when(ingestionTask).checkStorageOperationCommonInvalidPattern(any(), any());
+    doCallRealMethod().when(ingestionTask).getStorageOperationTypeForPut(anyInt(), any());
+    doCallRealMethod().when(ingestionTask).getStorageOperationTypeForDelete(anyInt(), any());
+    Put putWithEmptyPayloadAndWithoutRmd = new Put();
+    putWithEmptyPayloadAndWithoutRmd.putValue = emptyPayload;
+    Put putWithEmptyPayloadAndWithEmptyRmd = new Put();
+    putWithEmptyPayloadAndWithEmptyRmd.putValue = emptyPayload;
+    putWithEmptyPayloadAndWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Put putWithEmptyPayloadAndWithRmd = new Put();
+    putWithEmptyPayloadAndWithRmd.putValue = emptyPayload;
+    putWithEmptyPayloadAndWithRmd.replicationMetadataPayload = payload;
+    Put putWithPayloadAndWithoutRmd = new Put();
+    putWithPayloadAndWithoutRmd.putValue = payload;
+    Put putWithPayloadAndWithEmptyRmd = new Put();
+    putWithPayloadAndWithEmptyRmd.putValue = payload;
+    putWithPayloadAndWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Put putWithPayloadAndWithRmd = new Put();
+    putWithPayloadAndWithRmd.putValue = payload;
+    putWithPayloadAndWithRmd.replicationMetadataPayload = payload;
+
+    Delete deleteWithoutRmd = new Delete();
+    Delete deleteWithEmptyRmd = new Delete();
+    deleteWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Delete deleteWithRmd = new Delete();
+    deleteWithRmd.replicationMetadataPayload = payload;
+
     doReturn(partitionConsumptionStateMap).when(ingestionTask).getPartitionConsumptionStateMap();
     // PCS == null should not persist.
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(0, null, null),
+        ingestionTask.getStorageOperationTypeForDelete(0, deleteWithoutRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
     /**
      * Da Vinci case
@@ -813,57 +838,65 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     // Deferred write = false
     doReturn(false).when(pcs).isDeferredWrite();
-    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, null, null));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> ingestionTask.getStorageOperationType(1, emptyPayload, null));
-    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, payload, null));
+        () -> ingestionTask.getStorageOperationTypeForDelete(1, deleteWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithoutRmd));
 
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, null, emptyPayload),
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithEmptyRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload));
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithEmptyRmd));
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, payload, emptyPayload),
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithEmptyRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
 
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, null, payload),
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, emptyPayload, payload),
+        ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, payload, payload),
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
 
     doReturn(true).when(pcs).isDeferredWrite();
-    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, null, null));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> ingestionTask.getStorageOperationType(1, emptyPayload, null));
-    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, payload, null));
+        () -> ingestionTask.getStorageOperationTypeForDelete(1, deleteWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithoutRmd));
 
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, null, emptyPayload),
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithEmptyRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload));
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithEmptyRmd));
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, payload, emptyPayload),
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithEmptyRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
 
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, null, payload),
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, emptyPayload, payload),
+        ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, payload, payload),
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
 
     /**
@@ -872,58 +905,66 @@ public class ActiveActiveStoreIngestionTaskTest {
     doReturn(false).when(ingestionTask).isDaVinciClient();
     // deferred write = false.
     doReturn(false).when(pcs).isDeferredWrite();
-    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, null, null));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> ingestionTask.getStorageOperationType(1, emptyPayload, null));
-    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, payload, null));
+        () -> ingestionTask.getStorageOperationTypeForDelete(1, deleteWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithoutRmd));
 
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> ingestionTask.getStorageOperationType(1, null, emptyPayload));
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload));
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, payload, emptyPayload),
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithEmptyRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithEmptyRmd));
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithEmptyRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
 
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, null, payload),
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, emptyPayload, payload),
+        ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.RMD_CHUNK);
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, payload, payload),
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
 
     // deferred write = true.
     doReturn(true).when(pcs).isDeferredWrite();
-    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, null, null));
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> ingestionTask.getStorageOperationType(1, emptyPayload, null));
-    Assert.assertThrows(IllegalArgumentException.class, () -> ingestionTask.getStorageOperationType(1, payload, null));
+        () -> ingestionTask.getStorageOperationTypeForDelete(1, deleteWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithoutRmd));
 
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, null, emptyPayload),
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithEmptyRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
     Assert.assertThrows(
         IllegalArgumentException.class,
-        () -> ingestionTask.getStorageOperationType(1, emptyPayload, emptyPayload));
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithEmptyRmd));
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, payload, emptyPayload),
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithEmptyRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
 
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, null, payload),
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, emptyPayload, payload),
+        ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.RMD_CHUNK);
     Assert.assertEquals(
-        ingestionTask.getStorageOperationType(1, payload, payload),
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithRmd),
         ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
   }
 }
