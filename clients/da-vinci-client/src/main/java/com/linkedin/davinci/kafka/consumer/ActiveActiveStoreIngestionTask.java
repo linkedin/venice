@@ -246,7 +246,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   protected void putInStorageEngine(int partition, byte[] keyBytes, Put put) {
     try {
-
       // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
       StorageOperationType storageOperationType =
           getStorageOperationType(partition, put.putValue, put.replicationMetadataPayload);
