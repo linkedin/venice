@@ -8,20 +8,19 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
-import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -46,21 +45,26 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
 
   // this is the buffer that holds the messages that are consumed from the pubsub
   private final PubSubTopicPartition targetPubSubTopicPartition;
-  private final String targetPubSubTopicName;
-  private final int targetPartitionNumber;
+  private final PubSubTopic targetPubSubTopic;
   private final PubSubConsumerAdapter pubSubConsumer;
   // inputPartitionReader local buffer, that gets filled from partitionMessagesBuffer
 
-  private final ArrayDeque<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> messageBuffer = new ArrayDeque<>();
-  private long currentOffset;
+  private final ArrayDeque<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> messageBuffer =
+      new ArrayDeque<>();
+  private final PubSubPosition endingPosition;
+  private final long endingOffset;
+  private final PubSubPosition startingPosition;
+  private final long startingOffset;
+  private final long offsetLength;
+  private final int targetPartitionNumber;
+  private final String topicName;
+  private PubSubPosition currentPosition;
   private InternalRow currentRow = null;
   private long recordsServed = 0;
   private long recordsSkipped = 0;
-  private long lastKnownProgressPercent = 0;
   private long recordsDeliveredByGet = 0;
+  private long lastKnownProgressPercent = 0;
 
-  private Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumerBuffer =
-      new HashMap<>();
   // the buffer that holds the relevant messages for the current partition
 
   public VeniceBasicPubsubInputPartitionReader(
@@ -75,8 +79,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
                     .setPubSubTopicRepository(new PubSubTopicRepository())
                     .setPubSubMessageDeserializer(PubSubMessageDeserializer.createOptimizedDeserializer())
                     .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(jobConfig))
-                    .setConsumerName(
-                        "raw_kif_" + inputPartition.getTopicName() + "_" + inputPartition.getPartitionNumber())
+                    .setConsumerName("raw_kif_" + inputPartition.getTopic() + "_" + inputPartition.getPartitionNumber())
                     .build()), // this is hideous
         new PubSubTopicRepository());
   }
@@ -88,31 +91,22 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
       PubSubConsumerAdapter consumer,
       PubSubTopicRepository pubSubTopicRepository) {
 
-    targetPubSubTopicName = inputPartition.getTopicName();
+    pubSubConsumer = consumer;
+
+    targetPubSubTopic = inputPartition.getTopic();
+    topicName = targetPubSubTopic.getName();
     targetPartitionNumber = inputPartition.getPartitionNumber();
-    long startOffset = pubSubConsumer.beginningOffset(pubSubTopicPartition, Duration.ofSeconds(60));
-    // end offset is determined at execution time
-    // The target topic will probably receive new messages but we will stop consuming at the end point determined
-    // at the beginning of the job.
-    long endOffset = pubSubConsumer.endOffset(pubSubTopicPartition);
+    startingPosition = inputPartition.getBeginningPosition();
+    startingOffset = inputPartition.getBeginningOffset();
+    endingPosition = inputPartition.getEndPosition();
+    endingOffset = inputPartition.getEndOffset();
+    offsetLength = inputPartition.getOffsetLength();
+    targetPubSubTopicPartition = inputPartition.getTopicPartition();
+    currentPosition = startingPosition;
 
-    this.pubSubConsumer = consumer;
-
-    LOGGER.info("Consumption started for Topic: {} Partition {}.", targetPubSubTopicName, targetPartitionNumber);
-
-    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(targetPubSubTopicName);
-
-    // List<PubSubTopicPartitionInfo> listOfPartitions = pubSubConsumer.partitionsFor(pubSubTopic);
-    // at this point, we hope that driver has given us good information about
-    // the partition and offsets and the fact that topic exists.
-
-    targetPubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, targetPartitionNumber);
-
-    pubSubConsumer.subscribe(targetPubSubTopicPartition, startingOffset - 1);
-    // pubSubConsumer.seek(startingOffset); // do we need this? or should we rely on the starting offset passed to
-    // subscribe ?
-
-    initialize(); // see, MET05-J asked for this !
+    pubSubConsumer.subscribe(targetPubSubTopicPartition, startingPosition);
+    LOGGER.info("Subscribed to  Topic: {} Partition {}.", topicName, targetPartitionNumber);
+    initialize();
   }
 
   private void initialize() {
@@ -120,7 +114,10 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
     recordsServed = 0; // reset the counter
   }
 
-  // if it returns a row, it's going to be key and value and offset in the row in that order
+  /**
+   *  Assuming that Current row has meaningful data, this method will return that and counts the number of invocations.
+   * @return The current row as an {@link InternalRow}.
+   */
   @Override
   public InternalRow get() {
     recordsDeliveredByGet++;
@@ -128,10 +125,13 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
     return currentRow;
   }
 
+  private boolean offsetRemains() {
+    return currentPosition.getNumericOffset() < endingOffset;
+  }
+
   @Override
   public boolean next() {
-    // Are we past the finish line ?
-    if (currentOffset >= endingOffset) {
+    if (offsetRemains()) {
       return false;
     }
 
@@ -141,34 +141,31 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
     }
     // at this point, buffer is empty.
 
-    loadRecords(); // try to poll for some records and allow the exception to bubble up
+    pollAndFillMessageBufferWithNewPubsubRecords(); // try to poll for some records and allow the exception to bubble up
     return ableToPrepNextRow();
   }
 
   @Override
   public void close() {
     pubSubConsumer.close();
-    double progressPercent = (currentOffset - startingOffset) * 100.0 / offsetLength;
-    LOGGER.info(
-        "Consuming ended for Topic: {} , consumed {}% of {} records,",
-        targetPubSubTopicName,
-        progressPercent,
-        recordsServed);
+    // double progressPercent = (currentPosition.getNumericOffset() - startingOffset) * 100.0 / offsetLength;
+    LOGGER.info("Consumer closed for Topic: {} , consumed {} records,", topicName, recordsServed);
     LOGGER.info("Skipped {} records, delivered rows {} times .", recordsSkipped, recordsDeliveredByGet);
   }
 
-  // borrowing Gaojie's code for dealing with empty polls.
-  private void loadRecords() {
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionMessagesBuffer = new ArrayList<>();
+  private void pollAndFillMessageBufferWithNewPubsubRecords() {
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> consumerBuffer;
+    int retries = 0;
 
-    int retry = 0;
-    while (retry++ < CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES) {
+    while (retries < CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES) {
       consumerBuffer = pubSubConsumer.poll(CONSUMER_POLL_TIMEOUT);
+      List<DefaultPubSubMessage> partitionMessagesBuffer =
+          new ArrayList<>(consumerBuffer.get(targetPubSubTopicPartition));
+      consumerBuffer.clear();
 
-      partitionMessagesBuffer.addAll(consumerBuffer.get(targetPubSubTopicPartition));
       if (!partitionMessagesBuffer.isEmpty()) {
-        // we got some records back for the desired partition.
-        break;
+        messageBuffer.addAll(partitionMessagesBuffer); // we are done.
+        return;
       }
 
       try {
@@ -177,22 +174,25 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
         logProgress();
         LOGGER.error(
             "Interrupted while waiting for records to be consumed from topic {} partition {} to be available",
-            targetPubSubTopicName,
+            topicName,
             targetPartitionNumber,
             e);
         // should we re-throw here to break the consumption task ?
+        // Thread.currentThread().interrupt(); // very questionable genAI suggestion,
+        // what's the intended way to terminate this task?
       }
+      retries++;
     }
-    if (partitionMessagesBuffer.isEmpty()) {
-      // this is a valid place to throw exception and kill the consumer task
-      // as there is no more records to consume.
-      throw new RuntimeException("Empty poll after " + retry + " retries");
-    }
-    messageBuffer.addAll(partitionMessagesBuffer);
+
+    // tried really hard, but nothing came out of consumer, giving up.
+    throw new RuntimeException(
+        "Empty poll after " + retries + " retries for topic: " + topicName + " partition: " + targetPartitionNumber
+            + ". No messages were consumed.");
+
   }
 
   private InternalRow processPubSubMessageToRow(
-      @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage) {
+      @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage) {
     // after deliberation, I think we are better off isolating further processing of the messages after they are dumped
     // into the dataframe, Spark job can handle the rest of the processing.
 
@@ -215,7 +215,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
     */
 
     // Spark row setup :
-    long offset = pubSubMessage.getOffset();
+    long offset = pubSubMessage.getOffset().getNumericOffset();
     ByteBuffer key = ByteBuffer.wrap(kafkaKey.getKey(), 0, kafkaKey.getKeyLength());
     ByteBuffer value;
     int messageType;
@@ -273,9 +273,9 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
     */
 
     // need to figure out task tracking in Spark Land.
-    // pack pieces of information into the spart intermediate row, this will populate the dataframe to be read by the
+    // pack pieces of information into the Spark intermediate row, this will populate the dataframe to be read by the
     // spark job
-    // weirdest use of verb "GET" in heabBuffer !!!!!
+    // The weirdest use of verb "GET" in heapBuffer !!!!!
     byte[] keyBytes = new byte[key.remaining()];
     key.get(keyBytes);
     byte[] valueBytes = new byte[value.remaining()];
@@ -289,7 +289,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   }
 
   private void maybeLogProgress() {
-    double progressPercent = (currentOffset - startingOffset) * 100.0 / offsetLength;
+    double progressPercent = (currentPosition.getNumericOffset() - startingOffset) * 100.0 / offsetLength;
     if (progressPercent > 10 + lastKnownProgressPercent) {
       logProgress();
       lastKnownProgressPercent = (long) progressPercent;
@@ -297,11 +297,11 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   }
 
   private void logProgress() {
-    double progressPercent = (currentOffset - startingOffset) * 100.0 / offsetLength;
+    double progressPercent = (currentPosition.getNumericOffset() - startingOffset) * 100.0 / offsetLength;
     LOGGER.info(
         "Consuming progress for"
             + " Topic: {}, partition {} , consumed {}% of {} records. actual records delivered: {}, records skipped: {}",
-        targetPubSubTopicName,
+        targetPubSubTopic,
         targetPartitionNumber,
         String.format("%.1f", (float) progressPercent),
         offsetLength,
@@ -310,13 +310,13 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   }
 
   public List<Long> getStats() {
-    return Arrays.asList(currentOffset, recordsServed, recordsSkipped, recordsDeliveredByGet);
+    return Arrays.asList(recordsServed, recordsSkipped, recordsDeliveredByGet);
   }
 
   // go through the current buffer and find the next usable message
   private boolean ableToPrepNextRow() {
 
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message;
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message;
     boolean found;
     // buffer is already empty.
     if (messageBuffer.isEmpty()) {
@@ -333,7 +333,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
         return false;
       }
 
-      currentOffset = message.getOffset();
+      currentPosition = message.getOffset();
 
       if (filterControlMessages && message.getKey().isControlMessage()) {
         recordsSkipped++;
