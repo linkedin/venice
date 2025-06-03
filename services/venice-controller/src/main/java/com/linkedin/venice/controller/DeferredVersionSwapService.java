@@ -493,6 +493,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
       }
 
+      String message =
+          "Region " + nonTargetRegion + " has status " + version.getStatus() + " for topic " + kafkaTopicName;
+      logMessageIfNotRedundant(message);
       if (version.getStatus().equals(VersionStatus.PUSHED)) {
         completedNonTargetRegions.add(nonTargetRegion);
       } else if (version.getStatus().equals(ERROR) || version.getStatus().equals(VersionStatus.KILLED)) {
