@@ -43,7 +43,6 @@ public class HelixSchemaAccessor {
   private final int refreshAttemptsForZkReconnect;
 
   public HelixSchemaAccessor(ZkClient zkClient, HelixAdapterSerializer helixAdapterSerializer, String clusterName) {
-    // TODO: refactor hard-coded refreshAttemptsForZkReconnect
     this(zkClient, helixAdapterSerializer, clusterName, 9);
   }
 

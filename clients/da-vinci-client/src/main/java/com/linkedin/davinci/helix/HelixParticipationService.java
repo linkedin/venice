@@ -1,7 +1,5 @@
 package com.linkedin.davinci.helix;
 
-import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
-
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -307,7 +305,7 @@ public class HelixParticipationService extends AbstractVeniceService
       HelixUtils.checkClusterSetup(
           admin,
           clusterName,
-          veniceConfigLoader.getCombinedProperties().getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 9));
+          veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect());
       List<String> instances = admin.getInstancesInCluster(clusterName);
       if (instances.contains(instance.getNodeId())) {
         LOGGER.info("{} is not a new node to cluster: {}, skip the cleaning up.", instance.getNodeId(), clusterName);
@@ -368,7 +366,7 @@ public class HelixParticipationService extends AbstractVeniceService
         zkClient,
         new HelixAdapterSerializer(),
         veniceServerConfig.getRegionName(),
-        veniceConfigLoader.getCombinedProperties().getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 9));
+        veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect());
 
     /**
      * The accessor can only get created successfully after helix manager is created.

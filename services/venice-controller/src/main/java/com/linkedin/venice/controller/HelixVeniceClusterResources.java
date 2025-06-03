@@ -127,7 +127,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
             zkClient,
             adapterSerializer,
             clusterName,
-            metaStoreWriter));
+            metaStoreWriter,
+            config.getRefreshAttemptsForZkReconnect()));
 
     SafeHelixManager spectatorManager;
     if (this.helixManager.getInstanceType() == InstanceType.SPECTATOR) {

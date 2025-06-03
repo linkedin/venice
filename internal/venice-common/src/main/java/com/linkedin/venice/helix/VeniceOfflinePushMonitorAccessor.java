@@ -71,14 +71,6 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       String clusterName,
       ZkClient zkClient,
       HelixAdapterSerializer adapter,
-      LogContext logContext) {
-    this(clusterName, zkClient, adapter, logContext, 9);
-  }
-
-  public VeniceOfflinePushMonitorAccessor(
-      String clusterName,
-      ZkClient zkClient,
-      HelixAdapterSerializer adapter,
       Object logContext,
       int refreshAttemptsForZkReconnect) {
     this.clusterName = clusterName;

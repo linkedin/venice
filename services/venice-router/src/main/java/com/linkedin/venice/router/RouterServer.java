@@ -959,7 +959,7 @@ public class RouterServer extends AbstractVeniceService {
           // TODO: Remove this check once test constructor is removed or otherwise fixed.
           LOGGER.info("Not connecting to Helix because the HelixManager is null (the test constructor was used)");
         } else {
-          HelixUtils.connectHelixManager(manager, 9);
+          HelixUtils.connectHelixManager(manager, config.getRefreshAttemptsForZkReconnect());
           LOGGER.info("{} finished connectHelixManager()", this);
         }
       } catch (VeniceException ve) {
