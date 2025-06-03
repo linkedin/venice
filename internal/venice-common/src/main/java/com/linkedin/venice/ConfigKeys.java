@@ -2065,6 +2065,11 @@ public class ConfigKeys {
   public static final String ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES = "router.max.concurrent.ssl.handshakes";
 
   /**
+   * Config to control whether Router will do ip spoofing check or not.
+   */
+  public static final String ROUTER_CLIENT_IP_SPOOFING_CHECK_ENABLED = "router.client.ip.spoofing.check.enabled";
+
+  /**
    * Config to control the maximum number of attempts to resolve a client host name before giving up.
    */
   public static final String ROUTER_CLIENT_RESOLUTION_RETRY_ATTEMPTS = "router.client.resolution.retry.attempts";

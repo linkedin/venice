@@ -713,7 +713,8 @@ public class RouterServer extends AbstractVeniceService {
             sslResolverEventLoopGroup,
             clientResolutionRetryAttempts,
             clientResolutionRetryBackoffMs,
-            maxConcurrentSslHandshakes);
+            maxConcurrentSslHandshakes,
+            config.isClientIPSpoofingCheckEnabled());
       }
       sslInitializer.setIdentityParser(identityParser::parseIdentityFromCert);
       securityStats.registerSslHandshakeSensors(sslInitializer);
