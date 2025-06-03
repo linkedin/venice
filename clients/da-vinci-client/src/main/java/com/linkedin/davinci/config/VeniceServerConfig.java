@@ -31,6 +31,7 @@ import static com.linkedin.venice.ConfigKeys.FAST_AVRO_FIELD_LIMIT_PER_METHOD;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.GRPC_READ_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.GRPC_SERVER_WORKER_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.HEARTBEAT_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
@@ -481,6 +482,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final int offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart;
+  private final long heartbeatLagThresholdForFastOnlineTransitionInRestart;
 
   private final Set<String> kafkaProducerMetrics;
   /**
@@ -885,6 +887,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart =
         serverProperties.getInt(OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
+    heartbeatLagThresholdForFastOnlineTransitionInRestart =
+        serverProperties.getInt(HEARTBEAT_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, -1);
+
     enableKafkaConsumerOffsetCollection =
         serverProperties.getBoolean(SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED, true);
     dedicatedDrainerQueueEnabled =
@@ -1554,6 +1559,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() {
     return offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart;
+  }
+
+  public long getHeartbeatLagThresholdForFastOnlineTransitionInRestart() {
+    return heartbeatLagThresholdForFastOnlineTransitionInRestart;
   }
 
   public boolean isKafkaConsumerOffsetCollectionEnabled() {
