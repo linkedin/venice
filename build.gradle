@@ -90,6 +90,7 @@ ext.libraries = [
     grpcProtobuf: "io.grpc:grpc-protobuf:${grpcVersion}",
     grpcServices: "io.grpc:grpc-services:${grpcVersion}",
     grpcStub: "io.grpc:grpc-stub:${grpcVersion}",
+    grpcInprocess: "io.grpc:grpc-inprocess:${grpcVersion}",
     grpcTesting: "io.grpc:grpc-testing:${grpcVersion}",
     hadoopCommon: "org.apache.hadoop:hadoop-common:${hadoopVersion}",
     hadoopHdfs: "org.apache.hadoop:hadoop-hdfs:${hadoopVersion}",
@@ -297,6 +298,7 @@ subprojects {
     implementation libraries.grpcProtobuf
     implementation libraries.grpcServices
     implementation libraries.grpcStub
+    implementation libraries.grpcInprocess
     compileOnly libraries.tomcatAnnotations
   }
 
