@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
@@ -79,9 +80,9 @@ public class TestDaVinciRequestBasedMetaRepository {
             .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
             .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+            .put(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY, true)
             .build();
     daVinciConfig = new DaVinciConfig();
-    daVinciConfig.setUseRequestBasedMetaRepository(true);
     daVinciD2RemoteFabric = D2TestUtils.getAndStartD2Client(clusterWrapper.getZk().getAddress());
     dvcMetricsRepo = new MetricsRepository();
     daVinciClientFactory = getCachingDaVinciClientFactory(
