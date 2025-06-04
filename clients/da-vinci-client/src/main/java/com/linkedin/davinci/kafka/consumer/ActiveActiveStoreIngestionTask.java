@@ -335,9 +335,21 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     checkStorageOperationCommonInvalidPattern(null, rmdPayload);
 
     if (isDaVinciClient()) {
+      /**
+       * Da Vinci always operates on default RocksDB column family only and do not take in RMD. In deferred phase,
+       * DELETE is not allowed and it should be skipped.
+       */
       if (pcs.isDeferredWrite()) {
         return StorageOperationType.SKIP;
       }
+      return StorageOperationType.VALUE;
+    }
+    /**
+     * For before EOP delete without RMD: If it is from reprocessing job, it should be allowed and processed as it will
+     * be running in non-deferred-write mode. If it is from regular VPJ, it is unexpected, and low level storage operation
+     * will fail and throw exception.
+     */
+    if (delete.replicationMetadataPayload.remaining() == 0 && !pcs.isEndOfPushReceived()) {
       return StorageOperationType.VALUE;
     }
     return StorageOperationType.VALUE_AND_RMD;
@@ -347,8 +359,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (rmdPayload == null) {
       throw new IllegalArgumentException("Replication metadata payload not found.");
     }
+    /**
+     * If value is null, it is a DELETE operation;
+     * If value is non-empty, it is a value PUT potentially carrying RMD.
+     * If value is empty and RMD is non-empty, it is a RMD chunk PUT.
+     * Operation with both content being empty is invalid.
+     */
     if (valuePayload != null && valuePayload.remaining() == 0 && rmdPayload.remaining() == 0) {
-      throw new IllegalArgumentException("Both value and RMD payload cannot be empty.");
+      throw new IllegalArgumentException("Either value or RMD payload should carry a non-empty content.");
     }
   }
 

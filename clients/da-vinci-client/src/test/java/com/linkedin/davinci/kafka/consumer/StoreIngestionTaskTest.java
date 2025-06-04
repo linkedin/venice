@@ -1433,7 +1433,8 @@ public abstract class StoreIngestionTaskTest {
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
       // Verify it retrieves the offset from the OffSet Manager
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
-      verifyPutAndDelete(aaConfig, true);
+      verifyPut(aaConfig, true);
+      verifyDelete(aaConfig, true, false);
       // Verify it commits the offset to Offset Manager
       OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteProduceResult.getOffset());
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS))
@@ -2532,7 +2533,8 @@ public abstract class StoreIngestionTaskTest {
       // Verify it retrieves the offset from the Offset Manager
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
 
-      verifyPutAndDelete(aaConfig, false);
+      verifyPut(aaConfig, false);
+      verifyDelete(aaConfig, false, true);
 
       // Verify it commits the offset to Offset Manager after receiving EOP control message
       OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.getOffset() + 1, true);
@@ -2973,17 +2975,12 @@ public abstract class StoreIngestionTaskTest {
     return new VeniceServerConfig(propertyBuilder.build(), kafkaClusterMap);
   }
 
-  private void verifyPutAndDelete(AAConfig aaConfig, boolean putWithMetadataEnabled) {
+  private void verifyPut(AAConfig aaConfig, boolean operationWithMetadata) {
     VenicePartitioner partitioner = getVenicePartitioner();
     int targetPartitionPutKeyFoo = partitioner.getPartitionId(putKeyFoo, PARTITION_COUNT);
-    int targetPartitionDeleteKeyFoo = partitioner.getPartitionId(deleteKeyFoo, PARTITION_COUNT);
 
     if (aaConfig == AA_ON) {
-      if (putWithMetadataEnabled) {
-        // Verify StorageEngine#putWithReplicationMetadata is invoked only once and with appropriate key & value.
-        verify(mockAbstractStorageEngine, timeout(2000))
-            .putWithReplicationMetadata(eq(targetPartitionPutKeyFoo), eq(putKeyFoo), any(ByteBuffer.class), any());
-      } else {
+      if (!operationWithMetadata) {
         // Verify StorageEngine#put is invoked only once and with appropriate key & value.
         verify(mockAbstractStorageEngine, timeout(2000)).put(
             targetPartitionPutKeyFoo,
@@ -2991,18 +2988,19 @@ public abstract class StoreIngestionTaskTest {
             ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
         verify(mockAbstractStorageEngine, never())
             .putWithReplicationMetadata(eq(targetPartitionPutKeyFoo), eq(putKeyFoo), any(ByteBuffer.class), any());
+      } else {
+        // Verify StorageEngine#putWithReplicationMetadata is invoked only once and with appropriate key & value.
+        verify(mockAbstractStorageEngine, timeout(2000))
+            .putWithReplicationMetadata(eq(targetPartitionPutKeyFoo), eq(putKeyFoo), any(ByteBuffer.class), any());
+        verify(mockAbstractStorageEngine, never())
+            .put(eq(targetPartitionPutKeyFoo), eq(putKeyFoo), any(ByteBuffer.class));
       }
-      // Verify StorageEngine#deleteWithReplicationMetadata is invoked only once and with appropriate key.
-      verify(mockAbstractStorageEngine, timeout(2000))
-          .deleteWithReplicationMetadata(eq(targetPartitionDeleteKeyFoo), eq(deleteKeyFoo), any());
     } else {
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
       verify(mockAbstractStorageEngine, timeout(2000)).put(
           targetPartitionPutKeyFoo,
           putKeyFoo,
           ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
-      // Verify StorageEngine#Delete is invoked only once and with appropriate key.
-      verify(mockAbstractStorageEngine, timeout(2000)).delete(targetPartitionDeleteKeyFoo, deleteKeyFoo);
 
       // Verify StorageEngine#putWithReplicationMetadata is never invoked for put operation.
       verify(mockAbstractStorageEngine, never()).putWithReplicationMetadata(
@@ -3010,6 +3008,25 @@ public abstract class StoreIngestionTaskTest {
           putKeyFoo,
           ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()),
           putKeyFooReplicationMetadataWithValueSchemaIdBytes);
+    }
+  }
+
+  private void verifyDelete(AAConfig aaConfig, boolean operationWithMetadata, boolean isBatchWrite) {
+    VenicePartitioner partitioner = getVenicePartitioner();
+    int targetPartitionDeleteKeyFoo = partitioner.getPartitionId(deleteKeyFoo, PARTITION_COUNT);
+
+    if (aaConfig == AA_ON) {
+      if (!operationWithMetadata && isBatchWrite) {
+        // Verify StorageEngine#deleteWithReplicationMetadata is invoked only once and with appropriate key.
+        verify(mockAbstractStorageEngine, timeout(2000)).delete(eq(targetPartitionDeleteKeyFoo), eq(deleteKeyFoo));
+      } else {
+        // Verify StorageEngine#deleteWithReplicationMetadata is invoked only once and with appropriate key.
+        verify(mockAbstractStorageEngine, timeout(2000))
+            .deleteWithReplicationMetadata(eq(targetPartitionDeleteKeyFoo), eq(deleteKeyFoo), any());
+      }
+    } else {
+      // Verify StorageEngine#Delete is invoked only once and with appropriate key.
+      verify(mockAbstractStorageEngine, timeout(2000)).delete(targetPartitionDeleteKeyFoo, deleteKeyFoo);
       // Verify StorageEngine#deleteWithReplicationMetadata is never invoked for delete operation..
       verify(mockAbstractStorageEngine, never()).deleteWithReplicationMetadata(
           targetPartitionDeleteKeyFoo,
