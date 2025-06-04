@@ -293,6 +293,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   class BackgroundReporterThread extends Thread {
     private BackgroundReporterThread() {
       super("Change-Data-CaptureBackground-Reporter-Thread");
+      // To not block JVM shutdown
+      setDaemon(true);
     }
 
     @Override

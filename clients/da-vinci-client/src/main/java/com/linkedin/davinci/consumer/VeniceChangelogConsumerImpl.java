@@ -1300,6 +1300,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected class HeartbeatReporterThread extends Thread {
     protected HeartbeatReporterThread() {
       super("Ingestion-Heartbeat-Reporter-Service-Thread");
+      // To not block JVM shutdown
+      setDaemon(true);
     }
 
     @Override
