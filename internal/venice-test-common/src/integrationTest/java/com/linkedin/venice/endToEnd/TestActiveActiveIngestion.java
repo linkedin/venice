@@ -181,7 +181,7 @@ public class TestActiveActiveIngestion {
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(604800) // 7 days
+        .setHybridRewindSeconds(360)
         .setHybridOffsetLagThreshold(0)
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
