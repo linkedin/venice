@@ -17,6 +17,7 @@ import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.venice.request.RequestHelper;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandler;
@@ -195,12 +196,12 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     // end of transfer
     HttpResponse endOfTransfer = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     endOfTransfer.headers().set(BLOB_TRANSFER_STATUS, BLOB_TRANSFER_COMPLETED);
-    String fullResourceName = blobTransferRequest.getFullResourceName();
+    String replicaInfo = Utils.getReplicaId(blobTransferRequest.getTopicName(), blobTransferRequest.getPartition());
     ctx.writeAndFlush(endOfTransfer).addListener(future -> {
       if (future.isSuccess()) {
-        LOGGER.debug("All files sent successfully for {}", fullResourceName);
+        LOGGER.info("All files sent successfully for {}", replicaInfo);
       } else {
-        LOGGER.error("Failed to send all files for {}", fullResourceName, future.cause());
+        LOGGER.error("Failed to send all files for {}", replicaInfo, future.cause());
       }
     });
   }
@@ -273,7 +274,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
     sendFileFuture.addListener(future -> {
       if (future.isSuccess()) {
-        LOGGER.debug("File {} sent successfully", file.getName());
+        LOGGER.info("File {} sent successfully", file.getName());
       } else {
         LOGGER.error("Failed to send file {}", file.getName());
       }
@@ -281,7 +282,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
     lastContentFuture.addListener(future -> {
       if (future.isSuccess()) {
-        LOGGER.debug("Last content sent successfully for {}", file.getName());
+        LOGGER.info("Last content sent successfully for {}", file.getName());
       } else {
         LOGGER.error("Failed to send last content for {}", file.getName());
       }
@@ -309,9 +310,17 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
 
     ctx.writeAndFlush(metadataResponse).addListener(future -> {
       if (future.isSuccess()) {
-        LOGGER.debug("Metadata for {} sent successfully with size {}", metadata.getTopicName(), metadataBytes.length);
+        LOGGER.info(
+            "Metadata for topic {} partition {} sent successfully with size {}",
+            metadata.getTopicName(),
+            metadata.getPartitionId(),
+            metadataBytes.length);
       } else {
-        LOGGER.error("Failed to send metadata for {}", metadata.getTopicName());
+        LOGGER.error(
+            "Failed to send metadata for topic {} partition {}",
+            metadata.getTopicName(),
+            metadata.getPartitionId(),
+            future.cause());
       }
     });
   }

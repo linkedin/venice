@@ -51,13 +51,17 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
 
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, FullHttpResponse msg) throws Exception {
-    LOGGER.debug("Received metadata response from remote peer for topic {}", payload.getTopicName());
+    LOGGER.info(
+        "Received metadata response from remote peer for topic {} partition {}",
+        payload.getTopicName(),
+        payload.getPartition());
 
     processMetadata(msg);
 
-    LOGGER.debug(
-        "Successfully processed metadata response from remote peer for topic {} with metadata {}",
+    LOGGER.info(
+        "Successfully processed metadata response from remote peer for topic {} partition {} with metadata {}",
         payload.getTopicName(),
+        payload.getPartition(),
         metadata);
   }
 
@@ -69,8 +73,9 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
     ByteBuf content = msg.content();
     byte[] metadataBytes = new byte[content.readableBytes()];
     LOGGER.info(
-        "Received metadata from remote peer for topic {} with size {}. ",
+        "Received metadata from remote peer for topic {} partition {} with size {}. ",
         payload.getTopicName(),
+        payload.getPartition(),
         metadataBytes.length);
     // verify the byte size of metadata
     if (metadataBytes.length != Long.parseLong(msg.headers().get(HttpHeaderNames.CONTENT_LENGTH))) {
@@ -97,7 +102,10 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
   public void updateStorePartitionMetadata(
       StorageMetadataService storageMetadataService,
       BlobTransferPartitionMetadata transferredPartitionMetadata) {
-    LOGGER.debug("Start updating store partition metadata for topic {}. ", transferredPartitionMetadata.topicName);
+    LOGGER.info(
+        "Start updating store partition metadata for topic {} partition {} ",
+        transferredPartitionMetadata.topicName,
+        transferredPartitionMetadata.partitionId);
     // update the offset record in storage service
     storageMetadataService.put(
         transferredPartitionMetadata.topicName,
