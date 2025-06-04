@@ -229,20 +229,16 @@ public class TestActiveActiveIngestion {
 
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
-      // Send a fresh MARKER record to the end of the RT topic, which will be used as an anchor
-      // to ensure that all preceding records have been processed (i.e., either accepted or
-      // dropped in DCR). This ensures that all prior records have been processed by the leader
-      // before any verification operations are performed, making the results predictable and deterministic.
+      // Append a MARKER record 222 to the end of the RT topic to act as an anchor.
+      // This helps determine when all prior records have been processed (i.e., accepted or dropped in DCR),
+      // ensuring deterministic behavior for subsequent verification steps.
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 1, 0, 222);
     }
 
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(clusterWrapper.getRandomRouterURL()))) {
 
-      // Wait until we can fetch the MARKER record, which serves as an anchor to ensure that all
-      // prior records have been processed by the leader (i.e., either accepted or dropped in DCR).
-      // This guarantees that subsequent verification operations occur only after the leader has
-      // fully processed earlier records, making the results deterministic.
+      // Wait until the MARKER record 222 is available, indicating all prior records have been handled.
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         Assert.assertNotNull(client.get(Integer.toString(222)).get(), "Leader has not processed all records yet");
       });
