@@ -395,6 +395,8 @@ public class PartitionConsumptionState {
         .append(isStarted())
         .append(", lagCaughtUp=")
         .append(lagCaughtUp)
+        .append(", isDeferredWrite=")
+        .append(deferredWrite)
         .append(", processedRecordSizeSinceLastSync=")
         .append(processedRecordSizeSinceLastSync)
         .append(", leaderFollowerState=")
