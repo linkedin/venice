@@ -259,8 +259,10 @@ public class OutboundHttpWrapperHandlerTest {
     int expectedPartitionId = 12345;
     String jsonStr = "{\n" + "\"kafkaUrl\" : {\n" + "  TP(topic: \"" + topic + "\", partition: " + expectedPartitionId
         + ") : {\n" + "      \"latestOffset\" : 0,\n" + "      \"offsetLag\" : 1,\n" + "      \"msgRate\" : 2.0,\n"
-        + "      \"byteRate\" : 4.0,\n" + "      \"consumerIdx\" : 6,\n"
-        + "      \"elapsedTimeSinceLastPollInMs\" : 7\n" + "    }\n" + "  }\n" + "}";
+        + "      \"byteRate\" : 6.0,\n" + "      \"consumerIdStr\" : \"consumer1\",\n"
+        + "      \"elapsedTimeSinceLastConsumerPollInMs\" : 7,\n"
+        + "      \"elapsedTimeSinceLastRecordForPartitionInMs\" : 8,\n"
+        + "      \"versionTopicName\" : \"test_store_v1\"\n" + "    }\n" + "  }\n" + "}";
     msg.setPayload(jsonStr.getBytes());
     StatsHandler statsHandler = mock(StatsHandler.class);
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);

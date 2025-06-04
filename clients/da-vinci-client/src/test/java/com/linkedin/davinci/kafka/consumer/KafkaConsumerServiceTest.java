@@ -212,13 +212,25 @@ public class KafkaConsumerServiceTest {
           consumerService.getIngestionInfoFor(versionTopic, topicPartition);
       Assert.assertEquals(topicPartitionIngestionInfoMap.size(), 1);
       Assert.assertTrue(topicPartitionIngestionInfoMap.containsKey(topicPartition));
-      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getConsumerIdStr().contains("0"));
-      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getConsumerIdStr().contains(testKafkaUrl));
-      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getMsgRate() > 0);
-      Assert.assertTrue(topicPartitionIngestionInfoMap.get(topicPartition).getByteRate() > 0);
-      Assert.assertEquals(
-          topicPartitionIngestionInfoMap.get(topicPartition).getVersionTopicName(),
-          topicForStoreName3.getName());
+      TopicPartitionIngestionInfo info = topicPartitionIngestionInfoMap.get(topicPartition);
+      Assert.assertTrue(info.getConsumerIdStr().contains("0"));
+      Assert.assertTrue(info.getConsumerIdStr().contains(testKafkaUrl));
+      Assert.assertTrue(info.getMsgRate() > 0);
+      Assert.assertTrue(info.getByteRate() > 0);
+      Assert.assertEquals(info.getVersionTopicName(), topicForStoreName3.getName());
+      Assert.assertTrue(
+          info.getElapsedTimeSinceLastConsumerPollInMs() >= 0,
+          "elapsedTimeSinceLastConsumerPollInMs should be non-negative");
+      Assert.assertTrue(
+          info.getElapsedTimeSinceLastRecordForPartitionInMs() >= 0,
+          "elapsedTimeSinceLastRecordForPartitionInMs should be non-negative");
+      String infoString = info.toString();
+      Assert.assertTrue(
+          infoString.contains("elapsedTimeSinceLastConsumerPollInMs:"),
+          "toString should contain elapsedTimeSinceLastConsumerPollInMs field");
+      Assert.assertTrue(
+          infoString.contains("elapsedTimeSinceLastRecordForPartitionInMs:"),
+          "toString should contain elapsedTimeSinceLastRecordForPartitionInMs field");
       verify(mockIngestionThrottler, atLeastOnce()).maybeThrottleBandwidth(anyInt());
       verify(mockIngestionThrottler, atLeastOnce())
           .maybeThrottleRecordRate(eq(ConsumerPoolType.AA_WC_LEADER_POOL), anyInt());
