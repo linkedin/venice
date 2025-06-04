@@ -340,10 +340,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       }
       return StorageOperationType.VALUE;
     }
-
-    if (rmdPayload.remaining() == 0) {
-      return StorageOperationType.VALUE;
-    }
     return StorageOperationType.VALUE_AND_RMD;
   }
 

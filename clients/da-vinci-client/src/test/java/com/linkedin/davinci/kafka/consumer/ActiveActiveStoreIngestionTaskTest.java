@@ -917,7 +917,7 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     Assert.assertEquals(
         ingestionTask.getStorageOperationTypeForDelete(1, deleteWithEmptyRmd),
-        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
     Assert.assertThrows(
         IllegalArgumentException.class,
         () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithEmptyRmd));
@@ -949,7 +949,7 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     Assert.assertEquals(
         ingestionTask.getStorageOperationTypeForDelete(1, deleteWithEmptyRmd),
-        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
     Assert.assertThrows(
         IllegalArgumentException.class,
         () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithEmptyRmd));
