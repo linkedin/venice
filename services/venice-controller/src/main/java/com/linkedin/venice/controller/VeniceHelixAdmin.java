@@ -9047,7 +9047,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store == null) {
       return getStoreGraveyard().getLargestUsedVersionNumber(storeName);
     }
-    return store.getLargestUsedVersionNumber();
+    return Math.max(store.getLargestUsedVersionNumber(), getStoreGraveyard().getLargestUsedVersionNumber(storeName));
   }
 
   /**
