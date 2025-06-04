@@ -1327,7 +1327,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       while (heartbeatIterator.hasNext()) {
         maxLag = Math.max(maxLag, System.currentTimeMillis() - heartbeatIterator.next().getValue());
       }
-      changeCaptureStats.emitHeartBeatDelayMetrics(maxLag);
+
+      if (maxLag != Long.MIN_VALUE) {
+        changeCaptureStats.emitHeartBeatDelayMetrics(maxLag);
+      }
 
       int maxVersion = -1;
       int minVersion = Integer.MAX_VALUE;

@@ -741,6 +741,10 @@ public class VeniceChangelogConsumerImplTest {
 
     reporterThread.recordStats(lastHeartbeat, consumerStats, topicPartitionSet);
     Mockito.verify(consumerStats).emitCurrentConsumingVersionMetrics(1, 1);
+    Mockito.verify(consumerStats, never()).emitHeartBeatDelayMetrics(anyLong());
+
+    lastHeartbeat.put(0, 1L);
+    reporterThread.recordStats(lastHeartbeat, consumerStats, topicPartitionSet);
     Mockito.verify(consumerStats).emitHeartBeatDelayMetrics(anyLong());
 
     reporterThread.start();

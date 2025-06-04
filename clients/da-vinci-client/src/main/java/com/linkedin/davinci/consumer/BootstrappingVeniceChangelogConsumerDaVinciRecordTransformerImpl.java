@@ -203,6 +203,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
   @Override
   public void stop() throws Exception {
+    backgroundReporterThread.interrupt();
     daVinciClientFactory.close();
     isStarted.set(false);
   }
@@ -287,7 +288,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     return recordTransformerConfig;
   }
 
-  private class BackgroundReporterThread extends Thread {
+  class BackgroundReporterThread extends Thread {
     private BackgroundReporterThread() {
       super("Change-Data-CaptureBackground-Reporter-Thread");
     }
