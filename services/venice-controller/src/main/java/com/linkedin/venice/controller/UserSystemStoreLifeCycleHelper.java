@@ -85,13 +85,7 @@ public class UserSystemStoreLifeCycleHelper {
 
     int partitionCount = parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName);
     int replicationFactor = parentAdmin.getReplicationFactor(clusterName, systemStoreName);
-    int systemStoreLargestUsedVersionNumber = parentAdmin.getLargestUsedVersion(clusterName, systemStoreName);
-    // Also check the store graveyard for the largest used version number.
-    // This is needed because, after a system store is deleted and re-created,
-    // the user store config may not yet reflect valid system store entries from the graveyard.
-    systemStoreLargestUsedVersionNumber = Math.max(
-        systemStoreLargestUsedVersionNumber,
-        parentAdmin.getLargestUsedVersionFromStoreGraveyard(clusterName, systemStoreName));
+    final int systemStoreLargestUsedVersionNumber = parentAdmin.getLargestUsedVersion(clusterName, systemStoreName);
     LOGGER.info(
         "Get largest used version: {} for system store: {} in cluster: {}",
         systemStoreLargestUsedVersionNumber,
