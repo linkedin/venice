@@ -84,7 +84,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private final ApacheKafkaOffsetPosition placeHolderOffset = ApacheKafkaOffsetPosition.of(0);
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
-  private final BackgroundReporterThread backgroundReporterThread;
+  private BackgroundReporterThread backgroundReporterThread;
   private long backgroundReporterThreadSleepIntervalSeconds = 60L;
   private final BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
@@ -123,7 +123,6 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       this.daVinciClient = this.daVinciClientFactory.getGenericAvroClient(this.storeName, daVinciConfig);
     }
 
-    backgroundReporterThread = new BackgroundReporterThread();
     if (changelogClientConfig.getInnerClientConfig().getMetricsRepository() != null) {
       this.changeCaptureStats = new BasicConsumerStats(
           changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
@@ -161,7 +160,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
          */
         startLatch.await();
 
-        if (changeCaptureStats != null && !backgroundReporterThread.isAlive()) {
+        if (changeCaptureStats != null) {
+          backgroundReporterThread = new BackgroundReporterThread();
           backgroundReporterThread.start();
         }
       } catch (InterruptedException e) {
@@ -203,7 +203,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
   @Override
   public void stop() throws Exception {
-    backgroundReporterThread.interrupt();
+    if (backgroundReporterThread != null) {
+      backgroundReporterThread.interrupt();
+    }
     daVinciClientFactory.close();
     isStarted.set(false);
   }
