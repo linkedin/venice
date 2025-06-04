@@ -181,7 +181,7 @@ public class TestActiveActiveIngestion {
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(360)
+        .setHybridRewindSeconds(604800) // 7 days
         .setHybridOffsetLagThreshold(0)
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
@@ -227,8 +227,26 @@ public class TestActiveActiveIngestion {
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
 
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
+      // Send a fresh MARKER record to the end of the RT topic, which will be used as an anchor
+      // to ensure that all preceding records have been processed (i.e., either accepted or
+      // dropped in DCR). This ensures that all prior records have been processed by the leader
+      // before any verification operations are performed, making the results predictable and deterministic.
+      runSamzaStreamJob(veniceProducer, storeName, mockTime, 1, 0, 222);
+    }
+
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(clusterWrapper.getRandomRouterURL()))) {
+
+      // Wait until we can fetch the MARKER record, which serves as an anchor to ensure that all
+      // prior records have been processed by the leader (i.e., either accepted or dropped in DCR).
+      // This guarantees that subsequent verification operations occur only after the leader has
+      // fully processed earlier records, making the results deterministic.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNotNull(client.get(Integer.toString(222)).get(), "Leader has not processed all records yet");
+      });
+
       // We sent a bunch of deletes to the keys we wrote previously that should have been dropped by DCR. Validate
       // they're still there.
       int validGet = 0;
