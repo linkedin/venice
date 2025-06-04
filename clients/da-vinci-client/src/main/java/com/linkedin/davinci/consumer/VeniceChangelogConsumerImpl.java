@@ -13,8 +13,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
+import com.linkedin.davinci.repository.NativeMetadataRepository;
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
-import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SpecificRecordChunkingAdapter;
@@ -241,10 +241,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     properties.put(
         CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
         String.valueOf(changelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds()));
-    ThinClientMetaStoreBasedRepository repository = new ThinClientMetaStoreBasedRepository(
-        changelogClientConfig.getInnerClientConfig(),
-        new VeniceProperties(properties),
-        null);
+    NativeMetadataRepository repository = NativeMetadataRepository
+        .getInstance(changelogClientConfig.getInnerClientConfig(), new VeniceProperties(properties), null);
     repository.start();
     this.storeRepository = new NativeMetadataRepositoryViewAdapter(repository);
     this.rmdDeserializerCache = new RmdDeserializerCache<>(replicationMetadataSchemaRepository, storeName, 1, false);
