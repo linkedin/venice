@@ -147,11 +147,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
     File partitionFolderDir = new File(partitionFolder);
     if (partitionFolderDir.exists()) {
       LOGGER.error(
-          "Partition folder {} for {} is existed with files {}. Skipping bootstrapping from blobs transfer.",
+          "Partition folder {} for {} is existed with files {}.",
           partitionFolder,
           Utils.getReplicaId(kafkaTopic, partitionId),
           Arrays.toString(partitionFolderDir.list()));
-      return CompletableFuture.completedFuture(null);
     }
 
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
