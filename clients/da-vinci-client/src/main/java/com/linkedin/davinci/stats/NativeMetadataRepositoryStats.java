@@ -23,7 +23,7 @@ public class NativeMetadataRepositoryStats extends AbstractVeniceStats {
             "store_metadata_staleness_high_watermark_ms"));
   }
 
-  final double getMetadataStalenessHighWatermarkMs() {
+  public final double getMetadataStalenessHighWatermarkMs() {
     if (this.metadataCacheTimestampMapInMs.isEmpty()) {
       return Double.NaN;
     } else {

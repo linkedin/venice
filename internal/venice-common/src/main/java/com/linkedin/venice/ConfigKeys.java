@@ -1928,6 +1928,13 @@ public class ConfigKeys {
       "client.system.store.repository.refresh.interval.seconds";
 
   /**
+   * A config for Da-Vinci clients to use request based metadata repository. This will enable the client to retrieve metadata
+   * directly from the server zk-cache.
+   */
+  public static final String CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY =
+      "client.use.request.based.metadata.repository";
+
+  /**
    * Test only config used to disable parent topic truncation upon job completion. This is needed because kafka cluster
    * in test environment is shared between parent and child controllers. Truncating topic upon completion will confuse
    * child controllers in certain scenarios.
