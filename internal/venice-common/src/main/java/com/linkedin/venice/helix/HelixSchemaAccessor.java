@@ -33,6 +33,8 @@ public class HelixSchemaAccessor {
   // Replication metadata schema path name. The value still uses "timestamp" for backward compatibility
   private static final String REPLICATION_METADATA_SCHEMA_PATH = "timestamp-metadata-schema";
 
+  private static final int DEFAULT_ZK_REFRESH_ATTEMPTS = 9;
+
   private final ZkBaseDataAccessor<SchemaEntry> schemaAccessor;
   private final ZkBaseDataAccessor<DerivedSchemaEntry> derivedSchemaAccessor;
   private final ZkBaseDataAccessor<RmdSchemaEntry> replicationMetadataSchemaAccessor;
@@ -43,7 +45,7 @@ public class HelixSchemaAccessor {
   private final int refreshAttemptsForZkReconnect;
 
   public HelixSchemaAccessor(ZkClient zkClient, HelixAdapterSerializer helixAdapterSerializer, String clusterName) {
-    this(zkClient, helixAdapterSerializer, clusterName, 9);
+    this(zkClient, helixAdapterSerializer, clusterName, DEFAULT_ZK_REFRESH_ATTEMPTS);
   }
 
   public HelixSchemaAccessor(
