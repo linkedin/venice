@@ -7,6 +7,7 @@ import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.channel.ChannelHandlerContext;
@@ -99,7 +100,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
         throw new VeniceException("No file name specified in the response for " + payload.getFullResourceName());
       }
 
-      LOGGER.debug("Starting blob transfer for file: {}", fileName);
+      LOGGER.info(
+          "Starting blob file receiving for file: {} for {}",
+          fileName,
+          Utils.getReplicaId(payload.getTopicName(), payload.getPartition()));
       this.fileContentLength = Long.parseLong(response.headers().get(HttpHeaderNames.CONTENT_LENGTH));
 
       // Create the directory
@@ -108,11 +112,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
       // Prepare the file, remove it if it exists
       if (Files.deleteIfExists(partitionDir.resolve(fileName))) {
-        LOGGER.debug(
-            "File {} already exists for topic {} partition {}. Overwriting it.",
+        LOGGER.warn(
+            "File {} already exists for {}. Overwriting it.",
             fileName,
-            payload.getTopicName(),
-            payload.getPartition());
+            Utils.getReplicaId(payload.getTopicName(), payload.getPartition()));
       }
 
       this.file = Files.createFile(partitionDir.resolve(fileName));
@@ -150,7 +153,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
       if (content instanceof DefaultLastHttpContent) {
         // End of a single file transfer
-        LOGGER.debug("A file {} received successfully for {}", fileName, payload.getFullResourceName());
+        LOGGER.info(
+            "A file {} received successfully for {}",
+            fileName,
+            Utils.getReplicaId(payload.getTopicName(), payload.getPartition()));
         outputFileChannel.force(true);
 
         // Size validation
@@ -188,8 +194,8 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
     LOGGER.error(
-        "Exception caught in when transferring files for {} with cause {}",
-        payload.getFullResourceName(),
+        "Exception caught in when receiving files for {} with cause {}",
+        Utils.getReplicaId(payload.getTopicName(), payload.getPartition()),
         cause);
     inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
     ctx.close();

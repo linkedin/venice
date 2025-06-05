@@ -14,8 +14,11 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.File;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -132,18 +135,30 @@ public class DefaultIngestionBackend implements IngestionBackend {
     AbstractStorageEngine storageEngine = storageService.getStorageEngine(kafkaTopic);
     if (storageEngine != null && storageEngine.containsPartition(partitionId)) {
       storageEngine.dropPartition(partitionId, false);
+      LOGGER.info(
+          "Due to storage engine contains this partition, clean up the offset and delete partition folder for topic {} partition {} before bootstrap from blob transfer",
+          kafkaTopic,
+          partitionId);
     }
-    LOGGER.info(
-        "Clean up the offset and delete partition folder for topic {} partition {} before bootstrap from blob transfer",
-        kafkaTopic,
-        partitionId);
+
+    // double check that the partition folder is not existed before bootstrapping from blobs transfer,
+    // as the partition should not exist due to previous dropPartition call.
+    String partitionFolder = RocksDBUtils.composePartitionDbDir(serverConfig.getRocksDBPath(), kafkaTopic, partitionId);
+    File partitionFolderDir = new File(partitionFolder);
+    if (partitionFolderDir.exists()) {
+      LOGGER.error(
+          "Partition folder {} for {} is existed with files {}.",
+          partitionFolder,
+          Utils.getReplicaId(kafkaTopic, partitionId),
+          Arrays.toString(partitionFolderDir.list()));
+    }
 
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
         .handle((inputStream, throwable) -> {
           updateBlobTransferResponseStats(throwable == null, storeName, versionNumber);
           if (throwable != null) {
             LOGGER.error(
-                "Failed to bootstrap partition {} from blobs transfer for store {} with exception {}",
+                "Failed to bootstrap partition {} from blobs transfer for store {} with exception {}, falling back to kafka ingestion.",
                 partitionId,
                 storeName,
                 throwable);
@@ -152,6 +167,13 @@ public class DefaultIngestionBackend implements IngestionBackend {
                 "Successfully bootstrapped partition {} from blobs transfer for store {}",
                 partitionId,
                 storeName);
+
+            if (partitionFolderDir.exists()) {
+              LOGGER.info(
+                  "Successfully bootstrapped from blob transfer {} with files: {}",
+                  Utils.getReplicaId(kafkaTopic, partitionId),
+                  Arrays.toString(partitionFolderDir.list()));
+            }
           }
           return null;
         });
