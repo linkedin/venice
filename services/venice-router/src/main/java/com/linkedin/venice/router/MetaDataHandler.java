@@ -274,7 +274,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private void handleControllerLookup(ChannelHandlerContext ctx) throws IOException {
     LeaderControllerResponse responseObject = new LeaderControllerResponse();
     responseObject.setCluster(clusterName);
-    responseObject.setUrl(routingDataRepository.getLeaderController().getUrl(isSslToKafka));
+    // todo find if controller is using SSL
+    // one way to do that is to use controller D2 service announcement details
+    responseObject.setUrl(routingDataRepository.getLeaderController().getUrl(false));
     LOGGER.info(
         "For cluster: {}, the leader controller url: {}, last refreshed at {}",
         responseObject.getCluster(),
