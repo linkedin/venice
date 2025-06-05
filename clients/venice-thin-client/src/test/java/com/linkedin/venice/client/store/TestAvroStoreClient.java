@@ -94,10 +94,10 @@ public class TestAvroStoreClient {
 
   @Test
   public void testFetchRecordDeserializer() throws IOException {
-    // Setup multi-schema response
+    // Setup multi-schema response to simulate a field deletion of the int_field
     Map<Integer, Schema> schemas = new HashMap<>();
-    schemas.put(1, TestValueRecord.SCHEMA$);
-    schemas.put(2, TestValueRecordWithMoreFields.SCHEMA$);
+    schemas.put(1, TestValueRecordWithMoreFields.SCHEMA$);
+    schemas.put(2, TestValueRecord.SCHEMA$);
 
     StoreClientTestUtils.setupMultiValueSchemaResponse(mockTransportClient, STORE_NAME, schemas);
 
@@ -105,29 +105,33 @@ public class TestAvroStoreClient {
 
     AvroSpecificStoreClientImpl specificStoreClient = new AvroSpecificStoreClientImpl(
         mockTransportClient,
-        ClientConfig.defaultSpecificClientConfig(STORE_NAME, TestValueRecord.class));
+        ClientConfig.defaultSpecificClientConfig(STORE_NAME, TestValueRecordWithMoreFields.class));
 
     specificStoreClient.start();
     RecordDeserializer specificRecordDeserializer = specificStoreClient.getDataRecordDeserializer(1);
 
-    TestValueRecord testValue;
-    testValue = new TestValueRecord();
-    testValue.long_field = 0l;
+    TestValueRecordWithMoreFields testValue;
+    testValue = new TestValueRecordWithMoreFields();
+    testValue.long_field = 0L;
     testValue.string_field = "";
+    testValue.int_field = 5;
 
-    byte[] testValueInBytes = StoreClientTestUtils.serializeRecord(testValue, TestValueRecord.SCHEMA$);
+    byte[] testValueInBytes = StoreClientTestUtils.serializeRecord(testValue, TestValueRecordWithMoreFields.SCHEMA$);
 
     // Test deserialization
-    genericStoreClient.getDataRecordDeserializer(1); // This will pull in all the value schemas
+    // Generic record deserialization
+    Assert.assertEquals(genericStoreClient.getSchemaReader().getLatestValueSchemaId().intValue(), 2);
     RecordDeserializer genericRecordDeserializer = genericStoreClient.getDataRecordDeserializer(1);
     Object genericTestValue = genericRecordDeserializer.deserialize(testValueInBytes);
     Assert.assertTrue(genericTestValue instanceof GenericData.Record);
     Assert.assertEquals(
         ((GenericData.Record) genericTestValue).get("int_field"),
-        10,
-        "we are supposed to get the default value for the missing field");
+        5,
+        "we are still suppose to get the value for the deleted field since it was written with schema id 1");
 
-    Assert.assertTrue(specificRecordDeserializer.deserialize(testValueInBytes) instanceof TestValueRecord);
+    // Specific record deserialization
+    Assert
+        .assertTrue(specificRecordDeserializer.deserialize(testValueInBytes) instanceof TestValueRecordWithMoreFields);
 
     specificStoreClient.close();
   }
