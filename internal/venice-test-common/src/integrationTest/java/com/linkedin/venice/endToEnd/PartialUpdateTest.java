@@ -45,6 +45,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -134,6 +135,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumWriter;
@@ -2169,7 +2171,8 @@ public class PartialUpdateTest {
                 assertNotNull(value, "Key " + key + " should not be missing!");
                 assertEquals(value.get("firstName").toString(), "first_name_" + key);
                 assertEquals(value.get("lastName").toString(), "last_name_" + key);
-                assertEquals(value.get("age"), -1);
+                // We haven't written anything with the new schema yet
+                assertThrows(AvroRuntimeException.class, () -> value.get("age"));
               }
             } catch (Exception e) {
               throw new VeniceException(e);

@@ -4,6 +4,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -41,6 +42,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
@@ -300,7 +302,8 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     for (int i = 0; i < recordCnt; ++i) {
       String key = keyPrefix + i;
       assertEquals((int) resultMap.get(key).get(VALUE_FIELD_NAME), i);
-      assertNull(resultMap.get(key).get(SECOND_VALUE_FIELD_NAME));
+      // The newly added field should not be involved when reading data that was written with value schema v1
+      assertThrows(AvroRuntimeException.class, () -> resultMap.get(key).get(SECOND_VALUE_FIELD_NAME));
     }
     VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, false);
     assertFalse(creationResponse.isError());
