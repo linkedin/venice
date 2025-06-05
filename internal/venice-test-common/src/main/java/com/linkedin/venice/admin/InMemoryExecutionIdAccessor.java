@@ -3,6 +3,8 @@ package com.linkedin.venice.admin;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 
 /**
@@ -48,6 +50,22 @@ public class InMemoryExecutionIdAccessor implements ExecutionIdAccessor {
   @Override
   public void updateLastGeneratedExecutionId(String clusterName, Long lastGeneratedExecutionId) {
     // not used, no op.
+  }
+
+  @Override
+  public Map<String, Long> cleanExecutionIdMap(String clusterName, Set<String> allStores) {
+    // initializing `executionIdsCleaned` with all the entries
+    Map<String, Long> executionIdsCleaned = new HashMap<>(executionIdMapInMem.get(clusterName));
+    Map<String, Long> executionIdsToKeep = executionIdMapInMem.get(clusterName)
+        .entrySet()
+        .parallelStream()
+        .filter(entry -> allStores.contains(entry.getKey()))
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+    // update `executionIdsCleaned` by removing the entries that are kept
+    executionIdsCleaned.keySet().removeAll(executionIdsToKeep.keySet());
+    executionIdMapInMem.put(clusterName, executionIdsToKeep);
+    return executionIdsCleaned;
   }
 
   @Override
