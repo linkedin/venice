@@ -293,12 +293,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String storeName,
       int targetVersionNum,
       Set<String> nonTargetRegions) {
-    if (targetVersion == null) {
-      String message = "Parent version is null for store " + storeName + " for target version " + targetVersionNum;
-      logMessageIfNotRedundant(message);
-      return false;
-    }
-
     String targetRegionsString = targetVersion.getTargetSwapRegion();
     if (StringUtils.isEmpty(targetRegionsString)) {
       return false;
@@ -324,9 +318,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         boolean didPushCompleteInTargetRegions =
             isVersionOnlineInRegions(targetRegions, clusterName, storeName, targetVersion.getNumber());
         if (didPushCompleteInTargetRegions) {
-          deferredVersionSwapStats.recordDeferredVersionSwapRunawayVpjSensor();
+          deferredVersionSwapStats.recordDeferredVersionSwapParentChildStatusMismatchSensor();
           String message =
-              "Push completed in target regions, but vpj ran away. Continuing with deferred swap for store: "
+              "Push completed in target regions, parent status is still STARTED. Continuing with deferred swap for store: "
                   + storeName + " for version: {}" + targetVersionNum;
           logMessageIfNotRedundant(message);
           return true;
@@ -546,6 +540,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           for (Store parentStore: parentStores) {
             int targetVersionNum = parentStore.getLargestUsedVersionNumber();
             Version targetVersion = parentStore.getVersion(targetVersionNum);
+            if (targetVersion == null) {
+              String message = "Parent version is null for store " + parentStore.getName() + " for target version "
+                  + targetVersionNum;
+              logMessageIfNotRedundant(message);
+              continue;
+            }
+
             String storeName = parentStore.getName();
             Map<String, Integer> coloToVersions =
                 veniceParentHelixAdmin.getCurrentVersionsForMultiColos(cluster, storeName);
