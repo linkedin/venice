@@ -18,6 +18,7 @@ import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.File;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -146,10 +147,10 @@ public class DefaultIngestionBackend implements IngestionBackend {
     File partitionFolderDir = new File(partitionFolder);
     if (partitionFolderDir.exists()) {
       LOGGER.error(
-          "Partition folder {} for topic {} partition {} is existed. Skipping bootstrapping from blobs transfer.",
+          "Partition folder {} for {} is existed with files {}. Skipping bootstrapping from blobs transfer.",
           partitionFolder,
-          kafkaTopic,
-          partitionId);
+          Utils.getReplicaId(kafkaTopic, partitionId),
+          Arrays.toString(partitionFolderDir.list()));
       return CompletableFuture.completedFuture(null);
     }
 
@@ -167,6 +168,13 @@ public class DefaultIngestionBackend implements IngestionBackend {
                 "Successfully bootstrapped partition {} from blobs transfer for store {}",
                 partitionId,
                 storeName);
+
+            if (partitionFolderDir.exists()) {
+              LOGGER.info(
+                  "Successfully bootstrapped from blob transfer {} with files: {}",
+                  Utils.getReplicaId(kafkaTopic, partitionId),
+                  Arrays.toString(partitionFolderDir.list()));
+            }
           }
           return null;
         });

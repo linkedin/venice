@@ -311,15 +311,13 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
     ctx.writeAndFlush(metadataResponse).addListener(future -> {
       if (future.isSuccess()) {
         LOGGER.info(
-            "Metadata for topic {} partition {} sent successfully with size {}",
-            metadata.getTopicName(),
-            metadata.getPartitionId(),
+            "Metadata for {} sent successfully with size {}",
+            Utils.getReplicaId(metadata.getTopicName(), metadata.getPartitionId()),
             metadataBytes.length);
       } else {
         LOGGER.error(
-            "Failed to send metadata for topic {} partition {}",
-            metadata.getTopicName(),
-            metadata.getPartitionId(),
+            "Failed to send metadata for {}",
+            Utils.getReplicaId(metadata.getTopicName(), metadata.getPartitionId()),
             future.cause());
       }
     });
