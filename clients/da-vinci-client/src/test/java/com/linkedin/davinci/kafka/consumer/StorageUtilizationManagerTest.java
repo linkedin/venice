@@ -8,7 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -35,7 +35,7 @@ public class StorageUtilizationManagerTest {
 
   private ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   private ConcurrentMap<Integer, PartitionConsumptionState> hybridPartitionConsumptionStateMap;
-  private AbstractStorageEngine storageEngine;
+  private StorageEngine storageEngine;
   private IngestionNotificationDispatcher ingestionNotificationDispatcher;
   private Store store;
   private Version version;
@@ -44,7 +44,7 @@ public class StorageUtilizationManagerTest {
 
   @BeforeClass
   public void setUp() {
-    storageEngine = mock(AbstractStorageEngine.class);
+    storageEngine = mock(StorageEngine.class);
     store = mock(Store.class);
     version = mock(Version.class);
   }

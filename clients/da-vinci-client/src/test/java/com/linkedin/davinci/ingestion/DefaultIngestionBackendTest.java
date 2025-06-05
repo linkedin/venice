@@ -21,7 +21,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
@@ -56,7 +56,7 @@ public class DefaultIngestionBackendTest {
   @Mock
   private VeniceStoreVersionConfig storeConfig;
   @Mock
-  private AbstractStorageEngine storageEngine;
+  private StorageEngine storageEngine;
   @Mock
   private ReadOnlyStoreRepository metadataRepo;
   @Mock
@@ -171,7 +171,7 @@ public class DefaultIngestionBackendTest {
 
   @Test
   public void testStartConsumptionWithClosePartition() {
-    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = Mockito.mock(StorageEngine.class);
     when(storageEngine.containsPartition(PARTITION)).thenReturn(true);
     doNothing().when(storageEngine).dropPartition(PARTITION, false);
 

@@ -1,7 +1,7 @@
 package com.linkedin.davinci.utils;
 
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 
 
 /*
@@ -16,7 +16,7 @@ public class InMemoryChunkAssembler extends ChunkAssembler {
   // but then that runs the risk of a parallel subscription having record chunks getting evicted before we have a chance
   // to assemble them. So we rely on the simpler and concrete implementation as opposed to the abstraction in order
   // to control and guarantee the behavior we're expecting.
-  public InMemoryChunkAssembler(AbstractStorageEngine bufferStorageEngine) {
+  public InMemoryChunkAssembler(StorageEngine bufferStorageEngine) {
     super(bufferStorageEngine, true);
   }
 

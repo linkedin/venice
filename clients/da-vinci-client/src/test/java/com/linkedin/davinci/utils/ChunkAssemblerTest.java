@@ -7,7 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.compression.NoopCompressor;
@@ -66,7 +66,7 @@ public class ChunkAssemblerTest {
 
   @Test
   public void testRocksDBChunkAssemblerAssemblyError() {
-    AbstractStorageEngine mockStorageEngine = mock(AbstractStorageEngine.class);
+    StorageEngine mockStorageEngine = mock(StorageEngine.class);
     PubSubTopicPartition mockPubSubPartition = mock(PubSubTopicPartition.class);
     VeniceCompressor compressor = new NoopCompressor();
     doReturn(0).when(mockPubSubPartition).getPartitionNumber();
@@ -126,9 +126,9 @@ public class ChunkAssemblerTest {
 
   private void verifyBasicOperations(
       byte[] serializedKey,
-      Function<AbstractStorageEngine, ChunkAssembler> initFunction,
-      BiConsumer<AbstractStorageEngine, ChunkedValueManifest> verifyConsumer) {
-    AbstractStorageEngine mockStorageEngine = mock(AbstractStorageEngine.class);
+      Function<StorageEngine, ChunkAssembler> initFunction,
+      BiConsumer<StorageEngine, ChunkedValueManifest> verifyConsumer) {
+    StorageEngine mockStorageEngine = mock(StorageEngine.class);
     ChunkAssembler chunkAssembler = initFunction.apply(mockStorageEngine);
     PubSubTopicPartition mockPubSubPartition = mock(PubSubTopicPartition.class);
     VeniceCompressor compressor = new NoopCompressor();

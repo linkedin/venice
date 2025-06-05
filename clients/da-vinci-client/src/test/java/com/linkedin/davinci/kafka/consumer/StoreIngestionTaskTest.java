@@ -9,7 +9,7 @@ import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeTyp
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.FOLLOWER;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.NodeType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest.SortedInput.SORTED;
-import static com.linkedin.davinci.store.AbstractStorageEngine.StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ;
+import static com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
@@ -103,6 +103,7 @@ import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
@@ -5335,7 +5336,7 @@ public abstract class StoreIngestionTaskTest {
         messagePosition,
         -1,
         1000);
-    AbstractStorageEngine mockStorageEngine2 = mock(AbstractStorageEngine.class);
+    StorageEngine mockStorageEngine2 = mock(AbstractStorageEngine.class);
     ByteBuffer actualValueBuffer = ByteBuffer.allocate(100);
     actualValueBuffer.putInt(1); // schema id
     actualValueBuffer.put("test_value".getBytes());

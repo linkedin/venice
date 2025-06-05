@@ -4,8 +4,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -271,7 +271,7 @@ public class BlobSnapshotManager {
    * Create a snapshot for a particular partition
    */
   public void createSnapshot(String kafkaVersionTopic, int partitionId) {
-    AbstractStorageEngine storageEngine =
+    StorageEngine storageEngine =
         Objects.requireNonNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
     AbstractStoragePartition partition = storageEngine.getPartitionOrThrow(partitionId);
     partition.createSnapshot();
@@ -283,7 +283,7 @@ public class BlobSnapshotManager {
    * @param partitionId the partition id
    */
   public void cleanupSnapshot(String kafkaVersionTopic, int partitionId) {
-    AbstractStorageEngine storageEngine =
+    StorageEngine storageEngine =
         Objects.requireNonNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
     AbstractStoragePartition partition = storageEngine.getPartitionOrThrow(partitionId);
     partition.cleanupSnapshot();
