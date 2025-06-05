@@ -8,6 +8,8 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_POS;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -65,12 +67,14 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.views.VeniceView;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -106,6 +110,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
   private static final int MAX_SUBSCRIBE_RETRIES = 5;
+  private static final int MAX_VERSION_SWAP_RETRIES = 5;
   private static final String ROCKSDB_BUFFER_FOLDER = "rocksdb-chunk-buffer";
   protected long subscribeTime = Long.MAX_VALUE;
 
@@ -224,7 +229,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (changelogClientConfig.getInnerClientConfig().getMetricsRepository() != null) {
       this.changeCaptureStats = new BasicConsumerStats(
           changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
-          "vcc-" + changelogClientConfig.getConsumerName());
+          "vcc-" + changelogClientConfig.getConsumerName(),
+          storeName);
     } else {
       changeCaptureStats = null;
     }
@@ -693,73 +699,89 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       long timeoutInMs,
       String topicSuffix,
       boolean includeControlMessage) {
-    List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
+    Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messagesMap = Collections.EMPTY_MAP;
     boolean lockAcquired = false;
-    try {
-      // the pubsubconsumer internally is completely unthreadsafe, so we need an exclusive lock to poll (ugh)
-      lockAcquired = subscriptionLock.writeLock().tryLock(timeoutInMs, TimeUnit.MILLISECONDS);
-      messagesMap = pubSubConsumer.poll(timeoutInMs);
-    } catch (Exception e) {
-      LOGGER.error("Error polling records with exception:", e);
-    } finally {
-      if (lockAcquired) {
-        subscriptionLock.writeLock().unlock();
-      }
-    }
-    for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messagesMap.entrySet()) {
-      PubSubTopicPartition pubSubTopicPartition = entry.getKey();
-      List<DefaultPubSubMessage> messageList = entry.getValue();
-      for (DefaultPubSubMessage message: messageList) {
-        maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
-        if (message.getKey().isControlMessage()) {
-          ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
-          if (handleControlMessage(
-              controlMessage,
-              pubSubTopicPartition,
-              topicSuffix,
-              message.getKey().getKey(),
-              message.getValue().getProducerMetadata().getMessageTimestamp())) {
-            break;
-          }
-          if (includeControlMessage) {
-            pubSubMessages.add(
-                new ImmutableChangeCapturePubSubMessage<>(
-                    null,
-                    null,
-                    message.getTopicPartition(),
-                    message.getPosition(),
-                    0,
-                    0,
-                    false));
-          }
 
-        } else {
-          Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage =
-              convertPubSubMessageToPubSubChangeEventMessage(message, pubSubTopicPartition);
-          pubSubMessage.ifPresent(pubSubMessages::add);
+    try {
+      try {
+        // the pubsubconsumer internally is completely unthreadsafe, so we need an exclusive lock to poll (ugh)
+        lockAcquired = subscriptionLock.writeLock().tryLock(timeoutInMs, TimeUnit.MILLISECONDS);
+        messagesMap = pubSubConsumer.poll(timeoutInMs);
+      } catch (InterruptedException exception) {
+        LOGGER.info("Thread was interrupted", exception);
+        // Restore the interrupt status
+        Thread.currentThread().interrupt();
+      } finally {
+        if (lockAcquired) {
+          subscriptionLock.writeLock().unlock();
         }
       }
-    }
-    if (changeCaptureStats != null) {
-      changeCaptureStats.recordRecordsConsumed(pubSubMessages.size());
-    }
-    if (changelogClientConfig.shouldCompactMessages()) {
-      Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
-      // The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
-      // replaced,
-      // it's put in at the position of the first insertion. This isn't quite what we want, we want to keep only
-      // a single key (just as a map would), but we want to keep the position of the last insertion as well. So in order
-      // to do that, we remove the entry before inserting it.
-      for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: pubSubMessages) {
-        if (tempMap.containsKey(message.getKey())) {
-          tempMap.remove(message.getKey());
+      for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messagesMap.entrySet()) {
+        PubSubTopicPartition pubSubTopicPartition = entry.getKey();
+        List<DefaultPubSubMessage> messageList = entry.getValue();
+        for (DefaultPubSubMessage message: messageList) {
+          maybeUpdatePartitionToBootstrapMap(message, pubSubTopicPartition);
+          if (message.getKey().isControlMessage()) {
+            ControlMessage controlMessage = (ControlMessage) message.getValue().getPayloadUnion();
+            if (handleControlMessage(
+                controlMessage,
+                pubSubTopicPartition,
+                topicSuffix,
+                message.getKey().getKey(),
+                message.getValue().getProducerMetadata().getMessageTimestamp())) {
+              break;
+            }
+            if (includeControlMessage) {
+              pubSubMessages.add(
+                  new ImmutableChangeCapturePubSubMessage<>(
+                      null,
+                      null,
+                      message.getTopicPartition(),
+                      message.getPosition(),
+                      0,
+                      0,
+                      false));
+            }
+
+          } else {
+            Optional<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> pubSubMessage =
+                convertPubSubMessageToPubSubChangeEventMessage(message, pubSubTopicPartition);
+            pubSubMessage.ifPresent(pubSubMessages::add);
+          }
         }
-        tempMap.put(message.getKey(), message);
       }
-      return tempMap.values();
+      int messagesPolled = pubSubMessages.size();
+
+      if (changelogClientConfig.shouldCompactMessages()) {
+        Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
+        // The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
+        // replaced, it's put in at the position of the first insertion. This isn't quite what we want, we want to keep
+        // only a single key (just as a map would), but we want to keep the position of the last insertion as well
+        // So in order to do that, we remove the entry before inserting it.
+        for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: pubSubMessages) {
+          if (tempMap.containsKey(message.getKey())) {
+            tempMap.remove(message.getKey());
+          }
+          tempMap.put(message.getKey(), message);
+        }
+        pubSubMessages = tempMap.values();
+      }
+
+      if (changeCaptureStats != null) {
+        changeCaptureStats.emitPollCountMetrics(SUCCESS);
+        changeCaptureStats.emitRecordsConsumedCountMetrics(messagesPolled);
+      }
+
+      return pubSubMessages;
+    } catch (Exception exception) {
+      if (changeCaptureStats != null) {
+        changeCaptureStats.emitPollCountMetrics(FAIL);
+      }
+
+      LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
+      throw exception;
     }
-    return pubSubMessages;
   }
 
   void maybeUpdatePartitionToBootstrapMap(DefaultPubSubMessage message, PubSubTopicPartition pubSubTopicPartition) {
@@ -822,10 +844,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   // This function exists for wrappers of this class to be able to do any kind of preprocessing on the raw bytes of the
-  // data consumed
-  // in the change stream so as to avoid having to do any duplicate deserialization/serialization. Wrappers which depend
-  // on solely
-  // on the data post deserialization
+  // data consumed in the change stream to avoid having to do any duplicate deserialization/serialization.
+  // Wrappers which depend on solely on the data post deserialization
   protected <T> T processRecordBytes(
       ByteBuffer decompressedBytes,
       T deserializedValue,
@@ -898,18 +918,37 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         compressor = compressorMap.get(pubSubTopicPartition.getPartitionNumber());
       }
 
-      ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
-          pubSubTopicPartition,
-          put.getSchemaId(),
-          keyBytes,
-          put.getPutValue(),
-          message.getPosition().getNumericOffset(),
-          compressor);
-      if (assembledRecord == null) {
-        // bufferAndAssembleRecord may have only buffered records and not returned anything yet because
-        // it's waiting for more input. In this case, just return an empty optional for now.
-        return Optional.empty();
+      ByteBufferValueRecord<ByteBuffer> assembledRecord;
+      try {
+        assembledRecord = chunkAssembler.bufferAndAssembleRecord(
+            pubSubTopicPartition,
+            put.getSchemaId(),
+            keyBytes,
+            put.getPutValue(),
+            message.getPosition().getNumericOffset(),
+            compressor);
+
+        if (changeCaptureStats != null && ChunkAssembler.isChunkedRecord(put.getSchemaId())) {
+          changeCaptureStats.emitChunkedRecordCountMetrics(SUCCESS);
+        }
+
+        if (assembledRecord == null) {
+          // bufferAndAssembleRecord may have only buffered records and not returned anything yet because
+          // it's waiting for more input. In this case, just return an empty optional for now.
+          return Optional.empty();
+        }
+      } catch (Exception exception) {
+        if (changeCaptureStats != null && ChunkAssembler.isChunkedRecord(put.getSchemaId())) {
+          changeCaptureStats.emitChunkedRecordCountMetrics(FAIL);
+        }
+
+        LOGGER.error(
+            "Encountered an exception when processing a record in ChunkAssembler for topic: {} and partition: {}",
+            pubSubTopicPartition.getTopicName(),
+            pubSubTopicPartition.getPartitionNumber());
+        throw exception;
       }
+
       if (readerSchemaId < 0) {
         // This was a chunk manifest and the actual writer schema needs to be retrieved
         readerSchemaId = assembledRecord.writerSchemaId();
@@ -1031,40 +1070,77 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       Integer upstreamPartition) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
-      VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
-      LOGGER.info(
-          "Obtain version swap message: {} and versions swap high watermarks: {} for: {}",
-          versionSwap,
-          versionSwap.getLocalHighWatermarks(),
-          pubSubTopicPartition);
-      PubSubTopic newServingVersionTopic =
-          pubSubTopicRepository.getTopic(versionSwap.newServingVersionTopic.toString());
+      for (int attempt = 0; attempt <= MAX_VERSION_SWAP_RETRIES; attempt++) {
+        try {
+          VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
+          LOGGER.info(
+              "Obtain version swap message: {} and versions swap high watermarks: {} for: {}",
+              versionSwap,
+              versionSwap.getLocalHighWatermarks(),
+              pubSubTopicPartition);
+          PubSubTopic newServingVersionTopic =
+              pubSubTopicRepository.getTopic(versionSwap.newServingVersionTopic.toString());
 
-      // TODO: There seems to exist a condition in the server where highwatermark offsets may regress when transmitting
-      // the version swap message
-      // it seems like this can potentially happen if a repush occurs and no data is consumed on that previous version.
-      // To make the client
-      // handle this gracefully, we instate the below condition that says the hwm in the client should never go
-      // backwards.
-      List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
-          .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
-          .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);
-      // safety checks
-      if (localOffset == null) {
-        localOffset = new ArrayList<>();
-      }
-      List<Long> highWatermarkOffsets = versionSwap.localHighWatermarks == null
-          ? new ArrayList<>()
-          : new ArrayList<>(versionSwap.getLocalHighWatermarks());
-      if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
+          // TODO: There seems to exist a condition in the server where highwatermark offsets may regress when
+          // transmitting the version swap message it seems like this can potentially happen if a repush occurs
+          // and no data is consumed on that previous version.
+          // To make the client handle this gracefully, we instate the below condition that says the hwm in the
+          // client should never go backwards.
+          List<Long> localOffset = (List<Long>) currentVersionHighWatermarks
+              .getOrDefault(pubSubTopicPartition.getPartitionNumber(), Collections.EMPTY_MAP)
+              .getOrDefault(upstreamPartition, Collections.EMPTY_LIST);
+          // safety checks
+          if (localOffset == null) {
+            localOffset = new ArrayList<>();
+          }
+          List<Long> highWatermarkOffsets = versionSwap.localHighWatermarks == null
+              ? new ArrayList<>()
+              : new ArrayList<>(versionSwap.getLocalHighWatermarks());
+          if (RmdUtils.hasOffsetAdvanced(localOffset, highWatermarkOffsets)) {
 
-        currentVersionHighWatermarks.putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
-        currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
-            .put(upstreamPartition, highWatermarkOffsets);
+            currentVersionHighWatermarks
+                .putIfAbsent(pubSubTopicPartition.getPartitionNumber(), new ConcurrentHashMap<>());
+            currentVersionHighWatermarks.get(pubSubTopicPartition.getPartitionNumber())
+                .put(upstreamPartition, highWatermarkOffsets);
+          }
+          switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
+          chunkAssembler.clearBuffer();
+
+          if (changeCaptureStats != null) {
+            changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
+          }
+
+          LOGGER.info(
+              "Version Swap succeeded when switching to topic: {} for partition: {} after {} attempts",
+              pubSubTopicPartition.getTopicName(),
+              pubSubTopicPartition.getPartitionNumber(),
+              attempt);
+
+          return true;
+        } catch (Exception error) {
+          if (attempt == MAX_VERSION_SWAP_RETRIES) {
+            if (changeCaptureStats != null) {
+              changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
+            }
+
+            LOGGER.error(
+                "Version Swap failed when switching to topic: {} for partition: {} after {} attempts",
+                pubSubTopicPartition.getTopicName(),
+                pubSubTopicPartition.getPartitionNumber(),
+                attempt);
+            throw error;
+          } else {
+            LOGGER.error(
+                "Version Swap failed when switching to topic: {} for partition: {} on attempt {}/{}. Retrying.",
+                pubSubTopicPartition.getTopicName(),
+                pubSubTopicPartition.getPartitionNumber(),
+                attempt,
+                MAX_VERSION_SWAP_RETRIES);
+
+            Utils.sleep(Duration.ofSeconds(1).toMillis() * attempt);
+          }
+        }
       }
-      switchToNewTopic(newServingVersionTopic, topicSuffix, pubSubTopicPartition.getPartitionNumber());
-      chunkAssembler.clearBuffer();
-      return true;
     }
     return false;
   }
@@ -1224,6 +1300,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   protected class HeartbeatReporterThread extends Thread {
     protected HeartbeatReporterThread() {
       super("Ingestion-Heartbeat-Reporter-Service-Thread");
+      // To not block JVM shutdown
+      setDaemon(true);
     }
 
     @Override
@@ -1234,6 +1312,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           TimeUnit.SECONDS.sleep(60L);
         } catch (InterruptedException e) {
           LOGGER.warn("Lag Monitoring thread interrupted!  Shutting down...", e);
+          Thread.currentThread().interrupt(); // Restore the interrupt status
           break;
         }
       }
@@ -1245,9 +1324,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         Set<PubSubTopicPartition> assignment) {
 
       Iterator<Map.Entry<Integer, Long>> heartbeatIterator = currentVersionLastHeartbeat.entrySet().iterator();
+      long maxLag = Long.MIN_VALUE;
+
       while (heartbeatIterator.hasNext()) {
-        Long lag = System.currentTimeMillis() - heartbeatIterator.next().getValue();
-        changeCaptureStats.recordLag(lag);
+        maxLag = Math.max(maxLag, System.currentTimeMillis() - heartbeatIterator.next().getValue());
+      }
+
+      if (maxLag != Long.MIN_VALUE) {
+        changeCaptureStats.emitHeartBeatDelayMetrics(maxLag);
       }
 
       int maxVersion = -1;
@@ -1264,8 +1348,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
 
       // Record max and min consumed versions
-      changeCaptureStats.recordMaximumConsumingVersion(maxVersion);
-      changeCaptureStats.recordMinimumConsumingVersion(minVersion);
+      changeCaptureStats.emitCurrentConsumingVersionMetrics(minVersion, maxVersion);
     }
   }
 }
