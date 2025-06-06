@@ -97,42 +97,42 @@ public class BasicConsumerStatsTest {
   @Test
   public void testEmitPollSuccessCountMetrics() {
     consumerStats.emitPollCountMetrics(SUCCESS);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + POLL_SUCCESS_COUNT.getMetricName() + ".Avg", 1);
+    validateTehutiMetrics(tehutiMetricPrefix + "--" + POLL_SUCCESS_COUNT.getMetricName() + ".Count", 1);
     validateLongCounterOtelMetrics(storeName, POLL_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
   }
 
   @Test
   public void testEmitPollFailCallCountMetrics() {
     consumerStats.emitPollCountMetrics(FAIL);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + POLL_FAIL_COUNT.getMetricName() + ".Avg", 1);
+    validateTehutiMetrics(tehutiMetricPrefix + "--" + POLL_FAIL_COUNT.getMetricName() + ".Count", 1);
     validateLongCounterOtelMetrics(storeName, POLL_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
   }
 
   @Test
   public void testEmitVersionSwapSuccessCountMetrics() {
     consumerStats.emitVersionSwapCountMetrics(SUCCESS);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Avg", 1);
+    validateTehutiMetrics(tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Count", 1);
     validateLongCounterOtelMetrics(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
   }
 
   @Test
   public void testEmitVersionSwapFailCountMetrics() {
     consumerStats.emitVersionSwapCountMetrics(FAIL);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Avg", 1);
+    validateTehutiMetrics(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Count", 1);
     validateLongCounterOtelMetrics(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
   }
 
   @Test
   public void testEmitChunkedRecordSuccessCountMetrics() {
     consumerStats.emitChunkedRecordCountMetrics(SUCCESS);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + CHUNKED_RECORD_SUCCESS_COUNT.getMetricName() + ".Avg", 1);
+    validateTehutiMetrics(tehutiMetricPrefix + "--" + CHUNKED_RECORD_SUCCESS_COUNT.getMetricName() + ".Count", 1);
     validateLongCounterOtelMetrics(storeName, CHUNKED_RECORD_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
   }
 
   @Test
   public void testEmitChunkedRecordFailCountMetrics() {
     consumerStats.emitChunkedRecordCountMetrics(FAIL);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + CHUNKED_RECORD_FAIL_COUNT.getMetricName() + ".Avg", 1);
+    validateTehutiMetrics(tehutiMetricPrefix + "--" + CHUNKED_RECORD_FAIL_COUNT.getMetricName() + ".Count", 1);
     validateLongCounterOtelMetrics(storeName, CHUNKED_RECORD_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
   }
 
