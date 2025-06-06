@@ -7,7 +7,7 @@ permalink: /docs/proposals/vip-5
 
 # VIP-5: Facet Counting
 
-* **Status**: _Under Discussion_
+* **Status**: _Accepted_
 * **Author(s)**: _Felix GV_
 * **Pull Request**: [PR 1612](https://github.com/linkedin/venice/pull/1612)
 * **Release**: _N/A_
