@@ -55,6 +55,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -92,6 +93,8 @@ import org.apache.logging.log4j.Logger;
 public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private static final ChunkedPayloadAndManifest EMPTY_CHUNKED_PAYLOAD_AND_MANIFEST =
       new ChunkedPayloadAndManifest(null, null);
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   // use for running async close and to fetch number of partitions with timeout from producer
   private final ThreadPoolExecutor threadPoolExecutor;
@@ -2214,6 +2217,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           long currentSegmentStartTime = segmentsStartTimeArray[partition];
           if (currentSegmentStartTime != -1
               && LatencyUtils.getElapsedTimeFromMsToMs(currentSegmentStartTime) > maxElapsedTimeForSegmentInMs) {
+            String msg = "Segment for partition" + partition + " has been open for more than"
+                + maxElapsedTimeForSegmentInMs + " {} ms, ending it and starting a new one.";
+
+            if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
+              logger.info(msg);
+            }
             endSegment(partition, false);
             currentSegment = startSegment(partition);
           }
