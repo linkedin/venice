@@ -406,7 +406,7 @@ public class PredicateTest {
     // Test multiple time ranges
     long yesterdayHourStart = baseTime - dayInMillis - hourInMillis;
     long yesterdayHourEnd = baseTime - dayInMillis;
-    Predicate<GenericRecord> multiRangeBucket = or(
+    Predicate<GenericRecord> multiRangeBucket = Predicate.or(
         // Last hour
         and(
             equalTo("timestamp", LongPredicate.greaterOrEquals(hourStart)),
@@ -515,6 +515,5 @@ public class PredicateTest {
 
     assertTrue(bucket2.evaluate(recordAtBucketStart), "Record with value at bucket start should be in the bucket");
     assertFalse(bucket2.evaluate(recordAtBucketEnd), "Record with value at bucket end should not be in the bucket");
-
   }
 }
