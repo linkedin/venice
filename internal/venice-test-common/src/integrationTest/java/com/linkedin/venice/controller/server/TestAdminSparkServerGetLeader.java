@@ -6,6 +6,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLE
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -19,6 +20,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
@@ -52,9 +54,15 @@ public class TestAdminSparkServerGetLeader {
             .setRegionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
             .build());
     veniceControllerWrapper = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(cluster, zkServer, pubSubBrokerWrapper)
-            .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
-            .build());
+        new VeniceControllerCreateOptions.Builder(
+            cluster,
+            zkServer,
+            pubSubBrokerWrapper,
+            Collections.singletonMap(
+                VeniceClusterWrapperConstants.STANDALONE_REGION_NAME,
+                D2TestUtils.getAndStartD2Client(zkServer.getAddress())))
+                    .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
+                    .build());
   }
 
   @AfterMethod

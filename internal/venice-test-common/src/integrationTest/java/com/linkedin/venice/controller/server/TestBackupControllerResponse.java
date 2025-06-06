@@ -3,12 +3,14 @@ package com.linkedin.venice.controller.server;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.*;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controllerapi.ControllerTransport;
 import com.linkedin.venice.controllerapi.QueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -16,6 +18,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
@@ -34,13 +37,23 @@ public class TestBackupControllerResponse {
                 .build());
         ControllerTransport transport = new ControllerTransport(Optional.empty());
         VeniceControllerWrapper controller1 = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
-                .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
-                .build());
+            new VeniceControllerCreateOptions.Builder(
+                clusterName,
+                zkServer,
+                pubSubBrokerWrapper,
+                Collections
+                    .singletonMap(STANDALONE_REGION_NAME, D2TestUtils.getAndStartD2Client(zkServer.getAddress())))
+                        .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
+                        .build());
         VeniceControllerWrapper controller2 = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
-                .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
-                .build())) {
+            new VeniceControllerCreateOptions.Builder(
+                clusterName,
+                zkServer,
+                pubSubBrokerWrapper,
+                Collections
+                    .singletonMap(STANDALONE_REGION_NAME, D2TestUtils.getAndStartD2Client(zkServer.getAddress())))
+                        .regionName(VeniceClusterWrapperConstants.STANDALONE_REGION_NAME)
+                        .build())) {
       // TODO: Eliminate sleep to make test reliable
       Thread.sleep(2000);
       VeniceControllerWrapper nonLeaderController =
