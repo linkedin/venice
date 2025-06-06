@@ -23,7 +23,7 @@ public class SubscriptionBasedStoreRepository extends HelixReadOnlyStoreReposito
       ZkClient zkClient,
       HelixAdapterSerializer compositeSerializer,
       String clusterName) {
-    super(zkClient, compositeSerializer, clusterName, 0, 0);
+    super(zkClient, compositeSerializer, clusterName);
   }
 
   @Override
