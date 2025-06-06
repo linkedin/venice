@@ -2217,8 +2217,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           long currentSegmentStartTime = segmentsStartTimeArray[partition];
           if (currentSegmentStartTime != -1
               && LatencyUtils.getElapsedTimeFromMsToMs(currentSegmentStartTime) > maxElapsedTimeForSegmentInMs) {
-            String msg = "Segment for partition" + partition + " has been open for more than"
-                + maxElapsedTimeForSegmentInMs + " {} ms, ending it and starting a new one.";
+            String msg = "Segment " + currentSegment + " has been open for more than" + maxElapsedTimeForSegmentInMs
+                + " ms, ending it and starting a new one.";
 
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
               logger.info(msg);
