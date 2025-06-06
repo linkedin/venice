@@ -346,4 +346,175 @@ public class PredicateTest {
     assertTrue(anyOf.evaluate(10L));
     assertFalse(anyOf.evaluate(11L));
   }
+
+  @Test
+  public void testTimeBucketGroupingPredicates() {
+    Schema timeBucketSchema = new Schema.Parser().parse(
+        "{\n" + "  \"namespace\": \"example.predicate\",\n" + "  \"type\": \"record\",\n"
+            + "  \"name\": \"TimeBucketRecord\",\n" + "  \"fields\": [\n"
+            + "    { \"name\": \"timestamp\", \"type\": \"long\" },\n"
+            + "    { \"name\": \"value\", \"type\": \"string\" }\n" + "  ]\n" + "}");
+
+    // Create test records with fixed timestamps for better predictability
+    long baseTime = 1617235200000L; // 2021-04-01 00:00:00 UTC
+    long hourInMillis = 3600000L; // 1 hour in milliseconds
+    long dayInMillis = 24 * hourInMillis;
+
+    // Create records with specific timestamps
+    long lastHourTimestamp = baseTime - hourInMillis / 2; // 30 minutes before baseTime
+    long twoHoursAgoTimestamp = baseTime - 2 * hourInMillis; // 2 hours before baseTime
+    long yesterdayTimestamp = baseTime - 26 * hourInMillis; // 26 hours before baseTime
+
+    GenericRecord recordLastHour = new GenericData.Record(timeBucketSchema);
+    recordLastHour.put("timestamp", lastHourTimestamp);
+    recordLastHour.put("value", "last hour");
+
+    GenericRecord recordTwoHoursAgo = new GenericData.Record(timeBucketSchema);
+    recordTwoHoursAgo.put("timestamp", twoHoursAgoTimestamp);
+    recordTwoHoursAgo.put("value", "two hours ago");
+
+    GenericRecord recordYesterday = new GenericData.Record(timeBucketSchema);
+    recordYesterday.put("timestamp", yesterdayTimestamp);
+    recordYesterday.put("value", "yesterday");
+
+    // Test hourly bucket using LongPredicate
+    long hourStart = baseTime - hourInMillis;
+    long hourEnd = baseTime;
+    Predicate<GenericRecord> lastHourBucket = and(
+        equalTo("timestamp", LongPredicate.greaterOrEquals(hourStart)),
+        equalTo("timestamp", LongPredicate.lowerThan(hourEnd)));
+
+    assertTrue(lastHourBucket.evaluate(recordLastHour), "Record from last hour should be in the last hour bucket");
+    assertFalse(
+        lastHourBucket.evaluate(recordTwoHoursAgo),
+        "Record from two hours ago should not be in the last hour bucket");
+    assertFalse(
+        lastHourBucket.evaluate(recordYesterday),
+        "Record from yesterday should not be in the last hour bucket");
+
+    // Test daily bucket using LongPredicate
+    long dayStart = baseTime - dayInMillis;
+    long dayEnd = baseTime;
+    Predicate<GenericRecord> lastDayBucket = and(
+        equalTo("timestamp", LongPredicate.greaterOrEquals(dayStart)),
+        equalTo("timestamp", LongPredicate.lowerThan(dayEnd)));
+
+    assertTrue(lastDayBucket.evaluate(recordLastHour), "Record from last hour should be in the last day bucket");
+    assertTrue(lastDayBucket.evaluate(recordTwoHoursAgo), "Record from two hours ago should be in the last day bucket");
+    assertFalse(lastDayBucket.evaluate(recordYesterday), "Record from yesterday should not be in the last day bucket");
+
+    // Test multiple time ranges
+    long yesterdayHourStart = baseTime - dayInMillis - hourInMillis;
+    long yesterdayHourEnd = baseTime - dayInMillis;
+    Predicate<GenericRecord> multiRangeBucket = or(
+        // Last hour
+        and(
+            equalTo("timestamp", LongPredicate.greaterOrEquals(hourStart)),
+            equalTo("timestamp", LongPredicate.lowerThan(hourEnd))),
+        // Yesterday's same hour
+        and(
+            equalTo("timestamp", LongPredicate.greaterOrEquals(yesterdayHourStart)),
+            equalTo("timestamp", LongPredicate.lowerThan(yesterdayHourEnd))));
+
+    assertTrue(multiRangeBucket.evaluate(recordLastHour), "Record from last hour should be in multi-range bucket");
+    assertFalse(
+        multiRangeBucket.evaluate(recordTwoHoursAgo),
+        "Record from two hours ago should not be in multi-range bucket");
+    assertFalse(
+        multiRangeBucket.evaluate(recordYesterday),
+        "Record from yesterday should not be in multi-range bucket");
+
+    // Test edge cases
+    GenericRecord recordExactlyOneHourAgo = new GenericData.Record(timeBucketSchema);
+    recordExactlyOneHourAgo.put("timestamp", hourStart);
+    recordExactlyOneHourAgo.put("value", "exactly one hour ago");
+
+    GenericRecord recordNow = new GenericData.Record(timeBucketSchema);
+    recordNow.put("timestamp", hourEnd);
+    recordNow.put("value", "now");
+
+    assertTrue(
+        lastHourBucket.evaluate(recordExactlyOneHourAgo),
+        "Record from exactly one hour ago should be in the last hour bucket");
+    assertFalse(lastHourBucket.evaluate(recordNow), "Record from now should not be in the last hour bucket");
+  }
+
+  @Test
+  public void testCustomBucketSizeGrouping() {
+    Schema bucketSchema = new Schema.Parser().parse(
+        "{\n" + "  \"namespace\": \"example.predicate\",\n" + "  \"type\": \"record\",\n"
+            + "  \"name\": \"CustomBucketRecord\",\n" + "  \"fields\": [\n"
+            + "    { \"name\": \"value\", \"type\": \"long\" }\n" + "  ]\n" + "}");
+
+    // Create records in different buckets
+    GenericRecord recordInBucket1 = new GenericData.Record(bucketSchema);
+    recordInBucket1.put("value", 150L); // Should be in bucket 100-200
+
+    GenericRecord recordInBucket2 = new GenericData.Record(bucketSchema);
+    recordInBucket2.put("value", 250L); // Should be in bucket 200-300
+
+    // Create bucket predicates using LongPredicate
+    Predicate<GenericRecord> bucket1 =
+        and(equalTo("value", LongPredicate.greaterOrEquals(100L)), equalTo("value", LongPredicate.lowerThan(200L)));
+
+    Predicate<GenericRecord> bucket2 =
+        and(equalTo("value", LongPredicate.greaterOrEquals(200L)), equalTo("value", LongPredicate.lowerThan(300L)));
+
+    // Test bucket membership
+    assertTrue(bucket1.evaluate(recordInBucket1), "Record with value 150 should be in bucket 1");
+    assertFalse(bucket1.evaluate(recordInBucket2), "Record with value 250 should not be in bucket 1");
+
+    assertFalse(bucket2.evaluate(recordInBucket1), "Record with value 150 should not be in bucket 2");
+    assertTrue(bucket2.evaluate(recordInBucket2), "Record with value 250 should be in bucket 2");
+
+    // Test edge cases
+    GenericRecord recordAtBucketStart = new GenericData.Record(bucketSchema);
+    recordAtBucketStart.put("value", 200L); // At start of bucket 2
+
+    GenericRecord recordAtBucketEnd = new GenericData.Record(bucketSchema);
+    recordAtBucketEnd.put("value", 300L); // At end of bucket 2
+
+    assertTrue(bucket2.evaluate(recordAtBucketStart), "Record with value at bucket start should be in the bucket");
+    assertFalse(bucket2.evaluate(recordAtBucketEnd), "Record with value at bucket end should not be in the bucket");
+  }
+
+  @Test
+  public void testIntBucketGroupingPredicates() {
+    Schema bucketSchema = new Schema.Parser().parse(
+        "{\n" + "  \"namespace\": \"example.predicate\",\n" + "  \"type\": \"record\",\n"
+            + "  \"name\": \"IntBucketRecord\",\n" + "  \"fields\": [\n"
+            + "    { \"name\": \"value\", \"type\": \"int\" }\n" + "  ]\n" + "}");
+
+    // Create records in different buckets
+    GenericRecord recordInBucket1 = new GenericData.Record(bucketSchema);
+    recordInBucket1.put("value", 15); // Should be in bucket 10-20
+
+    GenericRecord recordInBucket2 = new GenericData.Record(bucketSchema);
+    recordInBucket2.put("value", 25); // Should be in bucket 20-30
+
+    // Create bucket predicates using IntPredicate
+    Predicate<GenericRecord> bucket1 =
+        and(equalTo("value", IntPredicate.greaterOrEquals(10)), equalTo("value", IntPredicate.lowerThan(20)));
+
+    Predicate<GenericRecord> bucket2 =
+        and(equalTo("value", IntPredicate.greaterOrEquals(20)), equalTo("value", IntPredicate.lowerThan(30)));
+
+    // Test bucket membership
+    assertTrue(bucket1.evaluate(recordInBucket1), "Record with value 15 should be in bucket 1");
+    assertFalse(bucket1.evaluate(recordInBucket2), "Record with value 25 should not be in bucket 1");
+
+    assertFalse(bucket2.evaluate(recordInBucket1), "Record with value 15 should not be in bucket 2");
+    assertTrue(bucket2.evaluate(recordInBucket2), "Record with value 25 should be in bucket 2");
+
+    // Test edge cases
+    GenericRecord recordAtBucketStart = new GenericData.Record(bucketSchema);
+    recordAtBucketStart.put("value", 20); // At start of bucket 2
+
+    GenericRecord recordAtBucketEnd = new GenericData.Record(bucketSchema);
+    recordAtBucketEnd.put("value", 30); // At end of bucket 2
+
+    assertTrue(bucket2.evaluate(recordAtBucketStart), "Record with value at bucket start should be in the bucket");
+    assertFalse(bucket2.evaluate(recordAtBucketEnd), "Record with value at bucket end should not be in the bucket");
+
+  }
 }
