@@ -509,6 +509,36 @@ public class UtilsTest {
     assertEquals(e.getErrorType(), ErrorType.BAD_REQUEST);
   }
 
+  @DataProvider(name = "integerParsingData")
+  public Object[][] integerParsingData() {
+    return new Object[][] { { null, 10, 10, false }, // null -> default
+        { "", 20, 20, false }, // empty -> default
+        { "42", 0, 42, false }, // normal integer
+        { "-7", 1, -7, false }, // negative integer
+        { "notAnInt", 5, 0, true } // invalid -> exception
+    };
+  }
+
+  @Test(dataProvider = "integerParsingData")
+  public void testParseIntOrDefault(String value, int defaultValue, int expected, boolean expectException) {
+    final String fieldName = "testField";
+
+    if (expectException) {
+      try {
+        Utils.parseIntOrDefault(value, fieldName, defaultValue);
+        fail("VeniceHttpException expected for value: " + value);
+      } catch (VeniceHttpException ex) {
+        assertEquals(ex.getErrorType(), ErrorType.BAD_REQUEST);
+        assertEquals(ex.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST, "Invalid status code.");
+        assertTrue(ex.getMessage().contains(fieldName));
+        assertTrue(ex.getMessage().contains(value));
+      }
+    } else {
+      int actual = Utils.parseIntOrDefault(value, fieldName, defaultValue);
+      assertEquals(actual, expected, "Returned value did not match expectation for input '" + value + '\'');
+    }
+  }
+
   @Test
   public void testGetAllSchemasFromResources() {
 
