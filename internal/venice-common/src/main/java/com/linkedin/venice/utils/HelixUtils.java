@@ -112,7 +112,13 @@ public final class HelixUtils {
       if (children.size() != expectedCount) {
         // Data is inconsistent
         attempt++;
-        LOGGER.info("Expected number of elements: {}, but got {}.", expectedCount, children.size());
+        LOGGER.info(
+            "dataAccessor.getChildNames() did not return the expected number of elements from path: {}\nExpected: {}, but got {}. Attempt:{}/{}.",
+            path,
+            expectedCount,
+            children.size(),
+            attempt,
+            retryCount);
         handleFailedHelixOperation(path, "getChildren", attempt, retryCount);
       } else {
         return children;
@@ -240,18 +246,24 @@ public final class HelixUtils {
    */
   private static void handleFailedHelixOperation(String path, String helixOperation, int attempt, int retryCount) {
     if (attempt < retryCount) {
-      // Is empty if the caller doesn't operate on a specific ZK path (like connectHelixManager and checkClusterSetup)
-      if (!path.isEmpty()) {
-        path = " with path " + path;
-      }
       long retryIntervalSec = (long) Math.pow(2, attempt);
-      LOGGER.error(
-          "{} failed{} on attempt {}/{}. Will retry in {} seconds.",
-          helixOperation,
-          path,
-          attempt,
-          retryCount,
-          retryIntervalSec);
+
+      if (path.isEmpty()) {
+        LOGGER.error(
+            "{} failed on attempt {}/{}. Will retry in {} seconds.",
+            helixOperation,
+            attempt,
+            retryCount,
+            retryIntervalSec);
+      } else {
+        LOGGER.error(
+            "{} failed with path: {} on attempt {}/{}. Will retry in {} seconds.",
+            helixOperation,
+            path,
+            attempt,
+            retryCount,
+            retryIntervalSec);
+      }
       Utils.sleep(TimeUnit.SECONDS.toMillis(retryIntervalSec));
     } else {
       throw new ZkDataAccessException(path, helixOperation, retryCount);

@@ -158,7 +158,7 @@ public class HelixReadOnlySchemaRepositoryTest {
     ZkClient zkClient = mock(ZkClient.class);
     HelixSchemaAccessor accessor = mock(HelixSchemaAccessor.class);
     HelixReadOnlySchemaRepository schemaRepository =
-        new HelixReadOnlySchemaRepository(storeRepository, zkClient, accessor, 10, 10000);
+        new HelixReadOnlySchemaRepository(storeRepository, zkClient, accessor, 10, 100);
     String storeName = "store";
     String schemaStr = "int";
     Store store = mock(Store.class);
