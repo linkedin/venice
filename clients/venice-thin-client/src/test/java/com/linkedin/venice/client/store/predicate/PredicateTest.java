@@ -2,12 +2,14 @@ package com.linkedin.venice.client.store.predicate;
 
 import static com.linkedin.venice.client.store.predicate.Predicate.and;
 import static com.linkedin.venice.client.store.predicate.Predicate.equalTo;
+import static com.linkedin.venice.client.store.predicate.Predicate.or;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -357,8 +359,8 @@ public class PredicateTest {
 
     // Create test records with fixed timestamps for better predictability
     long baseTime = 1617235200000L; // 2021-04-01 00:00:00 UTC
-    long hourInMillis = 3600000L; // 1 hour in milliseconds
-    long dayInMillis = 24 * hourInMillis;
+    long hourInMillis = TimeUnit.HOURS.toMillis(1);
+    long dayInMillis = TimeUnit.DAYS.toMillis(1);
 
     // Create records with specific timestamps
     long lastHourTimestamp = baseTime - hourInMillis / 2; // 30 minutes before baseTime
@@ -406,7 +408,7 @@ public class PredicateTest {
     // Test multiple time ranges
     long yesterdayHourStart = baseTime - dayInMillis - hourInMillis;
     long yesterdayHourEnd = baseTime - dayInMillis;
-    Predicate<GenericRecord> multiRangeBucket = Predicate.or(
+    Predicate<GenericRecord> multiRangeBucket = or(
         // Last hour
         and(
             equalTo("timestamp", LongPredicate.greaterOrEquals(hourStart)),
