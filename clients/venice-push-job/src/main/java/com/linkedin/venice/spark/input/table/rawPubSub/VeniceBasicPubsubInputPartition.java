@@ -1,7 +1,6 @@
 package com.linkedin.venice.spark.input.table.rawPubSub;
 
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import org.apache.spark.sql.connector.read.InputPartition;
 
@@ -14,60 +13,43 @@ that populates the data into the spark dataframe.
 public class VeniceBasicPubsubInputPartition implements InputPartition {
   //
   private static final long serialVersionUID = 1L;
-
   private final String region;
-  private final PubSubTopic topic;
-  private final PubSubTopicPartition topicPartition;
-  private final PubSubPosition beginningPosition;
-  private final PubSubPosition endPosition;
+  private final String topicName;
+  private final int partitionNumber;
+  private final long startOffset;
+  private final long endOffset;
 
   public VeniceBasicPubsubInputPartition(
       String region,
-      PubSubTopic topic,
       PubSubTopicPartition topicPartition,
       PubSubPosition beginningPosition,
       PubSubPosition endPosition) {
+    // this needs to be serializable for all data stored here.
     this.region = region;
-    this.topic = topic;
-    this.topicPartition = topicPartition;
-    this.beginningPosition = beginningPosition;
-    this.endPosition = endPosition;
+    this.topicName = topicPartition.getTopicName();
+    this.partitionNumber = topicPartition.getPartitionNumber();
+    this.startOffset = beginningPosition.getNumericOffset();
+    this.endOffset = endPosition.getNumericOffset();
   }
 
   public String getRegion() {
     return region;
   }
 
-  public PubSubTopic getTopic() {
-    return topic;
+  public String getTopicName() {
+    return topicName;
   }
 
   public int getPartitionNumber() {
-    return topicPartition.getPartitionNumber();
+    return partitionNumber;
   }
 
-  public PubSubTopicPartition getTopicPartition() {
-    return topicPartition;
-  }
-
-  public PubSubPosition getBeginningPosition() {
-    return beginningPosition;
-  }
-
-  public long getBeginningOffset() {
-    return beginningPosition.getNumericOffset();
-  }
-
-  public PubSubPosition getEndPosition() {
-    return endPosition;
+  public long getStartOffset() {
+    return startOffset;
   }
 
   public long getEndOffset() {
-    return beginningPosition.getNumericOffset();
-  }
-
-  public long getOffsetLength() {
-    return (endPosition.getNumericOffset() - beginningPosition.getNumericOffset());
+    return endOffset;
   }
 
 }

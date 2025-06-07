@@ -8,8 +8,10 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -45,10 +47,9 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   private final boolean filterControlMessages = true;
 
   // this is the buffer that holds the messages that are consumed from the pubsub
-  private final PubSubTopicPartition targetPubSubTopicPartition;
+  private PubSubTopicPartition targetPubSubTopicPartition = null;
   private final PubSubTopic targetPubSubTopic;
   private final PubSubConsumerAdapter pubSubConsumer;
-  // inputPartitionReader local buffer, that gets filled from partitionMessagesBuffer
 
   private final ArrayDeque<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> messageBuffer =
       new ArrayDeque<>();
@@ -59,6 +60,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   private final long offsetLength;
   private final int targetPartitionNumber;
   private final String topicName;
+  private final PubSubTopic pubSubTopic;
   private PubSubPosition currentPosition;
   private InternalRow currentRow = null;
   private long recordsServed = 0;
@@ -80,7 +82,8 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
                     .setPubSubTopicRepository(new PubSubTopicRepository())
                     .setPubSubMessageDeserializer(PubSubMessageDeserializer.createOptimizedDeserializer())
                     .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(jobConfig))
-                    .setConsumerName("raw_kif_" + inputPartition.getTopic() + "_" + inputPartition.getPartitionNumber())
+                    .setConsumerName(
+                        "raw_kif_" + inputPartition.getTopicName() + "_" + inputPartition.getPartitionNumber())
                     .build()), // this is hideous
         new PubSubTopicRepository());
   }
@@ -94,15 +97,41 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
 
     pubSubConsumer = consumer;
 
-    targetPubSubTopic = inputPartition.getTopic();
-    topicName = targetPubSubTopic.getName();
+    topicName = inputPartition.getTopicName();
     targetPartitionNumber = inputPartition.getPartitionNumber();
-    startingPosition = inputPartition.getBeginningPosition();
-    startingOffset = inputPartition.getBeginningOffset();
-    endingPosition = inputPartition.getEndPosition();
+
+    pubSubTopic = pubSubTopicRepository.getTopic(topicName);
+    // this is a poor approach, but since the VeniceBasicPubsubInputPartition needs to be serializable,
+    // we need to redo the search and find based on basic info we can get from the VeniceBasicPubsubInputPartition
+    try {
+      targetPubSubTopic = pubSubTopicRepository.getTopic(inputPartition.getTopicName());
+    } catch (Exception e) {
+      // maybe the topic was deleted in the meantime, or something else happened.
+      throw new RuntimeException("Failed to get topic: " + inputPartition.getTopicName(), e);
+    }
+    List<PubSubTopicPartitionInfo> listOfPartitions = pubSubConsumer.partitionsFor(pubSubTopic);
+    for (PubSubTopicPartitionInfo partition: listOfPartitions) {
+      PubSubTopicPartition topicPartition = partition.getTopicPartition();
+      if (topicPartition.getPartitionNumber() == targetPartitionNumber) {
+        // we found the partition we are looking for
+        targetPubSubTopicPartition = topicPartition;
+        break;
+      }
+    }
+    if (targetPubSubTopicPartition == null) {
+      // Something unexpected happened to the partition/topic between the time the task planner created
+      // the Venice input partition and the time we are trying to consume from the topic and partition it's pointing to.
+      throw new RuntimeException(
+          "Partition not found for topic: " + topicName + " partition number: " + inputPartition.getPartitionNumber());
+    }
+
+    // Now we know that things are present. we can proceed with the rest of the setup
+    startingOffset = inputPartition.getStartOffset();
     endingOffset = inputPartition.getEndOffset();
-    offsetLength = inputPartition.getOffsetLength();
-    targetPubSubTopicPartition = inputPartition.getTopicPartition();
+    startingPosition = ApacheKafkaOffsetPosition.of(startingOffset);
+    endingPosition = ApacheKafkaOffsetPosition.of(endingOffset);
+
+    offsetLength = endingOffset - startingOffset;
     currentPosition = startingPosition;
 
     pubSubConsumer.subscribe(targetPubSubTopicPartition, startingPosition);
