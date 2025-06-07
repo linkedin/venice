@@ -22,7 +22,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -182,13 +181,11 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
 
     while (retries < CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES) {
       consumerBuffer = pubSubConsumer.poll(CONSUMER_POLL_TIMEOUT);
-      List<DefaultPubSubMessage> partitionMessagesBuffer =
-          new ArrayList<>(consumerBuffer.get(targetPubSubTopicPartition));
-      consumerBuffer.clear();
+      List<DefaultPubSubMessage> partitionMessagesBuffer = consumerBuffer.get(targetPubSubTopicPartition);
 
-      if (!partitionMessagesBuffer.isEmpty()) {
-        messageBuffer.addAll(partitionMessagesBuffer); // we are done.
-        return;
+      if (partitionMessagesBuffer != null && !partitionMessagesBuffer.isEmpty()) {
+        messageBuffer.addAll(partitionMessagesBuffer);
+        return; // Successfully got messages, we're done
       }
 
       try {
@@ -196,22 +193,25 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
       } catch (InterruptedException e) {
         logProgress();
         LOGGER.error(
-            "Interrupted while waiting for records to be consumed from topic {} partition {} to be available",
+            "Interrupted while waiting for records from topic {} partition {}",
             topicName,
             targetPartitionNumber,
             e);
         // should we re-throw here to break the consumption task ?
         // Thread.currentThread().interrupt(); // very questionable genAI suggestion,
         // what's the intended way to terminate this task?
+        return; // Exit on interruption
       }
       retries++;
     }
 
-    // tried really hard, but nothing came out of consumer, giving up.
+    // Exhausted all retries without getting messages
     throw new RuntimeException(
-        "Empty poll after " + retries + " retries for topic: " + topicName + " partition: " + targetPartitionNumber
-            + ". No messages were consumed.");
-
+        String.format(
+            "Empty poll after %d retries for topic: %s partition: %d. No messages were consumed.",
+            CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES,
+            topicName,
+            targetPartitionNumber));
   }
 
   private InternalRow processPubSubMessageToRow(
