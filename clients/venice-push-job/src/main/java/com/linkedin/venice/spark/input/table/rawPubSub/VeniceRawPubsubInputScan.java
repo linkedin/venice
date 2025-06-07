@@ -77,13 +77,8 @@ public class VeniceRawPubsubInputScan implements Scan, Batch {
                   + ", End position: " + endPosition);
         } else {
 
-          veniceInputPartitions.add(
-              new VeniceBasicPubsubInputPartition(
-                  regionName,
-                  pubSubTopic,
-                  topicPartition,
-                  beginningPosition,
-                  endPosition));
+          veniceInputPartitions
+              .add(new VeniceBasicPubsubInputPartition(regionName, topicPartition, beginningPosition, endPosition));
         }
       }
 
