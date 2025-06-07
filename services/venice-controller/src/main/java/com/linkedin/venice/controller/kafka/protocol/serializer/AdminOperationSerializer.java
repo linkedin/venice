@@ -73,15 +73,6 @@ public class AdminOperationSerializer {
     // Get the writer schema.
     Schema targetSchema = getSchema(targetSchemaId);
 
-    // Validate non-default usage for new semantic
-    try {
-      SemanticDetector.traverseAndValidate(object, LATEST_SCHEMA, targetSchema, "AdminOperation", null);
-    } catch (VeniceProtocolException e) {
-      throw new VeniceProtocolException(
-          String.format("Current schema version: %s. New semantic is being used. %s", targetSchemaId, e.getMessage()),
-          e);
-    }
-
     // If writer schema is not the latest schema, we need to deserialize the serialized bytes to GenericRecord with
     // the writer schema, then serialize it to bytes with the writer schema.
     try {
@@ -107,6 +98,21 @@ public class AdminOperationSerializer {
     } catch (IOException e) {
       throw new VeniceProtocolException(
           "Could not deserialize bytes back into AdminOperation object with schema id: " + writerSchemaId,
+          e);
+    }
+  }
+
+  /**
+   * Validate the AdminOperation message against the target schema.
+   * @throws VeniceProtocolException if the message does not conform to the target schema.
+   */
+  public static void validate(AdminOperation message, int targetSchemaId) {
+    Schema targetSchema = getSchema(targetSchemaId);
+    try {
+      SemanticDetector.traverseAndValidate(message, LATEST_SCHEMA, targetSchema, "AdminOperation", null);
+    } catch (VeniceProtocolException e) {
+      throw new VeniceProtocolException(
+          String.format("Current schema version: %s. New semantic is being used. %s", targetSchemaId, e.getMessage()),
           e);
     }
   }
