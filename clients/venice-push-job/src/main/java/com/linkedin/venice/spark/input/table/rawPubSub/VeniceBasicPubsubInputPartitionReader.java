@@ -95,47 +95,40 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
       PubSubConsumerAdapter consumer,
       PubSubTopicRepository pubSubTopicRepository) {
 
-    pubSubConsumer = consumer;
+    this.pubSubConsumer = consumer;
+    this.topicName = inputPartition.getTopicName();
+    this.targetPartitionNumber = inputPartition.getPartitionNumber();
 
-    topicName = inputPartition.getTopicName();
-    targetPartitionNumber = inputPartition.getPartitionNumber();
-
-    pubSubTopic = pubSubTopicRepository.getTopic(topicName);
-    // this is a poor approach, but since the VeniceBasicPubsubInputPartition needs to be serializable,
-    // we need to redo the search and find based on basic info we can get from the VeniceBasicPubsubInputPartition
+    // Get topic reference
     try {
-      targetPubSubTopic = pubSubTopicRepository.getTopic(inputPartition.getTopicName());
+      this.pubSubTopic = pubSubTopicRepository.getTopic(topicName);
+      this.targetPubSubTopic = this.pubSubTopic; // Avoid duplicate lookup
     } catch (Exception e) {
-      // maybe the topic was deleted in the meantime, or something else happened.
-      throw new RuntimeException("Failed to get topic: " + inputPartition.getTopicName(), e);
-    }
-    List<PubSubTopicPartitionInfo> listOfPartitions = pubSubConsumer.partitionsFor(pubSubTopic);
-    for (PubSubTopicPartitionInfo partition: listOfPartitions) {
-      PubSubTopicPartition topicPartition = partition.getTopicPartition();
-      if (topicPartition.getPartitionNumber() == targetPartitionNumber) {
-        // we found the partition we are looking for
-        targetPubSubTopicPartition = topicPartition;
-        break;
-      }
-    }
-    if (targetPubSubTopicPartition == null) {
-      // Something unexpected happened to the partition/topic between the time the task planner created
-      // the Venice input partition and the time we are trying to consume from the topic and partition it's pointing to.
-      throw new RuntimeException(
-          "Partition not found for topic: " + topicName + " partition number: " + inputPartition.getPartitionNumber());
+      throw new RuntimeException("Failed to get topic: " + topicName, e);
     }
 
-    // Now we know that things are present. we can proceed with the rest of the setup
-    startingOffset = inputPartition.getStartOffset();
-    endingOffset = inputPartition.getEndOffset();
-    startingPosition = ApacheKafkaOffsetPosition.of(startingOffset);
-    endingPosition = ApacheKafkaOffsetPosition.of(endingOffset);
+    // Find the target partition
+    this.targetPubSubTopicPartition = pubSubConsumer.partitionsFor(pubSubTopic)
+        .stream()
+        .map(PubSubTopicPartitionInfo::getTopicPartition)
+        .filter(partition -> partition.getPartitionNumber() == targetPartitionNumber)
+        .findFirst()
+        .orElseThrow(
+            () -> new RuntimeException(
+                "Partition not found for topic: " + topicName + " partition number: " + targetPartitionNumber));
 
-    offsetLength = endingOffset - startingOffset;
-    currentPosition = startingPosition;
+    // Set up offset positions
+    this.startingOffset = inputPartition.getStartOffset();
+    this.endingOffset = inputPartition.getEndOffset();
+    this.startingPosition = ApacheKafkaOffsetPosition.of(startingOffset);
+    this.endingPosition = ApacheKafkaOffsetPosition.of(endingOffset);
+    this.offsetLength = endingOffset - startingOffset;
+    this.currentPosition = startingPosition;
 
+    // Subscribe to the topic partition
     pubSubConsumer.subscribe(targetPubSubTopicPartition, startingPosition);
-    LOGGER.info("Subscribed to  Topic: {} Partition {}.", topicName, targetPartitionNumber);
+    LOGGER.info("Subscribed to Topic: {} Partition {}.", topicName, targetPartitionNumber);
+
     initialize();
   }
 
