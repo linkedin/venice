@@ -88,6 +88,7 @@ public class VeniceChangelogConsumerClientFactory {
     } else {
       adjustedConsumerId = consumerId;
     }
+
     return storeClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, adjustedConsumerId), name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
           getNewStoreChangelogClientConfig(storeName).setSpecificValue(valueClass);
@@ -130,13 +131,13 @@ public class VeniceChangelogConsumerClientFactory {
       Class<K> keyClass,
       Class<V> valueClass,
       Schema valueSchema) {
-    return storeBootstrappingClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
+    String consumerName = suffixConsumerIdToStore(storeName, consumerId);
+
+    return storeBootstrappingClientMap.computeIfAbsent(consumerName, name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
           getNewStoreChangelogClientConfig(storeName).setSpecificKey(keyClass)
               .setSpecificValue(valueClass)
               .setSpecificValueSchema(valueSchema);
-      String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
-      String consumerName = suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
 
       if (globalChangelogClientConfig.isExperimentalClientEnabled()) {
         return new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(
@@ -249,6 +250,20 @@ public class VeniceChangelogConsumerClientFactory {
       }
       return viewConfig.getViewClassName();
     };
+  }
+
+  private String cleanConsumerId(String consumerId, String viewName) {
+    String adjustedConsumerId;
+    if (!StringUtils.isEmpty(viewName)) {
+      if (StringUtils.isEmpty(consumerId)) {
+        adjustedConsumerId = viewName;
+      } else {
+        adjustedConsumerId = consumerId + "-" + viewName;
+      }
+    } else {
+      adjustedConsumerId = consumerId;
+    }
+    return adjustedConsumerId;
   }
 
   protected void setViewClassGetter(ViewClassGetter viewClassGetter) {
