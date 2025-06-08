@@ -137,7 +137,8 @@ public class VeniceChangelogConsumerClientFactory {
       ChangelogClientConfig newStoreChangelogClientConfig =
           getNewStoreChangelogClientConfig(storeName).setSpecificKey(keyClass)
               .setSpecificValue(valueClass)
-              .setSpecificValueSchema(valueSchema);
+              .setSpecificValueSchema(valueSchema)
+              .setConsumerName(consumerName);
 
       if (globalChangelogClientConfig.isExperimentalClientEnabled()) {
         return new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(
@@ -250,20 +251,6 @@ public class VeniceChangelogConsumerClientFactory {
       }
       return viewConfig.getViewClassName();
     };
-  }
-
-  private String cleanConsumerId(String consumerId, String viewName) {
-    String adjustedConsumerId;
-    if (!StringUtils.isEmpty(viewName)) {
-      if (StringUtils.isEmpty(consumerId)) {
-        adjustedConsumerId = viewName;
-      } else {
-        adjustedConsumerId = consumerId + "-" + viewName;
-      }
-    } else {
-      adjustedConsumerId = consumerId;
-    }
-    return adjustedConsumerId;
   }
 
   protected void setViewClassGetter(ViewClassGetter viewClassGetter) {
