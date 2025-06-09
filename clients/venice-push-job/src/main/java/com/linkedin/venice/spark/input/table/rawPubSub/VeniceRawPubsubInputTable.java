@@ -1,6 +1,6 @@
 package com.linkedin.venice.spark.input.table.rawPubSub;
 
-import static com.linkedin.venice.spark.SparkConstants.RAW_KAFKA_INPUT_TABLE_SCHEMA;
+import static com.linkedin.venice.spark.SparkConstants.BASIC_RAW_PUBSUB_INPUT_TABLE_SCHEMA;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
@@ -36,7 +36,7 @@ public class VeniceRawPubsubInputTable implements SupportsRead {
 
   @Override
   public StructType schema() {
-    return RAW_KAFKA_INPUT_TABLE_SCHEMA;
+    return BASIC_RAW_PUBSUB_INPUT_TABLE_SCHEMA;
   }
 
   @Override

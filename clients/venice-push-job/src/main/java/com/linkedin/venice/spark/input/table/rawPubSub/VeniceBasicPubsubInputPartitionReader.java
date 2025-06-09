@@ -44,12 +44,8 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   private static final Logger LOGGER = LogManager.getLogger(VeniceBasicPubsubInputPartitionReader.class);
 
   private final boolean filterControlMessages = true;
-
-  // this is the buffer that holds the messages that are consumed from the pubsub
-  private PubSubTopicPartition targetPubSubTopicPartition = null;
   private final PubSubTopic targetPubSubTopic;
   private final PubSubConsumerAdapter pubSubConsumer;
-
   private final ArrayDeque<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> messageBuffer =
       new ArrayDeque<>();
   private final PubSubPosition endingPosition;
@@ -60,6 +56,8 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   private final int targetPartitionNumber;
   private final String topicName;
   private final PubSubTopic pubSubTopic;
+  // this is the buffer that holds the messages that are consumed from the pubsub
+  private PubSubTopicPartition targetPubSubTopicPartition = null;
   private PubSubPosition currentPosition;
   private InternalRow currentRow = null;
   private long recordsServed = 0;
@@ -157,24 +155,33 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
       return false;
     }
 
-    if (ableToPrepNextRow()) {
+    if (prepareNextValidRow()) {
       // there is a fresh row to serve
       return true;
     }
     // at this point, buffer is empty.
 
     pollAndFillMessageBufferWithNewPubsubRecords(); // try to poll for some records and allow the exception to bubble up
-    return ableToPrepNextRow();
+    return prepareNextValidRow();
   }
 
   @Override
   public void close() {
     pubSubConsumer.close();
     // double progressPercent = (currentPosition.getNumericOffset() - startingOffset) * 100.0 / offsetLength;
-    LOGGER.info("Consumer closed for Topic: {} , consumed {} records,", topicName, recordsServed);
+    LOGGER.info(
+        "Consumer closed for Topic: {} , partition: {}, consumed {} records,",
+        topicName,
+        targetPartitionNumber,
+        recordsServed);
     LOGGER.info("Skipped {} records, delivered rows {} times .", recordsSkipped, recordsDeliveredByGet);
   }
 
+  /**
+   * This method polls the PubSub consumer for new messages and fills the message buffer.
+   * It retries a few times if the poll returns empty results, waiting between retries.
+   * If no messages are received after all retries, it throws an exception.
+   */
   private void pollAndFillMessageBufferWithNewPubsubRecords() {
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> consumerBuffer;
     int retries = 0;
@@ -339,37 +346,46 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
     return Arrays.asList(recordsServed, recordsSkipped, recordsDeliveredByGet);
   }
 
-  // go through the current buffer and find the next usable message
-  private boolean ableToPrepNextRow() {
-    boolean found;
-    found = false;
-
-    // buffer is already empty.
+  /**
+   * This method is used to prepare the next valid row for consumption.
+   * It checks the message buffer for the next usable message, skipping control messages if filtering is enabled.
+   * If a valid message is found, it processes it into an InternalRow and updates the current position.
+   * If no valid messages are found, it returns false.
+   * @return {@code true} if a valid message was found and processed into a row
+   */
+  private boolean prepareNextValidRow() {
+    // Return early if buffer is empty
     if (this.messageBuffer.isEmpty()) {
       return false;
     }
 
+    // Iterate through messages in the buffer until finding a non-control message or exhausting the buffer
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message;
-    // look for the next viable message
-    while (!found) {
+    while (!messageBuffer.isEmpty()) {
       try {
         message = messageBuffer.pop();
       } catch (NoSuchElementException e) {
-        // ran out of messages in the buffer
+        // This shouldn't happen since we check isEmpty() in the loop condition
+        // but keeping as a safeguard
         return false;
       }
 
-      currentPosition = message.getOffset();
+      currentPosition = message.getOffset(); // needs rework when the pubSub position is fully adopted.
 
+      // Skip control messages if filtering is enabled
       if (filterControlMessages && message.getKey().isControlMessage()) {
         recordsSkipped++;
-      } else {
-        currentRow = processPubSubMessageToRow(message);
-        recordsServed++;
-        found = true;
+        continue; // Continue to next message in buffer
       }
+
+      // Found a valid message - process it
+      currentRow = processPubSubMessageToRow(message);
+      recordsServed++;
+      maybeLogProgress();
+      return true;
     }
-    maybeLogProgress();
-    return true;
+
+    // No usable messages found in the buffer
+    return false;
   }
 }
