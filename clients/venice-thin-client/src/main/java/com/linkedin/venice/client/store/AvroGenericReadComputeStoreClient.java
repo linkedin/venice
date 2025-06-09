@@ -61,4 +61,13 @@ public interface AvroGenericReadComputeStoreClient<K, V> extends AvroGenericStor
       byte[] keyPrefix,
       ComputeRequestWrapper computeRequestWrapper,
       StreamingCallback<GenericRecord, GenericRecord> callback) throws VeniceClientException;
+
+  /**
+   * Create a new compute aggregation request builder.
+   * @return A new {@link ComputeAggregationRequestBuilder} instance.
+   * @throws VeniceClientException if there is an error creating the builder.
+   */
+  default ComputeAggregationRequestBuilder<K> computeAggregation() throws VeniceClientException {
+    return new AvroComputeAggregationRequestBuilder<>(this, getSchemaReader());
+  }
 }
