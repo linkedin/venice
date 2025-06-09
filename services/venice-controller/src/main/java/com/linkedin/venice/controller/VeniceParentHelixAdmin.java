@@ -2118,12 +2118,25 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceException("Roll forward failed without any future version");
       }
 
-      LOGGER.info(
-          "Sending roll forward command to future version {} for store {} to child controllers",
-          futureVersionBeforeRollForward,
-          storeName);
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
+      try {
+        LOGGER.info(
+            "Sending roll forward command to future version {} for store {} to child controllers",
+            futureVersionBeforeRollForward,
+            storeName);
+        sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+      } catch (AdminMessageConsumptionTimeoutException timeoutException) {
+        LOGGER.info(
+            "Truncating topic {} after time out while waiting for roll forward admin message "
+                + "to be consumed for store: {} on version: {}",
+            kafkaTopic,
+            storeName,
+            futureVersionBeforeRollForward,
+            timeoutException);
+        truncateKafkaTopic(kafkaTopic);
+        throw timeoutException;
+      }
+
       LOGGER.info(
           "Truncating topic {} after child controllers consumed the roll forward messages to not block new versions",
           kafkaTopic);
@@ -3900,14 +3913,16 @@ public class VeniceParentHelixAdmin implements Admin {
       parentStore.updateVersionStatus(versionNum, PUSHED);
       repository.updateStore(parentStore);
       LOGGER.info(
-          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          "Updating parent store: {} version {} status to {} for target region push w/ deferred swap",
+          parentStore.getName(),
           versionNum,
           PUSHED);
     } else if (failedRegions.size() > 0) {
       parentStore.updateVersionStatus(versionNum, ERROR);
       repository.updateStore(parentStore);
       LOGGER.info(
-          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          "Updating parent store: {} version {} status to {} for target region push w/ deferred swap",
+          parentStore.getName(),
           versionNum,
           ERROR);
     }
