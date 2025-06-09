@@ -65,7 +65,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   private long recordsServed = 0;
   private long recordsSkipped = 0;
   private long recordsDeliveredByGet = 0;
-  private long lastKnownProgressPercent = 0;
+  private float lastKnownProgressPercent = 0;
 
   // the buffer that holds the relevant messages for the current partition
 
@@ -191,7 +191,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
       try {
         Thread.sleep(EMPTY_POLL_SLEEP_TIME_MS);
       } catch (InterruptedException e) {
-        logProgress();
+        logProgress(getProgressPercent());
         LOGGER.error(
             "Interrupted while waiting for records from topic {} partition {}",
             topicName,
@@ -312,21 +312,24 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   }
 
   private void maybeLogProgress() {
-    double progressPercent = (currentPosition.getNumericOffset() - startingOffset) * 100.0 / offsetLength;
+    float progressPercent = getProgressPercent();
     if (progressPercent > 10 + lastKnownProgressPercent) {
-      logProgress();
+      logProgress(progressPercent);
       lastKnownProgressPercent = (long) progressPercent;
     }
   }
 
-  private void logProgress() {
-    double progressPercent = (currentPosition.getNumericOffset() - startingOffset) * 100.0 / offsetLength;
+  private float getProgressPercent() {
+    return (float) ((currentPosition.getNumericOffset() - startingOffset) * 100.0 / offsetLength);
+  }
+
+  private void logProgress(float progressPercent) {
     LOGGER.info(
         "Consuming progress for"
             + " Topic: {}, partition {} , consumed {}% of {} records. actual records delivered: {}, records skipped: {}",
         targetPubSubTopic,
         targetPartitionNumber,
-        String.format("%.1f", (float) progressPercent),
+        String.format("%.1f", progressPercent),
         offsetLength,
         recordsServed,
         recordsSkipped);
@@ -338,16 +341,16 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
 
   // go through the current buffer and find the next usable message
   private boolean ableToPrepNextRow() {
-
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message;
     boolean found;
+    found = false;
+
     // buffer is already empty.
-    if (messageBuffer.isEmpty()) {
+    if (this.messageBuffer.isEmpty()) {
       return false;
     }
 
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message;
     // look for the next viable message
-    found = false;
     while (!found) {
       try {
         message = messageBuffer.pop();
