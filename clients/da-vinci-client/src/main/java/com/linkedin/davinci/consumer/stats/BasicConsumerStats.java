@@ -24,9 +24,9 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Avg;
-import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.Max;
+import io.tehuti.metrics.stats.Rate;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -116,7 +116,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.RECORDS_CONSUMED,
-        Arrays.asList(new Avg(), new Max(), new Count()),
+        Arrays.asList(new Avg(), new Max(), new Rate()),
         baseDimensionsMap,
         baseAttributes);
 
@@ -125,7 +125,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.POLL_SUCCESS_COUNT,
-        Collections.singletonList(new Count()),
+        Collections.singletonList(new Rate()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
@@ -134,7 +134,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.POLL_FAIL_COUNT,
-        Collections.singletonList(new Count()),
+        Collections.singletonList(new Rate()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
@@ -143,7 +143,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.VERSION_SWAP_SUCCESS_COUNT,
-        Collections.singletonList(new Count()),
+        Collections.singletonList(new Rate()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
@@ -152,7 +152,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.VERSION_SWAP_FAIL_COUNT,
-        Collections.singletonList(new Count()),
+        Collections.singletonList(new Rate()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
@@ -161,7 +161,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.CHUNKED_RECORD_SUCCESS_COUNT,
-        Collections.singletonList(new Count()),
+        Collections.singletonList(new Rate()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
@@ -170,7 +170,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.CHUNKED_RECORD_FAIL_COUNT,
-        Collections.singletonList(new Count()),
+        Collections.singletonList(new Rate()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
   }
