@@ -171,7 +171,8 @@ public class RecordTransformerTest {
     when(storageEngine.getIterator(partitionId)).thenReturn(iterator);
     recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
     verify(storageEngine, never()).clearPartitionOffset(partitionId);
-    verify(storageEngine, times(1)).getIterator(partitionId);
+    verify(storageEngine).getIterator(partitionId);
+    verify(iterator).close();
   }
 
   @Test
