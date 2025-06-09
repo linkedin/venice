@@ -545,7 +545,7 @@ public class TestDeferredVersionSwapService {
     deferredVersionSwapService.startInner();
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      verify(deferredVersionSwapStats, atLeast(1)).recordDeferredVersionSwapRunawayVpjSensor();
+      verify(deferredVersionSwapStats, atLeast(1)).recordDeferredVersionSwapParentChildStatusMismatchSensor();
     });
   }
 }
