@@ -4822,4 +4822,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return (isGlobalRtDivEnabled()) ? pcs.getLatestConsumedVtOffset() : pcs.getLatestProcessedLocalVersionTopicOffset();
   }
 
+  public StorageUtilizationManager getStorageUtilizationManager() {
+    return storageUtilizationManager;
+  }
 }

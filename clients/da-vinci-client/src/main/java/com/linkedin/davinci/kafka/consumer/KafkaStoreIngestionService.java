@@ -1065,16 +1065,22 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private void scanAndCloseIdleConsumptionTasks() {
     try {
-      LOGGER.info("Number of ingestion tasks before cleaning: {}", topicNameToIngestionTaskMap.size());
+      int numberOfTasksBeforeCleaning = topicNameToIngestionTaskMap.size();
       for (Map.Entry<String, StoreIngestionTask> entry: topicNameToIngestionTaskMap.entrySet()) {
         String topicName = entry.getKey();
         StoreIngestionTask task = entry.getValue();
-        if (task.isIdleOverThreshold()) {
-          LOGGER.info("Found idle task for topic {}, shutting it down.", topicName);
+        if (task.isIdleOverThreshold() && !task.isCurrentVersion.getAsBoolean()) {
+          LOGGER.info(
+              "Found idle task for store-version: {}, which belongs to non-current version, "
+                  + "shutting down the task.",
+              topicName);
           shutdownIdleIngestionTask(topicName);
         }
       }
-      LOGGER.info("Number of active ingestion tasks after cleaning: {}", topicNameToIngestionTaskMap.size());
+      LOGGER.info(
+          "Number of active ingestion tasks before cleaning: {}, after cleaning: {}",
+          numberOfTasksBeforeCleaning,
+          topicNameToIngestionTaskMap.size());
     } catch (Exception e) {
       LOGGER.error("Error when attempting to shutdown idle store ingestion tasks", e);
     }

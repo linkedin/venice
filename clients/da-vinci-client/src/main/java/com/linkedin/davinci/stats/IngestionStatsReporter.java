@@ -32,6 +32,7 @@ import static com.linkedin.davinci.stats.IngestionStats.OFFSET_REGRESSION_DCR_ER
 import static com.linkedin.davinci.stats.IngestionStats.PRODUCER_CALLBACK_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.RECORDS_CONSUMED_METRIC_NAME;
+import static com.linkedin.davinci.stats.IngestionStats.STORAGE_QUOTA_USED;
 import static com.linkedin.davinci.stats.IngestionStats.SUBSCRIBE_ACTION_PREP_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.TIMESTAMP_REGRESSION_DCR_ERROR;
 import static com.linkedin.davinci.stats.IngestionStats.TOMBSTONE_CREATION_DCR;
@@ -82,6 +83,8 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
             this,
             () -> (double) getStats().getWriteComputeErrorCode(),
             WRITE_COMPUTE_OPERATION_FAILURE));
+
+    registerSensor(new IngestionStatsGauge(this, () -> getStats().getStorageQuotaUsed(), 0, STORAGE_QUOTA_USED));
 
     registerSensor(
         new IngestionStatsGauge(this, () -> (double) getStats().getFollowerOffsetLag(), 0, FOLLOWER_OFFSET_LAG));
