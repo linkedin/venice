@@ -965,7 +965,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public long getRocksDBStatValue(String statName) {
     readCloseRWLock.readLock().lock();
     try {
-      makeSureRocksDBIsStillOpen();
+      if (isClosed) {
+        return 0;
+      }
       return rocksDB.getLongProperty(statName);
     } catch (RocksDBException e) {
       throw new VeniceException(

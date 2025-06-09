@@ -42,6 +42,6 @@ public class StorageEngineNoOpStats implements StorageEngineStats {
 
   @Override
   public long getKeyCountEstimate() {
-    return -1;
+    return 0;
   }
 }
