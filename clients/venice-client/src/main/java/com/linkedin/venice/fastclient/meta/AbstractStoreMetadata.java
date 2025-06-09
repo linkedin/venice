@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import java.io.IOException;
@@ -20,6 +21,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,6 +34,9 @@ import org.apache.logging.log4j.Logger;
 public abstract class AbstractStoreMetadata implements StoreMetadata {
   private static final Logger LOGGER = LogManager.getLogger(AbstractStoreMetadata.class);
   private static final AtomicLong REQUEST_ID_GENERATOR = new AtomicLong();
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final String NO_REPLICA_ERROR_PREFIX = "Failed to find replica for store %s partition %d: ";
   private final ClientConfig clientConfig;
   private final InstanceHealthMonitor instanceHealthMonitor;
   protected volatile AbstractClientRoutingStrategy routingStrategy;
@@ -202,14 +207,11 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
         }
         getRequestContext.setPartitionId(partitionId);
       }
-
-      String route = getReplica(
-          requestContext.getRequestId(),
-          groupId,
-          currentVersion,
-          partitionId,
-          getRequestContext.getRouteRequestMap().keySet());
+      Set<String> excludedReplicas = getRequestContext.getRouteRequestMap().keySet();
+      long requestId = requestContext.getRequestId();
+      String route = getReplica(requestId, groupId, currentVersion, partitionId, excludedReplicas);
       if (route == null) {
+        maybeLogNoReplicaErrorDetails(partitionId, currentVersion, requestId, excludedReplicas);
         getRequestContext.addNonAvailableReplicaPartition(partitionId);
       } else {
         getRequestContext.setRoute(route);
@@ -235,10 +237,15 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
                 currentVersionFinal,
                 partitionId,
                 multiKeyRequestContext.getRoutesForPartitionMapping()
-                    .getOrDefault(Integer.valueOf(partitionId), Collections.emptySet())));
+                    .getOrDefault(partitionId, Collections.emptySet())));
         if (route == null) {
           /* If a partition doesn't have an available route then there is something wrong about or metadata and this is
            * an error */
+          maybeLogNoReplicaErrorDetails(
+              partitionId,
+              currentVersionFinal,
+              requestContext.getRequestId(),
+              multiKeyRequestContext.getRoutesForPartitionMapping().getOrDefault(partitionId, Collections.emptySet()));
           multiKeyRequestContext.addNonAvailableReplicaPartition(partitionId);
           continue;
         }
@@ -250,4 +257,35 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     throw new VeniceClientException("Unknown request type: " + requestType);
   }
 
+  private void maybeLogNoReplicaErrorDetails(
+      int partitionId,
+      int version,
+      long requestId,
+      Set<String> excludedReplicas) {
+    String errorPrefix = String.format(NO_REPLICA_ERROR_PREFIX, storeName, partitionId);
+    if (REDUNDANT_LOGGING_FILTER.isRedundantException(errorPrefix)) {
+      // We logged the details for this store partition recently already
+      return;
+    }
+    List<String> replicas = getReplicas(version, partitionId);
+    Set<String> blockedReplicas = new HashSet<>();
+    Set<String> unhealthyReplicas = new HashSet<>();
+    for (String replica: replicas) {
+      if (instanceHealthMonitor.isInstanceBlocked(replica)) {
+        blockedReplicas.add(replica);
+      }
+      if (!instanceHealthMonitor.isInstanceHealthy(replica)) {
+        unhealthyReplicas.add(replica);
+      }
+    }
+    LOGGER.error(
+        errorPrefix
+            + "version: {}, request Id: {}, metadata replicas: {}, excluded replicas: {}, blocked replicas: {}, unhealthy replicas: {}",
+        version,
+        requestId,
+        replicas,
+        excludedReplicas,
+        blockedReplicas,
+        unhealthyReplicas);
+  }
 }
