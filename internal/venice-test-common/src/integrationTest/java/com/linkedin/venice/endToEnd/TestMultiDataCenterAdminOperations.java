@@ -52,7 +52,7 @@ public class TestMultiDataCenterAdminOperations {
   private static final Logger LOGGER = LogManager.getLogger(TestMultiDataCenterAdminOperations.class);
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
-  private static final int NUMBER_OF_CLUSTERS = 2;
+  private static final int NUMBER_OF_CLUSTERS = 3;
 
   // Do not use venice-cluster1 as it is used for testing failed admin messages
   private static final String[] CLUSTER_NAMES =
@@ -216,7 +216,7 @@ public class TestMultiDataCenterAdminOperations {
   @Test(timeOut = 2 * TEST_TIMEOUT)
   public void testFailedAdminMessageWhenBadSemanticIsDetected() {
     String storeName = Utils.getUniqueString("test-store");
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = CLUSTER_NAMES[2];
     VeniceControllerWrapper parentController =
         multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
     ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
