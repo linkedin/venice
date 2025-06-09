@@ -637,7 +637,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
         // Validate message before acquiring execution id
         int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
-        AdminOperationSerializer.validate(message, writerSchemaId);
 
         // Acquire execution id, any exception thrown after this point will result to a missing execution id.
         AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
@@ -645,6 +644,7 @@ public class VeniceParentHelixAdmin implements Admin {
             adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
         message.executionId = execution.getExecutionId();
         VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
+        AdminOperationSerializer.validate(message, writerSchemaId);
         byte[] serializedValue = adminOperationSerializer.serialize(message, writerSchemaId);
         try {
           Future<PubSubProduceResult> future = veniceWriter.put(emptyKeyByteArr, serializedValue, writerSchemaId);
