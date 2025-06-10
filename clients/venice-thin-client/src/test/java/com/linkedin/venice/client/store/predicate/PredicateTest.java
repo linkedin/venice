@@ -518,4 +518,128 @@ public class PredicateTest {
     assertTrue(bucket2.evaluate(recordAtBucketStart), "Record with value at bucket start should be in the bucket");
     assertFalse(bucket2.evaluate(recordAtBucketEnd), "Record with value at bucket end should not be in the bucket");
   }
+
+  @Test
+  public void testFloatPredicates() {
+    float epsilon = 1e-6f;
+
+    // Basic equality with epsilon
+    assertTrue(FloatPredicate.equalTo(1.0f, epsilon).evaluate(1.0f));
+    assertTrue(FloatPredicate.equalTo(1.0f, epsilon).evaluate(1.0f + epsilon / 2));
+    assertFalse(FloatPredicate.equalTo(1.0f, epsilon).evaluate(1.0f + epsilon * 2));
+
+    // Basic comparisons
+    assertTrue(FloatPredicate.greaterThan(1.0f).evaluate(2.0f));
+    assertFalse(FloatPredicate.greaterThan(1.0f).evaluate(1.0f));
+
+    assertTrue(FloatPredicate.greaterOrEquals(1.0f).evaluate(1.0f));
+    assertFalse(FloatPredicate.greaterOrEquals(2.0f).evaluate(1.0f));
+
+    assertTrue(FloatPredicate.lowerThan(2.0f).evaluate(1.0f));
+    assertFalse(FloatPredicate.lowerThan(1.0f).evaluate(1.0f));
+
+    assertTrue(FloatPredicate.lowerOrEquals(1.0f).evaluate(1.0f));
+    assertFalse(FloatPredicate.lowerOrEquals(1.0f).evaluate(2.0f));
+
+    // AnyOf predicate
+    FloatPredicate anyOf = FloatPredicate.anyOf(3.0f, 5.0f, 10.0f);
+    assertFalse(anyOf.evaluate(1.0f));
+    assertFalse(anyOf.evaluate(2.0f));
+    assertTrue(anyOf.evaluate(3.0f));
+    assertFalse(anyOf.evaluate(4.0f));
+    assertTrue(anyOf.evaluate(5.0f));
+    assertFalse(anyOf.evaluate(6.0f));
+    assertFalse(anyOf.evaluate(7.0f));
+    assertFalse(anyOf.evaluate(8.0f));
+    assertFalse(anyOf.evaluate(9.0f));
+    assertTrue(anyOf.evaluate(10.0f));
+    assertFalse(anyOf.evaluate(11.0f));
+
+    // Special values tests
+    assertTrue(FloatPredicate.equalTo(Float.NaN, epsilon).evaluate(Float.NaN));
+    assertTrue(FloatPredicate.equalTo(Float.POSITIVE_INFINITY, epsilon).evaluate(Float.POSITIVE_INFINITY));
+    assertTrue(FloatPredicate.equalTo(Float.NEGATIVE_INFINITY, epsilon).evaluate(Float.NEGATIVE_INFINITY));
+
+    // Null handling
+    assertFalse(FloatPredicate.equalTo(1.0f, epsilon).evaluate(null));
+    assertFalse(FloatPredicate.greaterThan(1.0f).evaluate(null));
+    assertFalse(FloatPredicate.anyOf(1.0f, 2.0f).evaluate(null));
+
+    // Composition tests
+    Predicate<Float> betweenPredicate =
+        Predicate.and(FloatPredicate.greaterThan(1.0f), FloatPredicate.lowerOrEquals(3.0f));
+    assertFalse(betweenPredicate.evaluate(1.0f));
+    assertTrue(betweenPredicate.evaluate(2.0f));
+    assertTrue(betweenPredicate.evaluate(3.0f));
+    assertFalse(betweenPredicate.evaluate(4.0f));
+
+    Predicate<Float> outsideRangePredicate =
+        Predicate.or(FloatPredicate.lowerThan(1.0f), FloatPredicate.greaterThan(3.0f));
+    assertTrue(outsideRangePredicate.evaluate(0.5f));
+    assertFalse(outsideRangePredicate.evaluate(1.5f));
+    assertFalse(outsideRangePredicate.evaluate(2.5f));
+    assertTrue(outsideRangePredicate.evaluate(3.5f));
+  }
+
+  @Test
+  public void testDoublePredicates() {
+    double epsilon = 1e-15;
+
+    // Basic equality with epsilon
+    assertTrue(DoublePredicate.equalTo(1.0, epsilon).evaluate(1.0));
+    assertTrue(DoublePredicate.equalTo(1.0, epsilon).evaluate(1.0 + epsilon / 2));
+    assertFalse(DoublePredicate.equalTo(1.0, epsilon).evaluate(1.0 + epsilon * 2));
+
+    // Basic comparisons
+    assertTrue(DoublePredicate.greaterThan(1.0).evaluate(2.0));
+    assertFalse(DoublePredicate.greaterThan(1.0).evaluate(1.0));
+
+    assertTrue(DoublePredicate.greaterOrEquals(1.0).evaluate(1.0));
+    assertFalse(DoublePredicate.greaterOrEquals(2.0).evaluate(1.0));
+
+    assertTrue(DoublePredicate.lowerThan(2.0).evaluate(1.0));
+    assertFalse(DoublePredicate.lowerThan(1.0).evaluate(1.0));
+
+    assertTrue(DoublePredicate.lowerOrEquals(1.0).evaluate(1.0));
+    assertFalse(DoublePredicate.lowerOrEquals(1.0).evaluate(2.0));
+
+    // AnyOf predicate
+    DoublePredicate anyOf = DoublePredicate.anyOf(3.0, 5.0, 10.0);
+    assertFalse(anyOf.evaluate(1.0));
+    assertFalse(anyOf.evaluate(2.0));
+    assertTrue(anyOf.evaluate(3.0));
+    assertFalse(anyOf.evaluate(4.0));
+    assertTrue(anyOf.evaluate(5.0));
+    assertFalse(anyOf.evaluate(6.0));
+    assertFalse(anyOf.evaluate(7.0));
+    assertFalse(anyOf.evaluate(8.0));
+    assertFalse(anyOf.evaluate(9.0));
+    assertTrue(anyOf.evaluate(10.0));
+    assertFalse(anyOf.evaluate(11.0));
+
+    // Special values tests
+    assertTrue(DoublePredicate.equalTo(Double.NaN, epsilon).evaluate(Double.NaN));
+    assertTrue(DoublePredicate.equalTo(Double.POSITIVE_INFINITY, epsilon).evaluate(Double.POSITIVE_INFINITY));
+    assertTrue(DoublePredicate.equalTo(Double.NEGATIVE_INFINITY, epsilon).evaluate(Double.NEGATIVE_INFINITY));
+
+    // Null handling
+    assertFalse(DoublePredicate.equalTo(1.0, epsilon).evaluate(null));
+    assertFalse(DoublePredicate.greaterThan(1.0).evaluate(null));
+    assertFalse(DoublePredicate.anyOf(1.0, 2.0).evaluate(null));
+
+    // Composition tests
+    Predicate<Double> betweenPredicate =
+        Predicate.and(DoublePredicate.greaterThan(1.0), DoublePredicate.lowerOrEquals(3.0));
+    assertFalse(betweenPredicate.evaluate(1.0));
+    assertTrue(betweenPredicate.evaluate(2.0));
+    assertTrue(betweenPredicate.evaluate(3.0));
+    assertFalse(betweenPredicate.evaluate(4.0));
+
+    Predicate<Double> outsideRangePredicate =
+        Predicate.or(DoublePredicate.lowerThan(1.0), DoublePredicate.greaterThan(3.0));
+    assertTrue(outsideRangePredicate.evaluate(0.5));
+    assertFalse(outsideRangePredicate.evaluate(1.5));
+    assertFalse(outsideRangePredicate.evaluate(2.5));
+    assertTrue(outsideRangePredicate.evaluate(3.5));
+  }
 }
