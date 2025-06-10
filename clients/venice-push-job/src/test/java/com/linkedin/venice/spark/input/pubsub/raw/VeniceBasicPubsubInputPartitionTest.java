@@ -6,6 +6,11 @@ import static org.testng.Assert.*;
 
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -66,5 +71,40 @@ public class VeniceBasicPubsubInputPartitionTest {
   @Test
   public void testGetEndOffset() {
     assertEquals(inputPartition.getEndOffset(), END_OFFSET, "End offset should match the value from end position");
+  }
+
+  @Test
+  public void testSerializability() throws IOException, ClassNotFoundException {
+    // Serialize the object
+    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+    try (ObjectOutputStream objectOutputStream = new ObjectOutputStream(byteArrayOutputStream)) {
+      objectOutputStream.writeObject(inputPartition);
+    }
+
+    // Deserialize the object
+    ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(byteArrayOutputStream.toByteArray());
+    VeniceBasicPubsubInputPartition deserializedPartition;
+    try (ObjectInputStream objectInputStream = new ObjectInputStream(byteArrayInputStream)) {
+      deserializedPartition = (VeniceBasicPubsubInputPartition) objectInputStream.readObject();
+    }
+
+    // Verify all properties are preserved
+    assertEquals(deserializedPartition.getRegion(), REGION, "Region should be preserved after serialization");
+    assertEquals(
+        deserializedPartition.getTopicName(),
+        TOPIC_NAME,
+        "Topic name should be preserved after serialization");
+    assertEquals(
+        deserializedPartition.getPartitionNumber(),
+        PARTITION_NUMBER,
+        "Partition number should be preserved after serialization");
+    assertEquals(
+        deserializedPartition.getStartOffset(),
+        START_OFFSET,
+        "Start offset should be preserved after serialization");
+    assertEquals(
+        deserializedPartition.getEndOffset(),
+        END_OFFSET,
+        "End offset should be preserved after serialization");
   }
 }
