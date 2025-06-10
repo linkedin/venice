@@ -126,12 +126,14 @@ public final class HelixUtils {
         // Data is inconsistent
         attempt++;
         LOGGER.info(
-            "dataAccessor.getChildNames() did not return the expected number of elements from path: {}\nExpected: {}, but got {}. Attempt:{}/{}.",
+            "dataAccessor.getChildNames() and dataAccessor.getChildren() did not return the same number "
+                + "of elements from path: {}\nExpected: {}, but got {}. Attempt:{}/{}.",
             path,
             expectedCount,
             children.size(),
             attempt,
             maxAttempts);
+        Utils.sleep(TimeUnit.SECONDS.toMillis((long) Math.pow(2, attempt)));
       } else {
         return children;
       }

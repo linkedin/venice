@@ -11,6 +11,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.ZkDataAccessException;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.Instance;
 import java.util.ArrayList;
@@ -150,6 +151,47 @@ public class TestHelixUtils {
     verify(mockDataAccessor, times(3)).getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
 
     assertEquals(result, TEST_CHILD_VALUES);
+  }
+
+  @Test
+  public void testGetChildrenWithNullChildrenFailsAfterRetries() {
+    doReturn(TEST_CHILD_NAMES).when(mockDataAccessor).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
+    doReturn(null).when(mockDataAccessor).getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
+
+    assertThrows(ZkDataAccessException.class, () -> {
+      HelixUtils.getChildren(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT);
+    });
+  }
+
+  @Test
+  public void testGetChildrenWithNullChildrenSucceedsAfterRetries() {
+    doReturn(TEST_CHILD_NAMES).when(mockDataAccessor).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
+    doReturn(null).doReturn(null)
+        .doReturn(TEST_CHILD_VALUES)
+        .when(mockDataAccessor)
+        .getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
+
+    List<String> result = HelixUtils.getChildren(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT);
+    assertEquals(result, TEST_CHILD_VALUES);
+  }
+
+  @Test
+  public void testGetChildrenWithNullChildrenNamesAndEmptyChildren() {
+    doReturn(null).when(mockDataAccessor).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
+    doReturn(Collections.emptyList()).when(mockDataAccessor).getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
+
+    List<String> result = HelixUtils.getChildren(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT);
+    assertEquals(result, Collections.emptyList());
+  }
+
+  @Test
+  public void testGetChildrenWithNullChildrenNamesButNonEmptyChildren() {
+    doReturn(null).when(mockDataAccessor).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
+    doReturn(TEST_CHILD_VALUES).when(mockDataAccessor).getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
+
+    assertThrows(VeniceException.class, () -> {
+      HelixUtils.getChildren(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT);
+    });
   }
 
   @Test
