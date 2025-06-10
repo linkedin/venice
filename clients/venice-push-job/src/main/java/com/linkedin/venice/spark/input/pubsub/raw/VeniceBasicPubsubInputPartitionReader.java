@@ -1,9 +1,6 @@
-package com.linkedin.venice.spark.input.table.rawPubSub;
+package com.linkedin.venice.spark.input.pubsub.raw;
 
-import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
@@ -19,8 +16,8 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.spark.input.pubsub.PubSubMessageProcessor;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.List;
@@ -30,13 +27,10 @@ import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.sql.catalyst.InternalRow;
-import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.apache.spark.sql.connector.read.PartitionReader;
-import org.jetbrains.annotations.NotNull;
 
 
 public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<InternalRow> {
-  private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
   private static final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 12;
   private static final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(5);
   private static final Long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
@@ -56,6 +50,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   private final int targetPartitionNumber;
   private final String topicName;
   private final PubSubTopic pubSubTopic;
+  private final String region;
   // this is the buffer that holds the messages that are consumed from the pubsub
   private PubSubTopicPartition targetPubSubTopicPartition = null;
   private PubSubPosition currentPosition;
@@ -63,7 +58,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   private long recordsServed = 0;
   private long recordsSkipped = 0;
   private long recordsDeliveredByGet = 0;
-  private float lastKnownProgressPercent = 0;
+  private final float lastKnownProgressPercent = 0;
 
   // the buffer that holds the relevant messages for the current partition
 
@@ -95,6 +90,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
     this.pubSubConsumer = consumer;
     this.topicName = inputPartition.getTopicName();
     this.targetPartitionNumber = inputPartition.getPartitionNumber();
+    this.region = inputPartition.getRegion();
 
     // Get topic reference
     try {
@@ -221,113 +217,15 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
             targetPartitionNumber));
   }
 
-  private InternalRow processPubSubMessageToRow(
-      @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage) {
-    // after deliberation, I think we are better off isolating further processing of the messages after they are dumped
-    // into the dataframe, Spark job can handle the rest of the processing.
-
-    // should we detect chunking on the topic ?
-
-    KafkaKey pubSubMessageKey = pubSubMessage.getKey();
-    KafkaMessageEnvelope pubSubMessageValue = pubSubMessage.getValue();
-    MessageType pubSubMessageType = MessageType.valueOf(pubSubMessageValue);
-
-    /*
-    List of fields we need in the row:  @see KAFKA_INPUT_TABLE_SCHEMA
-    1. offset ( currently a long , maybe some other complicated thing in the Northguard world)
-    2. key ( serialized key Byte[])
-    3. value ( serialized value Byte[])
-    4. partition ( int )
-    5. messageType ( put vs delete ) .getValue is the int value and gives us that. value type is also of this kind
-    6. schemaId ( for put and delete ) int
-    7. replicationMetadataPayload ByteBuffer
-    8. replicationMetadataVersionId int
-    */
-
-    // Spark row setup :
-    long offset = pubSubMessage.getOffset().getNumericOffset();
-    ByteBuffer key = ByteBuffer.wrap(pubSubMessageKey.getKey(), 0, pubSubMessageKey.getKeyLength());
-    ByteBuffer value;
-    int messageType;
-    int schemaId;
-    ByteBuffer replicationMetadataPayload;
-    int replicationMetadataVersionId;
-
-    switch (pubSubMessageType) {
-      case PUT:
-        Put put = (Put) pubSubMessageValue.payloadUnion;
-        messageType = MessageType.PUT.getValue();
-        value = put.putValue;
-        schemaId = put.schemaId; // chunking will be handled down the road in spark job.
-        replicationMetadataPayload = put.replicationMetadataPayload;
-        replicationMetadataVersionId = put.replicationMetadataVersionId;
-        break;
-      case DELETE:
-        messageType = MessageType.DELETE.getValue();
-        Delete delete = (Delete) pubSubMessageValue.payloadUnion;
-        schemaId = delete.schemaId;
-        value = EMPTY_BYTE_BUFFER;
-        replicationMetadataPayload = delete.replicationMetadataPayload;
-        replicationMetadataVersionId = delete.replicationMetadataVersionId;
-        break;
-      default:
-        messageType = -1; // this is an error condition
-        schemaId = Integer.MAX_VALUE;
-        value = EMPTY_BYTE_BUFFER;
-        replicationMetadataPayload = EMPTY_BYTE_BUFFER;
-        replicationMetadataVersionId = Integer.MAX_VALUE;
-        // we don't care about messages other than PUT and DELETE
-    }
-
-    /*
-    Dealing with chunking :
-    @link https://github.com/linkedin/venice/blob/main/clients/da-vinci-client/src/main/java/com/linkedin/davinci/storage/chunking/ChunkingUtils.java#L53
-       * 1. The top-level key is queried.
-       * 2. The top-level key's value's schema ID is checked.
-       *    a) If it is positive, then it's a full value, and is returned immediately.
-       *    b) If it is negative, then it's a {@link ChunkedValueManifest}, and we continue to the next steps.
-       * 3. The {@link ChunkedValueManifest} is deserialized, and its chunk keys are extracted.
-       * 4. Each chunk key is queried.
-       * 5. The chunks are stitched back together using the various adapter interfaces of this package,
-       *    depending on whether it is the single get or batch get/compute path that needs to re-assemble
-       *    a chunked value.
-    
-    For dumping application, we can treat this as pass-through .
-    
-           chunking code:
-        RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix =
-            splitCompositeKey(pubSubMessageKey.getKey(), messageType, getSchemaIdFromValue(pubSubMessageValue));
-        key.key = rawKeyAndChunkedKeySuffix.getRawKeyBytes();
-    
-        value.chunkedKeySuffix = rawKeyAndChunkedKeySuffix.getChunkedKeySuffixBytes();
-    */
-
-    // need to figure out task tracking in Spark Land.
-    // pack pieces of information into the Spark intermediate row, this will populate the dataframe to be read by the
-    // spark job
-    // The weirdest use of verb "GET" in heapBuffer !!!!!
-    byte[] keyBytes = new byte[key.remaining()];
-    key.get(keyBytes);
-    byte[] valueBytes = new byte[value.remaining()];
-    value.get(valueBytes);
-    byte[] replicationMetadataPayloadBytes = new byte[replicationMetadataPayload.remaining()];
-    replicationMetadataPayload.get(replicationMetadataPayloadBytes);
-
-    return new GenericInternalRow(
-        new Object[] { offset, keyBytes, valueBytes, targetPartitionNumber, messageType, schemaId,
-            replicationMetadataPayloadBytes, replicationMetadataVersionId });
+  private float getProgressPercent() {
+    return (float) ((currentPosition.getNumericOffset() - startingOffset) * 100.0 / offsetLength);
   }
 
   private void maybeLogProgress() {
     float progressPercent = getProgressPercent();
-    if (progressPercent > 10 + lastKnownProgressPercent) {
+    if (progressPercent - lastKnownProgressPercent >= 10.0) {
       logProgress(progressPercent);
-      lastKnownProgressPercent = (long) progressPercent;
     }
-  }
-
-  private float getProgressPercent() {
-    return (float) ((currentPosition.getNumericOffset() - startingOffset) * 100.0 / offsetLength);
   }
 
   private void logProgress(float progressPercent) {
@@ -379,7 +277,8 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
       }
 
       // Found a valid message - process it
-      currentRow = processPubSubMessageToRow(message);
+      currentRow = PubSubMessageProcessor.convertPubSubMessageToRow(message, region, targetPartitionNumber);
+
       recordsServed++;
       maybeLogProgress();
       return true;
