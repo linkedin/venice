@@ -833,7 +833,15 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   public long getKeyCountEstimate() {
-    return 0;
+    readCloseRWLock.readLock().lock();
+    try {
+      if (isClosed) {
+        return 0;
+      }
+      return getRocksDBStatValue("rocksdb.estimate-num-keys");
+    } finally {
+      readCloseRWLock.readLock().unlock();
+    }
   }
 
   public void deleteFilesInDirectory(String fullPath) {
@@ -965,9 +973,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public long getRocksDBStatValue(String statName) {
     readCloseRWLock.readLock().lock();
     try {
-      if (isClosed) {
-        return 0;
-      }
       return rocksDB.getLongProperty(statName);
     } catch (RocksDBException e) {
       throw new VeniceException(
