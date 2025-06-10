@@ -431,6 +431,64 @@ public class TestNettyP2PBlobTransferManager {
     Assert.assertEquals(blobSnapshotManager.getConcurrentSnapshotUsers(TEST_STORE + "_v" + TEST_VERSION, 0), 0);
   }
 
+  @Test
+  public void testGetCompletesWithTimeoutExceptionAndClosesChannel() throws Exception {
+    // Preparation:
+    GlobalChannelTrafficShapingHandler newGlobalChannelTrafficShapingHandler =
+        getGlobalChannelTrafficShapingHandlerInstance(2000000, 2000000);
+    BlobPeersDiscoveryResponse response = new BlobPeersDiscoveryResponse();
+    response.setDiscoveryResult(Collections.singletonList("localhost"));
+    doReturn(response).when(finder).discoverBlobPeers(anyString(), anyInt(), anyInt());
+
+    StoreVersionState storeVersionState = new StoreVersionState();
+    Mockito.doReturn(storeVersionState).when(storageMetadataService).getStoreVersionState(Mockito.any());
+
+    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    OffsetRecord expectOffsetRecord = new OffsetRecord(partitionStateSerializer);
+    expectOffsetRecord.setOffsetLag(1000L);
+    Mockito.doReturn(expectOffsetRecord).when(storageMetadataService).getLastOffset(Mockito.any(), Mockito.anyInt());
+
+    snapshotPreparation();
+    Mockito.doNothing().when(blobSnapshotManager).createSnapshot(anyString(), anyInt());
+
+    int port = TestUtils.getFreePort();
+    NettyFileTransferClient newClient = Mockito.spy(
+        new NettyFileTransferClient(
+            port,
+            tmpPartitionDir.toString(),
+            storageMetadataService,
+            30,
+            0, // timeout immediately
+            newGlobalChannelTrafficShapingHandler,
+            sslFactory));
+
+    P2PBlobTransferService newServer = new P2PBlobTransferService(
+        port,
+        tmpSnapshotDir.toString(),
+        20,
+        blobSnapshotManager,
+        newGlobalChannelTrafficShapingHandler,
+        sslFactory,
+        aclHandler,
+        20);
+
+    NettyP2PBlobTransferManager newManager =
+        new NettyP2PBlobTransferManager(newServer, newClient, finder, tmpPartitionDir.toString(), blobTransferStats);
+    newManager.start();
+
+    // Action
+    CompletionStage<InputStream> future =
+        newManager.get(TEST_STORE, TEST_VERSION, TEST_PARTITION, BlobTransferTableFormat.BLOCK_BASED_TABLE);
+
+    // Verify that the future completes exceptionally with a TimeoutException
+    future.whenComplete((result, throwable) -> {
+      Assert.assertNotNull(throwable);
+      Assert.assertTrue(throwable instanceof TimeoutException);
+      Assert.assertTrue(throwable.getMessage().contains("Timeout while waiting for blob transfer"));
+    });
+  }
+
   /**
    * Prepare files in the snapshot directory
    * @throws IOException
