@@ -31,7 +31,7 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
       StoragePartitionAdjustmentTrigger mode,
       StoragePartitionConfig partitionConfig);
 
-  void addStoragePartition(int partitionId);
+  void addStoragePartitionIfAbsent(int partitionId);
 
   void closePartition(int partitionId);
 

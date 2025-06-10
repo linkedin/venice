@@ -13,7 +13,6 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -67,7 +66,7 @@ public abstract class AbstractStorageEngineTest<ASE extends AbstractStorageEngin
   }
 
   public void doAddPartition(int partitionId) {
-    testStoreEngine.addStoragePartition(partitionId);
+    testStoreEngine.addStoragePartitionIfAbsent(partitionId);
   }
 
   public void doRemovePartition(int partitionId) {
@@ -119,16 +118,12 @@ public abstract class AbstractStorageEngineTest<ASE extends AbstractStorageEngin
     // add it again
     try {
       doAddPartition(partitionId);
-    } catch (StorageInitializationException e) {
-      // this should be the expected behavior.
-      return;
     } finally {
       // do clean up
       if (testStoreEngine.containsPartition(partitionId)) {
         doRemovePartition(partitionId);
       }
     }
-    Assert.fail("Adding the same partition:" + partitionId + " again did not throw any exception as expected.");
   }
 
   public void testRemovingPartitionTwice() throws Exception {

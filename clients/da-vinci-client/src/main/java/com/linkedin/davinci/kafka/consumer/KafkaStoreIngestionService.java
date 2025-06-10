@@ -480,7 +480,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
-        .setStorageEngineRepository(storageService.getStorageEngineRepository())
         .setStorageMetadataService(storageMetadataService)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
         .setSchemaRepository(schemaRepo)

@@ -21,6 +21,13 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
     this.delegate = Objects.requireNonNull(delegate);
   }
 
+  /**
+   * This setter can be used to swap the delegate which all calls get forwarded to. In this way, in cases where a
+   * storage engine needs to be closed and later on a new one needs to be re-opened, this fact can be hidden from
+   * other classes needing to hold a reference to the storage engine. At the time of writing this JavaDoc, only the
+   * {@link com.linkedin.davinci.storage.StorageService} class is tasked with managing storage engine lifecycles in
+   * this way.
+   */
   public void setDelegate(@Nonnull StorageEngine<P> delegate) {
     this.delegate = Objects.requireNonNull(delegate);
   }
@@ -58,8 +65,8 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   @Override
-  public void addStoragePartition(int partitionId) {
-    this.delegate.addStoragePartition(partitionId);
+  public void addStoragePartitionIfAbsent(int partitionId) {
+    this.delegate.addStoragePartitionIfAbsent(partitionId);
   }
 
   @Override
