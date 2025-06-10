@@ -56,8 +56,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private final DeferredVersionSwapStats deferredVersionSwapStats;
   private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
       new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
-  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER_FOR_ONGOING_AND_COMPLETED_PUSH =
-      new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(30));
   private static final Logger LOGGER = LogManager.getLogger(DeferredVersionSwapService.class);
   private static final int MAX_FETCH_STORE_FETCH_RETRY_LIMIT = 5;
   private Cache<String, Map<String, Long>> storePushCompletionTimeCache =
@@ -325,25 +323,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           logMessageIfNotRedundant(message);
           return true;
         }
-
-        // TODO remove this when we start ramping as this is meant to be a temporary log to help with debugging
-        String message = "Skipping version swap as push is still ongoing for store: " + storeName + " on version: "
-            + targetVersionNum;
-        if (!REDUNDANT_EXCEPTION_FILTER_FOR_ONGOING_AND_COMPLETED_PUSH.isRedundantException(message)) {
-          logger.info(message);
-        }
         return false;
       case PUSHED:
       case KILLED:
         return true;
     }
 
-    // TODO remove this when we start ramping as this is meant to be a temporary log to help with debugging
-    String message = "Skipping version swap for store: " + storeName + " on version: " + targetVersionNum
-        + " as version" + "swap is in terminal state: " + targetVersion.getStatus();
-    if (!REDUNDANT_EXCEPTION_FILTER_FOR_ONGOING_AND_COMPLETED_PUSH.isRedundantException(message)) {
-      logger.info(message);
-    }
     return false;
   }
 
@@ -394,9 +379,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       repository.updateStore(store);
       return false;
     } else if (numCompletedTargetRegions + numFailedTargetRegions != targetRegions.size()) {
-      String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
-          + " as push is not complete yet in target regions. num completed target regions: " + numFailedTargetRegions;
-      logMessageIfNotRedundant(message);
       return false;
     }
 
@@ -498,9 +480,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
       }
 
-      String message =
-          "Region " + nonTargetRegion + " has status " + version.getStatus() + " for topic " + kafkaTopicName;
-      logMessageIfNotRedundant(message);
       if (version.getStatus().equals(VersionStatus.PUSHED)) {
         completedNonTargetRegions.add(nonTargetRegion);
       } else if (version.getStatus().equals(ERROR) || version.getStatus().equals(VersionStatus.KILLED)) {
