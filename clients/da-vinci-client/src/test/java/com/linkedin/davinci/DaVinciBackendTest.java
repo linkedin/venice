@@ -166,17 +166,14 @@ public class DaVinciBackendTest {
   @Test
   public void testBootstrappingSubscription()
       throws IllegalAccessException, NoSuchFieldException, NoSuchMethodException, InvocationTargetException {
+    // TODO: Make this into a real backend, rather than a mock, and tear down all the reflection stuff below...
     DaVinciBackend backend = mock(DaVinciBackend.class);
     StorageService mockStorageService = mock(StorageService.class);
 
     StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
     StorageEngine storageEngine = mock(StorageEngine.class);
-    mockStorageEngineRepository.addLocalStorageEngine(storageEngine);
     String resourceName = "test_store_v1";
     when(storageEngine.getStoreVersionName()).thenReturn(resourceName);
-
-    storageEngine.addStoragePartition(0);
-    storageEngine.addStoragePartition(1);
 
     List<StorageEngine> localStorageEngines = new ArrayList<>();
     localStorageEngines.add(storageEngine);

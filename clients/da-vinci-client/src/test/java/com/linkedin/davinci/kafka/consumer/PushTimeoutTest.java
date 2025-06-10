@@ -13,6 +13,7 @@ import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -20,6 +21,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ExceptionCaptorNotifier;
+import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -58,6 +60,9 @@ public class PushTimeoutTest {
         .setPubSubTopicRepository(pubSubTopicRepository);
 
     StorageService storageService = mock(StorageService.class);
+    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(storageService)
+        .getRefCountedStorageEngine(anyString());
+
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber);
 
@@ -122,6 +127,8 @@ public class PushTimeoutTest {
         .setPubSubTopicRepository(pubSubTopicRepository);
 
     StorageService storageService = mock(StorageService.class);
+    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(storageService)
+        .getRefCountedStorageEngine(anyString());
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber);
 

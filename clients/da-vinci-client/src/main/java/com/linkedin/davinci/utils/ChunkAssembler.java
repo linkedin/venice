@@ -42,10 +42,7 @@ public abstract class ChunkAssembler {
       long recordOffset,
       VeniceCompressor compressor) {
     ByteBufferValueRecord<ByteBuffer> assembledRecord = null;
-
-    if (!bufferStorageEngine.containsPartition(pubSubTopicPartition.getPartitionNumber())) {
-      bufferStorageEngine.addStoragePartition(pubSubTopicPartition.getPartitionNumber());
-    }
+    bufferStorageEngine.addStoragePartitionIfAbsent(pubSubTopicPartition.getPartitionNumber());
     // If this is a record chunk, store the chunk and return null for processing this record
     if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
       bufferStorageEngine.put(

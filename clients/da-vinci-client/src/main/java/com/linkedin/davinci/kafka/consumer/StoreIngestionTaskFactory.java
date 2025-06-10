@@ -10,7 +10,6 @@ import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
-import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -106,7 +105,6 @@ public class StoreIngestionTaskFactory {
 
     private HeartbeatMonitoringService heartbeatMonitoringService;
     private VeniceViewWriterFactory veniceViewWriterFactory;
-    private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
     private Queue<VeniceNotifier> leaderFollowerNotifiers;
     private ReadOnlySchemaRepository schemaRepo;
@@ -187,16 +185,8 @@ public class StoreIngestionTaskFactory {
       return this.metaStoreWriter;
     }
 
-    public StorageEngineRepository getStorageEngineRepository() {
-      return storageEngineRepository;
-    }
-
     public StorageMetadataService getStorageMetadataService() {
       return storageMetadataService;
-    }
-
-    public Builder setStorageEngineRepository(StorageEngineRepository storageEngineRepository) {
-      return set(() -> this.storageEngineRepository = storageEngineRepository);
     }
 
     public Builder setStorageMetadataService(StorageMetadataService storageMetadataService) {
