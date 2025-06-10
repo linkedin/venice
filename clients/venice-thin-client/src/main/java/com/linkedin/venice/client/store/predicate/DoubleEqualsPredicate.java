@@ -11,13 +11,15 @@ public class DoubleEqualsPredicate implements DoublePredicate {
 
   @Override
   public boolean evaluate(double value) {
-    if (Double.isNaN(expectedValue) && Double.isNaN(value)) {
+    // Short-circuit exact equality first
+    if (this.expectedValue == value) {
       return true;
     }
-    if (Double.isInfinite(expectedValue) && Double.isInfinite(value)) {
-      return expectedValue == value; // Compare positive/negative infinity
+    // Handle NaN cases
+    if (Double.isNaN(value)) {
+      return Double.isNaN(expectedValue);
     }
-    return !Double.isNaN(value) && !Double.isInfinite(value) && !Double.isNaN(expectedValue)
-        && !Double.isInfinite(expectedValue) && Math.abs(value - expectedValue) <= epsilon;
+    // Only check epsilon for finite numbers
+    return Math.abs(value - expectedValue) <= epsilon;
   }
 }

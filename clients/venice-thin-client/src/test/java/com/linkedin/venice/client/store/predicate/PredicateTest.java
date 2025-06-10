@@ -642,4 +642,74 @@ public class PredicateTest {
     assertFalse(outsideRangePredicate.evaluate(2.5));
     assertTrue(outsideRangePredicate.evaluate(3.5));
   }
+
+  @Test
+  public void testFloatDoublePredicatesEdgeCases() {
+    float fepsilon = 1e-6f;
+    double depsilon = 1e-15;
+
+    // Test NaN equality with different NaN representations
+    assertTrue(FloatPredicate.equalTo(Float.NaN, fepsilon).evaluate(Float.NaN));
+    assertTrue(FloatPredicate.equalTo(-Float.NaN, fepsilon).evaluate(Float.NaN));
+    assertTrue(FloatPredicate.equalTo(Float.NaN, fepsilon).evaluate(-Float.NaN));
+
+    assertTrue(DoublePredicate.equalTo(Double.NaN, depsilon).evaluate(Double.NaN));
+    assertTrue(DoublePredicate.equalTo(-Double.NaN, depsilon).evaluate(Double.NaN));
+    assertTrue(DoublePredicate.equalTo(Double.NaN, depsilon).evaluate(-Double.NaN));
+
+    // Test infinity comparisons
+    assertTrue(FloatPredicate.equalTo(Float.POSITIVE_INFINITY, fepsilon).evaluate(Float.POSITIVE_INFINITY));
+    assertTrue(FloatPredicate.equalTo(Float.NEGATIVE_INFINITY, fepsilon).evaluate(Float.NEGATIVE_INFINITY));
+    assertFalse(FloatPredicate.equalTo(Float.POSITIVE_INFINITY, fepsilon).evaluate(Float.NEGATIVE_INFINITY));
+    assertFalse(FloatPredicate.equalTo(Float.NEGATIVE_INFINITY, fepsilon).evaluate(Float.POSITIVE_INFINITY));
+
+    assertTrue(DoublePredicate.equalTo(Double.POSITIVE_INFINITY, depsilon).evaluate(Double.POSITIVE_INFINITY));
+    assertTrue(DoublePredicate.equalTo(Double.NEGATIVE_INFINITY, depsilon).evaluate(Double.NEGATIVE_INFINITY));
+    assertFalse(DoublePredicate.equalTo(Double.POSITIVE_INFINITY, depsilon).evaluate(Double.NEGATIVE_INFINITY));
+    assertFalse(DoublePredicate.equalTo(Double.NEGATIVE_INFINITY, depsilon).evaluate(Double.POSITIVE_INFINITY));
+
+    // Test mixed infinity and finite number comparisons
+    assertFalse(FloatPredicate.equalTo(Float.POSITIVE_INFINITY, fepsilon).evaluate(Float.MAX_VALUE));
+    assertFalse(FloatPredicate.equalTo(Float.NEGATIVE_INFINITY, fepsilon).evaluate(-Float.MAX_VALUE));
+    assertFalse(FloatPredicate.equalTo(Float.MAX_VALUE, fepsilon).evaluate(Float.POSITIVE_INFINITY));
+    assertFalse(FloatPredicate.equalTo(-Float.MAX_VALUE, fepsilon).evaluate(Float.NEGATIVE_INFINITY));
+
+    assertFalse(DoublePredicate.equalTo(Double.POSITIVE_INFINITY, depsilon).evaluate(Double.MAX_VALUE));
+    assertFalse(DoublePredicate.equalTo(Double.NEGATIVE_INFINITY, depsilon).evaluate(-Double.MAX_VALUE));
+    assertFalse(DoublePredicate.equalTo(Double.MAX_VALUE, depsilon).evaluate(Double.POSITIVE_INFINITY));
+    assertFalse(DoublePredicate.equalTo(-Double.MAX_VALUE, depsilon).evaluate(Double.NEGATIVE_INFINITY));
+
+    // Test NaN with infinity comparisons
+    assertFalse(FloatPredicate.equalTo(Float.NaN, fepsilon).evaluate(Float.POSITIVE_INFINITY));
+    assertFalse(FloatPredicate.equalTo(Float.NaN, fepsilon).evaluate(Float.NEGATIVE_INFINITY));
+    assertFalse(FloatPredicate.equalTo(Float.POSITIVE_INFINITY, fepsilon).evaluate(Float.NaN));
+    assertFalse(FloatPredicate.equalTo(Float.NEGATIVE_INFINITY, fepsilon).evaluate(Float.NaN));
+
+    assertFalse(DoublePredicate.equalTo(Double.NaN, depsilon).evaluate(Double.POSITIVE_INFINITY));
+    assertFalse(DoublePredicate.equalTo(Double.NaN, depsilon).evaluate(Double.NEGATIVE_INFINITY));
+    assertFalse(DoublePredicate.equalTo(Double.POSITIVE_INFINITY, depsilon).evaluate(Double.NaN));
+    assertFalse(DoublePredicate.equalTo(Double.NEGATIVE_INFINITY, depsilon).evaluate(Double.NaN));
+
+    // Test epsilon behavior near special values
+    assertFalse(FloatPredicate.equalTo(Float.MAX_VALUE, fepsilon).evaluate(Float.POSITIVE_INFINITY));
+    assertFalse(FloatPredicate.equalTo(-Float.MAX_VALUE, fepsilon).evaluate(Float.NEGATIVE_INFINITY));
+
+    assertFalse(DoublePredicate.equalTo(Double.MAX_VALUE, depsilon).evaluate(Double.POSITIVE_INFINITY));
+    assertFalse(DoublePredicate.equalTo(-Double.MAX_VALUE, depsilon).evaluate(Double.NEGATIVE_INFINITY));
+
+    // Test exact equality vs epsilon equality
+    float f1 = 1.0f;
+    float f2 = 1.0f;
+    float f3 = Float.intBitsToFloat(Float.floatToIntBits(1.0f) + 1); // Next representable float after 1.0
+
+    double d1 = 1.0;
+    double d2 = 1.0;
+    double d3 = Double.longBitsToDouble(Double.doubleToLongBits(1.0) + 1); // Next representable double after 1.0
+
+    assertTrue(FloatPredicate.equalTo(f1, fepsilon).evaluate(f2)); // Exact equality
+    assertTrue(FloatPredicate.equalTo(f1, fepsilon).evaluate(f3)); // Within epsilon
+
+    assertTrue(DoublePredicate.equalTo(d1, depsilon).evaluate(d2)); // Exact equality
+    assertTrue(DoublePredicate.equalTo(d1, depsilon).evaluate(d3)); // Within epsilon
+  }
 }

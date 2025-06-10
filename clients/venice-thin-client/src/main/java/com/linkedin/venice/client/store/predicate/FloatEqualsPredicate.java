@@ -11,13 +11,15 @@ public class FloatEqualsPredicate implements FloatPredicate {
 
   @Override
   public boolean evaluate(float value) {
-    if (Float.isNaN(expectedValue) && Float.isNaN(value)) {
+    // Short-circuit exact equality first
+    if (this.expectedValue == value) {
       return true;
     }
-    if (Float.isInfinite(expectedValue) && Float.isInfinite(value)) {
-      return expectedValue == value; // Compare positive/negative infinity
+    // Handle NaN cases
+    if (Float.isNaN(value)) {
+      return Float.isNaN(expectedValue);
     }
-    return !Float.isNaN(value) && !Float.isInfinite(value) && !Float.isNaN(expectedValue)
-        && !Float.isInfinite(expectedValue) && Math.abs(value - expectedValue) <= epsilon;
+    // Only check epsilon for finite numbers
+    return Math.abs(value - expectedValue) <= epsilon;
   }
 }
