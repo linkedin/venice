@@ -39,6 +39,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -53,6 +54,7 @@ public class NettyFileTransferClient {
   Bootstrap clientBootstrap;
   private final String baseDir;
   private final int serverPort;
+  private final int blobReceiveTimeoutInMin; // the timeout for receiving the blob file in minutes
   private final int peersConnectivityFreshnessInSeconds; // the freshness of the peers connectivity records
   private StorageMetadataService storageMetadataService;
   private final ExecutorService hostConnectExecutorService;
@@ -71,12 +73,14 @@ public class NettyFileTransferClient {
       String baseDir,
       StorageMetadataService storageMetadataService,
       int peersConnectivityFreshnessInSeconds,
+      int blobReceiveTimeoutInMin,
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
       Optional<SSLFactory> sslFactory) {
     this.baseDir = baseDir;
     this.serverPort = serverPort;
     this.storageMetadataService = storageMetadataService;
     this.peersConnectivityFreshnessInSeconds = peersConnectivityFreshnessInSeconds;
+    this.blobReceiveTimeoutInMin = blobReceiveTimeoutInMin;
 
     clientBootstrap = new Bootstrap();
     workerGroup = new NioEventLoopGroup();
@@ -283,6 +287,23 @@ public class NettyFileTransferClient {
                   requestedTableFormat));
       // Send a GET request
       ch.writeAndFlush(prepareRequest(storeName, version, partition, requestedTableFormat));
+
+      // Set a timeout, otherwise if the host is not responding, the future will never complete
+      connectTimeoutScheduler.schedule(() -> {
+        if (!inputStream.toCompletableFuture().isDone()) {
+          String errorMsg = String.format(
+              "Request timed out for store %s version %d partition %d table format %s from host %s after %d minutes",
+              storeName,
+              version,
+              partition,
+              requestedTableFormat,
+              host,
+              blobReceiveTimeoutInMin);
+          inputStream.toCompletableFuture().completeExceptionally(new TimeoutException(errorMsg));
+
+          ch.close(); // Close the channel if the request times out
+        }
+      }, blobReceiveTimeoutInMin, TimeUnit.MINUTES);
     } catch (Exception e) {
       if (!inputStream.toCompletableFuture().isCompletedExceptionally()) {
         inputStream.toCompletableFuture().completeExceptionally(e);
