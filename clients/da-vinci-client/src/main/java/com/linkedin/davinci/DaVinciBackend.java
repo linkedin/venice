@@ -116,6 +116,7 @@ public class DaVinciBackend implements Closeable {
   private BlobTransferManager<Void> blobTransferManager;
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   private final boolean writeBatchingPushStatus;
+  private final DaVinciRecordTransformerConfig recordTransformerConfig;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -128,6 +129,7 @@ public class DaVinciBackend implements Closeable {
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
 
+      this.recordTransformerConfig = recordTransformerConfig;
       if (backendConfig.isDatabaseChecksumVerificationEnabled() && recordTransformerConfig != null) {
         // The checksum verification will fail because DVRT transforms the values
         throw new VeniceException("DaVinciRecordTransformer cannot be used with database checksum verification.");
@@ -885,5 +887,9 @@ public class DaVinciBackend implements Closeable {
     public CompletableFuture<Void> getBootstrappingFuture() {
       return bootstrappingFuture;
     }
+  }
+
+  public DaVinciRecordTransformerConfig getRecordTransformerConfig() {
+    return recordTransformerConfig;
   }
 }

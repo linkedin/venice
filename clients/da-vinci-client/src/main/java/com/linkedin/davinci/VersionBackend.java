@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.notifier.DaVinciPushStatusUpdateTask;
@@ -36,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -71,6 +73,7 @@ public class VersionBackend {
       new VeniceConcurrentHashMap<>();
   private final Map<Integer, Boolean> partitionToBatchReportEOIPEnabled = new VeniceConcurrentHashMap<>();
   private final boolean batchReportEOIPStatusEnabled;
+  private final DaVinciRecordTransformerConfig recordTransformerConfig;
 
   /*
    * if daVinciPushStatusStoreEnabled, VersionBackend will schedule a periodic job sending heartbeats
@@ -126,6 +129,8 @@ public class VersionBackend {
     } else {
       this.daVinciPushStatusUpdateTask = null;
     }
+
+    this.recordTransformerConfig = backend.getRecordTransformerConfig();
   }
 
   synchronized void close() {
@@ -362,13 +367,25 @@ public class VersionBackend {
     List<Integer> partitionList = getPartitions(partitions);
     LOGGER.info("Subscribing to partitions {} of {}", partitionList, this);
     List<CompletableFuture<Void>> futures = new ArrayList<>(partitionList.size());
+
+    if (recordTransformerConfig != null) {
+      CountDownLatch recordTransformerStartConsumptionLatch = new CountDownLatch(partitionList.size());
+      recordTransformerConfig.setStartConsumptionLatch(recordTransformerStartConsumptionLatch);
+    }
+
     for (int partition: partitionList) {
       StorageEngine engine = storageEngine.get();
       if (partitionFutures.containsKey(partition)) {
         LOGGER.info("Partition {} of {}  is subscribed, ignoring subscribe request.", partition, this);
+        if (recordTransformerConfig != null) {
+          recordTransformerConfig.getStartConsumptionLatch().countDown();
+        }
       } else if (suppressLiveUpdates && engine != null && engine.containsPartition(partition)) {
         // If live update suppression is enabled and local data exists, don't start ingestion and report ready to serve.
         partitionFutures.computeIfAbsent(partition, k -> CompletableFuture.completedFuture(null));
+        if (recordTransformerConfig != null) {
+          recordTransformerConfig.getStartConsumptionLatch().countDown();
+        }
       } else {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
         // AtomicReference of storage engine will be updated internally.

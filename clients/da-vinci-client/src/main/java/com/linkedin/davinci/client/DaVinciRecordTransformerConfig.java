@@ -3,6 +3,7 @@ package com.linkedin.davinci.client;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 
@@ -20,6 +21,7 @@ public class DaVinciRecordTransformerConfig {
   private final boolean skipCompatibilityChecks;
   private final boolean useSpecificRecordKeyDeserializer;
   private final boolean useSpecificRecordValueDeserializer;
+  private CountDownLatch startConsumptionLatch;
 
   public DaVinciRecordTransformerConfig(Builder builder) {
     this.recordTransformerFunction = Optional.ofNullable(builder.recordTransformerFunction)
@@ -40,6 +42,8 @@ public class DaVinciRecordTransformerConfig {
     this.storeRecordsInDaVinci = builder.storeRecordsInDaVinci;
     this.alwaysBootstrapFromVersionTopic = builder.alwaysBootstrapFromVersionTopic;
     this.skipCompatibilityChecks = builder.skipCompatibilityChecks;
+    // Default is to not block consumption
+    this.startConsumptionLatch = new CountDownLatch(0);
   }
 
   /**
@@ -103,6 +107,20 @@ public class DaVinciRecordTransformerConfig {
    */
   public boolean shouldSkipCompatibilityChecks() {
     return skipCompatibilityChecks;
+  }
+
+  /**
+   * @return {@link #startConsumptionLatch}
+   */
+  public CountDownLatch getStartConsumptionLatch() {
+    return startConsumptionLatch;
+  }
+
+  /**
+   * @param startConsumptionLatch the latch used for when we need to finish scanning every RocksDB partition before remote consumption.
+   */
+  public void setStartConsumptionLatch(CountDownLatch startConsumptionLatch) {
+    this.startConsumptionLatch = startConsumptionLatch;
   }
 
   public static class Builder {

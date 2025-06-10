@@ -361,6 +361,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final RecordDeserializer recordTransformerKeyDeserializer;
   private final Map<Integer, Schema> schemaIdToSchemaMap;
   private BlockingDaVinciRecordTransformer recordTransformer;
+  private AtomicBoolean recordTransformerOnRecoveryFailure;
+  private CountDownLatch recordTransformerStartConsumptionLatch;
+  private ExecutorService recordTransformerOnRecoveryThreadPool;
 
   protected final String localKafkaServer;
   protected final int localKafkaClusterId;
@@ -557,6 +560,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           this.recordTransformerInputValueSchema,
           outputValueSchema,
           recordTransformerConfig);
+      this.recordTransformerOnRecoveryFailure = new AtomicBoolean(false);
+      this.recordTransformerStartConsumptionLatch = recordTransformerConfig.getStartConsumptionLatch();
+      // ToDo make this configurable
+      this.recordTransformerOnRecoveryThreadPool = Executors.newFixedThreadPool(8);
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
       daVinciRecordTransformerStats = builder.getDaVinciRecordTransformerStats();
@@ -716,7 +723,27 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
         .incrementAndGet();
     pendingSubscriptionActionCount.incrementAndGet();
-    consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
+
+    if (recordTransformer != null) {
+      recordTransformerOnRecoveryThreadPool.submit(() -> {
+        try {
+          long startTime = System.nanoTime();
+          recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
+          LOGGER.info(
+              "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
+              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+              getReplicaId(topicPartition));
+
+          recordTransformerStartConsumptionLatch.countDown();
+          consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
+        } catch (Exception e) {
+          LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {}", getReplicaId(topicPartition), e);
+          recordTransformerOnRecoveryFailure.set(true);
+        }
+      });
+    } else {
+      consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
+    }
   }
 
   public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
@@ -1642,16 +1669,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       Store store = null;
       while (isRunning()) {
+        boolean readyToProcessConsumerActions = false;
+        if (recordTransformer != null) {
+          if (recordTransformerOnRecoveryFailure.get()) {
+            throw new VeniceException("DaVinciRecordTransformer onRecovery failed. Killing SIT");
+          } else if (recordTransformerStartConsumptionLatch.getCount() == 0) {
+            readyToProcessConsumerActions = true;
+          }
+        } else {
+          readyToProcessConsumerActions = true;
+        }
+
         if (!skipAfterBatchPushUnsubEnabled) {
           store = storeRepository.getStoreOrThrow(storeName);
           refreshIngestionContextIfChanged(store);
-          processConsumerActions(store);
+          if (readyToProcessConsumerActions) {
+            processConsumerActions(store);
+          }
           checkLongRunningTaskState();
           checkIngestionProgress(store);
           maybeSendIngestionHeartbeat();
           mayResumeRecordLevelMetricsForCurrentVersion();
         } else {
-          processConsumerActions(store);
+          if (readyToProcessConsumerActions) {
+            processConsumerActions(store);
+          }
           checkIngestionProgress(store);
         }
       }
@@ -2148,15 +2190,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Drain the buffered message by last subscription.
         storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
         subscribedCount++;
-
-        if (recordTransformer != null) {
-          long startTime = System.nanoTime();
-          recordTransformer.internalOnRecovery(storageEngine, partition, partitionStateSerializer, compressor);
-          LOGGER.info(
-              "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
-              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-              getReplicaId(topic, partition));
-        }
 
         // Get the last persisted Offset record from metadata service
         OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition);
