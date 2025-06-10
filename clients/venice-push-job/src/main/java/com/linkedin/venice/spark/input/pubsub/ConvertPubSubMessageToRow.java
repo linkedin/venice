@@ -17,17 +17,25 @@ import org.jetbrains.annotations.NotNull;
 
 
 /**
- * Utility class for processing PubSub messages
+ * Converts a PubSub message to a Spark InternalRow.
+ *
+ * @param pubSubMessage The PubSub message to process. Contains key, value, and metadata.
+ * @param region The region identifier to include in the row.
+ * @param partitionNumber The partition number to include in the row.
+ * @return An InternalRow containing the processed message data.
+ *         The row includes the following fields:
+ *         1. Region (String)
+ *         2. Partition number (int)
+ *         3. Message type (int)
+ *         4. Offset (long)
+ *         5. Schema ID (int)
+ *         6. Key bytes (byte[])
+ *         7. Value bytes (byte[])
+ *         8. Replication metadata payload bytes (byte[])
+ *         9. Replication metadata version ID (int)
+ *         See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
  */
-public class PubSubMessageProcessor {
-  /**
-   * Converts a PubSub message to a Spark InternalRow
-   *
-   * @param pubSubMessage the message to process
-   * @param emptyByteBuffer a pre-allocated empty ByteBuffer to use when needed
-   * @param partitionNumber the partition number to include in the row
-   * @return an InternalRow containing the processed message data
-   */
+public class ConvertPubSubMessageToRow {
   private static final Logger LOGGER = LogManager.getLogger(VeniceBasicPubsubInputPartitionReader.class);
   private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
 
@@ -35,26 +43,10 @@ public class PubSubMessageProcessor {
       @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage,
       String region,
       int partitionNumber) {
-    // after deliberation, I think we are better off isolating further processing of the messages after they are dumped
-    // into the dataframe, Spark job can handle the rest of the processing.
-
-    // should we detect chunking on the topic ?
 
     KafkaKey pubSubMessageKey = pubSubMessage.getKey();
     KafkaMessageEnvelope pubSubMessageValue = pubSubMessage.getValue();
     MessageType pubSubMessageType = MessageType.valueOf(pubSubMessageValue);
-
-    /*
-    List of fields we need in the row:  @see KAFKA_INPUT_TABLE_SCHEMA
-    1. offset ( currently a long , maybe some other complicated thing in the Northguard world)
-    2. key ( serialized key Byte[])
-    3. value ( serialized value Byte[])
-    4. partition ( int )
-    5. messageType ( put vs delete ) .getValue is the int value and gives us that. value type is also of this kind
-    6. schemaId ( for put and delete ) int
-    7. replicationMetadataPayload ByteBuffer
-    8. replicationMetadataVersionId int
-    */
 
     // Spark row setup :
     long offset = pubSubMessage.getOffset().getNumericOffset();
@@ -104,7 +96,7 @@ public class PubSubMessageProcessor {
     replicationMetadataPayload.get(replicationMetadataPayloadBytes);
 
     return new GenericInternalRow(
-        new Object[] { region, partitionNumber, messageType, offset, schemaId, keyBytes, valueBytes });
-    // , replicationMetadataPayloadBytes, replicationMetadataVersionId });
+        new Object[] { region, partitionNumber, messageType, offset, schemaId, keyBytes, valueBytes,
+            replicationMetadataPayloadBytes, replicationMetadataVersionId });
   }
 }
