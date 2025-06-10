@@ -228,9 +228,9 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
 
     // should we detect chunking on the topic ?
 
-    KafkaKey kafkaKey = pubSubMessage.getKey();
-    KafkaMessageEnvelope kafkaMessageEnvelope = pubSubMessage.getValue();
-    MessageType pubSubMessageType = MessageType.valueOf(kafkaMessageEnvelope);
+    KafkaKey pubSubMessageKey = pubSubMessage.getKey();
+    KafkaMessageEnvelope pubSubMessageValue = pubSubMessage.getValue();
+    MessageType pubSubMessageType = MessageType.valueOf(pubSubMessageValue);
 
     /*
     List of fields we need in the row:  @see KAFKA_INPUT_TABLE_SCHEMA
@@ -246,7 +246,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
 
     // Spark row setup :
     long offset = pubSubMessage.getOffset().getNumericOffset();
-    ByteBuffer key = ByteBuffer.wrap(kafkaKey.getKey(), 0, kafkaKey.getKeyLength());
+    ByteBuffer key = ByteBuffer.wrap(pubSubMessageKey.getKey(), 0, pubSubMessageKey.getKeyLength());
     ByteBuffer value;
     int messageType;
     int schemaId;
@@ -255,7 +255,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
 
     switch (pubSubMessageType) {
       case PUT:
-        Put put = (Put) kafkaMessageEnvelope.payloadUnion;
+        Put put = (Put) pubSubMessageValue.payloadUnion;
         messageType = MessageType.PUT.getValue();
         value = put.putValue;
         schemaId = put.schemaId; // chunking will be handled down the road in spark job.
@@ -264,7 +264,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
         break;
       case DELETE:
         messageType = MessageType.DELETE.getValue();
-        Delete delete = (Delete) kafkaMessageEnvelope.payloadUnion;
+        Delete delete = (Delete) pubSubMessageValue.payloadUnion;
         schemaId = delete.schemaId;
         value = EMPTY_BYTE_BUFFER;
         replicationMetadataPayload = delete.replicationMetadataPayload;
@@ -296,7 +296,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
     
            chunking code:
         RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix =
-            splitCompositeKey(kafkaKey.getKey(), messageType, getSchemaIdFromValue(kafkaMessageEnvelope));
+            splitCompositeKey(pubSubMessageKey.getKey(), messageType, getSchemaIdFromValue(pubSubMessageValue));
         key.key = rawKeyAndChunkedKeySuffix.getRawKeyBytes();
     
         value.chunkedKeySuffix = rawKeyAndChunkedKeySuffix.getChunkedKeySuffixBytes();

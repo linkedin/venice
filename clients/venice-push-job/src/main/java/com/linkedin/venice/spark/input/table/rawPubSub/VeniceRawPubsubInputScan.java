@@ -73,8 +73,8 @@ public class VeniceRawPubsubInputScan implements Scan, Batch {
           // This can happen if the topic is empty or if the beginning position is equal to the end position.
           LOGGER.warn(
               "Partition " + topicPartition.getPartitionNumber() + " in topic: " + topicName
-                  + " is of length zero or negative. Will not process it. Beginning position: " + beginningPosition
-                  + ", End position: " + endPosition);
+                  + " is of length zero or negative. Will not process it. Beginning offset: " + beginningOffset
+                  + ", End offset: " + endOffset);
         } else {
 
           veniceInputPartitions
