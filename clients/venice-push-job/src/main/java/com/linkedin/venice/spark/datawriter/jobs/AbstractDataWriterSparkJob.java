@@ -72,6 +72,7 @@ import com.linkedin.venice.spark.utils.SparkScalaUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import org.apache.logging.log4j.LogManager;
@@ -366,6 +367,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     } finally {
       // No matter what, always log the final accumulator values
       logAccumulatorValues();
+      logWarningMessages();
     }
   }
 
@@ -402,12 +404,28 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     logAccumulatorValue(accumulatorsForDataWriterJob.repushTtlFilteredRecordCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.writeAclAuthorizationFailureCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.recordTooLargeFailureCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.uncompressedRecordTooLargeFailureCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.duplicateKeyWithIdenticalValueCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.duplicateKeyWithDistinctValueCounter);
   }
 
   private void logAccumulatorValue(AccumulatorV2<?, ?> accumulator) {
     LOGGER.info("  {}: {}", accumulator.name().get(), accumulator.value());
+  }
+
+  private void logWarningMessages() {
+
+    // check uncompressed record too large counter
+    Optional<Integer> maxRecordSizeBytes = props.getOptionalInt(VeniceWriter.MAX_RECORD_SIZE_BYTES);
+    if (accumulatorsForDataWriterJob.uncompressedRecordTooLargeFailureCounter.value() > 0
+        && maxRecordSizeBytes.isPresent()) {
+      LOGGER.warn(
+          "  {} records are exceeding record size limit of {} bytes before compression. jobId: {} storeName: {}",
+          accumulatorsForDataWriterJob.uncompressedRecordTooLargeFailureCounter.value(),
+          maxRecordSizeBytes.get(),
+          pushJobSetting.jobId,
+          pushJobSetting.storeName);
+    }
   }
 
   private void validateDataFrame(Dataset<Row> dataFrameForDataWriterJob) {
