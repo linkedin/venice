@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
@@ -35,7 +36,13 @@ public class LeastLoadedClientRoutingStrategyTest {
 
   public void runTest(InstanceHealthMonitor monitor, List<String> replicas, long requestId, String expectedReplica) {
     LeastLoadedClientRoutingStrategy strategy = new LeastLoadedClientRoutingStrategy(monitor);
-    String selectedReplica = strategy.getReplicas(requestId, -1, replicas);
+    List<String> filteredReplicas = new ArrayList<>();
+    for (String replica: replicas) {
+      if (monitor.isRequestAllowed(replica)) {
+        filteredReplicas.add(replica);
+      }
+    }
+    String selectedReplica = strategy.getReplicas(requestId, -1, filteredReplicas);
     assertEquals(selectedReplica, expectedReplica);
   }
 

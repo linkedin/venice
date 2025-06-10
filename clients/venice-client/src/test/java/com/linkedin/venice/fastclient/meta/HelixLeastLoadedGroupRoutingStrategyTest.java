@@ -18,7 +18,6 @@ public class HelixLeastLoadedGroupRoutingStrategyTest {
 
   @Test
   public void testGetHelixGroupId() {
-    InstanceHealthMonitor monitor = mock(InstanceHealthMonitor.class);
     HelixGroupStats stats = mock(HelixGroupStats.class);
 
     Map<String, Integer> instanceToGroupIdMapping = new HashMap<>();
@@ -26,7 +25,7 @@ public class HelixLeastLoadedGroupRoutingStrategyTest {
     instanceToGroupIdMapping.put(instance2, 1);
     instanceToGroupIdMapping.put(instance3, 2);
 
-    HelixLeastLoadedGroupRoutingStrategy strategy = new HelixLeastLoadedGroupRoutingStrategy(monitor, stats);
+    HelixLeastLoadedGroupRoutingStrategy strategy = new HelixLeastLoadedGroupRoutingStrategy(stats);
     strategy.updateHelixGroupInfo(instanceToGroupIdMapping);
 
     doReturn(-1d).when(stats).getGroupResponseWaitingTimeAvg(0);

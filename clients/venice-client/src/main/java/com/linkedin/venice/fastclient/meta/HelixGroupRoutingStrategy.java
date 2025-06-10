@@ -19,18 +19,13 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class HelixGroupRoutingStrategy extends AbstractClientRoutingStrategy {
   protected AtomicReference<HelixGroupInfo> helixGroupInfoAtomicReference = new AtomicReference<>();
-  protected final InstanceHealthMonitor instanceHealthMonitor;
   protected final HelixGroupStats helixGroupStats;
 
-  public HelixGroupRoutingStrategy(
-      InstanceHealthMonitor instanceHealthMonitor,
-      MetricsRepository metricsRepository,
-      String storeName) {
-    this(instanceHealthMonitor, new HelixGroupStats(metricsRepository, storeName));
+  public HelixGroupRoutingStrategy(MetricsRepository metricsRepository, String storeName) {
+    this(new HelixGroupStats(metricsRepository, storeName));
   }
 
-  HelixGroupRoutingStrategy(InstanceHealthMonitor instanceHealthMonitor, HelixGroupStats helixGroupStats) {
-    this.instanceHealthMonitor = instanceHealthMonitor;
+  HelixGroupRoutingStrategy(HelixGroupStats helixGroupStats) {
     this.helixGroupInfoAtomicReference.set(new HelixGroupInfo(Collections.emptyMap()));
     this.helixGroupStats = helixGroupStats;
   }
@@ -48,7 +43,7 @@ public class HelixGroupRoutingStrategy extends AbstractClientRoutingStrategy {
     for (int i = 0; i < groupCnt; i++) {
       int tmpGroupId = groupIds.get((i + groupId) % groupCnt);
       for (String replica: replicas) {
-        if (instanceToGroupIdMapping.get(replica) == tmpGroupId && instanceHealthMonitor.isRequestAllowed(replica)) {
+        if (instanceToGroupIdMapping.get(replica) == tmpGroupId) {
           return replica;
         }
       }

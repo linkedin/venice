@@ -22,15 +22,12 @@ public class HelixLeastLoadedGroupRoutingStrategy extends HelixGroupRoutingStrat
    */
   private static final double AVG_LATENCY_SPECTRUM_FOR_GROUP_SELECTION = 1.5;
 
-  public HelixLeastLoadedGroupRoutingStrategy(
-      InstanceHealthMonitor instanceHealthMonitor,
-      MetricsRepository metricsRepository,
-      String storeName) {
-    super(instanceHealthMonitor, metricsRepository, storeName);
+  public HelixLeastLoadedGroupRoutingStrategy(MetricsRepository metricsRepository, String storeName) {
+    super(metricsRepository, storeName);
   }
 
-  HelixLeastLoadedGroupRoutingStrategy(InstanceHealthMonitor monitor, HelixGroupStats helixGroupStats) {
-    super(monitor, helixGroupStats);
+  HelixLeastLoadedGroupRoutingStrategy(HelixGroupStats helixGroupStats) {
+    super(helixGroupStats);
   }
 
   /**

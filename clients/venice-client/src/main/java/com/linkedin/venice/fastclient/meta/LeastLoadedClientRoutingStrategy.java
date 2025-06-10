@@ -1,7 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
@@ -27,19 +26,7 @@ public class LeastLoadedClientRoutingStrategy extends AbstractClientRoutingStrat
     if (replicas.isEmpty()) {
       return null;
     }
-    List<String> availReplicas = new ArrayList<>();
-    /**
-     * For even distribution, we need to shuffle the replicas.
-     */
-    Collections.shuffle(replicas);
-    for (String replica: replicas) {
-      if (instanceHealthMonitor.isRequestAllowed(replica)) {
-        availReplicas.add(replica);
-      }
-    }
-    if (availReplicas.isEmpty()) {
-      return null;
-    }
+    List<String> availReplicas = new ArrayList<>(replicas);
     /**
      * TODO: maybe we can apply the response-waiting-time-based rather than pending request counter based least-loaded strategy here
      * since application QPS normally is much lower and pending request count can be very low.
