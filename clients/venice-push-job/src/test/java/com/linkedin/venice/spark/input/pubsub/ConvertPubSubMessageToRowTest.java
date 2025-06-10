@@ -15,12 +15,13 @@ import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.types.DataTypes;
 
 
-public class PubSubMessageProcessorTest {
+public class ConvertPubSubMessageToRowTest {
   @org.testng.annotations.Test
   public void testProcessMessage() {
     // Create test data
     byte[] keyBytes = "testKey".getBytes();
     byte[] valueBytes = "testValue".getBytes();
+    byte[] replicationMetadataBytes = "replicationMetadata".getBytes();
 
     // Mock the PubSubPosition
     PubSubPosition mockPosition = mock(PubSubPosition.class);
@@ -35,13 +36,12 @@ public class PubSubMessageProcessorTest {
     Put putPayload = new Put();
     putPayload.schemaId = 11;
     putPayload.putValue = ByteBuffer.wrap(valueBytes);
-    putPayload.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
-    putPayload.replicationMetadataVersionId = 1;
+    putPayload.replicationMetadataPayload = ByteBuffer.wrap(replicationMetadataBytes);
+    putPayload.replicationMetadataVersionId = 37;
 
     // Mock the KafkaMessageEnvelope
     KafkaMessageEnvelope mockEnvelope = mock(KafkaMessageEnvelope.class);
     mockEnvelope.payloadUnion = putPayload;
-    // when(MessageType.valueOf(mockEnvelope)).thenReturn(MessageType.PUT);
     when(mockEnvelope.getMessageType()).thenReturn(MessageType.PUT.getValue());
 
     // Mock the PubSubMessage
@@ -56,7 +56,7 @@ public class PubSubMessageProcessorTest {
     int partitionNumber = 5;
 
     // Call the method under test
-    InternalRow result = PubSubMessageProcessor.convertPubSubMessageToRow(mockMessage, region, partitionNumber);
+    InternalRow result = ConvertPubSubMessageToRow.convertPubSubMessageToRow(mockMessage, region, partitionNumber);
 
     // Verify the result
     assertEquals(result.get(0, DataTypes.StringType).toString(), region, "Region should match");
@@ -66,6 +66,9 @@ public class PubSubMessageProcessorTest {
     assertEquals(result.getInt(4), 11, "Schema ID should match");
     assertTrue(Arrays.equals((byte[]) result.get(5, DataTypes.BinaryType), keyBytes), "Key bytes should match");
     assertTrue(Arrays.equals((byte[]) result.get(6, DataTypes.BinaryType), valueBytes), "Value bytes should match");
+    assertTrue(
+        Arrays.equals((byte[]) result.get(7, DataTypes.BinaryType), replicationMetadataBytes),
+        "Replication metadata payload should match");
+    assertEquals(result.getInt(8), 37, "Replication metadata version ID should match");
   }
-
 }

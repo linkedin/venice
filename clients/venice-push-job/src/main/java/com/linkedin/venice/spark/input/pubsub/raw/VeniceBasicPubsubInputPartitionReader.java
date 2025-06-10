@@ -16,7 +16,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.spark.input.pubsub.PubSubMessageProcessor;
+import com.linkedin.venice.spark.input.pubsub.ConvertPubSubMessageToRow;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -277,7 +277,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
       }
 
       // Found a valid message - process it
-      currentRow = PubSubMessageProcessor.convertPubSubMessageToRow(message, region, targetPartitionNumber);
+      currentRow = ConvertPubSubMessageToRow.convertPubSubMessageToRow(message, region, targetPartitionNumber);
 
       recordsServed++;
       maybeLogProgress();

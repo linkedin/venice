@@ -50,7 +50,7 @@ public class SparkConstants {
    */
   public static final String SPARK_DATA_WRITER_CONF_PREFIX = "spark.data.writer.conf.";
 
-  public static final StructType BASIC_RAW_PUBSUB_INPUT_TABLE_SCHEMA = new StructType(
+  public static final StructType RAW_PUBSUB_INPUT_TABLE_SCHEMA = new StructType(
       new StructField[] { new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()), // serialized key
           new StructField("__region__", StringType, false, Metadata.empty()),
           new StructField("__partition__", IntegerType, false, Metadata.empty()),
@@ -59,8 +59,6 @@ public class SparkConstants {
           new StructField("__schema_id__", IntegerType, false, Metadata.empty()),
           new StructField(KEY_COLUMN_NAME, BinaryType, false, Metadata.empty()),
           new StructField(VALUE_COLUMN_NAME, BinaryType, true, Metadata.empty()),
-
-      // new StructField("__replication_metadata_version_id__", IntegerType, false, Metadata.empty()),
-      // new StructField("__replication_metadata_payload__", BinaryType, false, Metadata.empty()) });
-      });
+          new StructField("__replication_metadata_version_id__", IntegerType, false, Metadata.empty()),
+          new StructField("__replication_metadata_payload__", BinaryType, false, Metadata.empty()) });
 }
