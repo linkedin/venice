@@ -24,7 +24,7 @@ public class VeniceRawPubsubInputPartitionReaderFactory implements PartitionRead
           "VeniceRawPubsubInputPartitionReaderFactory can only create readers for VeniceBasicPubsubInputPartition");
     }
 
-    return new VeniceBasicPubsubInputPartitionReader(jobConfig, (VeniceBasicPubsubInputPartition) inputPartition);
+    return new VeniceRawPubsubInputPartitionReader(jobConfig, (VeniceBasicPubsubInputPartition) inputPartition);
   }
 
   // Make it explicit that this reader does not support columnar reads.

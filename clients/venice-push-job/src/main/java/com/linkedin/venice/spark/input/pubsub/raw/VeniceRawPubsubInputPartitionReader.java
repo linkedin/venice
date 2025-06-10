@@ -30,12 +30,27 @@ import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.connector.read.PartitionReader;
 
 
-public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<InternalRow> {
+/**
+ * A Spark SQL data source partition reader implementation for Venice PubSub messages.
+ * <p>
+ * This reader consumes messages from a specific partition of a PubSub topic between
+ * specified start and end offsets, converting them into Spark's {@link InternalRow} format.
+ * The reader provides functionality for:
+ * <ul>
+ *   <li>Reading messages from a specific topic partition</li>
+ *   <li>Filtering control messages when configured</li>
+ *   <li>Tracking consumption progress</li>
+ * </ul>
+ * <p>
+ * This class is part of the Venice Spark connector enabling ETL and KIF functionality.
+ */
+
+public class VeniceRawPubsubInputPartitionReader implements PartitionReader<InternalRow> {
   private static final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 12;
   private static final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(5);
   private static final Long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
 
-  private static final Logger LOGGER = LogManager.getLogger(VeniceBasicPubsubInputPartitionReader.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceRawPubsubInputPartitionReader.class);
 
   private final boolean filterControlMessages = true;
   private final PubSubTopic targetPubSubTopic;
@@ -51,6 +66,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   private final String topicName;
   private final PubSubTopic pubSubTopic;
   private final String region;
+  private final float lastKnownProgressPercent = 0;
   // this is the buffer that holds the messages that are consumed from the pubsub
   private PubSubTopicPartition targetPubSubTopicPartition = null;
   private PubSubPosition currentPosition;
@@ -58,11 +74,10 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   private long recordsServed = 0;
   private long recordsSkipped = 0;
   private long recordsDeliveredByGet = 0;
-  private final float lastKnownProgressPercent = 0;
 
   // the buffer that holds the relevant messages for the current partition
 
-  public VeniceBasicPubsubInputPartitionReader(
+  public VeniceRawPubsubInputPartitionReader(
       VeniceProperties jobConfig,
       VeniceBasicPubsubInputPartition inputPartition) {
     this(
@@ -81,7 +96,7 @@ public class VeniceBasicPubsubInputPartitionReader implements PartitionReader<In
   }
 
   // testing constructor
-  public VeniceBasicPubsubInputPartitionReader(
+  public VeniceRawPubsubInputPartitionReader(
       VeniceProperties jobConfig,
       VeniceBasicPubsubInputPartition inputPartition,
       PubSubConsumerAdapter consumer,
