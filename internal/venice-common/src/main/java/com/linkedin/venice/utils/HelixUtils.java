@@ -106,37 +106,41 @@ public final class HelixUtils {
   public static <T> List<T> getChildren(ZkBaseDataAccessor<T> dataAccessor, String path, int maxAttempts) {
     int attempt = 0;
     while (attempt < maxAttempts) {
+      // Get expected count from child names
       List<String> childrenNames = dataAccessor.getChildNames(path, AccessOption.PERSISTENT);
       int expectedCount = 0;
       if (childrenNames == null) {
-        LOGGER.warn("Get child names for path: {} return null.", path);
+        LOGGER.warn("getChildNames for path: {} returned null.", path);
       } else {
         expectedCount = childrenNames.size();
       }
 
+      // Get actual children
       List<T> children = dataAccessor.getChildren(path, null, AccessOption.PERSISTENT);
-      // If ZK operation failed
-      if (children == null) {
+
+      // ZK operation failed
+      if (children.isEmpty() && expectedCount != 0) {
         attempt++;
         handleFailedHelixOperation(path, "getChildren", attempt, maxAttempts);
         continue;
       }
-      // Else ZK operation succeeded, check for data consistency
-      if (children.size() != expectedCount) {
-        // Data is inconsistent
-        attempt++;
-        LOGGER.info(
-            "dataAccessor.getChildNames() and dataAccessor.getChildren() did not return the same number "
-                + "of elements from path: {}\nExpected: {}, but got {}. Attempt:{}/{}.",
-            path,
-            expectedCount,
-            children.size(),
-            attempt,
-            maxAttempts);
-        Utils.sleep(TimeUnit.SECONDS.toMillis((long) Math.pow(2, attempt)));
-      } else {
+
+      // Data is consistent
+      if (children.size() == expectedCount) {
         return children;
       }
+
+      // Data is inconsistent, retry
+      attempt++;
+      LOGGER.info(
+          "dataAccessor.getChildNames() and dataAccessor.getChildren() did not return the same number "
+              + "of elements from path: {}\nExpected: {}, but got {}. Attempt:{}/{}.",
+          path,
+          expectedCount,
+          children.size(),
+          attempt,
+          maxAttempts);
+      Utils.sleep(TimeUnit.SECONDS.toMillis((long) Math.pow(2, attempt)));
     }
     throw new VeniceException("Got partial children from zk after retry " + attempt + " times.");
   }
