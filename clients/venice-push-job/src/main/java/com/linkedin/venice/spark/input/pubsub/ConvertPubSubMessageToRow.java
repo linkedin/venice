@@ -7,7 +7,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.spark.input.pubsub.raw.VeniceBasicPubsubInputPartitionReader;
+import com.linkedin.venice.spark.input.pubsub.raw.VeniceRawPubsubInputPartitionReader;
 import java.nio.ByteBuffer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,7 +36,7 @@ import org.jetbrains.annotations.NotNull;
  *         See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
  */
 public class ConvertPubSubMessageToRow {
-  private static final Logger LOGGER = LogManager.getLogger(VeniceBasicPubsubInputPartitionReader.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceRawPubsubInputPartitionReader.class);
   private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
 
   public static InternalRow convertPubSubMessageToRow(
