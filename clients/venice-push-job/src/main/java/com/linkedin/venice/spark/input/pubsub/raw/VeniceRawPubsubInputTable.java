@@ -1,4 +1,4 @@
-package com.linkedin.venice.spark.input.table.rawPubSub;
+package com.linkedin.venice.spark.input.pubsub.raw;
 
 import static com.linkedin.venice.spark.SparkConstants.BASIC_RAW_PUBSUB_INPUT_TABLE_SCHEMA;
 

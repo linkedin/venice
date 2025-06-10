@@ -1,4 +1,4 @@
-package com.linkedin.venice.spark.input.table.rawPubSub;
+package com.linkedin.venice.spark.input.pubsub.raw;
 
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;

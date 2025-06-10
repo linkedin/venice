@@ -1,4 +1,4 @@
-package com.linkedin.venice.spark.input.table.rawPubSub;
+package com.linkedin.venice.spark.input.pubsub.raw;
 
 import static com.linkedin.venice.vpj.VenicePushJobConstants.*;
 
