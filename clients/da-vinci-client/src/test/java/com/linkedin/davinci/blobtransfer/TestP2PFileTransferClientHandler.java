@@ -28,6 +28,7 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.CharsetUtil;
 import java.io.IOException;
 import java.io.InputStream;
@@ -422,6 +423,59 @@ public class TestP2PFileTransferClientHandler {
 
     // Ensure the future is completed
     Assert.assertTrue(inputStreamFuture.toCompletableFuture().isDone());
+  }
+
+  @Test
+  public void testChannelInactiveBeforeTransferComplete() throws IOException {
+    // Prepare, response is not complete yet.
+    DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
+    response.headers().add("Content-Length", "5");
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response.headers().add("Content-MD5", checksumGenerateHelper("12345"));
+
+    ch.writeInbound(response);
+    // Simulate server graceful shutdown by closing channel
+    ch.close();
+
+    // Verification
+    try {
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.SECONDS);
+      Assert.fail("Expected exception not thrown");
+    } catch (Exception e) {
+      Assert.assertTrue(e.getCause() instanceof VeniceException);
+      Assert.assertTrue(e.getCause().getMessage().contains("might due to server unexpected graceful shutdown"));
+      Assert.assertTrue(e.getCause().getMessage().contains("test_store_v1-0"));
+    }
+  }
+
+  @Test
+  public void testReaderIdleEventBeforeTransferComplete() throws IOException {
+    // Prepare a non complete response
+    DefaultHttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    response.headers().add("Content-Disposition", "filename=\"test_file.txt\"");
+    response.headers().add("Content-Length", "5");
+    response.headers().add(BLOB_TRANSFER_TYPE, BlobTransferType.FILE);
+    response.headers().add("Content-MD5", checksumGenerateHelper("12345"));
+
+    ch.writeInbound(response);
+    // Simulate READER_IDLE timeout event
+    IdleStateEvent idleEvent = IdleStateEvent.READER_IDLE_STATE_EVENT;
+    ch.pipeline().fireUserEventTriggered(idleEvent);
+
+    // Assert: Future should complete exceptionally
+    try {
+      inputStreamFuture.toCompletableFuture().get(1, TimeUnit.SECONDS);
+      Assert.fail("Expected exception not thrown");
+    } catch (Exception e) {
+      Assert.assertTrue(e.getCause() instanceof VeniceException);
+      Assert.assertTrue(
+          e.getCause()
+              .getMessage()
+              .contains("Channel idle before completing transfer, might due to server unexpected abrupt termination."));
+      Assert.assertTrue(e.getCause().getMessage().contains("test_store_v1-0"));
+      Assert.assertTrue(e.getCause().getMessage().contains("channel active:"));
+    }
   }
 
   /**

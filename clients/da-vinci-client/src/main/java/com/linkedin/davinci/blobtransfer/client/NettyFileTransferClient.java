@@ -267,7 +267,7 @@ public class NettyFileTransferClient {
       // Attach the file handler to the pipeline
       // Attach the metadata handler to the pipeline
       ch.pipeline()
-          .addLast(new IdleStateHandler(0, 0, 60))
+          .addLast(new IdleStateHandler(60, 0, 0)) // READER_IDLE: timeout of 60 seconds
           .addLast(new MetadataAggregator(MAX_METADATA_CONTENT_LENGTH))
           .addLast(
               new P2PFileTransferClientHandler(

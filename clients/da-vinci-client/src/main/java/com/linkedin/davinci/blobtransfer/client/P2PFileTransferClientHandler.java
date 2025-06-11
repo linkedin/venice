@@ -18,6 +18,8 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.ReferenceCountUtil;
 import java.io.InputStream;
 import java.nio.channels.Channels;
@@ -181,6 +183,19 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     }
   }
 
+  /**
+   * Handles channel deactivation, typically triggered when the server gracefully closes
+   * the connection.
+   *
+   * This is called when the server sends a FIN packet (graceful shutdown), which is
+   * different from abrupt termination handled by {@link #userEventTriggered}.
+   *
+   * If the transfer was incomplete, this indicates the server shut down unexpectedly during
+   * the transfer process, so we complete the input stream future exceptionally for fast failover.
+   *
+   * @param ctx
+   * @throws Exception
+   */
   @Override
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
     super.channelInactive(ctx);
@@ -189,6 +204,38 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       outputFileChannel.close();
     }
     resetState();
+    fastFailoverIncompleteTransfer(
+        "Channel close before completing transfer, might due to server unexpected graceful shutdown.",
+        ctx);
+  }
+
+  /**
+   * Handles idle state events to detect unresponsive server connections during blob transfer.
+   *
+   * When no data is received within the timeout (READER_IDLE), this method assumes
+   * the server is unavailable, completes the transfer future exceptionally, and closes the channel.
+   * This enables fast failover to the next available peer instead of waiting for the longer
+   * client timeout configured in NettyFileTransferClient#blobReceiveTimeoutInMin.
+   *
+   * Please note that if traffic is legitimately slow but continuous, it should NOT trigger READER_IDLE.
+   * However, if traffic has long gaps, it WILL trigger.
+   *
+   * @param ctx the channel handler context
+   * @param evt the user event, expected to be IdleStateEvent for timeout detection
+   */
+  @Override
+  public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+    if (evt instanceof IdleStateEvent) {
+      IdleStateEvent e = (IdleStateEvent) evt;
+      if (e.state() == IdleState.READER_IDLE) {
+        fastFailoverIncompleteTransfer(
+            "Channel idle before completing transfer, might due to server unexpected abrupt termination.",
+            ctx);
+        ctx.close();
+        return;
+      }
+    }
+    super.userEventTriggered(ctx, evt);
   }
 
   @Override
@@ -224,5 +271,19 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     outputFileChannel = null;
     fileName = null;
     fileContentLength = 0;
+  }
+
+  private void fastFailoverIncompleteTransfer(String causeForFailPendingTransfer, ChannelHandlerContext ctx) {
+    if (!inputStreamFuture.toCompletableFuture().isDone()) {
+      String errorMessage = String.format(
+          "%s for %s. Server host: %s, channel active: %b.",
+          causeForFailPendingTransfer,
+          Utils.getReplicaId(payload.getTopicName(), payload.getPartition()),
+          ctx.channel().remoteAddress(),
+          ctx.channel().isActive());
+
+      LOGGER.error(errorMessage);
+      inputStreamFuture.toCompletableFuture().completeExceptionally(new VeniceException(errorMessage));
+    }
   }
 }
