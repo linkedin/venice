@@ -1050,4 +1050,15 @@ public interface Admin extends AutoCloseable, Closeable {
   VeniceControllerClusterConfig getControllerConfig(String clusterName);
 
   String getControllerName();
+
+  /**
+   * Validates that a store has been completely deleted from the Venice cluster.
+   * This method performs comprehensive checks across multiple subsystems to ensure
+   * no lingering resources remain that would prevent safe store recreation.
+   *
+   * @param clusterName the name of the cluster to check
+   * @param storeName the name of the store to validate deletion for
+   * @return StoreDeletedValidation indicating whether the store is fully deleted or what resources remain
+   */
+  StoreDeletedValidation validateStoreDeleted(String clusterName, String storeName);
 }

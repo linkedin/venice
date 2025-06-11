@@ -304,6 +304,27 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     Assert.assertNull(storeConfigAccessor.getStoreConfig(newStoreName));
   }
 
+  @Test
+  public void testStoreLifecycle_ValidateDeleted() {
+    String storeName = Utils.getUniqueString("test_validate_deleted_store");
+    int largestUsedVersion = Store.IGNORE_VERSION;
+
+    // Create store
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+
+    // Disable reads and writes before deletion (required by Venice)
+    veniceAdmin
+        .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
+
+    // Delete store
+    veniceAdmin.deleteStore(clusterName, storeName, largestUsedVersion, true);
+
+    // Validate deletion
+    StoreDeletedValidation result = veniceAdmin.validateStoreDeleted(clusterName, storeName);
+
+    Assert.assertTrue(result.isDeleted(), "Store should be completely deleted. Failure reason: " + result.getError());
+  }
+
   public static boolean resourceMissingTopState(SafeHelixManager helixManager, String clusterName, String resourceID) {
     ExternalView externalView = helixManager.getClusterManagmentTool().getResourceExternalView(clusterName, resourceID);
     for (String partition: externalView.getPartitionSet()) {

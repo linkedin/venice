@@ -60,11 +60,13 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.SET_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.VALIDATE_STORE_DELETED;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
+import com.linkedin.venice.controller.StoreDeletedValidation;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
@@ -88,6 +90,7 @@ import com.linkedin.venice.controllerapi.SchemaUsageResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonResponse;
+import com.linkedin.venice.controllerapi.StoreDeletedValidationResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -1205,6 +1208,30 @@ public class StoresRoutes extends AbstractRoute {
         responseObject.setError(e);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  /**
+   * @see Admin#validateStoreDeleted(String, String)
+   */
+  public Route validateStoreDeleted(Admin admin) {
+    return new VeniceRouteHandler<StoreDeletedValidationResponse>(StoreDeletedValidationResponse.class) {
+      @Override
+      public void internalHandle(Request request, StoreDeletedValidationResponse veniceResponse) {
+        // Only allow allowlist users to run this command
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+          return;
+        }
+        AdminSparkServer.validateParams(request, VALIDATE_STORE_DELETED.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
+
+        StoreDeletedValidation result = admin.validateStoreDeleted(clusterName, storeName);
+        veniceResponse.setStoreDeleted(result.isDeleted());
+        veniceResponse.setReason(result.getError());
+      }
     };
   }
 }
