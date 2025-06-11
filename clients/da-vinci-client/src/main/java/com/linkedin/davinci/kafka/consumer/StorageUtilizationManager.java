@@ -188,9 +188,10 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
     versionIsOnline = isVersionOnline(version);
     if (this.storeQuotaInBytes != store.getStorageQuotaInByte() || !store.isHybridStoreDiskQuotaEnabled()) {
       LOGGER.info(
-          "Store: {} changed, updated quota from {} to {} and store quota is {}enabled, "
+          "Store: {} changed, updated quota in: versionTopic: {} from: {} to: {} and store quota is {}enabled, "
               + "so we reset the store quota and resume all partitions.",
           this.storeName,
+          this.versionTopic,
           this.storeQuotaInBytes,
           store.getStorageQuotaInByte(),
           store.isHybridStoreDiskQuotaEnabled() ? "" : "not ");
