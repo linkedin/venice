@@ -415,8 +415,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       if (partitionCount == 0) {
         return 0.;
       }
-      quota *= partitionConsumptionSizeMap.size();
-      quota /= partitionCount;
+      quota = diskQuotaPerPartition * partitionConsumptionSizeMap.size();
     }
 
     long usage = 0;

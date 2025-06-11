@@ -23,16 +23,18 @@ public class LogContext {
   public static final String LOG_CONTEXT_KEY = "logContext";
 
   private final String regionName;
+  private final String instanceName;
   private final String componentName;
   private final String value;
 
   private LogContext(Builder builder) {
     this.regionName = builder.regionName;
     this.componentName = builder.componentName;
-    if (StringUtils.isBlank(regionName) && StringUtils.isBlank(componentName)) {
+    this.instanceName = builder.instanceName;
+    if (StringUtils.isBlank(regionName) && StringUtils.isBlank(componentName) && StringUtils.isBlank(instanceName)) {
       this.value = "";
     } else {
-      this.value = String.format("%s--%s", componentName, regionName);
+      this.value = String.format("%s:%s:%s", componentName, regionName, instanceName);
     }
   }
 
@@ -97,6 +99,13 @@ public class LogContext {
   }
 
   /**
+   * @return The instance name stored in this LogContext.
+   */
+  public String getInstanceName() {
+    return instanceName;
+  }
+
+  /**
    * @return The value of the log context in the form {@code componentName|regionName}.
    */
   public String getValue() {
@@ -123,8 +132,9 @@ public class LogContext {
    * Builder for {@link LogContext}.
    */
   public static class Builder {
-    private String regionName;
     private String componentName;
+    private String regionName;
+    private String instanceName;
 
     /**
      * Sets the region name to be included in the LogContext.
@@ -145,6 +155,17 @@ public class LogContext {
      */
     public Builder setComponentName(String componentName) {
       this.componentName = componentName;
+      return this;
+    }
+
+    /**
+     * Sets the instance name to be included in the LogContext.
+     *
+     * @param instanceName The name of the instance.
+     * @return This builder instance.
+     */
+    public Builder setInstanceName(String instanceName) {
+      this.instanceName = instanceName;
       return this;
     }
 

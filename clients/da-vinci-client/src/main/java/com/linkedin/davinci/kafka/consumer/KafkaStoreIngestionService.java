@@ -763,11 +763,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     LOGGER.info("Promoting partition: {} of topic: {} to leader.", partitionId, topic);
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+      PubSubTopicPartition replica = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
       if (consumerTask != null && consumerTask.isRunning()) {
-        consumerTask
-            .promoteToLeader(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId), checker);
+        consumerTask.promoteToLeader(replica, checker);
       } else {
-        LOGGER.warn("Ignoring standby to leader transition message for Topic {} Partition {}", topic, partitionId);
+        LOGGER.warn(
+            "Ignoring standby to leader transition message for replica: {} since SIT {}",
+            replica,
+            consumerTask == null ? "does not exist" : "is not running");
       }
     }
   }
@@ -781,11 +784,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     LOGGER.info("Demoting partition: {} of topic: {} to standby.", partitionId, topic);
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+      PubSubTopicPartition pubSubTopicPartition =
+          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
       if (consumerTask != null && consumerTask.isRunning()) {
-        consumerTask
-            .demoteToStandby(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId), checker);
+        consumerTask.demoteToStandby(pubSubTopicPartition, checker);
       } else {
-        LOGGER.warn("Ignoring leader to standby transition message for Topic {} Partition {}", topic, partitionId);
+        LOGGER.warn(
+            "Ignoring leader to standby transition message for replica: {} since SIT {}",
+            pubSubTopicPartition,
+            consumerTask == null ? "does not exist" : "is not running");
       }
     }
   }
@@ -1069,13 +1076,19 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       for (Map.Entry<String, StoreIngestionTask> entry: topicNameToIngestionTaskMap.entrySet()) {
         String topicName = entry.getKey();
         StoreIngestionTask task = entry.getValue();
-        if (task.isIdleOverThreshold() && !task.isCurrentVersion.getAsBoolean()) {
-          LOGGER.info(
-              "Found idle task for store-version: {}, which belongs to non-current version, "
-                  + "shutting down the task.",
-              topicName);
-          shutdownIdleIngestionTask(topicName);
+        if (!task.isIdleOverThreshold()) {
+          continue;
         }
+        if (task.isCurrentVersion.getAsBoolean() && task.hasReplicas()) {
+          // If the task is idle but corresponds to the current version and still has replicas,
+          // it should not be shut down. Doing so would remove components like
+          // StorageUtilizationManager, leading to incorrect stats reporting.
+          continue;
+        }
+        LOGGER.info(
+            "Found idle task for store-version: {}, which belongs to non-current version, " + "shutting down the task.",
+            topicName);
+        shutdownIdleIngestionTask(topicName);
       }
       LOGGER.info(
           "Number of active ingestion tasks before cleaning: {}, after cleaning: {}",

@@ -646,7 +646,7 @@ public class IngestionStats {
    * @return The disk quota usage as a double value, or 0 if unavailable.
    */
   public double getStorageQuotaUsed() {
-    if (ingestionTask == null) {
+    if (!hasActiveIngestionTask()) {
       return 0;
     }
     StorageUtilizationManager storageManager = ingestionTask.getStorageUtilizationManager();
