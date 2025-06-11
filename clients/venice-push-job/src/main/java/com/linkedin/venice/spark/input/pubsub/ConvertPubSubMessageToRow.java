@@ -18,27 +18,31 @@ import org.jetbrains.annotations.NotNull;
 
 /**
  * Converts a PubSub message to a Spark InternalRow.
- *
- * @param pubSubMessage The PubSub message to process. Contains key, value, and metadata.
- * @param region The region identifier to include in the row.
- * @param partitionNumber The partition number to include in the row.
- * @return An InternalRow containing the processed message data.
- *         The row includes the following fields:
- *         1. Region (String)
- *         2. Partition number (int)
- *         3. Message type (int)
- *         4. Offset (long)
- *         5. Schema ID (int)
- *         6. Key bytes (byte[])
- *         7. Value bytes (byte[])
- *         8. Replication metadata payload bytes (byte[])
- *         9. Replication metadata version ID (int)
- *         See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
+ * it preserves the schema, replication metadata, and other necessary fields
  */
 public class ConvertPubSubMessageToRow {
   private static final Logger LOGGER = LogManager.getLogger(VeniceRawPubsubInputPartitionReader.class);
   private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
 
+  /**
+   * Converts a PubSub message to a Spark InternalRow.
+   *
+   * @param pubSubMessage The PubSub message to process. Contains key, value, and metadata.
+   * @param region The region identifier to include in the row.
+   * @param partitionNumber The partition number to include in the row.
+   * @return An InternalRow containing the processed message data.
+   *         The row includes the following fields:
+   *         1. Region (String)
+   *         2. Partition number (int)
+   *         3. Message type (int)
+   *         4. Offset (long)
+   *         5. Schema ID (int)
+   *         6. Key bytes (byte[])
+   *         7. Value bytes (byte[])
+   *         8. Replication metadata payload bytes (byte[])
+   *         9. Replication metadata version ID (int)
+   *         See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
+   */
   public static InternalRow convertPubSubMessageToRow(
       @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage,
       String region,
