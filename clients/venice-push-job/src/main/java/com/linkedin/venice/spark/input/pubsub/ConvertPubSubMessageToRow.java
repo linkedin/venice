@@ -88,19 +88,18 @@ public class ConvertPubSubMessageToRow {
         // we don't care about messages other than PUT and DELETE
     }
 
-    // need to figure out task tracking in Spark Land.
-    // pack pieces of information into the Spark intermediate row, this will populate the dataframe to be read by the
-    // spark job
-    // The weirdest use of verb "GET" in heapBuffer !!!!!
-    byte[] keyBytes = new byte[key.remaining()];
-    key.get(keyBytes);
-    byte[] valueBytes = new byte[value.remaining()];
-    value.get(valueBytes);
-    byte[] replicationMetadataPayloadBytes = new byte[replicationMetadataPayload.remaining()];
-    replicationMetadataPayload.get(replicationMetadataPayloadBytes);
+    byte[] keyBytes = loadRemainingBytes(key);
+    byte[] valueBytes = loadRemainingBytes(value);
+    byte[] replicationMetadataPayloadBytes = loadRemainingBytes(replicationMetadataPayload);
 
     return new GenericInternalRow(
         new Object[] { region, partitionNumber, messageType, offset, schemaId, keyBytes, valueBytes,
             replicationMetadataPayloadBytes, replicationMetadataVersionId });
+  }
+
+  static byte[] loadRemainingBytes(ByteBuffer buffer) {
+    byte[] bytes = new byte[buffer.remaining()];
+    buffer.get(bytes); // this stamps the bytes with contents of the buffer
+    return bytes;
   }
 }

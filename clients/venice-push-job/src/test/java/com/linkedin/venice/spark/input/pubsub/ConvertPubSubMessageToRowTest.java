@@ -71,4 +71,30 @@ public class ConvertPubSubMessageToRowTest {
         "Replication metadata payload should match");
     assertEquals(result.getInt(8), 37, "Replication metadata version ID should match");
   }
+
+  @org.testng.annotations.Test
+  public void testLoadRemainingBytes_fullBuffer() {
+    byte[] data = { 1, 2, 3, 4, 5 };
+    ByteBuffer buffer = ByteBuffer.wrap(data);
+    byte[] result = ConvertPubSubMessageToRow.loadRemainingBytes(buffer);
+    assertTrue(Arrays.equals(result, data), "Should return all bytes from buffer");
+  }
+
+  @org.testng.annotations.Test
+  public void testLoadRemainingBytes_partialBuffer() {
+    byte[] data = { 10, 20, 30, 40, 50 };
+    ByteBuffer buffer = ByteBuffer.wrap(data);
+    buffer.position(2); // Move position to index 2
+    byte[] result = ConvertPubSubMessageToRow.loadRemainingBytes(buffer);
+    byte[] expected = { 30, 40, 50 };
+    assertTrue(Arrays.equals(result, expected), "Should return remaining bytes from current position");
+  }
+
+  @org.testng.annotations.Test
+  public void testLoadRemainingBytes_emptyBuffer() {
+    byte[] data = {};
+    ByteBuffer buffer = ByteBuffer.wrap(data);
+    byte[] result = ConvertPubSubMessageToRow.loadRemainingBytes(buffer);
+    assertTrue(Arrays.equals(result, data), "Should return empty array for empty buffer");
+  }
 }
