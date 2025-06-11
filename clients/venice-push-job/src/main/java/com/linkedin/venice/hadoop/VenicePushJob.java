@@ -1523,11 +1523,13 @@ public class VenicePushJob implements AutoCloseable {
       pushJobDetails.totalGzipCompressedValueBytes = taskTracker.getTotalGzipCompressedValueSize();
       // size of the Zstd with Dict compressed data
       pushJobDetails.totalZstdWithDictCompressedValueBytes = taskTracker.getTotalZstdCompressedValueSize();
+      // total records exceeding record size before compression
+      pushJobDetails.totalUncompressedRecordTooLargeFailures = taskTracker.getUncompressedRecordTooLargeFailureCount();
       LOGGER.info(
           "Data writer job summary: " + "\n\tTotal number of records: {}" + "\n\tSize of keys: {}"
               + "\n\tSize of uncompressed values: {}" + "\n\tConfigured value compression strategy: {}"
               + "\n\tSize of compressed values: {}" + "\n\tFinal data size stored in Venice: {}"
-              + "\n\tCompression Metrics collection: {}",
+              + "\n\tCompression Metrics collection: {}" + "\n\tUncompressed records too large: {}",
           pushJobDetails.totalNumberOfRecords,
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalKeyBytes),
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalRawValueBytes),
@@ -1535,7 +1537,8 @@ public class VenicePushJob implements AutoCloseable {
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalCompressedValueBytes),
           ByteUtils.generateHumanReadableByteCountString(
               pushJobDetails.totalKeyBytes + pushJobDetails.totalCompressedValueBytes),
-          pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled");
+          pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled",
+          pushJobDetails.totalUncompressedRecordTooLargeFailures);
       if (pushJobSetting.compressionMetricCollectionEnabled) {
         LOGGER.info(
             "\tData size if compressed using Gzip: {}",

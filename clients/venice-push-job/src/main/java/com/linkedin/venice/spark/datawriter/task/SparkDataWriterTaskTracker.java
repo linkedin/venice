@@ -31,6 +31,11 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   }
 
   @Override
+  public void trackLargestUncompressedValueSize(int size) {
+    accumulators.largestUncompressedValueSize.add(size);
+  }
+
+  @Override
   public void trackCompressedValueSize(int size) {
     accumulators.compressedValueSizeCounter.add(size);
   }
@@ -103,6 +108,11 @@ public class SparkDataWriterTaskTracker implements DataWriterTaskTracker {
   @Override
   public long getTotalUncompressedValueSize() {
     return accumulators.uncompressedValueSizeCounter.value();
+  }
+
+  @Override
+  public long getLargestUncompressedValueSize() {
+    return accumulators.largestUncompressedValueSize.value();
   }
 
   @Override
