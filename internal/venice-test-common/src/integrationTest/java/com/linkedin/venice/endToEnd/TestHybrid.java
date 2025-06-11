@@ -1121,7 +1121,7 @@ public class TestHybrid {
     public RepushJobResponse repush(RepushJobRequest repushJobRequest) {
       latch.countDown();
       LOGGER.info("Repush job triggered for store: " + repushJobRequest.toString());
-      return new RepushJobResponse(Utils.getUniqueString("repush-execId"));
+      return new RepushJobResponse(repushJobRequest.getStoreName(), Utils.getUniqueString("repush-execId"));
     }
 
     public static CountDownLatch getLatch() {
