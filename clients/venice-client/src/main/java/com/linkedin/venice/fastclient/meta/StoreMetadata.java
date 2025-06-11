@@ -34,7 +34,7 @@ public interface StoreMetadata extends SchemaReader {
   /**
    * This function is expected to return fully qualified URI, such as: "https://fake.host:8888".
    */
-  String getReplica(long requestId, int groupId, int version, int partitionId, Set<String> excludedInstances);
+  String getReplica(long requestId, int groupId, List<String> replicas, Set<String> excludedInstances);
 
   ChainedCompletableFuture<Integer, Integer> trackHealthBasedOnRequestToInstance(
       String instance,

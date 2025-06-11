@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import java.io.IOException;
@@ -20,6 +21,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,6 +34,9 @@ import org.apache.logging.log4j.Logger;
 public abstract class AbstractStoreMetadata implements StoreMetadata {
   private static final Logger LOGGER = LogManager.getLogger(AbstractStoreMetadata.class);
   private static final AtomicLong REQUEST_ID_GENERATOR = new AtomicLong();
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
+  private static final String NO_REPLICA_ERROR_PREFIX = "Failed to find replica for store %s partition %d: ";
   private final ClientConfig clientConfig;
   private final InstanceHealthMonitor instanceHealthMonitor;
   protected volatile AbstractClientRoutingStrategy routingStrategy;
@@ -50,11 +55,8 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     switch (clientRoutingStrategyType) {
       case HELIX_ASSISTED:
         return clientConfig.isEnableLeastLoadedRoutingStrategyForHelixGroupRouting()
-            ? new HelixLeastLoadedGroupRoutingStrategy(
-                instanceHealthMonitor,
-                clientConfig.getMetricsRepository(),
-                getStoreName())
-            : new HelixGroupRoutingStrategy(instanceHealthMonitor, clientConfig.getMetricsRepository(), getStoreName());
+            ? new HelixLeastLoadedGroupRoutingStrategy(clientConfig.getMetricsRepository(), getStoreName())
+            : new HelixGroupRoutingStrategy(clientConfig.getMetricsRepository(), getStoreName());
       case LEAST_LOADED:
         return new LeastLoadedClientRoutingStrategy(this.instanceHealthMonitor);
       default:
@@ -89,8 +91,7 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   }
 
   @Override
-  public String getReplica(long requestId, int groupId, int version, int partitionId, Set<String> excludedInstances) {
-    List<String> replicas = getReplicas(version, partitionId);
+  public String getReplica(long requestId, int groupId, List<String> replicas, Set<String> excludedInstances) {
     List<String> filteredReplicas;
 
     if (excludedInstances.isEmpty()) {
@@ -202,14 +203,20 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
         }
         getRequestContext.setPartitionId(partitionId);
       }
-
-      String route = getReplica(
-          requestContext.getRequestId(),
-          groupId,
-          currentVersion,
-          partitionId,
-          getRequestContext.getRouteRequestMap().keySet());
+      Set<String> excludedReplicas = new HashSet<>(getRequestContext.getRouteRequestMap().keySet());
+      long requestId = requestContext.getRequestId();
+      List<String> replicas = getReplicas(currentVersion, partitionId);
+      Set<String> blockedOrUnhealthyReplicas = new HashSet<>();
+      excludeReplicasBasedOnInstanceHealthMonitor(replicas, blockedOrUnhealthyReplicas, excludedReplicas);
+      String route = getReplica(requestId, groupId, replicas, excludedReplicas);
       if (route == null) {
+        maybeLogNoReplicaErrorDetails(
+            partitionId,
+            currentVersion,
+            requestId,
+            replicas,
+            blockedOrUnhealthyReplicas,
+            getRequestContext.getRouteRequestMap().keySet());
         getRequestContext.addNonAvailableReplicaPartition(partitionId);
       } else {
         getRequestContext.setRoute(route);
@@ -227,15 +234,25 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
         // For each key determine partition
         int partitionId = getPartitionId(currentVersion, keyBytes);
         // Find routes for each partition
-        String route = partitionRouteMap.computeIfAbsent(
-            partitionId,
-            (ignored) -> getReplica(
-                requestContext.getRequestId(),
-                groupId,
-                currentVersionFinal,
+        String route = partitionRouteMap.computeIfAbsent(partitionId, (ignored) -> {
+          Set<String> routingExcludedReplicas =
+              multiKeyRequestContext.getRoutesForPartitionMapping().getOrDefault(partitionId, Collections.emptySet());
+          Set<String> excludedReplicas = new HashSet<>(routingExcludedReplicas);
+          List<String> replicas = getReplicas(currentVersionFinal, partitionId);
+          Set<String> blockedOrUnhealthyReplicas = new HashSet<>();
+          excludeReplicasBasedOnInstanceHealthMonitor(replicas, blockedOrUnhealthyReplicas, excludedReplicas);
+          String replica = getReplica(requestContext.getRequestId(), groupId, replicas, excludedReplicas);
+          if (replica == null) {
+            maybeLogNoReplicaErrorDetails(
                 partitionId,
-                multiKeyRequestContext.getRoutesForPartitionMapping()
-                    .getOrDefault(Integer.valueOf(partitionId), Collections.emptySet())));
+                currentVersionFinal,
+                requestContext.getRequestId(),
+                replicas,
+                blockedOrUnhealthyReplicas,
+                routingExcludedReplicas);
+          }
+          return replica;
+        });
         if (route == null) {
           /* If a partition doesn't have an available route then there is something wrong about or metadata and this is
            * an error */
@@ -250,4 +267,37 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     throw new VeniceClientException("Unknown request type: " + requestType);
   }
 
+  private void excludeReplicasBasedOnInstanceHealthMonitor(
+      List<String> replicas,
+      Set<String> blockedOrUnhealthyReplicas,
+      Set<String> excludedReplicas) {
+    for (String replica: replicas) {
+      if (!instanceHealthMonitor.isRequestAllowed(replica)) {
+        blockedOrUnhealthyReplicas.add(replica);
+        excludedReplicas.add(replica);
+      }
+    }
+  }
+
+  private void maybeLogNoReplicaErrorDetails(
+      int partitionId,
+      int version,
+      long requestId,
+      List<String> replicas,
+      Set<String> blockedOrUnhealthyReplicas,
+      Set<String> routingExcludedReplicas) {
+    String errorPrefix = String.format(NO_REPLICA_ERROR_PREFIX, storeName, partitionId);
+    if (REDUNDANT_LOGGING_FILTER.isRedundantException(errorPrefix)) {
+      // We logged the details for this store partition recently already
+      return;
+    }
+    LOGGER.error(
+        errorPrefix
+            + "version: {}, request Id: {}, metadata replicas: {}, blocked/unhealthy replicas: {}, routing excluded replicas: {}",
+        version,
+        requestId,
+        replicas,
+        blockedOrUnhealthyReplicas,
+        routingExcludedReplicas);
+  }
 }

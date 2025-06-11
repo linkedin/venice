@@ -15,6 +15,7 @@ import com.linkedin.venice.fastclient.GetRequestContext;
 import com.linkedin.venice.fastclient.RequestContext;
 import com.linkedin.venice.stats.routing.HelixGroupStats;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -51,15 +52,20 @@ public class HelixGroupRoutingStrategyTest {
   }
 
   public void runTest(List<String> replicas, long requestId, int expectedGroupId, String expectedReplica) {
-    HelixGroupRoutingStrategy strategy =
-        new HelixGroupRoutingStrategy(instanceHealthMonitor, new MetricsRepository(), "test_store");
+    HelixGroupRoutingStrategy strategy = new HelixGroupRoutingStrategy(new MetricsRepository(), "test_store");
     strategy.updateHelixGroupInfo(getHelixGroupInfo());
     int groupId = strategy.getHelixGroupId(requestId, -1);
+    List<String> filteredReplicas = new ArrayList<>();
+    for (String replica: replicas) {
+      if (instanceHealthMonitor.isRequestAllowed(replica)) {
+        filteredReplicas.add(replica);
+      }
+    }
     assertEquals(
         groupId,
         expectedGroupId,
         "The group ID selected by HelixGroupRoutingStrategy does not match the expected group ID.");
-    String selectedReplica = strategy.getReplicas(requestId, groupId, replicas);
+    String selectedReplica = strategy.getReplicas(requestId, groupId, filteredReplicas);
     assertEquals(selectedReplica, expectedReplica);
   }
 
@@ -98,8 +104,7 @@ public class HelixGroupRoutingStrategyTest {
 
   @Test
   public void testGetGroupId() {
-    HelixGroupRoutingStrategy strategy =
-        new HelixGroupRoutingStrategy(instanceHealthMonitor, new MetricsRepository(), "test_store");
+    HelixGroupRoutingStrategy strategy = new HelixGroupRoutingStrategy(new MetricsRepository(), "test_store");
     strategy.updateHelixGroupInfo(getHelixGroupInfo());
     assertEquals(strategy.getHelixGroupId(0, -1), 0);
     assertEquals(strategy.getHelixGroupId(1, -1), 1);
@@ -112,7 +117,7 @@ public class HelixGroupRoutingStrategyTest {
   @Test
   public void testTrackRequest() {
     HelixGroupStats mockStats = mock(HelixGroupStats.class);
-    HelixGroupRoutingStrategy strategy = new HelixGroupRoutingStrategy(instanceHealthMonitor, mockStats);
+    HelixGroupRoutingStrategy strategy = new HelixGroupRoutingStrategy(mockStats);
     strategy.updateHelixGroupInfo(getHelixGroupInfo());
 
     RequestContext singleGetRequestContext = new GetRequestContext();
