@@ -629,23 +629,22 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireAdminMessageExecutionIdLock(clusterName);
     try {
       checkAndRepairCorruptedExecutionId(clusterName);
+      // Obtain the cluster level read lock so during a graceful shutdown or leadership handover there will be no
+      // execution id gap (execution id is generated but the message is not sent).
       try (AutoCloseableLock ignore = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName)
           .getClusterLockManager()
           .createClusterReadLock()) {
-        // Obtain the cluster level read lock so during a graceful shutdown or leadership handover there will be no
-        // execution id gap (execution id is generated but the message is not sent).
+
+        // Validate message before acquiring execution id
+        int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
+        AdminOperationSerializer.validate(message, writerSchemaId);
+
+        // Acquire execution id, any exception thrown after this point will result to a missing execution id.
         AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
         AdminCommandExecution execution =
             adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
         message.executionId = execution.getExecutionId();
         VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
-        Map<String, Long> metadata = adminTopicMetadataAccessor.getMetadata(clusterName);
-        int adminOperationProtocolVersion = (int) AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata);
-        int writerSchemaId = (adminOperationProtocolVersion > 0
-            && adminOperationProtocolVersion <= AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-                ? adminOperationProtocolVersion
-                : AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
-
         byte[] serializedValue = adminOperationSerializer.serialize(message, writerSchemaId);
         try {
           Future<PubSubProduceResult> future = veniceWriter.put(emptyKeyByteArr, serializedValue, writerSchemaId);
@@ -722,6 +721,22 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
     return result;
+  }
+
+  /**
+   * Fetches the writer schema ID from ZK.
+   * If the upstream protocol version (the one in /adminTopicMetadata) is -1 or larger than latest schema, returns the latest;
+   * otherwise, returns the version in ZK.
+   * @param clusterName The name of the cluster for which the writer schema id is to be fetched.
+   * @return The writer schema id to be used to serialize the admin operation.
+   */
+  private int getWriterSchemaIdFromZK(String clusterName) {
+    Map<String, Long> metadata = adminTopicMetadataAccessor.getMetadata(clusterName);
+    int adminOperationProtocolVersion = (int) AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata);
+    return (adminOperationProtocolVersion > 0
+        && adminOperationProtocolVersion <= AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
+            ? adminOperationProtocolVersion
+            : AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
   }
 
   private void checkAndRepairCorruptedExecutionId(String clusterName) {
@@ -3900,14 +3915,16 @@ public class VeniceParentHelixAdmin implements Admin {
       parentStore.updateVersionStatus(versionNum, PUSHED);
       repository.updateStore(parentStore);
       LOGGER.info(
-          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          "Updating parent store {} version {} status to {} for target region push w/ deferred swap",
+          parentStore.getName(),
           versionNum,
           PUSHED);
     } else if (failedRegions.size() > 0) {
       parentStore.updateVersionStatus(versionNum, ERROR);
       repository.updateStore(parentStore);
       LOGGER.info(
-          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          "Updating parent store {} version {} status to {} for target region push w/ deferred swap",
+          parentStore.getName(),
           versionNum,
           ERROR);
     }

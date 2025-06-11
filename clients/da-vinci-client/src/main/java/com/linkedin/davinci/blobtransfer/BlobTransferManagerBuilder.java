@@ -130,6 +130,7 @@ public class BlobTransferManagerBuilder {
               blobTransferConfig.getBaseDir(),
               storageMetadataService,
               blobTransferConfig.getPeersConnectivityFreshnessInSeconds(),
+              blobTransferConfig.getBlobReceiveTimeoutInMin(),
               globalTrafficHandler,
               sslFactory),
           blobFinder,

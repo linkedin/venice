@@ -209,7 +209,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public static final AtomicLong VENICE_WRITER_CLOSE_FAILED_COUNT = new AtomicLong(0);
 
-  private static final long DEFAULT_MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS =
+  /**
+   * Default elapsed time for a segment in milliseconds.
+   */
+  public static final long DEFAULT_MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS =
       TimeUnit.MILLISECONDS.convert(5, TimeUnit.MINUTES);
 
   /**

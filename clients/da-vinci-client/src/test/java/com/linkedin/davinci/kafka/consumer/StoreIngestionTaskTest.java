@@ -104,6 +104,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.StorageEngineNoOpStats;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
@@ -1319,6 +1320,7 @@ public abstract class StoreIngestionTaskTest {
   void setupMockAbstractStorageEngine(AbstractStoragePartition metadataPartition) {
     mockAbstractStorageEngine = mock(AbstractStorageEngine.class);
     doReturn(metadataPartition).when(mockAbstractStorageEngine).createStoragePartition(any());
+    doReturn(StorageEngineNoOpStats.SINGLETON).when(mockAbstractStorageEngine).getStats();
     doReturn(true).when(mockAbstractStorageEngine).checkDatabaseIntegrity(anyInt(), any(), any());
   }
 
@@ -2808,7 +2810,7 @@ public abstract class StoreIngestionTaskTest {
         BufferReplayPolicy.REWIND_FROM_EOP);
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO), () -> {
-      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         // sync the offset when receiving EndOfPush
         verify(mockStorageMetadataService).put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooOffset + 1, true)));
         // sync the offset when receiving StartOfIncrementalPush and EndOfIncrementalPush
