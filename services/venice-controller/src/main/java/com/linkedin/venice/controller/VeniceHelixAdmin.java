@@ -7418,9 +7418,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   /**
    * Get all live instance controllers from ZK /LIVEINSTANCES
    */
-  public List<Instance> getAllLiveInstanceControllers(String clusterName) {
+  public List<Instance> getAllLiveInstanceControllers() {
     final int maxAttempts = 10;
-    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(getControllerClusterName());
     for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
       List<String> liveInstances = getHelixManager().getHelixDataAccessor().getChildNames(keyBuilder.liveInstances());
       if (liveInstances == null || liveInstances.isEmpty()) {
@@ -7840,7 +7840,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         .constructClusterControllerClient(clusterName, leaderController.getUrl(sslEnabled), getSslFactory());
 
     // Get version for all controllers
-    List<Instance> liveInstances = getAllLiveInstanceControllers(clusterName);
+    List<Instance> liveInstances = getAllLiveInstanceControllers();
 
     for (Instance instance: liveInstances) {
       // In production, leader and standby share the secure port but have different hostnames—no conflict.
@@ -7852,7 +7852,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         continue;
       }
 
-      String liveInstanceUrl = instance.getUrl(sslEnabled);
+      String liveInstanceUrl = instance.getUrl(getSslFactory().isPresent());
 
       // Get the admin operation protocol version from standby controller
       AdminOperationProtocolVersionControllerResponse response =
@@ -9307,6 +9307,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   SafeHelixManager getHelixManager() {
     return helixManager;
+  }
+
+  String getControllerClusterName() {
+    return controllerClusterName;
   }
 
   String getPushJobStatusStoreClusterName() {

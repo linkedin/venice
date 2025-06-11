@@ -1043,7 +1043,7 @@ public class TestVeniceHelixAdmin {
     liveInstances.add(new Instance("2", "controller2", 1234));
     liveInstances.add(leaderInstance);
 
-    when(veniceHelixAdmin.getAllLiveInstanceControllers(clusterName)).thenReturn(liveInstances);
+    when(veniceHelixAdmin.getAllLiveInstanceControllers()).thenReturn(liveInstances);
     when(veniceHelixAdmin.getLeaderController(clusterName)).thenReturn(leaderInstance);
 
     try (MockedStatic<ControllerClient> controllerClientMockedStatic = mockStatic(ControllerClient.class)) {
@@ -1095,7 +1095,7 @@ public class TestVeniceHelixAdmin {
         new AdminOperationProtocolVersionControllerResponse();
     failedResponse.setError("Failed to get version");
 
-    when(veniceHelixAdmin.getAllLiveInstanceControllers(clusterName)).thenReturn(instances);
+    when(veniceHelixAdmin.getAllLiveInstanceControllers()).thenReturn(instances);
     when(veniceHelixAdmin.getLeaderController(clusterName)).thenReturn(new Instance("3", "leaderHost", 1234));
 
     try (MockedStatic<ControllerClient> controllerClientMockedStatic = mockStatic(ControllerClient.class)) {
@@ -1147,22 +1147,23 @@ public class TestVeniceHelixAdmin {
     SafeHelixDataAccessor safeHelixDataAccessor = mock(SafeHelixDataAccessor.class);
     VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
 
-    doCallRealMethod().when(veniceHelixAdmin).getAllLiveInstanceControllers(clusterName);
+    doCallRealMethod().when(veniceHelixAdmin).getAllLiveInstanceControllers();
     doReturn(safeHelixManager).when(veniceHelixAdmin).getHelixManager();
     doReturn(safeHelixDataAccessor).when(safeHelixManager).getHelixDataAccessor();
     doReturn(controllerMultiClusterConfig).when(veniceHelixAdmin).getMultiClusterConfigs();
     doReturn(1235).when(controllerMultiClusterConfig).getAdminSecurePort();
     doReturn(1236).when(controllerMultiClusterConfig).getAdminGrpcPort();
     doReturn(1237).when(controllerMultiClusterConfig).getAdminSecureGrpcPort();
+    when(veniceHelixAdmin.getControllerClusterName()).thenReturn("controllerClusterName");
 
     // When there is no live instance controller, it should throw an exception
     doReturn(Collections.emptyList()).when(safeHelixDataAccessor).getChildNames(any());
-    expectThrows(VeniceException.class, () -> veniceHelixAdmin.getAllLiveInstanceControllers(clusterName));
+    expectThrows(VeniceException.class, () -> veniceHelixAdmin.getAllLiveInstanceControllers());
 
     // When there are live instance controllers, it should return the list
     List<String> liveInstances = Arrays.asList("controller1_1234", "controller2_1234");
     doReturn(liveInstances).when(safeHelixDataAccessor).getChildNames(any());
-    List<Instance> liveInstanceControllers = veniceHelixAdmin.getAllLiveInstanceControllers(clusterName);
+    List<Instance> liveInstanceControllers = veniceHelixAdmin.getAllLiveInstanceControllers();
     assertEquals(liveInstanceControllers.size(), 2);
   }
 
