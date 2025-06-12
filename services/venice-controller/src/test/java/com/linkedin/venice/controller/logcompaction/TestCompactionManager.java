@@ -13,6 +13,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -164,7 +165,7 @@ public class TestCompactionManager {
     RepushJobRequest repushJobRequest = new RepushJobRequest(
         TEST_CLUSTER_NAME,
         Utils.getUniqueString(TEST_STORE_NAME_PREFIX),
-        RepushJobRequest.MANUAL_TRIGGER);
+        RepushStoreTriggerSource.MANUAL);
 
     // Call the repushStore method and expect a VeniceException
     testCompactionManager.repushStore(repushJobRequest);

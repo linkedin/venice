@@ -110,6 +110,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -1034,7 +1035,7 @@ public class StoresRoutes extends AbstractRoute {
         try {
           veniceResponse.copyValueOf(
               admin.repushStore(
-                  new RepushJobRequest(clusterName, storeName, sourceRegion, RepushJobRequest.MANUAL_TRIGGER)));
+                  new RepushJobRequest(clusterName, storeName, sourceRegion, RepushStoreTriggerSource.MANUAL)));
         } catch (Exception e) {
           veniceResponse.setError("Failed to compact store: " + storeName, e);
         }
