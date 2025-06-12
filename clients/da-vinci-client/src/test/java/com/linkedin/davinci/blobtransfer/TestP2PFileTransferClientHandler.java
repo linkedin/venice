@@ -444,7 +444,7 @@ public class TestP2PFileTransferClientHandler {
       Assert.fail("Expected exception not thrown");
     } catch (Exception e) {
       Assert.assertTrue(e.getCause() instanceof VeniceException);
-      Assert.assertTrue(e.getCause().getMessage().contains("might due to server unexpected graceful shutdown"));
+      Assert.assertTrue(e.getCause().getMessage().contains("might due to server graceful shutdown"));
       Assert.assertTrue(e.getCause().getMessage().contains("test_store_v1-0"));
     }
   }
