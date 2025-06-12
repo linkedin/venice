@@ -2,22 +2,15 @@ package com.linkedin.venice.spark.input.pubsub.raw;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubClientsFactory;
-import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
-import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.spark.input.pubsub.ConvertPubSubMessageToRow;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.List;
@@ -77,52 +70,18 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   // the buffer that holds the relevant messages for the current partition
 
   public VeniceRawPubsubInputPartitionReader(
-      VeniceProperties jobConfig,
-      VeniceBasicPubsubInputPartition inputPartition) {
-    this(
-        jobConfig,
-        inputPartition,
-        PubSubClientsFactory.createConsumerFactory(jobConfig)
-            .create(
-                new PubSubConsumerAdapterContext.Builder().setVeniceProperties(jobConfig)
-                    .setPubSubTopicRepository(new PubSubTopicRepository())
-                    .setPubSubMessageDeserializer(PubSubMessageDeserializer.createOptimizedDeserializer())
-                    .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(jobConfig))
-                    .setConsumerName(
-                        "raw_kif_" + inputPartition.getTopicName() + "_" + inputPartition.getPartitionNumber())
-                    .build()), // this is hideous
-        new PubSubTopicRepository());
-  }
-
-  // testing constructor
-  public VeniceRawPubsubInputPartitionReader(
-      VeniceProperties jobConfig,
       VeniceBasicPubsubInputPartition inputPartition,
       PubSubConsumerAdapter consumer,
-      PubSubTopicRepository pubSubTopicRepository) {
+      PubSubTopic pubSubTopic,
+      PubSubTopicPartition topicPartition) {
 
     this.pubSubConsumer = consumer;
+    this.pubSubTopic = pubSubTopic;
     this.topicName = inputPartition.getTopicName();
     this.targetPartitionNumber = inputPartition.getPartitionNumber();
     this.region = inputPartition.getRegion();
 
-    // Get topic reference
-    try {
-      this.pubSubTopic = pubSubTopicRepository.getTopic(this.topicName);
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to get topic: " + this.topicName, e);
-    }
-
-    // Find the target partition
-    this.targetPubSubTopicPartition = pubSubConsumer.partitionsFor(this.pubSubTopic)
-        .stream()
-        .map(PubSubTopicPartitionInfo::getTopicPartition)
-        .filter(partition -> partition.getPartitionNumber() == this.targetPartitionNumber)
-        .findFirst()
-        .orElseThrow(
-            () -> new RuntimeException(
-                "Partition not found for topic: " + this.topicName + " partition number: "
-                    + this.targetPartitionNumber));
+    this.targetPubSubTopicPartition = topicPartition;
 
     // Set up offset positions
     this.startingOffset = inputPartition.getStartOffset();
