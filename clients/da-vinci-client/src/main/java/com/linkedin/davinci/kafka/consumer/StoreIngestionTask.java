@@ -2657,10 +2657,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     if (shouldSyncOffset(partitionConsumptionState, record, leaderProducedRecordContext)) {
       updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
-      if (isHybridMode()) {
-        hostLevelIngestionStats.recordTotalDuplicateKeys(storageEngine.getStats().getDuplicateKeyCountEstimate());
-        hostLevelIngestionStats.recordTotalKeyCount(storageEngine.getStats().getKeyCountEstimate());
-      }
     }
   }
 
