@@ -47,10 +47,10 @@ import spark.Route;
 
 
 public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
-  private final String TEST_METRIC_PREFIX = "log_compaction";
-  private final String TEST_CLUSTER_NAME = AbstractTestVeniceParentHelixAdmin.clusterName;
-  private final String TEST_STORE_NAME = "log-compaction-stats-test-store";
-  private final String TEST_EXECUTION_ID = "test-execution-id";
+  private static final String TEST_METRIC_PREFIX = "log_compaction";
+  private static final String TEST_CLUSTER_NAME = AbstractTestVeniceParentHelixAdmin.clusterName;
+  private static final String TEST_STORE_NAME = "log-compaction-stats-test-store";
+  private static final String TEST_EXECUTION_ID = "test-execution-id";
   private InMemoryMetricReader inMemoryMetricReader;
 
   private Route repushStoreRoute; // route to test repushStore() endpoint
