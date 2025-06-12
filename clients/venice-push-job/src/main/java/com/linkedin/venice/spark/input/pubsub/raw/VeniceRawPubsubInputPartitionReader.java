@@ -10,7 +10,6 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.spark.input.pubsub.ConvertPubSubMessageToRow;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.List;
@@ -131,12 +130,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
     pubSubConsumer.subscribe(targetPubSubTopicPartition, startingPosition);
     LOGGER.info("Subscribed to Topic: {} Partition {}.", this.topicName, this.targetPartitionNumber);
 
-    initialize();
-  }
-
-  private void initialize() {
-    next();// get the first record ready to go.
-    recordsServed = 0; // reset the counter
+    this.recordsServed = 0; // reset the counter
   }
 
   /**
