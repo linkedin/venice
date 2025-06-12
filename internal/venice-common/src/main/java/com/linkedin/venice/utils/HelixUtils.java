@@ -101,7 +101,6 @@ public final class HelixUtils {
    * @return a list of objects that are under parent path. It will return an empty list of objects if parent path is
    * not existing
    * @throws VeniceException if data inconsistency persists after all retry attempts
-   * @throws ZkDataAccessException if ZK operations fail after all retry attempts
    */
   public static <T> List<T> getChildren(ZkBaseDataAccessor<T> dataAccessor, String path, int maxAttempts) {
     int attempt = 0;
@@ -118,13 +117,6 @@ public final class HelixUtils {
       // Get actual children
       List<T> children = dataAccessor.getChildren(path, null, AccessOption.PERSISTENT);
 
-      // ZK operation failed
-      if (children.isEmpty() && expectedCount != 0) {
-        attempt++;
-        handleFailedHelixOperation(path, "getChildren", attempt, maxAttempts);
-        continue;
-      }
-
       // Data is consistent
       if (children.size() == expectedCount) {
         return children;
@@ -132,7 +124,7 @@ public final class HelixUtils {
 
       // Data is inconsistent, retry
       attempt++;
-      LOGGER.info(
+      LOGGER.error(
           "dataAccessor.getChildNames() and dataAccessor.getChildren() did not return the same number "
               + "of elements from path: {}\nExpected: {}, but got {}. Attempt:{}/{}.",
           path,

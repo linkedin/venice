@@ -11,7 +11,6 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.ZkDataAccessException;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.Instance;
 import java.util.ArrayList;
@@ -157,7 +156,7 @@ public class TestHelixUtils {
     doReturn(TEST_CHILD_NAMES).when(mockDataAccessor).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
     doReturn(Collections.emptyList()).when(mockDataAccessor).getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
 
-    assertThrows(ZkDataAccessException.class, () -> {
+    assertThrows(VeniceException.class, () -> {
       HelixUtils.getChildren(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT);
     });
 
