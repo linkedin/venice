@@ -131,6 +131,7 @@ public class BlobTransferManagerBuilder {
               storageMetadataService,
               blobTransferConfig.getPeersConnectivityFreshnessInSeconds(),
               blobTransferConfig.getBlobReceiveTimeoutInMin(),
+              blobTransferConfig.getBlobReceiveReaderIdleTimeInSeconds(),
               globalTrafficHandler,
               sslFactory),
           blobFinder,

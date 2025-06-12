@@ -55,6 +55,8 @@ public class NettyFileTransferClient {
   private final String baseDir;
   private final int serverPort;
   private final int blobReceiveTimeoutInMin; // the timeout for receiving the blob file in minutes
+  private final int blobReceiveReaderIdleTimeInSeconds; // the reader idle timeout while receiving the blob file in
+                                                        // seconds
   private final int peersConnectivityFreshnessInSeconds; // the freshness of the peers connectivity records
   private StorageMetadataService storageMetadataService;
   private final ExecutorService hostConnectExecutorService;
@@ -74,6 +76,7 @@ public class NettyFileTransferClient {
       StorageMetadataService storageMetadataService,
       int peersConnectivityFreshnessInSeconds,
       int blobReceiveTimeoutInMin,
+      int blobReceiveReaderIdleTimeInSeconds,
       GlobalChannelTrafficShapingHandler globalChannelTrafficShapingHandler,
       Optional<SSLFactory> sslFactory) {
     this.baseDir = baseDir;
@@ -81,6 +84,7 @@ public class NettyFileTransferClient {
     this.storageMetadataService = storageMetadataService;
     this.peersConnectivityFreshnessInSeconds = peersConnectivityFreshnessInSeconds;
     this.blobReceiveTimeoutInMin = blobReceiveTimeoutInMin;
+    this.blobReceiveReaderIdleTimeInSeconds = blobReceiveReaderIdleTimeInSeconds;
 
     clientBootstrap = new Bootstrap();
     workerGroup = new NioEventLoopGroup();
@@ -267,7 +271,7 @@ public class NettyFileTransferClient {
       // Attach the file handler to the pipeline
       // Attach the metadata handler to the pipeline
       ch.pipeline()
-          .addLast(new IdleStateHandler(60, 0, 0)) // READER_IDLE: timeout of 60 seconds
+          .addLast(new IdleStateHandler(blobReceiveReaderIdleTimeInSeconds, 0, 0))
           .addLast(new MetadataAggregator(MAX_METADATA_CONTENT_LENGTH))
           .addLast(
               new P2PFileTransferClientHandler(

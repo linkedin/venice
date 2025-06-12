@@ -205,7 +205,7 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     }
     resetState();
     fastFailoverIncompleteTransfer(
-        "Channel close before completing transfer, might due to server unexpected graceful shutdown.",
+        "Channel close before completing transfer, might due to server graceful shutdown.",
         ctx);
   }
 
