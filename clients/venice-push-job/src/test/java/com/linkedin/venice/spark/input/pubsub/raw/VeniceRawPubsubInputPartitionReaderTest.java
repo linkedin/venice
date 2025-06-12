@@ -63,7 +63,7 @@ public class VeniceRawPubsubInputPartitionReaderTest {
 
     // updated constants to adjust the test behavior and timeouts
     final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 3;
-    final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(5);
+    final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(1);
     final Long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
 
     // Setup mocks
@@ -88,6 +88,7 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     });
     long elapsed = System.currentTimeMillis() - start;
     Assert.assertTrue(elapsed >= 3000, "Constructor should take at least 3 seconds due to polling retries.");
+    Assert.assertTrue(elapsed < 4000, "Constructor should not exceed 4 seconds, it doesn't do much after failure.");
 
     // // Assert
     // // Verify consumer subscribes to the topic partition with the correct starting position
