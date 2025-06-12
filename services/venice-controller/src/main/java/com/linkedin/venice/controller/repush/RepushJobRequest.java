@@ -10,9 +10,6 @@ import java.util.Map;
 
 
 public class RepushJobRequest {
-  public static final RepushStoreTriggerSource SCHEDULED_TRIGGER = RepushStoreTriggerSource.SCHEDULED;
-  public static final RepushStoreTriggerSource MANUAL_TRIGGER = RepushStoreTriggerSource.MANUAL;
-
   private final String clusterName;
   private final String storeName;
   private final String sourceRegion;
