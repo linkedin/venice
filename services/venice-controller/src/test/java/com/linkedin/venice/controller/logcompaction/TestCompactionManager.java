@@ -92,6 +92,12 @@ public class TestCompactionManager {
     StoreInfo store3 = new StoreInfo();
     StoreInfo store4 = new StoreInfo();
 
+    // Set store names
+    store1.setName(TEST_STORE_NAME_PREFIX + "1");
+    store2.setName(TEST_STORE_NAME_PREFIX + "2");
+    store3.setName(TEST_STORE_NAME_PREFIX + "3");
+    store4.setName(TEST_STORE_NAME_PREFIX + "4");
+
     // Return Version mocks when getVersion() is called
     store1.setVersions(Collections.singletonList(version1));
     store2.setVersions(Collections.singletonList(version2));
