@@ -230,7 +230,9 @@ public class EventThrottler implements VeniceRateLimiter {
       }
       if (sleepTimeMs > timeWindowMS) {
         LOGGER.warn(
-            "Throttler: {} sleep time ({} ms) exceeds window size ({} ms). This will likely result in not being able to honor the rate limit accurately.",
+            "Throttler: With current rate {}, quota {}, {} sleep time ({} ms) exceeds window size ({} ms). This will likely result in not being able to honor the rate limit accurately.",
+            currentRate,
+            quota,
             throttlerName,
             sleepTimeMs,
             timeWindowMS);
