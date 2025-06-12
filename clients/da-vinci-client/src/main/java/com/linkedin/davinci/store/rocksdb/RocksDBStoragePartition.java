@@ -833,7 +833,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   public long getKeyCountEstimate() {
-    return getRocksDBStatValue("rocksdb.estimate-num-keys");
+    return 0;
   }
 
   public void deleteFilesInDirectory(String fullPath) {
