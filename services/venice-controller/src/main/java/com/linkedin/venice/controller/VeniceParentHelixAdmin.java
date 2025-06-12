@@ -382,7 +382,7 @@ public class VeniceParentHelixAdmin implements Admin {
       new VeniceConcurrentHashMap<>();
 
   /** Metrics */
-  private final Map<String, LogCompactionStats> logCompactionStatsMap = new HashMap<>();
+  private final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
 
   // Visible for testing
   public VeniceParentHelixAdmin(
