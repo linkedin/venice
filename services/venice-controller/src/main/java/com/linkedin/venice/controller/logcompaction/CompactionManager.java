@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.logcompaction;
 
+import static com.linkedin.venice.meta.Store.SYSTEM_STORE_NAME_PREFIX;
+
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
@@ -74,7 +76,8 @@ public class CompactionManager {
   public boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
 
-    return isHybridStore && isLastCompactionTimeOlderThanThreshold(timeSinceLastLogCompactionThresholdMs, storeInfo);
+    return isHybridStore && isLastCompactionTimeOlderThanThreshold(timeSinceLastLogCompactionThresholdMs, storeInfo)
+        && !storeInfo.isActiveActiveReplicationEnabled() && !storeInfo.getName().startsWith(SYSTEM_STORE_NAME_PREFIX);
   }
 
   /**
