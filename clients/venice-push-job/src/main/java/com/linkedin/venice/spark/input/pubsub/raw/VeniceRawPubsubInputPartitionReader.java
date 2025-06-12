@@ -61,6 +61,10 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   private final long endingOffset;
   private final long offsetLength;
   private final float lastKnownProgressPercent = 0;
+  // Added for testing purposes
+  private final long consumerPollTimeout;
+  private final int consumerPollEmptyResultRetryTimes;
+  private final long emptyPollSleepTimeMs;
   private PubSubPosition currentPosition;
   private InternalRow currentRow = null;
   private long recordsServed = 0;
@@ -74,12 +78,44 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
       PubSubConsumerAdapter consumer,
       PubSubTopic pubSubTopic,
       PubSubTopicPartition topicPartition) {
+    this(
+        inputPartition,
+        consumer,
+        pubSubTopic,
+        topicPartition,
+        CONSUMER_POLL_TIMEOUT,
+        CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES,
+        EMPTY_POLL_SLEEP_TIME_MS);
+  }
+
+  /**
+   * Constructor for testing with custom timeout and retry values.
+   *
+   * @param inputPartition The input partition to read from
+   * @param consumer The PubSub consumer adapter
+   * @param pubSubTopic The PubSub topic
+   * @param topicPartition The topic partition
+   * @param pollTimeoutMs The timeout in milliseconds for each poll operation
+   * @param pollRetryTimes The number of retry attempts when polling returns empty results
+   * @param emptyPollSleepTimeMs The sleep time in milliseconds between retries when polling returns empty results
+   */
+  public VeniceRawPubsubInputPartitionReader(
+      VeniceBasicPubsubInputPartition inputPartition,
+      PubSubConsumerAdapter consumer,
+      PubSubTopic pubSubTopic,
+      PubSubTopicPartition topicPartition,
+      long pollTimeoutMs,
+      int pollRetryTimes,
+      long emptyPollSleepTimeMs) {
 
     this.pubSubConsumer = consumer;
     this.pubSubTopic = pubSubTopic;
     this.topicName = inputPartition.getTopicName();
     this.targetPartitionNumber = inputPartition.getPartitionNumber();
     this.region = inputPartition.getRegion();
+    this.consumerPollTimeout = pollTimeoutMs;
+    this.consumerPollEmptyResultRetryTimes = pollRetryTimes;
+    this.emptyPollSleepTimeMs = emptyPollSleepTimeMs;
 
     this.targetPubSubTopicPartition = topicPartition;
 
@@ -156,8 +192,8 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> consumerBuffer;
     int retries = 0;
 
-    while (retries < CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES) {
-      consumerBuffer = this.pubSubConsumer.poll(CONSUMER_POLL_TIMEOUT);
+    while (retries < consumerPollEmptyResultRetryTimes) {
+      consumerBuffer = this.pubSubConsumer.poll(this.consumerPollTimeout);
       List<DefaultPubSubMessage> partitionMessagesBuffer = consumerBuffer.get(this.targetPubSubTopicPartition);
 
       if (partitionMessagesBuffer != null && !partitionMessagesBuffer.isEmpty()) {
@@ -166,7 +202,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
       }
 
       try {
-        Thread.sleep(EMPTY_POLL_SLEEP_TIME_MS);
+        Thread.sleep(this.emptyPollSleepTimeMs);
       } catch (InterruptedException e) {
         logProgress(getProgressPercent());
         LOGGER.error(
@@ -186,7 +222,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
     throw new RuntimeException(
         String.format(
             "Empty poll after %d retries for topic: %s partition: %d. No messages were consumed.",
-            CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES,
+            consumerPollEmptyResultRetryTimes,
             this.topicName,
             this.targetPartitionNumber));
   }
