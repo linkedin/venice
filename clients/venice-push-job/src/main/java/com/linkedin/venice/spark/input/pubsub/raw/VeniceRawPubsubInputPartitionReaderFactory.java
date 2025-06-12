@@ -21,51 +21,54 @@ public class VeniceRawPubsubInputPartitionReaderFactory implements PartitionRead
 
   private final VeniceProperties jobConfig;
 
-  public VeniceRawPubsubInputPartitionReaderFactory(VeniceProperties jobConfig) {
+  public VeniceRawPubsubInputPartitionReaderFactory(final VeniceProperties jobConfig) {
     this.jobConfig = jobConfig;
   }
 
   @Override
-  public PartitionReader<InternalRow> createReader(InputPartition genericInputPartition) {
-
+  public PartitionReader<InternalRow> createReader(final InputPartition genericInputPartition) {
     if (!(genericInputPartition instanceof VeniceBasicPubsubInputPartition)) {
       throw new IllegalArgumentException(
           "VeniceRawPubsubInputPartitionReaderFactory can only create readers for VeniceBasicPubsubInputPartition");
     }
 
-    VeniceBasicPubsubInputPartition inputPartition = (VeniceBasicPubsubInputPartition) genericInputPartition;
+    final VeniceBasicPubsubInputPartition inputPartition = (VeniceBasicPubsubInputPartition) genericInputPartition;
+    final String topicName = inputPartition.getTopicName();
+    final int partitionNumber = inputPartition.getPartitionNumber();
+    final String consumerName = String.format("raw_kif_%s_%d", topicName, partitionNumber);
 
-    String topicName = inputPartition.getTopicName();
-    PubSubTopic pubSubTopic;
-
-    PubSubConsumerAdapter pubSubConsumer = PubSubClientsFactory.createConsumerFactory(this.jobConfig)
-        .create(
-            new PubSubConsumerAdapterContext.Builder().setVeniceProperties(this.jobConfig)
-                .setPubSubTopicRepository(new PubSubTopicRepository())
-                .setPubSubMessageDeserializer(PubSubMessageDeserializer.createOptimizedDeserializer())
-                .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(jobConfig))
-                .setConsumerName("raw_kif_" + inputPartition.getTopicName() + "_" + inputPartition.getPartitionNumber())
-                .build());
-
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    // Create a single topic repository instance to be used throughout
+    final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
     // Get topic reference
+    final PubSubTopic pubSubTopic;
     try {
       pubSubTopic = pubSubTopicRepository.getTopic(topicName);
     } catch (Exception e) {
       throw new RuntimeException("Failed to get topic: " + topicName, e);
     }
 
+    // Create consumer adapter with proper context
+    final PubSubConsumerAdapterContext consumerContext =
+        new PubSubConsumerAdapterContext.Builder().setVeniceProperties(this.jobConfig)
+            .setPubSubTopicRepository(pubSubTopicRepository)
+            .setPubSubMessageDeserializer(PubSubMessageDeserializer.createOptimizedDeserializer())
+            .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(jobConfig))
+            .setConsumerName(consumerName)
+            .build();
+
+    final PubSubConsumerAdapter pubSubConsumer =
+        PubSubClientsFactory.createConsumerFactory(this.jobConfig).create(consumerContext);
+
     // Find the target partition
-    PubSubTopicPartition targetPubSubTopicPartition = pubSubConsumer.partitionsFor(pubSubTopic)
+    final PubSubTopicPartition targetPubSubTopicPartition = pubSubConsumer.partitionsFor(pubSubTopic)
         .stream()
         .map(PubSubTopicPartitionInfo::getTopicPartition)
-        .filter(partition -> partition.getPartitionNumber() == inputPartition.getPartitionNumber())
+        .filter(partition -> partition.getPartitionNumber() == partitionNumber)
         .findFirst()
         .orElseThrow(
             () -> new RuntimeException(
-                "Partition not found for topic: " + topicName + " partition number: "
-                    + inputPartition.getPartitionNumber()));
+                String.format("Partition not found for topic: %s partition number: %d", topicName, partitionNumber)));
 
     return new VeniceRawPubsubInputPartitionReader(
         inputPartition,
