@@ -79,7 +79,7 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     // updated constants to adjust the test behavior and timeouts
     final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 3;
     final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(1);
-    final Long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
+    final long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
 
     // Setup mocks
     when(mockInputPartition.getPartitionNumber()).thenReturn(partitionNumber);
@@ -217,6 +217,7 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     PubSubPosition mockPosition1 = ApacheKafkaOffsetPosition.of(startOffset);
 
     DefaultPubSubMessage mockMessage1 = Mockito.mock(DefaultPubSubMessage.class);
+    when(mockKey1.isControlMessage()).thenReturn(true);
     when(mockMessage1.getOffset()).thenReturn(mockPosition1);
     when(mockMessage1.getKey()).thenReturn(mockKey1); // No key for this message
 
@@ -261,14 +262,41 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     Assert.assertTrue(reader.next(), "Reader should have a next message available");
     Assert.assertNotNull(reader.get(), "Expected one result");
     Assert.assertEquals(reader.get(), mockRow, "Reader should return the expected InternalRow");
-    Assert.assertTrue(reader.next(), "Reader should have a next message available");
     Assert.assertFalse(reader.next(), "Reader should have a next message available");
-
+    // assert that skipped records is 1
+    Assert.assertEquals(reader.readerStats.getRecordsSkipped(), 1, "Reader should have skipped one control message");
     // at this point, we keep returning the last good row, and there wont be any "next" message available.
     Assert.assertFalse(reader.next(), "Reader should have a next message available");
     Assert.assertEquals(reader.get(), mockRow, "Reader should return the expected InternalRow");
 
     reader.close();
+  }
+
+  // test to make sure getStats() returns the expected values
+  @Test
+  public void testGetStats() {
+
+    // updated constants to adjust the test behavior and timeouts
+    final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 3;
+    final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(1);
+    final long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
+
+    reader = new VeniceRawPubsubInputPartitionReader(
+        mockInputPartition,
+        mockConsumer,
+        mockTopicPartition,
+        CONSUMER_POLL_TIMEOUT,
+        CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES,
+        EMPTY_POLL_SLEEP_TIME_MS,
+        mockMessageToRowConverter);
+
+    // Assert that stats are initialized to zero
+    Assert.assertEquals(reader.readerStats.getRecordsServed(), 0, "Records served should be zero initially");
+    Assert.assertEquals(reader.readerStats.getRecordsSkipped(), 0, "Records skipped should be zero initially");
+    Assert.assertEquals(
+        reader.readerStats.getRecordsDeliveredByGet(),
+        0,
+        "Records delivered by get should be zero initially");
   }
 
 }
