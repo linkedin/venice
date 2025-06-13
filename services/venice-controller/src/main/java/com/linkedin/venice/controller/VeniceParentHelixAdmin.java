@@ -175,6 +175,7 @@ import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.exceptions.AdminMessageConsumptionTimeoutException;
 import com.linkedin.venice.exceptions.ConcurrentBatchPushException;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -648,23 +649,22 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireAdminMessageExecutionIdLock(clusterName);
     try {
       checkAndRepairCorruptedExecutionId(clusterName);
+      // Obtain the cluster level read lock so during a graceful shutdown or leadership handover there will be no
+      // execution id gap (execution id is generated but the message is not sent).
       try (AutoCloseableLock ignore = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName)
           .getClusterLockManager()
           .createClusterReadLock()) {
-        // Obtain the cluster level read lock so during a graceful shutdown or leadership handover there will be no
-        // execution id gap (execution id is generated but the message is not sent).
+
+        // Validate message before acquiring execution id
+        int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
+        AdminOperationSerializer.validate(message, writerSchemaId);
+
+        // Acquire execution id, any exception thrown after this point will result to a missing execution id.
         AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
         AdminCommandExecution execution =
             adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
         message.executionId = execution.getExecutionId();
         VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
-        Map<String, Long> metadata = adminTopicMetadataAccessor.getMetadata(clusterName);
-        int adminOperationProtocolVersion = (int) AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata);
-        int writerSchemaId = (adminOperationProtocolVersion > 0
-            && adminOperationProtocolVersion <= AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-                ? adminOperationProtocolVersion
-                : AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
-
         byte[] serializedValue = adminOperationSerializer.serialize(message, writerSchemaId);
         try {
           Future<PubSubProduceResult> future = veniceWriter.put(emptyKeyByteArr, serializedValue, writerSchemaId);
@@ -743,6 +743,22 @@ public class VeniceParentHelixAdmin implements Admin {
     return result;
   }
 
+  /**
+   * Fetches the writer schema ID from ZK.
+   * If the upstream protocol version (the one in /adminTopicMetadata) is -1 or larger than latest schema, returns the latest;
+   * otherwise, returns the version in ZK.
+   * @param clusterName The name of the cluster for which the writer schema id is to be fetched.
+   * @return The writer schema id to be used to serialize the admin operation.
+   */
+  private int getWriterSchemaIdFromZK(String clusterName) {
+    Map<String, Long> metadata = adminTopicMetadataAccessor.getMetadata(clusterName);
+    int adminOperationProtocolVersion = (int) AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata);
+    return (adminOperationProtocolVersion > 0
+        && adminOperationProtocolVersion <= AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
+            ? adminOperationProtocolVersion
+            : AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
+  }
+
   private void checkAndRepairCorruptedExecutionId(String clusterName) {
     if (!executionIdValidatedClusters.contains(clusterName)) {
       ExecutionIdAccessor executionIdAccessor = getVeniceHelixAdmin().getExecutionIdAccessor();
@@ -780,7 +796,7 @@ public class VeniceParentHelixAdmin implements Admin {
             "Timed out after waiting for " + waitingTimeForConsumptionMs + "ms for admin consumption to catch up.";
         errMsg += " Consumed execution id: " + consumedExecutionId + ", waiting to be consumed id: " + executionId;
         errMsg += (lastException == null) ? "" : " Last exception: " + lastException.getMessage();
-        throw new VeniceException(errMsg, lastException);
+        throw new AdminMessageConsumptionTimeoutException(errMsg, lastException);
       }
 
       LOGGER.info("Waiting execution id: {} to be consumed, currently at: {}", executionId, consumedExecutionId);
@@ -1032,9 +1048,9 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
     acquireAdminMessageLock(clusterName, storeName);
+    Store store = null;
     try {
       LOGGER.info("Deleting store: {} from cluster: {}", storeName, clusterName);
-      Store store = null;
       try {
         store = getVeniceHelixAdmin().checkPreConditionForDeletion(clusterName, storeName);
       } catch (VeniceNoStoreException e) {
@@ -1053,17 +1069,38 @@ public class VeniceParentHelixAdmin implements Admin {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       // Deleting ACL needs to be the last step in store deletion process.
-      if (store != null) {
-        if (!store.isMigrating()) {
-          cleanUpAclsForStore(storeName, VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
-        } else {
-          LOGGER.info("Store: {} is migrating! Skipping acl deletion!", storeName);
-        }
-      } else {
-        LOGGER.warn("Store object for {} is missing! Skipping acl deletion!", storeName);
-      }
+      deleteAclsForStore(store, storeName);
+    } catch (AdminMessageConsumptionTimeoutException timeoutException) {
+      LOGGER.info(
+          "Timed out while waiting for delete store admin message to be consumed for store: {} in cluster: {}",
+          storeName,
+          clusterName,
+          timeoutException);
+      deleteAclsForStore(store, storeName);
+      throw timeoutException;
+    } catch (Exception e) {
+      LOGGER.info("Caught an exception when deleting store {} in cluster {}", storeName, clusterName, e);
+      throw e;
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
+    }
+  }
+
+  /**
+   * Deletes the acls associated with a store
+   * @param store
+   * @param storeName
+   */
+  protected void deleteAclsForStore(Store store, String storeName) {
+    if (store == null) {
+      LOGGER.warn("Store object for {} is missing! Skipping acl deletion!", storeName);
+      return;
+    }
+
+    if (!store.isMigrating()) {
+      cleanUpAclsForStore(store.getName(), VeniceSystemStoreType.getEnabledSystemStoreTypes(store));
+    } else {
+      LOGGER.info("Store: {} is migrating! Skipping acl deletion!", storeName);
     }
   }
 
@@ -3898,14 +3935,16 @@ public class VeniceParentHelixAdmin implements Admin {
       parentStore.updateVersionStatus(versionNum, PUSHED);
       repository.updateStore(parentStore);
       LOGGER.info(
-          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          "Updating parent store {} version {} status to {} for target region push w/ deferred swap",
+          parentStore.getName(),
           versionNum,
           PUSHED);
     } else if (failedRegions.size() > 0) {
       parentStore.updateVersionStatus(versionNum, ERROR);
       repository.updateStore(parentStore);
       LOGGER.info(
-          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          "Updating parent store {} version {} status to {} for target region push w/ deferred swap",
+          parentStore.getName(),
           versionNum,
           ERROR);
     }
@@ -5246,14 +5285,23 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getDeadStores(clusterName, storeName, includeSystemStores);
   }
 
-  /**
-   * @return the largest used version number for the given store from the store graveyard.
-   */
   @Override
   public int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName) {
     Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    int aggregatedLargestUsedVersionNumber =
-        getVeniceHelixAdmin().getStoreGraveyard().getLargestUsedVersionNumber(storeName);
+    int aggregatedLargestUsedVersionNumber = getStoreGraveyard().getLargestUsedVersionNumber(storeName);
+    for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
+      VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
+      if (response.getVersion() > aggregatedLargestUsedVersionNumber) {
+        aggregatedLargestUsedVersionNumber = response.getVersion();
+      }
+    }
+    return aggregatedLargestUsedVersionNumber;
+  }
+
+  @Override
+  public int getLargestUsedVersion(String clusterName, String storeName) {
+    Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    int aggregatedLargestUsedVersionNumber = getVeniceHelixAdmin().getLargestUsedVersion(clusterName, storeName);
     for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
       VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
       if (response.getVersion() > aggregatedLargestUsedVersionNumber) {

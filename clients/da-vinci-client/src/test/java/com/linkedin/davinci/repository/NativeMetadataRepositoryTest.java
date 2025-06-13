@@ -1,12 +1,15 @@
 package com.linkedin.davinci.repository;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.stats.NativeMetadataRepositoryStats;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
@@ -15,7 +18,6 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
-import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Clock;
 import java.util.concurrent.TimeUnit;
@@ -25,23 +27,31 @@ import org.testng.annotations.Test;
 
 
 public class NativeMetadataRepositoryTest {
-  private ClientConfig clientConfigThinClient;
-  private ClientConfig clientConfigRequestBased;
-  private VeniceProperties backendConfig;
+  private ClientConfig clientConfig;
+
+  private VeniceProperties backendConfigThinClient;
+  private VeniceProperties backendConfigRequestBased;
+
   private MetricsRepository metricsRepository;
   private Clock clock;
   private static final String STORE_NAME = "hardware_store";
 
   @BeforeMethod
   public void setUpMocks() {
-    clientConfigThinClient = mock(ClientConfig.class);
-    clientConfigRequestBased = mock(ClientConfig.class);
-    backendConfig = mock(VeniceProperties.class);
-    doReturn(1L).when(backendConfig).getLong(eq(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS), anyLong());
+    clientConfig = mock(ClientConfig.class);
+
+    backendConfigThinClient = mock(VeniceProperties.class);
+    doReturn(1L).when(backendConfigThinClient)
+        .getLong(eq(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS), anyLong());
+
+    backendConfigRequestBased = mock(VeniceProperties.class);
+    doReturn(1L).when(backendConfigRequestBased)
+        .getLong(eq(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS), anyLong());
+    doReturn(true).when(backendConfigRequestBased)
+        .getBoolean(eq(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY), anyBoolean());
+
     metricsRepository = new MetricsRepository();
-    doReturn(metricsRepository).when(clientConfigThinClient).getMetricsRepository();
-    doReturn(metricsRepository).when(clientConfigRequestBased).getMetricsRepository();
-    doReturn(true).when(clientConfigRequestBased).isUseRequestBasedMetaRepository();
+    doReturn(metricsRepository).when(clientConfig).getMetricsRepository();
     clock = mock(Clock.class);
     doReturn(0L).when(clock).millis();
   }
@@ -49,32 +59,32 @@ public class NativeMetadataRepositoryTest {
   @Test
   public void testGetThinClientInstance() {
     NativeMetadataRepository nativeMetadataRepository =
-        NativeMetadataRepository.getInstance(clientConfigThinClient, backendConfig);
+        NativeMetadataRepository.getInstance(clientConfig, backendConfigThinClient);
     Assert.assertTrue(nativeMetadataRepository instanceof ThinClientMetaStoreBasedRepository);
 
     Assert.assertThrows(() -> nativeMetadataRepository.subscribe(STORE_NAME));
     nativeMetadataRepository.start();
     nativeMetadataRepository.clear();
     Assert.assertThrows(() -> nativeMetadataRepository.subscribe(STORE_NAME));
-    Assert.assertThrows(() -> nativeMetadataRepository.start());
+    Assert.assertThrows(nativeMetadataRepository::start);
   }
 
   @Test
   public void testGetRequestBasedInstance() {
     NativeMetadataRepository nativeMetadataRepository =
-        NativeMetadataRepository.getInstance(clientConfigRequestBased, backendConfig);
+        NativeMetadataRepository.getInstance(clientConfig, backendConfigRequestBased);
     Assert.assertTrue(nativeMetadataRepository instanceof RequestBasedMetaRepository);
 
     Assert.assertThrows(() -> nativeMetadataRepository.subscribe(STORE_NAME));
     nativeMetadataRepository.start();
     nativeMetadataRepository.clear();
     Assert.assertThrows(() -> nativeMetadataRepository.subscribe(STORE_NAME));
-    Assert.assertThrows(() -> nativeMetadataRepository.start());
+    Assert.assertThrows(nativeMetadataRepository::start);
   }
 
   @Test
   public void testGetSchemaDataFromReadThroughCache() throws InterruptedException {
-    TestNMR nmr = new TestNMR(clientConfigThinClient, backendConfig, clock);
+    TestNMR nmr = new TestNMR(clientConfig, backendConfigThinClient, clock);
     nmr.start();
     Assert.assertThrows(VeniceNoStoreException.class, () -> nmr.getKeySchema(STORE_NAME));
     nmr.subscribe(STORE_NAME);
@@ -83,9 +93,9 @@ public class NativeMetadataRepositoryTest {
 
   @Test
   public void testGetSchemaDataEfficiently() throws InterruptedException {
-    doReturn(Long.MAX_VALUE).when(backendConfig)
+    doReturn(Long.MAX_VALUE).when(backendConfigThinClient)
         .getLong(eq(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS), anyLong());
-    TestNMR nmr = new TestNMR(clientConfigThinClient, backendConfig, clock);
+    TestNMR nmr = new TestNMR(clientConfig, backendConfigThinClient, clock);
     nmr.start();
     Assert.assertEquals(nmr.keySchemaRequestCount, 0);
     Assert.assertEquals(nmr.valueSchemasRequestCount, 0);
@@ -120,40 +130,32 @@ public class NativeMetadataRepositoryTest {
    */
   @Test
   public void testNativeMetadataRepositoryStats() throws InterruptedException {
-    doReturn(Long.MAX_VALUE).when(backendConfig)
+    doReturn(Long.MAX_VALUE).when(backendConfigThinClient)
         .getLong(eq(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS), anyLong());
-    TestNMR nmr = new TestNMR(clientConfigThinClient, backendConfig, clock);
+    TestNMR nmr = new TestNMR(clientConfig, backendConfigThinClient, clock);
     nmr.start();
     nmr.subscribe(STORE_NAME);
     doReturn(1000L).when(clock).millis();
-    String stalenessMetricName = ".native_metadata_repository--store_metadata_staleness_high_watermark_ms.Gauge";
-    TestUtils.waitForNonDeterministicAssertion(500, TimeUnit.MILLISECONDS, () -> {
-      Metric staleness = metricsRepository.getMetric(stalenessMetricName);
-      Assert.assertNotNull(staleness);
-      Assert.assertEquals(staleness.value(), 1000d);
-    });
+
+    NativeMetadataRepositoryStats nativeMetadataRepository = nmr.getNativeMetadataRepositoryStats();
+    Assert.assertNotNull(nativeMetadataRepository);
+    Assert.assertEquals(nativeMetadataRepository.getMetadataStalenessHighWatermarkMs(), 1000d);
+
     String anotherStoreName = STORE_NAME + "V2";
     nmr.subscribe(anotherStoreName);
     nmr.refreshOneStore(anotherStoreName);
     // After one store refresh we should still see staleness increase because it reports the max amongst all stores
     doReturn(2000L).when(clock).millis();
-    TestUtils.waitForNonDeterministicAssertion(
-        500,
-        TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(metricsRepository.getMetric(stalenessMetricName).value(), 2000d));
+    Assert.assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), 2000d);
+
     // Refresh both stores and staleness should decrease
     nmr.refresh();
-    TestUtils.waitForNonDeterministicAssertion(
-        500,
-        TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(metricsRepository.getMetric(stalenessMetricName).value(), 0d));
+    Assert.assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), 0d);
+
+    // Unsubscribing stores should remove their corresponding staleness metric
     nmr.unsubscribe(STORE_NAME);
     nmr.unsubscribe(anotherStoreName);
-    // Unsubscribing stores should remove their corresponding staleness metric
-    TestUtils.waitForNonDeterministicAssertion(
-        500,
-        TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(metricsRepository.getMetric(stalenessMetricName).value(), Double.NaN));
+    Assert.assertEquals(nmr.getNativeMetadataRepositoryStats().getMetadataStalenessHighWatermarkMs(), Double.NaN);
   }
 
   static class TestNMR extends NativeMetadataRepository {

@@ -1,9 +1,15 @@
 package com.linkedin.venice.fastclient.stats;
 
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_COUNT;
 import static com.linkedin.venice.stats.ClientType.FAST_CLIENT;
+import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
+import static com.linkedin.venice.stats.dimensions.RequestRetryType.LONG_TAIL_RETRY;
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.dimensions.RequestRetryType;
+import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
+import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -13,6 +19,7 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -32,12 +39,14 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   private final Sensor rejectedRequestCountByLoadControllerSensor;
   private final Sensor rejectionRatioSensor;
 
-  private final Sensor longTailRetryRequestSensor;
-  private final Sensor errorRetryRequestSensor;
   private final Sensor retryRequestWinSensor;
   private final Sensor metadataStalenessSensor;
   private final Sensor fanoutSizeSensor;
   private final Sensor retryFanoutSizeSensor;
+
+  // OTel metrics
+  private final MetricEntityStateOneEnum<RequestRetryType> longTailRetry;
+  private final MetricEntityStateOneEnum<RequestRetryType> errorRetry;
   private long cacheTimeStampInMs = 0;
 
   public static FastClientStats getClientStats(
@@ -77,8 +86,6 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
     this.dualReadThinClientFastClientLatencyDeltaSensor =
         registerSensorWithDetailedPercentiles("dual_read_thinclient_fastclient_latency_delta", new Max(), new Avg());
     this.leakedRequestCountSensor = registerSensor("leaked_request_count", new OccurrenceRate());
-    this.longTailRetryRequestSensor = registerSensor("long_tail_retry_request", new OccurrenceRate());
-    this.errorRetryRequestSensor = registerSensor("error_retry_request", new OccurrenceRate());
     this.retryRequestWinSensor = registerSensor("retry_request_win", new OccurrenceRate());
 
     this.metadataStalenessSensor = registerSensor(new AsyncGauge((ignored, ignored2) -> {
@@ -93,6 +100,23 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
     this.rejectedRequestCountByLoadControllerSensor =
         registerSensor("rejected_request_count_by_load_controller", new OccurrenceRate());
     this.rejectionRatioSensor = registerSensor("rejection_ratio", new Avg(), new Max());
+
+    this.longTailRetry = MetricEntityStateOneEnum.create(
+        RETRY_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.LONG_TAIL_RETRY_REQUEST,
+        Collections.singletonList(new OccurrenceRate()),
+        baseDimensionsMap,
+        RequestRetryType.class);
+    this.errorRetry = MetricEntityStateOneEnum.create(
+        RETRY_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        FastClientTehutiMetricName.ERROR_RETRY_REQUEST,
+        Collections.singletonList(new OccurrenceRate()),
+        baseDimensionsMap,
+        RequestRetryType.class);
   }
 
   public void recordNoAvailableReplicaRequest() {
@@ -112,11 +136,12 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
   }
 
   public void recordLongTailRetryRequest() {
-    longTailRetryRequestSensor.record();
+    longTailRetry.record(1, LONG_TAIL_RETRY);
   }
 
+  @Override
   public void recordErrorRetryRequest() {
-    errorRetryRequestSensor.record();
+    errorRetry.record(1, ERROR_RETRY);
   }
 
   public void recordRetryRequestWin() {
@@ -174,5 +199,23 @@ public class FastClientStats extends com.linkedin.venice.client.stats.ClientStat
       return (metric != null ? metric.value() : Double.NaN);
     }).collect(Collectors.toList());
     return collect;
+  }
+
+  /**
+   * Metric names for tehuti metrics used in this class.
+   */
+  public enum FastClientTehutiMetricName implements TehutiMetricNameEnum {
+    LONG_TAIL_RETRY_REQUEST, ERROR_RETRY_REQUEST;
+
+    private final String metricName;
+
+    FastClientTehutiMetricName() {
+      this.metricName = name().toLowerCase();
+    }
+
+    @Override
+    public String getMetricName() {
+      return this.metricName;
+    }
   }
 }

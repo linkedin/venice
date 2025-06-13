@@ -40,7 +40,8 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
@@ -212,7 +213,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** storage destination for consumption */
   protected final StorageService storageService;
   protected final StorageEngineRepository storageEngineRepository;
-  protected final AbstractStorageEngine storageEngine;
+  protected final StorageEngine storageEngine;
 
   /** Topics used for this topic consumption
    * TODO: Using a PubSubVersionTopic and PubSubRealTimeTopic extending PubSubTopic for type safety.
@@ -639,7 +640,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract IngestionBatchProcessor getIngestionBatchProcessor();
 
-  public AbstractStorageEngine getStorageEngine() {
+  public StorageEngine getStorageEngine() {
     return storageEngine;
   }
 
@@ -1241,8 +1242,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long beforeProcessingPerRecordTimestampNs = System.nanoTime();
       partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       if (!shouldProcessRecord(record)) {
-        partitionConsumptionState
-            .updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getPosition().getNumericOffset());
         continue;
       }
 
@@ -1307,10 +1306,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         partitionConsumptionState.setLatestPolledMessageTimestampInMs(beforeProcessingBatchRecordsTimestampMs);
       }
       if (!shouldProcessRecord(record)) {
-        if (partitionConsumptionState != null) {
-          partitionConsumptionState
-              .updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getPosition().getNumericOffset());
-        }
         continue;
       }
       waitReadyToProcessRecord(record);
@@ -1428,7 +1423,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               "Memory limit reached. Pausing consumption of topic-partition: {}",
               getReplicaId(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber()));
           runnableForKillIngestionTasksForNonCurrentVersions.run();
-          if (storageEngine.hasMemorySpaceLeft()) {
+          if (storageEngine.getStats().hasMemorySpaceLeft()) {
             unSubscribePartition(pubSubTopicPartition, false);
             /**
              * DaVinci ingestion hits memory limit and we would like to retry it in the following way:
@@ -2663,8 +2658,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (shouldSyncOffset(partitionConsumptionState, record, leaderProducedRecordContext)) {
       updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
       if (isHybridMode()) {
-        hostLevelIngestionStats.recordTotalDuplicateKeys(storageEngine.getDuplicateKeyCountEstimate());
-        hostLevelIngestionStats.recordTotalKeyCount(storageEngine.getKeyCountEstimate());
+        hostLevelIngestionStats.recordTotalDuplicateKeys(storageEngine.getStats().getDuplicateKeyCountEstimate());
+        hostLevelIngestionStats.recordTotalKeyCount(storageEngine.getStats().getKeyCountEstimate());
       }
     }
   }
@@ -2755,7 +2750,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private void syncOffset(String topic, PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
-    AbstractStorageEngine storageEngineReloadedFromRepo = storageEngineRepository.getLocalStorageEngine(topic);
+    StorageEngine storageEngineReloadedFromRepo = storageEngineRepository.getLocalStorageEngine(topic);
     if (storageEngineReloadedFromRepo == null) {
       LOGGER.warn("Storage engine has been removed. Could not execute sync offset for replica: {}", pcs.getReplicaId());
       return;
@@ -4364,7 +4359,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (!partitionConsumptionState.isCompletionReported()) {
             Store store = storeRepository.getStoreOrThrow(storeName);
             reportCompleted(partitionConsumptionState);
-            AbstractStorageEngine storageEngineReloadedFromRepo =
+            StorageEngine storageEngineReloadedFromRepo =
                 storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
             if (store.isHybrid()) {
               if (storageEngineReloadedFromRepo == null) {
@@ -4375,7 +4370,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                  */
                 storageEngineReloadedFromRepo.adjustStoragePartition(
                     partition,
-                    AbstractStorageEngine.StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ,
+                    StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ,
                     getStoragePartitionConfig(partitionConsumptionState));
               }
             }

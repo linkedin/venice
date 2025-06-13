@@ -1,7 +1,7 @@
 package com.linkedin.davinci.utils;
 
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngine;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
@@ -16,7 +16,7 @@ import java.nio.ByteBuffer;
  * partition (VT partition) could be adopted as an improvement to clean up any leaked chunks due to producer failures.
  */
 public class RocksDBChunkAssembler extends ChunkAssembler {
-  public RocksDBChunkAssembler(AbstractStorageEngine bufferStorageEngine, boolean skipFailedToAssembleRecords) {
+  public RocksDBChunkAssembler(StorageEngine bufferStorageEngine, boolean skipFailedToAssembleRecords) {
     super(bufferStorageEngine, skipFailedToAssembleRecords);
   }
 

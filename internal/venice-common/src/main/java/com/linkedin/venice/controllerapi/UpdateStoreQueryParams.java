@@ -151,6 +151,10 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
             .setTargetRegionSwapWaitTime(srcStore.getTargetRegionSwapWaitTime())
             .setGlobalRtDivEnabled(srcStore.isGlobalRtDivEnabled())
+            .setMaxCompactionLagSeconds(srcStore.getMaxCompactionLagSeconds())
+            .setMinCompactionLagSeconds(srcStore.getMinCompactionLagSeconds())
+            .setNearlineProducerCountPerWriter(srcStore.getNearlineProducerCountPerWriter())
+            .setIsDavinciHeartbeatReported(srcStore.getIsDavinciHeartbeatReported())
             // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
             // still easy to parse
             .setStoreViews(

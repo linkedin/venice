@@ -1,8 +1,8 @@
 package com.linkedin.venice.client.store;
 
 import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
-import static com.linkedin.venice.client.store.predicate.PredicateBuilder.and;
-import static com.linkedin.venice.client.store.predicate.PredicateBuilder.equalTo;
+import static com.linkedin.venice.client.store.predicate.Predicate.and;
+import static com.linkedin.venice.client.store.predicate.Predicate.equalTo;
 import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.COSINE_SIMILARITY;
 import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.DOT_PRODUCT;
 import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.HADAMARD_PRODUCT;
@@ -396,7 +396,7 @@ public class AvroComputeRequestBuilderTest {
     AvroComputeRequestBuilderV4<GenericRecord> computeRequestBuilder =
         new AvroComputeRequestBuilderV4(mockClient, mockClient.getSchemaReader());
 
-    Predicate requiredKeyFields = and(equalTo("companyId", "5678"), equalTo("id", "1234"));
+    Predicate<GenericRecord> requiredKeyFields = and(equalTo("companyId", "5678"), equalTo("id", "1234"));
 
     StreamingCallback<GenericRecord, GenericRecord> callback = new StreamingCallback<GenericRecord, GenericRecord>() {
       @Override
@@ -444,7 +444,7 @@ public class AvroComputeRequestBuilderTest {
     AvroComputeRequestBuilderV4<GenericRecord> computeRequestBuilder =
         new AvroComputeRequestBuilderV4(mockClient, mockClient.getSchemaReader());
 
-    Predicate requiredKeyFields = and(equalTo("int_field", 1234), equalTo("id", "1234"));
+    Predicate<GenericRecord> requiredKeyFields = and(equalTo("int_field", 1234), equalTo("id", "1234"));
 
     computeRequestBuilder
         .project(VALID_RECORD_SCHEMA.getFields().stream().map(Schema.Field::name).collect(Collectors.toList()))
@@ -467,7 +467,7 @@ public class AvroComputeRequestBuilderTest {
     AvroComputeRequestBuilderV4<GenericRecord> computeRequestBuilder =
         new AvroComputeRequestBuilderV4(mockClient, mockClient.getSchemaReader());
 
-    Predicate requiredKeyFields = and(equalTo("fake_field1", 1234), equalTo("fake_field2", "1234"));
+    Predicate<GenericRecord> requiredKeyFields = and(equalTo("fake_field1", 1234), equalTo("fake_field2", "1234"));
 
     computeRequestBuilder
         .project(VALID_RECORD_SCHEMA.getFields().stream().map(Schema.Field::name).collect(Collectors.toList()))

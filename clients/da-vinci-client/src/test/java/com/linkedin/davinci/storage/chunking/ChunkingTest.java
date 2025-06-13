@@ -8,7 +8,7 @@ import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -191,7 +191,7 @@ public class ChunkingTest {
     doReturn(schemaEntry).when(schemaRepository).getValueSchema(storeName, SCHEMA_ID);
     doReturn(schemaEntry).when(schemaRepository).getSupersetOrLatestValueSchema(storeName);
 
-    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = mock(StorageEngine.class);
     ByteBuffer firstKey = ByteBuffer.wrap(
         ByteUtils.fromHexString(
             "040647454FF4BAF2630A5449544C45440010494D504C494349540036EB0A5300374C6A9C5EEBB468C58E4300CE984E0001"));

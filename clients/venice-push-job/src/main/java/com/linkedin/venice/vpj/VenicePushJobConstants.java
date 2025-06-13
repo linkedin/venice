@@ -52,6 +52,7 @@ public final class VenicePushJobConstants {
   public static final String CONTROLLER_REQUEST_RETRY_ATTEMPTS = "controller.request.retry.attempts";
   public static final String POLL_JOB_STATUS_INTERVAL_MS = "poll.job.status.interval.ms";
   public static final String JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS = "job.status.in.unknown.state.timeout.ms";
+  public static final String PUSH_JOB_TIMEOUT_OVERRIDE_MS = "push.job.timeout.override.ms";
   public static final String SEND_CONTROL_MESSAGES_DIRECTLY = "send.control.messages.directly";
   public static final String SOURCE_ETL = "source.etl";
   public static final String ETL_VALUE_SCHEMA_TRANSFORMATION = "etl.value.schema.transformation";
@@ -246,11 +247,6 @@ public final class VenicePushJobConstants {
    */
   public static final String JOB_EXEC_ID = "job.execution.id";
 
-  /**
-   * Config to enable the service that uploads push job statuses to the controller using
-   * {@code ControllerClient.uploadPushJobStatus()}, the job status is then packaged and sent to dedicated Kafka channel.
-   */
-  public static final String PUSH_JOB_STATUS_UPLOAD_ENABLE = "push.job.status.upload.enable";
   public static final String REDUCER_SPECULATIVE_EXECUTION_ENABLE = "reducer.speculative.execution.enable";
 
   /**

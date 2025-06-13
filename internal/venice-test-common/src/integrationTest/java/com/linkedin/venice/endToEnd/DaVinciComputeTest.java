@@ -6,8 +6,9 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME;
-import static com.linkedin.venice.client.store.predicate.PredicateBuilder.and;
-import static com.linkedin.venice.client.store.predicate.PredicateBuilder.equalTo;
+import static com.linkedin.venice.client.store.predicate.Predicate.and;
+import static com.linkedin.venice.client.store.predicate.Predicate.equalTo;
+import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static org.testng.Assert.assertThrows;
@@ -211,7 +212,7 @@ public class DaVinciComputeTest {
             d2Client,
             new MetricsRepository(),
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             new DaVinciConfig(),
             TestUtils.getIngestionIsolationPropertyMap());
@@ -317,7 +318,7 @@ public class DaVinciComputeTest {
             d2Client,
             new MetricsRepository(),
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             new DaVinciConfig(),
             TestUtils.getIngestionIsolationPropertyMap());
@@ -375,7 +376,7 @@ public class DaVinciComputeTest {
             d2Client,
             new MetricsRepository(),
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             new DaVinciConfig(),
             TestUtils.getIngestionIsolationPropertyMap());
@@ -453,7 +454,7 @@ public class DaVinciComputeTest {
             d2Client,
             new MetricsRepository(),
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             new DaVinciConfig(),
             TestUtils.getIngestionIsolationPropertyMap());
@@ -500,7 +501,7 @@ public class DaVinciComputeTest {
             d2Client,
             new MetricsRepository(),
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             new DaVinciConfig(),
             TestUtils.getIngestionIsolationPropertyMap());
@@ -571,7 +572,7 @@ public class DaVinciComputeTest {
             d2Client,
             new MetricsRepository(),
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             config,
             TestUtils.getIngestionIsolationPropertyMap());
@@ -666,11 +667,12 @@ public class DaVinciComputeTest {
             new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
                 .setValuePayloadSerializer(valueSerializer)
                 .build());
-        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
             d2Client,
             VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
             metricsRepository,
-            backendConfig);
+            backendConfig,
+            cluster);
         DaVinciClient<GenericRecord, GenericRecord> client =
             factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig().setStorageClass(StorageClass.DISK))) {
 
@@ -686,7 +688,7 @@ public class DaVinciComputeTest {
       Map<GenericRecord, GenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
       CountDownLatch computeLatch = new CountDownLatch(1);
 
-      Predicate partialKey = and(equalTo("id", "key_abcdefgh_1"), equalTo("companyId", 0));
+      Predicate<GenericRecord> partialKey = and(equalTo("id", "key_abcdefgh_1"), equalTo("companyId", 0));
 
       Schema keySchema = new Schema.Parser().parse(KEY_SCHEMA_PARTIAL_KEY_LOOKUP);
 
@@ -768,11 +770,12 @@ public class DaVinciComputeTest {
             new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer)
                 .setValuePayloadSerializer(valueSerializer)
                 .build());
-        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+        CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
             d2Client,
             VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
             metricsRepository,
-            backendConfig);
+            backendConfig,
+            cluster);
         DaVinciClient<GenericRecord, GenericRecord> client =
             factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
 
@@ -785,7 +788,7 @@ public class DaVinciComputeTest {
           numRecords);
       client.subscribeAll().get();
 
-      Predicate partialKey = and(equalTo("id", "key_abcdefgh_1"), equalTo("companyId", 0));
+      Predicate<GenericRecord> partialKey = and(equalTo("id", "key_abcdefgh_1"), equalTo("companyId", 0));
 
       final boolean[] completed = { false };
 

@@ -39,6 +39,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTI
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
@@ -220,11 +221,12 @@ public class DaVinciClientTest {
     for (int i = 0; i < totalIterations; ++i) {
       MetricsRepository metricsRepository = new MetricsRepository();
       final int iteration = i + 1;
-      try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+      try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
           d2Client,
           VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
           metricsRepository,
-          backendConfig)) {
+          backendConfig,
+          cluster)) {
         DaVinciConfig c1 = new DaVinciConfig();
         DaVinciConfig c2 = new DaVinciConfig().setIsolated(true);
         BiFunction<String, DaVinciConfig, CompletableFuture<Void>> starter =
@@ -261,11 +263,12 @@ public class DaVinciClientTest {
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setIsolated(true);
     MetricsRepository metricsRepository = new MetricsRepository();
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
       factory.getAndStartGenericAvroClient(s1, daVinciConfig);
       factory.getAndStartGenericAvroClient(s1, daVinciConfig);
     }
@@ -295,11 +298,12 @@ public class DaVinciClientTest {
             .build());
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, clientConfig);
 
       // Test non-existent key access
@@ -374,11 +378,12 @@ public class DaVinciClientTest {
     });
 
     // Test managed clients & data cleanup
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         new MetricsRepository(),
         backendConfig,
+        cluster,
         Optional.of(Collections.singleton(storeName1)))) {
       assertNotEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
 
@@ -420,11 +425,12 @@ public class DaVinciClientTest {
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
       DaVinciConfig daVinciConfig = new DaVinciConfig().setIsolated(isIngestionIsolated);
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
 
@@ -462,7 +468,7 @@ public class DaVinciClientTest {
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {};
     setUpStore(storeName, paramsConsumer, properties -> {});
 
-    Map<String, Object> backendConfigMap = new HashMap<>();
+    Map<String, Object> backendConfigMap = new HashMap<>(cluster.getPubSubClientProperties());
     backendConfigMap.put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true);
     backendConfigMap.put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 10);
     backendConfigMap.put(SERVER_DISK_FULL_THRESHOLD, 0.01); // force it to fail
@@ -498,11 +504,12 @@ public class DaVinciClientTest {
 
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
       DaVinciClient<Integer, Object> client = factory.getAndStartGenericAvroClient(storeName, clientConfig);
 
       GenericRecord reusableObject = new GenericData.Record(client.getLatestValueSchema());
@@ -560,7 +567,7 @@ public class DaVinciClientTest {
             d2Client,
             new MetricsRepository(),
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             new DaVinciConfig(),
             extraBackendConfigMap);
@@ -643,7 +650,7 @@ public class DaVinciClientTest {
             d2Client,
             metricsRepository,
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             new DaVinciConfig(),
             extraBackendConfigMap);
@@ -692,7 +699,7 @@ public class DaVinciClientTest {
         d2Client,
         metricsRepository,
         Optional.empty(),
-        cluster.getZk().getAddress(),
+        cluster,
         storeName,
         new DaVinciConfig(),
         extraBackendConfigMap);
@@ -751,11 +758,12 @@ public class DaVinciClientTest {
 
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
       // subscribe to a partition without data
       client.subscribe(Collections.singleton(emptyPartition)).get();
@@ -816,11 +824,12 @@ public class DaVinciClientTest {
 
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
       // subscribe to a partition without data
       int emptyPartition = (partition + 1) % partitionCount;
@@ -893,7 +902,7 @@ public class DaVinciClientTest {
             d2Client,
             new MetricsRepository(),
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             new DaVinciConfig().setIsolated(ingestionMode.equals(IngestionMode.ISOLATED)),
             extraBackendProp);
@@ -945,15 +954,17 @@ public class DaVinciClientTest {
     // Since the previous DaVinci client is closed, the static default Gauge metric measurement thread pool is also
     // shutdown. In order to continue calculating Gauge metrics values in the new client, create a new thread pool
     MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository(10000, 50);
+    Map<String, Object> extraProps = new HashMap<>();
+    extraProps.put(DATA_BASE_PATH, baseDataPath);
     DaVinciTestContext<Integer, Object> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
             d2Client,
             metricsRepository,
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             daVinciConfig,
-            Collections.singletonMap(DATA_BASE_PATH, baseDataPath));
+            extraProps);
     try (DaVinciClient<Integer, Object> client = daVinciTestContext.getDaVinciClient()) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         try {
@@ -1047,11 +1058,12 @@ public class DaVinciClientTest {
     MetricsRepository metricsRepository = new MetricsRepository();
 
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
 
       // Test non-existent key access
@@ -1070,11 +1082,12 @@ public class DaVinciClientTest {
     }
 
     // Test managed clients
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
         backendConfig,
+        cluster,
         Optional.of(Collections.singleton(storeName1)))) {
 
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
@@ -1148,7 +1161,7 @@ public class DaVinciClientTest {
             d2Client,
             new MetricsRepository(),
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             daVinciConfig,
             extraConfigMap);
@@ -1174,7 +1187,7 @@ public class DaVinciClientTest {
             d2Client,
             new MetricsRepository(),
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             daVinciConfig,
             extraConfigMap);
@@ -1233,11 +1246,12 @@ public class DaVinciClientTest {
         .build();
 
     // Re-open the same store's database to verify RocksDB metadata partition's lock has been released.
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
       DaVinciClient<Integer, Integer> client = factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig());
       client.subscribeAll().get();
     }
@@ -1333,11 +1347,12 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig2 = configBuilder.build();
     DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
 
-    try (CachingDaVinciClientFactory factory2 = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory2 = getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         new MetricsRepository(),
-        backendConfig2)) {
+        backendConfig2,
+        cluster)) {
       // Case 1: Start a fresh client, and see if it can bootstrap from the first one
       DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
       client2.subscribeAll().get();

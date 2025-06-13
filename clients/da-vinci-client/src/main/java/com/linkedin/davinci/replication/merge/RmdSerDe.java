@@ -36,6 +36,7 @@ public class RmdSerDe {
   private BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCache;
   private final boolean fastAvroEnabled;
 
+  private final static int DEFAULT_MAX_RETRIES = 5;
   private final static int DEFAULT_DELAY_TIME_BETWEEN_RETRIES = 1; // seconds
 
   public RmdSerDe(StringAnnotatedStoreSchemaCache annotatedStoreSchemaCache, int rmdVersionId) {
@@ -101,7 +102,26 @@ public class RmdSerDe {
   }
 
   public Schema getRmdSchema(final int valueSchemaId) {
-    return this.rmdSchemaIndexedByValueSchemaId.computeIfAbsent(valueSchemaId, this::generateRmdSchema);
+    return this.rmdSchemaIndexedByValueSchemaId.computeIfAbsent(valueSchemaId, this::generateRmdSchemaWithRetry);
+  }
+
+  private Schema generateRmdSchemaWithRetry(final int valueSchemaId) {
+    return RetryUtils.executeWithMaxAttempt(() -> {
+      try {
+        return generateRmdSchema(valueSchemaId);
+      } catch (VeniceException e) {
+        throw new VeniceException(
+            String.format(
+                "Failed to generate RMD schema for store: %s with value schema ID: %d and RMD version ID: %d",
+                annotatedStoreSchemaCache.getStoreName(),
+                valueSchemaId,
+                rmdVersionId),
+            e);
+      }
+    },
+        DEFAULT_MAX_RETRIES,
+        Duration.ofSeconds(DEFAULT_DELAY_TIME_BETWEEN_RETRIES),
+        Collections.singletonList(VeniceException.class));
   }
 
   private Schema generateRmdSchema(final int valueSchemaId) {

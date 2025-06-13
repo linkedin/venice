@@ -43,50 +43,12 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
   protected final Map<String, DaVinciConfig> configs = new HashMap<>();
   private final Executor readChunkExecutorForLargeRequest;
 
-  @Deprecated
-  public CachingDaVinciClientFactory(
-      D2Client d2Client,
-      MetricsRepository metricsRepository,
-      VeniceProperties backendConfig) {
-    this(d2Client, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME, metricsRepository, backendConfig);
-  }
-
-  @Deprecated
-  public CachingDaVinciClientFactory(
-      D2Client d2Client,
-      MetricsRepository metricsRepository,
-      VeniceProperties backendConfig,
-      Optional<Set<String>> managedClients) {
-    this(
-        d2Client,
-        ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        metricsRepository,
-        backendConfig,
-        managedClients);
-  }
-
-  @Deprecated
-  public CachingDaVinciClientFactory(
-      D2Client d2Client,
-      MetricsRepository metricsRepository,
-      VeniceProperties backendConfig,
-      Optional<Set<String>> managedClients,
-      ICProvider icProvider) {
-    this(
-        d2Client,
-        ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        metricsRepository,
-        backendConfig,
-        managedClients,
-        icProvider);
-  }
-
   public CachingDaVinciClientFactory(
       D2Client d2Client,
       String clusterDiscoveryD2ServiceName,
       MetricsRepository metricsRepository,
       VeniceProperties backendConfig) {
-    this(d2Client, clusterDiscoveryD2ServiceName, metricsRepository, backendConfig, Optional.empty(), null);
+    this(d2Client, clusterDiscoveryD2ServiceName, metricsRepository, backendConfig, Optional.empty());
   }
 
   public CachingDaVinciClientFactory(
@@ -95,16 +57,6 @@ public class CachingDaVinciClientFactory implements DaVinciClientFactory, Closea
       MetricsRepository metricsRepository,
       VeniceProperties backendConfig,
       Optional<Set<String>> managedClients) {
-    this(d2Client, clusterDiscoveryD2ServiceName, metricsRepository, backendConfig, managedClients, null);
-  }
-
-  public CachingDaVinciClientFactory(
-      D2Client d2Client,
-      String clusterDiscoveryD2ServiceName,
-      MetricsRepository metricsRepository,
-      VeniceProperties backendConfig,
-      Optional<Set<String>> managedClients,
-      ICProvider icProvider) {
     this(d2Client, clusterDiscoveryD2ServiceName, metricsRepository, backendConfig, managedClients, null, null);
   }
 

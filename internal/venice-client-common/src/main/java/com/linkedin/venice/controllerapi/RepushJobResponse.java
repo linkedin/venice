@@ -13,7 +13,8 @@ public class RepushJobResponse extends ControllerResponse {
     this.executionId = DEFAULT_EXECUTION_ID;
   }
 
-  public RepushJobResponse(String executionId) {
+  public RepushJobResponse(String storeName, String executionId) {
+    this.setName(storeName);
     this.executionId = executionId;
   }
 

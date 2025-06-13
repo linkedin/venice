@@ -4,6 +4,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.ReporterBackedMapReduceDataWriterTaskTracker;
@@ -61,6 +62,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
             .setPubSubConsumerAdapterFactory(PubSubClientsFactory.createConsumerFactory(consumerProperties))
             .setTopicMetadataFetcherThreadPoolSize(1)
             .setTopicMetadataFetcherConsumerPoolSize(1)
+            .setVeniceComponent(VeniceComponent.PUSH_JOB)
             .build();
     try (TopicManager topicManager =
         new TopicManagerRepository(topicManagerContext, config.get(KAFKA_INPUT_BROKER_URL)).getLocalTopicManager()) {

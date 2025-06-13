@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.integration.utils.DaVinciTestContext.getCachingDaVinciClientFactory;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
@@ -243,11 +244,12 @@ public class TestMaterializedViewEndToEnd {
     D2Client daVinciD2RemoteFabric = D2TestUtils
         .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress());
     MetricsRepository dvcMetricsRepo = new MetricsRepository();
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         daVinciD2RemoteFabric,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         dvcMetricsRepo,
-        backendConfig)) {
+        backendConfig,
+        multiRegionMultiClusterWrapper)) {
       // Ensure compatibility of store and view DVC clients since it's possible for the same JVM to subscribe to a store
       // and its view(s).
       DaVinciClient<String, Object> storeClient = factory.getAndStartGenericAvroClient(storeName, daVinciConfig);
@@ -304,11 +306,12 @@ public class TestMaterializedViewEndToEnd {
             .build();
     D2Client daVinciD2SourceFabric = D2TestUtils
         .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress());
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         daVinciD2SourceFabric,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         new MetricsRepository(),
-        newBackendConfig)) {
+        newBackendConfig,
+        multiRegionMultiClusterWrapper)) {
       DaVinciClient<String, Object> viewClient =
           factory.getAndStartGenericAvroClient(storeName, testViewName, daVinciConfig);
       viewClient.subscribe(Collections.singleton(0)).get();
@@ -378,11 +381,12 @@ public class TestMaterializedViewEndToEnd {
     D2Client daVinciD2RemoteFabric = D2TestUtils
         .getAndStartD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress());
     MetricsRepository dvcMetricsRepo = new MetricsRepository();
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = getCachingDaVinciClientFactory(
         daVinciD2RemoteFabric,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         dvcMetricsRepo,
-        backendConfig)) {
+        backendConfig,
+        multiRegionMultiClusterWrapper)) {
       DaVinciClient<String, Object> viewClient =
           factory.getAndStartGenericAvroClient(storeName, testViewName, daVinciConfig);
       viewClient.subscribeAll().get();

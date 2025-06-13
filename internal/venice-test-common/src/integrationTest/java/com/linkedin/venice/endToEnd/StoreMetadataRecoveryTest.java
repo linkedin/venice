@@ -108,8 +108,8 @@ public class StoreMetadataRecoveryTest {
         ControllerClientFactory.getControllerClient(clusterName, parentControllerUrl, Optional.empty());
     ControllerClient childControllerClient =
         ControllerClientFactory.getControllerClient(clusterName, childControllerUrl, Optional.empty());
-    String storeName1 = TestUtils.getUniqueTopicString("store_metadata_recovery");
-    String storeName2 = TestUtils.getUniqueTopicString("store_metadata_recovery");
+    String storeName1 = Utils.getUniqueString("store_metadata_recovery");
+    String storeName2 = Utils.getUniqueString("store_metadata_recovery");
     String keySchemaStr = "\"string\"";
     String simpleValueSchemaStr = "\"string\"";
     String recordValueSchemaStr1 =

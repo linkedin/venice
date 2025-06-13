@@ -128,6 +128,72 @@ public class RmdSerDeTest {
     rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(rmdAndValueSchemaIDBytes.array(), rmdAndValueID);
   }
 
+  @Test
+  public void testRetryInGetRmdSchema() {
+    // Preparation:
+    Schema valueSchema = AvroCompatibilityHelper.parse(VALUE_SCHEMA_STR);
+    Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema);
+
+    ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
+    RmdSchemaEntry mockRmdSchemaEntry = mock(RmdSchemaEntry.class);
+    Mockito.doReturn(rmdSchema).when(mockRmdSchemaEntry).getSchema();
+
+    // Mock to fail 4 times on getRmdSchema() and succeed on the fifth time.
+    Mockito.doThrow(new VeniceException("Mocked schema repository exception"))
+        .doThrow(new VeniceException("Mocked schema repository exception"))
+        .doThrow(new VeniceException("Mocked schema repository exception"))
+        .doThrow(new VeniceException("Mocked schema repository exception"))
+        .doReturn(mockRmdSchemaEntry)
+        .when(mockSchemaRepository)
+        .getReplicationMetadataSchema(storeName, valueSchemaID, rmdVersionID);
+
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, mockSchemaRepository);
+    RmdSerDe testRmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, rmdVersionID);
+
+    // Action:
+    Schema actualRmdSchema = testRmdSerDe.getRmdSchema(valueSchemaID);
+
+    // Verify:
+    Assert.assertNotNull(actualRmdSchema);
+    Assert.assertEquals(actualRmdSchema.getName(), "Person_MetadataRecord");
+    Assert.assertEquals(actualRmdSchema.getNamespace(), "com.linkedin.avro");
+    Assert.assertEquals(actualRmdSchema.getType(), Schema.Type.RECORD);
+
+    Mockito.verify(mockSchemaRepository, Mockito.times(5))
+        .getReplicationMetadataSchema(storeName, valueSchemaID, rmdVersionID);
+  }
+
+  @Test
+  public void testRetryInGetRmdSchemaWithException() {
+    // Prepare:
+    ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
+    // Mock to fail all the times on getRmdSchema()
+    Mockito.doThrow(new VeniceException("Mocked schema repository exception"))
+        .when(mockSchemaRepository)
+        .getReplicationMetadataSchema(storeName, valueSchemaID, rmdVersionID);
+
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, mockSchemaRepository);
+    RmdSerDe testRmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, rmdVersionID);
+
+    // Action:
+    try {
+      testRmdSerDe.getRmdSchema(valueSchemaID);
+      Assert.fail("Expected VeniceException to be thrown");
+    } catch (VeniceException e) {
+      // This should throw VeniceException after 5 failed attempts.
+      // Verify the exception message contains expected information
+      Assert.assertTrue(e.getMessage().contains("Failed to generate RMD schema for store"));
+      Assert.assertTrue(e.getMessage().contains(storeName));
+      Assert.assertTrue(e.getMessage().contains("value schema ID: " + valueSchemaID));
+      Assert.assertTrue(e.getMessage().contains("RMD version ID: " + rmdVersionID));
+    }
+    // Verify that the repository was called exactly 5 times (all failures)
+    Mockito.verify(mockSchemaRepository, Mockito.times(5))
+        .getReplicationMetadataSchema(storeName, valueSchemaID, rmdVersionID);
+  }
+
   private GenericRecord createRmdWithCollectionTimestamp(Schema rmdSchema) {
     Schema rmdTimestampSchema = rmdSchema.getField("timestamp").schema().getTypes().get(1);
     GenericRecord rmdTimestamp = new GenericData.Record(rmdTimestampSchema);

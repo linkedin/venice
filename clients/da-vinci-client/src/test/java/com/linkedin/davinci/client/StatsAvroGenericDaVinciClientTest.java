@@ -65,7 +65,9 @@ public class StatsAvroGenericDaVinciClientTest {
     assertTrue(metrics.get(".test_store--healthy_request.OccurrenceRate").value() > 0);
     assertTrue(metrics.get(".test_store--unhealthy_request.OccurrenceRate").value() > 0);
     assertTrue(metrics.get(".test_store--healthy_request_latency.Avg").value() > 0);
-    assertEquals(metrics.get(".test_store--success_request_key_count.Avg").value(), 1.0);
+    // we have 2 requests, one success and one failure and we would record the key count for the success request as 1
+    // and the key count for the failure request as 0.
+    assertEquals(metrics.get(".test_store--success_request_key_count.Avg").value(), 1.0 / 2);
     assertEquals(metrics.get(".test_store--success_request_key_count.Max").value(), 1.0);
     assertTrue(metrics.get(".test_store--success_request_ratio.SimpleRatioStat").value() < 1.0);
     assertTrue(metrics.get(".test_store--success_request_key_ratio.SimpleRatioStat").value() < 1.0);
@@ -105,7 +107,9 @@ public class StatsAvroGenericDaVinciClientTest {
     assertTrue(metrics.get(".test_store--multiget_healthy_request.OccurrenceRate").value() > 0);
     assertTrue(metrics.get(".test_store--multiget_unhealthy_request.OccurrenceRate").value() > 0);
     assertTrue(metrics.get(".test_store--multiget_healthy_request_latency.Avg").value() > 0);
-    assertEquals(metrics.get(".test_store--multiget_success_request_key_count.Avg").value(), 2.0);
+    // We have 3 batch get requests, one success with 2 keys, one failure, and one with run time exception.
+    // Key count for the success one is 2, failure one is 0, and the run time exception one is never recorded.
+    assertEquals(metrics.get(".test_store--multiget_success_request_key_count.Avg").value(), 2.0 / 2);
     assertEquals(metrics.get(".test_store--multiget_success_request_key_count.Max").value(), 2.0);
     assertTrue(metrics.get(".test_store--multiget_success_request_ratio.SimpleRatioStat").value() < 1.0);
     assertTrue(metrics.get(".test_store--multiget_success_request_key_ratio.SimpleRatioStat").value() < 1.0);

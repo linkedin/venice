@@ -1,6 +1,6 @@
 package com.linkedin.davinci.stats;
 
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.StatsErrorCode;
@@ -12,7 +12,7 @@ import org.apache.logging.log4j.Logger;
 
 
 public class AggVersionedStorageEngineStats extends
-    AbstractVeniceAggVersionedStats<AggVersionedStorageEngineStats.StorageEngineStats, AggVersionedStorageEngineStats.StorageEngineStatsReporter> {
+    AbstractVeniceAggVersionedStats<AggVersionedStorageEngineStats.StorageEngineStatsWrapper, AggVersionedStorageEngineStats.StorageEngineStatsReporter> {
   private static final Logger LOGGER = LogManager.getLogger(AggVersionedStorageEngineStats.class);
 
   public AggVersionedStorageEngineStats(
@@ -22,12 +22,12 @@ public class AggVersionedStorageEngineStats extends
     super(
         metricsRepository,
         metadataRepository,
-        StorageEngineStats::new,
+        StorageEngineStatsWrapper::new,
         StorageEngineStatsReporter::new,
         unregisterMetricForDeletedStoreEnabled);
   }
 
-  public void setStorageEngine(String topicName, AbstractStorageEngine storageEngine) {
+  public void setStorageEngine(String topicName, StorageEngine storageEngine) {
     if (!Version.isVersionTopicOrStreamReprocessingTopic(topicName)) {
       LOGGER.warn("Invalid topic name: {}", topicName);
       return;
@@ -55,24 +55,24 @@ public class AggVersionedStorageEngineStats extends
     }
   }
 
-  static class StorageEngineStats {
-    private AbstractStorageEngine storageEngine;
+  static class StorageEngineStatsWrapper {
+    private StorageEngine storageEngine;
     private final AtomicInteger rocksDBOpenFailureCount = new AtomicInteger(0);
 
-    public void setStorageEngine(AbstractStorageEngine storageEngine) {
+    public void setStorageEngine(StorageEngine storageEngine) {
       this.storageEngine = storageEngine;
     }
 
     public long getDiskUsageInBytes() {
       if (storageEngine != null) {
-        return storageEngine.getStoreSizeInBytes();
+        return storageEngine.getStats().getStoreSizeInBytes();
       }
       return 0;
     }
 
     public long getRMDDiskUsageInBytes() {
       if (storageEngine != null) {
-        return storageEngine.getRMDSizeInBytes();
+        return storageEngine.getStats().getRMDSizeInBytes();
       }
       return 0;
     }
@@ -82,7 +82,7 @@ public class AggVersionedStorageEngineStats extends
     }
   }
 
-  static class StorageEngineStatsReporter extends AbstractVeniceStatsReporter<StorageEngineStats> {
+  static class StorageEngineStatsReporter extends AbstractVeniceStatsReporter<StorageEngineStatsWrapper> {
     public StorageEngineStatsReporter(MetricsRepository metricsRepository, String storeName, String clusterName) {
       super(metricsRepository, storeName);
     }
@@ -90,7 +90,7 @@ public class AggVersionedStorageEngineStats extends
     @Override
     protected void registerStats() {
       registerSensor(new AsyncGauge((ignored, ignored2) -> {
-        StorageEngineStats stats = getStats();
+        StorageEngineStatsWrapper stats = getStats();
         if (stats == null) {
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
         } else {
@@ -98,7 +98,7 @@ public class AggVersionedStorageEngineStats extends
         }
       }, "disk_usage_in_bytes"));
       registerSensor(new AsyncGauge((ignored, ignored2) -> {
-        StorageEngineStats stats = getStats();
+        StorageEngineStatsWrapper stats = getStats();
         if (stats == null) {
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
         } else {
@@ -106,7 +106,7 @@ public class AggVersionedStorageEngineStats extends
         }
       }, "rmd_disk_usage_in_bytes"));
       registerSensor(new AsyncGauge((ignored, ignored2) -> {
-        StorageEngineStats stats = getStats();
+        StorageEngineStatsWrapper stats = getStats();
         if (stats == null) {
           return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
         } else {

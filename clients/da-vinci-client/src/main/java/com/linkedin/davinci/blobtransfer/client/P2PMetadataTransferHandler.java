@@ -13,6 +13,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -51,13 +52,15 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
 
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, FullHttpResponse msg) throws Exception {
-    LOGGER.debug("Received metadata response from remote peer for topic {}", payload.getTopicName());
+    LOGGER.info(
+        "Received metadata response from remote peer for {}",
+        Utils.getReplicaId(payload.getTopicName(), payload.getPartition()));
 
     processMetadata(msg);
 
-    LOGGER.debug(
-        "Successfully processed metadata response from remote peer for topic {} with metadata {}",
-        payload.getTopicName(),
+    LOGGER.info(
+        "Successfully processed metadata response from remote peer for {} with metadata {}",
+        Utils.getReplicaId(payload.getTopicName(), payload.getPartition()),
         metadata);
   }
 
@@ -69,8 +72,8 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
     ByteBuf content = msg.content();
     byte[] metadataBytes = new byte[content.readableBytes()];
     LOGGER.info(
-        "Received metadata from remote peer for topic {} with size {}. ",
-        payload.getTopicName(),
+        "Received metadata from remote peer for {} with size {}. ",
+        Utils.getReplicaId(payload.getTopicName(), payload.getPartition()),
         metadataBytes.length);
     // verify the byte size of metadata
     if (metadataBytes.length != Long.parseLong(msg.headers().get(HttpHeaderNames.CONTENT_LENGTH))) {
@@ -97,7 +100,9 @@ public class P2PMetadataTransferHandler extends SimpleChannelInboundHandler<Full
   public void updateStorePartitionMetadata(
       StorageMetadataService storageMetadataService,
       BlobTransferPartitionMetadata transferredPartitionMetadata) {
-    LOGGER.debug("Start updating store partition metadata for topic {}. ", transferredPartitionMetadata.topicName);
+    LOGGER.info(
+        "Start updating store partition metadata for {}",
+        Utils.getReplicaId(transferredPartitionMetadata.topicName, transferredPartitionMetadata.partitionId));
     // update the offset record in storage service
     storageMetadataService.put(
         transferredPartitionMetadata.topicName,

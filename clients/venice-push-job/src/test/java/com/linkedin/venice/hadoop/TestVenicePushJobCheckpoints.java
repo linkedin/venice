@@ -8,7 +8,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
@@ -605,7 +604,6 @@ public class TestVenicePushJobCheckpoints {
     props.setProperty(SSL_TRUST_STORE_PROPERTY_NAME, "test");
     props.setProperty(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, "test");
     props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME, "test");
-    props.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
     return props;
   }
 

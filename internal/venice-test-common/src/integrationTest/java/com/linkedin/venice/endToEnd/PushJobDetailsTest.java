@@ -16,7 +16,6 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -361,7 +360,6 @@ public class PushJobDetailsTest {
               .setActiveActiveReplicationEnabled(true)
               .setIncrementalPushEnabled(true));
       Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForFullPush, testStoreName);
-      pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
       try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
         testPushJob.run();
       }
@@ -378,7 +376,6 @@ public class PushJobDetailsTest {
       // case 2: successful incremental push job
       Properties pushJobPropsInc =
           defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForIncPush, testStoreName);
-      pushJobPropsInc.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
       pushJobPropsInc.setProperty(INCREMENTAL_PUSH, String.valueOf(true));
       try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-with-inc-push", pushJobPropsInc)) {
         testPushJob.run();
@@ -416,7 +413,6 @@ public class PushJobDetailsTest {
 
       // case 4: failed incremental push job, non-user error
       pushJobPropsInc = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathForIncPush, testStoreName);
-      pushJobPropsInc.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
       pushJobPropsInc.setProperty(INCREMENTAL_PUSH, String.valueOf(true));
       try (VenicePushJob testPushJob =
           new VenicePushJob("test-push-job-details-job-with-inc-push-v2", pushJobPropsInc)) {
@@ -438,7 +434,6 @@ public class PushJobDetailsTest {
       parentControllerClient.updateStore(testStoreName, queryParams);
 
       pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathWithDupKeys, testStoreName);
-      pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
       try (final VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job-v3", pushJobProps)) {
         assertThrows(VeniceException.class, testPushJob::run); // Push job should fail
       }
@@ -455,7 +450,6 @@ public class PushJobDetailsTest {
 
       // case 6: failed incremental push job, user error
       pushJobPropsInc = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathWithDupKeys, testStoreName);
-      pushJobPropsInc.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
       pushJobPropsInc.setProperty(INCREMENTAL_PUSH, String.valueOf(true));
       try (VenicePushJob testPushJob =
           new VenicePushJob("test-push-job-details-job-with-inc-push-v3", pushJobPropsInc)) {

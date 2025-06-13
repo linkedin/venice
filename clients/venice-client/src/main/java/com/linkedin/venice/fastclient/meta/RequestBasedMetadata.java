@@ -174,7 +174,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   @Override
   public List<String> getReplicas(int version, int partitionId) {
     String key = getVersionPartitionMapKey(version, partitionId);
-    return readyToServeInstancesMap.getOrDefault(key, Collections.emptyList());
+    return Collections.unmodifiableList(readyToServeInstancesMap.getOrDefault(key, Collections.emptyList()));
   }
 
   private String getVersionPartitionMapKey(int version, int partition) {

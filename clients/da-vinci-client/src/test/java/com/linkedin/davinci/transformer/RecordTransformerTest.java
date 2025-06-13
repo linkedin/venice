@@ -20,8 +20,8 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -145,7 +145,7 @@ public class RecordTransformerTest {
     when(iterator.key()).thenReturn("mockKey".getBytes());
     when(iterator.value()).thenReturn("mockValue".getBytes());
 
-    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = mock(StorageEngine.class);
     Lazy<VeniceCompressor> compressor = Lazy.of(() -> mock(VeniceCompressor.class));
 
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
@@ -189,7 +189,7 @@ public class RecordTransformerTest {
         dummyRecordTransformerConfig);
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
 
-    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = mock(StorageEngine.class);
     Lazy<VeniceCompressor> compressor = Lazy.of(() -> mock(VeniceCompressor.class));
 
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
@@ -255,7 +255,7 @@ public class RecordTransformerTest {
     blockingRecordTransformer.onEndVersionIngestion(storeVersion);
     verify(clientRecordTransformer).onEndVersionIngestion(storeVersion);
 
-    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = mock(StorageEngine.class);
     Lazy<VeniceCompressor> compressor = Lazy.of(() -> mock(VeniceCompressor.class));
 
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);

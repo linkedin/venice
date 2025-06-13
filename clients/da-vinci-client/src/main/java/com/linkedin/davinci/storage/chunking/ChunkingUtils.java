@@ -3,7 +3,7 @@ package com.linkedin.davinci.storage.chunking;
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.listener.response.ReadResponseStats;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -75,7 +75,7 @@ public class ChunkingUtils {
    */
   static <VALUE, ASSEMBLED_VALUE_CONTAINER> VALUE getFromStorage(
       ChunkingAdapter<ASSEMBLED_VALUE_CONTAINER, VALUE> adapter,
-      AbstractStorageEngine store,
+      StorageEngine store,
       int partition,
       ByteBuffer keyBuffer,
       ReadResponseStats responseStats) {
@@ -96,7 +96,7 @@ public class ChunkingUtils {
 
   static <VALUE, ASSEMBLED_VALUE_CONTAINER> VALUE getReplicationMetadataFromStorage(
       ChunkingAdapter<ASSEMBLED_VALUE_CONTAINER, VALUE> adapter,
-      AbstractStorageEngine store,
+      StorageEngine store,
       int partition,
       ByteBuffer keyBuffer,
       ChunkedValueManifestContainer manifestContainer) {
@@ -117,7 +117,7 @@ public class ChunkingUtils {
 
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
-      AbstractStorageEngine store,
+      StorageEngine store,
       int partition,
       byte[] keyBuffer,
       ByteBuffer reusedRawValue,
@@ -151,7 +151,7 @@ public class ChunkingUtils {
 
   static <CHUNKS_CONTAINER, VALUE> void getFromStorageByPartialKey(
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
-      AbstractStorageEngine store,
+      StorageEngine store,
       int partition,
       byte[] keyPrefixBytes,
       VALUE reusedValue,
@@ -215,8 +215,8 @@ public class ChunkingUtils {
    * not be called directly, from the query code, as it expects the key to be properly formatted
    * already. Use of one these simpler functions instead:
    *
-   * @see SingleGetChunkingAdapter#get(AbstractStorageEngine, int, byte[], boolean, ReadResponseStats)
-   * @see BatchGetChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, ReadResponseStats)
+   * @see SingleGetChunkingAdapter#get(StorageEngine, int, byte[], boolean, ReadResponseStats)
+   * @see BatchGetChunkingAdapter#get(StorageEngine, int, ByteBuffer, boolean, ReadResponseStats)
    */
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
@@ -253,7 +253,7 @@ public class ChunkingUtils {
 
   static <VALUE, CHUNKS_CONTAINER> ByteBufferValueRecord<VALUE> getValueAndSchemaIdFromStorage(
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
-      AbstractStorageEngine store,
+      StorageEngine store,
       int partition,
       ByteBuffer keyBuffer,
       VALUE reusedValue,
@@ -295,8 +295,8 @@ public class ChunkingUtils {
    * not be called directly, from the query code, as it expects the key to be properly formatted
    * already. Use of one these simpler functions instead:
    *
-   * @see SingleGetChunkingAdapter#get(AbstractStorageEngine, int, byte[], boolean, ReadResponseStats)
-   * @see BatchGetChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, ReadResponseStats)
+   * @see SingleGetChunkingAdapter#get(StorageEngine, int, byte[], boolean, ReadResponseStats)
+   * @see BatchGetChunkingAdapter#get(StorageEngine, int, ByteBuffer, boolean, ReadResponseStats)
    */
   private static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       byte[] value,

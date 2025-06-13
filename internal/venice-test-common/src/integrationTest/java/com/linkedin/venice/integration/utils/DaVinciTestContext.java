@@ -26,6 +26,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -40,6 +41,73 @@ public class DaVinciTestContext<K, V> {
   public DaVinciTestContext(CachingDaVinciClientFactory factory, DaVinciClient<K, V> client) {
     daVinciClientFactory = factory;
     daVinciClient = client;
+  }
+
+  public static CachingDaVinciClientFactory getCachingDaVinciClientFactory(
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig,
+      VeniceClusterWrapper clusterWrapper) {
+    return getCachingDaVinciClientFactory(
+        d2Client,
+        clusterDiscoveryD2ServiceName,
+        metricsRepository,
+        backendConfig,
+        clusterWrapper,
+        Optional.empty());
+  }
+
+  public static CachingDaVinciClientFactory getCachingDaVinciClientFactory(
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig,
+      VeniceClusterWrapper clusterWrapper,
+      Optional<Set<String>> managedClients) {
+    Properties properties = backendConfig.getPropertiesCopy();
+    properties.putAll(clusterWrapper.getPubSubClientProperties());
+    backendConfig = new VeniceProperties(properties);
+    return new CachingDaVinciClientFactory(
+        d2Client,
+        clusterDiscoveryD2ServiceName,
+        metricsRepository,
+        backendConfig,
+        managedClients);
+  }
+
+  public static CachingDaVinciClientFactory getCachingDaVinciClientFactory(
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig,
+      VeniceMultiClusterWrapper clusterWrapper) {
+    Properties properties = backendConfig.getPropertiesCopy();
+    properties.putAll(clusterWrapper.getPubSubClientProperties());
+    backendConfig = new VeniceProperties(properties);
+    return new CachingDaVinciClientFactory(
+        d2Client,
+        clusterDiscoveryD2ServiceName,
+        metricsRepository,
+        backendConfig,
+        Optional.empty());
+  }
+
+  public static CachingDaVinciClientFactory getCachingDaVinciClientFactory(
+      D2Client d2Client,
+      String clusterDiscoveryD2ServiceName,
+      MetricsRepository metricsRepository,
+      VeniceProperties backendConfig,
+      VeniceTwoLayerMultiRegionMultiClusterWrapper clusterWrapper) {
+    Properties properties = backendConfig.getPropertiesCopy();
+    properties.putAll(clusterWrapper.getPubSubClientProperties());
+    backendConfig = new VeniceProperties(properties);
+    return new CachingDaVinciClientFactory(
+        d2Client,
+        clusterDiscoveryD2ServiceName,
+        metricsRepository,
+        backendConfig,
+        Optional.empty());
   }
 
   public CachingDaVinciClientFactory getDaVinciClientFactory() {

@@ -108,6 +108,13 @@ public class SslInitializer extends ChannelInitializer<Channel> {
 
   private Function<X509Certificate, String> _identityParser;
 
+  /**
+   * Whether to enable IP spoofing check by resolving the client address before starting the SSL handshake.
+   * When this feature is enabled, the SslInitializer will perform a DNS resolution of the client address
+   * and compare the resolved address with the original client address.
+   */
+  private boolean _enableIPSpoofingCheck = true;
+
   public SslInitializer(SslFactory sslFactory, boolean requireSSL) {
     this(sslFactory, requireSSL, null);
   }
@@ -208,7 +215,8 @@ public class SslInitializer extends ChannelInitializer<Channel> {
         resolveExecutor,
         resolveAttempts,
         resolveBackOffMillis,
-        Math.toIntExact(StreamSupport.stream(resolveExecutor.spliterator(), false).count()));
+        Math.toIntExact(StreamSupport.stream(resolveExecutor.spliterator(), false).count()),
+        true);
   }
 
   /**
@@ -229,12 +237,14 @@ public class SslInitializer extends ChannelInitializer<Channel> {
       @Nonnull EventExecutorGroup resolveExecutor,
       @Nonnegative int resolveAttempts,
       @Nonnegative long resolveBackOffMillis,
-      @Nonnegative int permits) {
+      @Nonnegative int permits,
+      boolean enableIPSpoofingCheck) {
     _resolveExecutor = Objects.requireNonNull(resolveExecutor);
     _resolveAttempts = resolveAttempts;
     _resolveBackOffMillis = resolveBackOffMillis;
     _handshakeSemaphore.release(permits);
     _resolveClient = true;
+    _enableIPSpoofingCheck = enableIPSpoofingCheck;
     return this;
   }
 
@@ -442,7 +452,7 @@ public class SslInitializer extends ChannelInitializer<Channel> {
           if (!isActive()) {
             return "closed";
           }
-          if (_channelHandlerContext.channel().remoteAddress() instanceof InetSocketAddress) {
+          if (_enableIPSpoofingCheck && _channelHandlerContext.channel().remoteAddress() instanceof InetSocketAddress) {
             InetSocketAddress remoteAddress = (InetSocketAddress) _channelHandlerContext.channel().remoteAddress();
             InetAddress reverse = _resolveByAddress.getByAddress(remoteAddress.getAddress().getAddress());
             for (InetAddress host: _resolveAllByName.getAllByName(reverse.getHostName())) {

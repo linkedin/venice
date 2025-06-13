@@ -9,7 +9,7 @@ import static org.rocksdb.RateLimiter.DEFAULT_REFILL_PERIOD_MICROS;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -263,13 +263,13 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public synchronized AbstractStorageEngine getStorageEngine(VeniceStoreVersionConfig storeConfig)
+  public synchronized StorageEngine getStorageEngine(VeniceStoreVersionConfig storeConfig)
       throws StorageInitializationException {
     return getStorageEngine(storeConfig, false);
   }
 
   @Override
-  public synchronized AbstractStorageEngine getStorageEngine(
+  public synchronized StorageEngine getStorageEngine(
       VeniceStoreVersionConfig storeConfig,
       boolean replicationMetadataEnabled) throws StorageInitializationException {
     verifyPersistenceType(storeConfig);
@@ -331,7 +331,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public synchronized void removeStorageEngine(AbstractStorageEngine engine) {
+  public synchronized void removeStorageEngine(StorageEngine engine) {
     verifyPersistenceType(engine);
     final String storeName = engine.getStoreVersionName();
     if (storageEngineMap.containsKey(storeName)) {
@@ -385,7 +385,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   }
 
   @Override
-  public synchronized void closeStorageEngine(AbstractStorageEngine engine) {
+  public synchronized void closeStorageEngine(StorageEngine engine) {
     verifyPersistenceType(engine);
     final String storeName = engine.getStoreVersionName();
     if (storageEngineMap.containsKey(storeName)) {

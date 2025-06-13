@@ -3,6 +3,7 @@ package com.linkedin.venice.fastclient.meta;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 
 
@@ -27,14 +28,20 @@ public class LeastLoadedClientRoutingStrategy extends AbstractClientRoutingStrat
     if (replicas.isEmpty()) {
       return null;
     }
-    List<String> availReplicas = new ArrayList<>();
+    /**
+     * Need to make a copy of the replicas list to avoid modifying the original list.
+     */
+    List<String> availReplicas = new ArrayList<>(replicas);
     /**
      * For even distribution, we need to shuffle the replicas.
      */
-    Collections.shuffle(replicas);
-    for (String replica: replicas) {
-      if (instanceHealthMonitor.isRequestAllowed(replica)) {
-        availReplicas.add(replica);
+    Collections.shuffle(availReplicas);
+
+    Iterator<String> iterator = availReplicas.iterator();
+    while (iterator.hasNext()) {
+      String replica = iterator.next();
+      if (!instanceHealthMonitor.isRequestAllowed(replica)) {
+        iterator.remove();
       }
     }
     if (availReplicas.isEmpty()) {

@@ -84,7 +84,8 @@ public class TopicManager implements Closeable {
         TopicManager.class.getSimpleName() + " [" + Utils.getSanitizedStringForLogger(pubSubClusterAddress) + "]");
     this.pubSubClusterAddress = Objects.requireNonNull(pubSubClusterAddress, "pubSubClusterAddress cannot be null");
     this.topicManagerContext = context;
-    this.stats = new TopicManagerStats(context.getMetricsRepository(), pubSubClusterAddress);
+    this.stats =
+        new TopicManagerStats(context.getMetricsRepository(), pubSubClusterAddress, context.getVeniceComponent());
     this.pubSubTopicRepository = context.getPubSubTopicRepository();
     this.pubSubAdminAdapter = context.getPubSubAdminAdapterFactory()
         .create(

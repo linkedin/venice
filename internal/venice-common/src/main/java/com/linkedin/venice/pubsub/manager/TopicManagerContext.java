@@ -4,6 +4,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.DEFAULT_KAFKA_MIN_LOG_C
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
@@ -30,6 +31,7 @@ public class TopicManagerContext {
   private final long topicOffsetCheckIntervalMs;
   private final int topicMetadataFetcherConsumerPoolSize;
   private final int topicMetadataFetcherThreadPoolSize;
+  private final VeniceComponent veniceComponent;
 
   private TopicManagerContext(Builder builder) {
     this.pubSubOperationTimeoutMs = builder.pubSubOperationTimeoutMs;
@@ -44,6 +46,7 @@ public class TopicManagerContext {
     this.topicOffsetCheckIntervalMs = builder.topicOffsetCheckIntervalMs;
     this.topicMetadataFetcherConsumerPoolSize = builder.topicMetadataFetcherConsumerPoolSize;
     this.topicMetadataFetcherThreadPoolSize = builder.topicMetadataFetcherThreadPoolSize;
+    this.veniceComponent = builder.veniceComponent;
   }
 
   public long getPubSubOperationTimeoutMs() {
@@ -94,6 +97,10 @@ public class TopicManagerContext {
     return topicMetadataFetcherThreadPoolSize;
   }
 
+  public VeniceComponent getVeniceComponent() {
+    return veniceComponent;
+  }
+
   public interface PubSubPropertiesSupplier {
     VeniceProperties get(String pubSubBootstrapServers);
   }
@@ -104,10 +111,10 @@ public class TopicManagerContext {
 
   @Override
   public String toString() {
-    return "TopicManagerContext{pubSubOperationTimeoutMs=" + pubSubOperationTimeoutMs
-        + ", topicDeletionStatusPollIntervalMs=" + topicDeletionStatusPollIntervalMs + ", topicMinLogCompactionLagMs="
-        + topicMinLogCompactionLagMs + ", topicOffsetCheckIntervalMs=" + topicOffsetCheckIntervalMs
-        + ", topicMetadataFetcherConsumerPoolSize=" + topicMetadataFetcherConsumerPoolSize
+    return "TopicManagerContext{veniceComponent=" + veniceComponent + ", pubSubOperationTimeoutMs="
+        + pubSubOperationTimeoutMs + ", topicDeletionStatusPollIntervalMs=" + topicDeletionStatusPollIntervalMs
+        + ", topicMinLogCompactionLagMs=" + topicMinLogCompactionLagMs + ", topicOffsetCheckIntervalMs="
+        + topicOffsetCheckIntervalMs + ", topicMetadataFetcherConsumerPoolSize=" + topicMetadataFetcherConsumerPoolSize
         + ", topicMetadataFetcherThreadPoolSize=" + topicMetadataFetcherThreadPoolSize + ", pubSubAdminAdapterFactory="
         + pubSubAdminAdapterFactory.getClass().getSimpleName() + ", pubSubConsumerAdapterFactory="
         + pubSubConsumerAdapterFactory.getClass().getSimpleName() + '}';
@@ -120,6 +127,7 @@ public class TopicManagerContext {
     private PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
     private MetricsRepository metricsRepository;
     private PubSubPropertiesSupplier pubSubPropertiesSupplier;
+    private VeniceComponent veniceComponent = VeniceComponent.UNSPECIFIED; // Default component
     private long pubSubOperationTimeoutMs = PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
     private long topicDeletionStatusPollIntervalMs = PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
     private long topicMinLogCompactionLagMs = DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
@@ -186,6 +194,11 @@ public class TopicManagerContext {
 
     public Builder setTopicMetadataFetcherThreadPoolSize(int topicMetadataFetcherThreadPoolSize) {
       this.topicMetadataFetcherThreadPoolSize = topicMetadataFetcherThreadPoolSize;
+      return this;
+    }
+
+    public Builder setVeniceComponent(VeniceComponent veniceComponent) {
+      this.veniceComponent = veniceComponent;
       return this;
     }
 

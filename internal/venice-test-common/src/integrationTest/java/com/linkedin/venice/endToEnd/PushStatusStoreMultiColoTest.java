@@ -139,7 +139,6 @@ public class PushStatusStoreMultiColoTest {
 
   @Test(timeOut = TEST_TIMEOUT_MS)
   public void testParentControllerAutoMaterializeDaVinciPushStatusSystemStore() {
-    setUpStore();
     String zkSharedDaVinciPushStatusSchemaStoreName =
         AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getSystemStoreName();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
@@ -201,8 +200,7 @@ public class PushStatusStoreMultiColoTest {
     Admin parentAdmin = parentControllers.get(0).getVeniceAdmin();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       assertEquals(
-          parentAdmin
-              .getLargestUsedVersionFromStoreGraveyard(cluster.getClusterName(), daVinciPushStatusSystemStoreName),
+          parentAdmin.getLargestUsedVersion(cluster.getClusterName(), daVinciPushStatusSystemStoreName),
           systemStoreCurrVersionBeforeBeingDeleted);
     });
 
@@ -211,10 +209,17 @@ public class PushStatusStoreMultiColoTest {
         parentControllerClient.createNewStore(userStoreName, "venice-test", DEFAULT_KEY_SCHEMA, "\"string\""),
         "Unexpected new store creation failure");
 
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      Store reCreatedPs3 =
+          parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
+      assertFalse(
+          reCreatedPs3.getVersions().isEmpty(),
+          "Re-created Da Vinci push status system store should have at least one version");
+    });
+
     // The re-created/materialized per-user store system store should contain a continued version from its last life
     daVinciPushStatusSystemStore =
         parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName);
-    // TODO: Fix non-deterministic bug where (very rarely) the below assertion fails with "expected [4] but found [1]"
     assertEquals(
         daVinciPushStatusSystemStore.getLargestUsedVersionNumber(),
         systemStoreCurrVersionBeforeBeingDeleted + 1);

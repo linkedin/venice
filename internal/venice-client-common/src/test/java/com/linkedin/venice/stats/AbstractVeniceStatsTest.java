@@ -118,7 +118,7 @@ public class AbstractVeniceStatsTest {
     ClientConfig config2 = new ClientConfig(storeName).setStatsPrefix(prefix);
     ClientStats clientStats = ClientStats
         .getClientStats(new MetricsRepository(), storeName, RequestType.SINGLE_GET, config2, ClientType.THIN_CLIENT);
-    clientStats.recordRequestRetryCount();
+    clientStats.recordErrorRetryRequest();
   }
 
   @Test

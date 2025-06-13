@@ -101,7 +101,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
         Optional.of(Mockito.mock(HelixHybridStoreQuotaRepository.class));
 
     Instance mockControllerInstance = Mockito.mock(Instance.class);
-    doReturn(CONTROLLER).when(mockControllerInstance).getUrl();
+    doReturn(CONTROLLER).when(mockControllerInstance).getUrl(false);
     doReturn(mockControllerInstance).when(mockRepo).getLeaderController();
 
     HelixReadOnlyStoreViewConfigRepositoryAdapter mockStoreConfigRepository =

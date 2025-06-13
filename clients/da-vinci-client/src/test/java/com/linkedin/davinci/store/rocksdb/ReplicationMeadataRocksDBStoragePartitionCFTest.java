@@ -62,7 +62,8 @@ public class ReplicationMeadataRocksDBStoragePartitionCFTest extends Replication
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         mockReadOnlyStoreRepository);
     storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
-    testStoreEngine = storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null);
+    testStoreEngine =
+        (RocksDBStorageEngine) storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null);
     createStoreForTest();
     String stringSchema = "\"string\"";
     Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(stringSchema, 1);

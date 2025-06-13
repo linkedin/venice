@@ -227,7 +227,12 @@ public class RealTimeTopicSwitcher {
         && topicManager.containsTopic(pubSubTopicRepository.getTopic(rtForPreviousVersion));
     boolean rtExistsForNextVersion =
         nextStoreVersion.isHybrid() && topicManager.containsTopic(pubSubTopicRepository.getTopic(rtForNextVersion));
-    LOGGER.info("Previous store version - {}, nextStoreVersion - {}, ");
+    LOGGER.info(
+        "Previous store version - {}, nextStoreVersion - {}, RT for previous version - {}, RT for next version - {}",
+        previousStoreVersion,
+        nextStoreVersion,
+        rtForPreviousVersion,
+        rtForNextVersion);
 
     if (rtExistsForPreviousVersion || rtExistsForNextVersion) {
       if (rtExistsForPreviousVersion) {

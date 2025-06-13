@@ -42,9 +42,7 @@ public class AdminOperationSerializerTest {
     updateStore.enableWrites = true;
     updateStore.replicateAllConfigs = true;
     updateStore.updatedConfigsList = Collections.emptyList();
-    // Purposely set to true. This field doesn't exist in v74, so it should throw an exception.
-    // Default value of this field is False.
-    updateStore.separateRealTimeTopicEnabled = true;
+    updateStore.separateRealTimeTopicEnabled = false;
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;
@@ -52,19 +50,6 @@ public class AdminOperationSerializerTest {
 
     doCallRealMethod().when(adminOperationSerializer).serialize(any(), anyInt());
     doCallRealMethod().when(adminOperationSerializer).deserialize(any(), anyInt());
-
-    // Serialize the AdminOperation object with writer schema id v74
-    try {
-      adminOperationSerializer.serialize(adminMessage, 74);
-    } catch (VeniceProtocolException e) {
-      String expectedMessage =
-          "Current schema version: 74. New semantic is being used. Field AdminOperation.payloadUnion.UpdateStore.separateRealTimeTopicEnabled: Boolean value true is not the default value false or false";
-      assertEquals(e.getMessage(), expectedMessage);
-    }
-
-    // Set the separateRealTimeTopicEnabled to false
-    updateStore.separateRealTimeTopicEnabled = false;
-    adminMessage.payloadUnion = updateStore;
 
     // Serialize the AdminOperation object with writer schema id v74, should not fail
     byte[] serializedBytes = adminOperationSerializer.serialize(adminMessage, 74);
@@ -91,5 +76,39 @@ public class AdminOperationSerializerTest {
     assertNull(deserializedOperationPayloadUnion.targetSwapRegion);
     assertEquals(deserializedOperationPayloadUnion.targetSwapRegionWaitTime, 60);
     assertFalse(deserializedOperationPayloadUnion.isDaVinciHeartBeatReported);
+  }
+
+  @Test
+  public void testValidateAdminOperation() {
+    // Create an AdminOperation object with latest version
+    UpdateStore updateStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
+    updateStore.clusterName = "clusterName";
+    updateStore.storeName = "storeName";
+    updateStore.owner = "owner";
+    updateStore.partitionNum = 20;
+    updateStore.currentVersion = 1;
+    updateStore.enableReads = true;
+    updateStore.enableWrites = true;
+    updateStore.replicateAllConfigs = true;
+    updateStore.updatedConfigsList = Collections.emptyList();
+    // Purposely set to true. This field doesn't exist in v74, so it should throw an exception.
+    // Default value of this field is False.
+    updateStore.separateRealTimeTopicEnabled = true;
+    AdminOperation adminMessage = new AdminOperation();
+    adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
+    adminMessage.payloadUnion = updateStore;
+    adminMessage.executionId = 1;
+
+    doCallRealMethod().when(adminOperationSerializer).serialize(any(), anyInt());
+    doCallRealMethod().when(adminOperationSerializer).deserialize(any(), anyInt());
+
+    // Serialize the AdminOperation object with writer schema id v74
+    try {
+      AdminOperationSerializer.validate(adminMessage, 74);
+    } catch (VeniceProtocolException e) {
+      String expectedMessage =
+          "Current schema version: 74. New semantic is being used. Field AdminOperation.payloadUnion.UpdateStore.separateRealTimeTopicEnabled: Boolean value true is not the default value false or false";
+      assertEquals(e.getMessage(), expectedMessage);
+    }
   }
 }
