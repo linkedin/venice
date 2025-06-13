@@ -563,7 +563,7 @@ public class VeniceParentHelixAdmin implements Admin {
     // initialise logCompactionStatsMap
     for (String clusterName: multiClusterConfigs.getClusters()) {
       if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()) {
-        logCompactionStatsMap.put(clusterName, new LogCompactionStats(metricsRepository, clusterName));
+        logCompactionStatsMap.putIfAbsent(clusterName, new LogCompactionStats(metricsRepository, clusterName));
       }
     }
   }
