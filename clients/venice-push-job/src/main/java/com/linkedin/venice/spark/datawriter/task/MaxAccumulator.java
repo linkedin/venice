@@ -1,6 +1,7 @@
 package com.linkedin.venice.spark.datawriter.task;
 
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.spark.SparkContext;
 import org.apache.spark.util.AccumulatorV2;
 
 
@@ -9,6 +10,12 @@ public class MaxAccumulator<T extends Comparable<T>> extends AccumulatorV2<T, T>
 
   MaxAccumulator(T initialValue) {
     maxValue.set(initialValue);
+  }
+
+  MaxAccumulator(T initialValue, SparkContext sparkContext, String accumulatorName) {
+    this(initialValue);
+
+    sparkContext.register(this, accumulatorName);
   }
 
   @Override
