@@ -73,7 +73,8 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartition.class);
   protected static final String ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_MEMORY_QUOTA = "Max allowed space was reached";
   protected static final String ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_DISK_QUOTA = "No space left on device";
-  protected static final ReadOptions READ_OPTIONS_DEFAULT = new ReadOptions();
+  protected static final ReadOptions READ_OPTIONS_DEFAULT =
+      new ReadOptions().setReadaheadSize(2 * 1024 * 1024).setPinData(false).setBackgroundPurgeOnIteratorCleanup(true);
   static final byte[] REPLICATION_METADATA_COLUMN_FAMILY = "timestamp_metadata".getBytes();
 
   private static final FlushOptions WAIT_FOR_FLUSH_OPTIONS = new FlushOptions().setWaitForFlush(true);
