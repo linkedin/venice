@@ -70,11 +70,7 @@ public class VeniceRawPubsubInputPartitionReaderFactory implements PartitionRead
             () -> new RuntimeException(
                 String.format("Partition not found for topic: %s partition number: %d", topicName, partitionNumber)));
 
-    return new VeniceRawPubsubInputPartitionReader(
-        inputPartition,
-        pubSubConsumer,
-        pubSubTopic,
-        targetPubSubTopicPartition);
+    return new VeniceRawPubsubInputPartitionReader(inputPartition, pubSubConsumer, targetPubSubTopicPartition);
   }
 
   // Make it explicit that this reader does not support columnar reads.

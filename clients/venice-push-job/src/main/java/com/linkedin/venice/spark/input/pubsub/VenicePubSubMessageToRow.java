@@ -7,10 +7,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.spark.input.pubsub.raw.VeniceRawPubsubInputPartitionReader;
 import java.nio.ByteBuffer;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
 import org.jetbrains.annotations.NotNull;
@@ -20,8 +17,7 @@ import org.jetbrains.annotations.NotNull;
  * Converts a PubSub message to a Spark InternalRow.
  * it preserves the schema, replication metadata, and other necessary fields
  */
-public class ConvertPubSubMessageToRow {
-  private static final Logger LOGGER = LogManager.getLogger(VeniceRawPubsubInputPartitionReader.class);
+public class VenicePubSubMessageToRow implements PubSubMessageConverter {
   private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
 
   /**
@@ -43,7 +39,8 @@ public class ConvertPubSubMessageToRow {
    *         9. Replication metadata version ID (int)
    *         See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
    */
-  public static InternalRow convertPubSubMessageToRow(
+  @Override
+  public InternalRow convert(
       @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage,
       String region,
       int partitionNumber) {
@@ -95,6 +92,16 @@ public class ConvertPubSubMessageToRow {
     return new GenericInternalRow(
         new Object[] { region, partitionNumber, messageType, offset, schemaId, keyBytes, valueBytes,
             replicationMetadataPayloadBytes, replicationMetadataVersionId });
+  }
+
+  /**
+   * Static factory method to maintain backward compatibility.
+   */
+  public static InternalRow convertPubSubMessageToRow(
+      @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage,
+      String region,
+      int partitionNumber) {
+    return new VenicePubSubMessageToRow().convert(pubSubMessage, region, partitionNumber);
   }
 
   static byte[] loadRemainingBytes(ByteBuffer buffer) {

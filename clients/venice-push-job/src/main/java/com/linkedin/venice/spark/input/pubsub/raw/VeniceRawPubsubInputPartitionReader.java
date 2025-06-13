@@ -8,8 +8,10 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.spark.input.pubsub.OffsetProgressPercentCalculator;
+import com.linkedin.venice.spark.input.pubsub.PubSubMessageConverter;
+import com.linkedin.venice.spark.input.pubsub.VenicePubSubMessageToRow;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.List;
@@ -40,6 +42,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   private static final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 12;
   private static final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(5);
   private static final Long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
+  private static final float REPORT_PROGRESS_STEP_PERCENT = 10.0f; // Report progress every 10%
 
   private static final Logger LOGGER = LogManager.getLogger(VeniceRawPubsubInputPartitionReader.class);
 
@@ -47,8 +50,8 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   private final PubSubConsumerAdapter pubSubConsumer;
   private final ArrayDeque<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> messageBuffer =
       new ArrayDeque<>();
+  private final PubSubMessageConverter pubSubMessageConverter;
 
-  private final PubSubTopic pubSubTopic;
   private final PubSubTopicPartition targetPubSubTopicPartition;
   private final String topicName;
   private final String region;
@@ -59,12 +62,14 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   private final PubSubPosition endingPosition;
   private final long endingOffset;
   private final long offsetLength;
-  private final float lastKnownProgressPercent = 0;
+  private float lastKnownProgressPercent = 0;
   // Added for testing purposes
   private final long consumerPollTimeout;
   private final int consumerPollEmptyResultRetryTimes;
   private final long emptyPollSleepTimeMs;
+  private final OffsetProgressPercentCalculator percentCalculator;
   private PubSubPosition currentPosition;
+  private long currentOffset;
   private InternalRow currentRow = null;
   private long recordsServed = 0;
   private long recordsSkipped = 0;
@@ -75,16 +80,15 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   public VeniceRawPubsubInputPartitionReader(
       VeniceBasicPubsubInputPartition inputPartition,
       PubSubConsumerAdapter consumer,
-      PubSubTopic pubSubTopic,
       PubSubTopicPartition topicPartition) {
     this(
         inputPartition,
         consumer,
-        pubSubTopic,
         topicPartition,
         CONSUMER_POLL_TIMEOUT,
         CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES,
-        EMPTY_POLL_SLEEP_TIME_MS);
+        EMPTY_POLL_SLEEP_TIME_MS,
+        new VenicePubSubMessageToRow());
   }
 
   /**
@@ -92,39 +96,40 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
    *
    * @param inputPartition The input partition to read from
    * @param consumer The PubSub consumer adapter
-   * @param pubSubTopic The PubSub topic
    * @param topicPartition The topic partition
    * @param pollTimeoutMs The timeout in milliseconds for each poll operation
    * @param pollRetryTimes The number of retry attempts when polling returns empty results
    * @param emptyPollSleepTimeMs The sleep time in milliseconds between retries when polling returns empty results
+   * @param pubSubMessageConverter The converter to use for converting PubSub messages to Spark rows
    */
   public VeniceRawPubsubInputPartitionReader(
       VeniceBasicPubsubInputPartition inputPartition,
       PubSubConsumerAdapter consumer,
-      PubSubTopic pubSubTopic,
       PubSubTopicPartition topicPartition,
       long pollTimeoutMs,
       int pollRetryTimes,
-      long emptyPollSleepTimeMs) {
+      long emptyPollSleepTimeMs,
+      PubSubMessageConverter pubSubMessageConverter) {
 
     this.pubSubConsumer = consumer;
-    this.pubSubTopic = pubSubTopic;
     this.topicName = inputPartition.getTopicName();
     this.targetPartitionNumber = inputPartition.getPartitionNumber();
     this.region = inputPartition.getRegion();
     this.consumerPollTimeout = pollTimeoutMs;
     this.consumerPollEmptyResultRetryTimes = pollRetryTimes;
     this.emptyPollSleepTimeMs = emptyPollSleepTimeMs;
-
+    this.pubSubMessageConverter = pubSubMessageConverter;
     this.targetPubSubTopicPartition = topicPartition;
 
     // Set up offset positions
     this.startingOffset = inputPartition.getStartOffset();
     this.endingOffset = inputPartition.getEndOffset();
+
     this.startingPosition = ApacheKafkaOffsetPosition.of(startingOffset);
     this.endingPosition = ApacheKafkaOffsetPosition.of(endingOffset);
-    this.offsetLength = endingOffset - startingOffset;
-    this.currentPosition = startingPosition;
+    this.percentCalculator = new OffsetProgressPercentCalculator(this.startingOffset, this.endingOffset);
+
+    this.offsetLength = endingOffset - startingOffset + 1;
 
     // Subscribe to the topic partition
     pubSubConsumer.subscribe(targetPubSubTopicPartition, startingPosition);
@@ -145,6 +150,11 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   }
 
   private boolean areWePastTheEndingPosition() {
+    if (this.currentPosition == null) {
+      // If current position is not set, this is the very first call to next(),
+      logProgress(); // Log progress as 0%
+      return false;
+    }
     return PubSubUtil.comparePubSubPositions(this.currentPosition, this.endingPosition) > 0;
   }
 
@@ -155,22 +165,38 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
       return false;
     }
 
+    // TODO: prepareNextValidRow() should have a way to handle results of polls where
+    // all the messages are control messages.
+
     if (prepareNextValidRow()) {
       // local buffer has a valid row, no need to poll
       return true;
     }
 
-    // at this point, buffer is empty, need to poll from pubsub for new messages
-    pollAndFillMessageBufferWithNewPubsubRecords();
-    return prepareNextValidRow();
+    try {
+      pollAndFillMessageBufferWithNewPubsubRecords();
+      return prepareNextValidRow();
+    } catch (RuntimeException e) {
+      LOGGER.error(
+          "Error while polling messages from topic {} partition {}: {}",
+          this.topicName,
+          this.targetPartitionNumber,
+          e.getMessage());
+      logProgress();
+      // Now we need to experiment with Spark's behavior when the reader returns false.
+      // we could throw exception
+      // we could close()
+      // we could return false , going with the last option for now.
+      return false; // Return false if no valid messages could be prepared
+    }
+
   }
 
   @Override
   public void close() {
     pubSubConsumer.close();
-    // double progressPercent = (currentPosition.getNumericOffset() - startingOffset) * 100.0 / offsetLength;
     LOGGER.info(
-        "Consumer closed for Topic: {} , partition: {}, consumed {} records,",
+        "Consumer closed for Topic: {}, partition: {}, consumed {} records.",
         this.topicName,
         this.targetPartitionNumber,
         this.recordsServed);
@@ -198,15 +224,14 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
       try {
         Thread.sleep(this.emptyPollSleepTimeMs);
       } catch (InterruptedException e) {
-        logProgress(getProgressPercent());
+        logProgress();
         LOGGER.error(
             "Interrupted while waiting for records from topic {} partition {}",
             this.topicName,
             this.targetPartitionNumber,
             e);
-        // should we re-throw here to break the consumption task ?
-        // Thread.currentThread().interrupt(); // very questionable genAI suggestion,
-        // what's the intended way to terminate this task?
+        // rethrow the exception to exit the loop
+        Thread.currentThread().interrupt();
         return; // Exit on interruption
       }
       retries++;
@@ -221,24 +246,21 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
             this.targetPartitionNumber));
   }
 
-  private float getProgressPercent() {
-    return (float) ((this.currentPosition.getNumericOffset() - this.startingOffset) * 100.0 / this.offsetLength);
-  }
-
   private void maybeLogProgress() {
-    float progressPercent = getProgressPercent();
-    if (progressPercent - this.lastKnownProgressPercent >= 10.0) {
-      logProgress(progressPercent);
+    float progressPercent = this.percentCalculator.calculate(this.currentOffset);
+    if (progressPercent - this.lastKnownProgressPercent >= REPORT_PROGRESS_STEP_PERCENT) {
+      logProgress();
+      this.lastKnownProgressPercent = progressPercent;
     }
   }
 
-  private void logProgress(float progressPercent) {
+  private void logProgress() {
+    // handle null currentOffset gracefully in the calculate method
     LOGGER.info(
-        "Consuming progress for"
-            + " Topic: {}, partition {} , consumed {}% of {} records. actual records delivered: {}, records skipped: {}",
+        "Progress for" + " Topic: {}, partition {} , consumed {}% of {} records. records delivered: {}, skipped: {}",
         this.topicName,
         this.targetPartitionNumber,
-        String.format("%.1f", progressPercent),
+        String.format("%.1f", this.percentCalculator.calculate(this.currentOffset)),
         this.offsetLength,
         this.recordsServed,
         this.recordsSkipped);
@@ -273,16 +295,16 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
       }
 
       this.currentPosition = message.getOffset(); // needs rework when the pubSub position is fully adopted.
+      this.currentOffset = this.currentPosition.getNumericOffset();
 
       // Skip control messages if filtering is enabled
+      message.getKey().isControlMessage();
       if (this.filterControlMessages && message.getKey().isControlMessage()) {
         this.recordsSkipped++;
         continue; // Continue to next message in buffer
       }
 
-      // Found a valid message - process it
-      this.currentRow =
-          ConvertPubSubMessageToRow.convertPubSubMessageToRow(message, this.region, this.targetPartitionNumber);
+      this.currentRow = this.pubSubMessageConverter.convert(message, this.region, this.targetPartitionNumber);
 
       recordsServed++;
       maybeLogProgress();
