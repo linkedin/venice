@@ -131,6 +131,7 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     // both key and value are not null: Record uncompressed Key and value lengths
     dataWriterTaskTracker.trackKeySize(recordKey.length);
     dataWriterTaskTracker.trackUncompressedValueSize(recordValue.length);
+    dataWriterTaskTracker.trackLargestUncompressedValueSize(recordValue.length);
 
     // check record size before compression
     if (this.maxRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE

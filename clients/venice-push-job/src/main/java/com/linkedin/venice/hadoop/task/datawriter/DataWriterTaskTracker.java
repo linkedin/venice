@@ -19,6 +19,9 @@ public interface DataWriterTaskTracker extends TaskTracker {
   default void trackUncompressedValueSize(int size) {
   }
 
+  default void trackLargestUncompressedValueSize(int size) {
+  }
+
   default void trackCompressedValueSize(int size) {
   }
 
@@ -68,6 +71,12 @@ public interface DataWriterTaskTracker extends TaskTracker {
   }
 
   default long getTotalUncompressedValueSize() {
+    return 0;
+  }
+
+  default int getLargestUncompressedValueSize() {
+    // TODO PRANAV leave comment explaining why this is not supported in MR// TODO PRANAV leave comment explaining why
+    // this is not supported in MR
     return 0;
   }
 

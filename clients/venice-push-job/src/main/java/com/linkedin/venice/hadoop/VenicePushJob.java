@@ -1515,19 +1515,23 @@ public class VenicePushJob implements AutoCloseable {
     try {
       pushJobDetails.totalNumberOfRecords = taskTracker.getOutputRecordsCount();
       pushJobDetails.totalKeyBytes = taskTracker.getTotalKeySize();
-      // size of uncompressed value
+      // total size of uncompressed value
       pushJobDetails.totalRawValueBytes = taskTracker.getTotalUncompressedValueSize();
-      // size of the final stored data in SN (can be compressed using NO_OP/GZIP/ZSTD_WITH_DICT)
+      // total size of the final stored data in SN (can be compressed using NO_OP/GZIP/ZSTD_WITH_DICT)
       pushJobDetails.totalCompressedValueBytes = taskTracker.getTotalValueSize();
-      // size of the Gzip compressed data
+      // total size of the Gzip compressed data
       pushJobDetails.totalGzipCompressedValueBytes = taskTracker.getTotalGzipCompressedValueSize();
-      // size of the Zstd with Dict compressed data
+      // total size of the Zstd with Dict compressed data
       pushJobDetails.totalZstdWithDictCompressedValueBytes = taskTracker.getTotalZstdCompressedValueSize();
+      // total records exceeding record size before compression
+      pushJobDetails.totalUncompressedRecordTooLargeFailures = taskTracker.getUncompressedRecordTooLargeFailureCount();
+      // size of largest uncompressed value
+      pushJobDetails.largestUncompressedValueSizeBytes = taskTracker.getLargestUncompressedValueSize();
       LOGGER.info(
           "Data writer job summary: " + "\n\tTotal number of records: {}" + "\n\tSize of keys: {}"
               + "\n\tSize of uncompressed values: {}" + "\n\tConfigured value compression strategy: {}"
               + "\n\tSize of compressed values: {}" + "\n\tFinal data size stored in Venice: {}"
-              + "\n\tCompression Metrics collection: {}",
+              + "\n\tCompression Metrics collection: {}" + "\n\tUncompressed records too large: {}",
           pushJobDetails.totalNumberOfRecords,
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalKeyBytes),
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalRawValueBytes),
@@ -1535,7 +1539,11 @@ public class VenicePushJob implements AutoCloseable {
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalCompressedValueBytes),
           ByteUtils.generateHumanReadableByteCountString(
               pushJobDetails.totalKeyBytes + pushJobDetails.totalCompressedValueBytes),
-          pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled");
+          pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled",
+          pushJobDetails.totalUncompressedRecordTooLargeFailures);
+      if (pushJobDetails.largestUncompressedValueSizeBytes > 0) {
+        LOGGER.info("\t Largest Uncompressed value size: {}", pushJobDetails.largestUncompressedValueSizeBytes);
+      }
       if (pushJobSetting.compressionMetricCollectionEnabled) {
         LOGGER.info(
             "\tData size if compressed using Gzip: {}",

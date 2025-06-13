@@ -321,7 +321,6 @@ subprojects {
     doFirst {
       def versionOverrides = [
 //        project(':internal:venice-common').file('src/main/resources/avro/StoreVersionState/v5', PathValidation.DIRECTORY)
-        project(':internal:venice-common').file('src/main/resources/avro/PushJobDetails/v4', PathValidation.DIRECTORY)
       ]
 
       def schemaDirs = [sourceDir]

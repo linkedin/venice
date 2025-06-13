@@ -16,6 +16,7 @@ public class DataWriterAccumulators implements Serializable {
   public final LongAccumulator emptyRecordCounter;
   public final LongAccumulator totalKeySizeCounter;
   public final LongAccumulator uncompressedValueSizeCounter;
+  public final MaxAccumulator<Integer> largestUncompressedValueSize;
   public final LongAccumulator compressedValueSizeCounter;
   public final LongAccumulator gzipCompressedValueSizeCounter;
   public final LongAccumulator zstdCompressedValueSizeCounter;
@@ -34,6 +35,7 @@ public class DataWriterAccumulators implements Serializable {
     emptyRecordCounter = sparkContext.longAccumulator("Empty Records");
     totalKeySizeCounter = sparkContext.longAccumulator("Total Key Size");
     uncompressedValueSizeCounter = sparkContext.longAccumulator("Total Uncompressed Value Size");
+    largestUncompressedValueSize = new MaxAccumulator<>(Integer.MIN_VALUE);
     compressedValueSizeCounter = sparkContext.longAccumulator("Total Compressed Value Size");
     gzipCompressedValueSizeCounter = sparkContext.longAccumulator("Total Gzip Compressed Value Size");
     zstdCompressedValueSizeCounter = sparkContext.longAccumulator("Total Zstd Compressed Value Size");
