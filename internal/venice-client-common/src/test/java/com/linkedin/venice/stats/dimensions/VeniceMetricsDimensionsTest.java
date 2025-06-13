@@ -49,6 +49,9 @@ public class VeniceMetricsDimensionsTest {
         case REPUSH_STORE_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.store.trigger.source");
           break;
+        case LOG_COMPACTION_SELECTION_REASON:
+          assertEquals(dimension.getDimensionName(format), "log.compaction.selection.reason");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -96,6 +99,9 @@ public class VeniceMetricsDimensionsTest {
         case REPUSH_STORE_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.store.trigger.source");
           break;
+        case LOG_COMPACTION_SELECTION_REASON:
+          assertEquals(dimension.getDimensionName(format), "log.compaction.selection.reason");
+          break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
       }
@@ -142,6 +148,9 @@ public class VeniceMetricsDimensionsTest {
           break;
         case REPUSH_STORE_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.store.trigger.source");
+          break;
+        case LOG_COMPACTION_SELECTION_REASON:
+          assertEquals(dimension.getDimensionName(format), "log.compaction.selection.reason");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
