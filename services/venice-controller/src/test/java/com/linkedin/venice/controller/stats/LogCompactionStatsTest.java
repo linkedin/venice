@@ -111,7 +111,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         .build();
 
     // mock successful response
-    when(getInternalAdmin().repushStore(any())).thenReturn(new RepushJobResponse(TEST_EXECUTION_ID));
+    when(getInternalAdmin().repushStore(any())).thenReturn(new RepushJobResponse(TEST_STORE_NAME, TEST_EXECUTION_ID));
 
     // trigger manual repush
     RepushJobResponse repushJobResponse = ObjectMapperFactory.getInstance()
@@ -146,7 +146,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         .build();
 
     // mock failed response
-    RepushJobResponse errorResponse = new RepushJobResponse(TEST_EXECUTION_ID);
+    RepushJobResponse errorResponse = new RepushJobResponse(TEST_STORE_NAME, TEST_EXECUTION_ID);
     errorResponse.setError("test case: repushStore() receives error response");
     when(getInternalAdmin().repushStore(any())).thenReturn(errorResponse);
 
@@ -227,7 +227,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         .thenReturn(Collections.singletonList(mockTestStoreInfo));
 
     // mock successful response
-    when(getInternalAdmin().repushStore(any())).thenReturn(new RepushJobResponse(TEST_EXECUTION_ID));
+    when(getInternalAdmin().repushStore(any())).thenReturn(new RepushJobResponse(TEST_STORE_NAME, TEST_EXECUTION_ID));
 
     // start log compaction service to trigger scheduled repush
     logCompactionService.startInner();
