@@ -29,7 +29,6 @@ import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.sdk.metrics.data.LongPointData;
 import io.opentelemetry.sdk.metrics.data.MetricData;
 import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.util.Arrays;
@@ -259,8 +258,11 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
     Assert.assertFalse(metricsData.isEmpty());
     assertEquals(metricsData.size(), 1);
 
-    LongPointData callCountData =
-        OpenTelemetryDataPointTestUtils.getLongPointData(metricsData, metricName, TEST_METRIC_PREFIX);
-    OpenTelemetryDataPointTestUtils.validateLongPointData(callCountData, expectedMetricValue, expectedAttributes);
+    OpenTelemetryDataPointTestUtils.validateLongPointData(
+        inMemoryMetricReader,
+        expectedMetricValue,
+        expectedAttributes,
+        metricName,
+        TEST_METRIC_PREFIX);
   }
 }
