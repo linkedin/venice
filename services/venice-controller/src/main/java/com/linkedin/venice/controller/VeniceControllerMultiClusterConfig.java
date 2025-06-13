@@ -30,7 +30,7 @@ public class VeniceControllerMultiClusterConfig {
     }
   }
 
-  // This contructor is used for testing.
+  // This constructor is used for testing.
   public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerClusterConfig> clusterToControllerConfigMap) {
     this.clusterToControllerConfigMap = new HashMap<>(clusterToControllerConfigMap);
   }
