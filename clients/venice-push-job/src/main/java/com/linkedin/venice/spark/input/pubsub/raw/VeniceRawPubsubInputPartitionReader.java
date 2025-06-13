@@ -13,7 +13,6 @@ import com.linkedin.venice.spark.input.pubsub.OffsetProgressPercentCalculator;
 import com.linkedin.venice.spark.input.pubsub.PubSubMessageConverter;
 import com.linkedin.venice.spark.input.pubsub.VenicePubSubMessageToRow;
 import java.util.ArrayDeque;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -71,9 +70,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   private PubSubPosition currentPosition;
   private long currentOffset;
   private InternalRow currentRow = null;
-  private long recordsServed = 0;
-  private long recordsSkipped = 0;
-  private long recordsDeliveredByGet = 0;
+  final VeniceRawPubsubStats readerStats = new VeniceRawPubsubStats();
 
   // the buffer that holds the relevant messages for the current partition
 
@@ -134,8 +131,6 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
     // Subscribe to the topic partition
     pubSubConsumer.subscribe(targetPubSubTopicPartition, startingPosition);
     LOGGER.info("Subscribed to Topic: {} Partition {}.", this.topicName, this.targetPartitionNumber);
-
-    this.recordsServed = 0; // reset the counter
   }
 
   /**
@@ -144,7 +139,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
    */
   @Override
   public InternalRow get() {
-    this.recordsDeliveredByGet++;
+    readerStats.incrementRecordsDeliveredByGet();
     // should return the same row if called multiple times
     return this.currentRow;
   }
@@ -161,21 +156,27 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   @Override
   public boolean next() {
 
+    // early exit if we are already past the ending position
     if (areWePastTheEndingPosition()) {
       return false;
     }
-
-    // TODO: prepareNextValidRow() should have a way to handle results of polls where
-    // all the messages are control messages.
 
     if (prepareNextValidRow()) {
       // local buffer has a valid row, no need to poll
       return true;
     }
 
+    // no more valid rows in the local buffer, we need to poll for new messages
     try {
-      pollAndFillMessageBufferWithNewPubsubRecords();
-      return prepareNextValidRow();
+      while (!this.areWePastTheEndingPosition()) { // poll all the way to the end of the topic partition
+        pollAndFillMessageBufferWithNewPubsubRecords();
+        while (!this.messageBuffer.isEmpty()) {
+          if (prepareNextValidRow()) {
+            // Successfully prepared a valid row
+            return true;
+          }
+        }
+      }
     } catch (RuntimeException e) {
       LOGGER.error(
           "Error while polling messages from topic {} partition {}: {}",
@@ -190,6 +191,8 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
       return false; // Return false if no valid messages could be prepared
     }
 
+    // If we reach here, it means we have exhausted all messages and are past the ending position
+    return false;
   }
 
   @Override
@@ -199,8 +202,11 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
         "Consumer closed for Topic: {}, partition: {}, consumed {} records.",
         this.topicName,
         this.targetPartitionNumber,
-        this.recordsServed);
-    LOGGER.info("Skipped {} records, delivered rows {} times .", this.recordsSkipped, this.recordsDeliveredByGet);
+        readerStats.getRecordsServed());
+    LOGGER.info(
+        "Skipped {} records, delivered rows {} times .",
+        readerStats.getRecordsSkipped(),
+        readerStats.getRecordsDeliveredByGet());
   }
 
   /**
@@ -262,12 +268,8 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
         this.targetPartitionNumber,
         String.format("%.1f", this.percentCalculator.calculate(this.currentOffset)),
         this.offsetLength,
-        this.recordsServed,
-        this.recordsSkipped);
-  }
-
-  public List<Long> getStats() {
-    return Arrays.asList(this.recordsServed, this.recordsSkipped, this.recordsDeliveredByGet);
+        readerStats.getRecordsServed(),
+        readerStats.getRecordsSkipped());
   }
 
   /**
@@ -300,13 +302,13 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
       // Skip control messages if filtering is enabled
       message.getKey().isControlMessage();
       if (this.filterControlMessages && message.getKey().isControlMessage()) {
-        this.recordsSkipped++;
+        readerStats.incrementRecordsSkipped();
         continue; // Continue to next message in buffer
       }
 
       this.currentRow = this.pubSubMessageConverter.convert(message, this.region, this.targetPartitionNumber);
 
-      recordsServed++;
+      readerStats.incrementRecordsServed();
       maybeLogProgress();
       return true;
     }
