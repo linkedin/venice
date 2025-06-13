@@ -13,9 +13,12 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTMANAGER_ALGORITHM;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
+import static com.linkedin.venice.ConfigKeys.BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
@@ -127,6 +130,7 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
+import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -1456,6 +1460,241 @@ public class DaVinciClientTest {
         Assert.assertFalse(store.getIsDavinciHeartbeatReported());
         Assert.assertFalse(store.getVersion(versionThree).get().getIsDavinciHeartbeatReported());
       });
+    }
+  }
+
+  @Test(timeOut = 2 * TEST_TIMEOUT)
+  public void testBlobP2PTransferAmongDVCWitServerUnexpectedShutdownExpectTriggerIdleEvent() throws Exception {
+    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
+    String zkHosts = cluster.getZk().getAddress();
+    int port1 = TestUtils.getFreePort();
+    int port2 = TestUtils.getFreePort();
+    while (port1 == port2) {
+      port2 = TestUtils.getFreePort();
+    }
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
+    String storeName = Utils.getUniqueString("test-store");
+    setUpStore(storeName, paramsConsumer, properties -> {}, true);
+
+    // Start the first DaVinci Client using DaVinciUserApp
+    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(
+        DaVinciUserApp.class,
+        zkHosts,
+        dvcPath1,
+        storeName,
+        "100",
+        "10",
+        "false",
+        Integer.toString(port1),
+        Integer.toString(port2),
+        StorageClass.DISK.toString(),
+        "false",
+        "true",
+        "false");
+
+    // Wait for the first DaVinci Client to complete ingestion
+    Thread.sleep(60000);
+
+    // Prepare client 2 configs
+    String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
+    PropertyBuilder configBuilder = new PropertyBuilder().put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
+        .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true")
+        .put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "3000")
+        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DATA_BASE_PATH, dvcPath2)
+        .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port2)
+        .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1)
+        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+        .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
+        .put(BLOB_TRANSFER_MANAGER_ENABLED, true)
+        .put(BLOB_TRANSFER_SSL_ENABLED, true)
+        .put(BLOB_TRANSFER_ACL_ENABLED, true)
+        .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, -1000000)
+        .put(BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC, 1)
+        .put(BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC, 1)
+        .put(BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS, 1) // set idle time as 1, trigger the idle handler immediately
+        .put(SSL_KEYSTORE_TYPE, "JKS")
+        .put(SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_TRUSTSTORE_TYPE, "JKS")
+        .put(SSL_TRUSTSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+
+    VeniceProperties backendConfig2 = configBuilder.build();
+    DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
+
+    // Monitor both ports to detect if a blob transfer is happening,
+    // If so, Kills the client 1 process forcibly to mock the unexpected host down scenario.
+    int copyPort2 = port2;
+    CompletableFuture.runAsync(() -> {
+      try {
+        LOGGER.info("Starting two ports monitoring for ports {} and {}", port1, copyPort2);
+        while (true) {
+          if (isPortInUse(port1) && isPortInUse(copyPort2)) {
+            LOGGER.info("Both ports are in use - likely blob transfer is happening.");
+            Thread.sleep(2000);
+            forkedDaVinciUserApp.destroyForcibly();
+            LOGGER.info("Killed client1 to test unexpected shutdown during transfer.");
+            return;
+          }
+          Thread.sleep(100);
+        }
+      } catch (Exception e) {
+        LOGGER.error("Error in monitoring two ports usage.", e);
+      }
+    });
+
+    try (CachingDaVinciClientFactory factory2 = getCachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        backendConfig2,
+        cluster)) {
+      // Start client 2
+      DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
+      client2.subscribeAll().get();
+
+      // Verify that client 2 can still complete the bootstrap successfully when the client 1 connection becomes idle
+      try {
+        client2.get(300, TimeUnit.SECONDS);
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+          for (int i = 0; i < 3; i++) {
+            String partitionPath = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+            Assert.assertTrue(Files.exists(Paths.get(partitionPath)));
+          }
+        });
+      } finally {
+        client2.close();
+      }
+    }
+  }
+
+  @Test(timeOut = 2 * TEST_TIMEOUT)
+  public void testBlobP2PTransferAmongDVCWithServerGracefulShutdownExpectTriggerChannelInactive() throws Exception {
+    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
+    String zkHosts = cluster.getZk().getAddress();
+    int port1 = TestUtils.getFreePort();
+    int port2 = TestUtils.getFreePort();
+    while (port1 == port2) {
+      port2 = TestUtils.getFreePort();
+    }
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
+    String storeName = Utils.getUniqueString("test-store");
+    setUpStore(storeName, paramsConsumer, properties -> {}, true);
+
+    // Start the first DaVinci Client using DaVinciUserApp
+    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(
+        DaVinciUserApp.class,
+        zkHosts,
+        dvcPath1,
+        storeName,
+        "100",
+        "10",
+        "false",
+        Integer.toString(port1),
+        Integer.toString(port2),
+        StorageClass.DISK.toString(),
+        "false",
+        "true",
+        "false");
+    // Wait for the first DaVinci Client to complete ingestion
+    Thread.sleep(60000);
+
+    // Prepare client 2 configs
+    String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
+    PropertyBuilder configBuilder = new PropertyBuilder().put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
+        .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true")
+        .put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "3000")
+        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DATA_BASE_PATH, dvcPath2)
+        .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port2)
+        .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1)
+        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+        .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
+        .put(BLOB_TRANSFER_MANAGER_ENABLED, true)
+        .put(BLOB_TRANSFER_SSL_ENABLED, true)
+        .put(BLOB_TRANSFER_ACL_ENABLED, true)
+        .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, -1000000)
+        .put(BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC, 1)
+        .put(BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC, 1)
+        .put(BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS, 120)
+        .put(SSL_KEYSTORE_TYPE, "JKS")
+        .put(SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_TRUSTSTORE_TYPE, "JKS")
+        .put(SSL_TRUSTSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+
+    VeniceProperties backendConfig2 = configBuilder.build();
+    DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
+
+    // Monitor both ports to detect if a blob transfer is happening,
+    // if so, kill the first client to mock graceful shutdown.
+    int copyPort2 = port2;
+    CompletableFuture.runAsync(() -> {
+      try {
+        LOGGER.info("Starting two ports monitoring for ports {} and {}", port1, copyPort2);
+        while (true) {
+          if (isPortInUse(port1) && isPortInUse(copyPort2)) {
+            LOGGER.info("Both ports are in use - likely blob transfer is happening.");
+            Thread.sleep(2000);
+            forkedDaVinciUserApp.destroy();
+            LOGGER.info("Killed client 1 to test graceful shutdown during transfer.");
+            return;
+          }
+          Thread.sleep(100);
+        }
+      } catch (Exception e) {
+        LOGGER.error("Error in monitoring two ports usage.", e);
+      }
+    });
+
+    try (CachingDaVinciClientFactory factory2 = getCachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        backendConfig2,
+        cluster)) {
+      // Start client 2 with parallel monitoring the port 1 and port 2 connection.
+      DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
+      client2.subscribeAll().get();
+
+      // Verify that client2 can still complete the bootstrap successfully
+      // even though client1 was killed during the transfer.
+      try {
+        client2.get(300, TimeUnit.SECONDS);
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+          for (int i = 0; i < 3; i++) {
+            String partitionPath = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+            Assert.assertTrue(Files.exists(Paths.get(partitionPath)));
+          }
+        });
+      } finally {
+        client2.close();
+      }
+    }
+  }
+
+  private static boolean isPortInUse(int port) {
+    try (ServerSocket serverSocket = new ServerSocket(port)) {
+      serverSocket.setReuseAddress(true);
+      return false;
+    } catch (IOException e) {
+      return true;
     }
   }
 
