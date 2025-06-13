@@ -14,7 +14,7 @@ import org.testng.annotations.Test;
 
 public class AggVersionedStorageEngineStatsTest {
   @Test
-  public void testVersionedStatss() {
+  public void testVersionedStats() {
     String storeName = "testStore";
     MetricsRepository metricsRepository = mock(MetricsRepository.class);
     doReturn(mock(Sensor.class)).when(metricsRepository).sensor(anyString(), any());
@@ -23,7 +23,9 @@ public class AggVersionedStorageEngineStatsTest {
     AggVersionedStorageEngineStats stats =
         new AggVersionedStorageEngineStats(metricsRepository, metadataRepository, false);
     stats.addStore(storeName);
-
+    AggVersionedStorageEngineStats.StorageEngineStatsReporter reporter =
+        new AggVersionedStorageEngineStats.StorageEngineStatsReporter(metricsRepository, storeName, "cluster1");
+    reporter.registerStats();
     stats.getStats(storeName, 1).getKeyCountEstimate();
     stats.getStats(storeName, 1).getDuplicateKeyCountEstimate();
 
