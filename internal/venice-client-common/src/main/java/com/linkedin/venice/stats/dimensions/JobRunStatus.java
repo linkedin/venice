@@ -15,7 +15,7 @@ public enum JobRunStatus implements VeniceDimensionInterface {
    */
   @Override
   public VeniceMetricsDimensions getDimensionName() {
-    return VeniceMetricsDimensions.JOB_EXECUTION_STATUS;
+    return VeniceMetricsDimensions.VENICE_EXECUTION_STATUS;
   }
 
   @Override
