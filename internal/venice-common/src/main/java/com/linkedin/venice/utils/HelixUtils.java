@@ -297,7 +297,14 @@ public final class HelixUtils {
       } catch (Exception e) {
         attempt++;
         if (attempt < maxAttempts) {
-          handleFailedHelixOperation("", "connectHelixManager", attempt, maxAttempts);
+          long retryIntervalSec = (long) Math.pow(2, attempt);
+          LOGGER.warn(
+              "Failed to connect {} on attempt {}/{}. Will retry in {} seconds.",
+              manager.toString(),
+              attempt,
+              maxAttempts,
+              retryIntervalSec);
+          Utils.sleep(TimeUnit.SECONDS.toMillis(retryIntervalSec));
         } else {
           throw new VeniceException(
               "Error connecting to Helix Manager for Cluster '" + manager.getClusterName() + "' after " + maxAttempts
