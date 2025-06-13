@@ -15,7 +15,7 @@ import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.types.DataTypes;
 
 
-public class ConvertPubSubMessageToRowTest {
+public class VenicePubSubMessageToRowTest {
   @org.testng.annotations.Test
   public void testProcessMessage() {
     // Create test data
@@ -56,7 +56,7 @@ public class ConvertPubSubMessageToRowTest {
     int partitionNumber = 5;
 
     // Call the method under test
-    InternalRow result = ConvertPubSubMessageToRow.convertPubSubMessageToRow(mockMessage, region, partitionNumber);
+    InternalRow result = VenicePubSubMessageToRow.convertPubSubMessageToRow(mockMessage, region, partitionNumber);
 
     // Verify the result
     assertEquals(result.get(0, DataTypes.StringType).toString(), region, "Region should match");
@@ -76,7 +76,7 @@ public class ConvertPubSubMessageToRowTest {
   public void testLoadRemainingBytes_fullBuffer() {
     byte[] data = { 1, 2, 3, 4, 5 };
     ByteBuffer buffer = ByteBuffer.wrap(data);
-    byte[] result = ConvertPubSubMessageToRow.loadRemainingBytes(buffer);
+    byte[] result = VenicePubSubMessageToRow.loadRemainingBytes(buffer);
     assertTrue(Arrays.equals(result, data), "Should return all bytes from buffer");
   }
 
@@ -85,7 +85,7 @@ public class ConvertPubSubMessageToRowTest {
     byte[] data = { 10, 20, 30, 40, 50 };
     ByteBuffer buffer = ByteBuffer.wrap(data);
     buffer.position(2); // Move position to index 2
-    byte[] result = ConvertPubSubMessageToRow.loadRemainingBytes(buffer);
+    byte[] result = VenicePubSubMessageToRow.loadRemainingBytes(buffer);
     byte[] expected = { 30, 40, 50 };
     assertTrue(Arrays.equals(result, expected), "Should return remaining bytes from current position");
   }
@@ -94,7 +94,7 @@ public class ConvertPubSubMessageToRowTest {
   public void testLoadRemainingBytes_emptyBuffer() {
     byte[] data = {};
     ByteBuffer buffer = ByteBuffer.wrap(data);
-    byte[] result = ConvertPubSubMessageToRow.loadRemainingBytes(buffer);
+    byte[] result = VenicePubSubMessageToRow.loadRemainingBytes(buffer);
     assertTrue(Arrays.equals(result, data), "Should return empty array for empty buffer");
   }
 }

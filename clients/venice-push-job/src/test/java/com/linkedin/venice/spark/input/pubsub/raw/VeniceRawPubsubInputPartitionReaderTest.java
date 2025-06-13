@@ -1,9 +1,21 @@
 package com.linkedin.venice.spark.input.pubsub.raw;
 
+import static org.mockito.Mockito.*;
+
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.spark.input.pubsub.VenicePubSubMessageToRow;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.apache.spark.sql.catalyst.InternalRow;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
@@ -37,6 +49,9 @@ public class VeniceRawPubsubInputPartitionReaderTest {
   @Mock
   private PubSubTopicPartition mockTopicPartition;
 
+  @Mock
+  private VenicePubSubMessageToRow mockMessageToRowConverter;
+
   private VeniceRawPubsubInputPartitionReader reader;
 
   @BeforeMethod
@@ -58,7 +73,7 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     int partitionNumber = 5;
     String topicName = "test-topic";
     String region = "test-region";
-    long startOffset = 100L;
+    long startOffset = 101L;
     long endOffset = 200L;
 
     // updated constants to adjust the test behavior and timeouts
@@ -67,89 +82,193 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     final Long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
 
     // Setup mocks
-    Mockito.when(mockInputPartition.getPartitionNumber()).thenReturn(partitionNumber);
-    Mockito.when(mockInputPartition.getTopicName()).thenReturn(topicName);
-    Mockito.when(mockInputPartition.getRegion()).thenReturn(region);
-    Mockito.when(mockInputPartition.getStartOffset()).thenReturn(startOffset);
-    Mockito.when(mockInputPartition.getEndOffset()).thenReturn(endOffset);
-    Mockito.when(mockTopicPartition.getPubSubTopic()).thenReturn(mockTopic);
+    when(mockInputPartition.getPartitionNumber()).thenReturn(partitionNumber);
+    when(mockInputPartition.getTopicName()).thenReturn(topicName);
+    when(mockInputPartition.getRegion()).thenReturn(region);
+    when(mockInputPartition.getStartOffset()).thenReturn(startOffset);
+    when(mockInputPartition.getEndOffset()).thenReturn(endOffset);
+    when(mockTopicPartition.getPubSubTopic()).thenReturn(mockTopic);
 
     // Act
     long start = System.currentTimeMillis();
-    Assert.assertThrows(RuntimeException.class, () -> {
-      new VeniceRawPubsubInputPartitionReader(
-          mockInputPartition,
-          mockConsumer,
-          mockTopic,
-          mockTopicPartition,
-          CONSUMER_POLL_TIMEOUT,
-          CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES,
-          EMPTY_POLL_SLEEP_TIME_MS);
-    });
+    reader = new VeniceRawPubsubInputPartitionReader(
+        mockInputPartition,
+        mockConsumer,
+        mockTopicPartition,
+        CONSUMER_POLL_TIMEOUT,
+        CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES,
+        EMPTY_POLL_SLEEP_TIME_MS,
+        new VenicePubSubMessageToRow());
+
+    Assert.assertFalse(reader.next()); // Attempt to read messages, which should fail due to empty topic
+
     long elapsed = System.currentTimeMillis() - start;
     Assert.assertTrue(elapsed >= 3000, "Constructor should take at least 3 seconds due to polling retries.");
     Assert.assertTrue(elapsed < 4000, "Constructor should not exceed 4 seconds, it doesn't do much after failure.");
 
-    // // Assert
-    // // Verify consumer subscribes to the topic partition with the correct starting position
-    // Mockito.verify(mockConsumer).subscribe(
-    // Mockito.eq(mockTopicPartition),
-    // Mockito.argThat(position -> {
-    // try {
-    // return position.getNumericOffset() == startOffset;
-    // } catch (Exception e) {
-    // return false;
-    // }
-    // })
-    // );
-    //
-    // // Verify proper initialization by checking that the reader attempts to get the first message
-    // // This is done by verifying that the consumer's poll method is called
-    // Mockito.verify(mockConsumer, Mockito.atLeastOnce()).poll(Mockito.anyLong());
+    reader.close();
   }
 
   @Test
-  public void testNextWithValidMessages() {
-    // Test next() method with valid messages
+  public void testShortTopicConsumeConvert() {
+    // Arrange
+    int partitionNumber = 5;
+    String topicName = "test-topic";
+    String region = "test-region";
+    long startOffset = 1L;
+    long endOffset = 2L;
+
+    // updated constants to adjust the test behavior and timeouts
+    final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 3;
+    final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(1);
+    final long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
+
+    // Setup mocks
+    when(mockInputPartition.getPartitionNumber()).thenReturn(partitionNumber);
+    when(mockInputPartition.getTopicName()).thenReturn(topicName);
+    when(mockInputPartition.getRegion()).thenReturn(region);
+    when(mockInputPartition.getStartOffset()).thenReturn(startOffset);
+    when(mockInputPartition.getEndOffset()).thenReturn(endOffset);
+    when(mockTopicPartition.getPubSubTopic()).thenReturn(mockTopic);
+
+    KafkaKey mockKey1 = Mockito.mock(KafkaKey.class);
+    when(mockKey1.isControlMessage()).thenReturn(false);
+    PubSubPosition mockPosition1 = ApacheKafkaOffsetPosition.of(startOffset);
+
+    DefaultPubSubMessage mockMessage1 = Mockito.mock(DefaultPubSubMessage.class);
+    when(mockMessage1.getOffset()).thenReturn(mockPosition1);
+    when(mockMessage1.getKey()).thenReturn(mockKey1); // No key for this message
+
+    KafkaKey mockKey2 = Mockito.mock(KafkaKey.class);
+    when(mockKey2.isControlMessage()).thenReturn(false);
+    DefaultPubSubMessage mockMessage2 = Mockito.mock(DefaultPubSubMessage.class);
+    PubSubPosition mockPosition2 = ApacheKafkaOffsetPosition.of(startOffset + 1L);
+    when(mockMessage2.getOffset()).thenReturn(mockPosition2);
+    when(mockMessage2.getKey()).thenReturn(mockKey2);
+
+    InternalRow mockRow = Mockito.mock(InternalRow.class);
+
+    // Mock the poll function to return the mock message
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult1 = new HashMap<>();
+    pollResult1.put(mockTopicPartition, Collections.singletonList(mockMessage1));
+
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult2 = new HashMap<>();
+    pollResult2.put(mockTopicPartition, Collections.singletonList(mockMessage2));
+
+    when(mockConsumer.poll(CONSUMER_POLL_TIMEOUT)).thenReturn(pollResult1)
+        .thenReturn(pollResult2)
+        .thenReturn(new HashMap<>());
+    // mock the return value of the message converter
+
+    when(mockMessageToRowConverter.convert(Mockito.eq(mockMessage1), Mockito.eq(region), Mockito.eq(partitionNumber)))
+        .thenReturn(mockRow);
+
+    when(mockMessageToRowConverter.convert(Mockito.eq(mockMessage2), Mockito.eq(region), Mockito.eq(partitionNumber)))
+        .thenReturn(mockRow);
+
+    reader = new VeniceRawPubsubInputPartitionReader(
+        mockInputPartition,
+        mockConsumer,
+        mockTopicPartition,
+        CONSUMER_POLL_TIMEOUT,
+        CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES,
+        EMPTY_POLL_SLEEP_TIME_MS,
+        mockMessageToRowConverter);
+
+    // to inspect the state of the reader
+
+    Assert.assertTrue(reader.next(), "Reader should have a next message available");
+    Assert.assertNotNull(reader.get(), "Expected one result");
+    Assert.assertEquals(reader.get(), mockRow, "Reader should return the expected InternalRow");
+    Assert.assertTrue(reader.next(), "Reader should have a next message available");
+    Assert.assertFalse(reader.next(), "Reader should have a next message available");
+
+    // at this point, we keep returning the last good row, and there wont be any "next" message available.
+    Assert.assertFalse(reader.next(), "Reader should have a next message available");
+    Assert.assertEquals(reader.get(), mockRow, "Reader should return the expected InternalRow");
+
+    reader.close();
   }
 
   @Test
   public void testFilterControlMessages() {
-    // Test filtering of control messages
+    // Arrange
+    int partitionNumber = 5;
+    String topicName = "test-topic";
+    String region = "test-region";
+    long startOffset = 1L;
+    long endOffset = 2L;
+
+    // updated constants to adjust the test behavior and timeouts
+    final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 3;
+    final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(1);
+    final long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
+
+    // Setup mocks
+    when(mockInputPartition.getPartitionNumber()).thenReturn(partitionNumber);
+    when(mockInputPartition.getTopicName()).thenReturn(topicName);
+    when(mockInputPartition.getRegion()).thenReturn(region);
+    when(mockInputPartition.getStartOffset()).thenReturn(startOffset);
+    when(mockInputPartition.getEndOffset()).thenReturn(endOffset);
+    when(mockTopicPartition.getPubSubTopic()).thenReturn(mockTopic);
+
+    KafkaKey mockKey1 = Mockito.mock(KafkaKey.class);
+    when(mockKey1.isControlMessage()).thenReturn(true);
+    PubSubPosition mockPosition1 = ApacheKafkaOffsetPosition.of(startOffset);
+
+    DefaultPubSubMessage mockMessage1 = Mockito.mock(DefaultPubSubMessage.class);
+    when(mockMessage1.getOffset()).thenReturn(mockPosition1);
+    when(mockMessage1.getKey()).thenReturn(mockKey1); // No key for this message
+
+    KafkaKey mockKey2 = Mockito.mock(KafkaKey.class);
+    when(mockKey2.isControlMessage()).thenReturn(false);
+    DefaultPubSubMessage mockMessage2 = Mockito.mock(DefaultPubSubMessage.class);
+    PubSubPosition mockPosition2 = ApacheKafkaOffsetPosition.of(startOffset + 1L);
+    when(mockMessage2.getOffset()).thenReturn(mockPosition2);
+    when(mockMessage2.getKey()).thenReturn(mockKey2);
+
+    InternalRow mockRow = Mockito.mock(InternalRow.class);
+
+    // Mock the poll function to return the mock message
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult1 = new HashMap<>();
+    pollResult1.put(mockTopicPartition, Collections.singletonList(mockMessage1));
+
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult2 = new HashMap<>();
+    pollResult2.put(mockTopicPartition, Collections.singletonList(mockMessage2));
+
+    when(mockConsumer.poll(CONSUMER_POLL_TIMEOUT)).thenReturn(pollResult1)
+        .thenReturn(pollResult2)
+        .thenReturn(new HashMap<>());
+    // mock the return value of the message converter
+
+    when(mockMessageToRowConverter.convert(Mockito.eq(mockMessage1), Mockito.eq(region), Mockito.eq(partitionNumber)))
+        .thenReturn(mockRow);
+
+    when(mockMessageToRowConverter.convert(Mockito.eq(mockMessage2), Mockito.eq(region), Mockito.eq(partitionNumber)))
+        .thenReturn(mockRow);
+
+    reader = new VeniceRawPubsubInputPartitionReader(
+        mockInputPartition,
+        mockConsumer,
+        mockTopicPartition,
+        CONSUMER_POLL_TIMEOUT,
+        CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES,
+        EMPTY_POLL_SLEEP_TIME_MS,
+        mockMessageToRowConverter);
+
+    // to inspect the state of the reader
+
+    Assert.assertTrue(reader.next(), "Reader should have a next message available");
+    Assert.assertNotNull(reader.get(), "Expected one result");
+    Assert.assertEquals(reader.get(), mockRow, "Reader should return the expected InternalRow");
+    Assert.assertTrue(reader.next(), "Reader should have a next message available");
+    Assert.assertFalse(reader.next(), "Reader should have a next message available");
+
+    // at this point, we keep returning the last good row, and there wont be any "next" message available.
+    Assert.assertFalse(reader.next(), "Reader should have a next message available");
+    Assert.assertEquals(reader.get(), mockRow, "Reader should return the expected InternalRow");
+
+    reader.close();
   }
 
-  @Test
-  public void testConsumerPollingLogic() {
-    // Test consumer polling logic and retry mechanism
-  }
-
-  @Test
-  public void testReachEndPosition() {
-    // Test behavior when reaching end position
-  }
-
-  @Test
-  public void testGet() {
-    // Test get() method returns correct InternalRow
-  }
-
-  @Test
-  public void testProgressTracking() {
-    // Test progress tracking functionality
-  }
-
-  @Test
-  public void testStats() {
-    // Test getStats method returns correct statistics
-  }
-
-  @Test
-  public void testErrorHandling() {
-    // Test error handling for various scenarios
-  }
-
-  @Test
-  public void testCloseMethod() {
-    // Test close method properly cleans up resources
-  }
 }
