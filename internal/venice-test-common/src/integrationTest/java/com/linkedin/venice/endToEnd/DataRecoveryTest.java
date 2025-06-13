@@ -9,6 +9,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATI
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithKeyPrefix;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
@@ -330,6 +331,111 @@ public class DataRecoveryTest {
             Object v = client.get("dc-0_" + keyId).get();
             Assert.assertNotNull(v, "Batch data should be consumed already in data center dc-1");
             Assert.assertEquals(v.toString(), "stream_" + keyId);
+          });
+        }
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT * 2)
+  public void testHybridAADataRecoveryV2() throws Exception {
+    String storeName = Utils.getUniqueString("dataRecovery-store-hybrid-AA");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+        ControllerClient dc0Client =
+            new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client =
+            new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
+      List<ControllerClient> dcControllerClientList = Arrays.asList(dc0Client, dc1Client);
+      TestUtils.createAndVerifyStoreInAllRegions(storeName, parentControllerClient, dcControllerClientList);
+      Assert.assertFalse(
+          parentControllerClient
+              .updateStore(
+                  storeName,
+                  new UpdateStoreQueryParams().setHybridRewindSeconds(10)
+                      .setHybridOffsetLagThreshold(2)
+                      .setNativeReplicationEnabled(true)
+                      .setActiveActiveReplicationEnabled(true)
+                      .setPartitionCount(1))
+              .isError());
+      TestUtils.verifyDCConfigNativeAndActiveRepl(storeName, true, true, dc0Client, dc1Client);
+      Assert.assertFalse(
+          parentControllerClient.emptyPush(storeName, "empty-push-" + System.currentTimeMillis(), 1000).isError());
+      String versionTopic = Version.composeKafkaTopic(storeName, 1);
+      TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient, 60, TimeUnit.SECONDS);
+
+      try (VeniceSystemProducer veniceProducer =
+          IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
+        for (int i = 0; i < 10; i++) {
+          sendStreamingRecord(veniceProducer, storeName, "dc-0_" + i, "b", 1000L);
+        }
+      }
+
+      // Prepare dc-1 for data recovery
+      Assert.assertFalse(
+          parentControllerClient.prepareDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty()).isError());
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        ReadyForDataRecoveryResponse readinessResponse =
+            parentControllerClient.isStoreVersionReadyForDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty());
+        Assert.assertTrue(readinessResponse.isReady(), readinessResponse.getReason());
+      });
+      // Initiate data recovery
+      Assert.assertFalse(
+          parentControllerClient.dataRecovery("dc-0", "dc-1", storeName, 1, false, true, Optional.empty()).isError());
+      TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient, 60, TimeUnit.SECONDS);
+
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(childDatacenters.get(1).getClusters().get(clusterName).getRandomRouterURL()))) {
+        for (int i = 0; i < 10; i++) {
+          final String keyId = String.valueOf(i);
+          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+            Object v = client.get("dc-0_" + keyId).get();
+            Assert.assertNotNull(v, "Batch data should be consumed already in data center dc-1");
+            Assert.assertEquals(v.toString(), "b");
+          });
+        }
+      }
+
+      try (VeniceSystemProducer veniceProducer =
+          IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 1, storeName)) {
+        for (int i = 0; i < 10; i++) {
+          sendStreamingRecord(veniceProducer, storeName, "dc-0_" + i, "a", 1000L);
+        }
+        // This is an anchor value to make sure we consume everything.
+        sendStreamingRecord(veniceProducer, storeName, "dc-0_X", "a", 1000L);
+      }
+
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(childDatacenters.get(0).getClusters().get(clusterName).getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          Object v = client.get("dc-0_X").get();
+          Assert.assertNotNull(v, "Batch data should be consumed already in data center dc-1");
+        });
+        for (int i = 0; i < 10; i++) {
+          final String keyId = String.valueOf(i);
+          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+            Object v = client.get("dc-0_" + keyId).get();
+            Assert.assertNotNull(v, "Batch data should be consumed already in data center dc-1");
+            Assert.assertEquals(v.toString(), "b", "DCR should reject write with smaller value and same timestamp");
+          });
+        }
+      }
+
+      try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(childDatacenters.get(1).getClusters().get(clusterName).getRandomRouterURL()))) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          Object v = client.get("dc-0_X").get();
+          Assert.assertNotNull(v, "Batch data should be consumed already in data center dc-1");
+        });
+        for (int i = 0; i < 10; i++) {
+          final String keyId = String.valueOf(i);
+          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+            Object v = client.get("dc-0_" + keyId).get();
+            Assert.assertNotNull(v, "Batch data should be consumed already in data center dc-1");
+            Assert.assertEquals(v.toString(), "b", "DCR should reject write with smaller value and same timestamp");
           });
         }
       }
