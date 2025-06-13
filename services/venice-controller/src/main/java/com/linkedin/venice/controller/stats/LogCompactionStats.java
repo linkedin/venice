@@ -8,8 +8,8 @@ import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
+import com.linkedin.venice.stats.dimensions.VeniceExecutionStatus;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
-import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.opentelemetry.api.common.Attributes;
@@ -76,7 +76,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
   public void recordRepushStoreCall(
       String storeName,
       RepushStoreTriggerSource triggerSource,
-      VeniceResponseStatusCategory responseStatusCategory) {
+      VeniceExecutionStatus responseStatusCategory) {
     repushStoreCallCountMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
       {
         put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
