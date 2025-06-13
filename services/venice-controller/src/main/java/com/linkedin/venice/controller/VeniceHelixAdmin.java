@@ -2010,6 +2010,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * Validates that a store has been completely deleted from the Venice cluster.
+   * This method performs comprehensive checks across multiple subsystems to ensure
+   * no lingering resources remain that would prevent safe store recreation.
+   *
+   * Resources checked:
+   * 1. Store configuration in ZooKeeper
+   * 2. Store metadata in store repository
+   * 3. System stores (only those that were enabled for the original store)
+   * 4. Kafka topics (version, RT, and system store topics)
+   * 5. Helix resources
+   *
+   * @param clusterName the name of the cluster to check (must not be null or empty)
+   * @param storeName the name of the store to validate deletion for (must not be null or empty)
+   * @return StoreDeletedResult indicating whether the store is fully deleted or what resources remain
+   * @throws IllegalArgumentException if clusterName or storeName is null or empty
+   */
+  public StoreDeletedValidation validateStoreDeleted(String clusterName, String storeName) {
+    return StoreDeletionValidationUtils.validateStoreDeleted(this, clusterName, storeName);
+  }
+
+  /**
    * Check whether Controller should block the incoming store creation.
    * Inside this function, there is a logic to check whether there are any lingering resources since the requested
    * store could be just deleted recently.

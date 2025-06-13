@@ -5941,4 +5941,12 @@ public class VeniceParentHelixAdmin implements Admin {
   public VeniceControllerClusterConfig getControllerConfig(String clusterName) {
     return multiClusterConfigs.getControllerConfig(clusterName);
   }
+
+  /**
+   * @see Admin#validateStoreDeleted(String, String)
+   */
+  @Override
+  public StoreDeletedValidation validateStoreDeleted(String clusterName, String storeName) {
+    return getVeniceHelixAdmin().validateStoreDeleted(clusterName, storeName);
+  }
 }
