@@ -23,6 +23,7 @@ import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
+import io.opentelemetry.api.metrics.LongGauge;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -167,6 +168,12 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           assertTrue(
               instrument instanceof LongCounter,
               "Instrument should be a LongCounter for metric type: " + metricType);
+          metricEntityState.recordOtelMetric(value, attributes);
+          break;
+        case GAUGE:
+          assertTrue(
+              instrument instanceof LongGauge,
+              "Instrument should be a LongGauge for metric type: " + metricType);
           metricEntityState.recordOtelMetric(value, attributes);
           break;
         default:
