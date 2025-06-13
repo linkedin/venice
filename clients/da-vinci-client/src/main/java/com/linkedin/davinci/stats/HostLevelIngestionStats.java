@@ -11,17 +11,14 @@ import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.LongAdderRateGauge;
-import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.Measurable;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
-import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
-import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
@@ -282,20 +279,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
     // Stats which are per-store only:
     String keySizeSensorName = "record_key_size_in_bytes";
-    this.keySizeSensor = registerSensor(
-        keySizeSensorName,
-        new Avg(),
-        new Min(),
-        new Max(),
-        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + keySizeSensorName));
+    this.keySizeSensor = registerSensor(keySizeSensorName, avgAndMax());
 
     String valueSizeSensorName = "record_value_size_in_bytes";
-    this.valueSizeSensor = registerSensor(
-        valueSizeSensorName,
-        new Avg(),
-        new Min(),
-        new Max(),
-        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName));
+    this.valueSizeSensor = registerSensor(valueSizeSensorName, avgAndMax());
 
     this.assembledRecordSizeSensor = registerPerStoreAndTotalSensor(
         ASSEMBLED_RECORD_SIZE_IN_BYTES,
@@ -398,18 +385,13 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         storageEnginePutLatencySensorName,
         totalStats,
         () -> totalStats.storageEnginePutLatencySensor,
-        new Avg(),
-        new Max(),
-        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + storageEnginePutLatencySensorName));
+        avgAndMax());
 
     this.storageEngineDeleteLatencySensor = registerPerStoreAndTotalSensor(
         storageEngineDeleteLatencySensorName,
         totalStats,
         () -> totalStats.storageEngineDeleteLatencySensor,
-        new Avg(),
-        new Max(),
-        TehutiUtils
-            .getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + storageEngineDeleteLatencySensorName));
+        avgAndMax());
 
     this.writeComputeCacheHitCount = registerPerStoreAndTotalSensor(
         "write_compute_cache_hit_count",
