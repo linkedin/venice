@@ -835,9 +835,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public long getKeyCountEstimate() {
     readCloseRWLock.readLock().lock();
     try {
-      if (isClosed) {
-        return 0;
-      }
+      makeSureRocksDBIsStillOpen();
       return getRocksDBStatValue("rocksdb.estimate-num-keys");
     } finally {
       readCloseRWLock.readLock().unlock();
