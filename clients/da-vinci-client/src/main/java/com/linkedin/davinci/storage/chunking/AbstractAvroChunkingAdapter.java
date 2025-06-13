@@ -24,6 +24,7 @@ import org.apache.avro.io.BinaryDecoder;
  * Read compute and write compute chunking adapter
  */
 public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<ChunkedValueInputStream, T> {
+  public static final int DO_NOT_USE_READER_SCHEMA_ID = -1;
   private static final int UNUSED_INPUT_BYTES_LENGTH = -1;
 
   @Override
@@ -37,12 +38,13 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
       VeniceCompressor compressor) {
+    int resolvedReaderSchemaId = resolveReaderSchemaId(readerSchemaId, writerSchemaId);
     return getByteArrayDecoder(compressor.getCompressionStrategy()).decode(
         reusedDecoder,
         fullBytes,
         bytesLength,
         reusedValue,
-        storeDeserializerCache.getDeserializer(writerSchemaId, readerSchemaId),
+        storeDeserializerCache.getDeserializer(writerSchemaId, resolvedReaderSchemaId),
         responseStats,
         compressor);
   }
@@ -92,12 +94,13 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       int readerSchemaId,
       StoreDeserializerCache<T> storeDeserializerCache,
       VeniceCompressor compressor) {
+    int resolvedReaderSchemaId = resolveReaderSchemaId(readerSchemaId, writerSchemaId);
     return instrumentedDecompressingInputStreamDecoder.decode(
         reusedDecoder,
         chunkedValueInputStream,
         UNUSED_INPUT_BYTES_LENGTH,
         reusedValue,
-        storeDeserializerCache.getDeserializer(writerSchemaId, readerSchemaId),
+        storeDeserializerCache.getDeserializer(writerSchemaId, resolvedReaderSchemaId),
         responseStats,
         compressor);
   }
@@ -328,5 +331,14 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       responseStats.addReadComputeDeserializationLatency(deserializeStartTimeInNS);
       return output;
     }
+  }
+
+  private int resolveReaderSchemaId(int readerSchemaId, int writerSchemaId) {
+    if (readerSchemaId == DO_NOT_USE_READER_SCHEMA_ID) {
+      // Venice client libraries (e.g. DVC) could pass in NON_EXISTING_SCHEMA_ID as reader schema to expect value to
+      // be deserialized using the same reader schema as writer schema.
+      return writerSchemaId;
+    }
+    return readerSchemaId;
   }
 }
