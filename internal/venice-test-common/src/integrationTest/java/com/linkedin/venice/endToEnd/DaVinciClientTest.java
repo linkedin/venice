@@ -130,7 +130,6 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -1530,24 +1529,25 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig2 = configBuilder.build();
     DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
 
-    // Monitor both ports to detect if a blob transfer is happening,
+    // Monitor snapshot folder creation to detect if a blob transfer is happening,
     // If so, Kills the client 1 process forcibly to mock the unexpected host down scenario.
-    int copyPort2 = port2;
     CompletableFuture.runAsync(() -> {
       try {
-        LOGGER.info("Starting two ports monitoring for ports {} and {}", port1, copyPort2);
         while (true) {
-          if (isPortInUse(port1) && isPortInUse(copyPort2)) {
-            LOGGER.info("Both ports are in use - likely blob transfer is happening.");
-            Thread.sleep(2000);
-            forkedDaVinciUserApp.destroyForcibly();
-            LOGGER.info("Killed client1 to test unexpected shutdown during transfer.");
-            return;
+          for (int partition = 0; partition < 3; partition++) {
+            String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", partition);
+            if (Files.exists(Paths.get(snapshotPath1))) {
+              LOGGER.info(
+                  "Detected snapshot folder for partition {}, immediately destroyForcibly client1 process",
+                  partition);
+              forkedDaVinciUserApp.destroyForcibly();
+              return; // Exit monitoring loop
+            }
           }
           Thread.sleep(100);
         }
       } catch (Exception e) {
-        LOGGER.error("Error in monitoring two ports usage.", e);
+        LOGGER.error("Error in monitoring snapshot creation.", e);
       }
     });
 
@@ -1642,24 +1642,23 @@ public class DaVinciClientTest {
     VeniceProperties backendConfig2 = configBuilder.build();
     DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
 
-    // Monitor both ports to detect if a blob transfer is happening,
+    // Monitor snapshot folder creation to detect if a blob transfer is happening,
     // if so, kill the first client to mock graceful shutdown.
-    int copyPort2 = port2;
     CompletableFuture.runAsync(() -> {
       try {
-        LOGGER.info("Starting two ports monitoring for ports {} and {}", port1, copyPort2);
         while (true) {
-          if (isPortInUse(port1) && isPortInUse(copyPort2)) {
-            LOGGER.info("Both ports are in use - likely blob transfer is happening.");
-            Thread.sleep(2000);
-            forkedDaVinciUserApp.destroy();
-            LOGGER.info("Killed client 1 to test graceful shutdown during transfer.");
-            return;
+          for (int partition = 0; partition < 3; partition++) {
+            String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", partition);
+            if (Files.exists(Paths.get(snapshotPath1))) {
+              LOGGER.info("Detected snapshot folder for partition {}, immediately destroy client1 process.", partition);
+              forkedDaVinciUserApp.destroy();
+              return; // Exit monitoring loop
+            }
           }
           Thread.sleep(100);
         }
       } catch (Exception e) {
-        LOGGER.error("Error in monitoring two ports usage.", e);
+        LOGGER.error("Error in monitoring snapshot creation.", e);
       }
     });
 
@@ -1669,7 +1668,7 @@ public class DaVinciClientTest {
         new MetricsRepository(),
         backendConfig2,
         cluster)) {
-      // Start client 2 with parallel monitoring the port 1 and port 2 connection.
+      // Start client 2
       DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
       client2.subscribeAll().get();
 
@@ -1686,15 +1685,6 @@ public class DaVinciClientTest {
       } finally {
         client2.close();
       }
-    }
-  }
-
-  private static boolean isPortInUse(int port) {
-    try (ServerSocket serverSocket = new ServerSocket(port)) {
-      serverSocket.setReuseAddress(true);
-      return false;
-    } catch (IOException e) {
-      return true;
     }
   }
 
