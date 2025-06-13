@@ -76,7 +76,7 @@ public class CompactionManager {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
 
     return isHybridStore && isLastCompactionTimeOlderThanThreshold(timeSinceLastLogCompactionThresholdMs, storeInfo)
-        && !storeInfo.isActiveActiveReplicationEnabled() && !VeniceSystemStoreUtils.isSystemStore(storeInfo.getName());
+        && storeInfo.isActiveActiveReplicationEnabled() && !VeniceSystemStoreUtils.isSystemStore(storeInfo.getName());
   }
 
   /**
