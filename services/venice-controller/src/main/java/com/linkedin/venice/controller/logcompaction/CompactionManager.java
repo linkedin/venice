@@ -30,15 +30,15 @@ public class CompactionManager {
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
 
   private final RepushOrchestrator repushOrchestrator;
-  private final long timeSinceLastLogCompactionThreshold;
+  private final long timeSinceLastLogCompactionThresholdMs;
   private Map<String, LogCompactionStats> statsMap = new HashMap<>();
 
   public CompactionManager(
       RepushOrchestrator repushOrchestrator,
-      long timeSinceLastLogCompactionThreshold,
+      long timeSinceLastLogCompactionThresholdMs,
       Map<String, LogCompactionStats> statsMap) {
     this.repushOrchestrator = repushOrchestrator;
-    this.timeSinceLastLogCompactionThreshold = timeSinceLastLogCompactionThreshold;
+    this.timeSinceLastLogCompactionThresholdMs = timeSinceLastLogCompactionThresholdMs;
     this.statsMap = statsMap;
   }
 
