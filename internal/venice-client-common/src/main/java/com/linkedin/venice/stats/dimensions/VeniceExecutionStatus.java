@@ -1,11 +1,11 @@
 package com.linkedin.venice.stats.dimensions;
 
-public enum ExecutionStatus implements VeniceDimensionInterface {
+public enum VeniceExecutionStatus implements VeniceDimensionInterface {
   FAILED, SUCCESS;
 
   private final String status;
 
-  ExecutionStatus() {
+  VeniceExecutionStatus() {
     this.status = name().toLowerCase();
   }
 
@@ -15,7 +15,7 @@ public enum ExecutionStatus implements VeniceDimensionInterface {
    */
   @Override
   public VeniceMetricsDimensions getDimensionName() {
-    return VeniceMetricsDimensions.EXECUTION_STATUS;
+    return VeniceMetricsDimensions.VENICE_EXECUTION_STATUS;
   }
 
   @Override
