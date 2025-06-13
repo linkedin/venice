@@ -120,7 +120,7 @@ public class VeniceMetricsDimensionsTest {
           assertEquals(dimension.getDimensionName(format), "Venice.Cluster.Name");
           break;
         case VENICE_STORE_VERSION:
-          assertEquals(dimension.getDimensionName(format), "venice.store.version");
+          assertEquals(dimension.getDimensionName(format), "Venice.Store.Version");
           break;
         case VENICE_REQUEST_METHOD:
           assertEquals(dimension.getDimensionName(format), "Venice.Request.Method");
@@ -144,13 +144,13 @@ public class VeniceMetricsDimensionsTest {
           assertEquals(dimension.getDimensionName(format), "Venice.Message.Type");
           break;
         case VENICE_EXECUTION_STATUS:
-          assertEquals(dimension.getDimensionName(format), "venice.execution.status");
+          assertEquals(dimension.getDimensionName(format), "Venice.Execution.Status");
           break;
         case REPUSH_STORE_TRIGGER_SOURCE:
-          assertEquals(dimension.getDimensionName(format), "repush.store.trigger.source");
+          assertEquals(dimension.getDimensionName(format), "Repush.Store.Trigger.Source");
           break;
         case LOG_COMPACTION_SELECTION_REASON:
-          assertEquals(dimension.getDimensionName(format), "log.compaction.selection.reason");
+          assertEquals(dimension.getDimensionName(format), "Log.Compaction.Selection.Reason");
           break;
         default:
           throw new IllegalArgumentException("Unknown dimension: " + dimension);
