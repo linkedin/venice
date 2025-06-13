@@ -74,7 +74,9 @@ public interface DataWriterTaskTracker extends TaskTracker {
     return 0;
   }
 
-  default long getLargestUncompressedValueSize() {
+  default int getLargestUncompressedValueSize() {
+    // TODO PRANAV leave comment explaining why this is not supported in MR// TODO PRANAV leave comment explaining why
+    // this is not supported in MR
     return 0;
   }
 

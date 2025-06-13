@@ -46,6 +46,7 @@
     {"name": "totalGzipCompressedValueBytes", "type": "long", "doc": "total amount of Gzip compressed value bytes", "default": -1},
     {"name": "totalZstdWithDictCompressedValueBytes", "type": "long", "doc": "total amount of Zstd with Dictionary compressed value bytes", "default": -1},
     {"name": "totalUncompressedRecordTooLargeFailures", "type": "long", "doc": "total number of records exceeding size limit before compression", "default": -1},
+    {"name": "largestUncompressedValueSizeBytes", "type": "int", "doc": "largest uncompressed value size bytes", "default": -1},
     {"name": "pushJobConfigs",
       "type": [
         "null",
