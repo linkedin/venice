@@ -42,9 +42,9 @@ public final class HelixUtils {
   }
 
   /**
-   * Retry 3 times for each helix operation in case of getting the error by default.
+   * Retry 9 times for each helix operation in case of getting the error by default.
    */
-  public static final int DEFAULT_HELIX_OP_RETRY_COUNT = 3;
+  public static final int DEFAULT_HELIX_OP_RETRY_COUNT = 9;
 
   /**
    * The constraint that helix would apply on CRUSH alg. Based on this constraint, Helix would NOT allocate replicas in
@@ -97,7 +97,7 @@ public final class HelixUtils {
   /**
    * @param dataAccessor ZK data accessor
    * @param path parent path
-   * @param maxAttempts maximum number of attempts to retry on failure
+   * @param maxAttempts maximum number of retry attempts
    * @return a list of objects that are under parent path. It will return an empty list of objects if parent path is
    * not existing
    * @throws VeniceException if data inconsistency persists after all retry attempts
@@ -248,16 +248,15 @@ public final class HelixUtils {
   /**
    * Helper method for logging Helix operation failures, sleeping for retry, and throwing exceptions
    *
-   * @param path           The ZooKeeper path that was being operated on
-   * @param helixOperation The name of the Helix operation that failed
-   * @param attempt        The current attempt number
-   * @param maxAttempts     The maximum number of retry attempts
+   * @param path ZooKeeper path that was being operated on
+   * @param helixOperation name of the Helix operation that failed
+   * @param attempt current attempt number
+   * @param maxAttempts maximum number of retry attempts
    * @throws ZkDataAccessException if max retry attempts have been reached
    */
   private static void handleFailedHelixOperation(String path, String helixOperation, int attempt, int maxAttempts) {
     if (attempt < maxAttempts) {
       long retryIntervalSec = (long) Math.pow(2, attempt);
-
       if (path.isEmpty()) {
         LOGGER.error(
             "{} failed on attempt {}/{}. Will retry in {} seconds.",
@@ -285,23 +284,26 @@ public final class HelixUtils {
    * connected after certain number of retry, throws exception. This method is most likely being used asynchronously since
    * it is going to block and wait if connection fails.
    *
-   * @param manager    HelixManager instance
-   * @param maxRetries retry time
+   * @param manager HelixManager instance
+   * @param maxAttempts maximum number of attempts to retry on failure
    * @throws VeniceException if connection keeps failing after certain number of retry
    */
-  public static void connectHelixManager(SafeHelixManager manager, int maxRetries) {
-    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+  public static void connectHelixManager(SafeHelixManager manager, int maxAttempts) {
+    int attempt = 0;
+    while (attempt < maxAttempts) {
       try {
         manager.connect();
         return; // Success, exit immediately
       } catch (Exception e) {
-        if (attempt == maxRetries) {
+        attempt++;
+        if (attempt < maxAttempts) {
+          handleFailedHelixOperation("", "connectHelixManager", attempt, maxAttempts);
+        } else {
           throw new VeniceException(
-              "Error connecting to Helix Manager for Cluster '" + manager.getClusterName() + "' after " + maxRetries
+              "Error connecting to Helix Manager for Cluster '" + manager.getClusterName() + "' after " + maxAttempts
                   + " attempts.",
               e);
         }
-        handleFailedHelixOperation("", "connectHelixManager", attempt, maxRetries);
       }
     }
   }
@@ -315,12 +317,17 @@ public final class HelixUtils {
     int attempt = 0;
     while (attempt < maxAttempts) {
       if (admin.getClusters().contains(cluster)) {
-        // Cluster is ready.
-        break;
+        // Success, exit immediately
+        return;
       } else {
         attempt++;
         if (attempt < maxAttempts) {
-          handleFailedHelixOperation("", "checkClusterSetup", attempt, maxAttempts);
+          long retryIntervalSec = (long) Math.pow(2, attempt);
+          LOGGER.warn(
+              "Cluster has not been initialized by controller. Attempt: {}. Will retry in {} seconds.",
+              attempt,
+              retryIntervalSec);
+          Utils.sleep(TimeUnit.SECONDS.toMillis(retryIntervalSec));
         } else {
           throw new VeniceException("Cluster has not been initialized by controller after attempted: " + attempt);
         }

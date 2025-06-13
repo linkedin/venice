@@ -44,6 +44,12 @@ public class TestHelixUtils {
   private static final boolean[] SUCCESS_RESULTS = new boolean[] { true, true };
   private static final boolean[] FAILED_RESULTS = new boolean[] { true, false };
 
+  @BeforeMethod
+  public void setUp() {
+    mockDataAccessor = mock(ZkBaseDataAccessor.class);
+    dataUpdater = mock(DataUpdater.class);
+  }
+
   @Test
   public void parsesHostnameFromInstanceName() {
     Instance instance1 = HelixUtils.getInstanceFromHelixInstanceName("host_1234");
@@ -103,12 +109,6 @@ public class TestHelixUtils {
             ""));
   }
 
-  @BeforeMethod
-  public void setUp() {
-    mockDataAccessor = mock(ZkBaseDataAccessor.class);
-    dataUpdater = mock(DataUpdater.class);
-  }
-
   @Test
   public void testGetChildren() {
     doReturn(TEST_CHILD_NAMES).when(mockDataAccessor).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
@@ -116,8 +116,8 @@ public class TestHelixUtils {
 
     List<String> result = HelixUtils.getChildren(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT);
 
-    verify(mockDataAccessor, times(1)).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
-    verify(mockDataAccessor, times(1)).getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
+    verify(mockDataAccessor).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
+    verify(mockDataAccessor).getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
 
     assertEquals(result, TEST_CHILD_VALUES);
   }
@@ -145,8 +145,8 @@ public class TestHelixUtils {
 
     List<String> result = HelixUtils.getChildren(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT);
 
-    verify(mockDataAccessor, times(3)).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
-    verify(mockDataAccessor, times(3)).getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(TEST_RETRY_COUNT)).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(TEST_RETRY_COUNT)).getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
 
     assertEquals(result, TEST_CHILD_VALUES);
   }
@@ -174,8 +174,8 @@ public class TestHelixUtils {
 
     List<String> result = HelixUtils.getChildren(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT);
 
-    verify(mockDataAccessor, times(3)).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
-    verify(mockDataAccessor, times(3)).getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(TEST_RETRY_COUNT)).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
+    verify(mockDataAccessor, times(TEST_RETRY_COUNT)).getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
 
     assertEquals(result, TEST_CHILD_VALUES);
   }
@@ -187,8 +187,8 @@ public class TestHelixUtils {
 
     List<String> result = HelixUtils.getChildren(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT);
 
-    verify(mockDataAccessor, times(1)).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
-    verify(mockDataAccessor, times(1)).getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
+    verify(mockDataAccessor).getChildNames(TEST_PATH, AccessOption.PERSISTENT);
+    verify(mockDataAccessor).getChildren(TEST_PATH, null, AccessOption.PERSISTENT);
 
     assertEquals(result, Collections.emptyList());
   }
@@ -212,7 +212,7 @@ public class TestHelixUtils {
 
     HelixUtils.create(mockDataAccessor, TEST_PATH, TEST_DATA, TEST_RETRY_COUNT);
 
-    verify(mockDataAccessor, times(1)).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
+    verify(mockDataAccessor).create(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
   }
 
   @Test
@@ -242,7 +242,7 @@ public class TestHelixUtils {
 
     HelixUtils.update(mockDataAccessor, TEST_PATH, TEST_DATA, TEST_RETRY_COUNT);
 
-    verify(mockDataAccessor, times(1)).set(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
+    verify(mockDataAccessor).set(TEST_PATH, TEST_DATA, AccessOption.PERSISTENT);
   }
 
   @Test
@@ -274,7 +274,7 @@ public class TestHelixUtils {
 
     HelixUtils.updateChildren(mockDataAccessor, TEST_PATH_LIST, TEST_DATA_LIST, TEST_RETRY_COUNT);
 
-    verify(mockDataAccessor, times(1)).setChildren(TEST_PATH_LIST, TEST_DATA_LIST, AccessOption.PERSISTENT);
+    verify(mockDataAccessor).setChildren(TEST_PATH_LIST, TEST_DATA_LIST, AccessOption.PERSISTENT);
   }
 
   @Test
@@ -306,7 +306,7 @@ public class TestHelixUtils {
 
     HelixUtils.remove(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT);
 
-    verify(mockDataAccessor, times(1)).remove(TEST_PATH, AccessOption.PERSISTENT);
+    verify(mockDataAccessor).remove(TEST_PATH, AccessOption.PERSISTENT);
   }
 
   @Test
@@ -331,7 +331,7 @@ public class TestHelixUtils {
 
     HelixUtils.compareAndUpdate(mockDataAccessor, TEST_PATH, TEST_RETRY_COUNT, dataUpdater);
 
-    verify(mockDataAccessor, times(1)).update(TEST_PATH, dataUpdater, AccessOption.PERSISTENT);
+    verify(mockDataAccessor).update(TEST_PATH, dataUpdater, AccessOption.PERSISTENT);
   }
 
   @Test
@@ -366,7 +366,7 @@ public class TestHelixUtils {
 
     HelixUtils.connectHelixManager(mockManager, TEST_RETRY_COUNT);
 
-    verify(mockManager, times(1)).connect();
+    verify(mockManager).connect();
   }
 
   @Test
@@ -411,7 +411,7 @@ public class TestHelixUtils {
 
     HelixUtils.checkClusterSetup(mockAdmin, testCluster, TEST_RETRY_COUNT);
 
-    verify(mockAdmin, times(1)).getClusters();
+    verify(mockAdmin).getClusters();
   }
 
   @Test
