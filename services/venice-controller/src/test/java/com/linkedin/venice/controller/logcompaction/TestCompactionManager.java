@@ -41,12 +41,13 @@ public class TestCompactionManager {
 
   /**
    * Expected result
-     * store1 (eligible): isHybrid = true, lastCompactionTime >= threshold
-     * store2 (eligible): isHybrid = true, lastCompactionTime >= threshold
-     * store3 (ineligible): isHybrid = false, lastCompactionTime <= threshold
-     * store4 (ineligible): isHybrid = true, lastCompactionTime >= threshold, Note: has 2 versions;
-      * ongoing push version: lastCompactionTime >= threshold
-      * current version: lastCompactionTime <= threshold
+     * store1 (eligible): isHybrid = true, lastCompactionTime >= threshold, AA store
+     * store2 (eligible): isHybrid = true, lastCompactionTime >= threshold, AA store
+     * store3 (ineligible): isHybrid = false (ineligiblity reason), lastCompactionTime <= threshold, AA store
+     * store4 (ineligible): isHybrid = true, lastCompactionTime >= threshold, AA store, Note: has 2 versions;
+      * ongoing push version: lastCompactionTime <= threshold (ineligiblity reason)
+      * current version: lastCompactionTime >= threshold
+     * store5 (ineligible): isHybrid = false, lastCompactionTime <= threshold, non-AA store (ineligiblity reason)
    *
    */
   @Test
@@ -61,6 +62,7 @@ public class TestCompactionManager {
     Version version3 = mock(Version.class);
     Version version4 = mock(Version.class);
     Version ongoingPushVersion = mock(Version.class);
+    Version version5 = mock(Version.class);
 
     // set version number for Version mocks
     when(version1.getNumber()).thenReturn(currentVersionNumber);
@@ -68,6 +70,7 @@ public class TestCompactionManager {
     when(version3.getNumber()).thenReturn(currentVersionNumber);
     when(version4.getNumber()).thenReturn(currentVersionNumber);
     when(ongoingPushVersion.getNumber()).thenReturn(ongoingPushVersionNumber);
+    when(version5.getNumber()).thenReturn(currentVersionNumber);
 
     // set createTime for Version mocks
     long version1CreationTime =
@@ -84,6 +87,9 @@ public class TestCompactionManager {
                                                                                                                    // ago
     when(ongoingPushVersion.getCreatedTime()).thenReturn(
         System.currentTimeMillis() - TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD - 1)); // 23hrs
+
+    when(version5.getCreatedTime()).thenReturn(
+        System.currentTimeMillis() - TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD - 1)); // 23hrs
                                                                                                                    // ago
 
     // Mock StoreInfo instances
@@ -91,29 +97,41 @@ public class TestCompactionManager {
     StoreInfo store2 = new StoreInfo();
     StoreInfo store3 = new StoreInfo();
     StoreInfo store4 = new StoreInfo();
+    StoreInfo store5 = new StoreInfo();
 
     // Set store names
     store1.setName(TEST_STORE_NAME_PREFIX + "1");
     store2.setName(TEST_STORE_NAME_PREFIX + "2");
     store3.setName(TEST_STORE_NAME_PREFIX + "3");
     store4.setName(TEST_STORE_NAME_PREFIX + "4");
+    store5.setName(TEST_STORE_NAME_PREFIX + "5");
 
     // Return Version mocks when getVersion() is called
     store1.setVersions(Collections.singletonList(version1));
     store2.setVersions(Collections.singletonList(version2));
     store3.setVersions(Collections.singletonList(version3));
     store4.setVersions(Arrays.asList(version4, ongoingPushVersion));
+    store5.setVersions(Collections.singletonList(version5));
 
     // Mock HybridStoreConfig for the first two StoreInfo instances
     store1.setHybridStoreConfig(mock(HybridStoreConfig.class));
     store2.setHybridStoreConfig(mock(HybridStoreConfig.class));
     store4.setHybridStoreConfig(mock(HybridStoreConfig.class));
+    store5.setHybridStoreConfig(mock(HybridStoreConfig.class));
+
+    // Set isActiveActiveReplicationEnabled for the first two StoreInfo instances
+    store1.setActiveActiveReplicationEnabled(true);
+    store2.setActiveActiveReplicationEnabled(true);
+    store3.setActiveActiveReplicationEnabled(true);
+    store4.setActiveActiveReplicationEnabled(true);
+    store5.setActiveActiveReplicationEnabled(false);
 
     // Add StoreInfo instances to the list
     storeInfoList.add(store1);
     storeInfoList.add(store2);
     storeInfoList.add(store3);
     storeInfoList.add(store4);
+    storeInfoList.add(store5);
 
     // Verify stores compaction-ready status
     Assert.assertTrue(testCompactionManager.isCompactionReady(store1)); // compacted more than threshold time (>24hrs)
@@ -121,6 +139,7 @@ public class TestCompactionManager {
     Assert.assertFalse(testCompactionManager.isCompactionReady(store3)); // compacted within threshold time (<24hrs)
     Assert.assertFalse(testCompactionManager.isCompactionReady(store4)); // ongoing push version within threshold time
                                                                          // (<24hrs)
+    Assert.assertFalse(testCompactionManager.isCompactionReady(store5)); // non-AA store
 
     // Test
     List<StoreInfo> compactionReadyStores = testCompactionManager.filterStoresForCompaction(storeInfoList);
@@ -130,6 +149,8 @@ public class TestCompactionManager {
     assertTrue(compactionReadyStores.contains(store1));
     assertTrue(compactionReadyStores.contains(store2));
     assertFalse(compactionReadyStores.contains(store3));
+    assertFalse(compactionReadyStores.contains(store4));
+    assertFalse(compactionReadyStores.contains(store5));
   }
 
   @Test(expectedExceptions = VeniceException.class)
