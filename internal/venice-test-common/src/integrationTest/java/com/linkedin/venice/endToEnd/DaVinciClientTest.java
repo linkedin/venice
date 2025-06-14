@@ -13,9 +13,12 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTMANAGER_ALGORITHM;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
+import static com.linkedin.venice.ConfigKeys.BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
@@ -1456,6 +1459,125 @@ public class DaVinciClientTest {
         Assert.assertFalse(store.getIsDavinciHeartbeatReported());
         Assert.assertFalse(store.getVersion(versionThree).get().getIsDavinciHeartbeatReported());
       });
+    }
+  }
+
+  @Test(timeOut = 2 * TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testBlobP2PTransferAmongDVCWithServerShutdown(boolean isGracefulShutdown) throws Exception {
+    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
+    String zkHosts = cluster.getZk().getAddress();
+    int port1 = TestUtils.getFreePort();
+    int port2 = TestUtils.getFreePort();
+    while (port1 == port2) {
+      port2 = TestUtils.getFreePort();
+    }
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
+    String storeName = Utils.getUniqueString("test-store");
+    setUpStore(storeName, paramsConsumer, properties -> {}, true);
+
+    // Start the first DaVinci Client using DaVinciUserApp
+    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(
+        DaVinciUserApp.class,
+        zkHosts,
+        dvcPath1,
+        storeName,
+        "100",
+        "10",
+        "false",
+        Integer.toString(port1),
+        Integer.toString(port2),
+        StorageClass.DISK.toString(),
+        "false",
+        "true",
+        "false");
+
+    // Wait for the first DaVinci Client to complete ingestion
+    Thread.sleep(60000);
+
+    // Prepare client 2 configs
+    String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
+    PropertyBuilder configBuilder = new PropertyBuilder().put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
+        .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true")
+        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DATA_BASE_PATH, dvcPath2)
+        .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port2)
+        .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1)
+        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+        .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
+        .put(BLOB_TRANSFER_MANAGER_ENABLED, true)
+        .put(BLOB_TRANSFER_SSL_ENABLED, true)
+        .put(BLOB_TRANSFER_ACL_ENABLED, true)
+        .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, -1000000)
+        .put(BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC, 1)
+        .put(BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC, 1);
+
+    // set up SSL configs.
+    Properties sslProperties = SslUtils.getVeniceLocalSslProperties();
+    sslProperties.forEach((key, value) -> configBuilder.put((String) key, value));
+
+    if (!isGracefulShutdown) {
+      // if not graceful shutdown, expect the idle event trigger,
+      // set idle time as 1, trigger the idle handler immediately
+      configBuilder.put(BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS, 1);
+    }
+
+    VeniceProperties backendConfig2 = configBuilder.build();
+    DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
+
+    // Monitor snapshot folder creation to detect if a blob transfer is happening
+    CompletableFuture.runAsync(() -> {
+      try {
+        while (true) {
+          for (int partition = 0; partition < 3; partition++) {
+            String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", partition);
+            if (Files.exists(Paths.get(snapshotPath1))) {
+              if (isGracefulShutdown) {
+                LOGGER
+                    .info("Detected snapshot folder for partition {}, immediately destroy client1 process.", partition);
+                forkedDaVinciUserApp.destroy();
+              } else {
+                LOGGER.info(
+                    "Detected snapshot folder for partition {}, immediately destroyForcibly client1 process.",
+                    partition);
+                forkedDaVinciUserApp.destroyForcibly();
+              }
+              return; // Exit monitoring loop
+            }
+          }
+          // if is graceful shutdown, check more frequently, otherwise transfer may complete before channel close.
+          Thread.sleep(isGracefulShutdown ? 10 : 100);
+        }
+      } catch (Exception e) {
+        LOGGER.error("Error in monitoring snapshot creation.", e);
+      }
+    });
+
+    try (CachingDaVinciClientFactory factory2 = getCachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        backendConfig2,
+        cluster)) {
+      // Start client 2
+      DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
+      client2.subscribeAll().get();
+
+      // Verify that client2 can still complete the bootstrap successfully
+      // even though client1 was killed during the transfer.
+      try {
+        client2.get(300, TimeUnit.SECONDS);
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+          for (int i = 0; i < 3; i++) {
+            String partitionPath = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+            Assert.assertTrue(Files.exists(Paths.get(partitionPath)));
+          }
+        });
+      } finally {
+        client2.close();
+      }
     }
   }
 
