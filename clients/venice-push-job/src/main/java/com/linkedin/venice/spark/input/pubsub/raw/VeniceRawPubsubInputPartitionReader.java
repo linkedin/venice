@@ -300,7 +300,6 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
       this.currentOffset = this.currentPosition.getNumericOffset();
 
       // Skip control messages if filtering is enabled
-      message.getKey().isControlMessage();
       if (this.filterControlMessages && message.getKey().isControlMessage()) {
         readerStats.incrementRecordsSkipped();
         continue; // Continue to next message in buffer
