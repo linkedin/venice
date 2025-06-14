@@ -26,6 +26,8 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.service.ICProvider;
@@ -87,9 +89,12 @@ public class AvroGenericDaVinciClientTest {
     when(mockBackend.getObjectCache()).thenReturn(null);
 
     ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
+    SubscriptionBasedReadOnlyStoreRepository mockStoreRepository = mock(SubscriptionBasedReadOnlyStoreRepository.class);
     Schema mockKeySchema = new Schema.Parser().parse("{\"type\": \"int\"}");
     when(mockSchemaRepository.getKeySchema(anyString())).thenReturn(new SchemaEntry(1, mockKeySchema));
     when(mockBackend.getSchemaRepository()).thenReturn(mockSchemaRepository);
+    when(mockBackend.getStoreRepository()).thenReturn(mockStoreRepository);
+    when(mockStoreRepository.getStoreOrThrow(anyString())).thenReturn(mock(Store.class));
 
     // Use reflection to set the private static daVinciBackend field
     Field backendField = AvroGenericDaVinciClient.class.getDeclaredField("daVinciBackend");
