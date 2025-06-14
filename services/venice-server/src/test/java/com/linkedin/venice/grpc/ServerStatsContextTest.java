@@ -119,8 +119,6 @@ public class ServerStatsContextTest {
 
     context.setRequestKeyCount(105);
     context.setRequestSize(1000);
-    context.incrementRequestPartCount();
-    context.incrementRequestPartCount();
 
     ComputeResponseStats responseStats = new ComputeResponseStats();
     responseStats.setRecordCount(100);
@@ -138,9 +136,9 @@ public class ServerStatsContextTest {
 
     context.recordBasicMetrics(stats);
 
-    // verify that 14 interactions are recorded with the stats object, only 14 record metrics to the stats object
+    // verify that 12 interactions are recorded with the stats object, only 14 record metrics to the stats object
     MockingDetails details = org.mockito.Mockito.mockingDetails(stats);
     int invocations = details.getInvocations().size();
-    assertEquals(invocations, 14);
+    assertEquals(invocations, 12);
   }
 }

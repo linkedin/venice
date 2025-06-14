@@ -81,25 +81,12 @@ public class StatsHandler extends ChannelDuplexHandler {
     if (serverStatsContext.isNewRequest()) {
       // Reset for every request
       serverStatsContext.resetContext();
-      /**
-       * For a single 'channelRead' invocation, Netty will guarantee all the following 'channelRead' functions
-       * registered by the pipeline to be executed in the same thread.
-       */
-      ctx.fireChannelRead(msg);
-      double firstPartLatency = LatencyUtils.getElapsedTimeFromNSToMS(serverStatsContext.getRequestStartTimeInNS());
-      serverStatsContext.setFirstPartLatency(firstPartLatency);
-    } else {
-      // Only works for multi-get request.
-      long startTimeOfPart2InNS = System.nanoTime();
-      long startTimeInNS = serverStatsContext.getRequestStartTimeInNS();
-
-      serverStatsContext.setPartsInvokeDelayLatency(LatencyUtils.convertNSToMS(startTimeOfPart2InNS - startTimeInNS));
-
-      ctx.fireChannelRead(msg);
-
-      serverStatsContext.setSecondPartLatency(LatencyUtils.getElapsedTimeFromNSToMS(startTimeOfPart2InNS));
-      serverStatsContext.incrementRequestPartCount();
     }
+    /**
+     * For a single 'channelRead' invocation, Netty will guarantee all the following 'channelRead' functions
+     * registered by the pipeline to be executed in the same thread.
+     */
+    ctx.fireChannelRead(msg);
   }
 
   @Override

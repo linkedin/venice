@@ -516,41 +516,22 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   }
 
   public long getOffsetLagBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    return getSomeOffsetFor(
-        versionTopic,
-        pubSubTopicPartition,
-        PubSubConsumerAdapter::getOffsetLag,
-        aggStats::recordTotalOffsetLagIsAbsent,
-        aggStats::recordTotalOffsetLagIsPresent);
+    return getSomeOffsetFor(versionTopic, pubSubTopicPartition, PubSubConsumerAdapter::getOffsetLag);
   }
 
   public long getLatestOffsetBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    return getSomeOffsetFor(
-        versionTopic,
-        pubSubTopicPartition,
-        PubSubConsumerAdapter::getLatestOffset,
-        aggStats::recordTotalLatestOffsetIsAbsent,
-        aggStats::recordTotalLatestOffsetIsPresent);
+    return getSomeOffsetFor(versionTopic, pubSubTopicPartition, PubSubConsumerAdapter::getLatestOffset);
   }
 
   private long getSomeOffsetFor(
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition,
-      OffsetGetter offsetGetter,
-      Runnable sensorIfAbsent,
-      Runnable sensorIfPresent) {
+      OffsetGetter offsetGetter) {
     PubSubConsumerAdapter consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     if (consumer == null) {
-      sensorIfAbsent.run();
       return -1;
     } else {
-      long result = offsetGetter.apply(consumer, pubSubTopicPartition);
-      if (result < 0) {
-        sensorIfAbsent.run();
-      } else {
-        sensorIfPresent.run();
-      }
-      return result;
+      return offsetGetter.apply(consumer, pubSubTopicPartition);
     }
   }
 

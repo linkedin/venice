@@ -417,20 +417,13 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
      */
     String multiGetRequestKeyCountMetric =
         ".total--" + RequestType.MULTI_GET.getMetricPrefix() + "request_key_count.Rate";
-    String multiGetSuccessRequestKeyCountMetric =
-        ".total--" + RequestType.MULTI_GET.getMetricPrefix() + "success_request_key_count.Rate";
     boolean nonZeroRequestedKeyCount = false;
-    boolean nonZeroSuccessRequestKeyCount = false;
     for (MetricsRepository serverMetric: serverMetrics) {
       if (serverMetric.getMetric(multiGetRequestKeyCountMetric).value() > 0) {
         nonZeroRequestedKeyCount = true;
       }
-      if (serverMetric.getMetric(multiGetSuccessRequestKeyCountMetric).value() > 0) {
-        nonZeroSuccessRequestKeyCount = true;
-      }
     }
     assertTrue(nonZeroRequestedKeyCount);
-    assertTrue(nonZeroSuccessRequestKeyCount);
   }
 
   @Test(timeOut = TIME_OUT)

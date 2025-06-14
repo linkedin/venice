@@ -1,6 +1,5 @@
 package com.linkedin.venice.listener;
 
-import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeDoubleIfAbove;
 import static com.linkedin.venice.listener.response.stats.ResponseStatsUtil.consumeIntIfAbove;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -54,8 +53,6 @@ public class ServerStatsContext {
    * {@link io.netty.handler.codec.http.HttpServerCodec}
    * {@link io.netty.handler.codec.http.HttpObjectAggregator}
    *
-   * 'partsInvokeDelayLatency' will measure the delay between the invocation of part1
-   * and the invocation of part2;
    *
    * 'secondPartLatency' will measure the time took by:
    * {@link StatsHandler}
@@ -67,28 +64,12 @@ public class ServerStatsContext {
    * {@link StorageReadRequestHandler}
    *
    */
-  private double firstPartLatency = -1;
-  private double secondPartLatency = -1;
-  private double partsInvokeDelayLatency = -1;
-  private int requestPartCount = -1;
   private boolean isMisroutedStoreVersion = false;
   private double flushLatency = -1;
   private int responseSize = -1;
 
   public boolean isNewRequest() {
     return newRequest;
-  }
-
-  public void setSecondPartLatency(double secondPartLatency) {
-    this.secondPartLatency = secondPartLatency;
-  }
-
-  public void setPartsInvokeDelayLatency(double partsInvokeDelayLatency) {
-    this.partsInvokeDelayLatency = partsInvokeDelayLatency;
-  }
-
-  public void incrementRequestPartCount() {
-    this.requestPartCount++;
   }
 
   public ServerStatsContext(
@@ -106,9 +87,6 @@ public class ServerStatsContext {
     this.responseStatsRecorder = null;
     storeName = null;
     startTimeInNS = System.nanoTime();
-    partsInvokeDelayLatency = -1;
-    secondPartLatency = -1;
-    requestPartCount = 1;
     isMetadataRequest = false;
     responseStatus = null;
     statCallbackExecuted = false;
@@ -124,10 +102,6 @@ public class ServerStatsContext {
 
   public void setReadResponseStats(ReadResponseStatsRecorder responseStatsRecorder) {
     this.responseStatsRecorder = responseStatsRecorder;
-  }
-
-  public void setFirstPartLatency(double firstPartLatency) {
-    this.firstPartLatency = firstPartLatency;
   }
 
   public void setNewRequest() {
@@ -228,13 +202,6 @@ public class ServerStatsContext {
 
       consumeIntIfAbove(serverHttpRequestStats::recordRequestKeyCount, this.requestKeyCount, 0);
       consumeIntIfAbove(serverHttpRequestStats::recordRequestSizeInBytes, this.requestSizeInBytes, 0);
-      consumeDoubleIfAbove(serverHttpRequestStats::recordRequestFirstPartLatency, this.firstPartLatency, 0);
-      consumeDoubleIfAbove(
-          serverHttpRequestStats::recordRequestPartsInvokeDelayLatency,
-          this.partsInvokeDelayLatency,
-          0);
-      consumeDoubleIfAbove(serverHttpRequestStats::recordRequestSecondPartLatency, this.secondPartLatency, 0);
-      consumeIntIfAbove(serverHttpRequestStats::recordRequestPartCount, this.requestPartCount, 0);
 
       if (this.isRequestTerminatedEarly) {
         serverHttpRequestStats.recordEarlyTerminatedEarlyRequest();

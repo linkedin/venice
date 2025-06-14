@@ -65,7 +65,6 @@ public abstract class AbstractReadResponseStats implements ReadResponseStats, Re
         isAssembledMultiChunkLargeValue(),
         0);
     consumeIntIfAbove(stats::recordMultiChunkLargeValueCount, this.multiChunkLargeValueCount, 0);
-    consumeIntIfAbove(stats::recordSuccessRequestKeyCount, getRecordCount(), 0);
     consumeIntIfAbove(stats::recordStorageExecutionQueueLen, this.storageExecutionQueueLen, UNINITIALIZED);
 
     recordUnmergedMetrics(stats);

@@ -28,15 +28,9 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor databaseLookupLatencyForLargeValueSensor;
   private final Sensor multiChunkLargeValueCountSensor;
   private final Sensor requestKeyCountSensor;
-  private final Sensor successRequestKeyCountSensor;
   private final Sensor requestSizeInBytesSensor;
   private final Sensor storageExecutionHandlerSubmissionWaitTime;
   private final Sensor storageExecutionQueueLenSensor;
-
-  private final Sensor requestFirstPartLatencySensor;
-  private final Sensor requestSecondPartLatencySensor;
-  private final Sensor requestPartsInvokeDelayLatencySensor;
-  private final Sensor requestPartCountSensor;
 
   private final Sensor readComputeLatencySensor;
   private final Sensor readComputeLatencyForSmallValueSensor;
@@ -56,7 +50,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
 
   // Ratio sensors are not directly written to, but they still get their state updated indirectly
   @SuppressWarnings("unused")
-  private final Sensor successRequestKeyRatioSensor, successRequestRatioSensor;
+  private final Sensor successRequestRatioSensor;
   private final Sensor misroutedStoreVersionSensor;
   private final Sensor flushLatencySensor;
   private final Sensor responseSizeSensor;
@@ -101,31 +95,36 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         "storage_engine_query_latency",
         totalStats,
         () -> totalStats.databaseLookupLatencySensor,
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_query_latency")),
-        new Avg(),
-        new Max());
+        TehutiUtils.get99PercentileStatWithAvgAndMax(getName(), getFullMetricName("storage_engine_query_latency")));
     databaseLookupLatencyForSmallValueSensor = registerPerStoreAndTotal(
         "storage_engine_query_latency_for_small_value",
         totalStats,
         () -> totalStats.databaseLookupLatencyForSmallValueSensor,
-        TehutiUtils.getPercentileStatWithAvgAndMax(
+        TehutiUtils.get99PercentileStatWithAvgAndMax(
             getName(),
             getFullMetricName("storage_engine_query_latency_for_small_value")));
     databaseLookupLatencyForLargeValueSensor = registerPerStoreAndTotal(
         "storage_engine_query_latency_for_large_value",
         totalStats,
         () -> totalStats.databaseLookupLatencyForLargeValueSensor,
-        TehutiUtils.getPercentileStatWithAvgAndMax(
+        TehutiUtils.get99PercentileStatWithAvgAndMax(
             getName(),
             getFullMetricName("storage_engine_query_latency_for_large_value")));
 
-    storageExecutionHandlerSubmissionWaitTime = registerSensor(
+    storageExecutionHandlerSubmissionWaitTime = registerOnlyTotalSensor(
         "storage_execution_handler_submission_wait_time",
-        TehutiUtils.getPercentileStatWithAvgAndMax(
+        totalStats,
+        () -> totalStats.storageExecutionHandlerSubmissionWaitTime,
+        TehutiUtils.get99PercentileStatWithAvgAndMax(
             getName(),
             getFullMetricName("storage_execution_handler_submission_wait_time")));
 
-    storageExecutionQueueLenSensor = registerSensor("storage_execution_queue_len", new Max(), new Avg());
+    storageExecutionQueueLenSensor = registerOnlyTotalSensor(
+        "storage_execution_queue_len",
+        totalStats,
+        () -> totalStats.storageExecutionQueueLenSensor,
+        new Max(),
+        new Avg());
 
     List<MeasurableStat> largeValueLookupStats = new ArrayList();
 
@@ -168,54 +167,26 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         largeValueLookupStats.toArray(new MeasurableStat[0]));
 
     Rate requestKeyCount = new OccurrenceRate();
-    Rate successRequestKeyCount = new OccurrenceRate();
-    requestKeyCountSensor = registerPerStoreAndTotal(
-        "request_key_count",
-        totalStats,
-        () -> totalStats.requestKeyCountSensor,
-        new Rate(),
-        requestKeyCount,
-        new Avg(),
-        new Max());
-    successRequestKeyCountSensor = registerPerStoreAndTotal(
-        "success_request_key_count",
-        totalStats,
-        () -> totalStats.successRequestKeyCountSensor,
-        new Rate(),
-        successRequestKeyCount,
-        new Avg(),
-        new Max());
+    if (requestType != RequestType.SINGLE_GET) {
+      /**
+       * It is duplicate to have the key count tracking for single-get requests since the key count rate will be same
+       * as the request rate.
+       */
+      requestKeyCountSensor = registerPerStoreAndTotal(
+          "request_key_count",
+          totalStats,
+          () -> totalStats.requestKeyCountSensor,
+          new Rate(),
+          requestKeyCount,
+          new Avg(),
+          new Max());
+    } else {
+      requestKeyCountSensor = null;
+    }
     requestSizeInBytesSensor = registerPerStoreAndTotal(
         "request_size_in_bytes",
         totalStats,
         () -> totalStats.requestSizeInBytesSensor,
-        new Avg(),
-        new Min(),
-        new Max());
-    successRequestKeyRatioSensor = registerSensor(
-        new TehutiUtils.SimpleRatioStat(successRequestKeyCount, requestKeyCount, "success_request_key_ratio"));
-
-    requestFirstPartLatencySensor = registerPerStoreAndTotal(
-        "request_first_part_latency",
-        totalStats,
-        () -> totalStats.requestFirstPartLatencySensor,
-        TehutiUtils.getPercentileStatWithAvgAndMax(getName(), getFullMetricName("request_first_part_latency")));
-    requestSecondPartLatencySensor = registerPerStoreAndTotal(
-        "request_second_part_latency",
-        totalStats,
-        () -> totalStats.requestSecondPartLatencySensor,
-        TehutiUtils.getPercentileStatWithAvgAndMax(getName(), getFullMetricName("request_second_part_latency")));
-
-    requestPartsInvokeDelayLatencySensor = registerPerStoreAndTotal(
-        "request_parts_invoke_delay_latency",
-        totalStats,
-        () -> totalStats.requestPartsInvokeDelayLatencySensor,
-        TehutiUtils.getPercentileStatWithAvgAndMax(getName(), getFullMetricName("request_parts_invoke_delay_latency")));
-
-    requestPartCountSensor = registerPerStoreAndTotal(
-        "request_part_count",
-        totalStats,
-        () -> totalStats.requestPartCountSensor,
         new Avg(),
         new Min(),
         new Max());
@@ -268,26 +239,33 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
     /**
      * Total will reflect counts for the entire server host, while Avg will reflect the counts for each request.
      */
-    dotProductCountSensor = registerPerStoreAndTotal(
-        "dot_product_count",
-        totalStats,
-        () -> totalStats.dotProductCountSensor,
-        avgAndTotal());
-    cosineSimilaritySensor = registerPerStoreAndTotal(
-        "cosine_similarity_count",
-        totalStats,
-        () -> totalStats.cosineSimilaritySensor,
-        avgAndTotal());
-    hadamardProductSensor = registerPerStoreAndTotal(
-        "hadamard_product_count",
-        totalStats,
-        () -> totalStats.hadamardProductSensor,
-        avgAndTotal());
-    countOperatorSensor = registerPerStoreAndTotal(
-        "count_operator_count",
-        totalStats,
-        () -> totalStats.countOperatorSensor,
-        avgAndTotal());
+    if (requestType == RequestType.COMPUTE) {
+      dotProductCountSensor = registerPerStoreAndTotal(
+          "dot_product_count",
+          totalStats,
+          () -> totalStats.dotProductCountSensor,
+          avgAndTotal());
+      cosineSimilaritySensor = registerPerStoreAndTotal(
+          "cosine_similarity_count",
+          totalStats,
+          () -> totalStats.cosineSimilaritySensor,
+          avgAndTotal());
+      hadamardProductSensor = registerPerStoreAndTotal(
+          "hadamard_product_count",
+          totalStats,
+          () -> totalStats.hadamardProductSensor,
+          avgAndTotal());
+      countOperatorSensor = registerPerStoreAndTotal(
+          "count_operator_count",
+          totalStats,
+          () -> totalStats.countOperatorSensor,
+          avgAndTotal());
+    } else {
+      dotProductCountSensor = null;
+      cosineSimilaritySensor = null;
+      hadamardProductSensor = null;
+      countOperatorSensor = null;
+    }
 
     earlyTerminatedEarlyRequestCountSensor = registerPerStoreAndTotal(
         "early_terminated_request_count",
@@ -374,11 +352,9 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordRequestKeyCount(int keyCount) {
-    requestKeyCountSensor.record(keyCount);
-  }
-
-  public void recordSuccessRequestKeyCount(int successKeyCount) {
-    successRequestKeyCountSensor.record(successKeyCount);
+    if (requestKeyCountSensor != null) {
+      requestKeyCountSensor.record(keyCount);
+    }
   }
 
   public void recordRequestSizeInBytes(int requestSizeInBytes) {
@@ -395,22 +371,6 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordStorageExecutionQueueLen(int len) {
     storageExecutionQueueLenSensor.record(len);
-  }
-
-  public void recordRequestFirstPartLatency(double latency) {
-    requestFirstPartLatencySensor.record(latency);
-  }
-
-  public void recordRequestSecondPartLatency(double latency) {
-    requestSecondPartLatencySensor.record(latency);
-  }
-
-  public void recordRequestPartsInvokeDelayLatency(double latency) {
-    requestPartsInvokeDelayLatencySensor.record(latency);
-  }
-
-  public void recordRequestPartCount(int partCount) {
-    requestPartCountSensor.record(partCount);
   }
 
   public void recordReadComputeLatency(double latency, boolean assembledMultiChunkLargeValue) {
@@ -435,19 +395,27 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordDotProductCount(int count) {
-    dotProductCountSensor.record(count);
+    if (dotProductCountSensor != null) {
+      dotProductCountSensor.record(count);
+    }
   }
 
   public void recordCosineSimilarityCount(int count) {
-    cosineSimilaritySensor.record(count);
+    if (cosineSimilaritySensor != null) {
+      cosineSimilaritySensor.record(count);
+    }
   }
 
   public void recordHadamardProduct(int count) {
-    hadamardProductSensor.record(count);
+    if (hadamardProductSensor != null) {
+      hadamardProductSensor.record(count);
+    }
   }
 
   public void recordCountOperator(int count) {
-    countOperatorSensor.record(count);
+    if (countOperatorSensor != null) {
+      countOperatorSensor.record(count);
+    }
   }
 
   public void recordEarlyTerminatedEarlyRequest() {
