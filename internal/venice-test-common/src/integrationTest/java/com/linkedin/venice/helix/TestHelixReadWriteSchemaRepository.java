@@ -58,7 +58,7 @@ public class TestHelixReadWriteSchemaRepository {
         Optional.empty(),
         new ClusterLockManager(cluster));
     storeRepo.refresh();
-    schemaRepo = new HelixReadWriteSchemaRepository(storeRepo, zkClient, adapter, cluster, Optional.empty());
+    schemaRepo = new HelixReadWriteSchemaRepository(storeRepo, zkClient, adapter, cluster, Optional.empty(), 9);
   }
 
   @AfterMethod

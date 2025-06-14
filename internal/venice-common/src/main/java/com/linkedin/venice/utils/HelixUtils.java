@@ -42,9 +42,9 @@ public final class HelixUtils {
   }
 
   /**
-   * Retry 3 times for each helix operation in case of getting the error by default.
+   * Retry 9 times for each helix operation in case of getting the error by default.
    */
-  public static final int DEFAULT_HELIX_OP_RETRY_COUNT = 3;
+  public static final int DEFAULT_HELIX_OP_RETRY_COUNT = 9;
 
   /**
    * The constraint that helix would apply on CRUSH alg. Based on this constraint, Helix would NOT allocate replicas in
@@ -95,41 +95,44 @@ public final class HelixUtils {
   }
 
   /**
+   * @param dataAccessor ZK data accessor
    * @param path parent path
-   * @return a list of objects that are under parent path. It will return null if parent path is not existing
+   * @param maxAttempts maximum number of retry attempts
+   * @return a list of objects that are under parent path. It will return an empty list of objects if parent path is
+   * not existing
+   * @throws VeniceException if data inconsistency persists after all retry attempts
    */
-  public static <T> List<T> getChildren(
-      ZkBaseDataAccessor<T> dataAccessor,
-      String path,
-      int retryCount,
-      long retryInterval) {
-    int attempt = 1;
-    while (attempt <= retryCount) {
-      attempt++;
+  public static <T> List<T> getChildren(ZkBaseDataAccessor<T> dataAccessor, String path, int maxAttempts) {
+    int attempt = 0;
+    while (attempt < maxAttempts) {
+      // Get expected count from child names
       List<String> childrenNames = dataAccessor.getChildNames(path, AccessOption.PERSISTENT);
       int expectedCount = 0;
       if (childrenNames == null) {
-        LOGGER.warn("Get child names for path: {} return null.", path);
+        LOGGER.warn("getChildNames for path: {} returned null.", path);
       } else {
         expectedCount = childrenNames.size();
       }
+
+      // Get actual children
       List<T> children = dataAccessor.getChildren(path, null, AccessOption.PERSISTENT);
-      if (children.size() != expectedCount) {
-        // Data is inconsistent
-        if (attempt < retryCount) {
-          LOGGER.info(
-              "dataAccessor.getChildNames() did not return the expected number of elements from path: {}\nExpected: {}, but got {}. Attempt:{}/{}, will sleep {} and retry.",
-              path,
-              expectedCount,
-              children.size(),
-              attempt,
-              retryCount,
-              retryInterval);
-          Utils.sleep(retryInterval);
-        }
-      } else {
+
+      // Data is consistent
+      if (children.size() == expectedCount) {
         return children;
       }
+
+      // Data is inconsistent, retry
+      attempt++;
+      LOGGER.error(
+          "dataAccessor.getChildNames() and dataAccessor.getChildren() did not return the same number "
+              + "of elements from path: {}\nExpected: {}, but got {}. Attempt:{}/{}.",
+          path,
+          expectedCount,
+          children.size(),
+          attempt,
+          maxAttempts);
+      Utils.sleep(TimeUnit.SECONDS.toMillis((long) Math.pow(2, attempt)));
     }
     throw new VeniceException("Got partial children from zk after retry " + attempt + " times.");
   }
@@ -148,14 +151,14 @@ public final class HelixUtils {
     create(dataAccessor, path, data, DEFAULT_HELIX_OP_RETRY_COUNT);
   }
 
-  public static <T> void create(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int retryCount) {
+  public static <T> void create(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int maxAttempts) {
     int attempt = 0;
-    while (attempt < retryCount) {
+    while (attempt < maxAttempts) {
       if (dataAccessor.create(path, data, AccessOption.PERSISTENT)) {
         return;
       }
       attempt++;
-      handleFailedHelixOperation(path, "create", attempt, retryCount);
+      handleFailedHelixOperation(path, "create", attempt, maxAttempts);
     }
   }
 
@@ -163,14 +166,14 @@ public final class HelixUtils {
     update(dataAccessor, path, data, DEFAULT_HELIX_OP_RETRY_COUNT);
   }
 
-  public static <T> void update(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int retryCount) {
+  public static <T> void update(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int maxAttempts) {
     int attempt = 0;
-    while (attempt < retryCount) {
+    while (attempt < maxAttempts) {
       if (dataAccessor.set(path, data, AccessOption.PERSISTENT)) {
         return;
       }
       attempt++;
-      handleFailedHelixOperation(path, "update", attempt, retryCount);
+      handleFailedHelixOperation(path, "update", attempt, maxAttempts);
     }
   }
 
@@ -184,9 +187,9 @@ public final class HelixUtils {
       ZkBaseDataAccessor<T> dataAccessor,
       List<String> paths,
       List<T> data,
-      int retryCount) {
+      int maxAttempts) {
     int attempt = 0;
-    while (attempt < retryCount) {
+    while (attempt < maxAttempts) {
       boolean[] results = dataAccessor.setChildren(paths, data, AccessOption.PERSISTENT);
       boolean isAllSuccessful = true;
       for (Boolean r: results) {
@@ -200,7 +203,7 @@ public final class HelixUtils {
       }
       attempt++;
       String path = paths.get(0).substring(0, paths.get(0).lastIndexOf('/'));
-      handleFailedHelixOperation(path, "updateChildren", attempt, retryCount);
+      handleFailedHelixOperation(path, "updateChildren", attempt, maxAttempts);
     }
   }
 
@@ -212,14 +215,14 @@ public final class HelixUtils {
     remove(dataAccessor, path, DEFAULT_HELIX_OP_RETRY_COUNT);
   }
 
-  public static <T> void remove(ZkBaseDataAccessor<T> dataAccessor, String path, int retryCount) {
+  public static <T> void remove(ZkBaseDataAccessor<T> dataAccessor, String path, int maxAttempts) {
     int attempt = 0;
-    while (attempt < retryCount) {
+    while (attempt < maxAttempts) {
       if (dataAccessor.remove(path, AccessOption.PERSISTENT)) {
         return;
       }
       attempt++;
-      handleFailedHelixOperation(path, "remove", attempt, retryCount);
+      handleFailedHelixOperation(path, "remove", attempt, maxAttempts);
     }
   }
 
@@ -230,72 +233,81 @@ public final class HelixUtils {
   public static <T> void compareAndUpdate(
       ZkBaseDataAccessor<T> dataAccessor,
       String path,
-      int retryCount,
+      int maxAttempts,
       DataUpdater<T> dataUpdater) {
     int attempt = 0;
-    while (attempt < retryCount) {
+    while (attempt < maxAttempts) {
       if (dataAccessor.update(path, dataUpdater, AccessOption.PERSISTENT)) {
         return;
       }
       attempt++;
-      handleFailedHelixOperation(path, "compareAndUpdate", attempt, retryCount);
+      handleFailedHelixOperation(path, "compareAndUpdate", attempt, maxAttempts);
     }
   }
 
   /**
    * Helper method for logging Helix operation failures, sleeping for retry, and throwing exceptions
    *
-   * @param path           The ZooKeeper path that was being operated on
-   * @param helixOperation The name of the Helix operation that failed
-   * @param attempt        The current attempt number
-   * @param retryCount     The maximum number of retry attempts
+   * @param path ZooKeeper path that was being operated on
+   * @param helixOperation name of the Helix operation that failed
+   * @param attempt current attempt number
+   * @param maxAttempts maximum number of retry attempts
    * @throws ZkDataAccessException if max retry attempts have been reached
    */
-  private static void handleFailedHelixOperation(String path, String helixOperation, int attempt, int retryCount) {
-    if (attempt < retryCount) {
+  private static void handleFailedHelixOperation(String path, String helixOperation, int attempt, int maxAttempts) {
+    if (attempt < maxAttempts) {
       long retryIntervalSec = (long) Math.pow(2, attempt);
-      LOGGER.error(
-          "{} failed with path {} on attempt {}/{}. Will retry in {} seconds.",
-          helixOperation,
-          path,
-          attempt,
-          retryCount,
-          retryIntervalSec);
+      if (path.isEmpty()) {
+        LOGGER.error(
+            "{} failed on attempt {}/{}. Will retry in {} seconds.",
+            helixOperation,
+            attempt,
+            maxAttempts,
+            retryIntervalSec);
+      } else {
+        LOGGER.error(
+            "{} failed with path: {} on attempt {}/{}. Will retry in {} seconds.",
+            helixOperation,
+            path,
+            attempt,
+            maxAttempts,
+            retryIntervalSec);
+      }
       Utils.sleep(TimeUnit.SECONDS.toMillis(retryIntervalSec));
     } else {
-      throw new ZkDataAccessException(path, helixOperation, retryCount);
+      throw new ZkDataAccessException(path, helixOperation, maxAttempts);
     }
   }
 
   /**
-   * Try to connect Helix Manger. If failed, waits for certain time and retry. If Helix Manager can not be
+   * Try to connect Helix Manager. If failed, waits for certain time and retry. If Helix Manager can not be
    * connected after certain number of retry, throws exception. This method is most likely being used asynchronously since
    * it is going to block and wait if connection fails.
+   *
    * @param manager HelixManager instance
-   * @param maxRetries retry time
-   * @param sleepTimeSeconds time in second that it blocks until next retry.
-   * @exception VeniceException if connection keeps failing after certain number of retry
+   * @param maxAttempts maximum number of attempts to retry on failure
+   * @throws VeniceException if connection keeps failing after certain number of retry
    */
-  public static void connectHelixManager(SafeHelixManager manager, int maxRetries, int sleepTimeSeconds) {
-    int attempt = 1;
-    boolean isSuccess = false;
-    while (!isSuccess) {
+  public static void connectHelixManager(SafeHelixManager manager, int maxAttempts) {
+    int attempt = 0;
+    while (attempt < maxAttempts) {
       try {
         manager.connect();
-        isSuccess = true;
+        return; // Success, exit immediately
       } catch (Exception e) {
-        if (attempt <= maxRetries) {
+        attempt++;
+        if (attempt < maxAttempts) {
+          long retryIntervalSec = (long) Math.pow(2, attempt);
           LOGGER.warn(
               "Failed to connect {} on attempt {}/{}. Will retry in {} seconds.",
               manager.toString(),
               attempt,
-              maxRetries,
-              sleepTimeSeconds);
-          attempt++;
-          Utils.sleep(TimeUnit.SECONDS.toMillis(sleepTimeSeconds));
+              maxAttempts,
+              retryIntervalSec);
+          Utils.sleep(TimeUnit.SECONDS.toMillis(retryIntervalSec));
         } else {
           throw new VeniceException(
-              "Error connecting to Helix Manager for Cluster '" + manager.getClusterName() + "' after " + maxRetries
+              "Error connecting to Helix Manager for Cluster '" + manager.getClusterName() + "' after " + maxAttempts
                   + " attempts.",
               e);
         }
@@ -308,19 +320,20 @@ public final class HelixUtils {
    * controller.
    * Otherwise, the following operations issued by participant/spectator would fail.
    */
-  public static void checkClusterSetup(HelixAdmin admin, String cluster, int maxRetry, int retryIntervalSec) {
-    int attempt = 1;
-    while (true) {
+  public static void checkClusterSetup(HelixAdmin admin, String cluster, int maxAttempts) {
+    int attempt = 0;
+    while (attempt < maxAttempts) {
       if (admin.getClusters().contains(cluster)) {
-        // Cluster is ready.
-        break;
+        // Success, exit immediately
+        return;
       } else {
-        if (attempt <= maxRetry) {
+        attempt++;
+        if (attempt < maxAttempts) {
+          long retryIntervalSec = (long) Math.pow(2, attempt);
           LOGGER.warn(
               "Cluster has not been initialized by controller. Attempt: {}. Will retry in {} seconds.",
               attempt,
               retryIntervalSec);
-          attempt++;
           Utils.sleep(TimeUnit.SECONDS.toMillis(retryIntervalSec));
         } else {
           throw new VeniceException("Cluster has not been initialized by controller after attempted: " + attempt);

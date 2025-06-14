@@ -89,9 +89,10 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       ZkClient zkClient,
       HelixAdapterSerializer adapter,
       String clusterName,
-      Optional<MetaStoreWriter> metaStoreWriter) {
+      Optional<MetaStoreWriter> metaStoreWriter,
+      int refreshAttemptsForZkReconnect) {
     this.storeRepository = storeRepository;
-    this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName);
+    this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName, refreshAttemptsForZkReconnect);
     this.metaStoreWriter = metaStoreWriter;
   }
 

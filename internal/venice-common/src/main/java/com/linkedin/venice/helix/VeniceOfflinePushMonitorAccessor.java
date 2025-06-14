@@ -19,7 +19,6 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -46,8 +45,7 @@ import org.apache.zookeeper.data.Stat;
  */
 public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   public static final String OFFLINE_PUSH_SUB_PATH = OFFLINE_PUSHES;
-  private static final int DEFAULT_ZK_REFRESH_ATTEMPTS = 3;
-  private static final long DEFAULT_ZK_REFRESH_INTERVAL = TimeUnit.SECONDS.toMillis(10);
+  private static final int DEFAULT_ZK_REFRESH_ATTEMPTS = 9;
 
   private static final Logger LOGGER = LogManager.getLogger(VeniceOfflinePushMonitorAccessor.class);
   private final String clusterName;
@@ -68,23 +66,12 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
   private final int refreshAttemptsForZkReconnect;
 
-  private final long refreshIntervalForZkReconnectInMs;
-
   public VeniceOfflinePushMonitorAccessor(
       String clusterName,
       ZkClient zkClient,
       HelixAdapterSerializer adapter,
-      LogContext logContext) {
-    this(clusterName, zkClient, adapter, DEFAULT_ZK_REFRESH_ATTEMPTS, DEFAULT_ZK_REFRESH_INTERVAL, logContext);
-  }
-
-  public VeniceOfflinePushMonitorAccessor(
-      String clusterName,
-      ZkClient zkClient,
-      HelixAdapterSerializer adapter,
-      int refreshAttemptsForZkReconnect,
-      long refreshIntervalForZkReconnectInMs,
-      Object logContext) {
+      Object logContext,
+      int refreshAttemptsForZkReconnect) {
     this.clusterName = clusterName;
     this.offlinePushStatusParentPath = getOfflinePushStatuesParentPath();
     this.zkClient = zkClient;
@@ -95,7 +82,6 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     this.listenerManager = new ListenerManager<>(logContext);
     this.partitionStatusZkListener = new PartitionStatusZkListener(logContext);
     this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
-    this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
   }
 
   /**
@@ -114,7 +100,6 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     this.listenerManager = new ListenerManager<>(logContext);
     this.partitionStatusZkListener = new PartitionStatusZkListener(logContext);
     this.refreshAttemptsForZkReconnect = DEFAULT_ZK_REFRESH_ATTEMPTS;
-    this.refreshIntervalForZkReconnectInMs = DEFAULT_ZK_REFRESH_INTERVAL;
   }
 
   private void registerSerializers(HelixAdapterSerializer adapter) {
@@ -127,11 +112,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
   @Override
   public List<OfflinePushStatus> loadOfflinePushStatusesAndPartitionStatuses() {
     LOGGER.info("Start loading all offline pushes statuses from ZK in cluster: {}.", clusterName);
-    List<OfflinePushStatus> offlinePushStatuses = HelixUtils.getChildren(
-        offlinePushStatusAccessor,
-        offlinePushStatusParentPath,
-        refreshAttemptsForZkReconnect,
-        refreshIntervalForZkReconnectInMs);
+    List<OfflinePushStatus> offlinePushStatuses =
+        HelixUtils.getChildren(offlinePushStatusAccessor, offlinePushStatusParentPath, refreshAttemptsForZkReconnect);
     Iterator<OfflinePushStatus> iterator = offlinePushStatuses.iterator();
     while (iterator.hasNext()) {
       OfflinePushStatus pushStatus = iterator.next();
@@ -414,11 +396,8 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
    */
   protected List<PartitionStatus> getPartitionStatuses(String topic, int partitionCount) {
     LOGGER.debug("Start reading partition status from ZK for topic: {} in cluster: {}.", topic, clusterName);
-    List<PartitionStatus> zkResult = HelixUtils.getChildren(
-        partitionStatusAccessor,
-        getOfflinePushStatusPath(topic),
-        refreshAttemptsForZkReconnect,
-        refreshIntervalForZkReconnectInMs);
+    List<PartitionStatus> zkResult =
+        HelixUtils.getChildren(partitionStatusAccessor, getOfflinePushStatusPath(topic), refreshAttemptsForZkReconnect);
     LOGGER.debug("Read {} partition status from ZK for topic: {} in cluster: {}.", zkResult.size(), topic, clusterName);
 
     if (zkResult.isEmpty()) {

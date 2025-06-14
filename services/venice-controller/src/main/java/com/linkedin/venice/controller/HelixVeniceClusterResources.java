@@ -129,7 +129,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
             zkClient,
             adapterSerializer,
             clusterName,
-            metaStoreWriter));
+            metaStoreWriter,
+            config.getRefreshAttemptsForZkReconnect()));
 
     SafeHelixManager spectatorManager;
     if (this.helixManager.getInstanceType() == InstanceType.SPECTATOR) {
@@ -152,9 +153,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
         clusterName,
         zkClient,
         adapterSerializer,
-        config.getRefreshAttemptsForZkReconnect(),
-        config.getRefreshIntervalForZkReconnectInMs(),
-        config.getLogContext());
+        config.getLogContext(),
+        config.getRefreshAttemptsForZkReconnect());
     String aggregateRealTimeSourceKafkaUrl =
         config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
     boolean unregisterMetricEnabled = config.isUnregisterMetricForDeletedStoreEnabled();

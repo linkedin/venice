@@ -41,13 +41,8 @@ public class HelixOfflinePushMonitorAccessorTest {
     zk = ServiceFactory.getZkServer();
     String zkAddress = zk.getAddress();
     zkClient = ZkClientFactory.newZkClient(zkAddress);
-    accessor = new VeniceOfflinePushMonitorAccessor(
-        clusterName,
-        zkClient,
-        new HelixAdapterSerializer(),
-        1,
-        0,
-        LogContext.EMPTY);
+    accessor =
+        new VeniceOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer(), LogContext.EMPTY, 1);
   }
 
   @AfterMethod

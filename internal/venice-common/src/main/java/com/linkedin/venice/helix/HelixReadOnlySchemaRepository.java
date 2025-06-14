@@ -98,12 +98,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       long refreshIntervalForZkReconnectInMs) {
     this.storeRepository = storeRepository;
     this.zkClient = zkClient;
-    this.accessor = new HelixSchemaAccessor(
-        zkClient,
-        adapter,
-        clusterName,
-        refreshAttemptsForZkReconnect,
-        refreshIntervalForZkReconnectInMs);
+    this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName, refreshAttemptsForZkReconnect);
 
     storeRepository.registerStoreDataChangedListener(this);
     this.zkStateListener =
