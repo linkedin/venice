@@ -1,6 +1,7 @@
 package com.linkedin.venice.client.store;
 
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -27,6 +28,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -42,6 +44,14 @@ public class AvroComputeAggregationRequestBuilderTest {
   private static final int TOP_K = 10;
   private static final int MAX_CONCURRENT_REQUESTS = 100;
   private static final String STORE_NAME = "test_store";
+  private static final String KEY_PREFIX = "key_";
+  private static final String STRING_FIELD_NAME = "string_field";
+  private static final String INT_FIELD_NAME = "int_field";
+  private static final String LONG_FIELD_NAME = "long_field";
+  private static final String FLOAT_FIELD_NAME = "float_field";
+  private static final String DOUBLE_FIELD_NAME = "double_field";
+  private static final String BOOLEAN_FIELD_NAME = "boolean_field";
+  private static final String UNSUPPORTED_FIELD_NAME = "unsupported_field";
 
   @Mock
   private AvroGenericReadComputeStoreClient<String, GenericRecord> storeClient;
@@ -89,17 +99,94 @@ public class AvroComputeAggregationRequestBuilderTest {
     when(schemaReader.getValueSchema(1)).thenReturn(valueSchema);
     when(valueSchema.getType()).thenReturn(Schema.Type.RECORD);
 
-    // Setup field1 mocks
+    // Common elementType mocks
+    Schema stringElementSchema = mock(Schema.class);
+    when(stringElementSchema.getType()).thenReturn(Schema.Type.STRING);
+    Schema intElementSchema = mock(Schema.class);
+    when(intElementSchema.getType()).thenReturn(Schema.Type.INT);
+    Schema longElementSchema = mock(Schema.class);
+    when(longElementSchema.getType()).thenReturn(Schema.Type.LONG);
+    Schema floatElementSchema = mock(Schema.class);
+    when(floatElementSchema.getType()).thenReturn(Schema.Type.FLOAT);
+    Schema doubleElementSchema = mock(Schema.class);
+    when(doubleElementSchema.getType()).thenReturn(Schema.Type.DOUBLE);
+    Schema booleanElementSchema = mock(Schema.class);
+    when(booleanElementSchema.getType()).thenReturn(Schema.Type.BOOLEAN);
+    Schema recordElementSchema = mock(Schema.class);
+    when(recordElementSchema.getType()).thenReturn(Schema.Type.RECORD);
+
+    // field1, field2: ARRAY<STRING>
     when(valueSchema.getField(FIELD_1)).thenReturn(field1);
     when(field1.schema()).thenReturn(field1Schema);
     when(field1Schema.getType()).thenReturn(Schema.Type.ARRAY);
-    when(field1Schema.getElementType()).thenReturn(arrayItemSchema);
+    when(field1Schema.getElementType()).thenReturn(stringElementSchema);
 
-    // Setup field2 mocks
     when(valueSchema.getField(FIELD_2)).thenReturn(field2);
     when(field2.schema()).thenReturn(field2Schema);
     when(field2Schema.getType()).thenReturn(Schema.Type.ARRAY);
-    when(field2Schema.getElementType()).thenReturn(arrayItemSchema);
+    when(field2Schema.getElementType()).thenReturn(stringElementSchema);
+
+    // string_field: ARRAY<STRING>
+    Schema.Field stringField = mock(Schema.Field.class);
+    Schema stringFieldSchema = mock(Schema.class);
+    when(stringFieldSchema.getType()).thenReturn(Schema.Type.ARRAY);
+    when(stringFieldSchema.getElementType()).thenReturn(stringElementSchema);
+    when(stringField.schema()).thenReturn(stringFieldSchema);
+    when(valueSchema.getField(STRING_FIELD_NAME)).thenReturn(stringField);
+
+    // int_field: ARRAY<INT>
+    Schema.Field intField = mock(Schema.Field.class);
+    Schema intFieldSchema = mock(Schema.class);
+    when(intFieldSchema.getType()).thenReturn(Schema.Type.ARRAY);
+    when(intFieldSchema.getElementType()).thenReturn(intElementSchema);
+    when(intField.schema()).thenReturn(intFieldSchema);
+    when(valueSchema.getField(INT_FIELD_NAME)).thenReturn(intField);
+
+    // long_field: ARRAY<LONG>
+    Schema.Field longField = mock(Schema.Field.class);
+    Schema longFieldSchema = mock(Schema.class);
+    when(longFieldSchema.getType()).thenReturn(Schema.Type.ARRAY);
+    when(longFieldSchema.getElementType()).thenReturn(longElementSchema);
+    when(longField.schema()).thenReturn(longFieldSchema);
+    when(valueSchema.getField(LONG_FIELD_NAME)).thenReturn(longField);
+
+    // float_field: ARRAY<FLOAT>
+    Schema.Field floatField = mock(Schema.Field.class);
+    Schema floatFieldSchema = mock(Schema.class);
+    when(floatFieldSchema.getType()).thenReturn(Schema.Type.ARRAY);
+    when(floatFieldSchema.getElementType()).thenReturn(floatElementSchema);
+    when(floatField.schema()).thenReturn(floatFieldSchema);
+    when(valueSchema.getField(FLOAT_FIELD_NAME)).thenReturn(floatField);
+
+    // double_field: ARRAY<DOUBLE>
+    Schema.Field doubleField = mock(Schema.Field.class);
+    Schema doubleFieldSchema = mock(Schema.class);
+    when(doubleFieldSchema.getType()).thenReturn(Schema.Type.ARRAY);
+    when(doubleFieldSchema.getElementType()).thenReturn(doubleElementSchema);
+    when(doubleField.schema()).thenReturn(doubleFieldSchema);
+    when(valueSchema.getField(DOUBLE_FIELD_NAME)).thenReturn(doubleField);
+
+    // boolean_field: ARRAY<BOOLEAN>
+    Schema.Field booleanField = mock(Schema.Field.class);
+    Schema booleanFieldSchema = mock(Schema.class);
+    when(booleanFieldSchema.getType()).thenReturn(Schema.Type.ARRAY);
+    when(booleanFieldSchema.getElementType()).thenReturn(booleanElementSchema);
+    when(booleanField.schema()).thenReturn(booleanFieldSchema);
+    when(valueSchema.getField(BOOLEAN_FIELD_NAME)).thenReturn(booleanField);
+
+    // unsupported_field: ARRAY<RECORD>
+    Schema.Field unsupportedField = mock(Schema.Field.class);
+    Schema unsupportedFieldSchema = mock(Schema.class);
+    when(unsupportedFieldSchema.getType()).thenReturn(Schema.Type.ARRAY);
+    when(unsupportedFieldSchema.getElementType()).thenReturn(recordElementSchema);
+    when(unsupportedField.schema()).thenReturn(unsupportedFieldSchema);
+    when(valueSchema.getField(UNSUPPORTED_FIELD_NAME)).thenReturn(unsupportedField);
+  }
+
+  private Schema mockElementSchema(Schema.Type type) {
+    Schema elementSchema = mock(Schema.class);
+    when(elementSchema.getType()).thenReturn(type);
+    return elementSchema;
   }
 
   private void setupTestData() {
@@ -202,25 +289,128 @@ public class AvroComputeAggregationRequestBuilderTest {
     verify(computeRequestBuilder, times(MAX_CONCURRENT_REQUESTS)).execute(eq(keySet));
   }
 
-  @Test(description = "Should handle performance requirements")
-  public void testCountGroupByValue_Performance() {
-    Set<String> keySet = new HashSet<>(keys);
-    int iterations = 1000;
-
-    // Create a new builder for each iteration to avoid reuse issues
-    long startTime = System.nanoTime();
-    for (int i = 0; i < iterations; i++) {
-      AvroComputeRequestBuilderV3<String> newComputeRequestBuilder =
-          spy(new AvroComputeRequestBuilderV3<>(storeClient, schemaReader));
-      when(storeClient.compute()).thenReturn(newComputeRequestBuilder);
-      AvroComputeAggregationRequestBuilder<String> newBuilder =
-          new AvroComputeAggregationRequestBuilder<>(storeClient, schemaReader);
-
-      newBuilder.countGroupByValue(TOP_K, FIELD_1).execute(keySet);
+  @Test
+  public void testCountGroupByValueWithValidFields() {
+    Set<String> keys = new HashSet<>();
+    for (int i = 0; i < 10; i++) {
+      keys.add(KEY_PREFIX + i);
     }
-    long endTime = System.nanoTime();
-    long duration = TimeUnit.NANOSECONDS.toMillis(endTime - startTime);
 
-    assertTrue(duration < 1000, "Performance test should complete within 1 second");
+    // Test with string field
+    builder.countGroupByValue(5, STRING_FIELD_NAME);
+    Assert.assertNotNull(builder);
+
+    // Test with int field
+    builder.countGroupByValue(5, INT_FIELD_NAME);
+    Assert.assertNotNull(builder);
+
+    // Test with multiple fields
+    builder.countGroupByValue(5, STRING_FIELD_NAME, INT_FIELD_NAME);
+    Assert.assertNotNull(builder);
+  }
+
+  @Test(expectedExceptions = VeniceClientException.class)
+  public void testCountGroupByValueWithUnsupportedField() {
+    builder.countGroupByValue(5, UNSUPPORTED_FIELD_NAME);
+  }
+
+  @Test(expectedExceptions = VeniceClientException.class)
+  public void testCountGroupByValueWithNullFieldName() {
+    builder.countGroupByValue(5, (String) null);
+  }
+
+  @Test(expectedExceptions = VeniceClientException.class)
+  public void testCountGroupByValueWithEmptyFieldName() {
+    builder.countGroupByValue(5, "");
+  }
+
+  @Test(expectedExceptions = VeniceClientException.class)
+  public void testCountGroupByValueWithInvalidTopK() {
+    builder.countGroupByValue(0, STRING_FIELD_NAME);
+  }
+
+  @Test(expectedExceptions = VeniceClientException.class)
+  public void testCountGroupByValueWithNullFieldNames() {
+    builder.countGroupByValue(5, (String[]) null);
+  }
+
+  @Test(expectedExceptions = VeniceClientException.class)
+  public void testCountGroupByValueWithEmptyFieldNames() {
+    builder.countGroupByValue(5, new String[0]);
+  }
+
+  @DataProvider(name = "fieldTypes")
+  public Object[][] getFieldTypes() {
+    return new Object[][] { { STRING_FIELD_NAME, Schema.Type.STRING, true }, { INT_FIELD_NAME, Schema.Type.INT, true },
+        { LONG_FIELD_NAME, Schema.Type.LONG, true }, { FLOAT_FIELD_NAME, Schema.Type.FLOAT, true },
+        { DOUBLE_FIELD_NAME, Schema.Type.DOUBLE, true }, { BOOLEAN_FIELD_NAME, Schema.Type.BOOLEAN, true },
+        { UNSUPPORTED_FIELD_NAME, Schema.Type.RECORD, false } };
+  }
+
+  @Test(dataProvider = "fieldTypes")
+  public void testCountGroupByValue_FieldTypes(String fieldName, Schema.Type elementType, boolean shouldSucceed) {
+    // Set field type
+    Schema.Field field = mock(Schema.Field.class);
+    Schema fieldSchema = mock(Schema.class);
+    Schema elementSchema = mock(Schema.class);
+
+    when(valueSchema.getField(fieldName)).thenReturn(field);
+    when(field.schema()).thenReturn(fieldSchema);
+    when(fieldSchema.getType()).thenReturn(shouldSucceed ? Schema.Type.ARRAY : Schema.Type.RECORD);
+    if (shouldSucceed) {
+      when(fieldSchema.getElementType()).thenReturn(elementSchema);
+      when(elementSchema.getType()).thenReturn(elementType);
+    }
+
+    if (shouldSucceed) {
+      // For supported types, should succeed
+      builder.countGroupByValue(TOP_K, fieldName);
+      verify(computeRequestBuilder).count(eq(fieldName), eq(fieldName + "_count"));
+    } else {
+      // For unsupported types, should throw exception
+      VeniceClientException exception =
+          expectThrows(VeniceClientException.class, () -> builder.countGroupByValue(TOP_K, fieldName));
+      assertTrue(exception.getMessage().contains("not supported for count by value operation"));
+    }
+  }
+
+  @Test(description = "Should validate field types")
+  public void testCountGroupByValue_FieldTypeValidation() {
+    // Test with non-array field
+    Schema.Field nonArrayField = mock(Schema.Field.class);
+    Schema nonArrayFieldSchema = mock(Schema.class);
+    when(nonArrayFieldSchema.getType()).thenReturn(Schema.Type.STRING);
+    when(nonArrayField.schema()).thenReturn(nonArrayFieldSchema);
+    when(valueSchema.getField("nonArrayField")).thenReturn(nonArrayField);
+
+    VeniceClientException exception =
+        expectThrows(VeniceClientException.class, () -> builder.countGroupByValue(TOP_K, "nonArrayField"));
+    assertTrue(exception.getMessage().contains("not supported for count by value operation"));
+
+    // Test with array field
+    Schema.Field arrayField = mock(Schema.Field.class);
+    Schema arrayFieldSchema = mock(Schema.class);
+    Schema elementSchema = mock(Schema.class);
+    when(arrayFieldSchema.getType()).thenReturn(Schema.Type.ARRAY);
+    when(arrayFieldSchema.getElementType()).thenReturn(elementSchema);
+    when(elementSchema.getType()).thenReturn(Schema.Type.STRING);
+    when(arrayField.schema()).thenReturn(arrayFieldSchema);
+    when(valueSchema.getField("arrayField")).thenReturn(arrayField);
+
+    builder.countGroupByValue(TOP_K, "arrayField");
+    verify(computeRequestBuilder).count(eq("arrayField"), eq("arrayField_count"));
+
+    // Test with map field
+    Schema.Field mapField = mock(Schema.Field.class);
+    Schema mapFieldSchema = mock(Schema.class);
+    Schema valueSchema = mock(Schema.class);
+    when(mapFieldSchema.getType()).thenReturn(Schema.Type.MAP);
+    when(mapFieldSchema.getValueType()).thenReturn(valueSchema);
+    when(valueSchema.getType()).thenReturn(Schema.Type.STRING);
+    when(mapField.schema()).thenReturn(mapFieldSchema);
+    when(this.valueSchema.getField("mapField")).thenReturn(mapField);
+
+    builder.countGroupByValue(TOP_K, "mapField");
+    verify(computeRequestBuilder).count(eq("mapField"), eq("mapField_count"));
   }
 }

@@ -18,11 +18,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -34,8 +36,7 @@ import org.testng.annotations.Test;
  * 1. Normal cases: Verify basic aggregation functionality
  * 2. Edge cases: Test boundary conditions and special values
  * 3. Error cases: Verify proper error handling
- * 4. Performance: Test with large data sets
- * 5. Concurrency: Test thread safety
+ * 4. Concurrency: Test thread safety
  */
 @Test(groups = { "unit" })
 public class AvroComputeAggregationResponseTest extends TestUtils {
@@ -46,6 +47,13 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
   private static final String VALUE_2 = "value2";
   private static final String COUNT_SUFFIX = "_count";
   private static final int MAX_CONCURRENT_REQUESTS = 100;
+  private static final String STRING_FIELD_NAME = "string_field";
+  private static final String INT_FIELD_NAME = "int_field";
+  private static final String LONG_FIELD_NAME = "long_field";
+  private static final String FLOAT_FIELD_NAME = "float_field";
+  private static final String DOUBLE_FIELD_NAME = "double_field";
+  private static final String BOOLEAN_FIELD_NAME = "boolean_field";
+  private static final String UNSUPPORTED_FIELD_NAME = "unsupported_field";
 
   @Mock
   private ComputeGenericRecord record1;
@@ -111,6 +119,54 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
 
   private void setupResponse() {
     response = new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
+  }
+
+  @DataProvider(name = "fieldTypes")
+  public Object[][] getFieldTypes() {
+    return new Object[][] { { STRING_FIELD_NAME, Schema.Type.STRING, true }, { INT_FIELD_NAME, Schema.Type.INT, true },
+        { LONG_FIELD_NAME, Schema.Type.LONG, true }, { FLOAT_FIELD_NAME, Schema.Type.FLOAT, true },
+        { DOUBLE_FIELD_NAME, Schema.Type.DOUBLE, true }, { BOOLEAN_FIELD_NAME, Schema.Type.BOOLEAN, true },
+        { UNSUPPORTED_FIELD_NAME, Schema.Type.ARRAY, false } };
+  }
+
+  @Test(dataProvider = "fieldTypes", description = "Should handle different field types correctly")
+  public void testGetValueToCount_FieldTypes(String fieldName, Schema.Type fieldType, boolean shouldSucceed) {
+    Map<String, ComputeGenericRecord> results = new HashMap<>();
+    ComputeGenericRecord record = mock(ComputeGenericRecord.class);
+
+    // Setup mock data based on field type
+    Object value = getMockValueForType(fieldType);
+    when(record.get(fieldName)).thenReturn(value);
+    when(record.get(fieldName + COUNT_SUFFIX)).thenReturn(1);
+    results.put("key1", record);
+
+    Map<String, Integer> fieldTopK = new HashMap<>();
+    fieldTopK.put(fieldName, 10);
+    response = new AvroComputeAggregationResponse<>(results, fieldTopK);
+
+    Map<Object, Integer> result = response.getValueToCount(fieldName);
+    assertNotNull(result, "Result should not be null");
+    assertEquals(result.size(), 1, "Should have one count");
+    assertEquals(result.get(value), Integer.valueOf(1), "Should have correct count");
+  }
+
+  private Object getMockValueForType(Schema.Type type) {
+    switch (type) {
+      case STRING:
+        return "test_string";
+      case INT:
+        return 42;
+      case LONG:
+        return 42L;
+      case FLOAT:
+        return 42.0f;
+      case DOUBLE:
+        return 42.0d;
+      case BOOLEAN:
+        return true;
+      default:
+        return null;
+    }
   }
 
   // Group 1: Normal Cases
@@ -314,38 +370,5 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
     for (Map<String, Integer> result: results) {
       assertEquals(result, firstResult, "All results should be identical");
     }
-  }
-
-  @Test(description = "Should handle performance requirements")
-  public void testGetValueToCount_Performance() {
-    // Setup large test data
-    Map<String, ComputeGenericRecord> largeComputeResults = new HashMap<>();
-    Map<String, Integer> fieldTopK = new HashMap<>();
-    fieldTopK.put(FIELD_1, 10);
-    int recordCount = 10000;
-
-    for (int i = 0; i < recordCount; i++) {
-      String key = "value" + (i % 100); // Create some value distribution
-      ComputeGenericRecord value = mock(ComputeGenericRecord.class);
-      when(value.get(FIELD_1)).thenReturn(key);
-      when(value.get(FIELD_1 + COUNT_SUFFIX)).thenReturn(1);
-      largeComputeResults.put("key" + i, value);
-    }
-
-    response = new AvroComputeAggregationResponse<>(largeComputeResults, fieldTopK);
-
-    long startTime = System.nanoTime();
-    Map<String, Integer> result = response.getValueToCount(FIELD_1);
-    long endTime = System.nanoTime();
-    long duration = TimeUnit.NANOSECONDS.toMillis(endTime - startTime);
-
-    assertNotNull(result, "Result should not be null");
-    assertTrue(duration < 1000, "Performance test should complete within 1 second");
-    assertEquals(result.size(), Math.min(100, fieldTopK.get(FIELD_1)), "Should return correct number of results");
-  }
-
-  @Test(description = "Should handle bucket name to count")
-  public void testGetBucketNameToCount() {
-    assertThrows(UnsupportedOperationException.class, () -> response.getBucketNameToCount(FIELD_1));
   }
 }

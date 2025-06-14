@@ -52,6 +52,35 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
         throw new VeniceClientException("Field not found in schema: " + fieldName);
       }
 
+      // Validate field type
+      Schema fieldSchema = field.schema();
+      Schema.Type fieldType = fieldSchema.getType();
+      if (fieldType == Schema.Type.ARRAY) {
+        Schema elementType = fieldSchema.getElementType();
+        Schema.Type elementSchemaType = elementType.getType();
+        if (elementSchemaType != Schema.Type.STRING && elementSchemaType != Schema.Type.INT
+            && elementSchemaType != Schema.Type.LONG && elementSchemaType != Schema.Type.FLOAT
+            && elementSchemaType != Schema.Type.DOUBLE && elementSchemaType != Schema.Type.BOOLEAN) {
+          throw new VeniceClientException(
+              "Element type " + elementSchemaType + " of ARRAY field '" + fieldName
+                  + "' is not supported for count by value operation. Only STRING, INT, LONG, FLOAT, DOUBLE, BOOLEAN are supported.");
+        }
+      } else if (fieldType == Schema.Type.MAP) {
+        Schema valueType = fieldSchema.getValueType();
+        Schema.Type valueSchemaType = valueType.getType();
+        if (valueSchemaType != Schema.Type.STRING && valueSchemaType != Schema.Type.INT
+            && valueSchemaType != Schema.Type.LONG && valueSchemaType != Schema.Type.FLOAT
+            && valueSchemaType != Schema.Type.DOUBLE && valueSchemaType != Schema.Type.BOOLEAN) {
+          throw new VeniceClientException(
+              "Value type " + valueSchemaType + " of MAP field '" + fieldName
+                  + "' is not supported for count by value operation. Only STRING, INT, LONG, FLOAT, DOUBLE, BOOLEAN are supported.");
+        }
+      } else {
+        throw new VeniceClientException(
+            "Field type " + fieldType
+                + " is not supported for count by value operation. Only ARRAY and MAP types are supported.");
+      }
+
       // Store topK value for each field
       fieldTopKMap.put(fieldName, topK);
 
