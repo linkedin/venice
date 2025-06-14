@@ -181,12 +181,6 @@ public class AvroComputeAggregationRequestBuilderTest {
     when(valueSchema.getField(UNSUPPORTED_FIELD_NAME)).thenReturn(unsupportedField);
   }
 
-  private Schema mockElementSchema(Schema.Type type) {
-    Schema elementSchema = mock(Schema.class);
-    when(elementSchema.getType()).thenReturn(type);
-    return elementSchema;
-  }
-
   private void setupTestData() {
     keys = Arrays.asList("key1", "key2", "key3");
     fieldTopKMap = new HashMap<>();
