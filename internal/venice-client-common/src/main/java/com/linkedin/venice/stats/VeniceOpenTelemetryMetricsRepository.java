@@ -18,6 +18,8 @@ import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.DoubleHistogramBuilder;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongCounterBuilder;
+import io.opentelemetry.api.metrics.LongGauge;
+import io.opentelemetry.api.metrics.LongGaugeBuilder;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporterBuilder;
@@ -142,7 +144,7 @@ public class VeniceOpenTelemetryMetricsRepository {
    */
   private final VeniceConcurrentHashMap<String, DoubleHistogram> histogramMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
-  private final VeniceConcurrentHashMap<String, LongCounter> guageMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, LongGauge> guageMap = new VeniceConcurrentHashMap<>();
 
   MetricExporter getOtlpHttpMetricExporter(VeniceMetricsConfig metricsConfig) {
     OtlpHttpMetricExporterBuilder exporterBuilder =
@@ -253,15 +255,16 @@ public class VeniceOpenTelemetryMetricsRepository {
     });
   }
 
-  public LongCounter createGuage(MetricEntity metricEntity) {
+  public LongGauge createGuage(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
     return guageMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
       String fullMetricName = getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName());
-      LongCounterBuilder builder = meter.counterBuilder(fullMetricName)
+      LongGaugeBuilder builder = meter.gaugeBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
-          .setDescription(metricEntity.getDescription());
+          .setDescription(metricEntity.getDescription())
+          .ofLongs();
       return builder.build();
     });
   }
