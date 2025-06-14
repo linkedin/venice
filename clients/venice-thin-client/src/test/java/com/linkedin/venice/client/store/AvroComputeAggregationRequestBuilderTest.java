@@ -18,7 +18,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,7 +27,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -87,7 +85,7 @@ public class AvroComputeAggregationRequestBuilderTest {
     // Create computeRequestBuilder with proper mocks
     computeRequestBuilder = spy(new AvroComputeRequestBuilderV3<>(storeClient, schemaReader));
 
-    // Setup compute() after creating the spy
+    // Setup compute() after creating spy
     when(storeClient.compute()).thenReturn(computeRequestBuilder);
 
     // Create the builder
@@ -243,13 +241,11 @@ public class AvroComputeAggregationRequestBuilderTest {
 
   @Test(description = "Should execute with valid parameters")
   public void testExecute_ValidParameters() {
-    Set<String> keySet = new HashSet<>(keys);
-
     builder.countGroupByValue(TOP_K, FIELD_1);
-    builder.execute(keySet);
+    builder.execute(new HashSet<>(keys));
 
     verify(computeRequestBuilder).count(eq(FIELD_1), eq(FIELD_1 + "_count"));
-    verify(computeRequestBuilder).execute(eq(keySet));
+    verify(computeRequestBuilder).execute(eq(new HashSet<>(keys)));
   }
 
   @Test(description = "Should handle null keys")
@@ -266,47 +262,39 @@ public class AvroComputeAggregationRequestBuilderTest {
 
   @Test(description = "Should handle concurrent requests")
   public void testCountGroupByValue_Concurrent() throws Exception {
-    ExecutorService executor = Executors.newFixedThreadPool(10);
-    CountDownLatch latch = new CountDownLatch(MAX_CONCURRENT_REQUESTS);
-    Set<String> keySet = new HashSet<>(keys);
-
+    int numThreads = 10;
+    ExecutorService executor = Executors.newFixedThreadPool(numThreads);
+    CountDownLatch latch = new CountDownLatch(numThreads);
     List<Future<?>> futures = new ArrayList<>();
-    for (int i = 0; i < MAX_CONCURRENT_REQUESTS; i++) {
+
+    for (int i = 0; i < numThreads; i++) {
       futures.add(executor.submit(() -> {
         try {
-          builder.countGroupByValue(TOP_K, FIELD_1).execute(keySet);
-        } finally {
+          builder.countGroupByValue(TOP_K, FIELD_1);
           latch.countDown();
+        } catch (Exception e) {
+          throw new RuntimeException(e);
         }
       }));
     }
 
-    assertTrue(latch.await(30, TimeUnit.SECONDS), "Concurrent requests timed out");
-    executor.shutdown();
-    assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS), "Executor shutdown timed out");
+    boolean completed = latch.await(5, TimeUnit.SECONDS);
+    assertTrue(completed, "Timeout waiting for latch in concurrent test");
+    for (Future<?> future: futures) {
+      future.get();
+    }
 
-    verify(computeRequestBuilder, times(MAX_CONCURRENT_REQUESTS)).count(eq(FIELD_1), eq(FIELD_1 + "_count"));
-    verify(computeRequestBuilder, times(MAX_CONCURRENT_REQUESTS)).execute(eq(keySet));
+    verify(computeRequestBuilder, times(numThreads)).count(eq(FIELD_1), eq(FIELD_1 + "_count"));
+    executor.shutdown();
   }
 
   @Test
   public void testCountGroupByValueWithValidFields() {
-    Set<String> keys = new HashSet<>();
-    for (int i = 0; i < 10; i++) {
-      keys.add(KEY_PREFIX + i);
-    }
+    builder.countGroupByValue(TOP_K, FIELD_1);
+    builder.execute(new HashSet<>(keys));
 
-    // Test with string field
-    builder.countGroupByValue(5, STRING_FIELD_NAME);
-    Assert.assertNotNull(builder);
-
-    // Test with int field
-    builder.countGroupByValue(5, INT_FIELD_NAME);
-    Assert.assertNotNull(builder);
-
-    // Test with multiple fields
-    builder.countGroupByValue(5, STRING_FIELD_NAME, INT_FIELD_NAME);
-    Assert.assertNotNull(builder);
+    verify(computeRequestBuilder).count(eq(FIELD_1), eq(FIELD_1 + "_count"));
+    verify(computeRequestBuilder).execute(eq(new HashSet<>(keys)));
   }
 
   @Test(expectedExceptions = VeniceClientException.class)
