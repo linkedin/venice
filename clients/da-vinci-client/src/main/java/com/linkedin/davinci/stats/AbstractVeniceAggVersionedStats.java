@@ -161,11 +161,6 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());
   }
 
-  public boolean isFutureVersion(String storeName, int version) {
-    VeniceVersionedStats<STATS, STATS_REPORTER> versionedStats = getVersionedStats(storeName);
-    return versionedStats.getFutureVersion() == version;
-  }
-
   /**
    * return {@link Store#NON_EXISTING_VERSION} if future version doesn't exist.
    */

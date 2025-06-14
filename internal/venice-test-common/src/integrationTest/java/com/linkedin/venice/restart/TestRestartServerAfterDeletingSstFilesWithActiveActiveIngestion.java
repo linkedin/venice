@@ -18,8 +18,8 @@ import static org.testng.Assert.assertNull;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.rocksdb.ReplicationMetadataRocksDBStoragePartition;
-import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngine;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -234,12 +234,11 @@ public class TestRestartServerAfterDeletingSstFilesWithActiveActiveIngestion {
           LOGGER.info("selected server is: {} in colo {}", server, colo);
           TestVeniceServer testVeniceServer = serverWrapper.getVeniceServer();
           StorageService storageService = testVeniceServer.getStorageService();
-          RocksDBStorageEngine rocksDBStorageEngine =
-              (RocksDBStorageEngine) storageService.getStorageEngineRepository().getLocalStorageEngine(topic);
-          assertNotNull(rocksDBStorageEngine);
-          assertEquals(rocksDBStorageEngine.getNumberOfPartitions(), NUMBER_OF_PARTITIONS);
+          StorageEngine storageEngine = storageService.getStorageEngineRepository().getLocalStorageEngine(topic);
+          assertNotNull(storageEngine);
+          assertEquals(storageEngine.getPartitionIds().size(), NUMBER_OF_PARTITIONS);
           rocksDBStoragePartitions.get(colo)
-              .add((ReplicationMetadataRocksDBStoragePartition) rocksDBStorageEngine.getPartitionOrThrow(PARTITION_ID));
+              .add((ReplicationMetadataRocksDBStoragePartition) storageEngine.getPartitionOrThrow(PARTITION_ID));
           serverWrappers.get(colo).add(serverWrapper);
 
           if (++numSelectedServers == NUMBER_OF_REPLICAS) {

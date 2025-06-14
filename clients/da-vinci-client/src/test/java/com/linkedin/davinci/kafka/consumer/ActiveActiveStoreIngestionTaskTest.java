@@ -86,6 +86,7 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -223,13 +224,15 @@ public class ActiveActiveStoreIngestionTaskTest {
     builder.setMetadataRepository(readOnlyStoreRepository);
     builder.setServerConfig(serverConfig);
     builder.setSchemaRepository(readOnlySchemaRepository);
-    builder.setStorageEngineRepository(storageEngineRepository);
 
     // Set up version config and store config
     HybridStoreConfig hybridStoreConfig =
         new HybridStoreConfigImpl(100L, 100L, 100L, BufferReplayPolicy.REWIND_FROM_EOP);
 
     StorageService storageService = mock(StorageService.class);
+    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(storageService)
+        .getRefCountedStorageEngine(anyString());
+
     Store store = new ZKStore(
         STORE_NAME,
         "Felix",

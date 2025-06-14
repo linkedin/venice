@@ -11,6 +11,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
+import com.linkedin.davinci.store.StorageEngineAccessor;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
@@ -123,8 +124,8 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         mockReadOnlyStoreRepository);
     storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
-    testStoreEngine =
-        (RocksDBStorageEngine) storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null);
+    testStoreEngine = StorageEngineAccessor
+        .getInnerStorageEngine(storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null));
     createStoreForTest();
     String stringSchema = "\"string\"";
     Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(stringSchema, 1);

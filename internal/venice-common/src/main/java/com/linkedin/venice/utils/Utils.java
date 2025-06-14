@@ -33,7 +33,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -909,12 +908,24 @@ public class Utils {
     return new HashSet<>(Arrays.asList(objs));
   }
 
-  public static void closeQuietlyWithErrorLogged(Closeable... closeables) {
+  public static void closeQuietlyWithErrorLogged(AutoCloseable... closeables) {
     if (closeables == null) {
       return;
     }
-    for (Closeable closeable: closeables) {
-      IOUtils.closeQuietly(closeable, LOGGER::error);
+    for (AutoCloseable closeable: closeables) {
+      closeQuietly(closeable, LOGGER::error);
+    }
+  }
+
+  public static void closeQuietly(final AutoCloseable closeable, final Consumer<Exception> consumer) {
+    if (closeable != null) {
+      try {
+        closeable.close();
+      } catch (final Exception e) {
+        if (consumer != null) {
+          consumer.accept(e);
+        }
+      }
     }
   }
 
