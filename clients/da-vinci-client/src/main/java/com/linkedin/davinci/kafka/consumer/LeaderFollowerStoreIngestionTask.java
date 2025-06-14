@@ -4384,7 +4384,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *                         if false, fields will only be mutated and logged if they differ from the intended state
    */
   private void configureNativeReplicationAndDataRecovery(Version version, boolean constructionTime) {
-    boolean versionHasDataRecoveryConfig = version.getDataRecoveryVersionConfig() != null;
+    boolean versionHasDataRecoveryConfig = version.getDataRecoveryVersionConfig() != null && !this.isDaVinciClient;
     if (!versionHasDataRecoveryConfig && !this.isDataRecovery && !constructionTime) {
       // In the common case, there is no data recovery going on, neither according to the current SIT state nor the
       // store config, so we exit early in order to minimize work.
