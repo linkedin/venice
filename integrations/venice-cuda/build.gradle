@@ -1,0 +1,153 @@
+plugins {
+  id 'java'
+  id 'cpp'
+}
+
+import org.gradle.internal.os.OperatingSystem
+
+dependencies {
+  api libraries.avro
+  api libraries.avroUtilCompatHelper
+  api libraries.log4j2api
+
+  api project(':clients:da-vinci-client')
+  api project(':internal:venice-client-common')
+  api project(':clients:venice-thin-client')
+
+  api project(':internal:venice-common')
+
+  testImplementation project(':internal:venice-common')
+}
+
+ext {
+  // to be tested in integration test
+  jacocoCoverageThreshold = 0.00
+}
+
+checkerFramework {
+  extraJavacArgs = ['-Xmaxerrs', '256']
+  checkers = ['org.checkerframework.checker.nullness.NullnessChecker']
+  skipCheckerFramework = true
+  excludeTests = true
+}
+
+// CUDA and JNI configuration
+ext {
+  cudaHome = System.getenv('CUDA_HOME') ?: '/usr/local/cuda'
+  javaHome = System.getProperty('java.home')
+  jniIncludeDir = "${javaHome}/include"
+  jniPlatformIncludeDir = OperatingSystem.current().isLinux() ? 
+    "${jniIncludeDir}/linux" : 
+    "${jniIncludeDir}/darwin"
+  
+  nativeLibName = 'venice_gpu_transformer'
+  jniSourceDir = file('src/main/jni')
+  nativeBuildDir = file("${buildDir}/native")
+  generatedHeadersDir = file("${buildDir}/generated/headers/java/main")
+}
+
+// Create directories
+task createNativeBuildDir {
+  doLast {
+    nativeBuildDir.mkdirs()
+  }
+}
+
+// Task to compile CUDA files
+task compileCuda(type: Exec) {
+  dependsOn createNativeBuildDir, compileJava
+  
+  workingDir nativeBuildDir
+  
+  commandLine "${cudaHome}/bin/nvcc",
+    '-c',
+    '-Xcompiler', '-fPIC',
+    '-O3',
+    '-arch=sm_70',  // Adjust based on your GPU architecture
+    '-std=c++14',
+    "${jniSourceDir}/gpu_hashmap.cu",
+    '-o', "${nativeBuildDir}/gpu_hashmap.o"
+    
+  doFirst {
+    println "Compiling CUDA file: ${jniSourceDir}/gpu_hashmap.cu"
+    println "CUDA Home: ${cudaHome}"
+  }
+}
+
+// Task to compile C++ JNI wrapper
+task compileJNI(type: Exec) {
+  dependsOn createNativeBuildDir, compileJava
+  
+  workingDir nativeBuildDir
+  
+  commandLine 'g++',
+    '-c',
+    '-fPIC',
+    '-O3',
+    '-std=c++14',
+    "-I${jniIncludeDir}",
+    "-I${jniPlatformIncludeDir}",
+    "-I${generatedHeadersDir}",
+    "-I${cudaHome}/include",
+    "${jniSourceDir}/com_linkedin_venice_cuda_GPUDaVinciRecordTransformer.cpp",
+    '-o', "${nativeBuildDir}/com_linkedin_venice_cuda_GPUDaVinciRecordTransformer.o"
+    
+  doFirst {
+    println "Compiling JNI file: ${jniSourceDir}/com_linkedin_venice_cuda_GPUDaVinciRecordTransformer.cpp"
+    println "JNI Include: ${jniIncludeDir}"
+    println "Generated Headers: ${generatedHeadersDir}"
+  }
+}
+
+// Task to link the shared library
+task linkNativeLibrary(type: Exec) {
+  dependsOn compileCuda, compileJNI
+  
+  workingDir nativeBuildDir
+  
+  def libFileName = OperatingSystem.current().isLinux() ? 
+    "lib${nativeLibName}.so" : 
+    "lib${nativeLibName}.dylib"
+  
+  commandLine 'g++',
+    '-shared',
+    '-fPIC',
+    '-O3',
+    "${nativeBuildDir}/com_linkedin_venice_cuda_GPUDaVinciRecordTransformer.o",
+    "${nativeBuildDir}/gpu_hashmap.o",
+    "-L${cudaHome}/lib64",
+    '-lcudart',
+    '-o', "${nativeBuildDir}/${libFileName}"
+    
+  doFirst {
+    println "Linking native library: ${nativeBuildDir}/${libFileName}"
+  }
+  
+  doLast {
+    println "Native library created: ${nativeBuildDir}/${libFileName}"
+  }
+}
+
+// Copy native library to resources
+task copyNativeLibrary(type: Copy) {
+  dependsOn linkNativeLibrary
+  
+  def libFileName = OperatingSystem.current().isLinux() ? 
+    "lib${nativeLibName}.so" : 
+    "lib${nativeLibName}.dylib"
+    
+  from "${nativeBuildDir}/${libFileName}"
+  into "${buildDir}/resources/main/native/${OperatingSystem.current().isLinux() ? 'linux' : 'darwin'}-x86_64"
+  
+  doLast {
+    println "Native library copied to resources"
+  }
+}
+
+// Make sure native library is built before processing resources
+processResources.dependsOn copyNativeLibrary
+
+// Clean native build artifacts
+clean {
+  delete nativeBuildDir
+}
