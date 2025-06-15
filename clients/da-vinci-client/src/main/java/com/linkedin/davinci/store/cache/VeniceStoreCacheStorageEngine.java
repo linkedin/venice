@@ -34,7 +34,7 @@ public class VeniceStoreCacheStorageEngine extends AbstractStorageEngine<VeniceS
     omniPartition = new VeniceStoreCacheStoragePartition(0, cacheConfig, keySchema, asyncCacheLoader);
     // Add the 0 partitionId automatically in order to satisfy the supers metadata (and we automatically created the
     // omniPartition for this engine)
-    this.addStoragePartition(0);
+    this.addStoragePartitionIfAbsent(0);
   }
 
   @Override

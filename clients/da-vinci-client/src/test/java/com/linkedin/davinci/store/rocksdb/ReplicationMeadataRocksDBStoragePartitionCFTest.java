@@ -13,6 +13,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
+import com.linkedin.davinci.store.StorageEngineAccessor;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -62,8 +63,8 @@ public class ReplicationMeadataRocksDBStoragePartitionCFTest extends Replication
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         mockReadOnlyStoreRepository);
     storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
-    testStoreEngine =
-        (RocksDBStorageEngine) storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null);
+    testStoreEngine = StorageEngineAccessor
+        .getInnerStorageEngine(storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null));
     createStoreForTest();
     String stringSchema = "\"string\"";
     Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(stringSchema, 1);

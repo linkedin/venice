@@ -7,6 +7,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
+import com.linkedin.davinci.store.StorageEngineAccessor;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -16,7 +17,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
+public class InMemoryStorageEngineTest extends AbstractStorageEngineTest<InMemoryStorageEngine> {
   StorageService service;
   VeniceStoreVersionConfig storeConfig;
   final static String STORE_NAME = "testng-in-memory";
@@ -51,7 +52,8 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
         mock(ReadOnlyStoreRepository.class));
     storeConfig = new VeniceStoreVersionConfig(STORE_NAME, serverProperties);
 
-    testStoreEngine = (InMemoryStorageEngine) service.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null);
+    testStoreEngine = StorageEngineAccessor
+        .getInnerStorageEngine(service.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null));
     createStoreForTest();
   }
 

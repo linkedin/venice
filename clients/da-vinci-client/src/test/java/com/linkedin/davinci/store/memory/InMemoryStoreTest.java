@@ -23,7 +23,7 @@ public class InMemoryStoreTest extends AbstractStoreTest {
     VeniceStoreVersionConfig storeConfig = veniceConfigLoader.getStoreConfig(storeName);
 
     InMemoryStorageEngine inMemoryStorageEngine = new InMemoryStorageEngine(storeConfig);
-    inMemoryStorageEngine.addStoragePartition(0);
+    inMemoryStorageEngine.addStoragePartitionIfAbsent(0);
     this.testStore = inMemoryStorageEngine;
   }
 
