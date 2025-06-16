@@ -20,6 +20,7 @@ public class AggServerHttpRequestStatsTest {
   private AggServerHttpRequestStats singleGetStats;
   private AggServerHttpRequestStats singleGetStatsWithKVProfiling;
   private AggServerHttpRequestStats batchGetStats;
+  private AggServerHttpRequestStats computeStats;
 
   private static final String STORE_FOO = "store_foo";
   private static final String STORE_BAR = "store_bar";
@@ -55,6 +56,14 @@ public class AggServerHttpRequestStatsTest {
         Mockito.mock(ReadOnlyStoreRepository.class),
         true,
         false);
+    this.computeStats = new AggServerHttpRequestStats(
+        "test_cluster",
+        metricsRepository,
+        RequestType.COMPUTE,
+        false,
+        Mockito.mock(ReadOnlyStoreRepository.class),
+        true,
+        false);
 
     this.singleGetStatsWithKVProfiling = new AggServerHttpRequestStats(
         "test_cluster",
@@ -81,6 +90,8 @@ public class AggServerHttpRequestStatsTest {
     ServerHttpRequestStats singleGetServerStatsWithKvProfilingFoo =
         singleGetStatsWithKVProfiling.getStoreStats(STORE_FOO);
 
+    ServerHttpRequestStats computeServerStatsFoo = computeStats.getStoreStats(STORE_FOO);
+
     singleGetServerStatsFoo.recordSuccessRequest();
     singleGetServerStatsFoo.recordSuccessRequest();
     singleGetServerStatsFoo.recordErrorRequest();
@@ -91,6 +102,11 @@ public class AggServerHttpRequestStatsTest {
 
     singleGetServerStatsWithKvProfilingFoo.recordKeySizeInByte(100);
     singleGetServerStatsWithKvProfilingFoo.recordValueSizeInByte(1000);
+
+    computeServerStatsFoo.recordDotProductCount(10);
+    computeServerStatsFoo.recordCosineSimilarityCount(10);
+    computeServerStatsFoo.recordHadamardProduct(10);
+    computeServerStatsFoo.recordCountOperator(10);
 
     Assert.assertTrue(
         reporter.query("." + STORE_FOO + "--success_request.OccurrenceRate").value() > 0,
@@ -114,6 +130,19 @@ public class AggServerHttpRequestStatsTest {
     Assert.assertTrue(
         reporterForKVProfiling.query(".store_foo--request_key_size.Max").value() > 0,
         "Max value for request key size should always be recorded");
+
+    Assert.assertTrue(
+        reporter.query(".store_foo--compute_dot_product_count.Avg").value() > 0,
+        "Avg value for compute dot product count should always be recorded");
+    Assert.assertTrue(
+        reporter.query(".store_foo--compute_cosine_similarity_count.Avg").value() > 0,
+        "Avg value for compute dot product count should always be recorded");
+    Assert.assertTrue(
+        reporter.query(".store_foo--compute_hadamard_product_count.Avg").value() > 0,
+        "Avg value for compute dot product count should always be recorded");
+    Assert.assertTrue(
+        reporter.query(".store_foo--compute_count_operator_count.Avg").value() > 0,
+        "Avg value for compute dot product count should always be recorded");
 
     String[] fineGrainedPercentiles = new String[] { "0_01", "0_01", "0_1", "1", "2", "3", "4", "5", "10", "20", "30",
         "40", "50", "60", "70", "80", "90", "95", "99", "99_9" };
