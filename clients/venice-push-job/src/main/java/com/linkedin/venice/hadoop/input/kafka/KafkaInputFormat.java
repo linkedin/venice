@@ -49,7 +49,9 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
    * BTW, this calculation is not accurate since it is purely based on offset, and the topic
    * being consumed could have log compaction enabled.
    */
-  public static final long DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = 5000000L;
+  public static final long DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = 5_000_000L;
+  public static final int DEFAULT_MAX_KIF_MAPPER_COUNT = 10_000;
+
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   protected Map<PubSubTopicPartition, Long> getLatestOffsets(JobConf config) {
@@ -98,16 +100,22 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
 
   public InputSplit[] getSplitsByRecordsPerSplit(JobConf job, long maxRecordsPerSplit) {
     Map<PubSubTopicPartition, Long> latestOffsets = getLatestOffsets(job);
-    List<InputSplit> splits = new LinkedList<>();
-    latestOffsets.forEach((topicPartition, end) -> {
+    long totalEndOffset = latestOffsets.values().stream().mapToLong(Long::longValue).sum();
+    long totalSplitEstimate = totalEndOffset / maxRecordsPerSplit;
+    if (totalSplitEstimate > DEFAULT_MAX_KIF_MAPPER_COUNT) {
+      maxRecordsPerSplit = totalSplitEstimate / DEFAULT_MAX_KIF_MAPPER_COUNT;
+    }
 
+    List<InputSplit> splits = new LinkedList<>();
+    long finalMaxRecordsPerSplit = maxRecordsPerSplit;
+    latestOffsets.forEach((topicPartition, end) -> {
       /**
        * Chop up any excessively large partitions into multiple splits for more balanced map task durations. This will
        * also exclude any partitions with no records to read (where the start offset equals the end offset).
        */
       long splitStart = 0;
       while (splitStart < end) {
-        long splitEnd = Math.min(splitStart + maxRecordsPerSplit, end);
+        long splitEnd = Math.min(splitStart + finalMaxRecordsPerSplit, end);
         splits.add(new KafkaInputSplit(pubSubTopicRepository, topicPartition, splitStart, splitEnd));
         splitStart = splitEnd;
       }
