@@ -417,70 +417,6 @@ public class ReadComputeValidationTest {
     }
   }
 
-  /**
-   * Integration test for countGroupByValue computation on array fields.
-   * Verifies the aggregation operation works correctly in a distributed environment.
-   * 
-   * @throws Exception if test execution fails
-   */
-  @Test(timeOut = TIMEOUT)
-  public void testCountGroupByValueProof() throws Exception {
-    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setCompressionStrategy(compressionStrategy);
-    params.setReadComputationEnabled(true);
-    veniceCluster.updateStore(storeName, params);
-
-    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName);
-    String topic = newVersion.getKafkaTopic();
-
-    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
-        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
-    VeniceWriterFactory vwFactory = IntegrationTestPushUtils
-        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
-
-    try (
-        VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory
-            .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer).build());
-        AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr))) {
-
-      pushSyntheticDataToStore(
-          topic,
-          5,
-          veniceWriter,
-          newVersion.getVersion(),
-          VALUE_SCHEMA_FOR_COMPUTE,
-          valueSerializer,
-          false,
-          1);
-
-      Set<Integer> keySet = new HashSet<>(Arrays.asList(1, 2, 3));
-
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-        // Test if the call succeeds, regardless of specific results
-        try {
-          ComputeAggregationResponse response =
-              ((AvroGenericReadComputeStoreClient<Integer, Object>) storeClient).computeAggregation()
-                  .countGroupByValue(3, "companiesEmbedding")
-                  .execute(keySet)
-                  .get();
-
-          // Success if the call completes
-          Assert.assertNotNull(response, "Response should not be null");
-          System.out.println("✓ countGroupByValue executed successfully!");
-
-          Map<Object, Integer> counts = response.getValueToCount("companiesEmbedding");
-          System.out.println("Got counts: " + counts.size() + " entries");
-
-        } catch (Exception e) {
-          System.out.println("countGroupByValue failed: " + e.getMessage());
-          throw e;
-        }
-      });
-    }
-  }
-
   private void pushRecordsToStore(
       String topic,
       Map<Integer, GenericRecord> valuesByKey,
@@ -552,5 +488,58 @@ public class ReadComputeValidationTest {
       feature.add(rand.nextFloat());
     }
     return feature;
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testCountGroupByValueProof() throws Exception {
+    // Simple integration test to verify countGroupByValue API works
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setReadComputationEnabled(true);
+    veniceCluster.updateStore(storeName, params);
+
+    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName);
+    String topic = newVersion.getKafkaTopic();
+
+    PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
+        veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
+    VeniceWriterFactory vwFactory = IntegrationTestPushUtils
+        .getVeniceWriterFactory(veniceCluster.getPubSubBrokerWrapper(), pubSubProducerAdapterFactory);
+
+    try (
+        VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory
+            .createVeniceWriter(new VeniceWriterOptions.Builder(topic).setKeyPayloadSerializer(keySerializer).build());
+        AvroGenericStoreClient<Integer, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr))) {
+
+      // Push some test data
+      pushSyntheticDataToStore(
+          topic,
+          3,
+          veniceWriter,
+          newVersion.getVersion(),
+          VALUE_SCHEMA_FOR_COMPUTE,
+          valueSerializer,
+          false,
+          1);
+
+      Set<Integer> keySet = new HashSet<>(Arrays.asList(1, 2));
+
+      // Just verify the API can be called successfully
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        ComputeAggregationResponse response =
+            ((AvroGenericReadComputeStoreClient<Integer, Object>) storeClient).computeAggregation()
+                .countGroupByValue(10, "companiesEmbedding")
+                .execute(keySet)
+                .get();
+
+        // Basic verification - the call should succeed and return a response
+        Assert.assertNotNull(response, "Response should not be null");
+
+        Map<Object, Integer> counts = response.getValueToCount("companiesEmbedding");
+        Assert.assertNotNull(counts, "Counts should not be null");
+
+        System.out.println("countGroupByValue API test passed!");
+      });
+    }
   }
 }

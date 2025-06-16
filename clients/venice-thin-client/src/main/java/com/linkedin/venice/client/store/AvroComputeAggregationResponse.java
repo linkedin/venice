@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -31,17 +32,33 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
 
     // Aggregate counts from all compute results
     for (ComputeGenericRecord record: computeResults.values()) {
-      String countFieldName = fieldName + "_count";
-      Integer count = (Integer) record.get(countFieldName);
-      @SuppressWarnings("unchecked")
-      T value = (T) record.get(fieldName);
+      Object fieldValue = record.get(fieldName);
 
-      // Handle null counts as 0
-      if (count == null) {
-        count = 0;
+      if (fieldValue == null) {
+        // Handle null field value
+        valueToCount.merge(null, 1, Integer::sum);
+      } else if (fieldValue instanceof Collection) {
+        // Handle array fields
+        Collection<?> collection = (Collection<?>) fieldValue;
+        for (Object value: collection) {
+          @SuppressWarnings("unchecked")
+          T typedValue = (T) value;
+          valueToCount.merge(typedValue, 1, Integer::sum);
+        }
+      } else if (fieldValue instanceof Map) {
+        // Handle map fields - count the values (not keys)
+        Map<?, ?> map = (Map<?, ?>) fieldValue;
+        for (Object value: map.values()) {
+          @SuppressWarnings("unchecked")
+          T typedValue = (T) value;
+          valueToCount.merge(typedValue, 1, Integer::sum);
+        }
+      } else {
+        // Handle scalar fields (shouldn't happen based on validation, but be defensive)
+        @SuppressWarnings("unchecked")
+        T typedValue = (T) fieldValue;
+        valueToCount.merge(typedValue, 1, Integer::sum);
       }
-
-      valueToCount.merge(value, count, Integer::sum);
     }
 
     // Sort by count in descending order and take top K

@@ -4,11 +4,13 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -88,23 +90,31 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
   private void setupMockData() {
     computeResults = new HashMap<>();
 
-    // Setup record1 with value1
-    when(record1.get(FIELD_1)).thenReturn(VALUE_1);
-    when(record1.get(FIELD_1 + COUNT_SUFFIX)).thenReturn(5);
-    when(record1.get(FIELD_2)).thenReturn(VALUE_2);
-    when(record1.get(FIELD_2 + COUNT_SUFFIX)).thenReturn(3);
+    // Setup record1 with array values
+    List<String> arrayValues1 = Arrays.asList(VALUE_1, VALUE_2, VALUE_1, VALUE_1);
+    when(record1.get(FIELD_1)).thenReturn(arrayValues1);
 
-    // Setup record2 with value2
-    when(record2.get(FIELD_1)).thenReturn(VALUE_2);
-    when(record2.get(FIELD_1 + COUNT_SUFFIX)).thenReturn(3);
-    when(record2.get(FIELD_2)).thenReturn(VALUE_1);
-    when(record2.get(FIELD_2 + COUNT_SUFFIX)).thenReturn(5);
+    Map<String, String> mapValues1 = new HashMap<>();
+    mapValues1.put("key1", VALUE_2);
+    mapValues1.put("key2", VALUE_2);
+    mapValues1.put("key3", VALUE_2);
+    when(record1.get(FIELD_2)).thenReturn(mapValues1);
 
-    // Setup record3 with null values
+    // Setup record2 with array values
+    List<String> arrayValues2 = Arrays.asList(VALUE_2, VALUE_2, VALUE_2);
+    when(record2.get(FIELD_1)).thenReturn(arrayValues2);
+
+    Map<String, String> mapValues2 = new HashMap<>();
+    mapValues2.put("key4", VALUE_1);
+    mapValues2.put("key5", VALUE_1);
+    mapValues2.put("key6", VALUE_1);
+    mapValues2.put("key7", VALUE_1);
+    mapValues2.put("key8", VALUE_1);
+    when(record2.get(FIELD_2)).thenReturn(mapValues2);
+
+    // Setup record3 with null and empty collections
     when(record3.get(FIELD_1)).thenReturn(null);
-    when(record3.get(FIELD_1 + COUNT_SUFFIX)).thenReturn(2);
-    when(record3.get(FIELD_2)).thenReturn(null);
-    when(record3.get(FIELD_2 + COUNT_SUFFIX)).thenReturn(2);
+    when(record3.get(FIELD_2)).thenReturn(new HashMap<>());
 
     computeResults.put("key1", record1);
     computeResults.put("key2", record2);
@@ -134,10 +144,9 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
     Map<String, ComputeGenericRecord> results = new HashMap<>();
     ComputeGenericRecord record = mock(ComputeGenericRecord.class);
 
-    // Setup mock data based on field type
-    Object value = getMockValueForType(fieldType);
+    // Setup mock data based on field type - always use collections
+    Object value = getMockCollectionForType(fieldType);
     when(record.get(fieldName)).thenReturn(value);
-    when(record.get(fieldName + COUNT_SUFFIX)).thenReturn(1);
     results.put("key1", record);
 
     Map<String, Integer> fieldTopK = new HashMap<>();
@@ -146,8 +155,19 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
 
     Map<Object, Integer> result = response.getValueToCount(fieldName);
     assertNotNull(result, "Result should not be null");
-    assertEquals(result.size(), 1, "Should have one count");
-    assertEquals(result.get(value), Integer.valueOf(1), "Should have correct count");
+
+    if (value instanceof List) {
+      assertEquals(result.size(), 1, "Should have one unique value from array");
+      assertTrue(result.containsKey(getMockValueForType(fieldType)));
+    } else if (value instanceof Map) {
+      assertEquals(result.size(), 1, "Should have one unique value from map");
+      assertTrue(result.containsKey(getMockValueForType(fieldType)));
+    }
+  }
+
+  private Object getMockCollectionForType(Schema.Type type) {
+    Object value = getMockValueForType(type);
+    return Arrays.asList(value); // Always return as array for testing
   }
 
   private Object getMockValueForType(Schema.Type type) {
@@ -176,10 +196,10 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
     Map<String, Integer> result = response.getValueToCount(FIELD_1);
 
     assertNotNull(result, "Result should not be null");
-    assertEquals(result.size(), 3, "Should have counts for all values");
-    assertEquals(result.get(VALUE_1), Integer.valueOf(5), "Value1 count should be 5");
-    assertEquals(result.get(VALUE_2), Integer.valueOf(3), "Value2 count should be 3");
-    assertEquals(result.get(null), Integer.valueOf(2), "Null count should be 2");
+    assertEquals(result.size(), 3, "Should have counts for all values including null");
+    assertEquals(result.get(VALUE_1), Integer.valueOf(3), "Value1 count should be 3");
+    assertEquals(result.get(VALUE_2), Integer.valueOf(4), "Value2 count should be 4");
+    assertEquals(result.get(null), Integer.valueOf(1), "Null count should be 1");
   }
 
   @Test(description = "Should handle empty results")
@@ -196,7 +216,6 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
     Map<String, ComputeGenericRecord> results = new HashMap<>();
     ComputeGenericRecord record = mock(ComputeGenericRecord.class);
     when(record.get(FIELD_1)).thenReturn(null);
-    when(record.get(FIELD_1 + COUNT_SUFFIX)).thenReturn(1);
     results.put("key1", record);
 
     response = new AvroComputeAggregationResponse<>(results, fieldTopKMap);
@@ -211,19 +230,20 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
     Map<String, ComputeGenericRecord> results = new HashMap<>();
 
     ComputeGenericRecord record = mock(ComputeGenericRecord.class);
-    when(record.get(FIELD_1)).thenReturn(VALUE_1);
-    when(record.get(FIELD_1 + COUNT_SUFFIX)).thenReturn(5);
+    List<String> values1 = Arrays.asList(VALUE_1, VALUE_1, VALUE_1, VALUE_1, VALUE_1);
+    when(record.get(FIELD_1)).thenReturn(values1);
     results.put("key1", record);
 
     ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
-    when(record2.get(FIELD_1)).thenReturn(VALUE_2);
-    when(record2.get(FIELD_1 + COUNT_SUFFIX)).thenReturn(5);
+    List<String> values2 = Arrays.asList(VALUE_2, VALUE_2, VALUE_2, VALUE_2, VALUE_2);
+    when(record2.get(FIELD_1)).thenReturn(values2);
     results.put("key2", record2);
 
     response = new AvroComputeAggregationResponse<>(results, fieldTopKMap);
     Map<String, Integer> result = response.getValueToCount(FIELD_1);
 
     assertEquals(result.get(VALUE_1), result.get(VALUE_2), "Values with equal counts should be preserved");
+    assertEquals(result.get(VALUE_1), Integer.valueOf(5), "Both values should have count of 5");
   }
 
   @Test(description = "Should handle non-existent field")
@@ -233,17 +253,18 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
 
   @Test(description = "Should handle null counts")
   public void testGetValueToCount_NullCounts_Basic() {
+    // This test is no longer relevant since we count actual values, not pre-computed counts
+    // Removing or updating to test empty collections instead
     Map<String, ComputeGenericRecord> results = new HashMap<>();
     ComputeGenericRecord record = mock(ComputeGenericRecord.class);
-    when(record.get(FIELD_1)).thenReturn(VALUE_1);
-    when(record.get(FIELD_1 + COUNT_SUFFIX)).thenReturn(null);
+    when(record.get(FIELD_1)).thenReturn(new ArrayList<>()); // Empty array
     results.put("key1", record);
 
     response = new AvroComputeAggregationResponse<>(results, fieldTopKMap);
     Map<String, Integer> result = response.getValueToCount(FIELD_1);
 
-    assertNotNull(result, "Field counts should not be null");
-    assertEquals(result.get(VALUE_1), Integer.valueOf(0), "Null count should be treated as 0");
+    assertNotNull(result, "Result should not be null");
+    assertTrue(result.isEmpty(), "Empty array should produce empty result");
   }
 
   @Test(description = "Should handle single result")
@@ -255,8 +276,9 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
     Map<String, Integer> result = response.getValueToCount(FIELD_1);
 
     assertNotNull(result, "Result should not be null");
-    assertEquals(result.size(), 1, "Should have one count");
-    assertEquals(result.get(VALUE_1), Integer.valueOf(5), "Should have correct count for single result");
+    assertEquals(result.size(), 2, "Should have two unique values");
+    assertEquals(result.get(VALUE_1), Integer.valueOf(3), "Should have correct count for value1");
+    assertEquals(result.get(VALUE_2), Integer.valueOf(1), "Should have correct count for value2");
   }
 
   // Group 2: Edge Cases
@@ -265,8 +287,8 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
   public void testGetValueToCount_SingleResult_TopK() {
     Map<String, ComputeGenericRecord> results = new HashMap<>();
     ComputeGenericRecord record = mock(ComputeGenericRecord.class);
-    when(record.get(FIELD_1)).thenReturn("single");
-    when(record.get(FIELD_1 + COUNT_SUFFIX)).thenReturn(1);
+    List<String> values = Arrays.asList("single", "single", "other");
+    when(record.get(FIELD_1)).thenReturn(values);
     results.put("key1", record);
 
     Map<String, Integer> topKMap = new HashMap<>();
@@ -276,7 +298,8 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
     Map<String, Integer> valueToCount = response.getValueToCount(FIELD_1);
     assertNotNull(valueToCount, "Result map should not be null");
     assertEquals(valueToCount.size(), 1, "Should return exactly one result");
-    assertEquals(valueToCount.get("single").intValue(), 1, "Should contain the correct count");
+    assertEquals(valueToCount.get("single").intValue(), 2, "Should contain the top count");
+    assertNull(valueToCount.get("other"), "Lower count value should not be included");
   }
 
   @Test(description = "Should handle empty compute results")
@@ -293,12 +316,11 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
 
     ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
     when(record1.get(FIELD_1)).thenReturn(null);
-    when(record1.get(FIELD_1 + COUNT_SUFFIX)).thenReturn(5);
     results.put("key1", record1);
 
     ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
-    when(record2.get(FIELD_1)).thenReturn("value2");
-    when(record2.get(FIELD_1 + COUNT_SUFFIX)).thenReturn(3);
+    List<String> values = Arrays.asList("value2", "value2", "value2");
+    when(record2.get(FIELD_1)).thenReturn(values);
     results.put("key2", record2);
 
     response = new AvroComputeAggregationResponse<>(results, fieldTopKMap);
@@ -306,7 +328,7 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
 
     assertNotNull(valueToCount, "Result map should not be null");
     assertEquals(valueToCount.size(), 2, "Should include null value in results");
-    assertEquals(valueToCount.get(null).intValue(), 5, "Should contain count for null value");
+    assertEquals(valueToCount.get(null).intValue(), 1, "Should contain count for null value");
     assertEquals(valueToCount.get("value2").intValue(), 3, "Should contain count for non-null value");
   }
 
@@ -314,16 +336,20 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
 
   @Test(description = "Should handle null count values")
   public void testGetValueToCount_NullCounts_Error() {
+    // Update test to check handling of mixed collection types
     Map<String, ComputeGenericRecord> results = new HashMap<>();
 
     ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
-    when(record1.get(FIELD_1)).thenReturn("value1");
-    when(record1.get(FIELD_1 + COUNT_SUFFIX)).thenReturn(null);
+    List<String> arrayValues = Arrays.asList("value1");
+    when(record1.get(FIELD_1)).thenReturn(arrayValues);
     results.put("key1", record1);
 
     ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
-    when(record2.get(FIELD_1)).thenReturn("value2");
-    when(record2.get(FIELD_1 + COUNT_SUFFIX)).thenReturn(3);
+    Map<String, String> mapValues = new HashMap<>();
+    mapValues.put("k1", "value2");
+    mapValues.put("k2", "value2");
+    mapValues.put("k3", "value2");
+    when(record2.get(FIELD_1)).thenReturn(mapValues);
     results.put("key2", record2);
 
     response = new AvroComputeAggregationResponse<>(results, fieldTopKMap);
@@ -331,8 +357,8 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
 
     assertNotNull(valueToCount, "Result map should not be null");
     assertEquals(valueToCount.size(), 2, "Should include both values");
-    assertEquals(valueToCount.get("value1").intValue(), 0, "Should treat null count as 0");
-    assertEquals(valueToCount.get("value2").intValue(), 3, "Should contain the non-null count");
+    assertEquals(valueToCount.get("value1").intValue(), 1, "Should have count from array");
+    assertEquals(valueToCount.get("value2").intValue(), 3, "Should have count from map values");
   }
 
   @Test(description = "Should handle non-existent field")
@@ -370,5 +396,79 @@ public class AvroComputeAggregationResponseTest extends TestUtils {
     for (Map<String, Integer> result: results) {
       assertEquals(result, firstResult, "All results should be identical");
     }
+  }
+
+  @Test(description = "Should aggregate counts from array fields correctly")
+  public void testGetValueToCount_ArrayField_RealScenario() {
+    Map<String, ComputeGenericRecord> results = new HashMap<>();
+
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    when(record1.get("tags")).thenReturn(Arrays.asList("java", "python", "java"));
+    results.put("user1", record1);
+
+    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
+    when(record2.get("tags")).thenReturn(Arrays.asList("python", "golang"));
+    results.put("user2", record2);
+
+    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
+    when(record3.get("tags")).thenReturn(Arrays.asList("java", "rust"));
+    results.put("user3", record3);
+
+    Map<String, Integer> fieldTopK = new HashMap<>();
+    fieldTopK.put("tags", 3);
+
+    AvroComputeAggregationResponse<String> response = new AvroComputeAggregationResponse<>(results, fieldTopK);
+
+    Map<String, Integer> tagCounts = response.getValueToCount("tags");
+
+    assertEquals(tagCounts.size(), 3, "Should return exactly top 3 values");
+    assertEquals(tagCounts.get("java"), Integer.valueOf(3));
+    assertEquals(tagCounts.get("python"), Integer.valueOf(2));
+    // Either golang or rust will be included (both have count of 1)
+    assertTrue(
+        tagCounts.containsKey("golang") || tagCounts.containsKey("rust"),
+        "Should include one of the values with count 1");
+  }
+
+  @Test(description = "Should aggregate counts from map fields correctly")
+  public void testGetValueToCount_MapField_RealScenario() {
+    Map<String, ComputeGenericRecord> results = new HashMap<>();
+
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    Map<String, String> preferences1 = new HashMap<>();
+    preferences1.put("color", "blue");
+    preferences1.put("theme", "dark");
+    preferences1.put("language", "en");
+    when(record1.get("preferences")).thenReturn(preferences1);
+    results.put("user1", record1);
+
+    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
+    Map<String, String> preferences2 = new HashMap<>();
+    preferences2.put("color", "blue");
+    preferences2.put("theme", "light");
+    preferences2.put("language", "en");
+    when(record2.get("preferences")).thenReturn(preferences2);
+    results.put("user2", record2);
+
+    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
+    Map<String, String> preferences3 = new HashMap<>();
+    preferences3.put("color", "red");
+    preferences3.put("theme", "dark");
+    preferences3.put("language", "es");
+    when(record3.get("preferences")).thenReturn(preferences3);
+    results.put("user3", record3);
+
+    Map<String, Integer> fieldTopK = new HashMap<>();
+    fieldTopK.put("preferences", 5);
+
+    AvroComputeAggregationResponse<String> response = new AvroComputeAggregationResponse<>(results, fieldTopK);
+
+    Map<String, Integer> preferenceCounts = response.getValueToCount("preferences");
+
+    assertEquals(preferenceCounts.get("blue"), Integer.valueOf(2));
+    assertEquals(preferenceCounts.get("dark"), Integer.valueOf(2));
+    assertEquals(preferenceCounts.get("en"), Integer.valueOf(2));
+    assertEquals(preferenceCounts.get("light"), Integer.valueOf(1));
+    assertEquals(preferenceCounts.get("red"), Integer.valueOf(1));
   }
 }

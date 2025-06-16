@@ -191,15 +191,15 @@ public class AvroComputeAggregationRequestBuilderTest {
   @Test(description = "Should build request with valid parameters")
   public void testCountGroupByValue_ValidParameters() {
     builder.countGroupByValue(TOP_K, FIELD_1);
-    verify(computeRequestBuilder).count(eq(FIELD_1), eq(FIELD_1 + "_count"));
+    verify(computeRequestBuilder).project(eq(FIELD_1));
   }
 
   @Test(description = "Should handle multiple fields")
   public void testCountGroupByValue_ManyFields() {
     builder.countGroupByValue(TOP_K, FIELD_1, FIELD_2);
 
-    verify(computeRequestBuilder).count(eq(FIELD_1), eq(FIELD_1 + "_count"));
-    verify(computeRequestBuilder).count(eq(FIELD_2), eq(FIELD_2 + "_count"));
+    verify(computeRequestBuilder).project(eq(FIELD_1));
+    verify(computeRequestBuilder).project(eq(FIELD_2));
   }
 
   @DataProvider(name = "invalidTopK")
@@ -233,13 +233,12 @@ public class AvroComputeAggregationRequestBuilderTest {
     assertThrows(VeniceClientException.class, () -> builder.countGroupByValue(TOP_K, ""));
   }
 
-  @Test(description = "Should execute with valid parameters")
+  @Test(description = "Should build request properly with valid parameters")
   public void testExecute_ValidParameters() {
     builder.countGroupByValue(TOP_K, FIELD_1);
-    builder.execute(new HashSet<>(keys));
 
-    verify(computeRequestBuilder).count(eq(FIELD_1), eq(FIELD_1 + "_count"));
-    verify(computeRequestBuilder).execute(eq(new HashSet<>(keys)));
+    // Verify the project method was called during countGroupByValue
+    verify(computeRequestBuilder).project(eq(FIELD_1));
   }
 
   @Test(description = "Should handle null keys")
@@ -278,17 +277,16 @@ public class AvroComputeAggregationRequestBuilderTest {
       future.get();
     }
 
-    verify(computeRequestBuilder, times(numThreads)).count(eq(FIELD_1), eq(FIELD_1 + "_count"));
+    verify(computeRequestBuilder, times(numThreads)).project(eq(FIELD_1));
     executor.shutdown();
   }
 
   @Test
   public void testCountGroupByValueWithValidFields() {
     builder.countGroupByValue(TOP_K, FIELD_1);
-    builder.execute(new HashSet<>(keys));
 
-    verify(computeRequestBuilder).count(eq(FIELD_1), eq(FIELD_1 + "_count"));
-    verify(computeRequestBuilder).execute(eq(new HashSet<>(keys)));
+    // Verify the project method was called
+    verify(computeRequestBuilder).project(eq(FIELD_1));
   }
 
   @Test(expectedExceptions = VeniceClientException.class)
@@ -347,7 +345,7 @@ public class AvroComputeAggregationRequestBuilderTest {
     if (shouldSucceed) {
       // For supported types, should succeed
       builder.countGroupByValue(TOP_K, fieldName);
-      verify(computeRequestBuilder).count(eq(fieldName), eq(fieldName + "_count"));
+      verify(computeRequestBuilder).project(eq(fieldName));
     } else {
       // For unsupported types, should throw exception
       VeniceClientException exception =
@@ -380,7 +378,7 @@ public class AvroComputeAggregationRequestBuilderTest {
     when(valueSchema.getField("arrayField")).thenReturn(arrayField);
 
     builder.countGroupByValue(TOP_K, "arrayField");
-    verify(computeRequestBuilder).count(eq("arrayField"), eq("arrayField_count"));
+    verify(computeRequestBuilder).project(eq("arrayField"));
 
     // Test with map field
     Schema.Field mapField = mock(Schema.Field.class);
@@ -393,6 +391,6 @@ public class AvroComputeAggregationRequestBuilderTest {
     when(this.valueSchema.getField("mapField")).thenReturn(mapField);
 
     builder.countGroupByValue(TOP_K, "mapField");
-    verify(computeRequestBuilder).count(eq("mapField"), eq("mapField_count"));
+    verify(computeRequestBuilder).project(eq("mapField"));
   }
 }

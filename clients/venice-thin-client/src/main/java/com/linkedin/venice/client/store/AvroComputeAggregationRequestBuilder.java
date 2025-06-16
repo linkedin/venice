@@ -55,6 +55,23 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
       // Validate field type
       Schema fieldSchema = field.schema();
       Schema.Type fieldType = fieldSchema.getType();
+
+      // Handle union types (nullable fields)
+      if (fieldType == Schema.Type.UNION) {
+        // Find the non-null type in the union
+        Schema actualSchema = null;
+        for (Schema unionMember: fieldSchema.getTypes()) {
+          if (unionMember.getType() != Schema.Type.NULL) {
+            actualSchema = unionMember;
+            break;
+          }
+        }
+        if (actualSchema != null) {
+          fieldSchema = actualSchema;
+          fieldType = actualSchema.getType();
+        }
+      }
+
       if (fieldType == Schema.Type.ARRAY) {
         Schema elementType = fieldSchema.getElementType();
         Schema.Type elementSchemaType = elementType.getType();
@@ -84,8 +101,9 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
       // Store topK value for each field
       fieldTopKMap.put(fieldName, topK);
 
-      // Add count operation for this field
-      delegate.count(fieldName, fieldName + "_count");
+      // For countGroupByValue, we need to project the field itself
+      // so we can process the values in the response
+      delegate.project(fieldName);
     }
     return this;
   }
