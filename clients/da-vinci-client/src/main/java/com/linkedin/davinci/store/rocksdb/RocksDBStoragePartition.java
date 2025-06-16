@@ -833,13 +833,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   public long getKeyCountEstimate() {
-    readCloseRWLock.readLock().lock();
-    try {
-      makeSureRocksDBIsStillOpen();
-      return getRocksDBStatValue("rocksdb.estimate-num-keys");
-    } finally {
-      readCloseRWLock.readLock().unlock();
-    }
+    return getRocksDBStatValue("rocksdb.estimate-num-keys");
   }
 
   public void deleteFilesInDirectory(String fullPath) {

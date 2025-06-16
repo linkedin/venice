@@ -430,7 +430,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
-  public <T> T executeWithSafeGuard(int partitionId, Callable<T> callable) {
+  protected <T> T executeWithSafeGuard(int partitionId, Callable<T> callable) {
     ReadWriteLock readWriteLock = getRWLockForPartitionOrThrow(partitionId);
     readWriteLock.readLock().lock();
     try {
