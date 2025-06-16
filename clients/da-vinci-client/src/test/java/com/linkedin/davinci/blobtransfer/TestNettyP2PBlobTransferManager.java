@@ -128,6 +128,7 @@ public class TestNettyP2PBlobTransferManager {
             tmpPartitionDir.toString(),
             storageMetadataService,
             30,
+            60,
             blobTransferMaxTimeoutInMin,
             globalChannelTrafficShapingHandler,
             sslFactory));
@@ -459,7 +460,8 @@ public class TestNettyP2PBlobTransferManager {
             tmpPartitionDir.toString(),
             storageMetadataService,
             30,
-            0, // timeout immediately
+            0, // general transfer timeout immediately
+            10,
             newGlobalChannelTrafficShapingHandler,
             sslFactory));
 
