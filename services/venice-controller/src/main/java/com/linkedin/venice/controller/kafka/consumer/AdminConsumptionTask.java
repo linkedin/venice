@@ -723,7 +723,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     long executionId = adminOperation.executionId;
     try {
       checkAndValidateMessage(adminOperation, record);
-      LOGGER.info("Received admin message: {} offset: {}", adminOperation, record.getPosition());
+      LOGGER.info(
+          "Received admin operation: {}, message {} offset: {}",
+          AdminMessageType.valueOf(adminOperation).name(),
+          adminOperation,
+          record.getPosition());
       consecutiveDuplicateMessageCount = 0;
     } catch (DuplicateDataException e) {
       // Previously processed message, safe to skip
