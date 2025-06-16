@@ -13,7 +13,6 @@ import static org.testng.Assert.expectThrows;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.schema.SchemaReader;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -70,7 +69,6 @@ public class AvroComputeAggregationRequestBuilderTest {
 
   private AvroComputeRequestBuilderV3<String> computeRequestBuilder;
   private AvroComputeAggregationRequestBuilder<String> builder;
-  private List<String> keys;
   private Map<String, Integer> fieldTopKMap;
 
   @BeforeMethod
@@ -182,7 +180,6 @@ public class AvroComputeAggregationRequestBuilderTest {
   }
 
   private void setupTestData() {
-    keys = Arrays.asList("key1", "key2", "key3");
     fieldTopKMap = new HashMap<>();
     fieldTopKMap.put(FIELD_1, TOP_K);
     fieldTopKMap.put(FIELD_2, TOP_K);
