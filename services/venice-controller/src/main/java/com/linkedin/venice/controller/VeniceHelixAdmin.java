@@ -43,7 +43,6 @@ import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
-import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
