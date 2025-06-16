@@ -73,6 +73,30 @@ public class StorageService extends AbstractVeniceService {
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
   private final ReadOnlyStoreRepository storeRepository;
+
+  /**
+   * This map tracks the storage engines for which some other component needs to latch onto their lifecycle.
+   *
+   * At the time of writing this JavaDoc, the only component which needs such lifecycle latch is the
+   * {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask}. The latching is achieved via
+   * {@link ReferenceCounted}, which the dependent component(s) will release when it no longer needs it.
+   *
+   * Note that it is possible for storage engines to exist within the {@link #storageEngineRepository}
+   * without existing within this map, if no component has latched on to its lifecycle.
+   *
+   * Here is an example of the steps involved in the components discussed above:
+   *
+   * 1. A store-version gets assigned to a server for the first time.
+   * 2. The storage engine gets created for the first time via {@link #openStore(VeniceStoreVersionConfig, Supplier)}.
+   * 3. The {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask} then gets created for the first time, and it
+   *    gets its own handle to the storage engine via {@link #getRefCountedStorageEngine(String)}. This is the step
+   *    which establishes the latch from the SIT to the SE, via ref-counting.
+   *
+   * The above sequence is important, because in some cases, there can be a closing and re-opening of a store-version on
+   * a server, and it can be the case that the SE gets closed, and a new one gets created, while the SIT does not have
+   * time to get closed yet, and it instead gets reused. In that case, the value from this map can be retrieved such
+   * that the storage engine reference can be updated.
+   */
   private final Map<String, ReferenceCounted<DelegatingStorageEngine>> storageEngines = new VeniceConcurrentHashMap<>();
 
   /**
