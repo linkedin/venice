@@ -156,6 +156,11 @@ public class VeniceControllerContext {
 
     private void addDefaultValues() {
       if (metricsRepository == null && !isMetricsRepositorySet) {
+        // initialise propertiesList to prevent NPE in VeniceMetricsRepository initialisation
+        if (propertiesList == null) {
+          propertiesList = Collections.singletonList(new VeniceProperties());
+        }
+
         metricsRepository = VeniceMetricsRepository.getVeniceMetricsRepository(
             CONTROLLER_SERVICE_NAME,
             CONTROLLER_SERVICE_METRIC_PREFIX,
