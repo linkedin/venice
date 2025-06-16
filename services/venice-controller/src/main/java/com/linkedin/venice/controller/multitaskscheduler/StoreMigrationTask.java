@@ -147,6 +147,10 @@ class StoreMigrationTask implements Runnable {
 
   private void abortMigration() {
     manager.cleanupMigrationRecord(record.getStoreName());
-    record.setIsAborted(true);
+    if (record.getAbortOnFailure()) {
+      LOGGER.info("Aborting migration for store: {}", record.getStoreName());
+      // TODO: Implement logic to abort the migration process
+      record.setIsAborted(true);
+    }
   }
 }

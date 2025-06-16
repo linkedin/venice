@@ -1254,7 +1254,7 @@ public class TestVeniceHelixAdmin {
 
     // Assert – scheduleMigration(...) must be invoked with the exact args
     verify(storeMigrationManager)
-        .scheduleMigration(eq(storeNameForMigration), eq(clusterName), eq(destCluster), eq(currStep), eq(0));
+        .scheduleMigration(eq(storeNameForMigration), eq(clusterName), eq(destCluster), eq(currStep), eq(0), eq(true));
 
     // Optional is empty → store migration unsupported
     doReturn(Optional.empty()).when(helixVeniceClusterResources).getMultiTaskSchedulerService();

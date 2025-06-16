@@ -255,7 +255,6 @@ public class TestAdminTool {
 
         adminToolMockedStatic.when(() -> AdminTool.userGivesPermission("Do you still want to proceed"))
             .thenReturn(false);
-        // AdminTool.autoMigrateStore("testCluster1", "testCluster2", storeName, false, false, false, false, false,
 
         AdminTool.abortMigration("http://localhost:7036", storeName, srcCluster, dstCluster, false, new boolean[0]);
         Mockito.verify(srcControllerClient, times(0)).discoverCluster(storeName);

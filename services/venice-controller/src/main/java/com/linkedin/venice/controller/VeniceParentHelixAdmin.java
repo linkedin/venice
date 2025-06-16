@@ -702,7 +702,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * //TODO: add comments
+   * This method is used to auto-migrate a store from one cluster to another.
    * @param srcClusterName
    * @param destClusterName
    * @param storeName
