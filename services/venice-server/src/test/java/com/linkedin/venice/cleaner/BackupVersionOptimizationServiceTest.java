@@ -11,7 +11,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.davinci.storage.StorageEngineRepository;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -36,12 +36,12 @@ public class BackupVersionOptimizationServiceTest {
   private StorageEngineRepository mockStorageEngineRepository(String storeName, int... versions) {
     Set<Integer> partitionIdSet = new HashSet<>();
     partitionIdSet.add(PARTITION_ID_0);
-    List<AbstractStorageEngine> engineList = new ArrayList<>(versions.length);
+    List<StorageEngine> engineList = new ArrayList<>(versions.length);
 
     StorageEngineRepository storageEngineRepository = mock(StorageEngineRepository.class);
     for (int version: versions) {
       String resourceName = Version.composeKafkaTopic(storeName, version);
-      AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+      StorageEngine storageEngine = mock(StorageEngine.class);
       doReturn(resourceName).when(storageEngine).getStoreVersionName();
       doReturn(partitionIdSet).when(storageEngine).getPartitionIds();
       engineList.add(storageEngine);
@@ -80,7 +80,7 @@ public class BackupVersionOptimizationServiceTest {
 
     StorageEngineRepository storageEngineRepository =
         mockStorageEngineRepository(storeName, backupVersion, currentVersion, futureVersionWhichDoesNotExistAnymore);
-    AbstractStorageEngine backupStorageEngine = storageEngineRepository.getLocalStorageEngine(backupResourceName);
+    StorageEngine backupStorageEngine = storageEngineRepository.getLocalStorageEngine(backupResourceName);
 
     Map<Integer, VersionStatus> versionStatusMap = new HashMap<>();
     versionStatusMap.put(backupVersion, ONLINE);
@@ -120,8 +120,8 @@ public class BackupVersionOptimizationServiceTest {
 
     StorageEngineRepository storageEngineRepository =
         mockStorageEngineRepository(storeName, backupVersion, currentVersion, futureVersion);
-    AbstractStorageEngine backupStorageEngine = storageEngineRepository.getLocalStorageEngine(backupResourceName);
-    AbstractStorageEngine newStorageEngine = storageEngineRepository.getLocalStorageEngine(newResourceName);
+    StorageEngine backupStorageEngine = storageEngineRepository.getLocalStorageEngine(backupResourceName);
+    StorageEngine newStorageEngine = storageEngineRepository.getLocalStorageEngine(newResourceName);
 
     Map<Integer, VersionStatus> versionStatusMap = new HashMap<>();
     versionStatusMap.put(backupVersion, ONLINE);
@@ -172,8 +172,8 @@ public class BackupVersionOptimizationServiceTest {
     String newResourceName = Version.composeKafkaTopic(storeName, newVersion);
 
     StorageEngineRepository storageEngineRepository = mockStorageEngineRepository(storeName, backupVersion, newVersion);
-    AbstractStorageEngine backupStorageEngine = storageEngineRepository.getLocalStorageEngine(backupResourceName);
-    AbstractStorageEngine newStorageEngine = storageEngineRepository.getLocalStorageEngine(newResourceName);
+    StorageEngine backupStorageEngine = storageEngineRepository.getLocalStorageEngine(backupResourceName);
+    StorageEngine newStorageEngine = storageEngineRepository.getLocalStorageEngine(newResourceName);
 
     Map<Integer, VersionStatus> versionStatusMap = new HashMap<>();
     versionStatusMap.put(backupVersion, ONLINE);
@@ -220,7 +220,7 @@ public class BackupVersionOptimizationServiceTest {
     String backupResourceName = Version.composeKafkaTopic(storeName, backupVersion);
 
     StorageEngineRepository storageEngineRepository = mockStorageEngineRepository(storeName, backupVersion, newVersion);
-    AbstractStorageEngine backupStorageEngine = storageEngineRepository.getLocalStorageEngine(backupResourceName);
+    StorageEngine backupStorageEngine = storageEngineRepository.getLocalStorageEngine(backupResourceName);
 
     Map<Integer, VersionStatus> versionStatusMap = new HashMap<>();
     versionStatusMap.put(backupVersion, ONLINE);

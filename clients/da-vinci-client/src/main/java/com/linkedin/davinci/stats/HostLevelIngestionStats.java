@@ -11,16 +11,14 @@ import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.LongAdderRateGauge;
-import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
+import io.tehuti.metrics.Measurable;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.AsyncGauge;
-import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
-import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
@@ -28,6 +26,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.ToLongFunction;
 
 
 /**
@@ -253,34 +252,25 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     final boolean isTotalStats = isTotalStats();
     registerSensor(
         new AsyncGauge(
-            (ignored, ignored2) -> ingestionTaskMap.values()
-                .stream()
-                .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
-                .mapToLong(
-                    task -> isTotalStats
-                        ? task.getStorageEngine().getCachedStoreSizeInBytes()
-                        : task.getStorageEngine().getStoreSizeInBytes())
-                .sum(),
+            measurable(
+                ingestionTaskMap,
+                storeName,
+                t -> t.getStorageEngine().getStats().getCachedStoreSizeInBytes(),
+                t -> t.getStorageEngine().getStats().getStoreSizeInBytes()),
             "disk_usage_in_bytes"));
+
     // Register an aggregate metric for rmd_disk_usage_in_bytes metric
     registerSensor(
         new AsyncGauge(
-            (ignored, ignored2) -> ingestionTaskMap.values()
-                .stream()
-                .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
-                .mapToLong(
-                    task -> isTotalStats
-                        ? task.getStorageEngine().getCachedRMDSizeInBytes()
-                        : task.getStorageEngine().getRMDSizeInBytes())
-                .sum(),
+            measurable(
+                ingestionTaskMap,
+                storeName,
+                t -> t.getStorageEngine().getStats().getCachedRMDSizeInBytes(),
+                t -> t.getStorageEngine().getStats().getRMDSizeInBytes()),
             "rmd_disk_usage_in_bytes"));
     registerSensor(
         new AsyncGauge(
-            (ignored, ignored2) -> ingestionTaskMap.values()
-                .stream()
-                .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
-                .mapToLong(task -> task.isStuckByMemoryConstraint() ? 1 : 0)
-                .sum(),
+            measurable(ingestionTaskMap, storeName, t -> t.isStuckByMemoryConstraint() ? 1 : 0),
             "ingestion_stuck_by_memory_constraint"));
     // Register a metric that records the size of ingestion tasks count
     if (isTotalStats) {
@@ -289,20 +279,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
     // Stats which are per-store only:
     String keySizeSensorName = "record_key_size_in_bytes";
-    this.keySizeSensor = registerSensor(
-        keySizeSensorName,
-        new Avg(),
-        new Min(),
-        new Max(),
-        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + keySizeSensorName));
+    this.keySizeSensor = registerSensor(keySizeSensorName, avgAndMax());
 
     String valueSizeSensorName = "record_value_size_in_bytes";
-    this.valueSizeSensor = registerSensor(
-        valueSizeSensorName,
-        new Avg(),
-        new Min(),
-        new Max(),
-        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName));
+    this.valueSizeSensor = registerSensor(valueSizeSensorName, avgAndMax());
 
     this.assembledRecordSizeSensor = registerPerStoreAndTotalSensor(
         ASSEMBLED_RECORD_SIZE_IN_BYTES,
@@ -335,9 +315,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         () -> totalStats.viewProducerAckLatencySensor,
         avgAndMax());
 
-    registerSensor(
-        "storage_quota_used",
-        new AsyncGauge((ignored, ignored2) -> hybridQuotaUsageGauge, "storage_quota_used"));
+    registerSensor(new AsyncGauge((ignored, ignored2) -> hybridQuotaUsageGauge, "storage_quota_used"));
 
     // Stats which are both per-store and total:
 
@@ -407,18 +385,13 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         storageEnginePutLatencySensorName,
         totalStats,
         () -> totalStats.storageEnginePutLatencySensor,
-        new Avg(),
-        new Max(),
-        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + storageEnginePutLatencySensorName));
+        avgAndMax());
 
     this.storageEngineDeleteLatencySensor = registerPerStoreAndTotalSensor(
         storageEngineDeleteLatencySensorName,
         totalStats,
         () -> totalStats.storageEngineDeleteLatencySensor,
-        new Avg(),
-        new Max(),
-        TehutiUtils
-            .getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + storageEngineDeleteLatencySensorName));
+        avgAndMax());
 
     this.writeComputeCacheHitCount = registerPerStoreAndTotalSensor(
         "write_compute_cache_hit_count",
@@ -509,13 +482,31 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         totalStats,
         () -> totalStats.batchProcessingRequestLatencySensor,
         avgAndMax());
-    this.totalDuplicateKeyCount = registerOnlyTotalSensor(
-        "duplicate_key_count",
+    this.totalDuplicateKeyCount = registerPerStoreAndTotalSensor(
+        "rocksdb_duplicate_key_count",
         totalStats,
         () -> totalStats.totalDuplicateKeyCount,
         avgAndMax());
-    this.totalKeyCountEstimate =
-        registerOnlyTotalSensor("rocksdb_key_count", totalStats, () -> totalStats.totalKeyCountEstimate, avgAndMax());
+    this.totalKeyCountEstimate = registerPerStoreAndTotalSensor(
+        "rocksdb_key_count",
+        totalStats,
+        () -> totalStats.totalKeyCountEstimate,
+        avgAndMax());
+  }
+
+  private Measurable measurable(
+      Map<String, StoreIngestionTask> sitMap,
+      String storeName,
+      ToLongFunction<StoreIngestionTask> total,
+      ToLongFunction<StoreIngestionTask> individual) {
+    if (isTotalStats()) {
+      return (i1, i2) -> sitMap.values().stream().mapToLong(total).sum();
+    }
+    return (i1, i2) -> individual.applyAsLong(sitMap.get(storeName));
+  }
+
+  private Measurable measurable(Map<String, StoreIngestionTask> m, String s, ToLongFunction<StoreIngestionTask> f) {
+    return measurable(m, s, f, f);
   }
 
   /** Record a host-level byte consumption rate across all store versions */

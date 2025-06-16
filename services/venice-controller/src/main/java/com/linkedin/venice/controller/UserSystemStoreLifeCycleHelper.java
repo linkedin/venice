@@ -82,12 +82,15 @@ public class UserSystemStoreLifeCycleHelper {
       String systemStoreName,
       String pushJobId) {
     Version version;
-    final int systemStoreLargestUsedVersionNumber =
-        parentAdmin.getLargestUsedVersionFromStoreGraveyard(clusterName, systemStoreName);
 
     int partitionCount = parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName);
     int replicationFactor = parentAdmin.getReplicationFactor(clusterName, systemStoreName);
-
+    final int systemStoreLargestUsedVersionNumber = parentAdmin.getLargestUsedVersion(clusterName, systemStoreName);
+    LOGGER.info(
+        "Get largest used version: {} for system store: {} in cluster: {}",
+        systemStoreLargestUsedVersionNumber,
+        systemStoreName,
+        clusterName);
     if (systemStoreLargestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
       version = parentAdmin
           .incrementVersionIdempotent(clusterName, systemStoreName, pushJobId, partitionCount, replicationFactor);

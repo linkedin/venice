@@ -1,7 +1,7 @@
 package com.linkedin.davinci.client;
 
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -123,7 +123,7 @@ public class DaVinciRecordTransformerUtility<K, O> {
    * Bootstraps the client after it comes online.
    */
   public final void onRecovery(
-      AbstractStorageEngine storageEngine,
+      StorageEngine storageEngine,
       int partitionId,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Lazy<VeniceCompressor> compressor) {

@@ -5,6 +5,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.expectThrows;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -57,6 +58,7 @@ public class TopicManagerContextTest {
             .setTopicOffsetCheckIntervalMs(topicOffsetCheckIntervalMs)
             .setTopicMetadataFetcherConsumerPoolSize(topicMetadataFetcherConsumerPoolSize)
             .setTopicMetadataFetcherThreadPoolSize(topicMetadataFetcherThreadPoolSize)
+            .setVeniceComponent(VeniceComponent.CONTROLLER)
             .build();
 
     assertNotNull(topicManagerContext);
@@ -71,6 +73,7 @@ public class TopicManagerContextTest {
     assertEquals(topicManagerContext.getTopicOffsetCheckIntervalMs(), topicOffsetCheckIntervalMs);
     assertEquals(topicManagerContext.getTopicMetadataFetcherConsumerPoolSize(), topicMetadataFetcherConsumerPoolSize);
     assertEquals(topicManagerContext.getTopicMetadataFetcherThreadPoolSize(), topicMetadataFetcherThreadPoolSize);
+    assertEquals(topicManagerContext.getVeniceComponent(), VeniceComponent.CONTROLLER);
   }
 
   // test invalid arguments

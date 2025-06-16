@@ -246,10 +246,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   protected void putInStorageEngine(int partition, byte[] keyBytes, Put put) {
     try {
-
       // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
-      StorageOperationType storageOperationType =
-          getStorageOperationType(partition, put.putValue, put.replicationMetadataPayload);
+      StorageOperationType storageOperationType = getStorageOperationTypeForPut(partition, put);
       switch (storageOperationType) {
         case VALUE_AND_RMD:
           storageEngine.putWithReplicationMetadata(
@@ -280,7 +278,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {
     try {
       // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
-      switch (getStorageOperationType(partition, null, delete.replicationMetadataPayload)) {
+      switch (getStorageOperationTypeForDelete(partition, delete)) {
         case VALUE_AND_RMD:
           byte[] metadataBytesWithValueSchemaId =
               prependReplicationMetadataBytesWithValueSchemaId(delete.replicationMetadataPayload, delete.schemaId);
@@ -298,35 +296,85 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
   }
 
-  /** @return what kind of storage operation to execute, if any. */
-  private StorageOperationType getStorageOperationType(int partition, ByteBuffer valuePayload, ByteBuffer rmdPayload) {
-    PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partition);
+  StorageOperationType getStorageOperationTypeForPut(int partition, Put put) {
+    PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
     if (pcs == null) {
       logStorageOperationWhileUnsubscribed(partition);
-      return StorageOperationType.NONE;
+      return StorageOperationType.SKIP;
     }
-    if (isDaVinciClient) {
-      return StorageOperationType.VALUE;
-    }
-    if (rmdPayload == null) {
-      throw new IllegalArgumentException("Replication metadata payload not found.");
-    }
-    if (pcs.isEndOfPushReceived() || rmdPayload.remaining() > 0) {
-      // value payload == null means it is a DELETE request, while value payload size > 0 means it is a PUT request.
-      if (valuePayload == null || valuePayload.remaining() > 0) {
-        return StorageOperationType.VALUE_AND_RMD;
+    ByteBuffer valuePayload = put.putValue;
+    ByteBuffer rmdPayload = put.replicationMetadataPayload;
+    checkStorageOperationCommonInvalidPattern(valuePayload, rmdPayload);
+
+    if (isDaVinciClient()) {
+      // For Da Vinci Client, RMD chunk should be ignored.
+      if (valuePayload.remaining() == 0) {
+        return StorageOperationType.SKIP;
       }
-      return StorageOperationType.RMD_CHUNK;
-    } else {
       return StorageOperationType.VALUE;
+    }
+
+    if (rmdPayload.remaining() == 0) {
+      return StorageOperationType.VALUE;
+    }
+    if (valuePayload.remaining() > 0) {
+      return StorageOperationType.VALUE_AND_RMD;
+    } else {
+      // RMD chunk case.
+      return StorageOperationType.RMD_CHUNK;
     }
   }
 
-  private enum StorageOperationType {
+  StorageOperationType getStorageOperationTypeForDelete(int partition, Delete delete) {
+    PartitionConsumptionState pcs = getPartitionConsumptionStateMap().get(partition);
+    if (pcs == null) {
+      logStorageOperationWhileUnsubscribed(partition);
+      return StorageOperationType.SKIP;
+    }
+    ByteBuffer rmdPayload = delete.replicationMetadataPayload;
+    checkStorageOperationCommonInvalidPattern(null, rmdPayload);
+
+    if (isDaVinciClient()) {
+      /**
+       * Da Vinci always operates on default RocksDB column family only and do not take in RMD. In deferred phase,
+       * DELETE is not allowed and it should be skipped.
+       */
+      if (pcs.isDeferredWrite()) {
+        return StorageOperationType.SKIP;
+      }
+      return StorageOperationType.VALUE;
+    }
+    /**
+     * For before EOP delete without RMD: If it is from reprocessing job, it should be allowed and processed as it will
+     * be running in non-deferred-write mode. If it is from regular VPJ, it is unexpected, and low level storage operation
+     * will fail and throw exception.
+     */
+    if (delete.replicationMetadataPayload.remaining() == 0 && !pcs.isEndOfPushReceived()) {
+      return StorageOperationType.VALUE;
+    }
+    return StorageOperationType.VALUE_AND_RMD;
+  }
+
+  void checkStorageOperationCommonInvalidPattern(ByteBuffer valuePayload, ByteBuffer rmdPayload) {
+    if (rmdPayload == null) {
+      throw new IllegalArgumentException("Replication metadata payload not found.");
+    }
+    /**
+     * If value is null, it is a DELETE operation;
+     * If value is non-empty, it is a value PUT potentially carrying RMD.
+     * If value is empty and RMD is non-empty, it is a RMD chunk PUT.
+     * Operation with both content being empty is invalid.
+     */
+    if (valuePayload != null && valuePayload.remaining() == 0 && rmdPayload.remaining() == 0) {
+      throw new IllegalArgumentException("Either value or RMD payload should carry a non-empty content.");
+    }
+  }
+
+  enum StorageOperationType {
     VALUE_AND_RMD, // Operate on value associated with RMD
     VALUE, // Operate on full or chunked value
     RMD_CHUNK, // Operate on chunked RMD
-    NONE
+    SKIP // Will skip the storage operation
   }
 
   private byte[] prependReplicationMetadataBytesWithValueSchemaId(ByteBuffer metadata, int valueSchemaId) {
@@ -539,9 +587,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();
-      // Record the last ignored offset
-      partitionConsumptionState
-          .updateLatestIgnoredUpstreamRTOffset(kafkaClusterIdToUrlMap.get(kafkaClusterId), sourceOffset);
       return new PubSubMessageProcessedResult(
           new MergeConflictResultWrapper(
               mergeConflictResult,
@@ -907,34 +952,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
-  protected void produceToLocalKafka(
-      DefaultPubSubMessage consumerRecord,
-      PartitionConsumptionState partitionConsumptionState,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
-      int partition,
-      String kafkaUrl,
-      int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
-    super.produceToLocalKafka(
-        consumerRecord,
-        partitionConsumptionState,
-        leaderProducedRecordContext,
-        produceFunction,
-        partition,
-        kafkaUrl,
-        kafkaClusterId,
-        beforeProcessingRecordTimestampNs);
-    // Update the partition consumption state to say that we've transmitted the message to kafka (but haven't
-    // necessarily received an ack back yet).
-    if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
-        && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-      partitionConsumptionState
-          .updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getPosition().getNumericOffset());
-    }
-  }
-
-  @Override
   protected Map<String, Long> calculateLeaderUpstreamOffsetWithTopicSwitch(
       PartitionConsumptionState partitionConsumptionState,
       PubSubTopic newSourceTopic,
@@ -1222,15 +1239,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * For A/A, there are multiple entries in upstreamOffsetMap during RT ingestion.
-   * If the current DataReplicationPolicy is on Aggregate mode, A/A will check the upstream offset lags from all regions;
-   * otherwise, only check the upstream offset lag from the local region.
+   * Returns the latest processed upstream real-time offset for the given region.
+   * This is used to compute hybrid offset lag on a per-region basis, which is then
+   * used in conjunction with lag from other regions to determine ready-to-serve status.
    */
   @Override
   protected long getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String upstreamKafkaUrl) {
-    return pcs.getLatestProcessedUpstreamRTOffsetWithIgnoredMessages(upstreamKafkaUrl);
+    return pcs.getLatestProcessedUpstreamRTOffset(upstreamKafkaUrl);
   }
 
   /**
@@ -1353,9 +1370,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * For stores in aggregate mode this is optimistic and returns the minimum lag of all fabric. This is because in
-   * aggregate mode duplicate msg consumption happen from all fabric. So it should be fine to consider the lowest lag.
-   *
    * For stores in active/active mode, if no fabric is unreachable, return the maximum lag of all fabrics. If only one
    * fabric is unreachable, return the maximum lag of other fabrics. If more than one fabrics are unreachable, return
    * Long.MAX_VALUE, which means the partition is not ready-to-serve.
@@ -1363,7 +1377,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * unreachable fabric and make the decision. For example, we should not let partition ready-to-serve when the only
    * source fabric is unreachable.
    *
-   * In non-aggregate mode of consumption only return the local fabric lag
    * @param sourceRealTimeTopicKafkaURLs
    * @param partitionConsumptionState
    * @param shouldLogLag

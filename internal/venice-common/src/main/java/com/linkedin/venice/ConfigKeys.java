@@ -610,7 +610,7 @@ public class ConfigKeys {
 
   /**
    * The wait time before validating system store heartbeat during system store health check in parent controller.
-   * Default is 1min.
+   * Default is 10 min.
    */
   public static final String CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS =
       "controller.parent.system.store.heartbeat.check.wait.time.seconds";
@@ -1928,6 +1928,13 @@ public class ConfigKeys {
       "client.system.store.repository.refresh.interval.seconds";
 
   /**
+   * A config for Da-Vinci clients to use request based metadata repository. This will enable the client to retrieve metadata
+   * directly from the server zk-cache.
+   */
+  public static final String CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY =
+      "client.use.request.based.metadata.repository";
+
+  /**
    * Test only config used to disable parent topic truncation upon job completion. This is needed because kafka cluster
    * in test environment is shared between parent and child controllers. Truncating topic upon completion will confuse
    * child controllers in certain scenarios.
@@ -1980,6 +1987,11 @@ public class ConfigKeys {
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
   // this is a config to decide max file transfer timeout time in minutes in server side.
   public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
+  // this is a config to decide the max file receive timeout time in minutes in client side.
+  public static final String BLOB_RECEIVE_MAX_TIMEOUT_IN_MIN = "blob.receive.max.timeout.in.min";
+  // This is a config to set the reader idle timeout (in seconds) on the client side to handle scenarios where the
+  // server shuts down before transfer completes.
+  public static final String BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS = "blob.receive.reader.idle.time.in.seconds";
   // this is a config to decide the max allowed offset lag to use kafka, even if the blob transfer is enable.
   public static final String BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD =
       "blob.transfer.disabled.offset.lag.threshold";
@@ -2063,6 +2075,11 @@ public class ConfigKeys {
    * Config to control the maximum number of concurrent DNS resolutions that can be done by the router.
    */
   public static final String ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES = "router.max.concurrent.ssl.handshakes";
+
+  /**
+   * Config to control whether Router will do ip spoofing check or not.
+   */
+  public static final String ROUTER_CLIENT_IP_SPOOFING_CHECK_ENABLED = "router.client.ip.spoofing.check.enabled";
 
   /**
    * Config to control the maximum number of attempts to resolve a client host name before giving up.

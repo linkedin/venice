@@ -3,7 +3,7 @@ package com.linkedin.venice.cleaner;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -91,8 +91,8 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
           break;
         }
 
-        List<AbstractStorageEngine> storageEngines = storageEngineRepository.getAllLocalStorageEngines();
-        for (AbstractStorageEngine storageEngine: storageEngines) {
+        List<StorageEngine> storageEngines = storageEngineRepository.getAllLocalStorageEngines();
+        for (StorageEngine storageEngine: storageEngines) {
           String resourceName = storageEngine.getStoreVersionName();
           try {
             Store store;

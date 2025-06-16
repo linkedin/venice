@@ -16,7 +16,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
@@ -110,7 +110,7 @@ public class StorageServiceTest {
 
     when(configLoader.getStoreConfig(eq(resourceName), eq(PersistenceType.BLACK_HOLE))).thenReturn(storeVersionConfig);
 
-    AbstractStorageEngine mockStorageEngine = mock(AbstractStorageEngine.class);
+    StorageEngine mockStorageEngine = mock(StorageEngine.class);
     when(mockStorageEngineFactory.getStorageEngine(storeVersionConfig, false)).thenReturn(mockStorageEngine);
     Set<Integer> partitionSet = new HashSet<>(Arrays.asList(1, 2, 3));
     when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitionSet);
@@ -142,14 +142,14 @@ public class StorageServiceTest {
     StorageService mockStorageService = mock(StorageService.class);
     SafeHelixManager manager = mock(SafeHelixManager.class);
     StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
-    AbstractStorageEngine abstractStorageEngine = mock(AbstractStorageEngine.class);
-    mockStorageEngineRepository.addLocalStorageEngine(abstractStorageEngine);
+    StorageEngine storageEngine = mock(StorageEngine.class);
+    mockStorageEngineRepository.addLocalStorageEngine(storageEngine);
 
     String resourceName = "test_store_v1";
 
-    when(abstractStorageEngine.getStoreVersionName()).thenReturn(resourceName);
-    abstractStorageEngine.addStoragePartition(0);
-    abstractStorageEngine.addStoragePartition(1);
+    when(storageEngine.getStoreVersionName()).thenReturn(resourceName);
+    storageEngine.addStoragePartition(0);
+    storageEngine.addStoragePartition(1);
 
     String clusterName = "test_cluster";
     VeniceConfigLoader mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
@@ -157,8 +157,8 @@ public class StorageServiceTest {
     when(mockVeniceConfigLoader.getVeniceClusterConfig()).thenReturn(mockClusterConfig);
     when(mockVeniceConfigLoader.getVeniceClusterConfig().getClusterName()).thenReturn(clusterName);
 
-    List<AbstractStorageEngine> localStorageEngines = new ArrayList<>();
-    localStorageEngines.add(abstractStorageEngine);
+    List<StorageEngine> localStorageEngines = new ArrayList<>();
+    localStorageEngines.add(storageEngine);
 
     SafeHelixDataAccessor helixDataAccessor = mock(SafeHelixDataAccessor.class);
     when(manager.getHelixDataAccessor()).thenReturn(helixDataAccessor);
@@ -195,15 +195,15 @@ public class StorageServiceTest {
     when(manager.getInstanceName()).thenReturn("host_1520");
 
     Set<Integer> partitionSet = new HashSet<>(Arrays.asList(0, 1));
-    when(abstractStorageEngine.getPartitionIds()).thenReturn(partitionSet);
+    when(storageEngine.getPartitionIds()).thenReturn(partitionSet);
     doAnswer(new Answer() {
       @Override
       public Object answer(InvocationOnMock invocation) throws Throwable {
         int partitionId = invocation.getArgument(0);
-        abstractStorageEngine.getPartitionIds().remove(partitionId);
+        storageEngine.getPartitionIds().remove(partitionId);
         return null;
       }
-    }).when(abstractStorageEngine).dropPartition(anyInt());
+    }).when(storageEngine).dropPartition(anyInt());
 
     Field storageEngineRepositoryField = StorageService.class.getDeclaredField("storageEngineRepository");
     storageEngineRepositoryField.setAccessible(true);
@@ -222,7 +222,7 @@ public class StorageServiceTest {
 
     doCallRealMethod().when(mockStorageService).checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
     mockStorageService.checkWhetherStoragePartitionsShouldBeKeptOrNot(manager);
-    verify(abstractStorageEngine).dropPartition(0);
-    Assert.assertFalse(abstractStorageEngine.getPartitionIds().contains(0));
+    verify(storageEngine).dropPartition(0);
+    Assert.assertFalse(storageEngine.getPartitionIds().contains(0));
   }
 }

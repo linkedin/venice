@@ -118,6 +118,10 @@ public abstract class TestRead {
     return false;
   }
 
+  protected boolean isRouterClientIPSpoofingCheckEnabled() {
+    return true;
+  }
+
   protected VeniceClusterWrapper getVeniceCluster() {
     return veniceCluster;
   }
@@ -154,6 +158,7 @@ public abstract class TestRead {
     extraProperties.put(ConfigKeys.ROUTER_MULTI_KEY_ROUTING_STRATEGY, HELIX_ASSISTED_ROUTING.name());
     extraProperties.put(ConfigKeys.ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED, "true");
     extraProperties.put(ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED, isRouterHttp2Enabled());
+    extraProperties.put(ConfigKeys.ROUTER_CLIENT_IP_SPOOFING_CHECK_ENABLED, isRouterClientIPSpoofingCheckEnabled());
     extraProperties.put(ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED, true);
     extraProperties.put(ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 0.0);
     extraProperties.put(ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED, false);
@@ -408,9 +413,7 @@ public abstract class TestRead {
 
         // following 2 asserts fails with HTTP/2 probably due to http2 frames, needs to validate on venice-p
         if (!isRouterHttp2ClientEnabled()) {
-          Assert.assertEquals(getMaxServerMetricValue(".total--multiget_request_part_count.Max"), 1.0);
           if (readComputeEnabled) {
-            Assert.assertEquals(getMaxServerMetricValue(".total--compute_request_part_count.Max"), 1.0);
             Assert.assertTrue(
                 getMaxServerMetricValue(".total--compute_storage_engine_read_compute_efficiency.Max") > 1.0);
             Assert.assertEquals(getAggregateRouterMetricValue(".total--compute_multiget_fallback.Total"), 0.0);

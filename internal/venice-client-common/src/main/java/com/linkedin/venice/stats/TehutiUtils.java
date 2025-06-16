@@ -18,6 +18,7 @@ public class TehutiUtils {
   private static final int DEFAULT_HISTOGRAM_SIZE_IN_BYTES = 40000;
   private static final double DEFAULT_HISTOGRAM_MAX_VALUE = 10000;
   private static final double[] DEFAULT_HISTOGRAM_PERCENTILES = new double[] { 50, 95, 99 };
+  private static final double[] P99_HISTOGRAM_PERCENTILES = new double[] { 99 };
 
   // a fine grained percentiles. Please use it with cautions as it will emit more 20
   // metrics. It's likely to degrade critical path performance
@@ -38,6 +39,15 @@ public class TehutiUtils {
     String name = sensorName + AbstractVeniceStats.DELIMITER + storeName;
     return new MeasurableStat[] { getPercentileStat(name, DEFAULT_HISTOGRAM_SIZE_IN_BYTES, DEFAULT_HISTOGRAM_MAX_VALUE),
         new Avg(), new Max() };
+  }
+
+  public static MeasurableStat[] get99PercentileStatWithAvgAndMax(String sensorName, String storeName) {
+    String name = sensorName + AbstractVeniceStats.DELIMITER + storeName;
+    return new MeasurableStat[] { getPercentileStat(
+        name,
+        DEFAULT_HISTOGRAM_SIZE_IN_BYTES,
+        DEFAULT_HISTOGRAM_MAX_VALUE,
+        P99_HISTOGRAM_PERCENTILES), new Avg(), new Max() };
   }
 
   public static MeasurableStat[] getFineGrainedPercentileStatWithAvgAndMax(String sensorName, String storeName) {

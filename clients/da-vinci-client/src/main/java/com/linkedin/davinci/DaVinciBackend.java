@@ -35,7 +35,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -311,6 +311,8 @@ public class DaVinciBackend implements Closeable {
             backendConfig.getMaxConcurrentSnapshotUser(),
             backendConfig.getSnapshotRetentionTimeInMin(),
             backendConfig.getBlobTransferMaxTimeoutInMin(),
+            backendConfig.getBlobReceiveMaxTimeoutInMin(),
+            backendConfig.getBlobReceiveReaderIdleTimeInSeconds(),
             backendConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
                 ? BlobTransferTableFormat.PLAIN_TABLE
                 : BlobTransferTableFormat.BLOCK_BASED_TABLE,
@@ -409,13 +411,12 @@ public class DaVinciBackend implements Closeable {
   }
 
   private synchronized void bootstrap() {
-    List<AbstractStorageEngine> storageEngines =
-        getStorageService().getStorageEngineRepository().getAllLocalStorageEngines();
+    List<StorageEngine> storageEngines = getStorageService().getStorageEngineRepository().getAllLocalStorageEngines();
     LOGGER.info("Starting bootstrap, storageEngines: {}", storageEngines);
     Map<String, Version> storeNameToBootstrapVersionMap = new HashMap<>();
     Map<String, List<Integer>> storeNameToPartitionListMap = new HashMap<>();
 
-    for (AbstractStorageEngine storageEngine: storageEngines) {
+    for (StorageEngine storageEngine: storageEngines) {
       String kafkaTopicName = storageEngine.getStoreVersionName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
       if (VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
@@ -464,7 +465,7 @@ public class DaVinciBackend implements Closeable {
          * In this case we will only need to close metadata partition, as it is supposed to be opened and managed by
          * forked ingestion process via following subscribe call.
          */
-        for (AbstractStorageEngine storageEngine: getStorageService().getStorageEngineRepository()
+        for (StorageEngine storageEngine: getStorageService().getStorageEngineRepository()
             .getAllLocalStorageEngines()) {
           storageEngine.closeMetadataPartition();
         }
@@ -496,7 +497,7 @@ public class DaVinciBackend implements Closeable {
         List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
         String versionTopic = version.kafkaTopicName();
         LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
-        AbstractStorageEngine storageEngine = getStorageService().getStorageEngine(versionTopic);
+        StorageEngine storageEngine = getStorageService().getStorageEngine(versionTopic);
         aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
         StoreBackend storeBackend = getStoreOrThrow(storeName);
         storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));

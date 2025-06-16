@@ -25,7 +25,7 @@ import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -331,8 +331,7 @@ public class TestSeparateRealtimeTopicIngestion {
         .getClusters()
         .get("venice-cluster0")
         .getVeniceServers()) {
-      AbstractStorageEngine storageEngine =
-          serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
+      StorageEngine storageEngine = serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
       assertNotNull(storageEngine);
       ValueRecord result = SingleGetChunkingAdapter
           .getReplicationMetadata(storageEngine, 0, serializeStringKeyToByteArray(key), true, null);

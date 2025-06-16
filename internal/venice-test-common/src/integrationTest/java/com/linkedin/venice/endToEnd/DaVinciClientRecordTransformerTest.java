@@ -59,6 +59,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -146,11 +147,12 @@ public class DaVinciClientRecordTransformerTest {
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
 
       DaVinciRecordTransformerConfig recordTransformerConfig =
           new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
@@ -228,11 +230,12 @@ public class DaVinciClientRecordTransformerTest {
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
 
       DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
           .setRecordTransformerFunction(TestIntToStringRecordTransformer::new)
@@ -307,11 +310,12 @@ public class DaVinciClientRecordTransformerTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     clientConfig.setStorageClass(StorageClass.DISK);
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
 
       Schema myKeySchema = Schema.create(Schema.Type.INT);
       Schema myValueSchema = Schema.create(Schema.Type.STRING);
@@ -391,11 +395,12 @@ public class DaVinciClientRecordTransformerTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     clientConfig.setStorageClass(StorageClass.DISK);
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
 
       Schema myKeySchema = Schema.create(Schema.Type.INT);
       Schema myValueSchema = Schema.create(Schema.Type.STRING);
@@ -485,11 +490,12 @@ public class DaVinciClientRecordTransformerTest {
         .build();
     clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
@@ -540,11 +546,12 @@ public class DaVinciClientRecordTransformerTest {
             .build();
     clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
@@ -583,11 +590,12 @@ public class DaVinciClientRecordTransformerTest {
         .build();
     clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         metricsRepository,
-        backendConfig)) {
+        backendConfig,
+        cluster)) {
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
@@ -690,11 +698,12 @@ public class DaVinciClientRecordTransformerTest {
         .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
     VeniceProperties backendConfig2 = configBuilder.build();
 
-    try (CachingDaVinciClientFactory factory2 = new CachingDaVinciClientFactory(
+    try (CachingDaVinciClientFactory factory2 = DaVinciTestContext.getCachingDaVinciClientFactory(
         d2Client,
         VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
         new MetricsRepository(),
-        backendConfig2)) {
+        backendConfig2,
+        cluster)) {
       DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, clientConfig);
       client2.subscribeAll().get();
 

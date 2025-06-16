@@ -146,7 +146,7 @@ public class DaVinciLiveUpdateSuppressionTest {
             d2Client,
             new MetricsRepository(),
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             new DaVinciConfig(),
             extraBackendConfigMap);
@@ -203,7 +203,7 @@ public class DaVinciLiveUpdateSuppressionTest {
             d2Client,
             new MetricsRepository(),
             Optional.empty(),
-            cluster.getZk().getAddress(),
+            cluster,
             storeName,
             new DaVinciConfig(),
             extraBackendConfigMap);

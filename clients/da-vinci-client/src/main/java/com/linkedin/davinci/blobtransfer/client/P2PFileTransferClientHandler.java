@@ -7,6 +7,7 @@ import com.linkedin.davinci.blobtransfer.BlobTransferPayload;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.venice.exceptions.VeniceBlobTransferFileNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.channel.ChannelHandlerContext;
@@ -17,6 +18,8 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.ReferenceCountUtil;
 import java.io.InputStream;
 import java.nio.channels.Channels;
@@ -99,7 +102,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
         throw new VeniceException("No file name specified in the response for " + payload.getFullResourceName());
       }
 
-      LOGGER.debug("Starting blob transfer for file: {}", fileName);
+      LOGGER.info(
+          "Starting blob file receiving for file: {} for {}",
+          fileName,
+          Utils.getReplicaId(payload.getTopicName(), payload.getPartition()));
       this.fileContentLength = Long.parseLong(response.headers().get(HttpHeaderNames.CONTENT_LENGTH));
 
       // Create the directory
@@ -108,11 +114,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
       // Prepare the file, remove it if it exists
       if (Files.deleteIfExists(partitionDir.resolve(fileName))) {
-        LOGGER.debug(
-            "File {} already exists for topic {} partition {}. Overwriting it.",
+        LOGGER.warn(
+            "File {} already exists for {}. Overwriting it.",
             fileName,
-            payload.getTopicName(),
-            payload.getPartition());
+            Utils.getReplicaId(payload.getTopicName(), payload.getPartition()));
       }
 
       this.file = Files.createFile(partitionDir.resolve(fileName));
@@ -150,7 +155,10 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
 
       if (content instanceof DefaultLastHttpContent) {
         // End of a single file transfer
-        LOGGER.debug("A file {} received successfully for {}", fileName, payload.getFullResourceName());
+        LOGGER.info(
+            "A file {} received successfully for {}",
+            fileName,
+            Utils.getReplicaId(payload.getTopicName(), payload.getPartition()));
         outputFileChannel.force(true);
 
         // Size validation
@@ -175,6 +183,19 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     }
   }
 
+  /**
+   * Handles channel deactivation, typically triggered when the server gracefully closes
+   * the connection.
+   *
+   * This is called when the server sends a FIN packet (graceful shutdown), which is
+   * different from abrupt termination handled by {@link #userEventTriggered}.
+   *
+   * If the transfer was incomplete, this indicates the server shut down unexpectedly during
+   * the transfer process, so we complete the input stream future exceptionally for fast failover.
+   *
+   * @param ctx
+   * @throws Exception
+   */
   @Override
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
     super.channelInactive(ctx);
@@ -183,13 +204,45 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
       outputFileChannel.close();
     }
     resetState();
+    fastFailoverIncompleteTransfer(
+        "Channel close before completing transfer, might due to server graceful shutdown.",
+        ctx);
+  }
+
+  /**
+   * Handles idle state events to detect unresponsive server connections during blob transfer.
+   *
+   * When no data is received within the timeout (READER_IDLE), this method assumes
+   * the server is unavailable, completes the transfer future exceptionally, and closes the channel.
+   * This enables fast failover to the next available peer instead of waiting for the longer
+   * client timeout configured in NettyFileTransferClient#blobReceiveTimeoutInMin.
+   *
+   * Please note that if traffic is legitimately slow but continuous, it should NOT trigger READER_IDLE.
+   * However, if traffic has long gaps, it WILL trigger.
+   *
+   * @param ctx the channel handler context
+   * @param evt the user event, expected to be IdleStateEvent for timeout detection
+   */
+  @Override
+  public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+    if (evt instanceof IdleStateEvent) {
+      IdleStateEvent e = (IdleStateEvent) evt;
+      if (e.state() == IdleState.READER_IDLE) {
+        fastFailoverIncompleteTransfer(
+            "Channel idle before completing transfer, might due to server unexpected abrupt termination.",
+            ctx);
+        ctx.close();
+        return;
+      }
+    }
+    super.userEventTriggered(ctx, evt);
   }
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
     LOGGER.error(
-        "Exception caught in when transferring files for {} with cause {}",
-        payload.getFullResourceName(),
+        "Exception caught in when receiving files for {} with cause {}",
+        Utils.getReplicaId(payload.getTopicName(), payload.getPartition()),
         cause);
     inputStreamFuture.toCompletableFuture().completeExceptionally(cause);
     ctx.close();
@@ -218,5 +271,19 @@ public class P2PFileTransferClientHandler extends SimpleChannelInboundHandler<Ht
     outputFileChannel = null;
     fileName = null;
     fileContentLength = 0;
+  }
+
+  private void fastFailoverIncompleteTransfer(String causeForFailPendingTransfer, ChannelHandlerContext ctx) {
+    if (!inputStreamFuture.toCompletableFuture().isDone()) {
+      String errorMessage = String.format(
+          "%s for %s. Server host: %s, channel active: %b.",
+          causeForFailPendingTransfer,
+          Utils.getReplicaId(payload.getTopicName(), payload.getPartition()),
+          ctx.channel().remoteAddress(),
+          ctx.channel().isActive());
+
+      LOGGER.error(errorMessage);
+      inputStreamFuture.toCompletableFuture().completeExceptionally(new VeniceException(errorMessage));
+    }
   }
 }

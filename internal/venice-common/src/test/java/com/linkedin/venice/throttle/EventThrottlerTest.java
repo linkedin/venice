@@ -37,7 +37,7 @@ public class EventThrottlerTest {
     }
 
     // Time goes 1.5 second so throttler starts second time window. Now we have more capacity granted.
-    testTime.sleep((long) (1500));
+    testTime.sleep(1500);
     sendRequests(1, throttler);
     // Quota exceeds, case we only have half quota for the in flight time window.
     try {
@@ -63,6 +63,30 @@ public class EventThrottlerTest {
     try {
       throttler.maybeThrottle((int) quota * 10);
       fail("Usage exceeds the quota, throttler should reject them.");
+    } catch (QuotaExceededException e) {
+      // expected
+    }
+    try {
+      throttler.maybeThrottle(1);
+    } catch (QuotaExceededException e) {
+      fail("The previous usage should not be recorded, so we have enough quota to accept this request.");
+    }
+  }
+
+  @Test
+  public void testRejectExpansiveRequestBlocking() {
+    long quota = 10;
+    long timeWindowMS = 1000L;
+    EventThrottler throttler = new EventThrottler(
+        testTime,
+        10,
+        timeWindowMS,
+        "testRejectExpansiveRequest",
+        true,
+        EventThrottler.BLOCK_STRATEGY);
+    // Send the single request that usage exceeds the quota.
+    try {
+      throttler.maybeThrottle((int) quota * 100);
     } catch (QuotaExceededException e) {
       // expected
     }

@@ -9,6 +9,8 @@ import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
+import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -16,6 +18,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -36,7 +39,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -72,7 +74,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   // CachingDaVinciClientFactory used instead of DaVinciClientFactory, so we have the ability to close down the client
   private final CachingDaVinciClientFactory daVinciClientFactory;
   private final DaVinciClient<Object, Object> daVinciClient;
-  private AtomicBoolean isStarted = new AtomicBoolean(false);
+  private final AtomicBoolean isStarted = new AtomicBoolean(false);
   private final CountDownLatch startLatch = new CountDownLatch(1);
   // Using a dedicated thread pool for CompletableFutures created by this class to avoid potential thread starvation
   // issues in the default ForkJoinPool
@@ -82,6 +84,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private final ApacheKafkaOffsetPosition placeHolderOffset = ApacheKafkaOffsetPosition.of(0);
   private final ReentrantLock bufferLock = new ReentrantLock();
   private final Condition bufferIsFullCondition = bufferLock.newCondition();
+  private BackgroundReporterThread backgroundReporterThread;
+  private long backgroundReporterThreadSleepIntervalSeconds = 60L;
+  private final BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
 
   public BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl(ChangelogClientConfig changelogClientConfig) {
@@ -117,6 +122,15 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     } else {
       this.daVinciClient = this.daVinciClientFactory.getGenericAvroClient(this.storeName, daVinciConfig);
     }
+
+    if (changelogClientConfig.getInnerClientConfig().getMetricsRepository() != null) {
+      this.changeCaptureStats = new BasicConsumerStats(
+          changelogClientConfig.getInnerClientConfig().getMetricsRepository(),
+          "vcc-" + changelogClientConfig.getConsumerName(),
+          storeName);
+    } else {
+      changeCaptureStats = null;
+    }
   }
 
   @Override
@@ -145,6 +159,11 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
          * for at least one partition.
          */
         startLatch.await();
+
+        if (changeCaptureStats != null) {
+          backgroundReporterThread = new BackgroundReporterThread();
+          backgroundReporterThread.start();
+        }
       } catch (InterruptedException e) {
         LOGGER.info("Thread was interrupted", e);
         // Restore the interrupt status
@@ -184,6 +203,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
   @Override
   public void stop() throws Exception {
+    if (backgroundReporterThread != null) {
+      backgroundReporterThread.interrupt();
+    }
     daVinciClientFactory.close();
     isStarted.set(false);
   }
@@ -191,38 +213,54 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
     try {
-      bufferLock.lock();
+      try {
+        bufferLock.lock();
 
-      // Wait until pubSubMessages becomes full, or until the timeout is reached
-      if (pubSubMessages.remainingCapacity() > 0) {
-        bufferIsFullCondition.await(timeoutInMs, TimeUnit.MILLISECONDS);
+        // Wait until pubSubMessages becomes full, or until the timeout is reached
+        if (pubSubMessages.remainingCapacity() > 0) {
+          bufferIsFullCondition.await(timeoutInMs, TimeUnit.MILLISECONDS);
+        }
+      } catch (InterruptedException exception) {
+        LOGGER.info("Thread was interrupted", exception);
+        // Restore the interrupt status
+        Thread.currentThread().interrupt();
+      } finally {
+        bufferLock.unlock();
       }
-    } catch (InterruptedException e) {
-      LOGGER.info("Thread was interrupted", e);
-      // Restore the interrupt status
-      Thread.currentThread().interrupt();
-    } finally {
-      bufferLock.unlock();
-    }
 
-    List<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> drainedPubSubMessages = new ArrayList<>();
-    pubSubMessages.drainTo(drainedPubSubMessages);
+      Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> drainedPubSubMessages = new ArrayList<>();
+      pubSubMessages.drainTo(drainedPubSubMessages);
+      int messagesPolled = drainedPubSubMessages.size();
 
-    if (changelogClientConfig.shouldCompactMessages()) {
-      Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
-      /*
-       * The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
-       * replaced, it's put in at the position of the first insertion. This isn't quite what we want, we want to keep
-       * only a single key (just as a map would), but we want to keep the position of the last insertion as well. So in
-       * order to do that, we remove the entry before inserting it.
-       */
-      for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: drainedPubSubMessages) {
-        tempMap.remove(message.getKey());
-        tempMap.put(message.getKey(), message);
+      if (changelogClientConfig.shouldCompactMessages()) {
+        Map<K, PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> tempMap = new LinkedHashMap<>();
+        /*
+         * The behavior of LinkedHashMap is such that it maintains the order of insertion, but for values which are
+         * replaced, it's put in at the position of the first insertion. This isn't quite what we want, we want to keep
+         * only a single key (just as a map would), but we want to keep the position of the last insertion as well. So in
+         * order to do that, we remove the entry before inserting it.
+         */
+        for (PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate> message: drainedPubSubMessages) {
+          tempMap.remove(message.getKey());
+          tempMap.put(message.getKey(), message);
+        }
+        drainedPubSubMessages = tempMap.values();
       }
-      return tempMap.values();
+
+      if (changeCaptureStats != null) {
+        changeCaptureStats.emitRecordsConsumedCountMetrics(messagesPolled);
+        changeCaptureStats.emitPollCountMetrics(SUCCESS);
+      }
+
+      return drainedPubSubMessages;
+    } catch (Exception exception) {
+      if (changeCaptureStats != null) {
+        changeCaptureStats.emitPollCountMetrics(FAIL);
+      }
+
+      LOGGER.error("Encountered an exception when polling records for store: {}", storeName);
+      throw exception;
     }
-    return drainedPubSubMessages;
   }
 
   @Override
@@ -250,6 +288,50 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   @VisibleForTesting
   public DaVinciRecordTransformerConfig getRecordTransformerConfig() {
     return recordTransformerConfig;
+  }
+
+  class BackgroundReporterThread extends Thread {
+    private BackgroundReporterThread() {
+      super("Change-Data-CaptureBackground-Reporter-Thread");
+      // To not block JVM shutdown
+      setDaemon(true);
+    }
+
+    @Override
+    public void run() {
+      while (!Thread.interrupted()) {
+        try {
+          recordStats();
+          TimeUnit.SECONDS.sleep(backgroundReporterThreadSleepIntervalSeconds);
+        } catch (InterruptedException e) {
+          LOGGER.warn("BackgroundReporterThread interrupted!  Shutting down...", e);
+          Thread.currentThread().interrupt(); // Restore the interrupt status
+          break;
+        }
+      }
+    }
+
+    private void recordStats() {
+      int minVersion = Integer.MAX_VALUE;
+      int maxVersion = -1;
+
+      Map<Integer, Integer> partitionToVersionToServeCopy = new HashMap<>(partitionToVersionToServe);
+      for (Integer version: partitionToVersionToServeCopy.values()) {
+        minVersion = Math.min(minVersion, version);
+        maxVersion = Math.max(maxVersion, version);
+      }
+      if (minVersion == Integer.MAX_VALUE) {
+        minVersion = -1;
+      }
+
+      // Record max and min consumed versions
+      changeCaptureStats.emitCurrentConsumingVersionMetrics(minVersion, maxVersion);
+    }
+  }
+
+  @VisibleForTesting
+  protected void setBackgroundReporterThreadSleepIntervalSeconds(long interval) {
+    backgroundReporterThreadSleepIntervalSeconds = interval;
   }
 
   public class DaVinciRecordTransformerBootstrappingChangelogConsumer extends DaVinciRecordTransformer<K, V, V> {
@@ -376,13 +458,32 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
        * This early swap causes the buffer to fill with records before the EOP, which is undesirable.
        * By only allowing the futureVersion to perform the version swap, we ensure that only nearline events are served.
        */
-      if (futureVersion == getStoreVersion()) {
-        partitionToVersionToServe.put(partitionId, futureVersion);
-        LOGGER.info(
-            "Swapped from version: {} to version: {} for partitionId: {}",
+      try {
+        if (futureVersion == getStoreVersion()) {
+          partitionToVersionToServe.put(partitionId, futureVersion);
+          LOGGER.info(
+              "Swapped from version: {} to version: {} for store: {} for partition: {}",
+              currentVersion,
+              futureVersion,
+              storeName,
+              partitionId);
+
+          if (changeCaptureStats != null) {
+            changeCaptureStats.emitVersionSwapCountMetrics(SUCCESS);
+          }
+        }
+      } catch (Exception exception) {
+        if (changeCaptureStats != null) {
+          changeCaptureStats.emitVersionSwapCountMetrics(FAIL);
+        }
+
+        LOGGER.error(
+            "Encountered an exception when processing Version Swap from version: {} to version: {} for store: {} for partition: {}",
             currentVersion,
             futureVersion,
+            storeName,
             partitionId);
+        throw exception;
       }
     }
 

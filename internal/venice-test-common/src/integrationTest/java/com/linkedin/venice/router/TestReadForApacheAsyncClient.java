@@ -13,4 +13,9 @@ public class TestReadForApacheAsyncClient extends TestRead {
   protected boolean isRouterHttp2Enabled() {
     return true;
   }
+
+  @Override
+  protected boolean isRouterClientIPSpoofingCheckEnabled() {
+    return false;
+  }
 }

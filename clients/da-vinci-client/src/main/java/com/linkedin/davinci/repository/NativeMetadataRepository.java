@@ -1,6 +1,7 @@
 package com.linkedin.davinci.repository;
 
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.stats.NativeMetadataRepositoryStats;
@@ -118,7 +119,7 @@ public abstract class NativeMetadataRepository
       VeniceProperties backendConfig,
       ICProvider icProvider) {
     NativeMetadataRepository nativeMetadataRepository;
-    if (clientConfig.isUseRequestBasedMetaRepository()) {
+    if (backendConfig.getBoolean(CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY, false)) {
       nativeMetadataRepository = new RequestBasedMetaRepository(clientConfig, backendConfig, icProvider);
     } else {
       nativeMetadataRepository = new ThinClientMetaStoreBasedRepository(clientConfig, backendConfig, icProvider);
@@ -344,6 +345,10 @@ public abstract class NativeMetadataRepository
   @Override
   public Collection<RmdSchemaEntry> getReplicationMetadataSchemas(String storeName) {
     throw new VeniceException("Function: getReplicationMetadataSchemas is not supported!");
+  }
+
+  NativeMetadataRepositoryStats getNativeMetadataRepositoryStats() {
+    return this.nativeMetadataRepositoryStats;
   }
 
   /**
