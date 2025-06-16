@@ -139,17 +139,14 @@ public class StorageServiceTest {
 
   @Test
   public void testCheckWhetherStoragePartitionsShouldBeKeptOrNot() throws NoSuchFieldException, IllegalAccessException {
+    // TODO: Make this into a real StorageService, rather than a mock, and tear down all the reflection stuff below...
     StorageService mockStorageService = mock(StorageService.class);
     SafeHelixManager manager = mock(SafeHelixManager.class);
-    StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
     StorageEngine storageEngine = mock(StorageEngine.class);
-    mockStorageEngineRepository.addLocalStorageEngine(storageEngine);
 
     String resourceName = "test_store_v1";
 
     when(storageEngine.getStoreVersionName()).thenReturn(resourceName);
-    storageEngine.addStoragePartition(0);
-    storageEngine.addStoragePartition(1);
 
     String clusterName = "test_cluster";
     VeniceConfigLoader mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
@@ -205,10 +202,7 @@ public class StorageServiceTest {
       }
     }).when(storageEngine).dropPartition(anyInt());
 
-    Field storageEngineRepositoryField = StorageService.class.getDeclaredField("storageEngineRepository");
-    storageEngineRepositoryField.setAccessible(true);
-    storageEngineRepositoryField.set(mockStorageService, mockStorageEngineRepository);
-    when(mockStorageService.getStorageEngineRepository()).thenReturn(mockStorageEngineRepository);
+    when(mockStorageService.getStorageEngineRepository()).thenReturn(mock(StorageEngineRepository.class));
     when(mockStorageService.getStorageEngineRepository().getAllLocalStorageEngines()).thenReturn(localStorageEngines);
     Field configLoaderField = StorageService.class.getDeclaredField("configLoader");
     configLoaderField.setAccessible(true);
