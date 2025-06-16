@@ -538,6 +538,14 @@ public class ReadComputeValidationTest {
         Map<Object, Integer> counts = response.getValueToCount("companiesEmbedding");
         Assert.assertNotNull(counts, "Counts should not be null");
 
+        // Print results for debugging
+        System.out.println("Count results:");
+        counts.forEach((value, count) -> System.out.println(value + ": " + count));
+
+        // Simple verification: ensure we have exactly 2 entries and company1 appears twice
+        Assert.assertEquals(counts.size(), 2, "Should have 2 different companies");
+        Assert.assertEquals((Integer) counts.get("company1"), Integer.valueOf(2), "company1 should appear twice");
+
         System.out.println("countGroupByValue API test passed!");
       });
     }

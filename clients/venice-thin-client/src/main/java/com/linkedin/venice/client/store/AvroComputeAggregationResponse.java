@@ -32,6 +32,10 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
 
     // Aggregate counts from all compute results
     for (ComputeGenericRecord record: computeResults.values()) {
+      if (record == null) {
+        continue;
+      }
+
       Object fieldValue = record.get(fieldName);
 
       if (fieldValue == null) {
@@ -40,18 +44,22 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
       } else if (fieldValue instanceof Collection) {
         // Handle array fields
         Collection<?> collection = (Collection<?>) fieldValue;
-        for (Object value: collection) {
-          @SuppressWarnings("unchecked")
-          T typedValue = (T) value;
-          valueToCount.merge(typedValue, 1, Integer::sum);
+        if (collection != null) {
+          for (Object value: collection) {
+            @SuppressWarnings("unchecked")
+            T typedValue = (T) value;
+            valueToCount.merge(typedValue, 1, Integer::sum);
+          }
         }
       } else if (fieldValue instanceof Map) {
         // Handle map fields - count the values (not keys)
         Map<?, ?> map = (Map<?, ?>) fieldValue;
-        for (Object value: map.values()) {
-          @SuppressWarnings("unchecked")
-          T typedValue = (T) value;
-          valueToCount.merge(typedValue, 1, Integer::sum);
+        if (map != null) {
+          for (Object value: map.values()) {
+            @SuppressWarnings("unchecked")
+            T typedValue = (T) value;
+            valueToCount.merge(typedValue, 1, Integer::sum);
+          }
         }
       } else {
         // Handle scalar fields (shouldn't happen based on validation, but be defensive)
@@ -66,7 +74,12 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
         .stream()
         .sorted(Map.Entry.<T, Integer>comparingByValue().reversed())
         .limit(topK)
-        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new));
+        .collect(
+            Collectors.toMap(
+                Map.Entry::getKey,
+                Map.Entry::getValue,
+                (e1, e2) -> e1, // If there are duplicate keys, keep the first one
+                LinkedHashMap::new));
   }
 
   @Override
