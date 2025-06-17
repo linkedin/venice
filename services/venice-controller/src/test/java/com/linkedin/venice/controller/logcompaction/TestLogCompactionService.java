@@ -44,7 +44,7 @@ public class TestLogCompactionService {
 
     // create LogCompactionService
     this.logCompactionService =
-        new LogCompactionService(mockAdmin, CLUSTER_VENICE_0, mockClusterConfig, mock(MetricsRepository.class));
+        new LogCompactionService(mockAdmin, CLUSTER_VENICE_0, mockClusterConfig, new MetricsRepository());
   }
 
   @Test
