@@ -168,9 +168,6 @@ public class DaVinciRecordTransformerUtility<K, O> {
           recordTransformer.processPut(lazyKey, lazyValue, partitionId);
         }
       }
-
-      // Close and open storage partition to clear cache
-      storageEngine.reopenStoragePartition(partitionId);
     }
   }
 }
