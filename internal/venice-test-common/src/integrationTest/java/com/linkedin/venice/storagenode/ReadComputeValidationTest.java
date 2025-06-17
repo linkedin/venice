@@ -597,6 +597,19 @@ public class ReadComputeValidationTest {
         // Since we asked for top 3, we should have at most 3 entries
         Assert.assertTrue(skillCounts.size() <= 3, "Should have at most top 3 entries");
 
+        // Verify specific count values
+        Assert.assertEquals(skillCounts.get("Java"), Integer.valueOf(3), "Java count should be 3");
+        Assert.assertEquals(skillCounts.get("Python"), Integer.valueOf(2), "Python count should be 2");
+        Assert.assertEquals(skillCounts.get("JavaScript"), Integer.valueOf(2), "JavaScript count should be 2");
+
+        // Go should not be included since we only asked for top 3 and it has count=1
+        Assert.assertFalse(skillCounts.containsKey("Go"), "Go should not be included in top 3");
+
+        // Verify ordering (Java should be first with highest count)
+        List<Map.Entry<String, Integer>> skillEntries = new ArrayList<>(skillCounts.entrySet());
+        Assert.assertEquals(skillEntries.get(0).getKey(), "Java", "Java should be first (highest count)");
+        Assert.assertEquals(skillEntries.get(0).getValue(), Integer.valueOf(3), "Java should have count 3");
+
         // Test countGroupByValue on preferences map field
         com.linkedin.venice.client.store.ComputeAggregationResponse prefsAggResponse =
             computeStoreClient.computeAggregation().countGroupByValue(5, "preferences").execute(keySet).get();
@@ -613,6 +626,13 @@ public class ReadComputeValidationTest {
         // Expected counts: dark_mode=2, english=2, light_mode=1, spanish=1
         // Since we asked for top 5, we should have all 4 entries
         Assert.assertTrue(prefCounts.size() <= 5, "Should have at most top 5 entries");
+        Assert.assertEquals(prefCounts.size(), 4, "Should have exactly 4 preference values");
+
+        // Verify specific count values
+        Assert.assertEquals(prefCounts.get("dark_mode"), Integer.valueOf(2), "dark_mode count should be 2");
+        Assert.assertEquals(prefCounts.get("english"), Integer.valueOf(2), "english count should be 2");
+        Assert.assertEquals(prefCounts.get("light_mode"), Integer.valueOf(1), "light_mode count should be 1");
+        Assert.assertEquals(prefCounts.get("spanish"), Integer.valueOf(1), "spanish count should be 1");
       });
     }
   }

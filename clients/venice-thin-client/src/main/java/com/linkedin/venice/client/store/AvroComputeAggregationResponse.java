@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.apache.avro.util.Utf8;
 
 
 /**
@@ -47,7 +48,7 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
         if (collection != null) {
           for (Object value: collection) {
             @SuppressWarnings("unchecked")
-            T typedValue = (T) value;
+            T typedValue = (T) convertUtf8ToString(value);
             valueToCount.merge(typedValue, 1, Integer::sum);
           }
         }
@@ -57,14 +58,14 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
         if (map != null) {
           for (Object value: map.values()) {
             @SuppressWarnings("unchecked")
-            T typedValue = (T) value;
+            T typedValue = (T) convertUtf8ToString(value);
             valueToCount.merge(typedValue, 1, Integer::sum);
           }
         }
       } else {
         // Handle scalar fields (shouldn't happen based on validation, but be defensive)
         @SuppressWarnings("unchecked")
-        T typedValue = (T) fieldValue;
+        T typedValue = (T) convertUtf8ToString(fieldValue);
         valueToCount.merge(typedValue, 1, Integer::sum);
       }
     }
@@ -80,6 +81,18 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
                 Map.Entry::getValue,
                 (e1, e2) -> e1, // If there are duplicate keys, keep the first one
                 LinkedHashMap::new));
+  }
+
+  /**
+   * Convert Utf8 objects to String to ensure consistent behavior between unit tests and integration tests.
+   * In integration tests, Avro deserialization produces Utf8 objects for string fields,
+   * while unit tests with mocked data use String objects directly.
+   */
+  private Object convertUtf8ToString(Object value) {
+    if (value instanceof Utf8) {
+      return value.toString();
+    }
+    return value;
   }
 
   @Override
