@@ -1071,7 +1071,8 @@ public class TestHybrid {
         // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
         .setHybridRewindSeconds(2000000)
         .setHybridOffsetLagThreshold(0)
-        .setPartitionCount(2);
+        .setPartitionCount(2)
+        .setActiveActiveReplicationEnabled(true);
     String storeName = Utils.getUniqueString("store");
     sharedVenice.useControllerClient(client -> {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);

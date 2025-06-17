@@ -185,7 +185,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         registerSensor(new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate, "healthy_request_ratio"));
     tardyRequestRatioSensor =
         registerSensor(new TehutiUtils.SimpleRatioStat(tardyRequestRate, requestRate, "tardy_request_ratio"));
-    keyNumSensor = registerSensor("key_num", new Avg(), new Max(0));
+
+    keyNumSensor = RequestType.isSingleGet(requestType) ? null : registerSensor("key_num", new Avg(), new Max(0));
+
     badRequestKeyCountSensor = registerSensor("bad_request_key_count", new OccurrenceRate(), new Avg(), new Max());
 
     healthyRequestMetric = MetricEntityStateThreeEnums.create(
@@ -374,9 +376,12 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     errorRetryAttemptTriggeredByPendingRequestCheckSensor =
         registerSensor("error_retry_attempt_triggered_by_pending_request_check", new OccurrenceRate());
 
-    unavailableReplicaStreamingRequestSensor = registerSensor("unavailable_replica_streaming_request", new Count());
+    unavailableReplicaStreamingRequestSensor = !RequestType.isStreaming(requestType)
+        ? null
+        : registerSensor("unavailable_replica_streaming_request", new Count());
     requestThrottledByRouterCapacitySensor = registerSensor("request_throttled_by_router_capacity", new Count());
-    fanoutRequestCountSensor = registerSensor("fanout_request_count", new Avg(), new Max(0));
+    fanoutRequestCountSensor =
+        RequestType.isSingleGet(requestType) ? null : registerSensor("fanout_request_count", new Avg(), new Max(0));
 
     routerResponseWaitingTimeSensor = registerSensor(
         "response_waiting_time",
@@ -420,22 +425,28 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     /**
      * request_usage.Total is incoming KPS while request_usage.OccurrenceRate is QPS
      */
-    requestUsageSensor = registerSensor("request_usage", new Total(), new OccurrenceRate());
+    requestUsageSensor = RequestType.isSingleGet(requestType)
+        ? registerSensor("request_usage", new Total(), new OccurrenceRate())
+        : null;
 
     /**
      * A count version of this sensor is needed, as an internal system depends on the sensor to be
      * of type Count to measure QPS.
      */
-    requestCallCountSensor = registerSensor("request_call_count", new Count());
+    requestCallCountSensor =
+        RequestType.isSingleGet(requestType) ? registerSensor("request_call_count", new Count()) : null;
 
-    multiGetFallbackSensor = registerSensor("multiget_fallback", new Total(), new OccurrenceRate());
+    multiGetFallbackSensor = !RequestType.isCompute(requestType)
+        ? null
+        : registerSensor("multiget_fallback", new Total(), new OccurrenceRate());
 
     requestParsingLatencySensor = registerSensor("request_parse_latency", new Avg());
     requestRoutingLatencySensor = registerSensor("request_route_latency", new Avg());
 
     unAvailableRequestSensor = registerSensor("unavailable_request", new Count());
 
-    readQuotaUsageSensor = registerSensor("read_quota_usage_kps", new Total());
+    readQuotaUsageSensor =
+        RequestType.isSingleGet(requestType) ? registerSensor("read_quota_usage_kps", new Total()) : null;
 
     inFlightRequestSensor = registerSensor("in_flight_request_count", new Min(), new Max(0), new Avg());
 
@@ -519,7 +530,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordUnavailableReplicaStreamingRequest() {
-    unavailableReplicaStreamingRequestSensor.record();
+    if (unavailableReplicaStreamingRequestSensor != null) {
+      unavailableReplicaStreamingRequestSensor.record();
+    }
   }
 
   /**
@@ -527,7 +540,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
    * @param quotaUsage
    */
   public void recordReadQuotaUsage(int quotaUsage) {
-    readQuotaUsageSensor.record(quotaUsage);
+    if (readQuotaUsageSensor != null) {
+      readQuotaUsageSensor.record(quotaUsage);
+    }
   }
 
   public void recordTardyRequest(double latency, HttpResponseStatus responseStatus, int keyNum) {
@@ -602,7 +617,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordFanoutRequestCount(int count) {
-    if (!getRequestType().equals(RequestType.SINGLE_GET)) {
+    if (fanoutRequestCountSensor != null) {
       fanoutRequestCountSensor.record(count);
     }
   }
@@ -644,7 +659,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordIncomingKeyCountMetric(int keyNum) {
-    keyNumSensor.record(keyNum);
+    if (keyNumSensor != null) {
+      keyNumSensor.record(keyNum);
+    }
   }
 
   public void recordIncomingBadRequestKeyCountMetric(HttpResponseStatus responseStatus, int keyNum) {
@@ -657,12 +674,18 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordRequestUsage(int usage) {
-    requestUsageSensor.record(usage);
-    requestCallCountSensor.record();
+    if (requestUsageSensor != null) {
+      requestUsageSensor.record(usage);
+    }
+    if (requestCallCountSensor != null) {
+      requestCallCountSensor.record();
+    }
   }
 
   public void recordMultiGetFallback(int keyCount) {
-    multiGetFallbackSensor.record(keyCount);
+    if (multiGetFallbackSensor != null) {
+      multiGetFallbackSensor.record(keyCount);
+    }
   }
 
   public void recordRequestParsingLatency(double latency) {

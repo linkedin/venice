@@ -31,4 +31,16 @@ public enum RequestType implements VeniceDimensionInterface {
   public String getDimensionValue() {
     return name().toLowerCase();
   }
+
+  public static boolean isSingleGet(RequestType requestType) {
+    return requestType == SINGLE_GET;
+  }
+
+  public static boolean isCompute(RequestType requestType) {
+    return requestType == COMPUTE;
+  }
+
+  public static boolean isStreaming(RequestType requestType) {
+    return requestType == MULTI_GET_STREAMING || requestType == COMPUTE_STREAMING;
+  }
 }

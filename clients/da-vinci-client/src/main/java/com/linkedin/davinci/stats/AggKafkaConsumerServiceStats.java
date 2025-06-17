@@ -84,22 +84,6 @@ public class AggKafkaConsumerServiceStats extends AbstractVeniceAggStoreStats<Ka
     totalStats.recordSubscribedPartitionsNum(count);
   }
 
-  public void recordTotalOffsetLagIsAbsent() {
-    totalStats.recordOffsetLagIsAbsent();
-  }
-
-  public void recordTotalOffsetLagIsPresent() {
-    totalStats.recordOffsetLagIsPresent();
-  }
-
-  public void recordTotalLatestOffsetIsAbsent() {
-    totalStats.recordLatestOffsetIsAbsent();
-  }
-
-  public void recordTotalLatestOffsetIsPresent() {
-    totalStats.recordLatestOffsetIsPresent();
-  }
-
   static class KafkaConsumerServiceStatsSupplier implements StatsSupplier<KafkaConsumerServiceStats> {
     private final LongSupplier getMaxElapsedTimeSinceLastPollInConsumerPool;
 

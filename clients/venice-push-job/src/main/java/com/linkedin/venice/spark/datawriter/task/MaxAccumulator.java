@@ -6,6 +6,8 @@ import org.apache.spark.util.AccumulatorV2;
 
 
 public class MaxAccumulator<T extends Comparable<T>> extends AccumulatorV2<T, T> {
+  private static final long serialVersionUID = 1L;
+
   private final AtomicReference<T> maxValue = new AtomicReference<>(null);
 
   MaxAccumulator(T initialValue) {

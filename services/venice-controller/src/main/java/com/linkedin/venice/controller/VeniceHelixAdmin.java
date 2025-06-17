@@ -8456,7 +8456,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         clusterName,
         getZkClient(),
         getAdapterSerializer(),
-        multiClusterConfigs.getLogContext());
+        multiClusterConfigs.getLogContext(),
+        multiClusterConfigs.getCommonConfig().getRefreshAttemptsForZkReconnect());
 
     Optional<Version> currentVersion = store.getVersion(store.getCurrentVersion());
     String kafkaTopic = currentVersion.isPresent() ? currentVersion.get().kafkaTopicName() : "";
@@ -8625,7 +8626,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           zkClient,
           adapterSerializer,
-          multiClusterConfigs.getLogContext());
+          multiClusterConfigs.getLogContext(),
+          multiClusterConfigs.getCommonConfig().getRefreshAttemptsForZkReconnect());
       List<String> offlinePushes = zkClient.getChildren(accessor.getOfflinePushStatuesParentPath());
       offlinePushes.forEach(resource -> {
         if (Version.isVersionTopic(resource)) {

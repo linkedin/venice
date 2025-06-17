@@ -119,7 +119,7 @@ public class TestHelixCustomizedView {
                 .build());
 
     /**
-     * Explicitly add an emtpy push status ZK path to make both write and read paths are robust to empty push status ZNodes
+     * Explicitly add an empty push status ZK path to make both write and read paths are robust to empty push status ZNodes
      */
     ZkClient zkClient = ZkClientFactory.newZkClient(veniceCluster.getZk().getAddress());
     HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
@@ -127,9 +127,8 @@ public class TestHelixCustomizedView {
         veniceCluster.getClusterName(),
         zkClient,
         adapterSerializer,
-        3,
-        1000,
-        veniceCluster.getRegionName());
+        veniceCluster.getRegionName(),
+        3);
     HelixUtils.create(
         offlinePushStatusAccessor.getOfflinePushStatusAccessor(),
         offlinePushStatusAccessor.getOfflinePushStatuesParentPath() + "/invalid_topic",

@@ -484,6 +484,7 @@ public class VeniceServer {
           serverConfig.getSnapshotRetentionTimeInMin(),
           serverConfig.getBlobTransferMaxTimeoutInMin(),
           serverConfig.getBlobReceiveMaxTimeoutInMin(),
+          serverConfig.getBlobReceiveReaderIdleTimeInSeconds(),
           serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
               ? BlobTransferTableFormat.PLAIN_TABLE
               : BlobTransferTableFormat.BLOCK_BASED_TABLE,

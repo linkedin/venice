@@ -24,9 +24,7 @@ import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskFactory;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
-import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -671,9 +669,8 @@ public class TestUtils {
         cluster,
         new ZkClient(zkAddress),
         new HelixAdapterSerializer(),
-        3,
-        1000,
-        cluster);
+        cluster,
+        3);
     MockTestStateModelFactory stateModelFactory = new MockTestStateModelFactory(offlinePushStatusAccessor);
     return getParticipant(cluster, nodeId, zkAddress, httpPort, stateModelFactory, stateModelDef);
   }
@@ -834,9 +831,6 @@ public class TestUtils {
     doReturn(true).when(mockVeniceProperties).isEmpty();
     doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
 
-    StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
-    doReturn(mock(StorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());
-
     ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     Store mockStore = mock(Store.class);
     doReturn(storeName).when(mockStore).getName();
@@ -885,7 +879,6 @@ public class TestUtils {
     doReturn(version).when(mockStore).getVersion(anyInt());
 
     return new StoreIngestionTaskFactory.Builder().setVeniceWriterFactory(mock(VeniceWriterFactory.class))
-        .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(mockStorageMetadataService)
         .setLeaderFollowerNotifiersQueue(new ArrayDeque<>())
         .setSchemaRepository(mock(ReadOnlySchemaRepository.class))

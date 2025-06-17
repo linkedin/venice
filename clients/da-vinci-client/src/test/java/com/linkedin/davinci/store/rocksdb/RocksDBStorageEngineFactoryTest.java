@@ -107,12 +107,12 @@ public class RocksDBStorageEngineFactoryTest {
     VeniceStoreVersionConfig testStoreConfig =
         new VeniceStoreVersionConfig(testStore, veniceServerProperties, PersistenceType.ROCKS_DB);
     StorageEngine storeEngine = factory.getStorageEngine(testStoreConfig);
-    storeEngine.addStoragePartition(1);
+    storeEngine.addStoragePartitionIfAbsent(1);
     storeEngine.dropPartition(1);
     factory.removeStorageEngine(storeEngine);
     // This could happen when re-balance happens or the pre-created partitions get moved/removed.
     storeEngine = factory.getStorageEngine(testStoreConfig);
-    storeEngine.addStoragePartition(1);
+    storeEngine.addStoragePartitionIfAbsent(1);
 
     factory.removeStorageEngine(storeEngine);
   }

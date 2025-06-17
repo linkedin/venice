@@ -133,12 +133,8 @@ public class VeniceMetadataRepositoryBuilder {
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
         new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, systemSchemaClusterName);
 
-    HelixReadOnlyStoreRepository readOnlyStoreRepository = new HelixReadOnlyStoreRepository(
-        zkClient,
-        adapter,
-        clusterName,
-        clusterConfig.getRefreshAttemptsForZkReconnect(),
-        clusterConfig.getRefreshIntervalForZkReconnectInMs());
+    HelixReadOnlyStoreRepository readOnlyStoreRepository =
+        new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName);
 
     storeRepo = new HelixReadOnlyStoreRepositoryAdapter(
         readOnlyZKSharedSystemStoreRepository,

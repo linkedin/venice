@@ -10,6 +10,7 @@ import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.StorageEngineAccessor;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
@@ -62,8 +63,8 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         mockReadOnlyStoreRepository);
     storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
-    testStoreEngine =
-        (RocksDBStorageEngine) storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null);
+    testStoreEngine = StorageEngineAccessor
+        .getInnerStorageEngine(storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null));
     createStoreForTest();
   }
 
@@ -205,8 +206,8 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     Assert.assertEquals(persistedPartitionIds.size(), 2);
     Assert.assertTrue(persistedPartitionIds.contains(PARTITION_ID));
     Assert.assertTrue(persistedPartitionIds.contains(METADATA_PARTITION_ID));
-    // Assert.assertEquals(2, rocksDBStorageEngine.getStats().getKeyCountEstimate());
-    // Assert.assertEquals(0, rocksDBStorageEngine.getStats().getDuplicateKeyCountEstimate());
+    Assert.assertEquals(2, rocksDBStorageEngine.getStats().getKeyCountEstimate());
+    Assert.assertEquals(0, rocksDBStorageEngine.getStats().getDuplicateKeyCountEstimate());
   }
 
   @Test

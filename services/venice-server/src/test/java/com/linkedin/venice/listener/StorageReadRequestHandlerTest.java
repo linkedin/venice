@@ -463,9 +463,6 @@ public class StorageReadRequestHandlerTest {
 
       ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
       multiGetResponseWrapper.getStatsRecorder().recordMetrics(stats);
-      if (responseProvider == validResponseProvider) {
-        verify(stats).recordSuccessRequestKeyCount(recordCount);
-      }
       if (largeValue.config) {
         /**
          * The assertion below can catch an issue where metrics are inaccurate during parallel batch gets. This was due
@@ -763,7 +760,6 @@ public class StorageReadRequestHandlerTest {
 
       ServerHttpRequestStats stats = mock(ServerHttpRequestStats.class);
       computeResponse.getStatsRecorder().recordMetrics(stats);
-      verify(stats).recordSuccessRequestKeyCount(keySet.size());
       verify(stats).recordDotProductCount(1);
       verify(stats).recordHadamardProduct(1);
       verify(stats).recordReadComputeEfficiency(expectedReadComputeEfficiency);

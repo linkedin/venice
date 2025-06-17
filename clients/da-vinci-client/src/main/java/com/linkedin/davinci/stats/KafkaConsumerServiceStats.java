@@ -38,10 +38,6 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
   private final Sensor minPartitionsPerConsumer;
   private final Sensor avgPartitionsPerConsumer;
   private final Sensor subscribedPartitionsNum;
-  private final Sensor getOffsetLagIsAbsentSensor;
-  private final Sensor getOffsetLagIsPresentSensor;
-  private final Sensor getLatestOffsetIsAbsentSensor;
-  private final Sensor getLatestOffsetIsPresentSensor;
   private final Sensor byteSizeSensor;
   private final Sensor idleTimeSensor;
 
@@ -108,18 +104,6 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
     maxPartitionsPerConsumer = registerSensor("max_partitions_per_consumer", new Gauge());
     avgPartitionsPerConsumer = registerSensor("avg_partitions_per_consumer", new Gauge());
     subscribedPartitionsNum = registerSensor("subscribed_partitions_num", new Gauge());
-
-    Sensor getOffsetLagSensor = registerSensor("getOffsetLag", new OccurrenceRate());
-    Sensor[] offsetLagParent = new Sensor[] { getOffsetLagSensor };
-    this.getOffsetLagIsAbsentSensor = registerSensor("getOffsetLagIsAbsent", offsetLagParent, new OccurrenceRate());
-    this.getOffsetLagIsPresentSensor = registerSensor("getOffsetLagIsPresent", offsetLagParent, new OccurrenceRate());
-
-    Sensor getLatestOffsetSensor = registerSensor("getLatestOffset", new OccurrenceRate());
-    Sensor[] latestOffsetParent = new Sensor[] { getLatestOffsetSensor };
-    this.getLatestOffsetIsAbsentSensor =
-        registerSensor("getLatestOffsetIsAbsent", latestOffsetParent, new OccurrenceRate());
-    this.getLatestOffsetIsPresentSensor =
-        registerSensor("getLatestOffsetIsPresent", latestOffsetParent, new OccurrenceRate());
   }
 
   public void recordPollRequestLatency(double latency) {
@@ -169,22 +153,6 @@ public class KafkaConsumerServiceStats extends AbstractVeniceStats {
 
   public void recordAvgPartitionsPerConsumer(int count) {
     avgPartitionsPerConsumer.record(count);
-  }
-
-  public void recordOffsetLagIsAbsent() {
-    getOffsetLagIsAbsentSensor.record();
-  }
-
-  public void recordOffsetLagIsPresent() {
-    getOffsetLagIsPresentSensor.record();
-  }
-
-  public void recordLatestOffsetIsAbsent() {
-    getLatestOffsetIsAbsentSensor.record();
-  }
-
-  public void recordLatestOffsetIsPresent() {
-    getLatestOffsetIsPresentSensor.record();
   }
 
   public void recordByteSizePerPoll(double count) {

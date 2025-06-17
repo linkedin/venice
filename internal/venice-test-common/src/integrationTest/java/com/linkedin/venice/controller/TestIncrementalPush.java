@@ -115,9 +115,8 @@ public class TestIncrementalPush {
         cluster.getClusterName(),
         zkClient,
         new HelixAdapterSerializer(),
-        1,
-        0,
-        LogContext.EMPTY);
+        LogContext.EMPTY,
+        1);
 
     // Even after consuming SOIP, we should see replica current status not flipped to non-terminal status
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
