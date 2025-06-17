@@ -144,7 +144,7 @@ public class VeniceOpenTelemetryMetricsRepository {
    */
   private final VeniceConcurrentHashMap<String, DoubleHistogram> histogramMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
-  private final VeniceConcurrentHashMap<String, LongGauge> guageMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, LongGauge> gaugeMap = new VeniceConcurrentHashMap<>();
 
   MetricExporter getOtlpHttpMetricExporter(VeniceMetricsConfig metricsConfig) {
     OtlpHttpMetricExporterBuilder exporterBuilder =
@@ -259,7 +259,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     if (!emitOpenTelemetryMetrics()) {
       return null;
     }
-    return guageMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
+    return gaugeMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
       String fullMetricName = getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName());
       LongGaugeBuilder builder = meter.gaugeBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
