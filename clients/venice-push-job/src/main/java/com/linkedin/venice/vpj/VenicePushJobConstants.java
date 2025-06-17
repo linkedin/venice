@@ -108,6 +108,8 @@ public final class VenicePushJobConstants {
   public static final String KAFKA_INPUT_BROKER_URL = "kafka.input.broker.url";
   // Optional
   public static final String KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = "kafka.input.max.records.per.mapper";
+  public static final String KAFKA_INPUT_MAX_MAPPER_COUNT = "kafka.input.max.mapper.count";
+
   public static final String KAFKA_INPUT_COMBINER_ENABLED = "kafka.input.combiner.enabled";
   // Whether to build a new dict in the repushed version or not while the original version has already enabled dict
   // compression.

@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_MAPPER_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 
@@ -101,9 +102,10 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
   public InputSplit[] getSplitsByRecordsPerSplit(JobConf job, long maxRecordsPerSplit) {
     Map<PubSubTopicPartition, Long> latestOffsets = getLatestOffsets(job);
     long totalEndOffset = latestOffsets.values().stream().mapToLong(Long::longValue).sum();
+    long maxMapperCount = job.getLong(KAFKA_INPUT_MAX_MAPPER_COUNT, DEFAULT_MAX_KIF_MAPPER_COUNT);
     long totalSplitEstimate = totalEndOffset / maxRecordsPerSplit;
-    if (totalSplitEstimate > DEFAULT_MAX_KIF_MAPPER_COUNT) {
-      maxRecordsPerSplit = totalSplitEstimate / DEFAULT_MAX_KIF_MAPPER_COUNT;
+    if (totalSplitEstimate > maxMapperCount) {
+      maxRecordsPerSplit = totalEndOffset / maxMapperCount;
     }
 
     List<InputSplit> splits = new LinkedList<>();
