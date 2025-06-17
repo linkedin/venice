@@ -19,8 +19,10 @@ import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
+import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -347,5 +349,59 @@ public class StoresRoutesTest {
     RepushJobResponse repushJobResponse = ObjectMapperFactory.getInstance()
         .readValue(repushStoreRoute.handle(request, mock(Response.class)).toString(), RepushJobResponse.class);
     Assert.assertTrue(repushJobResponse.isError());
+  }
+
+  @Test
+  public void testAutoMigrateStore() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class, RETURNS_DEEP_STUBS);
+    String DEST_CLUSTER = "dest_cluster";
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(TEST_CLUSTER);
+    Request request = mock(Request.class);
+    doReturn(LEADER_CONTROLLER.getPath()).when(request).pathInfo();
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(DEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER_DEST));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.STORE_NAME));
+    doReturn(null).when(request).queryParams(eq(ControllerApiConstants.AUTO_STORE_MIGRATION_CURRENT_STEP));
+    doReturn(null).when(request).queryParams(eq(ControllerApiConstants.AUTO_STORE_MIGRATION_ABORT_ON_FAILURE));
+    Route migrateStoreRoute =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).autoMigrateStore(mockAdmin);
+
+    // Happy path
+    when(mockAdmin.getControllerConfig(TEST_CLUSTER).isRealTimeTopicVersioningEnabled()).thenReturn(false);
+    when(mockAdmin.getControllerConfig(DEST_CLUSTER).isRealTimeTopicVersioningEnabled()).thenReturn(false);
+    StoreMigrationResponse trackableControllerResponse = ObjectMapperFactory.getInstance()
+        .readValue(migrateStoreRoute.handle(request, mock(Response.class)).toString(), StoreMigrationResponse.class);
+    Assert.assertFalse(trackableControllerResponse.isError());
+    Assert.assertNull(trackableControllerResponse.getError());
+    Assert.assertEquals(trackableControllerResponse.getSrcClusterName(), TEST_CLUSTER);
+    Assert.assertEquals(trackableControllerResponse.getCluster(), DEST_CLUSTER);
+    Assert.assertEquals(trackableControllerResponse.getName(), TEST_STORE_NAME);
+
+    // Bad Request Path:
+    // 1. Store belongs to destination cluster
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(DEST_CLUSTER);
+
+    trackableControllerResponse = ObjectMapperFactory.getInstance()
+        .readValue(migrateStoreRoute.handle(request, mock(Response.class)).toString(), StoreMigrationResponse.class);
+    Assert.assertTrue(trackableControllerResponse.isError());
+    Assert.assertEquals(trackableControllerResponse.getErrorType(), ErrorType.BAD_REQUEST);
+    Assert.assertEquals(
+        trackableControllerResponse.getError(),
+        String.format("Store %s already belongs to cluster %s.", TEST_STORE_NAME, DEST_CLUSTER));
+
+    // 2. Store doesn't belong to the source cluster
+    String EXTRA_CLUSTER = "extra_cluster";
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(EXTRA_CLUSTER);
+    trackableControllerResponse = ObjectMapperFactory.getInstance()
+        .readValue(migrateStoreRoute.handle(request, mock(Response.class)).toString(), StoreMigrationResponse.class);
+    Assert.assertTrue(trackableControllerResponse.isError());
+    Assert.assertEquals(trackableControllerResponse.getErrorType(), ErrorType.BAD_REQUEST);
+    Assert.assertEquals(
+        trackableControllerResponse.getError(),
+        String.format(
+            "Store %s belongs to cluster %s, which is different from the given src cluster name %s.",
+            TEST_STORE_NAME,
+            EXTRA_CLUSTER,
+            TEST_CLUSTER));
   }
 }

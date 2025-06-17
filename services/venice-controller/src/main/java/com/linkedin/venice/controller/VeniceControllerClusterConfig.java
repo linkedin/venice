@@ -612,6 +612,13 @@ public class VeniceControllerClusterConfig {
   private final boolean isProtocolVersionAutoDetectionServiceEnabled;
   private final long protocolVersionAutoDetectionSleepMS;
 
+  /**
+   * Configs for MultiTaskSchedulerService
+   */
+  private final boolean isMultiTaskSchedulerServiceEnabled;
+  private final int storeMigrationThreadPoolSize;
+  private final int storeMigrationMaxRetryAttempts;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
     this.clusterName = props.getString(CLUSTER_NAME);
@@ -1150,6 +1157,10 @@ public class VeniceControllerClusterConfig {
     this.skipDeferredVersionSwapForDVCEnabled = props.getBoolean(SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED, true);
     this.logContext = new LogContext.Builder().setRegionName(regionName).setComponentName("controller").build();
     this.deferredVersionSwapBufferTime = props.getDouble(DEFERRED_VERSION_SWAP_BUFFER_TIME, 1.1);
+
+    this.isMultiTaskSchedulerServiceEnabled = props.getBoolean(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, false);
+    this.storeMigrationThreadPoolSize = props.getInt(ConfigKeys.STORE_MIGRATION_THREAD_POOL_SIZE, 1);
+    this.storeMigrationMaxRetryAttempts = props.getInt(ConfigKeys.STORE_MIGRATION_MAX_RETRY_ATTEMPTS, 3);
   }
 
   public VeniceProperties getProps() {
@@ -1873,6 +1884,18 @@ public class VeniceControllerClusterConfig {
 
   public long getServiceDiscoveryRegistrationRetryMS() {
     return serviceDiscoveryRegistrationRetryMS;
+  }
+
+  public boolean isMultiTaskSchedulerServiceEnabled() {
+    return isMultiTaskSchedulerServiceEnabled;
+  }
+
+  public int getStoreMigrationThreadPoolSize() {
+    return storeMigrationThreadPoolSize;
+  }
+
+  public int getStoreMigrationMaxRetryAttempts() {
+    return storeMigrationMaxRetryAttempts;
   }
 
   /**

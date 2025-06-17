@@ -39,12 +39,11 @@ public class StoreMigrationManagerIntegrationTest {
     int initialStep = 0;
 
     // Schedule the migration
-    storeMigrationManager.scheduleMigration(storeName, sourceCluster, destinationCluster, initialStep, 1);
+    storeMigrationManager.scheduleMigration(storeName, sourceCluster, destinationCluster, initialStep, 1, true);
     MigrationRecord migrationRecord = storeMigrationManager.getMigrationRecord(storeName);
     migrationRecord.setStoreMigrationStartTime(Instant.now().minus(25, ChronoUnit.HOURS));
     // Allow time for the scheduled tasks to execute until getIsAborted is set to true
     TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
-
       assertTrue(migrationRecord.getIsAborted(), "Migration record should be aborted.");
     });
     // Verify that the migration record has been removed, indicating task is aborted
