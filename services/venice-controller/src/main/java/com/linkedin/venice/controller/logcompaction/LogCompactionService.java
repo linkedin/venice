@@ -11,6 +11,8 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
 import com.linkedin.venice.utils.LogContext;
 import io.tehuti.metrics.MetricsRepository;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -93,7 +95,15 @@ public class LogCompactionService extends AbstractVeniceService {
     public void run() {
       LogContext.setStructuredLogContext(clusterConfigs.getLogContext());
       try {
+        LOGGER.info(
+            "Scheduled log compaction cycle started for cluster: {} at time: {}",
+            clusterName,
+            Instant.ofEpochMilli(System.currentTimeMillis()).atZone(ZoneId.systemDefault()));
         compactStoresInClusters();
+        LOGGER.info(
+            "Scheduled log compaction cycle ended for cluster: {} at time: {}",
+            clusterName,
+            Instant.ofEpochMilli(System.currentTimeMillis()).atZone(ZoneId.systemDefault()));
       } catch (Throwable e) {
         LOGGER.error("Non-Exception Throwable caught", e);
       }
@@ -112,7 +122,7 @@ public class LogCompactionService extends AbstractVeniceService {
               response.getExecutionId());
         } catch (Exception e) {
           LOGGER.error(
-              "Error checking if store is ready for log compaction for cluster: {} store: {}",
+              "Error checking if store is ready for log compaction for cluster: {} store: {} exception: {}",
               clusterName,
               storeInfo.getName(),
               e);
@@ -120,4 +130,5 @@ public class LogCompactionService extends AbstractVeniceService {
       }
     }
   }
+
 }
