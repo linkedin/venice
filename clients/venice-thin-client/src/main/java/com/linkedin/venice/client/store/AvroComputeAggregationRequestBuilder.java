@@ -17,6 +17,7 @@ import org.apache.avro.Schema;
 public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregationRequestBuilder<K> {
   private final AvroComputeRequestBuilderV3<K> delegate;
   private final Map<String, Integer> fieldTopKMap = new HashMap<>();
+  private final Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
   private final SchemaReader schemaReader;
 
   public AvroComputeAggregationRequestBuilder(
@@ -112,7 +113,55 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
   public <T> ComputeAggregationRequestBuilder<K> countGroupByBucket(
       Map<String, Predicate<T>> bucketNameToPredicate,
       String... fieldNames) {
-    throw new UnsupportedOperationException("countGroupByBucket is not implemented");
+    // Validate inputs
+    if (bucketNameToPredicate == null || bucketNameToPredicate.isEmpty()) {
+      throw new VeniceClientException("bucketNameToPredicate cannot be null or empty");
+    }
+    if (fieldNames == null || fieldNames.length == 0) {
+      throw new VeniceClientException("fieldNames cannot be null or empty");
+    }
+
+    // Validate bucket names
+    for (Map.Entry<String, Predicate<T>> entry: bucketNameToPredicate.entrySet()) {
+      if (entry.getKey() == null || entry.getKey().isEmpty()) {
+        throw new VeniceClientException("Bucket name cannot be null or empty");
+      }
+      if (entry.getValue() == null) {
+        throw new VeniceClientException("Predicate for bucket '" + entry.getKey() + "' cannot be null");
+      }
+    }
+
+    // Validate fields exist in schema
+    Schema valueSchema = schemaReader.getValueSchema(schemaReader.getLatestValueSchemaId());
+    for (String fieldName: fieldNames) {
+      if (fieldName == null) {
+        throw new VeniceClientException("Field name cannot be null");
+      }
+      if (fieldName.isEmpty()) {
+        throw new VeniceClientException("Field name cannot be empty");
+      }
+
+      Schema.Field field = valueSchema.getField(fieldName);
+      if (field == null) {
+        throw new VeniceClientException("Field not found in schema: " + fieldName);
+      }
+
+      // Store bucket predicates for each field
+      Map<String, Predicate> existingBuckets = fieldBucketMap.get(fieldName);
+      if (existingBuckets == null) {
+        existingBuckets = new HashMap<>();
+        fieldBucketMap.put(fieldName, existingBuckets);
+      }
+
+      // Add all buckets for this field
+      for (Map.Entry<String, Predicate<T>> entry: bucketNameToPredicate.entrySet()) {
+        existingBuckets.put(entry.getKey(), entry.getValue());
+      }
+
+      // Project the field so we can process the values in the response
+      delegate.project(fieldName);
+    }
+    return this;
   }
 
   @Override
@@ -122,6 +171,7 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
     }
 
     // Execute the compute request
-    return delegate.execute(keys).thenApply(result -> new AvroComputeAggregationResponse<>(result, fieldTopKMap));
+    return delegate.execute(keys)
+        .thenApply(result -> new AvroComputeAggregationResponse<>(result, fieldTopKMap, fieldBucketMap));
   }
 }

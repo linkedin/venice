@@ -1,10 +1,14 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.venice.client.store.predicate.IntPredicate;
+import com.linkedin.venice.client.store.predicate.LongPredicate;
+import com.linkedin.venice.client.store.predicate.Predicate;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 
 
@@ -14,12 +18,21 @@ import org.apache.avro.util.Utf8;
 public class AvroComputeAggregationResponse<K> implements ComputeAggregationResponse {
   private final Map<K, ComputeGenericRecord> computeResults;
   private final Map<String, Integer> fieldTopKMap;
+  private final Map<String, Map<String, Predicate>> fieldBucketMap;
 
   public AvroComputeAggregationResponse(
       Map<K, ComputeGenericRecord> computeResults,
       Map<String, Integer> fieldTopKMap) {
+    this(computeResults, fieldTopKMap, new HashMap<>());
+  }
+
+  public AvroComputeAggregationResponse(
+      Map<K, ComputeGenericRecord> computeResults,
+      Map<String, Integer> fieldTopKMap,
+      Map<String, Map<String, Predicate>> fieldBucketMap) {
     this.computeResults = computeResults;
     this.fieldTopKMap = fieldTopKMap;
+    this.fieldBucketMap = fieldBucketMap;
   }
 
   @Override
@@ -97,6 +110,91 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
 
   @Override
   public Map<String, Integer> getBucketNameToCount(String fieldName) {
-    throw new UnsupportedOperationException("getBucketNameToCount is not implemented");
+    Map<String, Predicate> buckets = fieldBucketMap.get(fieldName);
+    if (buckets == null || buckets.isEmpty()) {
+      throw new IllegalArgumentException("No count-by-bucket aggregation was requested for field: " + fieldName);
+    }
+
+    // Initialize bucket counts
+    Map<String, Integer> bucketCounts = new LinkedHashMap<>();
+    for (String bucketName: buckets.keySet()) {
+      bucketCounts.put(bucketName, 0);
+    }
+
+    // Process all records
+    for (Map.Entry<K, ComputeGenericRecord> entry: computeResults.entrySet()) {
+      ComputeGenericRecord record = entry.getValue();
+
+      if (record == null) {
+        continue;
+      }
+
+      Object fieldValue = record.get(fieldName);
+      if (fieldValue == null) {
+        continue;
+      }
+
+      // Check which bucket(s) this value falls into
+      for (Map.Entry<String, Predicate> bucketEntry: buckets.entrySet()) {
+        String bucketName = bucketEntry.getKey();
+        Predicate predicate = bucketEntry.getValue();
+
+        try {
+          boolean matches = false;
+
+          // Convert field value if needed
+          Object convertedValue = convertUtf8ToString(fieldValue);
+
+          // Handle different value types
+          if (convertedValue instanceof GenericRecord) {
+            matches = predicate.evaluate((GenericRecord) convertedValue);
+          } else if (predicate instanceof LongPredicate) {
+            // Convert to Long if needed
+            Long longValue;
+            if (convertedValue instanceof Long) {
+              longValue = (Long) convertedValue;
+            } else if (convertedValue instanceof Integer) {
+              longValue = ((Integer) convertedValue).longValue();
+            } else if (convertedValue instanceof String) {
+              try {
+                longValue = Long.parseLong((String) convertedValue);
+              } catch (NumberFormatException e) {
+                continue;
+              }
+            } else {
+              continue;
+            }
+            matches = ((LongPredicate) predicate).evaluate(longValue);
+          } else if (predicate instanceof IntPredicate) {
+            // Convert to Integer if needed
+            Integer intValue;
+            if (convertedValue instanceof Integer) {
+              intValue = (Integer) convertedValue;
+            } else if (convertedValue instanceof Long) {
+              intValue = ((Long) convertedValue).intValue();
+            } else if (convertedValue instanceof String) {
+              try {
+                intValue = Integer.parseInt((String) convertedValue);
+              } catch (NumberFormatException e) {
+                continue;
+              }
+            } else {
+              continue;
+            }
+            matches = ((IntPredicate) predicate).evaluate(intValue);
+          } else {
+            matches = predicate.evaluate(convertedValue);
+          }
+
+          if (matches) {
+            bucketCounts.merge(bucketName, 1, Integer::sum);
+          }
+        } catch (ClassCastException e) {
+          continue;
+        }
+      }
+    }
+
+    return bucketCounts;
   }
 }
