@@ -911,6 +911,7 @@ public class VeniceChangelogConsumerImplTest {
 
     messagesMap.put(topicPartition, messages);
     when(pubSubConsumer.poll(pollTimeoutMs)).thenReturn(messagesMap);
+    when(veniceChangelogConsumer.getEnableReads()).thenReturn(true);
 
     doCallRealMethod().when(veniceChangelogConsumer)
         .convertPubSubMessageToPubSubChangeEventMessage(pubSubMessage, topicPartition);
