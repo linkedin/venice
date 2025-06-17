@@ -62,6 +62,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
   private Map<String, Integer> fetchNonTargetRegionStoreRetryCountMap = new HashMap<>();
   private Set<String> stalledVersionSwapSet = new HashSet<>();
+  private Map<String, Integer> failedRollforwardRetryCountMap = new HashMap<>();
+  private static final int MAX_ROLL_FORWARD_RETRY_LIMIT = 5;
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -615,15 +617,26 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               rollForwardToTargetVersion(nonTargetRegionsCompleted, parentStore, targetVersion, cluster, repository);
             } catch (Exception e) {
               LOGGER.warn("Failed to roll forward for store: {} in version: {}", storeName, targetVersionNum, e);
-              deferredVersionSwapStats.recordDeferredVersionSwapFailedRollForwardSensor();
 
-              parentStore.updateVersionStatus(targetVersionNum, VersionStatus.PARTIALLY_ONLINE);
-              repository.updateStore(parentStore);
-              LOGGER.info(
-                  "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {} after failing to roll forward in non target regions: {}",
-                  targetVersionNum,
-                  storeName,
-                  nonTargetRegionsCompleted);
+              int attemptedRetries = failedRollforwardRetryCountMap.compute(kafkaTopicName, (k, v) -> {
+                if (v == null) {
+                  return 1;
+                }
+                return v + 1;
+              });
+
+              if (attemptedRetries == MAX_FETCH_STORE_FETCH_RETRY_LIMIT) {
+                deferredVersionSwapStats.recordDeferredVersionSwapFailedRollForwardSensor();
+
+                parentStore.updateVersionStatus(targetVersionNum, VersionStatus.PARTIALLY_ONLINE);
+                repository.updateStore(parentStore);
+                failedRollforwardRetryCountMap.remove(kafkaTopicName);
+                LOGGER.info(
+                    "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {} after failing to roll forward in non target regions: {}",
+                    targetVersionNum,
+                    storeName,
+                    nonTargetRegionsCompleted);
+              }
             }
           }
         }
