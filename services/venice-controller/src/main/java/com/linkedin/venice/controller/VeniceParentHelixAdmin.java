@@ -246,7 +246,6 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
-import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -2137,36 +2136,30 @@ public class VeniceParentHelixAdmin implements Admin {
           "Sending roll forward command to future version {} for store {} to child controllers",
           futureVersionBeforeRollForward,
           storeName);
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+      Set<String> failedRegions = new HashSet<>();
+      Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+      for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+        ControllerClient controllerClient = entry.getValue();
+        ControllerResponse response = controllerClient.rollForwardToFutureVersion(storeName, regionFilter);
+
+        if (response.isError()) {
+          LOGGER.info("Roll forward in region {} failed with error: {}", entry.getKey(), response.getError());
+          failedRegions.add(entry.getKey());
+        }
+      }
+
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
       LOGGER.info(
-          "Truncating topic {} after child controllers consumed the roll forward messages to not block new versions",
+          "Truncating topic {} after child controllers tried to roll forward to not block new versions",
           kafkaTopic);
       truncateKafkaTopic(kafkaTopic);
 
-      // check whether the roll forward is successful in all regions in regionFilter.
-      // Add retries to let the child controllers finish processing the roll forward command
-      Map<String, Integer> failedRegions = new HashMap<>();
-      int finalFutureVersionBeforeRollForward = futureVersionBeforeRollForward;
-      RetryUtils.executeWithMaxAttempt(() -> {
-        Map<String, Integer> currentVersionsAfterRollForward = getCurrentVersionsForMultiColos(clusterName, storeName);
-        failedRegions.clear();
-        currentVersionsAfterRollForward.forEach((region, currentVersion) -> {
-          if (isRegionPartOfRegionsFilterList(region, regionFilter)
-              && currentVersion < finalFutureVersionBeforeRollForward) {
-            failedRegions.put(region, currentVersion);
-          }
-        });
-        if (!failedRegions.isEmpty()) {
-          StringBuilder sb = new StringBuilder();
-          sb.append("Roll forward failed in regions: ");
-          for (Map.Entry<String, Integer> entry: failedRegions.entrySet()) {
-            sb.append(entry.getKey()).append(" with current version: ").append(entry.getValue()).append(",");
-          }
-          sb.append(". Roll forward will be retried until it is successful.");
-          throw new VeniceException(sb.toString());
-        }
-      }, 5, Duration.ofMillis(200), Arrays.asList(VeniceException.class));
+      if (failedRegions.size() > 0) {
+        LOGGER.info("Roll forward failed in the following regions: {}", failedRegions);
+        throw new VeniceException(
+            "Roll forward failed in the following regions: " + failedRegions
+                + " Please try the roll forward action again");
+      }
 
       LOGGER.info(
           "Roll forward to future version {} is successful in all regions for store {}",
