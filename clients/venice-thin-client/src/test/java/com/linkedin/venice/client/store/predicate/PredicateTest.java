@@ -59,7 +59,7 @@ public class PredicateTest {
 
   @Test
   public void testPredicatesMisMatchedArrayElement() {
-    // N.B.: The last item is different
+    // N.B.: The last item is different.
     List<Float> expectedFloatArrayFieldValue = Arrays.asList(0.0f, 1.1f, 2.2f, 3.3f, 5.5f);
 
     GenericRecord keyRecord = new GenericData.Record(KEY_SCHEMA);
