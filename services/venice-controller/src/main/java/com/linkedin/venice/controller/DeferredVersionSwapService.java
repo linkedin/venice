@@ -62,8 +62,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
   private Map<String, Integer> fetchNonTargetRegionStoreRetryCountMap = new HashMap<>();
   private Set<String> stalledVersionSwapSet = new HashSet<>();
-  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER_DEBUG =
-      new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(30));
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
