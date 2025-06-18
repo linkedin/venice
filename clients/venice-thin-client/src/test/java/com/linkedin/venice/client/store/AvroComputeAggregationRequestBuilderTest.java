@@ -25,7 +25,7 @@ import org.testng.annotations.Test;
 
 /**
  * Test suite for AvroComputeAggregationRequestBuilder.
- * Focuses on validating field existence and type checking.
+ * Focuses on validating field existence and type checking
  */
 public class AvroComputeAggregationRequestBuilderTest {
   private static final String JOB_TYPE_FIELD = "jobType";
