@@ -107,7 +107,7 @@ public final class VenicePushJobConstants {
   public static final String KAFKA_INPUT_FABRIC = "kafka.input.fabric";
   public static final String KAFKA_INPUT_BROKER_URL = "kafka.input.broker.url";
   // Optional
-  public static final String KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = "kafka.input.max.records.per.mapper";
+  public static final String KAFKA_MAPPER_MULTIPLICATION_FACTOR = "kafka.mapper.multiplication.factor";
   public static final String KAFKA_INPUT_MAX_MAPPER_COUNT = "kafka.input.max.mapper.count";
 
   public static final String KAFKA_INPUT_COMBINER_ENABLED = "kafka.input.combiner.enabled";

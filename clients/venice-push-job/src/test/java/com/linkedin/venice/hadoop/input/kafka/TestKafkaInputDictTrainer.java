@@ -324,11 +324,11 @@ public class TestKafkaInputDictTrainer {
     PubSubTopicPartition topicPartition1 =
         new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 1);
     Map<PubSubTopicPartition, Long> map = new HashMap<>();
-    map.put(topicPartition, 10000L);
-    map.put(topicPartition1, 10000L);
+    map.put(topicPartition, 100L);
+    map.put(topicPartition1, 100L);
     doReturn(map).when(mockFormat).getLatestOffsets(job);
-    doCallRealMethod().when(mockFormat).getSplitsByRecordsPerSplit(job, 1000);
-    InputSplit[] splits = mockFormat.getSplitsByRecordsPerSplit(job, 1000);
+    doCallRealMethod().when(mockFormat).getSplitsByRecordsPerSplit(job, 10);
+    InputSplit[] splits = mockFormat.getSplitsByRecordsPerSplit(job, 10);
     Assert.assertEquals(splits.length, 20);
   }
 }
