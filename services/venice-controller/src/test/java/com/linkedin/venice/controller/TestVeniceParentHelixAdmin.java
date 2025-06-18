@@ -3224,14 +3224,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Map<String, Integer> after = Collections.singletonMap("r1", 5);
     doReturn(after).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
 
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      ControllerResponse response = new ControllerResponse();
+      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any());
+    }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, "r1");
 
-    verify(adminSpy).sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
     verify(adminSpy).truncateKafkaTopic(Version.composeKafkaTopic(storeName, 5));
-    verify(adminSpy, times(1)).getCurrentVersionsForMultiColos(clusterName, storeName);
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Roll forward failed in regions.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Roll forward failed in the following regions.*")
   public void testRollForwardPartialFailure() {
     VeniceParentHelixAdmin adminSpy = spy(parentAdmin);
     doNothing().when(adminSpy).acquireAdminMessageLock(clusterName, storeName);
@@ -3246,13 +3248,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .sendAdminMessageAndWaitForConsumed(eq(clusterName), eq(storeName), any(AdminOperation.class));
     doReturn(true).when(adminSpy).truncateKafkaTopic(anyString());
 
-    Map<String, Integer> after = new HashMap<>();
-    after.put("r1", 5);
-    after.put("r2", 4); // mismatch
-    doReturn(after).when(adminSpy).getCurrentVersionsForMultiColos(clusterName, storeName);
-
+    for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+      ControllerResponse response = new ControllerResponse();
+      response.setError("test error");
+      doReturn(response).when(entry.getValue()).rollForwardToFutureVersion(any(), any());
+    }
     adminSpy.rollForwardToFutureVersion(clusterName, storeName, null);
-    verify(adminSpy, times(5)).getCurrentVersionsForMultiColos(clusterName, storeName);
   }
 
   @Test
