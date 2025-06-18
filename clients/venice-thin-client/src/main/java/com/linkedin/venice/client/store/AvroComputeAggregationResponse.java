@@ -3,7 +3,6 @@ package com.linkedin.venice.client.store;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 
 
@@ -13,20 +12,12 @@ import org.apache.avro.util.Utf8;
 public class AvroComputeAggregationResponse<K> implements ComputeAggregationResponse {
   private final Map<K, ComputeGenericRecord> computeResults;
   private final Map<String, Integer> fieldTopKMap;
-  private final Schema valueSchema;
 
   public AvroComputeAggregationResponse(
       Map<K, ComputeGenericRecord> computeResults,
       Map<String, Integer> fieldTopKMap) {
     this.computeResults = computeResults;
     this.fieldTopKMap = fieldTopKMap;
-    // Get the value schema from the first non-null record
-    this.valueSchema = computeResults.values()
-        .stream()
-        .filter(record -> record != null)
-        .findFirst()
-        .map(record -> record.getSchema())
-        .orElse(null);
   }
 
   @Override
@@ -51,18 +42,6 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
         .forEach(entry -> sortedMap.put(entry.getKey(), entry.getValue()));
 
     return sortedMap;
-  }
-
-  /**
-   * Convert Utf8 objects to String to ensure consistent behavior between unit tests and integration tests.
-   * In integration tests, Avro deserialization produces Utf8 objects for string fields,
-   * while unit tests with mocked data use String objects directly.
-   */
-  private Object convertUtf8ToString(Object value) {
-    if (value instanceof Utf8) {
-      return value.toString();
-    }
-    return value;
   }
 
   @Override
