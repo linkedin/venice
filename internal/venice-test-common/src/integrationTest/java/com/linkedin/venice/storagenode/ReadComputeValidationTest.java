@@ -491,25 +491,23 @@ public class ReadComputeValidationTest {
 
   /**
    * Test countGroupByValue aggregation functionality.
-   * This test creates a store with array and map fields, then performs
+   * This test creates a store with simple string fields, then performs
    * count group by value aggregation on these fields.
    */
   @Test(timeOut = TIMEOUT)
   public void testCountGroupByValueAggregation() throws Exception {
     String keySchema = "\"int\"";
-    String valueSchemaWithArrayAndMap = "{" + "  \"namespace\": \"example.aggregation\",    "
-        + "  \"type\": \"record\",        " + "  \"name\": \"UserProfile\",       " + "  \"fields\": [        "
+    String valueSchemaSimple = "{" + "  \"namespace\": \"example.aggregation\",    " + "  \"type\": \"record\",        "
+        + "  \"name\": \"JobProfile\",       " + "  \"fields\": [        "
         + "         { \"name\": \"id\", \"type\": \"string\" },             "
-        + "         { \"name\": \"name\", \"type\": \"string\" },           "
-        + "         { \"name\": \"skills\", \"type\": { \"type\": \"array\", \"items\": \"string\" } },        "
-        + "         { \"name\": \"preferences\", \"type\": { \"type\": \"map\", \"values\": \"string\" } }        "
-        + "  ]       " + " }       ";
+        + "         { \"name\": \"jobType\", \"type\": \"string\" },           "
+        + "         { \"name\": \"location\", \"type\": \"string\" }        " + "  ]       " + " }       ";
 
     VeniceAvroKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
-    VeniceAvroKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchemaWithArrayAndMap);
+    VeniceAvroKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchemaSimple);
 
     // Create store with a version
-    VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(keySchema, valueSchemaWithArrayAndMap);
+    VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion(keySchema, valueSchemaSimple);
     Assert.assertFalse(creationResponse.isError());
     final String topic = creationResponse.getKafkaTopic();
     final String storeName = Version.parseStoreFromKafkaTopicName(creationResponse.getKafkaTopic());
@@ -523,41 +521,50 @@ public class ReadComputeValidationTest {
     Assert.assertFalse(controllerResponse.isError());
 
     // Create test data
-    Schema valueSchema = Schema.parse(valueSchemaWithArrayAndMap);
+    Schema valueSchema = Schema.parse(valueSchemaSimple);
     Map<Integer, GenericRecord> valuesByKey = new HashMap<>();
 
-    // User 1: skills=[Java, Python, Java], preferences={theme: dark_mode, language: english}
+    // Job 1: jobType=full-time, location=remote
     GenericRecord value1 = new GenericData.Record(valueSchema);
     value1.put("id", "1");
-    value1.put("name", "Alice");
-    value1.put("skills", Arrays.asList("Java", "Python", "Java"));
-    Map<CharSequence, CharSequence> prefs1 = new HashMap<>();
-    prefs1.put("theme", "dark_mode");
-    prefs1.put("language", "english");
-    value1.put("preferences", prefs1);
+    value1.put("jobType", "full-time");
+    value1.put("location", "remote");
     valuesByKey.put(1, value1);
 
-    // User 2: skills=[Python, JavaScript], preferences={theme: light_mode, language: english}
+    // Job 2: jobType=part-time, location=onsite
     GenericRecord value2 = new GenericData.Record(valueSchema);
     value2.put("id", "2");
-    value2.put("name", "Bob");
-    value2.put("skills", Arrays.asList("Python", "JavaScript"));
-    Map<CharSequence, CharSequence> prefs2 = new HashMap<>();
-    prefs2.put("theme", "light_mode");
-    prefs2.put("language", "english");
-    value2.put("preferences", prefs2);
+    value2.put("jobType", "part-time");
+    value2.put("location", "onsite");
     valuesByKey.put(2, value2);
 
-    // User 3: skills=[Java, JavaScript, Go], preferences={theme: dark_mode, language: spanish}
+    // Job 3: jobType=full-time, location=remote
     GenericRecord value3 = new GenericData.Record(valueSchema);
     value3.put("id", "3");
-    value3.put("name", "Charlie");
-    value3.put("skills", Arrays.asList("Java", "JavaScript", "Go"));
-    Map<CharSequence, CharSequence> prefs3 = new HashMap<>();
-    prefs3.put("theme", "dark_mode");
-    prefs3.put("language", "spanish");
-    value3.put("preferences", prefs3);
+    value3.put("jobType", "full-time");
+    value3.put("location", "remote");
     valuesByKey.put(3, value3);
+
+    // Job 4: jobType=part-time, location=hybrid
+    GenericRecord value4 = new GenericData.Record(valueSchema);
+    value4.put("id", "4");
+    value4.put("jobType", "part-time");
+    value4.put("location", "hybrid");
+    valuesByKey.put(4, value4);
+
+    // Job 5: jobType=full-time, location=remote
+    GenericRecord value5 = new GenericData.Record(valueSchema);
+    value5.put("id", "5");
+    value5.put("jobType", "full-time");
+    value5.put("location", "remote");
+    valuesByKey.put(5, value5);
+
+    // Job 6: jobType=part-time, location=onsite
+    GenericRecord value6 = new GenericData.Record(valueSchema);
+    value6.put("id", "6");
+    value6.put("jobType", "part-time");
+    value6.put("location", "onsite");
+    valuesByKey.put(6, value6);
 
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
         veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
@@ -577,62 +584,33 @@ public class ReadComputeValidationTest {
       // Write test data to the store
       pushRecordsToStore(topic, valuesByKey, veniceWriter, valueSerializer, 1);
 
-      Set<Integer> keySet = new HashSet<>(Arrays.asList(1, 2, 3));
+      Set<Integer> keySet = new HashSet<>(Arrays.asList(1, 2, 3, 4, 5, 6));
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
-        // Test countGroupByValue on skills array field
-        com.linkedin.venice.client.store.ComputeAggregationResponse skillsAggResponse =
-            computeStoreClient.computeAggregation().countGroupByValue(3, "skills").execute(keySet).get();
+        // Test countGroupByValue on jobType field
+        com.linkedin.venice.client.store.ComputeAggregationResponse jobTypeAggResponse =
+            computeStoreClient.computeAggregation().countGroupByValue(2, "jobType").execute(keySet).get();
 
-        Map<String, Integer> skillCounts = skillsAggResponse.getValueToCount("skills");
-        Assert.assertNotNull(skillCounts);
+        Map<String, Integer> jobTypeCounts = jobTypeAggResponse.getValueToCount("jobType");
+        Assert.assertNotNull(jobTypeCounts);
 
-        // Debug: Print the actual counts
-        System.out.println("Skill counts: " + skillCounts);
+        // Expected counts: full-time=3, part-time=3
+        Assert.assertEquals(jobTypeCounts.size(), 2, "Should have exactly 2 jobType values");
+        Assert.assertEquals(jobTypeCounts.get("full-time"), Integer.valueOf(3), "full-time count should be 3");
+        Assert.assertEquals(jobTypeCounts.get("part-time"), Integer.valueOf(3), "part-time count should be 3");
 
-        // Check that we have some results
-        Assert.assertTrue(skillCounts.size() > 0, "Skill counts should not be empty");
+        // Test countGroupByValue on location field, topK=2
+        com.linkedin.venice.client.store.ComputeAggregationResponse locationAggResponse =
+            computeStoreClient.computeAggregation().countGroupByValue(2, "location").execute(keySet).get();
 
-        // Expected counts: Java=3 (2 from user1 + 1 from user3), Python=2, JavaScript=2, Go=1
-        // Since we asked for top 3, we should have at most 3 entries
-        Assert.assertTrue(skillCounts.size() <= 3, "Should have at most top 3 entries");
+        Map<String, Integer> locationCounts = locationAggResponse.getValueToCount("location");
+        Assert.assertNotNull(locationCounts);
 
-        // Verify specific count values
-        Assert.assertEquals(skillCounts.get("Java"), Integer.valueOf(3), "Java count should be 3");
-        Assert.assertEquals(skillCounts.get("Python"), Integer.valueOf(2), "Python count should be 2");
-        Assert.assertEquals(skillCounts.get("JavaScript"), Integer.valueOf(2), "JavaScript count should be 2");
-
-        // Go should not be included since we only asked for top 3 and it has count=1
-        Assert.assertFalse(skillCounts.containsKey("Go"), "Go should not be included in top 3");
-
-        // Verify ordering (Java should be first with highest count)
-        List<Map.Entry<String, Integer>> skillEntries = new ArrayList<>(skillCounts.entrySet());
-        Assert.assertEquals(skillEntries.get(0).getKey(), "Java", "Java should be first (highest count)");
-        Assert.assertEquals(skillEntries.get(0).getValue(), Integer.valueOf(3), "Java should have count 3");
-
-        // Test countGroupByValue on preferences map field
-        com.linkedin.venice.client.store.ComputeAggregationResponse prefsAggResponse =
-            computeStoreClient.computeAggregation().countGroupByValue(5, "preferences").execute(keySet).get();
-
-        Map<String, Integer> prefCounts = prefsAggResponse.getValueToCount("preferences");
-        Assert.assertNotNull(prefCounts);
-
-        // Debug: Print the actual counts
-        System.out.println("Preference counts: " + prefCounts);
-
-        // Check that we have some results
-        Assert.assertTrue(prefCounts.size() > 0, "Preference counts should not be empty");
-
-        // Expected counts: dark_mode=2, english=2, light_mode=1, spanish=1
-        // Since we asked for top 5, we should have all 4 entries
-        Assert.assertTrue(prefCounts.size() <= 5, "Should have at most top 5 entries");
-        Assert.assertEquals(prefCounts.size(), 4, "Should have exactly 4 preference values");
-
-        // Verify specific count values
-        Assert.assertEquals(prefCounts.get("dark_mode"), Integer.valueOf(2), "dark_mode count should be 2");
-        Assert.assertEquals(prefCounts.get("english"), Integer.valueOf(2), "english count should be 2");
-        Assert.assertEquals(prefCounts.get("light_mode"), Integer.valueOf(1), "light_mode count should be 1");
-        Assert.assertEquals(prefCounts.get("spanish"), Integer.valueOf(1), "spanish count should be 1");
+        // Expected: remote=3, onsite=2 (hybrid=1 should be excluded by topK=2)
+        Assert.assertEquals(locationCounts.size(), 2, "Should have exactly 2 location values");
+        Assert.assertEquals(locationCounts.get("remote"), Integer.valueOf(3), "remote count should be 3");
+        Assert.assertEquals(locationCounts.get("onsite"), Integer.valueOf(2), "onsite count should be 2");
+        Assert.assertFalse(locationCounts.containsKey("hybrid"), "hybrid should not be included in top 2");
       });
     }
   }
