@@ -62,6 +62,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
   private Map<String, Integer> fetchNonTargetRegionStoreRetryCountMap = new HashMap<>();
   private Set<String> stalledVersionSwapSet = new HashSet<>();
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER_DEBUG =
+      new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(30));
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -323,9 +325,15 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           logMessageIfNotRedundant(message);
           return true;
         }
+
+        // TODO remove this when we start ramping as this is meant to be a temporary log to help with debugging
+        logMessageIfNotRedundant(
+            "Skipping version swap as push is still ongoing for store: " + storeName + " on version: "
+                + targetVersionNum);
         return false;
       case PUSHED:
       case KILLED:
+        logMessageIfNotRedundant("Entering version swap loop for: " + storeName + " on version: " + targetVersionNum);
         return true;
     }
 
@@ -379,6 +387,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       repository.updateStore(store);
       return false;
     } else if (numCompletedTargetRegions + numFailedTargetRegions != targetRegions.size()) {
+      // TODO remove after ramp as this is a temporary log to help with debugging
+      String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
+          + " as push is not complete yet in target regions. num completed target regions: " + numFailedTargetRegions;
+      logMessageIfNotRedundant(message);
       return false;
     }
 
@@ -452,7 +464,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String kafkaTopicName) {
 
     Set<String> completedNonTargetRegions = new HashSet<>();
-    Set<String> failedNonTargetRegions = new HashSet<>();
+    Map<String, String> failedNonTargetRegions = new HashMap<>();
     for (String nonTargetRegion: nonTargetRegions) {
       Version version = getVersionFromStoreInRegion(clusterName, nonTargetRegion, store.getName(), targetVersionNum);
 
@@ -469,7 +481,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         });
 
         if (attemptedRetries == MAX_FETCH_STORE_FETCH_RETRY_LIMIT) {
-          failedNonTargetRegions.add(nonTargetRegion);
+          failedNonTargetRegions.put(nonTargetRegion, "Failed to fetch store");
           fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
         }
 
@@ -483,7 +495,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       if (version.getStatus().equals(VersionStatus.PUSHED)) {
         completedNonTargetRegions.add(nonTargetRegion);
       } else if (version.getStatus().equals(ERROR) || version.getStatus().equals(VersionStatus.KILLED)) {
-        failedNonTargetRegions.add(nonTargetRegion);
+        failedNonTargetRegions.put(nonTargetRegion, version.getStatus().toString());
       }
     }
 
