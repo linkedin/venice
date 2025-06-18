@@ -462,7 +462,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String kafkaTopicName) {
 
     Set<String> completedNonTargetRegions = new HashSet<>();
-    Map<String, String> failedNonTargetRegionsToStatus = new HashMap<>();
+    Set<String> failedNonTargetRegions = new HashSet<>();
+    Map<String, String> nonTargetRegionToStatus = new HashMap<>();
     for (String nonTargetRegion: nonTargetRegions) {
       Version version = getVersionFromStoreInRegion(clusterName, nonTargetRegion, store.getName(), targetVersionNum);
 
@@ -479,7 +480,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         });
 
         if (attemptedRetries == MAX_FETCH_STORE_FETCH_RETRY_LIMIT) {
-          failedNonTargetRegionsToStatus.put(nonTargetRegion, "Failed to fetch store");
+          failedNonTargetRegions.add(nonTargetRegion);
           fetchNonTargetRegionStoreRetryCountMap.remove(regionKafkaTopicName);
         }
 
@@ -493,14 +494,16 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       if (version.getStatus().equals(VersionStatus.PUSHED)) {
         completedNonTargetRegions.add(nonTargetRegion);
       } else if (version.getStatus().equals(ERROR) || version.getStatus().equals(VersionStatus.KILLED)) {
-        failedNonTargetRegionsToStatus.put(nonTargetRegion, version.getStatus().toString());
+        failedNonTargetRegions.add(nonTargetRegion);
       }
+
+      nonTargetRegionToStatus.put(nonTargetRegion, version.getStatus().toString());
     }
 
-    Set<String> failedNonTargetRegions = failedNonTargetRegionsToStatus.keySet();
     if (failedNonTargetRegions.equals(nonTargetRegions)) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
-          + "as push failed in all non target regions. Failed non target regions: " + failedNonTargetRegionsToStatus;
+          + "as push failed in all non target regions. Failed non target regions: " + failedNonTargetRegions
+          + " non target regions: " + nonTargetRegionToStatus;
       logMessageIfNotRedundant(message);
       store.updateVersionStatus(targetVersionNum, PARTIALLY_ONLINE);
       repository.updateStore(store);
@@ -508,8 +511,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     } else if ((failedNonTargetRegions.size() + completedNonTargetRegions.size()) != nonTargetRegions.size()) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
           + "as push is not in terminal status in all non target regions. Completed non target regions: "
-          + completedNonTargetRegions + ", failed non target regions: " + failedNonTargetRegionsToStatus
-          + ", non target regions: " + nonTargetRegions;
+          + completedNonTargetRegions + ", failed non target regions: " + failedNonTargetRegions
+          + ", non target regions: " + nonTargetRegionToStatus;
       logMessageIfNotRedundant(message);
       return Collections.emptySet();
     }
