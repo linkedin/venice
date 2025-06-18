@@ -76,12 +76,12 @@ public class LogCompactionStats extends AbstractVeniceStats {
   public void recordRepushStoreCall(
       String storeName,
       RepushStoreTriggerSource triggerSource,
-      VeniceExecutionStatus responseStatusCategory) {
+      VeniceExecutionStatus executionStatus) {
     repushStoreCallCountMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
       {
         put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
         put(VeniceMetricsDimensions.REPUSH_STORE_TRIGGER_SOURCE, triggerSource.getDimensionValue());
-        put(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY, responseStatusCategory.getDimensionValue());
+        put(VeniceMetricsDimensions.VENICE_EXECUTION_STATUS, executionStatus.getDimensionValue());
       }
     });
   }
@@ -97,12 +97,13 @@ public class LogCompactionStats extends AbstractVeniceStats {
   }
 
   public void recordStoreRepushedForScheduledCompaction(String storeName, int storeCurrentVersionNumber) {
-    repushStoreCallCountMetric.record(0, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
-      {
-        put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-        put(VeniceMetricsDimensions.VENICE_STORE_VERSION, String.valueOf(storeCurrentVersionNumber));
-      }
-    });
+    storeNominatedForScheduledCompactionMetric
+        .record(0, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
+          {
+            put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
+            put(VeniceMetricsDimensions.VENICE_STORE_VERSION, String.valueOf(storeCurrentVersionNumber));
+          }
+        });
   }
 
   enum ControllerTehutiMetricNameEnum implements TehutiMetricNameEnum {
