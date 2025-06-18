@@ -625,7 +625,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                 return v + 1;
               });
 
-              if (attemptedRetries == MAX_FETCH_STORE_FETCH_RETRY_LIMIT) {
+              if (attemptedRetries == MAX_ROLL_FORWARD_RETRY_LIMIT) {
                 deferredVersionSwapStats.recordDeferredVersionSwapFailedRollForwardSensor();
 
                 parentStore.updateVersionStatus(targetVersionNum, VersionStatus.PARTIALLY_ONLINE);
