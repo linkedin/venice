@@ -7,6 +7,7 @@ import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
+import io.opentelemetry.api.metrics.LongGauge;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.Sensor;
 import java.util.Arrays;
@@ -106,7 +107,9 @@ public abstract class MetricEntityState {
         case COUNTER:
           ((LongCounter) otelMetric).add((long) value, attributes);
           break;
-
+        case GAUGE:
+          ((LongGauge) otelMetric).set((long) value, attributes);
+          break;
         default:
           throw new IllegalArgumentException("Unsupported metric type: " + metricType);
       }
