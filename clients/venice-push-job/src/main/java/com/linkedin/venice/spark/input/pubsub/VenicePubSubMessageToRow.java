@@ -22,6 +22,22 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
   private static final int NON_EXISTING_SCHEMA_ID = Integer.MAX_VALUE;
 
   /**
+   * Static factory method to maintain backward compatibility.
+   */
+  public static InternalRow convertPubSubMessageToRow(
+      @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage,
+      String region,
+      int partitionNumber) {
+    return new VenicePubSubMessageToRow().convert(pubSubMessage, region, partitionNumber);
+  }
+
+  static byte[] loadRemainingBytes(ByteBuffer buffer) {
+    byte[] bytes = new byte[buffer.remaining()];
+    buffer.get(bytes); // this stamps the bytes with contents of the buffer
+    return bytes;
+  }
+
+  /**
    * Converts a PubSub message to a Spark InternalRow.
    *
    * @param pubSubMessage The PubSub message to process. Contains key, value, and metadata.
@@ -93,21 +109,5 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
     return new GenericInternalRow(
         new Object[] { region, partitionNumber, messageType, offset, schemaId, keyBytes, valueBytes,
             replicationMetadataPayloadBytes, replicationMetadataVersionId });
-  }
-
-  /**
-   * Static factory method to maintain backward compatibility.
-   */
-  public static InternalRow convertPubSubMessageToRow(
-      @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage,
-      String region,
-      int partitionNumber) {
-    return new VenicePubSubMessageToRow().convert(pubSubMessage, region, partitionNumber);
-  }
-
-  static byte[] loadRemainingBytes(ByteBuffer buffer) {
-    byte[] bytes = new byte[buffer.remaining()];
-    buffer.get(bytes); // this stamps the bytes with contents of the buffer
-    return bytes;
   }
 }

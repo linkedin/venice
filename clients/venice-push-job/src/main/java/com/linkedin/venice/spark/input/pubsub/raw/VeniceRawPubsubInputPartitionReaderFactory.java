@@ -35,7 +35,8 @@ public class VeniceRawPubsubInputPartitionReaderFactory implements PartitionRead
     final VeniceBasicPubsubInputPartition inputPartition = (VeniceBasicPubsubInputPartition) genericInputPartition;
     final String topicName = inputPartition.getTopicName();
     final int partitionNumber = inputPartition.getPartitionNumber();
-    final String consumerName = String.format("raw_kif_%s_%d", topicName, partitionNumber);
+    final String consumerName =
+        String.format("raw_kif_%s_%s_%d", inputPartition.getRegion(), topicName, partitionNumber);
 
     // Create a single topic repository instance to be used throughout
     final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();

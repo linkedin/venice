@@ -44,33 +44,30 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   private static final float REPORT_PROGRESS_STEP_PERCENT = 10.0f; // Report progress every 10%
 
   private static final Logger LOGGER = LogManager.getLogger(VeniceRawPubsubInputPartitionReader.class);
-
+  final VeniceRawPubsubStats readerStats = new VeniceRawPubsubStats();
   private final boolean filterControlMessages = true;
   private final PubSubConsumerAdapter pubSubConsumer;
   private final ArrayDeque<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> messageBuffer =
       new ArrayDeque<>();
   private final PubSubMessageConverter pubSubMessageConverter;
-
   private final PubSubTopicPartition targetPubSubTopicPartition;
   private final String topicName;
   private final String region;
   private final int targetPartitionNumber;
-
   private final PubSubPosition startingPosition;
   private final long startingOffset;
   private final PubSubPosition endingPosition;
   private final long endingOffset;
   private final long offsetLength;
-  private float lastKnownProgressPercent = 0;
   // Added for testing purposes
   private final long consumerPollTimeout;
   private final int consumerPollEmptyResultRetryTimes;
   private final long emptyPollSleepTimeMs;
   private final OffsetProgressPercentCalculator percentCalculator;
+  private float lastKnownProgressPercent = 0;
   private PubSubPosition currentPosition;
   private long currentOffset;
   private InternalRow currentRow = null;
-  final VeniceRawPubsubStats readerStats = new VeniceRawPubsubStats();
 
   // the buffer that holds the relevant messages for the current partition
 

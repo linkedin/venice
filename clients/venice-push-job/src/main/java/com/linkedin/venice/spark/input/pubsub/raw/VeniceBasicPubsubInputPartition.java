@@ -51,5 +51,4 @@ public class VeniceBasicPubsubInputPartition implements InputPartition {
   public long getEndOffset() {
     return endOffset;
   }
-
 }
