@@ -19,6 +19,7 @@ import org.jetbrains.annotations.NotNull;
  */
 public class VenicePubSubMessageToRow implements PubSubMessageConverter {
   private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
+  private static final int NON_EXISTING_SCHEMA_ID = Integer.MAX_VALUE;
 
   /**
    * Converts a PubSub message to a Spark InternalRow.
@@ -78,7 +79,7 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
         break;
       default:
         messageType = -1; // this is an error condition
-        schemaId = Integer.MAX_VALUE;
+        schemaId = NON_EXISTING_SCHEMA_ID;
         value = EMPTY_BYTE_BUFFER;
         replicationMetadataPayload = EMPTY_BYTE_BUFFER;
         replicationMetadataVersionId = Integer.MAX_VALUE;
