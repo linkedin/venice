@@ -37,9 +37,9 @@ import org.testng.annotations.Test;
  */
 public class VeniceRawPubsubInputPartitionReaderTest {
   // short timeouts and retry counts to speed up tests
-  final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 3;
-  final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(1);
-  final long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
+  static final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 3;
+  static final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(1);
+  static final long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
   @Mock
   private VeniceBasicPubsubInputPartition mockInputPartition;
   @Mock
