@@ -240,7 +240,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
 
   protected CompletableFuture<Void> subscribe(ComplementSet<Integer> partitions) {
     throwIfNotReady();
-    throwIfWritesDisabled();
     subscription.addAll(partitions);
     return storeBackend.subscribe(partitions);
   }
@@ -670,12 +669,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   void throwIfReadsDisabled() {
     if (!getDaVinciBackend().getCachedStore(getStoreName()).isEnableReads()) {
       throw new StoreDisabledException(getStoreName(), "read");
-    }
-  }
-
-  void throwIfWritesDisabled() {
-    if (!getDaVinciBackend().getCachedStore(getStoreName()).isEnableWrites()) {
-      throw new StoreDisabledException(getStoreName(), "write");
     }
   }
 
