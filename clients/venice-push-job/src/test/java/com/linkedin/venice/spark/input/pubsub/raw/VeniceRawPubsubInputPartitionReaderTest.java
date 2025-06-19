@@ -1,6 +1,6 @@
 package com.linkedin.venice.spark.input.pubsub.raw;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -37,21 +37,20 @@ import org.testng.annotations.Test;
  * - Error conditions and edge cases
  */
 public class VeniceRawPubsubInputPartitionReaderTest {
+  // short timeouts and retry counts to speed up tests
+  final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 3;
+  final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(1);
+  final long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
   @Mock
   private VeniceBasicPubsubInputPartition mockInputPartition;
-
   @Mock
   private PubSubConsumerAdapter mockConsumer;
-
   @Mock
   private PubSubTopic mockTopic;
-
   @Mock
   private PubSubTopicPartition mockTopicPartition;
-
   @Mock
   private VenicePubSubMessageToRow mockMessageToRowConverter;
-
   private VeniceRawPubsubInputPartitionReader reader;
 
   @BeforeMethod
@@ -76,11 +75,6 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     long startOffset = 101L;
     long endOffset = 200L;
 
-    // updated constants to adjust the test behavior and timeouts
-    final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 3;
-    final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(1);
-    final long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
-
     // Setup mocks
     when(mockInputPartition.getPartitionNumber()).thenReturn(partitionNumber);
     when(mockInputPartition.getTopicName()).thenReturn(topicName);
@@ -103,8 +97,12 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     Assert.assertFalse(reader.next()); // Attempt to read messages, which should fail due to empty topic
 
     long elapsed = System.currentTimeMillis() - start;
-    Assert.assertTrue(elapsed >= 3000, "Constructor should take at least 3 seconds due to polling retries.");
-    Assert.assertTrue(elapsed < 4000, "Constructor should not exceed 4 seconds, it doesn't do much after failure.");
+    Assert.assertTrue(
+        elapsed >= CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES * CONSUMER_POLL_TIMEOUT,
+        "Constructor should take at least 3 seconds due to polling retries.");
+    Assert.assertTrue(
+        elapsed < (CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES + 1) * CONSUMER_POLL_TIMEOUT,
+        "Constructor should not exceed 4 seconds, it doesn't do much after failure.");
 
     reader.close();
   }
@@ -117,11 +115,6 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     String region = "test-region";
     long startOffset = 1L;
     long endOffset = 2L;
-
-    // updated constants to adjust the test behavior and timeouts
-    final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 3;
-    final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(1);
-    final long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
 
     // Setup mocks
     when(mockInputPartition.getPartitionNumber()).thenReturn(partitionNumber);
@@ -198,11 +191,6 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     String region = "test-region";
     long startOffset = 1L;
     long endOffset = 2L;
-
-    // updated constants to adjust the test behavior and timeouts
-    final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 3;
-    final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(1);
-    final long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
 
     // Setup mocks
     when(mockInputPartition.getPartitionNumber()).thenReturn(partitionNumber);
@@ -298,5 +286,4 @@ public class VeniceRawPubsubInputPartitionReaderTest {
         0,
         "Records delivered by get should be zero initially");
   }
-
 }
