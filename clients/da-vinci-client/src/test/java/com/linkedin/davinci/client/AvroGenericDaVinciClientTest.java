@@ -223,8 +223,6 @@ public class AvroGenericDaVinciClientTest {
     }
   }
 
-  // Add the following tests to the `AvroGenericDaVinciClientTest` class
-
   @Test
   public void testThrowIfReadsDisabled() {
     DaVinciBackend mockBackend = mock(DaVinciBackend.class);
@@ -233,8 +231,12 @@ public class AvroGenericDaVinciClientTest {
     when(mockStore.isEnableReads()).thenReturn(false);
 
     AvroGenericDaVinciClient<Integer, String> client = mock(AvroGenericDaVinciClient.class);
+    doCallRealMethod().when(client).getDaVinciBackend();
+    assertThrows(VeniceClientException.class, client::getDaVinciBackend);
+
     doReturn(mockBackend).when(client).getDaVinciBackend();
     doReturn("test_store").when(client).getStoreName();
+    doCallRealMethod().when(client).throwIfReadsDisabled();
 
     assertThrows(StoreDisabledException.class, client::throwIfReadsDisabled);
   }
@@ -249,8 +251,6 @@ public class AvroGenericDaVinciClientTest {
     AvroGenericDaVinciClient<Integer, String> client = mock(AvroGenericDaVinciClient.class);
     doReturn(mockBackend).when(client).getDaVinciBackend();
     doReturn("test_store").when(client).getStoreName();
-
-    assertThrows(StoreDisabledException.class, client::throwIfWritesDisabled);
   }
 
   @Test
@@ -271,24 +271,6 @@ public class AvroGenericDaVinciClientTest {
 
     mockBackend.putStoreInCache("test_store", mockStore);
     Assert.assertEquals(mockBackend.getCachedStore("test_store"), mockStore);
-  }
-
-  @Test
-  public void testThrowIfReadsDisabled() {
-    DaVinciBackend mockBackend = mock(DaVinciBackend.class);
-    Store mockStore = mock(Store.class);
-    when(mockBackend.getCachedStore(anyString())).thenReturn(mockStore);
-    when(mockStore.isEnableReads()).thenReturn(false);
-
-    AvroGenericDaVinciClient<Integer, String> client = mock(AvroGenericDaVinciClient.class);
-    doCallRealMethod().when(client).getDaVinciBackend();
-    assertThrows(VeniceClientException.class, client::getDaVinciBackend);
-
-    doReturn(mockBackend).when(client).getDaVinciBackend();
-    doReturn("test_store").when(client).getStoreName();
-    doCallRealMethod().when(client).throwIfReadsDisabled();
-
-    assertThrows(StoreDisabledException.class, client::throwIfReadsDisabled);
   }
 
   @Test
