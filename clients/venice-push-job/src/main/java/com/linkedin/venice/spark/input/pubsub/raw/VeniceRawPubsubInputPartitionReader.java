@@ -130,6 +130,10 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
     LOGGER.info("Subscribed to topic-partition: {}-{}.", this.topicName, this.targetPartitionNumber);
   }
 
+  public float getProgressPercent() {
+    return this.percentCalculator.calculate(this.currentOffset);
+  }
+
   /**
    *  Assuming that Current row has meaningful data, this method will return that and counts the number of invocations.
    * @return The current row as an {@link InternalRow}.
@@ -250,7 +254,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   }
 
   private void maybeLogProgress() {
-    float progressPercent = this.percentCalculator.calculate(this.currentOffset);
+    float progressPercent = this.getProgressPercent();
     if (progressPercent - this.lastKnownProgressPercent >= REPORT_PROGRESS_STEP_PERCENT) {
       logProgress();
       this.lastKnownProgressPercent = progressPercent;
@@ -263,7 +267,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
         "Progress for" + " topic-partition {}-{} , consumed {}% of {} records. records delivered: {}, skipped: {}",
         this.topicName,
         this.targetPartitionNumber,
-        String.format("%.1f", this.percentCalculator.calculate(this.currentOffset)),
+        String.format("%.1f", this.getProgressPercent()),
         this.offsetLength,
         readerStats.getRecordsServed(),
         readerStats.getRecordsSkipped());

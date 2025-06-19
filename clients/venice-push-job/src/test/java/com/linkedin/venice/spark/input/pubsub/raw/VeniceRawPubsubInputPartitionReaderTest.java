@@ -107,7 +107,7 @@ public class VeniceRawPubsubInputPartitionReaderTest {
   }
 
   @Test
-  public void testShortTopicConsumeConvert() {
+  public void testShortTopicNoControlMessage() {
     // Arrange
     int partitionNumber = 5;
     String topicName = "test-topic-no-control_v2";
@@ -134,7 +134,7 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult2 = new HashMap<>();
     pollResult2.put(mockTopicPartition, Collections.singletonList(mockMessage2));
 
-    when(mockConsumer.poll(CONSUMER_POLL_TIMEOUT)).thenReturn(pollResult1) // first poll returns a map with first
+    when(mockConsumer.poll(CONSUMER_POLL_TIMEOUT)).thenReturn(pollResult1) // first poll returs a map with first the
                                                                            // message
         .thenReturn(pollResult2) // second poll returns a map with second message
         .thenReturn(new HashMap<>()); // third poll returns an empty map, indicating no more messages
@@ -155,10 +155,13 @@ public class VeniceRawPubsubInputPartitionReaderTest {
         EMPTY_POLL_SLEEP_TIME_MS,
         mockMessageToRowConverter);
 
+    Assert.assertEquals(reader.getProgressPercent(), 0f, "we should report 0% progress.");
     Assert.assertTrue(reader.next(), "Reader should have a message available.");
     Assert.assertNotNull(reader.get(), "Expected one result.");
+    Assert.assertEquals(reader.getProgressPercent(), 50f, "we should report 50% progress.");
     Assert.assertEquals(reader.get(), mockRow, "Reader should return the mockRow.");
     Assert.assertTrue(reader.next(), "Reader should have a second message available.");
+    Assert.assertEquals(reader.getProgressPercent(), 100f, "We should now report 100% progress.");
     Assert.assertFalse(reader.next(), "Reader should not have any more messages available.");
 
     // at this point, we keep returning the last good row, and there wont be any "next" message available.
@@ -197,7 +200,7 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     pollResult2.put(mockTopicPartition, Collections.singletonList(mockMessage2));
 
     when(mockConsumer.poll(CONSUMER_POLL_TIMEOUT)).thenReturn(pollResult1) // First poll returns a map with one control
-                                                                           // message
+        // message
         .thenReturn(pollResult2) // Second poll returns a map with one regular message
         .thenReturn(new HashMap<>()); // Third poll returns an empty map, indicating no more messages
 
@@ -218,7 +221,9 @@ public class VeniceRawPubsubInputPartitionReaderTest {
         mockMessageToRowConverter);
 
     // there should be a message available,
+    Assert.assertEquals(reader.getProgressPercent(), 0f, "we should report 0% progress.");
     Assert.assertTrue(reader.next(), "Reader should have a message available.");
+    Assert.assertEquals(reader.getProgressPercent(), 100f, "we should report 100% progress.");
     Assert.assertNotNull(reader.get(), "Expected one result.");
     Assert.assertEquals(reader.get(), mockRow, "Reader should return the mocked InternalRow."); //
     Assert.assertFalse(reader.next(), "Reader should NOT have any more messages available.");
@@ -270,5 +275,4 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     when(mockMessage.getKey()).thenReturn(mockKey);
     return mockMessage;
   }
-
 }
