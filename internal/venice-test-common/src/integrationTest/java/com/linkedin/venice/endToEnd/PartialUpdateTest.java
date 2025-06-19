@@ -33,7 +33,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
@@ -271,7 +270,7 @@ public class PartialUpdateTest {
           IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
       props.setProperty(SOURCE_KAFKA, "true");
       props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
-      props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+      // props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
       // intentionally stop re-consuming from RT so stale records don't affect the testing results
       // props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
       IntegrationTestPushUtils.runVPJ(props);
@@ -982,7 +981,7 @@ public class PartialUpdateTest {
           IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
       props.setProperty(SOURCE_KAFKA, "true");
       props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
-      props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+      // props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
       // intentionally stop re-consuming from RT so stale records don't affect the testing results
       props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
       IntegrationTestPushUtils.runVPJ(props);
@@ -1303,7 +1302,7 @@ public class PartialUpdateTest {
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
-    props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    // props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     props.setProperty(REPUSH_TTL_ENABLE, "true");
     // Override the TTL repush start TS to work with logical TS setup.
     props.setProperty(REPUSH_TTL_START_TIMESTAMP, String.valueOf(FRESH_TS));
@@ -1597,7 +1596,7 @@ public class PartialUpdateTest {
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
-    props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    // props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     IntegrationTestPushUtils.runVPJ(props);
     PubSubTopic storeVersionTopicV3 = PUB_SUB_TOPIC_REPOSITORY.getTopic(Version.composeKafkaTopic(storeName, 3));
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
@@ -1866,7 +1865,7 @@ public class PartialUpdateTest {
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
-    props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    // props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     IntegrationTestPushUtils.runVPJ(props);
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       TestUtils.waitForNonDeterministicPushCompletion(

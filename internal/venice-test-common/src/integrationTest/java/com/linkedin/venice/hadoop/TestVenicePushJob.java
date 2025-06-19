@@ -16,7 +16,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUT
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_FABRIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.MAP_REDUCE_PARTITIONER_CLASS_CONFIG;
@@ -596,7 +595,7 @@ public class TestVenicePushJob {
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
-    props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    // props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     // This repush should succeed
     IntegrationTestPushUtils.runVPJ(props);
     TestUtils.waitForNonDeterministicAssertion(
@@ -646,7 +645,7 @@ public class TestVenicePushJob {
     // setup repush job settings, without any broker url or topic name
     props.setProperty(SOURCE_KAFKA, "true");
     props.setProperty(KAFKA_INPUT_FABRIC, "dc-0");
-    props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    // props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     // convert to RT policy
     TestUtils.assertCommand(
         veniceCluster.updateStore(

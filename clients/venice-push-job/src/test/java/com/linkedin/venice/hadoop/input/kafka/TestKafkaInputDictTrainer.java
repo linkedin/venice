@@ -1,9 +1,12 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_MAPPER_COUNT;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_MAPPER_MULTIPLICATION_FACTOR;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -24,11 +27,15 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.hadoop.mapred.InputSplit;
+import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -306,5 +313,28 @@ public class TestKafkaInputDictTrainer {
     });
     verify(mockedCompressor, never()).decompress(eq(ByteBuffer.wrap("p0_value0".getBytes())));
     verify(mockTrainer1, never()).addSample(eq("p0_value0".getBytes()));
+  }
+
+  @Test
+  public void testgetSplitsByRecordsPerSplit() throws IOException {
+    KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
+    JobConf job = mock(JobConf.class);
+    doReturn(100L).when(job).getLong(KAFKA_INPUT_MAX_MAPPER_COUNT, 10000L);
+    doReturn(3L).when(job).getLong(KAFKA_MAPPER_MULTIPLICATION_FACTOR, 3);
+    PubSubTopicPartition topicPartition =
+        new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 0);
+    PubSubTopicPartition topicPartition1 =
+        new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic("test_topic"), 1);
+    Map<PubSubTopicPartition, Long> map = new HashMap<>();
+    map.put(topicPartition, 100L);
+    map.put(topicPartition1, 100L);
+    doReturn(map).when(mockFormat).getLatestOffsets(job);
+    doCallRealMethod().when(mockFormat).getSplitsByRecordsPerSplit(job, 10);
+    InputSplit[] splits = mockFormat.getSplitsByRecordsPerSplit(job, 10);
+    Assert.assertEquals(splits.length, 20);
+    doCallRealMethod().when(mockFormat).getSplits(job, 10);
+    doReturn(splits).when(mockFormat).getSplitsByRecordsPerSplit(job, 3);
+    InputSplit[] splits1 = mockFormat.getSplits(job, 10);
+    Assert.assertEquals(splits1.length, 20);
   }
 }
