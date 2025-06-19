@@ -48,6 +48,14 @@ To set up IntelliJ, run:
 6. Set `Names count to use static import with *` to 1000
 
 ## Setting up your system
+### Docker setup
+On mac you will need docker and docker-machine installed. You can install them using [Homebrew](https://brew.sh/):
+```shell
+brew install docker docker-compose docker-machine colima
+colim start
+# this might be needed as well : sudo ln -sf $HOME/.colima/default/docker.sock /var/run/docker.sock
+```
+
 ### Set the maximum number of open files limit
 There are many resources on the web for updating the limits of maximum number of open files for each operating system.
 We recommend setting a soft limit of at least `64000` and a hard limit of at least `524288`. Feel free to experiment

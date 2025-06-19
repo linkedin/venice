@@ -5,7 +5,7 @@ pushd $CURRENTDIR/..
 cd docker
 
 repository="${1:-venicedb}"
-oss_release="${2:-0.4.336}"
+oss_release="${2:-0.4.538}"
 
 set -x
 echo "Building docker images for repository $repository, version $oss_release"
