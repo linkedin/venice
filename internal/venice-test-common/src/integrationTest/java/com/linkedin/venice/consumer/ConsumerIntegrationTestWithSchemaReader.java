@@ -2,7 +2,6 @@ package com.linkedin.venice.consumer;
 
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_FABRIC;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SYSTEM_SCHEMA_READER_ENABLED;
 
@@ -68,7 +67,7 @@ public class ConsumerIntegrationTestWithSchemaReader extends ConsumerIntegration
     Properties vpjProps = defaultVPJProps(cluster, "Ignored", store);
     vpjProps.setProperty(SOURCE_KAFKA, "true");
     vpjProps.setProperty(KAFKA_INPUT_FABRIC, "dc-0");
-    vpjProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    // vpjProps.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     vpjProps.setProperty(SYSTEM_SCHEMA_READER_ENABLED, "true");
     IntegrationTestPushUtils.runVPJ(vpjProps);
 

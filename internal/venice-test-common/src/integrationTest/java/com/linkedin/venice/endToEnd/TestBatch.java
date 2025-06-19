@@ -42,7 +42,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INCREMENTAL_PUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_COMBINER_ENABLED;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
@@ -651,7 +650,7 @@ public abstract class TestBatch {
           properties.setProperty(SOURCE_KAFKA, "true");
           properties.setProperty(VENICE_STORE_NAME_PROP, storeName);
           properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
-          properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+          // properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
           properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, String.valueOf(sendDirectControlMessage));
           properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(true));
         },
@@ -705,7 +704,7 @@ public abstract class TestBatch {
            * This is used to make sure the first mapper doesn't contain any real messages, but just control messages.
            * So that {@link AbstractVeniceMapper#maybeSprayAllPartitions} won't be invoked.
            */
-          properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "2");
+          // properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "2");
         },
         validator,
         storeName,
@@ -842,7 +841,7 @@ public abstract class TestBatch {
           properties -> {
             properties.setProperty(SOURCE_KAFKA, "true");
             properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
-            properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+            // properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
             properties.setProperty(KAFKA_INPUT_COMBINER_ENABLED, combiner);
           },
           dataValidator,
@@ -1052,7 +1051,7 @@ public abstract class TestBatch {
       properties.setProperty(SOURCE_KAFKA, "true");
       properties.setProperty(VENICE_STORE_NAME_PROP, storeName);
       properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
-      properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+      // properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
       properties.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, sendDirectControlMessage.toString());
     }, storeName);
   }
@@ -1439,7 +1438,7 @@ public abstract class TestBatch {
           properties.setProperty(SOURCE_KAFKA, "true");
           properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
           properties.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getPubSubBrokerWrapper().getAddress());
-          properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+          // properties.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
         },
         emptyValidator,
         storeName,
