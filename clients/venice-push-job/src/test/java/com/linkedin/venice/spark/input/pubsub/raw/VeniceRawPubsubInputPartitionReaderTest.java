@@ -27,7 +27,6 @@ import org.testng.annotations.Test;
 
 /**
  * Unit tests for {@link VeniceRawPubsubInputPartitionReader}.
- *
  * This test class validates the functionality of the partition reader including:
  * - Reading messages from PubSub topic partition
  * - Handling of starting and ending offsets
@@ -70,8 +69,8 @@ public class VeniceRawPubsubInputPartitionReaderTest {
   public void testEmptyTopicInitialization() {
     // Arrange
     int partitionNumber = 5;
-    String topicName = "test-topic";
-    String region = "test-region";
+    String topicName = "test-topic-empty_v1";
+    String region = "ei-test-region1";
     long startOffset = 101L;
     long endOffset = 200L;
 
@@ -111,8 +110,8 @@ public class VeniceRawPubsubInputPartitionReaderTest {
   public void testShortTopicConsumeConvert() {
     // Arrange
     int partitionNumber = 5;
-    String topicName = "test-topic";
-    String region = "test-region";
+    String topicName = "test-topic-no-control_v2";
+    String region = "ei-test-region2";
     long startOffset = 1L;
     long endOffset = 2L;
 
@@ -124,38 +123,26 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     when(mockInputPartition.getEndOffset()).thenReturn(endOffset);
     when(mockTopicPartition.getPubSubTopic()).thenReturn(mockTopic);
 
-    KafkaKey mockKey1 = Mockito.mock(KafkaKey.class);
-    when(mockKey1.isControlMessage()).thenReturn(false);
-    PubSubPosition mockPosition1 = ApacheKafkaOffsetPosition.of(startOffset);
+    // prepare 2 mock messages
+    DefaultPubSubMessage mockMessage1 = createMockMessage(startOffset, false);
+    DefaultPubSubMessage mockMessage2 = createMockMessage(startOffset + 1L, false);
 
-    DefaultPubSubMessage mockMessage1 = Mockito.mock(DefaultPubSubMessage.class);
-    when(mockMessage1.getOffset()).thenReturn(mockPosition1);
-    when(mockMessage1.getKey()).thenReturn(mockKey1); // No key for this message
-
-    KafkaKey mockKey2 = Mockito.mock(KafkaKey.class);
-    when(mockKey2.isControlMessage()).thenReturn(false);
-    DefaultPubSubMessage mockMessage2 = Mockito.mock(DefaultPubSubMessage.class);
-    PubSubPosition mockPosition2 = ApacheKafkaOffsetPosition.of(startOffset + 1L);
-    when(mockMessage2.getOffset()).thenReturn(mockPosition2);
-    when(mockMessage2.getKey()).thenReturn(mockKey2);
-
-    InternalRow mockRow = Mockito.mock(InternalRow.class);
-
-    // Mock the poll function to return the mock message
+    // build poll result maps
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult1 = new HashMap<>();
     pollResult1.put(mockTopicPartition, Collections.singletonList(mockMessage1));
 
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult2 = new HashMap<>();
     pollResult2.put(mockTopicPartition, Collections.singletonList(mockMessage2));
 
-    when(mockConsumer.poll(CONSUMER_POLL_TIMEOUT)).thenReturn(pollResult1)
-        .thenReturn(pollResult2)
-        .thenReturn(new HashMap<>());
-    // mock the return value of the message converter
+    when(mockConsumer.poll(CONSUMER_POLL_TIMEOUT)).thenReturn(pollResult1) // first poll returns a map with first
+                                                                           // message
+        .thenReturn(pollResult2) // second poll returns a map with second message
+        .thenReturn(new HashMap<>()); // third poll returns an empty map, indicating no more messages
 
+    // mock the return value of the message converter
+    InternalRow mockRow = Mockito.mock(InternalRow.class);
     when(mockMessageToRowConverter.convert(Mockito.eq(mockMessage1), Mockito.eq(region), Mockito.eq(partitionNumber)))
         .thenReturn(mockRow);
-
     when(mockMessageToRowConverter.convert(Mockito.eq(mockMessage2), Mockito.eq(region), Mockito.eq(partitionNumber)))
         .thenReturn(mockRow);
 
@@ -168,17 +155,15 @@ public class VeniceRawPubsubInputPartitionReaderTest {
         EMPTY_POLL_SLEEP_TIME_MS,
         mockMessageToRowConverter);
 
-    // to inspect the state of the reader
-
-    Assert.assertTrue(reader.next(), "Reader should have a next message available");
-    Assert.assertNotNull(reader.get(), "Expected one result");
-    Assert.assertEquals(reader.get(), mockRow, "Reader should return the expected InternalRow");
-    Assert.assertTrue(reader.next(), "Reader should have a next message available");
-    Assert.assertFalse(reader.next(), "Reader should have a next message available");
+    Assert.assertTrue(reader.next(), "Reader should have a message available.");
+    Assert.assertNotNull(reader.get(), "Expected one result.");
+    Assert.assertEquals(reader.get(), mockRow, "Reader should return the mockRow.");
+    Assert.assertTrue(reader.next(), "Reader should have a second message available.");
+    Assert.assertFalse(reader.next(), "Reader should not have any more messages available.");
 
     // at this point, we keep returning the last good row, and there wont be any "next" message available.
-    Assert.assertFalse(reader.next(), "Reader should have a next message available");
-    Assert.assertEquals(reader.get(), mockRow, "Reader should return the expected InternalRow");
+    Assert.assertFalse(reader.next(), "Reader should not have any more messages available.");
+    Assert.assertEquals(reader.get(), mockRow, "Reader should still return the mockRow.");
 
     reader.close();
   }
@@ -187,8 +172,8 @@ public class VeniceRawPubsubInputPartitionReaderTest {
   public void testFilterControlMessages() {
     // Arrange
     int partitionNumber = 5;
-    String topicName = "test-topic";
-    String region = "test-region";
+    String topicName = "test-topic-with-control_v7";
+    String region = "prod-test-region1";
     long startOffset = 1L;
     long endOffset = 2L;
 
@@ -200,23 +185,9 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     when(mockInputPartition.getEndOffset()).thenReturn(endOffset);
     when(mockTopicPartition.getPubSubTopic()).thenReturn(mockTopic);
 
-    KafkaKey mockKey1 = Mockito.mock(KafkaKey.class);
-    when(mockKey1.isControlMessage()).thenReturn(true);
-    PubSubPosition mockPosition1 = ApacheKafkaOffsetPosition.of(startOffset);
-
-    DefaultPubSubMessage mockMessage1 = Mockito.mock(DefaultPubSubMessage.class);
-    when(mockKey1.isControlMessage()).thenReturn(true);
-    when(mockMessage1.getOffset()).thenReturn(mockPosition1);
-    when(mockMessage1.getKey()).thenReturn(mockKey1); // No key for this message
-
-    KafkaKey mockKey2 = Mockito.mock(KafkaKey.class);
-    when(mockKey2.isControlMessage()).thenReturn(false);
-    DefaultPubSubMessage mockMessage2 = Mockito.mock(DefaultPubSubMessage.class);
-    PubSubPosition mockPosition2 = ApacheKafkaOffsetPosition.of(startOffset + 1L);
-    when(mockMessage2.getOffset()).thenReturn(mockPosition2);
-    when(mockMessage2.getKey()).thenReturn(mockKey2);
-
-    InternalRow mockRow = Mockito.mock(InternalRow.class);
+    // first mock message is a control message, second is a regular message
+    DefaultPubSubMessage mockMessage1 = createMockMessage(startOffset, true);
+    DefaultPubSubMessage mockMessage2 = createMockMessage(startOffset + 1L, false);
 
     // Mock the poll function to return the mock message
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult1 = new HashMap<>();
@@ -225,14 +196,15 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult2 = new HashMap<>();
     pollResult2.put(mockTopicPartition, Collections.singletonList(mockMessage2));
 
-    when(mockConsumer.poll(CONSUMER_POLL_TIMEOUT)).thenReturn(pollResult1)
-        .thenReturn(pollResult2)
-        .thenReturn(new HashMap<>());
-    // mock the return value of the message converter
+    when(mockConsumer.poll(CONSUMER_POLL_TIMEOUT)).thenReturn(pollResult1) // First poll returns a map with one control
+                                                                           // message
+        .thenReturn(pollResult2) // Second poll returns a map with one regular message
+        .thenReturn(new HashMap<>()); // Third poll returns an empty map, indicating no more messages
 
+    InternalRow mockRow = Mockito.mock(InternalRow.class);
+    // mock the return value of the message converter
     when(mockMessageToRowConverter.convert(Mockito.eq(mockMessage1), Mockito.eq(region), Mockito.eq(partitionNumber)))
         .thenReturn(mockRow);
-
     when(mockMessageToRowConverter.convert(Mockito.eq(mockMessage2), Mockito.eq(region), Mockito.eq(partitionNumber)))
         .thenReturn(mockRow);
 
@@ -245,17 +217,13 @@ public class VeniceRawPubsubInputPartitionReaderTest {
         EMPTY_POLL_SLEEP_TIME_MS,
         mockMessageToRowConverter);
 
-    // to inspect the state of the reader
+    // there should be a message available,
+    Assert.assertTrue(reader.next(), "Reader should have a message available.");
+    Assert.assertNotNull(reader.get(), "Expected one result.");
+    Assert.assertEquals(reader.get(), mockRow, "Reader should return the mocked InternalRow."); //
+    Assert.assertFalse(reader.next(), "Reader should NOT have any more messages available.");
 
-    Assert.assertTrue(reader.next(), "Reader should have a next message available");
-    Assert.assertNotNull(reader.get(), "Expected one result");
-    Assert.assertEquals(reader.get(), mockRow, "Reader should return the expected InternalRow");
-    Assert.assertFalse(reader.next(), "Reader should have a next message available");
-    // assert that skipped records is 1
-    Assert.assertEquals(reader.readerStats.getRecordsSkipped(), 1, "Reader should have skipped one control message");
-    // at this point, we keep returning the last good row, and there wont be any "next" message available.
-    Assert.assertFalse(reader.next(), "Reader should have a next message available");
-    Assert.assertEquals(reader.get(), mockRow, "Reader should return the expected InternalRow");
+    Assert.assertEquals(reader.readerStats.getRecordsSkipped(), 1, "ReaderStats report one skipped control message");
 
     reader.close();
   }
@@ -279,11 +247,28 @@ public class VeniceRawPubsubInputPartitionReaderTest {
         mockMessageToRowConverter);
 
     // Assert that stats are initialized to zero
-    Assert.assertEquals(reader.readerStats.getRecordsServed(), 0, "Records served should be zero initially");
-    Assert.assertEquals(reader.readerStats.getRecordsSkipped(), 0, "Records skipped should be zero initially");
+    Assert.assertEquals(reader.readerStats.getRecordsServed(), 0, "Records served should be zero initially.");
+    Assert.assertEquals(reader.readerStats.getRecordsSkipped(), 0, "Records skipped should be zero initially.");
     Assert.assertEquals(
         reader.readerStats.getRecordsDeliveredByGet(),
         0,
-        "Records delivered by get should be zero initially");
+        "Records delivered by get should be zero initially.");
   }
+
+  /**
+   * Helper method to create a mock PubSub message with specified offset and control flag
+   * @param offset The offset for the message
+   * @param isControlMessage Whether this message should be a control message
+   * @return Mocked DefaultPubSubMessage
+   */
+  private DefaultPubSubMessage createMockMessage(long offset, boolean isControlMessage) {
+    DefaultPubSubMessage mockMessage = Mockito.mock(DefaultPubSubMessage.class);
+    KafkaKey mockKey = Mockito.mock(KafkaKey.class);
+    when(mockKey.isControlMessage()).thenReturn(isControlMessage);
+    PubSubPosition mockPosition = ApacheKafkaOffsetPosition.of(offset);
+    when(mockMessage.getOffset()).thenReturn(mockPosition);
+    when(mockMessage.getKey()).thenReturn(mockKey);
+    return mockMessage;
+  }
+
 }

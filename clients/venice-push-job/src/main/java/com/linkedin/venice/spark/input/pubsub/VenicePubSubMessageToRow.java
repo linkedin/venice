@@ -106,6 +106,7 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
     byte[] valueBytes = loadRemainingBytes(value);
     byte[] replicationMetadataPayloadBytes = loadRemainingBytes(replicationMetadataPayload);
 
+    // See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
     return new GenericInternalRow(
         new Object[] { region, partitionNumber, messageType, offset, schemaId, keyBytes, valueBytes,
             replicationMetadataPayloadBytes, replicationMetadataVersionId });

@@ -72,16 +72,16 @@ public class VeniceRawPubsubInputScan implements Scan, Batch {
           // If the offset range is zero or negative, we skip this partition.
           // This can happen if the topic is empty or if the beginning position is equal to the end position.
           LOGGER.warn(
-              "Partition {} in topic: {} is of length zero or negative. Will not process it. Beginning offset: {}, End offset: {}",
-              topicPartition.getPartitionNumber(),
+              "Topic-partition {}-{} is of length zero or negative. Will not process it. Beginning offset: {}, End offset: {}",
               topicName,
+              topicPartition.getPartitionNumber(),
               beginningOffset,
               endOffset);
         } else {
           LOGGER.info(
-              "Partition {} in topic: {} is of length: {}. Beginning offset: {}, End offset: {}",
-              topicPartition.getPartitionNumber(),
+              "Topic-partition {}-{} is of length: {}. Beginning offset: {}, End offset: {}",
               topicName,
+              topicPartition.getPartitionNumber(),
               offsetRange,
               beginningOffset,
               endOffset);

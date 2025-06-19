@@ -69,7 +69,7 @@ public class VeniceRawPubsubInputPartitionReaderFactory implements PartitionRead
         .findFirst()
         .orElseThrow(
             () -> new RuntimeException(
-                String.format("Partition not found for topic: %s partition number: %d", topicName, partitionNumber)));
+                String.format("Partition not found for topic-partition: %s-%d", topicName, partitionNumber)));
 
     return new VeniceRawPubsubInputPartitionReader(inputPartition, pubSubConsumer, targetPubSubTopicPartition);
   }

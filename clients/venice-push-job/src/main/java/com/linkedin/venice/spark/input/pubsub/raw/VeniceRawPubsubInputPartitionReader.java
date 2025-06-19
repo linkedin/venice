@@ -127,7 +127,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
 
     // Subscribe to the topic partition
     pubSubConsumer.subscribe(targetPubSubTopicPartition, startingPosition);
-    LOGGER.info("Subscribed to Topic: {} Partition {}.", this.topicName, this.targetPartitionNumber);
+    LOGGER.info("Subscribed to topic-partition: {}-{}.", this.topicName, this.targetPartitionNumber);
   }
 
   /**
@@ -176,7 +176,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
       }
     } catch (RuntimeException e) {
       LOGGER.error(
-          "Error while polling messages from topic {} partition {}: {}",
+          "Error while polling messages from topic-partition {}-{}. error:  {}",
           this.topicName,
           this.targetPartitionNumber,
           e.getMessage());
@@ -196,7 +196,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   public void close() {
     pubSubConsumer.close();
     LOGGER.info(
-        "Consumer closed for Topic: {}, partition: {}, consumed {} records.",
+        "Consumer closed for topic-partition: {}-{}, consumed {} records.",
         this.topicName,
         this.targetPartitionNumber,
         readerStats.getRecordsServed());
@@ -229,7 +229,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
       } catch (InterruptedException e) {
         logProgress();
         LOGGER.error(
-            "Interrupted while waiting for records from topic {} partition {}",
+            "Interrupted while waiting for records from topic-partition {}-{}",
             this.topicName,
             this.targetPartitionNumber,
             e);
@@ -243,7 +243,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
     // Exhausted all retries without getting messages
     throw new RuntimeException(
         String.format(
-            "Empty poll after %d retries for topic: %s partition: %d. No messages were consumed.",
+            "Empty poll after %d retries for topic-partition: %s-%d. No messages were consumed.",
             consumerPollEmptyResultRetryTimes,
             this.topicName,
             this.targetPartitionNumber));
@@ -260,7 +260,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   private void logProgress() {
     // handle null currentOffset gracefully in the calculate method
     LOGGER.info(
-        "Progress for" + " Topic: {}, partition {} , consumed {}% of {} records. records delivered: {}, skipped: {}",
+        "Progress for" + " topic-partition {}-{} , consumed {}% of {} records. records delivered: {}, skipped: {}",
         this.topicName,
         this.targetPartitionNumber,
         String.format("%.1f", this.percentCalculator.calculate(this.currentOffset)),
