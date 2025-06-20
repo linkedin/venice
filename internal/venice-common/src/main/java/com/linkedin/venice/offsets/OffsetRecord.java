@@ -128,6 +128,14 @@ public class OffsetRecord {
     this.partitionState.heartbeatTimestamp = heartbeatTimestamp;
   }
 
+  public long getLastCheckpointTimestamp() {
+    return this.partitionState.lastCheckpointTimestamp;
+  }
+
+  public void setLastCheckpointTimestamp(long timestamp) {
+    this.partitionState.lastCheckpointTimestamp = timestamp;
+  }
+
   /**
    * @return the last messageTimeStamp across all producers tracked by this OffsetRecord
    */

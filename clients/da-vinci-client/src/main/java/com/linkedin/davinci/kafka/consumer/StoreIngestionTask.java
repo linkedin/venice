@@ -2886,6 +2886,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ps.getOffsetRecord().setOffsetLag(measureHybridOffsetLag(ps, false));
     // Measure and save real-time heartbeat timestamp.
     ps.getOffsetRecord().setHeartbeatTimestamp(measureHybridHeartbeatTimestamp(ps, false));
+    ps.getOffsetRecord().setLastCheckpointTimestamp(System.currentTimeMillis());
   }
 
   void setIngestionException(int partitionId, Exception e) {
