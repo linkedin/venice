@@ -164,7 +164,8 @@ public class PushStatusCollector {
       ExecutionStatusWithDetails daVinciStatus = pushStatus.getDaVinciStatus();
       String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.topicName);
       Store store = storeRepository.getStore(storeName);
-      if (daVinciStatus.isNoDaVinciStatusReport()) {
+      int dvcRetryCount = topicToNoDaVinciStatusRetryCountMap.getOrDefault(pushStatus.topicName, 0);
+      if (daVinciStatus.isNoDaVinciStatusReport() && dvcRetryCount < daVinciPushStatusNoReportRetryMaxAttempts) {
         LOGGER.info(
             "Received empty DaVinci status report for topic: {}. Server status: {}, DvcStatus: {}",
             pushStatus.topicName,
@@ -181,8 +182,6 @@ public class PushStatusCollector {
           daVinciStatus = new ExecutionStatusWithDetails(ExecutionStatus.NOT_STARTED, daVinciStatus.getDetails());
           pushStatus.setDaVinciStatus(daVinciStatus);
         } else {
-          topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
-
           // Update dvc heartbeat to false if there is no dvc status
           if (store.getIsDavinciHeartbeatReported()) {
             store.setIsDavinciHeartbeatReported(false);
