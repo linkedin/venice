@@ -26,6 +26,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.apache.logging.log4j.LogManager;
@@ -105,7 +106,21 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
   }
 
   /**
-   * This function will return true if the input key/value pair is valid.
+   * This function compresses the record and checks whether its uncompressed size exceeds the maximum allowed size.
+   * Regardless of the configuration, it tracks uncompressed record size violations in the {@code DataWriterTaskTracker}.
+   * If {@code enableUncompressedMaxRecordSizeLimit} is enabled, any record that exceeds the limit will be dropped from further processing.
+   * <p>
+   * The metrics collected by this function will be exposed in the PushJobDetails system store.
+   * Downstream, the {@code trackUncompressedRecordTooLargeFailure} metric is used to verify that the job
+   * does not violate the maximum uncompressed record size constraint.
+   * <p>
+   * If {@code trackUncompressedRecordTooLargeFailure} is non-zero and
+   * {@code enableUncompressedMaxRecordSizeLimit} is enabled, the job will throw a {@link VeniceException}
+   * in {@link VenicePushJob#runJobAndUpdateStatus()}, using the output of
+   * {@link VenicePushJob#updatePushJobDetailsWithJobDetails(DataWriterTaskTracker)}.
+   * <p>
+   * When {@code enableUncompressedMaxRecordSizeLimit} is enabled, no records will be produced to Kafka
+   * in {@link AbstractPartitionWriter#processValuesForKey(byte[], Iterator, Iterator, DataWriterTaskTracker)}.
    */
   protected boolean process(
       INPUT_KEY inputKey,
@@ -131,8 +146,8 @@ public abstract class AbstractInputRecordProcessor<INPUT_KEY, INPUT_VALUE> exten
     // both key and value are not null: Record uncompressed Key and value lengths
     dataWriterTaskTracker.trackKeySize(recordKey.length);
     dataWriterTaskTracker.trackUncompressedValueSize(recordValue.length);
+    dataWriterTaskTracker.trackLargestUncompressedValueSize(recordValue.length);
 
-    // check record size before compression
     if (this.maxRecordSizeBytes != VeniceWriter.UNLIMITED_MAX_RECORD_SIZE
         && recordKey.length + recordValue.length > this.maxRecordSizeBytes) {
       dataWriterTaskTracker.trackUncompressedRecordTooLargeFailure();
