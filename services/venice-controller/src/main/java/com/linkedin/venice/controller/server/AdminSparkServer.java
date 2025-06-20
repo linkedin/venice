@@ -110,6 +110,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPLOAD_PUSH_JOB_STATUS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.VALIDATE_STORE_DELETED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -705,6 +706,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(
         GET_INUSE_SCHEMA_IDS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getInUseSchemaIds(admin)));
+    httpService.get(
+        VALIDATE_STORE_DELETED.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.validateStoreDeleted(admin)));
 
     httpService.post(
         CLEANUP_INSTANCE_CUSTOMIZED_STATES.getPath(),
