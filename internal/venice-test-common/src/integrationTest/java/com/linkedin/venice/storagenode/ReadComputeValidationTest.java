@@ -58,6 +58,12 @@ import org.testng.annotations.Test;
 public class ReadComputeValidationTest {
   private static final long TIMEOUT = 1 * Time.MS_PER_MINUTE;
   private static final String VALUE_PREFIX = "id_";
+
+  // Field constants for better readability
+  private static final String JOB_TYPE_FIELD = "jobType";
+  private static final String LOCATION_FIELD = "location";
+  private static final String ID_FIELD = "id";
+
   private VeniceClusterWrapper veniceCluster;
   private String storeName;
   private String routerAddr;
@@ -526,44 +532,44 @@ public class ReadComputeValidationTest {
 
     // Job 1: jobType=full-time, location=remote
     GenericRecord value1 = new GenericData.Record(valueSchema);
-    value1.put("id", "1");
-    value1.put("jobType", "full-time");
-    value1.put("location", "remote");
+    value1.put(ID_FIELD, "1");
+    value1.put(JOB_TYPE_FIELD, "full-time");
+    value1.put(LOCATION_FIELD, "remote");
     valuesByKey.put(1, value1);
 
     // Job 2: jobType=part-time, location=onsite
     GenericRecord value2 = new GenericData.Record(valueSchema);
-    value2.put("id", "2");
-    value2.put("jobType", "part-time");
-    value2.put("location", "onsite");
+    value2.put(ID_FIELD, "2");
+    value2.put(JOB_TYPE_FIELD, "part-time");
+    value2.put(LOCATION_FIELD, "onsite");
     valuesByKey.put(2, value2);
 
     // Job 3: jobType=full-time, location=remote
     GenericRecord value3 = new GenericData.Record(valueSchema);
-    value3.put("id", "3");
-    value3.put("jobType", "full-time");
-    value3.put("location", "remote");
+    value3.put(ID_FIELD, "3");
+    value3.put(JOB_TYPE_FIELD, "full-time");
+    value3.put(LOCATION_FIELD, "remote");
     valuesByKey.put(3, value3);
 
     // Job 4: jobType=part-time, location=hybrid
     GenericRecord value4 = new GenericData.Record(valueSchema);
-    value4.put("id", "4");
-    value4.put("jobType", "part-time");
-    value4.put("location", "hybrid");
+    value4.put(ID_FIELD, "4");
+    value4.put(JOB_TYPE_FIELD, "part-time");
+    value4.put(LOCATION_FIELD, "hybrid");
     valuesByKey.put(4, value4);
 
     // Job 5: jobType=full-time, location=remote
     GenericRecord value5 = new GenericData.Record(valueSchema);
-    value5.put("id", "5");
-    value5.put("jobType", "full-time");
-    value5.put("location", "remote");
+    value5.put(ID_FIELD, "5");
+    value5.put(JOB_TYPE_FIELD, "full-time");
+    value5.put(LOCATION_FIELD, "remote");
     valuesByKey.put(5, value5);
 
     // Job 6: jobType=part-time, location=onsite
     GenericRecord value6 = new GenericData.Record(valueSchema);
-    value6.put("id", "6");
-    value6.put("jobType", "part-time");
-    value6.put("location", "onsite");
+    value6.put(ID_FIELD, "6");
+    value6.put(JOB_TYPE_FIELD, "part-time");
+    value6.put(LOCATION_FIELD, "onsite");
     valuesByKey.put(6, value6);
 
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
@@ -587,11 +593,11 @@ public class ReadComputeValidationTest {
       Set<Integer> keySet = new HashSet<>(Arrays.asList(1, 2, 3, 4, 5, 6));
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
-        // Test countGroupByValue on jobType field
+        // Test single field aggregation: countGroupByValue on jobType field
         com.linkedin.venice.client.store.ComputeAggregationResponse jobTypeAggResponse =
-            computeStoreClient.computeAggregation().countGroupByValue(2, "jobType").execute(keySet).get();
+            computeStoreClient.computeAggregation().countGroupByValue(2, JOB_TYPE_FIELD).execute(keySet).get();
 
-        Map<String, Integer> jobTypeCounts = jobTypeAggResponse.getValueToCount("jobType");
+        Map<String, Integer> jobTypeCounts = jobTypeAggResponse.getValueToCount(JOB_TYPE_FIELD);
         Assert.assertNotNull(jobTypeCounts);
 
         // Expected counts: full-time=3, part-time=3
@@ -599,11 +605,11 @@ public class ReadComputeValidationTest {
         Assert.assertEquals(jobTypeCounts.get("full-time"), Integer.valueOf(3), "full-time count should be 3");
         Assert.assertEquals(jobTypeCounts.get("part-time"), Integer.valueOf(3), "part-time count should be 3");
 
-        // Test countGroupByValue on location field, topK=2
+        // Test single field aggregation: countGroupByValue on location field, topK=2
         com.linkedin.venice.client.store.ComputeAggregationResponse locationAggResponse =
-            computeStoreClient.computeAggregation().countGroupByValue(2, "location").execute(keySet).get();
+            computeStoreClient.computeAggregation().countGroupByValue(2, LOCATION_FIELD).execute(keySet).get();
 
-        Map<String, Integer> locationCounts = locationAggResponse.getValueToCount("location");
+        Map<String, Integer> locationCounts = locationAggResponse.getValueToCount(LOCATION_FIELD);
         Assert.assertNotNull(locationCounts);
 
         // Expected: remote=3, onsite=2 (hybrid=1 should be excluded by topK=2)
@@ -611,6 +617,43 @@ public class ReadComputeValidationTest {
         Assert.assertEquals(locationCounts.get("remote"), Integer.valueOf(3), "remote count should be 3");
         Assert.assertEquals(locationCounts.get("onsite"), Integer.valueOf(2), "onsite count should be 2");
         Assert.assertFalse(locationCounts.containsKey("hybrid"), "hybrid should not be included in top 2");
+
+        // Test multi-field aggregation: countGroupByValue on both jobType and location fields
+        com.linkedin.venice.client.store.ComputeAggregationResponse multiFieldAggResponse =
+            computeStoreClient.computeAggregation()
+                .countGroupByValue(3, JOB_TYPE_FIELD, LOCATION_FIELD)
+                .execute(keySet)
+                .get();
+
+        // Verify jobType aggregation results from multi-field response
+        Map<String, Integer> multiFieldJobTypeCounts = multiFieldAggResponse.getValueToCount(JOB_TYPE_FIELD);
+        Assert.assertNotNull(multiFieldJobTypeCounts);
+        Assert.assertEquals(multiFieldJobTypeCounts.size(), 2, "Multi-field jobType should have exactly 2 values");
+        Assert.assertEquals(
+            multiFieldJobTypeCounts.get("full-time"),
+            Integer.valueOf(3),
+            "Multi-field full-time count should be 3");
+        Assert.assertEquals(
+            multiFieldJobTypeCounts.get("part-time"),
+            Integer.valueOf(3),
+            "Multi-field part-time count should be 3");
+
+        // Verify location aggregation results from multi-field response
+        Map<String, Integer> multiFieldLocationCounts = multiFieldAggResponse.getValueToCount(LOCATION_FIELD);
+        Assert.assertNotNull(multiFieldLocationCounts);
+        Assert.assertEquals(multiFieldLocationCounts.size(), 3, "Multi-field location should have exactly 3 values");
+        Assert.assertEquals(
+            multiFieldLocationCounts.get("remote"),
+            Integer.valueOf(3),
+            "Multi-field remote count should be 3");
+        Assert.assertEquals(
+            multiFieldLocationCounts.get("onsite"),
+            Integer.valueOf(2),
+            "Multi-field onsite count should be 2");
+        Assert.assertEquals(
+            multiFieldLocationCounts.get("hybrid"),
+            Integer.valueOf(1),
+            "Multi-field hybrid count should be 1");
       });
     }
   }

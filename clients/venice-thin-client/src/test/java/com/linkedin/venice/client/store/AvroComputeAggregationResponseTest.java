@@ -7,9 +7,12 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import org.apache.avro.util.Utf8;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -35,186 +38,173 @@ public class AvroComputeAggregationResponseTest {
     fieldTopKMap = new HashMap<>();
   }
 
-  @Test(description = "Should correctly count simple field values")
-  public void testSimpleFieldCounting() {
-    computeResults = createSimpleTestData();
-    fieldTopKMap.put(JOB_TYPE_FIELD, 10);
-
+  // Common aggregation test method
+  private <T> void runCountByValueTest(
+      Supplier<Map<String, ComputeGenericRecord>> dataSupplier,
+      Map<String, Integer> fieldTopKMap,
+      String fieldName,
+      Consumer<Map<T, Integer>> assertionLogic) {
+    Map<String, ComputeGenericRecord> computeResults = dataSupplier.get();
     AvroComputeAggregationResponse<String> response =
         new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
+    Map<T, Integer> result = response.getValueToCount(fieldName);
+    assertionLogic.accept(result);
+  }
 
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Expected counts: full-time=3, part-time=3
-    assertEquals(result.get("full-time"), Integer.valueOf(3));
-    assertEquals(result.get("part-time"), Integer.valueOf(3));
-    assertEquals(result.size(), 2);
+  @Test(description = "Should correctly count simple field values")
+  public void testSimpleFieldCounting() {
+    runCountByValueTest(
+        () -> createSimpleTestData(),
+        Collections.singletonMap(JOB_TYPE_FIELD, 10),
+        JOB_TYPE_FIELD,
+        result -> {
+          assertEquals(result.get("full-time"), Integer.valueOf(3));
+          assertEquals(result.get("part-time"), Integer.valueOf(3));
+          assertEquals(result.size(), 2);
+        });
   }
 
   @Test(description = "Should respect topK limit and return descending order")
   public void testTopKAndOrdering() {
-    computeResults = createSimpleTestData();
-    fieldTopKMap.put(LOCATION_FIELD, 2);
+    runCountByValueTest(
+        () -> createSimpleTestData(),
+        Collections.singletonMap(LOCATION_FIELD, 2),
+        LOCATION_FIELD,
+        result -> {
+          // Should only return top 2 results
+          assertEquals(result.size(), 2);
 
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
+          // Verify descending order: remote=3, onsite=2
+          List<Map.Entry<?, Integer>> entries = new ArrayList<>(result.entrySet());
+          assertEquals(entries.get(0).getKey(), "remote");
+          assertEquals(entries.get(0).getValue(), Integer.valueOf(3));
+          assertEquals(entries.get(1).getKey(), "onsite");
+          assertEquals(entries.get(1).getValue(), Integer.valueOf(2));
 
-    Map<String, Integer> result = response.getValueToCount(LOCATION_FIELD);
-
-    // Should only return top 2 results
-    assertEquals(result.size(), 2);
-
-    // Verify descending order: remote=3, onsite=2
-    List<Map.Entry<String, Integer>> entries = new ArrayList<>(result.entrySet());
-    assertEquals(entries.get(0).getKey(), "remote");
-    assertEquals(entries.get(0).getValue(), Integer.valueOf(3));
-    assertEquals(entries.get(1).getKey(), "onsite");
-    assertEquals(entries.get(1).getValue(), Integer.valueOf(2));
-
-    // hybrid (count=1) should not be included
-    assertFalse(result.containsKey("hybrid"));
+          // hybrid (count=1) should not be included
+          assertFalse(result.containsKey("hybrid"));
+        });
   }
 
   @Test(description = "Should handle null values correctly")
   public void testNullValueHandling() {
-    computeResults = createNullTestData();
-    fieldTopKMap.put(JOB_TYPE_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Verify null handling: null=2, full-time=1, part-time=1
-    assertEquals(result.get(null), Integer.valueOf(2));
-    assertEquals(result.get("full-time"), Integer.valueOf(1));
-    assertEquals(result.get("part-time"), Integer.valueOf(1));
+    runCountByValueTest(
+        () -> createNullTestData(),
+        Collections.singletonMap(JOB_TYPE_FIELD, 10),
+        JOB_TYPE_FIELD,
+        result -> {
+          // Verify null handling: null=2, full-time=1, part-time=1
+          assertEquals(result.get(null), Integer.valueOf(2));
+          assertEquals(result.get("full-time"), Integer.valueOf(1));
+          assertEquals(result.get("part-time"), Integer.valueOf(1));
+        });
   }
 
   @Test(description = "Should handle Utf8 values correctly")
   public void testUtf8ValueHandling() {
-    computeResults = createUtf8TestData();
-    fieldTopKMap.put(JOB_TYPE_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Verify Utf8 conversion: full-time=2, part-time=1
-    assertEquals(result.get("full-time"), Integer.valueOf(2));
-    assertEquals(result.get("part-time"), Integer.valueOf(1));
-    assertEquals(result.size(), 2);
+    runCountByValueTest(
+        () -> createUtf8TestData(),
+        Collections.singletonMap(JOB_TYPE_FIELD, 10),
+        JOB_TYPE_FIELD,
+        result -> {
+          // Verify Utf8 conversion: full-time=2, part-time=1
+          assertEquals(result.get("full-time"), Integer.valueOf(2));
+          assertEquals(result.get("part-time"), Integer.valueOf(1));
+          assertEquals(result.size(), 2);
+        });
   }
 
   @Test(description = "Should handle numeric values correctly")
   public void testNumericValueHandling() {
-    computeResults = createNumericTestData();
-    fieldTopKMap.put(SALARY_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(SALARY_FIELD);
-
-    // Verify numeric values: 50000=2, 60000=1, 70000=1
-    assertEquals(result.get("50000"), Integer.valueOf(2));
-    assertEquals(result.get("60000"), Integer.valueOf(1));
-    assertEquals(result.get("70000"), Integer.valueOf(1));
-    assertEquals(result.size(), 3);
+    runCountByValueTest(
+        () -> createNumericTestData(),
+        Collections.singletonMap(SALARY_FIELD, 10),
+        SALARY_FIELD,
+        result -> {
+          assertEquals(result.get(50000), Integer.valueOf(2));
+          assertEquals(result.get(60000), Integer.valueOf(1));
+          assertEquals(result.get(70000), Integer.valueOf(1));
+          assertEquals(result.size(), 3);
+        });
   }
 
   @Test(description = "Should handle empty result set")
   public void testEmptyResultSet() {
-    // Empty compute results
-    fieldTopKMap.put(JOB_TYPE_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Should return empty map
-    assertTrue(result.isEmpty());
+    runCountByValueTest(
+        () -> new HashMap<>(), // Empty compute results
+        Collections.singletonMap(JOB_TYPE_FIELD, 10),
+        JOB_TYPE_FIELD,
+        result -> {
+          // Should return empty map
+          assertTrue(result.isEmpty());
+        });
   }
 
   @Test(description = "Should handle single record")
   public void testSingleRecord() {
-    computeResults = createSingleRecordTestData();
-    fieldTopKMap.put(JOB_TYPE_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Should return single entry
-    assertEquals(result.size(), 1);
-    assertEquals(result.get("full-time"), Integer.valueOf(1));
+    runCountByValueTest(
+        () -> createSingleRecordTestData(),
+        Collections.singletonMap(JOB_TYPE_FIELD, 10),
+        JOB_TYPE_FIELD,
+        result -> {
+          // Should return single entry
+          assertEquals(result.size(), 1);
+          assertEquals(result.get("full-time"), Integer.valueOf(1));
+        });
   }
 
   @Test(description = "Should handle all null values")
   public void testAllNullValues() {
-    computeResults = createAllNullTestData();
-    fieldTopKMap.put(JOB_TYPE_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Should return only null entry
-    assertEquals(result.size(), 1);
-    assertEquals(result.get(null), Integer.valueOf(3));
+    runCountByValueTest(
+        () -> createAllNullTestData(),
+        Collections.singletonMap(JOB_TYPE_FIELD, 10),
+        JOB_TYPE_FIELD,
+        result -> {
+          // Should return only null entry
+          assertEquals(result.size(), 1);
+          assertEquals(result.get(null), Integer.valueOf(3));
+        });
   }
 
   @Test(description = "Should handle topK larger than distinct values")
   public void testTopKLargerThanDistinctValues() {
-    computeResults = createSimpleTestData();
-    fieldTopKMap.put(JOB_TYPE_FIELD, 100); // Much larger than distinct values
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Should return all distinct values
-    assertEquals(result.size(), 2);
-    assertEquals(result.get("full-time"), Integer.valueOf(3));
-    assertEquals(result.get("part-time"), Integer.valueOf(3));
+    runCountByValueTest(
+        () -> createSimpleTestData(),
+        Collections.singletonMap(JOB_TYPE_FIELD, 100), // Much larger than distinct values
+        JOB_TYPE_FIELD,
+        result -> {
+          // Should return all distinct values
+          assertEquals(result.size(), 2);
+          assertEquals(result.get("full-time"), Integer.valueOf(3));
+          assertEquals(result.get("part-time"), Integer.valueOf(3));
+        });
   }
 
   @Test(description = "Should handle field not in topK map")
   public void testFieldNotInTopKMap() {
-    computeResults = createSimpleTestData();
-    // Don't add field to fieldTopKMap
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Should return all values (no limit applied)
-    assertEquals(result.size(), 2);
-    assertEquals(result.get("full-time"), Integer.valueOf(3));
-    assertEquals(result.get("part-time"), Integer.valueOf(3));
+    runCountByValueTest(
+        () -> createSimpleTestData(),
+        new HashMap<>(), // Don't add field to fieldTopKMap
+        JOB_TYPE_FIELD,
+        result -> {
+          // Should return empty map when field is not configured for aggregation
+          assertEquals(result.size(), 0);
+          assertTrue(result.isEmpty());
+        });
   }
 
   @Test(description = "Should handle mixed data types")
   public void testMixedDataTypes() {
-    computeResults = createMixedDataTypesTestData();
-    fieldTopKMap.put(AGE_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(AGE_FIELD);
-
-    // Verify mixed types are handled correctly
-    assertEquals(result.get("25"), Integer.valueOf(2));
-    assertEquals(result.get("30"), Integer.valueOf(1));
-    assertEquals(result.get("35"), Integer.valueOf(1));
-    assertEquals(result.size(), 3);
+    runCountByValueTest(
+        () -> createMixedDataTypesTestData(),
+        Collections.singletonMap(AGE_FIELD, 10),
+        AGE_FIELD,
+        result -> {
+          assertEquals(result.get(25), Integer.valueOf(2));
+          assertEquals(result.get(30), Integer.valueOf(1));
+          assertEquals(result.get(35), Integer.valueOf(1));
+          assertEquals(result.size(), 3);
+        });
   }
 
   @Test(description = "Should handle getBucketNameToCount throws exception")
