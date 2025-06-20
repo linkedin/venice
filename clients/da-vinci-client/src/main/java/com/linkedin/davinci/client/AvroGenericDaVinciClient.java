@@ -1,6 +1,7 @@
 package com.linkedin.davinci.client;
 
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGESTION_ISOLATION_CONFIG_PREFIX;
+import static com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter.DO_NOT_USE_READER_SCHEMA_ID;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.RECORD_TRANSFORMER_VALUE_SCHEMA;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER_WRITE_ONLY_VERSION;
@@ -83,6 +84,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
+import org.apache.avro.specific.SpecificData;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -138,6 +140,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
   private final Executor readChunkExecutorForLargeRequest;
 
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
+  private int readerSchemaId;
 
   public AvroGenericDaVinciClient(
       DaVinciConfig daVinciConfig,
@@ -294,7 +297,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
             keyBytes,
             getAvroChunkingAdapter(),
             this.storeDeserializerCache,
-            versionBackend.getSupersetOrLatestValueSchemaId(),
+            readerSchemaId,
             reusableObjects.binaryDecoder,
             reusableObjects.rawValue,
             reusableValue);
@@ -373,7 +376,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         getStoreBackend().getStats().recordBadRequest();
         throw new VeniceClientException("Da Vinci client is not subscribed, storeName=" + getStoreName());
       }
-      int readerSchemaId = versionBackend.getSupersetOrLatestValueSchemaId();
 
       Consumer<Iterable<K>> keyArrayConsumer = keyList -> {
         ReusableObjects reusableObjects = REUSABLE_OBJECTS.get();
@@ -803,6 +805,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
           new AvroStoreDeserializerCache(daVinciBackend.get().getSchemaRepository(), getStoreName(), true);
 
       if (clientConfig.isSpecificClient()) {
+        int schemaId;
         if (daVinciConfig.isRecordTransformerEnabled()) {
           if (recordTransformerConfig.getOutputValueClass() != clientConfig.getSpecificValueClass()) {
             throw new VeniceClientException(
@@ -814,14 +817,26 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
           this.storeDeserializerCache = new AvroSpecificStoreDeserializerCache<>(
               recordTransformerConfig.getOutputValueSchema(),
               clientConfig.getSpecificValueClass());
+          schemaId = daVinciBackend.get().getSchemaRepository().getSupersetOrLatestValueSchema(getStoreName()).getId();
         } else {
           this.storeDeserializerCache = new AvroSpecificStoreDeserializerCache<>(
               daVinciBackend.get().getSchemaRepository(),
               getStoreName(),
               clientConfig.getSpecificValueClass());
+          Schema specificValueSchema = SpecificData.get().getSchema(clientConfig.getSpecificValueClass());
+          schemaId = daVinciBackend.get()
+              .getSchemaRepository()
+              .getValueSchemaId(getStoreName(), specificValueSchema.toString());
+          if (schemaId <= 0) {
+            throw new VeniceClientException(
+                "Cannot find the specific value class: " + clientConfig.getSpecificValueClass()
+                    + " in schema repository, returned schema Id: " + schemaId);
+          }
         }
+        this.readerSchemaId = schemaId;
       } else {
         this.storeDeserializerCache = (AvroStoreDeserializerCache<V>) this.genericRecordStoreDeserializerCache;
+        this.readerSchemaId = DO_NOT_USE_READER_SCHEMA_ID;
       }
 
       ready.set(true);
