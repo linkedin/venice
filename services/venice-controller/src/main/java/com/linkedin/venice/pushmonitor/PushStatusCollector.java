@@ -183,13 +183,11 @@ public class PushStatusCollector {
           if (noDaVinciStatusRetryAttempts <= daVinciPushStatusNoReportRetryMaxAttempts) {
             daVinciStatus = new ExecutionStatusWithDetails(ExecutionStatus.NOT_STARTED, daVinciStatus.getDetails());
             pushStatus.setDaVinciStatus(daVinciStatus);
-          } else {
-            // Update dvc heartbeat to false if there is no dvc status
-            if (store.getIsDavinciHeartbeatReported()) {
-              store.setIsDavinciHeartbeatReported(false);
-              storeRepository.updateStore(store);
-            }
           }
+          // Update dvc heartbeat to false if there is no dvc status
+        } else if (store.getIsDavinciHeartbeatReported()) {
+          store.setIsDavinciHeartbeatReported(false);
+          storeRepository.updateStore(store);
         }
       } else {
         topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
