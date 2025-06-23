@@ -164,9 +164,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [AvroCompatibilityTests, DuckVinciIntegrationTests, PulsarVeniceIntegrationTests]
     timeout-minutes: 120
-    if: success() || failure()  # Always run this job, regardless of previous job status
+    if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}
     steps:
-      - name: AllIsWell
+      - name: NoGood
         shell: bash
         run: |
-          echo "LGTM!"
+          echo "Some workflows have failed!"
+          exit 1
