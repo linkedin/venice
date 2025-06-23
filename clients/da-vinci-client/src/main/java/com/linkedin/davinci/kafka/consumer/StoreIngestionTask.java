@@ -205,12 +205,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  /**
-   * Speed up DaVinci shutdown by closing partitions concurrently.
-   */
-  private static final ExecutorService SHUTDOWN_EXECUTOR_FOR_DVC =
-      Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2);
-
   /** storage destination for consumption */
   protected final StorageService storageService;
   protected final StorageEngine storageEngine;
