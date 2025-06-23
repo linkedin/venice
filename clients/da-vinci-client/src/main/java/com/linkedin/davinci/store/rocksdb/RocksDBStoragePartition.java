@@ -73,8 +73,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartition.class);
   protected static final String ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_MEMORY_QUOTA = "Max allowed space was reached";
   protected static final String ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_DISK_QUOTA = "No space left on device";
-  protected static final ReadOptions READ_OPTIONS_DEFAULT =
-      new ReadOptions().setReadaheadSize(2 * 1024 * 1024).setPinData(false).setBackgroundPurgeOnIteratorCleanup(true);
+  protected static final ReadOptions READ_OPTIONS_DEFAULT = new ReadOptions();
   static final byte[] REPLICATION_METADATA_COLUMN_FAMILY = "timestamp_metadata".getBytes();
 
   private static final FlushOptions WAIT_FOR_FLUSH_OPTIONS = new FlushOptions().setWaitForFlush(true);
@@ -84,6 +83,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    * to avoid data loss during recovery.
    */
   protected final WriteOptions writeOptions;
+  protected final ReadOptions iteratorReadOptions;
   private final String fullPathForTempSSTFileDir;
   private final String fullPathForPartitionDBSnapshot;
 
@@ -187,6 +187,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     // restart,
     // if WAL is disabled then all ingestion progress made would be lost in case of non-graceful shutdown of server.
     this.writeOptions = new WriteOptions().setDisableWAL(this.partitionId != METADATA_PARTITION_ID);
+
+    this.iteratorReadOptions = new ReadOptions().setReadaheadSize(rocksDBServerConfig.getIteratorReadAheadSizeInBytes())
+        .setPinData(rocksDBServerConfig.isIteratorPinDataEnabled())
+        .setFillCache(rocksDBServerConfig.isIteratorFillCacheEnabled())
+        .setBackgroundPurgeOnIteratorCleanup(rocksDBServerConfig.isIteratorBackgroundPurgeEnabled());
 
     // For multiple column family enable atomic flush
     if (columnFamilyNameList.size() > 1 && rocksDBServerConfig.isAtomicFlushEnabled()) {
@@ -718,7 +723,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     try {
       makeSureRocksDBIsStillOpen();
 
-      try (ReadOptions readOptions = getReadOptionsForIteration(keyPrefix);
+      try (ReadOptions readOptions = getReadOptionsForPrefixIteration(keyPrefix);
           RocksIterator iterator = rocksDB.newIterator(readOptions)) {
         if (keyPrefix == null) {
           iterator.seekToFirst();
@@ -743,7 +748,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return rocksDBSstFileWriter.validateBatchIngestion();
   }
 
-  private ReadOptions getReadOptionsForIteration(byte[] keyPrefix) {
+  private ReadOptions getReadOptionsForPrefixIteration(byte[] keyPrefix) {
     if (keyPrefix == null) {
       return new ReadOptions();
     } else {
@@ -1044,7 +1049,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public AbstractStorageIterator getIterator() {
-    return new RocksDBStorageIterator(rocksDB.newIterator());
+    return new RocksDBStorageIterator(rocksDB.newIterator(iteratorReadOptions));
   }
 
   /**

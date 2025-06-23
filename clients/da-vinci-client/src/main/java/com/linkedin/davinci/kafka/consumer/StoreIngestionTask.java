@@ -567,6 +567,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.recordTransformerStartConsumptionLatch = recordTransformerConfig.getStartConsumptionLatch();
       // ToDo make this configurable
       this.recordTransformerOnRecoveryThreadPool = Executors.newFixedThreadPool(8);
+      // this.recordTransformerOnRecoveryThreadPool = new ThreadPoolExecutor(0, 8,
+      // 60L, SECONDS, new LinkedBlockingQueue<>());;
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
       daVinciRecordTransformerStats = builder.getDaVinciRecordTransformerStats();
@@ -1663,12 +1665,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Running {}", ingestionTaskName);
       versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
-      Store store = null;
       while (isRunning()) {
         if (recordTransformer != null && recordTransformerOnRecoveryFailure.get()) {
           throw new VeniceException("DaVinciRecordTransformer onRecovery failed. Killing SIT");
         }
 
+        Store store = storeRepository.getStoreOrThrow(storeName);
         if (!skipAfterBatchPushUnsubEnabled) {
           refreshIngestionContextIfChanged(store);
           processConsumerActions(store);

@@ -240,6 +240,36 @@ public class RocksDBServerConfig {
 
   public static final String ROCKSDB_BLOCK_CACHE_MEMORY_LIMIT = "rocksdb.block.cache.memory.limit";
 
+  /**
+   * Check these pages to find more details:
+   * https://github.com/facebook/rocksdb/wiki/Iterator
+   * https://javadoc.io/static/org.rocksdb/rocksdbjni/6.20.3/org/rocksdb/ReadOptions.html
+   */
+
+  /**
+   * When this config is set to a value > 0, the RocksDB iterator will pre-fetch data asynchronously leading to better
+   * iteration performance.
+   * From testing, setting this to a value larger than 2MB doesn't result in any performance gain. Hypothetically, if
+   * the records are large, setting this to a higher number may see noticeable gains.
+   */
+  public static final String ROCKSDB_ITERATOR_READ_AHEAD_SIZE_IN_BYTES = "rocksdb.iterator.read.ahead.size.in.bytes";
+  /**
+   * If true, blocks loaded by the iterator will be pinned in memory for the lifecycle of the iterator.
+   * Pinning ensures that the data blocks accessed during iteration remain in memory, preventing eviction
+   * from the block cache.
+   *
+   * Recommended to set this to false if you are only reading each key once to save memory.
+   */
+  public static final String ROCKSDB_ITERATOR_PIN_DATA_ENABLED = "rocksdb.iterator.pin.data.enabled";
+  /**
+   * If true, blocks loaded by the iterator will be cached in the block cache.
+   *
+   * Recommended to set this to false if you are only reading each key once to save memory and reduce
+   * LRU block cache eviction costs.
+   */
+  public static final String ROCKSDB_ITERATOR_FILL_CACHE_ENABLED = "rocksdb.iterator.fill.cache.enabled";
+  public static final String ROCKSDB_ITERATOR_BACKGROUND_PURGE_ENABLED = "rocksdb.iterator.background.purge.enabled";
+
   private final boolean rocksDBUseDirectReads;
 
   private final int rocksDBEnvFlushPoolSize;
@@ -318,6 +348,11 @@ public class RocksDBServerConfig {
   private final double blobGarbageCollectionForceThreshold;
   private final int blobFileStartingLevel;
   private final double rocksdbBlockCacheMemoryLimit;
+
+  private final long iteratorReadAheadSizeInBytes;
+  private final boolean iteratorPinDataEnabled;
+  private final boolean iteratorFillCacheEnabled;
+  private final boolean iteratorBackgroundPurgeEnabled;
 
   public RocksDBServerConfig(VeniceProperties props) {
     // Do not use Direct IO for reads by default
@@ -458,6 +493,12 @@ public class RocksDBServerConfig {
     this.blobGarbageCollectionForceThreshold = props.getDouble(ROCKSDB_BLOB_GARBAGE_COLLECTION_FORCE_THRESHOLD, 0.8);
     this.blobFileStartingLevel = props.getInt(ROCKSDB_BLOB_FILE_STARTING_LEVEL, 0);
     this.rocksdbBlockCacheMemoryLimit = props.getDouble(ROCKSDB_BLOCK_CACHE_MEMORY_LIMIT, 0.8);
+
+    this.iteratorReadAheadSizeInBytes =
+        props.getSizeInBytes(ROCKSDB_ITERATOR_READ_AHEAD_SIZE_IN_BYTES, 2 * 1024 * 1024); // default: 2MB
+    this.iteratorPinDataEnabled = props.getBoolean(ROCKSDB_ITERATOR_PIN_DATA_ENABLED, false);
+    this.iteratorFillCacheEnabled = props.getBoolean(ROCKSDB_ITERATOR_FILL_CACHE_ENABLED, false);
+    this.iteratorBackgroundPurgeEnabled = props.getBoolean(ROCKSDB_ITERATOR_BACKGROUND_PURGE_ENABLED, true);
   }
 
   public int getLevel0FileNumCompactionTriggerWriteOnlyVersion() {
@@ -701,5 +742,21 @@ public class RocksDBServerConfig {
 
   public double getRocksdbBlockCacheMemoryLimit() {
     return rocksdbBlockCacheMemoryLimit;
+  }
+
+  public long getIteratorReadAheadSizeInBytes() {
+    return iteratorReadAheadSizeInBytes;
+  }
+
+  public boolean isIteratorPinDataEnabled() {
+    return iteratorPinDataEnabled;
+  }
+
+  public boolean isIteratorFillCacheEnabled() {
+    return iteratorFillCacheEnabled;
+  }
+
+  public boolean isIteratorBackgroundPurgeEnabled() {
+    return iteratorBackgroundPurgeEnabled;
   }
 }
