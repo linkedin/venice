@@ -14,9 +14,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
-import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
-import static com.linkedin.venice.utils.Utils.closeQuietlyWithErrorLogged;
-import static com.linkedin.venice.utils.Utils.getReplicaId;
+import static com.linkedin.venice.utils.Utils.*;
 import static java.util.Comparator.comparingInt;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -479,6 +477,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.storeBufferService = builder.getStoreBufferService();
     this.isCurrentVersion = isCurrentVersion;
+    boolean useVHybrid = version.isUseVersionLevelHybridConfig();
+    HybridStoreConfig hybridStoreConfig1 = store.getHybridStoreConfig();
     this.hybridStoreConfig = Optional.ofNullable(
         version.isUseVersionLevelHybridConfig() ? version.getHybridStoreConfig() : store.getHybridStoreConfig());
 
@@ -2173,7 +2173,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             hybridStoreConfig.isPresent());
         newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
 
-        if (isCurrentVersion.getAsBoolean()) {
+        boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+        if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
           // Latch creation is in StateModelIngestionProgressNotifier#startConsumption() from the Helix transition
           newPartitionConsumptionState.setLatchCreated();
         }
@@ -4318,6 +4319,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Properties localConsumerProps,
       String remoteKafkaSourceAddress,
       boolean consumeRemotely) {
+    VeniceProperties veniceProperties = serverConfig.getClusterProperties();
     Properties newConsumerProps = serverConfig.getClusterProperties().getPropertiesCopy();
     newConsumerProps.putAll(localConsumerProps);
     newConsumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaSourceAddress);

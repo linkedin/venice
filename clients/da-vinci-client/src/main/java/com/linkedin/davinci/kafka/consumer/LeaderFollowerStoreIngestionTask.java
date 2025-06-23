@@ -1845,7 +1845,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * push status is not COMPLETED; from router point of view, there is no online replica after
          * the rebalance.
          */
-        if (isCurrentVersion.getAsBoolean()) {
+        if (isCurrentVersion.getAsBoolean() || Utils.isFutureVersionReady(versionTopic.getName(), storeRepository)) {
           pcs.lagHasCaughtUp();
           reportCompleted(pcs, true);
         }

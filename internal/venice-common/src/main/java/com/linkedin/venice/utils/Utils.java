@@ -25,6 +25,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -987,6 +988,35 @@ public class Utils {
         return false;
       }
       return store.getCurrentVersion() < version;
+    } catch (VeniceException e) {
+      return false;
+    }
+  }
+
+  /**
+   * Checks if the future version is ready to serve. A future version is considered ready to serve if the version status
+   * is either PUSHED or ONLINE
+   * @param resourceName
+   * @param metadataRepo
+   * @return
+   */
+  public static boolean isFutureVersionReady(String resourceName, ReadOnlyStoreRepository metadataRepo) {
+    try {
+      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+      int versionNum = Version.parseVersionFromKafkaTopicName(resourceName);
+      Store store = metadataRepo.getStore(storeName);
+      if (store == null) {
+        LOGGER.warn("Store {} is not in store repository.", storeName);
+        return false;
+      }
+
+      Version futureVersion = store.getVersion(versionNum);
+      if (futureVersion == null) {
+        return false;
+      }
+
+      return store.getCurrentVersion() < versionNum && (futureVersion.getStatus().equals(VersionStatus.ONLINE)
+          || futureVersion.getStatus().equals(VersionStatus.PUSHED));
     } catch (VeniceException e) {
       return false;
     }
