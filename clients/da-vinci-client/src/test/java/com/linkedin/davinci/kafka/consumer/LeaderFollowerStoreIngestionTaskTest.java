@@ -630,6 +630,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
   @Test
   public void testFutureVersionLatchStatus() throws InterruptedException {
     setUp();
+
+    // Setup subscribe action
     when(mockConsumerAction.getType()).thenReturn(ConsumerActionType.SUBSCRIBE);
     when(mockConsumerAction.getTopic()).thenReturn("test-topic");
     when(mockConsumerAction.getPartition()).thenReturn(0);
@@ -637,6 +639,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
         mock(LeaderFollowerPartitionStateModel.LeaderSessionIdChecker.class);
     when(mockConsumerAction.getLeaderSessionIdChecker()).thenReturn(mockLeaderSessionIdChecker);
     when(mockLeaderSessionIdChecker.isSessionIdValid()).thenReturn(true);
+
+    // Setup partition
     mockTopicPartition = mock(PubSubTopicPartition.class);
     PubSubTopic pubSubTopic = mock(PubSubTopic.class);
     when(mockTopicPartition.getPubSubTopic()).thenReturn(pubSubTopic);
@@ -647,6 +651,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockStorageMetadataService.getLastOffset(any(), anyInt())).thenReturn(mockOffsetRecord);
     when(mockConsumerAction.getTopicPartition()).thenReturn(mockTopicPartition);
     when(mockPartitionConsumptionState.getOffsetRecord()).thenReturn(mockOffsetRecord);
+
+    // Setup store. Mark current version as false and make future version ONLINE to trigger Utils.isFutureVersionReady
     when(mockBooleanSupplier.getAsBoolean()).thenReturn(false);
     when(storeRepository.getStore(anyString())).thenReturn(mockStore);
     Version mockVersion = mock(Version.class);
@@ -654,9 +660,13 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockStore.getVersion(1)).thenReturn(mockVersion);
     when(mockStore.getCurrentVersion()).thenReturn(0);
     when(mockVersion.isHybrid()).thenReturn(true);
+
+    // Setup server properties
     VeniceProperties properties = new VeniceProperties();
     when(mockVeniceServerConfig.getClusterProperties()).thenReturn(properties);
     when(mockVeniceServerConfig.getKafkaConsumerConfigsForLocalConsumption()).thenReturn(properties);
+
+    // Setup topic manager
     TopicManager mockTopicManager = mock(TopicManager.class);
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
     doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager(anyString());
@@ -664,9 +674,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .getLatestOffsetCached(any(), anyInt());
     doReturn(0L).when(mockTopicManager).getLatestOffsetCached(any(), anyInt());
     doReturn(10L).when(mockTopicManager).getLatestOffsetCached(any(), anyInt());
+
+    // Run SIT to process the mock consumer action
     leaderFollowerStoreIngestionTask.processCommonConsumerAction(mockConsumerAction);
 
-    // Verify that we enter the block
+    // Verify that we enter the block to release the latch
     verify(leaderFollowerStoreIngestionTask, times(1)).measureLagWithCallToPubSub(any(), any(), anyInt(), anyLong());
   }
 }
