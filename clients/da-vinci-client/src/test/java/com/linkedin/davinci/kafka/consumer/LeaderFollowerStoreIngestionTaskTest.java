@@ -255,7 +255,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     mockConsumerAction = mock(ConsumerAction.class);
 
     mockProperties = new Properties();
-    mockProperties.put(KAFKA_BOOTSTRAP_SERVERS, "kashfkjashf");
+    mockProperties.put(KAFKA_BOOTSTRAP_SERVERS, "bootStrapServers");
     mockBooleanSupplier = mock(BooleanSupplier.class);
     mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     String versionTopic = version.kafkaTopicName();
