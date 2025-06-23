@@ -663,7 +663,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   protected RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
-    return storeDeserializerCache.getDeserializer(schemaId, metadata.getLatestValueSchemaId());
+    // Always use the writer schema as reader schema
+    return storeDeserializerCache.getDeserializer(schemaId, schemaId);
   }
 
   private RecordDeserializer<GenericRecord> getComputeResultRecordDeserializer(Schema resultSchema) {
