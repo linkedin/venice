@@ -9,12 +9,14 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -38,7 +40,8 @@ public class TestCompactionManager {
     testCompactionManager = new CompactionManager(
         mockRepushOrchestrator,
         TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD),
-        Collections.emptyMap());
+        Collections
+            .singletonMap(TEST_CLUSTER_NAME, new LogCompactionStats(new MetricsRepository(), TEST_CLUSTER_NAME)));
   }
 
   /**
