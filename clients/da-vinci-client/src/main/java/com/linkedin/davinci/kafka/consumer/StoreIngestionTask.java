@@ -565,10 +565,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           recordTransformerConfig);
       this.recordTransformerOnRecoveryFailure = new AtomicBoolean(false);
       this.recordTransformerStartConsumptionLatch = recordTransformerConfig.getStartConsumptionLatch();
-      // ToDo make this configurable
-      this.recordTransformerOnRecoveryThreadPool = Executors.newFixedThreadPool(8);
-      // this.recordTransformerOnRecoveryThreadPool = new ThreadPoolExecutor(0, 8,
-      // 60L, SECONDS, new LinkedBlockingQueue<>());;
+      this.recordTransformerOnRecoveryThreadPool =
+          Executors.newFixedThreadPool(serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize());
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
       daVinciRecordTransformerStats = builder.getDaVinciRecordTransformerStats();
@@ -1686,6 +1684,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(partitionConsumptionStateMap.size());
+
+      /**
+       * Speed up DaVinci shutdown by closing partitions concurrently.
+       */
+      ExecutorService shutdownExecutorForDvc =
+          isDaVinciClient ? Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2) : null;
+
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
       for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
         /**
@@ -1718,8 +1723,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
         };
 
-        if (isDaVinciClient) {
-          shutdownFutures.add(CompletableFuture.runAsync(shutdownRunnable, SHUTDOWN_EXECUTOR_FOR_DVC));
+        if (shutdownExecutorForDvc != null) {
+          shutdownFutures.add(CompletableFuture.runAsync(shutdownRunnable, shutdownExecutorForDvc));
         } else {
           /**
            * TODO: evaluate whether we need to apply concurrent shutdown in Venice Server or not.
