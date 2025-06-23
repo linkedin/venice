@@ -2,7 +2,7 @@ package com.linkedin.venice.hadoop.input.kafka;
 
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_MAPPER_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
@@ -86,9 +86,9 @@ public class TestKafkaInputFormat {
       JobConf conf,
       long maxRecordsPerMapper,
       List<long[]> expectedSplit) throws IOException {
-    if (maxRecordsPerMapper > 0) {
-      conf.set(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, Long.toString(maxRecordsPerMapper));
-    }
+    // if (maxRecordsPerMapper > 0) {
+    // conf.set(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, Long.toString(maxRecordsPerMapper));
+    // }
     InputSplit[] splits = kafkaInputFormat.getSplits(conf, 100);
     Assert.assertEquals(splits.length, expectedSplit.size());
     Arrays.stream(splits).forEach(split -> Assert.assertTrue(split instanceof KafkaInputSplit));
@@ -128,6 +128,7 @@ public class TestKafkaInputFormat {
     JobConf conf = new JobConf();
     conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
     conf.set(KAFKA_INPUT_TOPIC, topic.getName());
+    conf.set(KAFKA_INPUT_MAX_MAPPER_COUNT, "6");
     Map<PubSubTopicPartition, Long> latestOffsets = kafkaInputFormat.getLatestOffsets(conf);
     PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(topic, 0);
     PubSubTopicPartition partition1 = new PubSubTopicPartitionImpl(topic, 1);
