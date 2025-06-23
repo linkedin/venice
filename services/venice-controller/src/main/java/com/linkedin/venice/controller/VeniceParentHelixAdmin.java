@@ -246,6 +246,7 @@ import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -311,6 +312,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
 
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
+  public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -2140,12 +2142,13 @@ public class VeniceParentHelixAdmin implements Admin {
       Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
       for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
         ControllerClient controllerClient = entry.getValue();
-        ControllerResponse response = controllerClient.rollForwardToFutureVersion(storeName, regionFilter);
-
-        if (response.isError()) {
-          LOGGER.info("Roll forward in region {} failed with error: {}", entry.getKey(), response.getError());
-          failedRegions.add(entry.getKey());
-        }
+        RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+          ControllerResponse response = controllerClient.rollForwardToFutureVersion(storeName, regionFilter);
+          if (response.isError()) {
+            LOGGER.info("Roll forward in region {} failed with error: {}", entry.getKey(), response.getError());
+            failedRegions.add(entry.getKey());
+          }
+        }, 5, Duration.ofSeconds(5), Duration.ofSeconds(15), Duration.ofSeconds(60), RETRY_FAILURE_TYPES);
       }
 
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
