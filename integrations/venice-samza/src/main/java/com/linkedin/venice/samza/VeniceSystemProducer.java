@@ -29,6 +29,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
@@ -164,6 +165,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   private TransportClient transportClient;
   private RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider reinitProvider;
+  private long producerBatchingIntervalInMs = 0;
+  private ProducerBatchingService producerBatchingService;
 
   @Deprecated
   public VeniceSystemProducer(
@@ -326,6 +329,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   public void applyAdditionalWriterConfigs(Map<String, String> additionalWriterConfigs) {
     this.additionalWriterConfigs.putAll(additionalWriterConfigs);
+  }
+
+  public void setProducerBatchingInterval(long producerBatchingIntervalInMs) {
+    this.producerBatchingIntervalInMs = producerBatchingIntervalInMs;
   }
 
   public void setRouterUrl(String routerUrl) {
@@ -596,6 +603,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     this.veniceWriter = getVeniceWriter(versionCreationResponse);
+    if (producerBatchingIntervalInMs > 0) {
+      LOGGER.info("Producer will batch update in every {} ms.", producerBatchingIntervalInMs);
+      producerBatchingService = new ProducerBatchingService(veniceWriter, producerBatchingIntervalInMs);
+      producerBatchingService.start();
+    }
 
     if (pushMonitor.isPresent()) {
       /**
@@ -637,6 +649,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   @Override
   public synchronized void stop() {
     this.isStarted = false;
+    Utils.closeQuietlyWithErrorLogged(producerBatchingService);
     Utils.closeQuietlyWithErrorLogged(veniceWriter);
     if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor.isPresent()) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
@@ -752,10 +765,19 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
     if (valueObject == null) {
       if (logicalTimestamp > 0) {
-        veniceWriter.delete(key, logicalTimestamp, callback);
+        if (producerBatchingService != null) {
+          producerBatchingService.addRecordToBuffer(MessageType.DELETE, key, null, -1, -1, logicalTimestamp);
+        } else {
+          veniceWriter.delete(key, logicalTimestamp, callback);
+        }
       } else {
-        veniceWriter.delete(key, callback);
+        if (producerBatchingService != null) {
+          producerBatchingService.addRecordToBuffer(MessageType.DELETE, key, null, -1, -1);
+        } else {
+          veniceWriter.delete(key, callback);
+        }
       }
+
     } else {
       Schema valueObjectSchema = getSchemaFromObject(valueObject);
 
@@ -781,9 +803,18 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
       if (valueSchemaIdPair.getSecond() == -1) {
         if (logicalTimestamp > 0) {
-          veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), logicalTimestamp, callback);
+          if (producerBatchingService != null) {
+            producerBatchingService
+                .addRecordToBuffer(MessageType.PUT, key, value, valueSchemaIdPair.getFirst(), -1, logicalTimestamp);
+          } else {
+            veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), logicalTimestamp, callback);
+          }
         } else {
-          veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), callback);
+          if (producerBatchingService != null) {
+            producerBatchingService.addRecordToBuffer(MessageType.PUT, key, value, valueSchemaIdPair.getFirst(), -1);
+          } else {
+            veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), callback);
+          }
         }
       } else {
         if (!isWriteComputeEnabled) {
@@ -792,15 +823,34 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
                   + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
         }
         if (logicalTimestamp > 0) {
-          veniceWriter.update(
-              key,
-              value,
-              valueSchemaIdPair.getFirst(),
-              valueSchemaIdPair.getSecond(),
-              callback,
-              logicalTimestamp);
+          if (producerBatchingService != null) {
+            producerBatchingService.addRecordToBuffer(
+                MessageType.UPDATE,
+                key,
+                value,
+                valueSchemaIdPair.getFirst(),
+                valueSchemaIdPair.getSecond(),
+                logicalTimestamp);
+          } else {
+            veniceWriter.update(
+                key,
+                value,
+                valueSchemaIdPair.getFirst(),
+                valueSchemaIdPair.getSecond(),
+                callback,
+                logicalTimestamp);
+          }
         } else {
-          veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback);
+          if (producerBatchingService != null) {
+            producerBatchingService.addRecordToBuffer(
+                MessageType.UPDATE,
+                key,
+                value,
+                valueSchemaIdPair.getFirst(),
+                valueSchemaIdPair.getSecond());
+          } else {
+            veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback);
+          }
         }
       }
     }
