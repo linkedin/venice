@@ -11,7 +11,6 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 
 public enum VeniceMetricsDimensions {
   VENICE_STORE_NAME("venice.store.name"), VENICE_CLUSTER_NAME("venice.cluster.name"),
-  VENICE_STORE_VERSION("venice.store.version"),
 
   /** {@link com.linkedin.venice.read.RequestType} */
   VENICE_REQUEST_METHOD("venice.request.method"),

@@ -91,7 +91,6 @@ public class LogCompactionStats extends AbstractVeniceStats {
         .record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
           {
             put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-            put(VeniceMetricsDimensions.VENICE_STORE_VERSION, String.valueOf(storeCurrentVersionNumber));
           }
         });
   }
@@ -101,7 +100,6 @@ public class LogCompactionStats extends AbstractVeniceStats {
         .record(0, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
           {
             put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-            put(VeniceMetricsDimensions.VENICE_STORE_VERSION, String.valueOf(storeCurrentVersionNumber));
           }
         });
   }
