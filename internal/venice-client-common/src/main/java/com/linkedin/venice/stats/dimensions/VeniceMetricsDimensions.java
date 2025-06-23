@@ -34,9 +34,6 @@ public enum VeniceMetricsDimensions {
   /** {@link RequestRetryAbortReason} */
   VENICE_REQUEST_RETRY_ABORT_REASON("venice.request.retry_abort_reason"),
 
-  /** {@link VeniceExecutionStatus} */
-  VENICE_EXECUTION_STATUS("venice.execution.status"),
-
   /** {@link RepushStoreTriggerSource} */
   REPUSH_STORE_TRIGGER_SOURCE("repush.store.trigger.source");
 

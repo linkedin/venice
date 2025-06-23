@@ -233,7 +233,7 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.stats.dimensions.VeniceExecutionStatus;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
@@ -5253,14 +5253,14 @@ public class VeniceParentHelixAdmin implements Admin {
           .recordRepushStoreCall(
               repushJobRequest.getStoreName(),
               repushJobRequest.getTriggerSource(),
-              response.isError() ? VeniceExecutionStatus.FAILED : VeniceExecutionStatus.SUCCESS);
+              response.isError() ? VeniceResponseStatusCategory.FAIL : VeniceResponseStatusCategory.SUCCESS);
       return response;
     } catch (Exception e) {
       logCompactionStatsMap.get(repushJobRequest.getClusterName())
           .recordRepushStoreCall(
               repushJobRequest.getStoreName(),
               repushJobRequest.getTriggerSource(),
-              VeniceExecutionStatus.FAILED);
+              VeniceResponseStatusCategory.FAIL);
       throw e;
     }
   }

@@ -2,7 +2,7 @@ package com.linkedin.venice.controller.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.REPUSH_STORE_TRIGGER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_EXECUTION_STATUS;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -24,7 +24,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
-import com.linkedin.venice.stats.dimensions.VeniceExecutionStatus;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils;
@@ -105,8 +105,8 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
             REPUSH_STORE_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
             RepushStoreTriggerSource.MANUAL.getDimensionValue())
         .put(
-            VENICE_EXECUTION_STATUS.getDimensionNameInDefaultFormat(),
-            VeniceExecutionStatus.SUCCESS.getDimensionValue())
+            VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+            VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
         .build();
 
     // mock successful response
@@ -140,8 +140,8 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
             REPUSH_STORE_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
             RepushStoreTriggerSource.MANUAL.getDimensionValue())
         .put(
-            VENICE_EXECUTION_STATUS.getDimensionNameInDefaultFormat(),
-            VeniceExecutionStatus.FAILED.getDimensionValue())
+            VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+            VeniceResponseStatusCategory.FAIL.getDimensionValue())
         .build();
 
     // mock failed response
@@ -177,8 +177,8 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
             REPUSH_STORE_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
             RepushStoreTriggerSource.MANUAL.getDimensionValue())
         .put(
-            VENICE_EXECUTION_STATUS.getDimensionNameInDefaultFormat(),
-            VeniceExecutionStatus.FAILED.getDimensionValue())
+            VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+            VeniceResponseStatusCategory.FAIL.getDimensionValue())
         .build();
 
     // mock failed response
@@ -215,8 +215,8 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
             REPUSH_STORE_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
             RepushStoreTriggerSource.SCHEDULED.getDimensionValue())
         .put(
-            VENICE_EXECUTION_STATUS.getDimensionNameInDefaultFormat(),
-            VeniceExecutionStatus.SUCCESS.getDimensionValue())
+            VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
+            VeniceResponseStatusCategory.SUCCESS.getDimensionValue())
         .build();
 
     // mock test store for scheduled compaction
