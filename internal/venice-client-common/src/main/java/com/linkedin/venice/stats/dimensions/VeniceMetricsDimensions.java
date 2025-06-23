@@ -38,10 +38,7 @@ public enum VeniceMetricsDimensions {
   VENICE_EXECUTION_STATUS("venice.execution.status"),
 
   /** {@link RepushStoreTriggerSource} */
-  REPUSH_STORE_TRIGGER_SOURCE("repush.store.trigger.source"),
-
-  /** {@link LogCompactionSelectionReason} */
-  LOG_COMPACTION_SELECTION_REASON("log.compaction.selection.reason");
+  REPUSH_STORE_TRIGGER_SOURCE("repush.store.trigger.source");
 
   private final String[] dimensionName = new String[VeniceOpenTelemetryMetricNamingFormat.SIZE];
 
