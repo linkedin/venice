@@ -771,4 +771,9 @@ public class StatTrackingStoreClientTest {
     Assert.assertTrue(timedOutRequestMetric.value() > 0);
     Assert.assertTrue(timedOutRequestResultRatioMetric.value() > 0);
   }
+
+  @Test
+  public void fail() {
+    Assert.fail("Gotta make sure the CI settings are not letting us merge regressions!");
+  }
 }
