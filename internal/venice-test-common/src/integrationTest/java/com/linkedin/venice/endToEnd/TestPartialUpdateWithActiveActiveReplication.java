@@ -340,8 +340,8 @@ public class TestPartialUpdateWithActiveActiveReplication {
     val3Prime.put(PERSON_F1_NAME, "val3PrimeF1");
     val3Prime.put(PERSON_F3_NAME, "val3PrimeF3");
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key3Prime, val3Prime);
-    validatePersonV1V2SupersetRecord(storeName, dc0RouterUrl, key3Prime, "val3PrimeF1", -1, "val3PrimeF3");
-    validatePersonV1V2SupersetRecord(storeName, dc1RouterUrl, key3Prime, "val3PrimeF1", -1, "val3PrimeF3");
+    validatePersonV2Record(storeName, dc0RouterUrl, key3Prime, "val3PrimeF1", "val3PrimeF3");
+    validatePersonV2Record(storeName, dc1RouterUrl, key3Prime, "val3PrimeF1", "val3PrimeF3");
   }
 
   private void validatePersonV1V2SupersetRecord(
@@ -407,6 +407,37 @@ public class TestPartialUpdateWithActiveActiveReplication {
       } else {
         assertNotNull(retrievedValue.get(PERSON_F2_NAME));
         assertEquals(retrievedValue.get(PERSON_F2_NAME), expectedAge);
+      }
+    });
+  }
+
+  private void validatePersonV2Record(
+      String storeName,
+      String routerUrl,
+      String key,
+      String expectedField1,
+      String expectedField3) {
+    AvroGenericStoreClient<String, GenericRecord> client = getStoreClient(storeName, routerUrl);
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+      GenericRecord retrievedValue = client.get(key).get();
+      if (expectedField1 == null && expectedField3 == null) {
+        assertNull(retrievedValue);
+        return;
+      }
+      assertNotNull(retrievedValue);
+      if (expectedField1 == null) {
+        assertNull(retrievedValue.get(PERSON_F1_NAME));
+      } else {
+        assertNotNull(retrievedValue.get(PERSON_F1_NAME));
+        assertEquals(retrievedValue.get(PERSON_F1_NAME).toString(), expectedField1);
+      }
+      if (expectedField3 == null) {
+        assertNull(retrievedValue.get(PERSON_F3_NAME));
+      } else {
+        Schema.Field field3 = retrievedValue.getSchema().getField(PERSON_F3_NAME);
+        assertNotNull(field3);
+        assertNotNull(retrievedValue.get(PERSON_F3_NAME));
+        assertEquals(retrievedValue.get(PERSON_F3_NAME).toString(), expectedField3);
       }
     });
   }
