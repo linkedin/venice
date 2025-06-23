@@ -773,7 +773,7 @@ public class StatTrackingStoreClientTest {
   }
 
   @Test
-  public void fail() {
-    Assert.fail("Gotta make sure the CI settings are not letting us merge regressions!");
+  public void failTest() {
+    fail("Gotta make sure the CI settings are not letting us merge regressions!");
   }
 }
