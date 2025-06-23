@@ -7416,6 +7416,41 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * Get all live instance controllers from ZK /LIVEINSTANCES
+   */
+  public List<Instance> getAllLiveInstanceControllers() {
+    final int maxAttempts = 10;
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(getControllerClusterName());
+    for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
+      List<String> liveInstances = getHelixManager().getHelixDataAccessor().getChildNames(keyBuilder.liveInstances());
+      if (liveInstances == null || liveInstances.isEmpty()) {
+        // Assignment is incomplete, try again later
+        LOGGER.warn("No live instance controllers found, attempt: {}/{}", attempt, maxAttempts);
+        Utils.sleep(5 * Time.MS_PER_SECOND);
+        continue;
+      }
+
+      List<Instance> controllers = new ArrayList<>();
+      for (String id: liveInstances) {
+        controllers.add(
+            new Instance(
+                id,
+                Utils.parseHostFromHelixNodeIdentifier(id),
+                Utils.parsePortFromHelixNodeIdentifier(id),
+                getMultiClusterConfigs().getAdminSecurePort(),
+                getMultiClusterConfigs().getAdminGrpcPort(),
+                getMultiClusterConfigs().getAdminSecureGrpcPort()));
+      }
+      return controllers;
+    }
+    String message = "Unable to find live instance controllers in ZK after " + maxAttempts + " attempts";
+    if (!EXCEPTION_FILTER.isRedundantException(message)) {
+      LOGGER.error(message);
+    }
+    throw new VeniceException(message);
+  }
+
+  /**
    * Add the given helix nodeId into the allowlist in ZK.
    */
   @Override
@@ -7785,7 +7820,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Get the admin operation protocol versions from controllers (leader + standby) for specific cluster.
+   * Get the admin operation protocol versions from all controllers for specific cluster.
    * @param clusterName: the cluster name
    * @return map (controllerName: version). Example: {localhost_1234=1, localhost_1235=1}*/
   @Override
@@ -7804,24 +7839,33 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     ControllerClient localControllerClient = ControllerClient
         .constructClusterControllerClient(clusterName, leaderController.getUrl(sslEnabled), getSslFactory());
 
-    // Get version for standby controllers
-    List<Instance> standbyControllers = getControllersByHelixState(clusterName, HelixState.STANDBY_STATE);
+    // Get version for all controllers
+    List<Instance> liveInstances = getAllLiveInstanceControllers();
 
-    for (Instance standbyController: standbyControllers) {
+    for (Instance instance: liveInstances) {
       // In production, leader and standby share the secure port but have different hostnames—no conflict.
       // In tests, both run on 'localhost' with the same secure port, which confuses routing.
       // Hence, we need to disable SSL for local integration tests.
       // RCA: Helix uses an insecure port from the instance ID, while secure port comes from shared multiClusterConfig.
-      String standbyControllerUrl = standbyController.getUrl(sslEnabled);
+      if (Objects.equals(instance.getNodeId(), leaderController.getNodeId())) {
+        // If the instance is the leader controller, skip it as we already have its version.
+        continue;
+      }
+
+      String liveInstanceUrl = instance.getUrl(getSslFactory().isPresent());
 
       // Get the admin operation protocol version from standby controller
       AdminOperationProtocolVersionControllerResponse response =
-          localControllerClient.getLocalAdminOperationProtocolVersion(standbyControllerUrl);
+          localControllerClient.getLocalAdminOperationProtocolVersion(liveInstanceUrl);
       if (response.isError()) {
-        throw new VeniceException(
-            "Failed to get admin operation protocol version from standby controller: " + standbyControllerUrl
-                + ", error message: " + response.getError());
+        String msg = "Failed to get admin operation protocol version from controller: " + liveInstanceUrl
+            + ", error message: " + response.getError();
+        if (!EXCEPTION_FILTER.isRedundantException(msg)) {
+          LOGGER.warn(msg);
+        }
+        continue;
       }
+
       controllerNameToAdminOperationVersionMap
           .put(response.getLocalControllerName(), response.getLocalAdminOperationProtocolVersion());
     }
@@ -8412,7 +8456,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         clusterName,
         getZkClient(),
         getAdapterSerializer(),
-        multiClusterConfigs.getLogContext());
+        multiClusterConfigs.getLogContext(),
+        multiClusterConfigs.getCommonConfig().getRefreshAttemptsForZkReconnect());
 
     Optional<Version> currentVersion = store.getVersion(store.getCurrentVersion());
     String kafkaTopic = currentVersion.isPresent() ? currentVersion.get().kafkaTopicName() : "";
@@ -8581,7 +8626,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           zkClient,
           adapterSerializer,
-          multiClusterConfigs.getLogContext());
+          multiClusterConfigs.getLogContext(),
+          multiClusterConfigs.getCommonConfig().getRefreshAttemptsForZkReconnect());
       List<String> offlinePushes = zkClient.getChildren(accessor.getOfflinePushStatuesParentPath());
       offlinePushes.forEach(resource -> {
         if (Version.isVersionTopic(resource)) {
@@ -9263,6 +9309,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   SafeHelixManager getHelixManager() {
     return helixManager;
+  }
+
+  String getControllerClusterName() {
+    return controllerClusterName;
   }
 
   String getPushJobStatusStoreClusterName() {

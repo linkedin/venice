@@ -30,7 +30,11 @@ public class RecordFieldProjectionEqualsPredicate implements Predicate<GenericRe
       if (field == null) {
         return this.expectedValue == null;
       }
-      return Objects.equals(dataRecord.get(field.pos()), expectedValue);
+      Object actualValue = dataRecord.get(field.pos());
+      if (expectedValue instanceof Predicate) {
+        return ((Predicate) expectedValue).evaluate(actualValue);
+      }
+      return Objects.equals(actualValue, expectedValue);
     }
   }
 

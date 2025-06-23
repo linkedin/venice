@@ -69,9 +69,6 @@ public class HelixParticipationService extends AbstractVeniceService
     implements StatusMessageHandler<KillOfflinePushMessage> {
   private static final Logger LOGGER = LogManager.getLogger(HelixParticipationService.class);
 
-  private static final int MAX_RETRY = 30;
-  private static final int RETRY_INTERVAL_SEC = 1;
-
   private final Instance instance;
   private final String clusterName;
   private final String participantName;
@@ -305,7 +302,10 @@ public class HelixParticipationService extends AbstractVeniceService
     HelixAdmin admin = new ZKHelixAdmin(zkAddress);
     try {
       // Check whether the cluster is ready or not at first to prevent zk no node exception.
-      HelixUtils.checkClusterSetup(admin, clusterName, MAX_RETRY, RETRY_INTERVAL_SEC);
+      HelixUtils.checkClusterSetup(
+          admin,
+          clusterName,
+          veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect());
       List<String> instances = admin.getInstancesInCluster(clusterName);
       if (instances.contains(instance.getNodeId())) {
         LOGGER.info("{} is not a new node to cluster: {}, skip the cleaning up.", instance.getNodeId(), clusterName);
@@ -365,9 +365,8 @@ public class HelixParticipationService extends AbstractVeniceService
         clusterName,
         zkClient,
         new HelixAdapterSerializer(),
-        veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
-        veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs(),
-        veniceServerConfig.getRegionName());
+        veniceServerConfig.getRegionName(),
+        veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect());
 
     /**
      * The accessor can only get created successfully after helix manager is created.

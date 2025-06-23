@@ -15,6 +15,7 @@ import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
+import static com.linkedin.venice.utils.Utils.closeQuietlyWithErrorLogged;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
 import static java.util.Comparator.comparingInt;
 import static java.util.concurrent.TimeUnit.HOURS;
@@ -37,7 +38,6 @@ import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
-import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
@@ -118,6 +118,7 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.Time;
@@ -212,7 +213,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /** storage destination for consumption */
   protected final StorageService storageService;
-  protected final StorageEngineRepository storageEngineRepository;
   protected final StorageEngine storageEngine;
 
   /** Topics used for this topic consumption
@@ -403,6 +403,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected Lazy<ZKHelixAdmin> zkHelixAdmin;
   protected final String hostName;
   private boolean skipAfterBatchPushUnsubEnabled = false;
+  private final List<AutoCloseable> thingsToClose = new ArrayList<>();
 
   public StoreIngestionTask(
       StorageService storageService,
@@ -427,7 +428,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storeVersionConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
     this.kafkaProps = kafkaConsumerProperties;
     this.storageService = storageService;
-    this.storageEngineRepository = builder.getStorageEngineRepository();
     this.storageMetadataService = builder.getStorageMetadataService();
     this.storeRepository = builder.getMetadataRepo();
     this.schemaRepository = builder.getSchemaRepo();
@@ -489,7 +489,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.diskUsage = builder.getDiskUsage();
 
-    this.storageEngine = Objects.requireNonNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
+    ReferenceCounted<? extends StorageEngine> refCountedStorageEngine =
+        storageService.getRefCountedStorageEngine(storeVersionName);
+    this.thingsToClose.add(refCountedStorageEngine);
+    this.storageEngine = Objects.requireNonNull(refCountedStorageEngine.get());
 
     this.serverConfig = builder.getServerConfig();
 
@@ -657,10 +660,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public int getVersionNumber() {
     return versionNumber;
-  }
-
-  public boolean isFutureVersion() {
-    return versionedIngestionStats.isFutureVersion(storeName, versionNumber);
   }
 
   protected void throwIfNotRunning() {
@@ -1534,8 +1533,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
           LOGGER.info(message);
         }
-
-        Thread.sleep(readCycleDelayMs);
       } else {
         if (!hybridStoreConfig.isPresent() && serverConfig.isUnsubscribeAfterBatchpushEnabled() && subscribedCount != 0
             && subscribedCount == forceUnSubscribedCount) {
@@ -1568,7 +1565,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (storageUtilizationManager.hasPausedPartitionIngestion()) {
       storageUtilizationManager.checkAllPartitionsQuota();
     }
-    Thread.sleep(readCycleDelayMs);
   }
 
   protected void refreshIngestionContextIfChanged(Store store) throws InterruptedException {
@@ -1669,33 +1665,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       Store store = null;
       while (isRunning()) {
-        boolean readyToProcessConsumerActions = false;
-        if (recordTransformer != null) {
-          if (recordTransformerOnRecoveryFailure.get()) {
-            throw new VeniceException("DaVinciRecordTransformer onRecovery failed. Killing SIT");
-          } else if (recordTransformerStartConsumptionLatch.getCount() == 0) {
-            readyToProcessConsumerActions = true;
-          }
-        } else {
-          readyToProcessConsumerActions = true;
+        if (recordTransformer != null && recordTransformerOnRecoveryFailure.get()) {
+          throw new VeniceException("DaVinciRecordTransformer onRecovery failed. Killing SIT");
         }
 
         if (!skipAfterBatchPushUnsubEnabled) {
-          store = storeRepository.getStoreOrThrow(storeName);
           refreshIngestionContextIfChanged(store);
-          if (readyToProcessConsumerActions) {
-            processConsumerActions(store);
-          }
+          processConsumerActions(store);
           checkLongRunningTaskState();
           checkIngestionProgress(store);
           maybeSendIngestionHeartbeat();
           mayResumeRecordLevelMetricsForCurrentVersion();
         } else {
-          if (readyToProcessConsumerActions) {
-            processConsumerActions(store);
-          }
+          processConsumerActions(store);
           checkIngestionProgress(store);
         }
+        Thread.sleep(this.readCycleDelayMs);
       }
 
       List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(partitionConsumptionStateMap.size());
@@ -1853,7 +1838,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void handleIngestionException(Exception e) {
-    LOGGER.error("{} has failed.", ingestionTaskName, e);
+    LOGGER.error(
+        "Ingestion failed due to {}. Will propagate to reporters.",
+        ingestionTaskName,
+        e.getClass().getSimpleName());
     reportError(partitionConsumptionStateMap.values(), errorPartitionId, "Caught Exception during ingestion.", e);
     hostLevelIngestionStats.recordIngestionFailure();
   }
@@ -1962,6 +1950,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (topicManagerRepository != null) {
       topicManagerRepository.invalidateTopicManagerCaches(versionTopic);
+    }
+
+    for (AutoCloseable closeable: this.thingsToClose) {
+      closeQuietlyWithErrorLogged(closeable);
     }
 
     close();
@@ -2690,10 +2682,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     if (shouldSyncOffset(partitionConsumptionState, record, leaderProducedRecordContext)) {
       updateOffsetMetadataAndSyncOffset(partitionConsumptionState);
-      if (isHybridMode()) {
-        hostLevelIngestionStats.recordTotalDuplicateKeys(storageEngine.getStats().getDuplicateKeyCountEstimate());
-        hostLevelIngestionStats.recordTotalKeyCount(storageEngine.getStats().getKeyCountEstimate());
-      }
     }
   }
 
@@ -2783,15 +2771,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private void syncOffset(String topic, PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
-    StorageEngine storageEngineReloadedFromRepo = storageEngineRepository.getLocalStorageEngine(topic);
-    if (storageEngineReloadedFromRepo == null) {
-      LOGGER.warn("Storage engine has been removed. Could not execute sync offset for replica: {}", pcs.getReplicaId());
+    if (this.storageEngine.isClosed()) {
+      LOGGER.warn("Storage engine has been closed. Could not execute sync offset for replica: {}", pcs.getReplicaId());
       return;
     }
     // Flush data partition
     final AtomicReference<Map<String, String>> dbCheckpointingInfoReference = new AtomicReference<>();
     executeStorageEngineRunnable(partition, () -> {
-      Map<String, String> dbCheckpointingInfoFinal = storageEngineReloadedFromRepo.sync(partition);
+      Map<String, String> dbCheckpointingInfoFinal = this.storageEngine.sync(partition);
       dbCheckpointingInfoReference.set(dbCheckpointingInfoFinal);
     });
     if (dbCheckpointingInfoReference.get() == null) {
@@ -3868,6 +3855,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         int writerSchemaId = put.getSchemaId();
 
         if (recordTransformer != null && messageType == MessageType.PUT) {
+          try {
+            recordTransformerStartConsumptionLatch.await();
+          } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+          }
+
           long recordTransformerStartTime = System.nanoTime();
           ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
@@ -3978,6 +3971,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         if (recordTransformer != null) {
+          try {
+            recordTransformerStartConsumptionLatch.await();
+          } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+          }
+
           Lazy<Object> lazyKey = Lazy.of(() -> this.recordTransformerKeyDeserializer.deserialize(keyBytes));
 
           long startTime = System.nanoTime();
@@ -4392,16 +4391,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           if (!partitionConsumptionState.isCompletionReported()) {
             Store store = storeRepository.getStoreOrThrow(storeName);
             reportCompleted(partitionConsumptionState);
-            StorageEngine storageEngineReloadedFromRepo =
-                storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
             if (store.isHybrid()) {
-              if (storageEngineReloadedFromRepo == null) {
-                LOGGER.warn("Storage engine {} was removed before reopening", kafkaVersionTopic);
+              if (this.storageEngine.isClosed()) {
+                LOGGER.warn("Storage engine {} was closed", kafkaVersionTopic);
               } else {
                 /**
                  * May adjust the underlying storage partition to optimize read perf.
                  */
-                storageEngineReloadedFromRepo.adjustStoragePartition(
+                this.storageEngine.adjustStoragePartition(
                     partition,
                     StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ,
                     getStoragePartitionConfig(partitionConsumptionState));
