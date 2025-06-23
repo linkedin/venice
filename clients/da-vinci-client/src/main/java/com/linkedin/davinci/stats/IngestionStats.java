@@ -10,7 +10,6 @@ import com.linkedin.venice.utils.RegionUtils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Rate;
 import it.unimi.dsi.fastutil.ints.Int2ObjectArrayMap;
@@ -71,7 +70,6 @@ public class IngestionStats {
   private int ingestionTaskPushTimeoutGauge = 0;
   private final Int2ObjectMap<Rate> regionIdToHybridBytesConsumedRateMap;
   private final Int2ObjectMap<Rate> regionIdToHybridRecordsConsumedRateMap;
-  private final Int2ObjectMap<Avg> regionIdToHybridAvgConsumedOffsetMap;
   private final LongAdderRateGauge recordsConsumedSensor = new LongAdderRateGauge();
   private final LongAdderRateGauge bytesConsumedSensor = new LongAdderRateGauge();
   private final LongAdderRateGauge leaderRecordsConsumedSensor = new LongAdderRateGauge();
@@ -82,7 +80,6 @@ public class IngestionStats {
   private final LongAdderRateGauge leaderBytesProducedSensor = new LongAdderRateGauge();
   private final Int2ObjectMap<Sensor> regionIdToHybridBytesConsumedSensorMap;
   private final Int2ObjectMap<Sensor> regionIdToHybridRecordsConsumedSensorMap;
-  private final Int2ObjectMap<Sensor> regionIdToHybridAvgConsumedOffsetSensorMap;
 
   // write path latency sensors
   private final WritePathLatencySensor producerSourceBrokerLatencySensor;
@@ -125,8 +122,6 @@ public class IngestionStats {
     regionIdToHybridBytesConsumedSensorMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
     regionIdToHybridRecordsConsumedRateMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
     regionIdToHybridRecordsConsumedSensorMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
-    regionIdToHybridAvgConsumedOffsetMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
-    regionIdToHybridAvgConsumedOffsetSensorMap = new Int2ObjectArrayMap<>(kafkaClusterIdToAliasMap.size());
 
     localMetricRepository = new MetricsRepository(METRIC_CONFIG);
     for (Int2ObjectMap.Entry<String> entry: kafkaClusterIdToAliasMap.int2ObjectEntrySet()) {
@@ -150,16 +145,6 @@ public class IngestionStats {
           regionHybridRecordsConsumedRate);
       regionIdToHybridRecordsConsumedRateMap.put(regionId, regionHybridRecordsConsumedRate);
       regionIdToHybridRecordsConsumedSensorMap.put(regionId, regionHybridRecordsConsumedSensor);
-
-      Avg regionHybridAvgConsumedOffset = new Avg();
-      String regionHybridAvgConsumedOffsetMetricName = regionNamePrefix + "_rt_consumed_offset";
-      Sensor regionHybridAvgConsumedOffsetSensor =
-          localMetricRepository.sensor(regionHybridAvgConsumedOffsetMetricName);
-      regionHybridAvgConsumedOffsetSensor.add(
-          regionHybridAvgConsumedOffsetMetricName + regionHybridAvgConsumedOffset.getClass().getSimpleName(),
-          regionHybridAvgConsumedOffset);
-      regionIdToHybridAvgConsumedOffsetMap.put(regionId, regionHybridAvgConsumedOffset);
-      regionIdToHybridAvgConsumedOffsetSensorMap.put(regionId, regionHybridAvgConsumedOffsetSensor);
     }
 
     registerSensor(localMetricRepository, RECORDS_CONSUMED_METRIC_NAME, recordsConsumedSensor);
@@ -490,18 +475,6 @@ public class IngestionStats {
 
   public void recordRegionHybridRecordsConsumed(int regionId, double value, long currentTimeMs) {
     Sensor sensor = regionIdToHybridRecordsConsumedSensorMap.get(regionId);
-    if (sensor != null) {
-      sensor.record(value, currentTimeMs);
-    }
-  }
-
-  public double getRegionHybridAvgConsumedOffset(int regionId) {
-    Avg avg = regionIdToHybridAvgConsumedOffsetMap.get(regionId);
-    return avg != null ? avg.measure(METRIC_CONFIG, System.currentTimeMillis()) : 0.0;
-  }
-
-  public void recordRegionHybridAvgConsumedOffset(int regionId, double value, long currentTimeMs) {
-    Sensor sensor = regionIdToHybridAvgConsumedOffsetSensorMap.get(regionId);
     if (sensor != null) {
       sensor.record(value, currentTimeMs);
     }
