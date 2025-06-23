@@ -2148,7 +2148,7 @@ public class VeniceParentHelixAdmin implements Admin {
             LOGGER.info("Roll forward in region {} failed with error: {}", entry.getKey(), response.getError());
             failedRegions.add(entry.getKey());
           }
-        }, 5, Duration.ofSeconds(5), Duration.ofSeconds(15), Duration.ofSeconds(60), RETRY_FAILURE_TYPES);
+        }, 5, Duration.ofMillis(100), Duration.ofMillis(500), Duration.ofSeconds(10), RETRY_FAILURE_TYPES);
       }
 
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
