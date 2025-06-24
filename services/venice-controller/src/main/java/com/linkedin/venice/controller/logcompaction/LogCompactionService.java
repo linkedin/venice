@@ -66,7 +66,7 @@ public class LogCompactionService extends AbstractVeniceService {
         PRE_EXECUTION_DELAY_MS,
         clusterConfigs.getLogCompactionIntervalMS(),
         TimeUnit.MILLISECONDS);
-    LOGGER.info("log compaction service is started");
+    LOGGER.info("Log compaction service is started in cluster: {}", clusterName);
     return true;
   }
 
@@ -76,11 +76,13 @@ public class LogCompactionService extends AbstractVeniceService {
     try {
       if (!executor.awaitTermination(SCHEDULED_EXECUTOR_TIMEOUT_S, TimeUnit.SECONDS)) {
         executor.shutdownNow();
-        LOGGER.info("log compaction service executor shutdown timed out and is forcefully shutdown");
+        LOGGER.info(
+            "Log compaction service executor shutdown timed out and is forcefully shutdown in cluster: {}",
+            clusterName);
       }
     } catch (InterruptedException e) {
       executor.shutdownNow();
-      LOGGER.info("log compaction service interrupted");
+      LOGGER.info("Log compaction service interrupted in cluster: {}", clusterName, e);
     }
   }
 
