@@ -29,7 +29,9 @@ public class LogCompactionStats extends AbstractVeniceStats {
 
   /** metrics */
   private final MetricEntityStateGeneric repushStoreCallCountMetric;
-  private final MetricEntityStateGeneric storeNominatedForScheduledCompactionMetric;
+  private final MetricEntityStateGeneric storeNominationToCompactionTriggeredDurationMetric;
+  private final MetricEntityStateGeneric storeNominatedForCompactionCountMetric;
+  private final MetricEntityStateGeneric storeCompactionTriggeredCountMetric;
 
   public LogCompactionStats(MetricsRepository metricsRepository, String clusterName) {
     super(metricsRepository, "LogCompactionStats");
@@ -64,11 +66,27 @@ public class LogCompactionStats extends AbstractVeniceStats {
         Collections.singletonList(new Count()),
         baseDimensionsMap);
 
-    storeNominatedForScheduledCompactionMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.STORE_NOMINATED_FOR_SCHEDULED_COMPACTION.getMetricEntity(),
+    storeNominationToCompactionTriggeredDurationMetric = MetricEntityStateGeneric.create(
+        ControllerMetricEntity.STORE_NOMINATION_TO_COMPACTION_TRIGGERED_DURATION.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        ControllerTehutiMetricNameEnum.STORE_NOMINATED_FOR_SCHEDULED_COMPACTION,
+        ControllerTehutiMetricNameEnum.STORE_NOMINATION_TO_COMPACTION_DURATION,
+        Collections.singletonList(new Count()),
+        baseDimensionsMap);
+
+    storeNominatedForCompactionCountMetric = MetricEntityStateGeneric.create(
+        ControllerMetricEntity.STORE_NOMINATED_FOR_COMPACTION_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        ControllerTehutiMetricNameEnum.STORE_NOMINATED_FOR_COMPACTION_COUNT,
+        Collections.singletonList(new Count()),
+        baseDimensionsMap);
+
+    storeCompactionTriggeredCountMetric = MetricEntityStateGeneric.create(
+        ControllerMetricEntity.STORE_COMPACTION_TRIGGERED_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        ControllerTehutiMetricNameEnum.STORE_COMPACTION_TRIGGERED_COUNT,
         Collections.singletonList(new Count()),
         baseDimensionsMap);
   }
@@ -86,8 +104,8 @@ public class LogCompactionStats extends AbstractVeniceStats {
     });
   }
 
-  public void recordStoreNominatedForScheduledCompaction(String storeName) {
-    storeNominatedForScheduledCompactionMetric
+  public void startStoreNominationToCompactionTriggeredDuration(String storeName) {
+    storeNominationToCompactionTriggeredDurationMetric
         .record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
           {
             put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
@@ -95,8 +113,8 @@ public class LogCompactionStats extends AbstractVeniceStats {
         });
   }
 
-  public void recordStoreRepushedForScheduledCompaction(String storeName) {
-    storeNominatedForScheduledCompactionMetric
+  public void endStoreNominationToCompactionTriggeredDuration(String storeName) {
+    storeNominationToCompactionTriggeredDurationMetric
         .record(0, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
           {
             put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
@@ -104,9 +122,26 @@ public class LogCompactionStats extends AbstractVeniceStats {
         });
   }
 
+  public void recordStoreNominatedForCompactionCount(String storeName) {
+    storeNominatedForCompactionCountMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
+      {
+        put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
+      }
+    });
+  }
+
+  public void recordStoreCompactionTriggeredCount(String storeName) {
+    storeCompactionTriggeredCountMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
+      {
+        put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
+      }
+    });
+  }
+
   enum ControllerTehutiMetricNameEnum implements TehutiMetricNameEnum {
     /** for {@link ControllerMetricEntity#REPUSH_STORE_ENDPOINT_CALL_COUNT} */
-    REPUSH_STORE_ENDPOINT_CALL_COUNT, STORE_NOMINATED_FOR_SCHEDULED_COMPACTION;
+    REPUSH_STORE_ENDPOINT_CALL_COUNT, STORE_NOMINATION_TO_COMPACTION_DURATION, STORE_NOMINATED_FOR_COMPACTION_COUNT,
+    STORE_COMPACTION_TRIGGERED_COUNT;
 
     private final String metricName;
 
