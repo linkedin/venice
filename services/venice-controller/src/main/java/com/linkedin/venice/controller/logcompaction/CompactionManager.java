@@ -157,13 +157,13 @@ public class CompactionManager {
         throw new VeniceException(nullResponseMessage);
       }
       LOGGER.info(
-          "Repush job triggered for store: {} | exec id: {} | trigger source: {}",
+          "[log-compaction] Repush job triggered for store: {} | exec id: {} | trigger source: {}",
           response.getName(),
           response.getExecutionId(),
           repushJobRequest.getTriggerSource().toString());
       return response;
     } catch (Exception e) {
-      LOGGER.error("Failed to compact store: {}", repushJobRequest.getStoreName(), e);
+      LOGGER.error("[log-compaction] Failed to compact store: {}", repushJobRequest.getStoreName(), e);
       throw e;
     }
   }

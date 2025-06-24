@@ -650,7 +650,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         Function.identity(),
                         clusterName -> new LogCompactionStats(metricsRepository, clusterName))));
       } catch (Exception e) {
-        LOGGER.error("Failed to enable " + LogCompactionService.class.getSimpleName(), e);
+        LOGGER.error("[log-compaction] Failed to enable " + LogCompactionService.class.getSimpleName(), e);
         throw new VeniceException(e);
       }
     }
@@ -8351,7 +8351,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public List<StoreInfo> getStoresForCompaction(String clusterName) {
     Assert.isTrue(
         multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled(),
-        "Log compaction is not enabled for this cluster!");
+        "[log-compaction] Log compaction is not enabled for this cluster!");
     try {
       Map<String, ControllerClient> childControllers = getControllerClientMap(clusterName);
       return compactionManager.getStoresForCompaction(clusterName, childControllers);
@@ -8372,11 +8372,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception {
     Assert.isTrue(
         multiClusterConfigs.getControllerConfig(repushJobRequest.getClusterName()).isLogCompactionEnabled(),
-        "Log compaction is not enabled for this cluster!");
+        "[log-compaction] Log compaction is not enabled for this cluster!");
     try {
       return compactionManager.repushStore(repushJobRequest);
     } catch (Exception e) {
-      LOGGER.error("Error while triggering repush for store: {}", repushJobRequest.getStoreName(), e);
+      LOGGER.error("[log-compaction] Error while triggering repush for store: {}", repushJobRequest.getStoreName(), e);
       throw e; // this method is the first common point for scheduled & adhoc log compaction, each has different error
     }
   }
