@@ -218,6 +218,7 @@ public class RecordTransformerTest {
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
+    dummyRecordTransformerConfig.setStartConsumptionLatchCount(1);
 
     DaVinciRecordTransformer<Integer, String, String> clientRecordTransformer = spy(
         new TestStringRecordTransformer(
@@ -238,14 +239,16 @@ public class RecordTransformerTest {
     blockingRecordTransformer.onStartVersionIngestion(true);
     verify(clientRecordTransformer).onStartVersionIngestion(true);
 
+    assertEquals(blockingRecordTransformer.getCountDownStartConsumptionLatchCount(), 1L);
     assertTrue(blockingRecordTransformer.getStoreRecordsInDaVinci());
-
     assertEquals(blockingRecordTransformer.getKeySchema().getType(), Schema.Type.INT);
-
     assertEquals(blockingRecordTransformer.getOutputValueSchema().getType(), Schema.Type.STRING);
 
+    blockingRecordTransformer.countDownStartConsumptionLatch();
+    assertEquals(blockingRecordTransformer.getCountDownStartConsumptionLatchCount(), 0L);
+
     DaVinciRecordTransformerResult<String> recordTransformerResult =
-        blockingRecordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId);
+        blockingRecordTransformer.internalTransformAndProcessPut(lazyKey, lazyValue, partitionId);
     verify(clientRecordTransformer).transform(lazyKey, lazyValue, partitionId);
     verify(clientRecordTransformer).processPut(eq(lazyKey), any(), eq(partitionId));
     assertEquals(recordTransformerResult.getValue(), value + "Transformed");

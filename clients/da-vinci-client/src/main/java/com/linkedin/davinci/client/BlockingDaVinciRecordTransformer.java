@@ -3,6 +3,7 @@ package com.linkedin.davinci.client;
 import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.annotation.Experimental;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -121,6 +122,11 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Lazy<VeniceCompressor> compressor) {
     this.recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
+  }
+
+  @VisibleForTesting
+  public long getCountDownStartConsumptionLatchCount() {
+    return this.startLatchConsumptionLatch.getCount();
   }
 
   /**
