@@ -43,7 +43,7 @@ public class LogCompactionService extends AbstractVeniceService {
   private final String clusterName;
   private final VeniceControllerClusterConfig clusterConfigs;
   final ScheduledExecutorService executor;
-  private LogCompactionStats stats; // TODO: map
+  private LogCompactionStats stats;
 
   public LogCompactionService(
       Admin admin,
