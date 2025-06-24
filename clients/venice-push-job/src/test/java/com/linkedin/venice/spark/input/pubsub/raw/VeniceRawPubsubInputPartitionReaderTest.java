@@ -55,24 +55,13 @@ public class VeniceRawPubsubInputPartitionReaderTest {
   @BeforeMethod
   public void setUp() {
     MockitoAnnotations.openMocks(this);
-    // Setup will be implemented
-  }
 
-  @AfterMethod
-  public void tearDown() {
-    if (reader != null) {
-      reader.close();
-    }
-  }
-
-  @Test
-  public void testEmptyTopicInitialization() {
-    // Arrange
+    // basic setup
     int partitionNumber = 5;
-    String topicName = "test-topic-empty_v1";
-    String region = "ei-test-region1";
-    long startOffset = 101L;
-    long endOffset = 200L;
+    String topicName = "basic-mock-topic_v1";
+    String region = "basic-mock-region1";
+    long startOffset = 1L;
+    long endOffset = 2L;
 
     // Setup mocks
     when(mockInputPartition.getPartitionNumber()).thenReturn(partitionNumber);
@@ -82,7 +71,30 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     when(mockInputPartition.getEndOffset()).thenReturn(endOffset);
     when(mockTopicPartition.getPubSubTopic()).thenReturn(mockTopic);
 
-    // Act
+  }
+
+  @AfterMethod
+  public void tearDown() {
+    if (reader != null) {
+      reader.close();
+    }
+  }
+
+  /**
+   * This is a test for a topic that despite having start and end offsets, has no messages.
+   */
+  @Test
+  public void testEmptyTopicInitialization() {
+    // Mock tuning
+    String topicName = "no-messages-topic_v1";
+    String region = "ei-test-region2";
+    long startOffset = 101L;
+    long endOffset = 200L;
+    when(mockInputPartition.getTopicName()).thenReturn(topicName);
+    when(mockInputPartition.getRegion()).thenReturn(region);
+    when(mockInputPartition.getStartOffset()).thenReturn(startOffset);
+    when(mockInputPartition.getEndOffset()).thenReturn(endOffset);
+
     long start = System.currentTimeMillis();
     reader = new VeniceRawPubsubInputPartitionReader(
         mockInputPartition,
@@ -92,9 +104,7 @@ public class VeniceRawPubsubInputPartitionReaderTest {
         CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES,
         EMPTY_POLL_SLEEP_TIME_MS,
         new VenicePubSubMessageToRow());
-
     Assert.assertFalse(reader.next()); // Attempt to read messages, which should fail due to empty topic
-
     long elapsed = System.currentTimeMillis() - start;
     Assert.assertTrue(
         elapsed >= CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES * CONSUMER_POLL_TIMEOUT,
@@ -108,22 +118,17 @@ public class VeniceRawPubsubInputPartitionReaderTest {
 
   @Test
   public void testShortTopicNoControlMessage() {
-    // Arrange
-    int partitionNumber = 5;
-    String topicName = "test-topic-no-control_v2";
+    // Mock tuning
+    String topicName = "no-control-msgs_v2";
     String region = "ei-test-region2";
+    int partitionNumber = 5;
     long startOffset = 1L;
-    long endOffset = 2L;
-
-    // Setup mocks
     when(mockInputPartition.getPartitionNumber()).thenReturn(partitionNumber);
     when(mockInputPartition.getTopicName()).thenReturn(topicName);
     when(mockInputPartition.getRegion()).thenReturn(region);
-    when(mockInputPartition.getStartOffset()).thenReturn(startOffset);
-    when(mockInputPartition.getEndOffset()).thenReturn(endOffset);
-    when(mockTopicPartition.getPubSubTopic()).thenReturn(mockTopic);
 
     // prepare 2 mock messages
+
     DefaultPubSubMessage mockMessage1 = createMockMessage(startOffset, false);
     DefaultPubSubMessage mockMessage2 = createMockMessage(startOffset + 1L, false);
 
@@ -172,20 +177,14 @@ public class VeniceRawPubsubInputPartitionReaderTest {
 
   @Test
   public void testFilterControlMessages() {
-    // Arrange
-    int partitionNumber = 5;
-    String topicName = "test-topic-with-control_v7";
+    // Mock tuning
+    String topicName = "one-control-msg_v7";
     String region = "prod-test-region1";
     long startOffset = 1L;
-    long endOffset = 2L;
-
-    // Setup mocks
+    int partitionNumber = 5;
     when(mockInputPartition.getPartitionNumber()).thenReturn(partitionNumber);
     when(mockInputPartition.getTopicName()).thenReturn(topicName);
     when(mockInputPartition.getRegion()).thenReturn(region);
-    when(mockInputPartition.getStartOffset()).thenReturn(startOffset);
-    when(mockInputPartition.getEndOffset()).thenReturn(endOffset);
-    when(mockTopicPartition.getPubSubTopic()).thenReturn(mockTopic);
 
     // first mock message is a control message, second is a regular message
     DefaultPubSubMessage mockMessage1 = createMockMessage(startOffset, true);
