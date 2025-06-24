@@ -2161,13 +2161,6 @@ public class VeniceParentHelixAdmin implements Admin {
           kafkaTopic);
       truncateKafkaTopic(kafkaTopic);
 
-      if (failedRegions.size() > 0) {
-        LOGGER.info("Roll forward failed in the following regions: {}", failedRegions);
-        throw new VeniceException(
-            "Roll forward failed in the following regions: " + failedRegions
-                + " Please try the roll forward action again");
-      }
-
       LOGGER.info(
           "Roll forward to future version {} is successful in all regions for store {}",
           futureVersionBeforeRollForward,
