@@ -12,7 +12,7 @@ import org.apache.avro.Schema;
 
 /**
  * Implementation of {@link ComputeAggregationRequestBuilder} that supports counting field values
- * and grouping them by their values.
+ * and grouping them by their values and buckets.
  */
 public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregationRequestBuilder<K> {
   private final AvroComputeRequestBuilderV3<K> delegate;

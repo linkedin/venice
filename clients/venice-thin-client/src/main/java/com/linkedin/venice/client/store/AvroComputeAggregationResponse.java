@@ -13,7 +13,7 @@ import org.apache.avro.util.Utf8;
 
 
 /**
- * Implementation of {@link ComputeAggregationResponse} that handles the results of count-by-value aggregations.
+ * Implementation of {@link ComputeAggregationResponse} that handles the results of count-by-value and count-by-bucket aggregations.
  */
 public class AvroComputeAggregationResponse<K> implements ComputeAggregationResponse {
   private final Map<K, ComputeGenericRecord> computeResults;
