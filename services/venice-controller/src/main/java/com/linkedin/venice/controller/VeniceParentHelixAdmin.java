@@ -2143,10 +2143,14 @@ public class VeniceParentHelixAdmin implements Admin {
       for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
         ControllerClient controllerClient = entry.getValue();
         RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+          failedRegions.remove(entry.getKey());
           ControllerResponse response = controllerClient.rollForwardToFutureVersion(storeName, regionFilter);
           if (response.isError()) {
             LOGGER.info("Roll forward in region {} failed with error: {}", entry.getKey(), response.getError());
             failedRegions.add(entry.getKey());
+            throw new VeniceException(
+                "Roll forward failed in the following regions: " + failedRegions
+                    + " Please try the roll forward action again");
           }
         }, 5, Duration.ofMillis(100), Duration.ofMillis(500), Duration.ofSeconds(10), RETRY_FAILURE_TYPES);
       }
