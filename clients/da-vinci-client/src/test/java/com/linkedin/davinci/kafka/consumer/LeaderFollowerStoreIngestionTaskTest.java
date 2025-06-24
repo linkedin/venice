@@ -218,6 +218,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   public void setUp() throws InterruptedException {
+    setUp(false);
+  }
+
+  public void setUp(boolean isHybrid) throws InterruptedException {
     String storeName = Utils.getUniqueString("store");
     int versionNumber = 1;
     mockStorageService = mock(StorageService.class);
@@ -230,13 +234,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
     AggHostLevelIngestionStats aggHostLevelIngestionStats = mock(AggHostLevelIngestionStats.class);
     doReturn(hostLevelIngestionStats).when(aggHostLevelIngestionStats).getStoreStats(storeName);
     StorageMetadataService inMemoryStorageMetadataService = new InMemoryStorageMetadataService();
-    StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName, true)
-        .setServerConfig(mockVeniceServerConfig)
-        .setPubSubTopicRepository(pubSubTopicRepository)
-        .setVeniceViewWriterFactory(mockVeniceViewWriterFactory)
-        .setHeartbeatMonitoringService(mock(HeartbeatMonitoringService.class))
-        .setCompressorFactory(new StorageEngineBackedCompressorFactory(inMemoryStorageMetadataService))
-        .setHostLevelIngestionStats(aggHostLevelIngestionStats);
+    StoreIngestionTaskFactory.Builder builder = getStoreIngestionTaskBuilder(
+        isHybrid,
+        storeName,
+        pubSubTopicRepository,
+        inMemoryStorageMetadataService,
+        aggHostLevelIngestionStats);
     when(builder.getSchemaRepo().getKeySchema(storeName)).thenReturn(new SchemaEntry(1, "\"string\""));
     mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     mockStoreBufferService = (StoreBufferService) builder.getStoreBufferService();
@@ -279,6 +282,30 @@ public class LeaderFollowerStoreIngestionTaskTest {
             null));
 
     leaderFollowerStoreIngestionTask.addPartitionConsumptionState(0, mockPartitionConsumptionState);
+  }
+
+  public StoreIngestionTaskFactory.Builder getStoreIngestionTaskBuilder(
+      boolean isHybrid,
+      String storeName,
+      PubSubTopicRepository pubSubTopicRepository,
+      StorageMetadataService inMemoryStorageMetadataService,
+      AggHostLevelIngestionStats aggHostLevelIngestionStats) {
+    if (isHybrid) {
+      return TestUtils.getStoreIngestionTaskBuilder(storeName, true)
+          .setServerConfig(mockVeniceServerConfig)
+          .setPubSubTopicRepository(pubSubTopicRepository)
+          .setVeniceViewWriterFactory(mockVeniceViewWriterFactory)
+          .setHeartbeatMonitoringService(mock(HeartbeatMonitoringService.class))
+          .setCompressorFactory(new StorageEngineBackedCompressorFactory(inMemoryStorageMetadataService))
+          .setHostLevelIngestionStats(aggHostLevelIngestionStats);
+    }
+    return TestUtils.getStoreIngestionTaskBuilder(storeName)
+        .setServerConfig(mockVeniceServerConfig)
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .setVeniceViewWriterFactory(mockVeniceViewWriterFactory)
+        .setHeartbeatMonitoringService(mock(HeartbeatMonitoringService.class))
+        .setCompressorFactory(new StorageEngineBackedCompressorFactory(inMemoryStorageMetadataService))
+        .setHostLevelIngestionStats(aggHostLevelIngestionStats);
   }
 
   /**
@@ -629,7 +656,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
   @Test
   public void testFutureVersionLatchStatus() throws InterruptedException {
-    setUp();
+    setUp(true);
 
     // Setup subscribe action
     when(mockConsumerAction.getType()).thenReturn(ConsumerActionType.SUBSCRIBE);

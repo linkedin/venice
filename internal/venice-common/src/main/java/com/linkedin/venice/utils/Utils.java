@@ -1004,7 +1004,7 @@ public class Utils {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
       int versionNum = Version.parseVersionFromKafkaTopicName(resourceName);
-      Store store = metadataRepo.getStore(storeName);
+      Store store = metadataRepo.getStoreOrThrow(storeName);
       if (store == null) {
         LOGGER.warn("Store {} is not in store repository.", storeName);
         return false;
