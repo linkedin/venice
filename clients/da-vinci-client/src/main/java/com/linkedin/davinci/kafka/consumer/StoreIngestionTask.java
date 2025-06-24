@@ -356,7 +356,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Map<Integer, Schema> schemaIdToSchemaMap;
   private BlockingDaVinciRecordTransformer recordTransformer;
   private AtomicBoolean recordTransformerOnRecoveryFailure;
-  private CountDownLatch recordTransformerStartConsumptionLatch;
   private ExecutorService recordTransformerOnRecoveryThreadPool;
 
   protected final String localKafkaServer;
@@ -558,7 +557,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           outputValueSchema,
           recordTransformerConfig);
       this.recordTransformerOnRecoveryFailure = new AtomicBoolean(false);
-      this.recordTransformerStartConsumptionLatch = recordTransformerConfig.getStartConsumptionLatch();
       this.recordTransformerOnRecoveryThreadPool =
           Executors.newFixedThreadPool(serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize());
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
@@ -727,7 +725,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               LatencyUtils.getElapsedTimeFromNSToMS(startTime),
               getReplicaId(topicPartition));
 
-          recordTransformerStartConsumptionLatch.countDown();
+          recordTransformer.countDownStartConsumptionLatch();
           consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
         } catch (Exception e) {
           LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {}", getReplicaId(topicPartition), e);
@@ -3856,12 +3854,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         int writerSchemaId = put.getSchemaId();
 
         if (recordTransformer != null && messageType == MessageType.PUT) {
-          try {
-            recordTransformerStartConsumptionLatch.await();
-          } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-          }
-
           long recordTransformerStartTime = System.nanoTime();
           ByteBufferValueRecord<ByteBuffer> assembledRecord = chunkAssembler.bufferAndAssembleRecord(
               consumerRecord.getTopicPartition(),
@@ -3909,7 +3901,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           DaVinciRecordTransformerResult transformerResult;
           try {
-            transformerResult = recordTransformer.transformAndProcessPut(lazyKey, lazyValue, producedPartition);
+            transformerResult = recordTransformer.internalTransformAndProcessPut(lazyKey, lazyValue, producedPartition);
           } catch (Exception e) {
             daVinciRecordTransformerStats.recordPutError(storeName, versionNumber, currentTimeMs);
             String errorMessage =
@@ -3972,12 +3964,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         if (recordTransformer != null) {
-          try {
-            recordTransformerStartConsumptionLatch.await();
-          } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-          }
-
           Lazy<Object> lazyKey = Lazy.of(() -> this.recordTransformerKeyDeserializer.deserialize(keyBytes));
 
           long startTime = System.nanoTime();

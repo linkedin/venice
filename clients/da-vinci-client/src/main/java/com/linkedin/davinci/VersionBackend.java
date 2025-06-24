@@ -37,7 +37,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -366,34 +365,35 @@ public class VersionBackend {
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
     LOGGER.info("Subscribing to partitions {} of {}", partitionList, this);
-    List<CompletableFuture<Void>> futures = new ArrayList<>(partitionList.size());
-
-    if (recordTransformerConfig != null) {
-      CountDownLatch recordTransformerStartConsumptionLatch = new CountDownLatch(partitionList.size());
-      recordTransformerConfig.setStartConsumptionLatch(recordTransformerStartConsumptionLatch);
-    }
+    int partitionCount = partitionList.size();
+    List<Integer> partitionsToStartConsumption = new ArrayList<>(partitionCount);
+    List<CompletableFuture<Void>> futures = new ArrayList<>(partitionCount);
 
     for (int partition: partitionList) {
       StorageEngine engine = storageEngine.get();
       if (partitionFutures.containsKey(partition)) {
         LOGGER.info("Partition {} of {}  is subscribed, ignoring subscribe request.", partition, this);
-        if (recordTransformerConfig != null) {
-          recordTransformerConfig.getStartConsumptionLatch().countDown();
-        }
+        partitionCount -= 1;
       } else if (suppressLiveUpdates && engine != null && engine.containsPartition(partition)) {
         // If live update suppression is enabled and local data exists, don't start ingestion and report ready to serve.
         partitionFutures.computeIfAbsent(partition, k -> CompletableFuture.completedFuture(null));
-        if (recordTransformerConfig != null) {
-          recordTransformerConfig.getStartConsumptionLatch().countDown();
-        }
+        partitionCount -= 1;
       } else {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
-        // AtomicReference of storage engine will be updated internally.
-        backend.getIngestionBackend().startConsumption(config, partition);
-        tryStartHeartbeat();
+        partitionsToStartConsumption.add(partition);
       }
       partitionToBatchReportEOIPEnabled.put(partition, batchReportEOIPStatusEnabled);
       futures.add(partitionFutures.get(partition));
+    }
+
+    if (recordTransformerConfig != null) {
+      recordTransformerConfig.setStartConsumptionLatchCount(partitionsToStartConsumption.size());
+    }
+
+    for (int partition: partitionsToStartConsumption) {
+      // AtomicReference of storage engine will be updated internally.
+      backend.getIngestionBackend().startConsumption(config, partition);
+      tryStartHeartbeat();
     }
 
     CompletableFuture<Void> bootstrappingAwareSubscriptionFuture = new CompletableFuture<>();

@@ -21,6 +21,7 @@ public class DaVinciRecordTransformerConfig {
   private final boolean skipCompatibilityChecks;
   private final boolean useSpecificRecordKeyDeserializer;
   private final boolean useSpecificRecordValueDeserializer;
+  private int startConsumptionLatchCount;
   private CountDownLatch startConsumptionLatch;
 
   public DaVinciRecordTransformerConfig(Builder builder) {
@@ -42,8 +43,9 @@ public class DaVinciRecordTransformerConfig {
     this.storeRecordsInDaVinci = builder.storeRecordsInDaVinci;
     this.alwaysBootstrapFromVersionTopic = builder.alwaysBootstrapFromVersionTopic;
     this.skipCompatibilityChecks = builder.skipCompatibilityChecks;
-    // Default is to not block consumption
-    this.startConsumptionLatch = new CountDownLatch(0);
+
+    // Default = 0 to guard against NPE downstream, which shouldn't be possible.
+    this.startConsumptionLatchCount = 0;
   }
 
   /**
@@ -110,17 +112,17 @@ public class DaVinciRecordTransformerConfig {
   }
 
   /**
-   * @return {@link #startConsumptionLatch}
+   * @return {@link #startConsumptionLatchCount}
    */
-  public CountDownLatch getStartConsumptionLatch() {
-    return startConsumptionLatch;
+  public int getStartConsumptionLatchCount() {
+    return startConsumptionLatchCount;
   }
 
   /**
-   * @param startConsumptionLatch the latch used for when we need to finish scanning every RocksDB partition before remote consumption.
+   * @param startConsumptionLatchCount the count used for the latch to guarantee we finish scanning every RocksDB partition before starting remote consumption.
    */
-  public void setStartConsumptionLatch(CountDownLatch startConsumptionLatch) {
-    this.startConsumptionLatch = startConsumptionLatch;
+  public void setStartConsumptionLatchCount(int startConsumptionLatchCount) {
+    this.startConsumptionLatchCount = startConsumptionLatchCount;
   }
 
   public static class Builder {
