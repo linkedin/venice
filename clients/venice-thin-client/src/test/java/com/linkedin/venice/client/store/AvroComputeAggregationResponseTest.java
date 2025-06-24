@@ -244,17 +244,15 @@ public class AvroComputeAggregationResponseTest {
     // T key = (T) value; where T = Integer but value = String
     try {
       Map<Integer, Integer> result = response.getValueToCount(AGE_FIELD);
-      // If we reach here, the casting didn't throw an exception, which is unexpected
-      // We should verify that the result contains the expected values
-      // Since the current implementation doesn't throw ClassCastException due to type erasure,
-      // we'll check that the values are present but as String keys
       boolean found25 = false, found30 = false;
-      for (Object key: result.keySet()) {
+      for (Map.Entry<Integer, Integer> entry: result.entrySet()) {
+        Object key = entry.getKey();
+        Integer value = entry.getValue();
         if ("25".equals(key.toString())) {
-          assertEquals(result.get(key), Integer.valueOf(1), "25 should be counted once");
+          assertEquals(value, Integer.valueOf(1), "25 should be counted once");
           found25 = true;
         } else if ("30".equals(key.toString())) {
-          assertEquals(result.get(key), Integer.valueOf(1), "30 should be counted once");
+          assertEquals(value, Integer.valueOf(1), "30 should be counted once");
           found30 = true;
         }
       }
@@ -262,8 +260,6 @@ public class AvroComputeAggregationResponseTest {
       assertTrue(found30, "30 should be present");
       assertEquals(result.size(), 2, "Should have 2 distinct values");
     } catch (ClassCastException e) {
-      // This is the expected behavior when type casting fails
-      // The test passes if ClassCastException is thrown
       assertTrue(true, "ClassCastException was thrown as expected");
     }
   }
