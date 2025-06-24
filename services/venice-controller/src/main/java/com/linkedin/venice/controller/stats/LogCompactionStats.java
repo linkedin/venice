@@ -86,7 +86,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
     });
   }
 
-  public void recordStoreNominatedForScheduledCompaction(String storeName, int storeCurrentVersionNumber) {
+  public void recordStoreNominatedForScheduledCompaction(String storeName) {
     storeNominatedForScheduledCompactionMetric
         .record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
           {
@@ -95,7 +95,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
         });
   }
 
-  public void recordStoreRepushedForScheduledCompaction(String storeName, int storeCurrentVersionNumber) {
+  public void recordStoreRepushedForScheduledCompaction(String storeName) {
     storeNominatedForScheduledCompactionMetric
         .record(0, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
           {
