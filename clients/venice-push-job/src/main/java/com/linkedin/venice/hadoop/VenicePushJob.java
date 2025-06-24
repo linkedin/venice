@@ -46,6 +46,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.LEGACY_AVRO_VALUE_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.MEMTABLE_HYBRID_BATCH_WRITE_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.NON_CRITICAL_EXCEPTION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.NOT_SET;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PARENT_CONTROLLER_REGION_NAME;
@@ -394,6 +395,7 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
+    pushJobSettingToReturn.isMemtableBatchWriteEnabled = props.getBoolean(MEMTABLE_HYBRID_BATCH_WRITE_ENABLED, false);
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
     pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled =
@@ -780,7 +782,7 @@ public class VenicePushJob implements AutoCloseable {
         }
         if (pushJobSetting.sendControlMessagesDirectly) {
           getVeniceWriter(pushJobSetting).broadcastStartOfPush(
-              SORTED,
+              !pushJobSetting.isMemabledBatchWriteForHybridEnabled && SORTED,
               pushJobSetting.isChunkingEnabled,
               pushJobSetting.topicCompressionStrategy,
               optionalCompressionDictionary,
@@ -2128,6 +2130,10 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
+
+    if (hybridStoreConfig != null) {
+      jobSetting.isMemabledBatchWriteForHybridEnabled = pushJobSetting.isMemtableBatchWriteEnabled;
+    }
     if (jobSetting.repushTTLEnabled) {
       if (hybridStoreConfig == null) {
         throw new VeniceException("Repush TTL is only supported for real-time only store.");
@@ -2240,7 +2246,7 @@ public class VenicePushJob implements AutoCloseable {
             pushType,
             pushId,
             askControllerToSendControlMessage,
-            SORTED,
+            !setting.isMemabledBatchWriteForHybridEnabled && SORTED,
             finalWriteComputeEnabled,
             Optional.of(partitioners),
             dictionary,

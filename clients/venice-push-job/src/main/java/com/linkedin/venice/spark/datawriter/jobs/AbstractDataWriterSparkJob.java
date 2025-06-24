@@ -8,6 +8,8 @@ import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
+import static com.linkedin.venice.guid.GuidUtils.DEFAULT_GUID_GENERATOR_IMPLEMENTATION;
+import static com.linkedin.venice.guid.GuidUtils.GUID_GENERATOR_IMPLEMENTATION;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SCHEMA_WITH_PARTITION;
 import static com.linkedin.venice.spark.SparkConstants.DEFAULT_SPARK_CLUSTER;
@@ -254,11 +256,15 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
     jobConf.set(ZSTD_DICTIONARY_CREATION_SUCCESS, pushJobSetting.isZstdDictCreationSuccess);
 
-    // We generate a random UUID once, and the tasks of the compute job can use this to build the same producerGUID
-    // deterministically.
-    UUID producerGuid = UUID.randomUUID();
-    jobConf.set(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
-    jobConf.set(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
+    if (pushJobSetting.isMemtableBatchWriteEnabled) {
+      jobConf.set(GUID_GENERATOR_IMPLEMENTATION, DEFAULT_GUID_GENERATOR_IMPLEMENTATION);
+    } else {
+      // We generate a random UUID once, and the tasks of the compute job can use this to build the same producerGUID
+      // deterministically.
+      UUID producerGuid = UUID.randomUUID();
+      jobConf.set(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
+      jobConf.set(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
+    }
 
     if (pushJobSetting.materializedViewConfigFlatMap != null) {
       jobConf.set(PUSH_JOB_VIEW_CONFIGS, pushJobSetting.materializedViewConfigFlatMap);
