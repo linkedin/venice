@@ -31,20 +31,24 @@ public class ProducerBatchingService implements Closeable {
   private final VeniceWriter writer;
   private final ReentrantLock lock = new ReentrantLock();
   private final long batchIntervalInMs;
+  private final int maxBatchSize;
   private final ScheduledExecutorService checkServiceExecutor;
   private final List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
   private final Map<byte[], ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+  private volatile long lastBatchProduceMs;
   private volatile boolean isRunning = false;
 
-  public ProducerBatchingService(VeniceWriter writer, long batchIntervalInMs) {
+  public ProducerBatchingService(VeniceWriter writer, long batchIntervalInMs, int maxBatchSize) {
     this.writer = writer;
     this.batchIntervalInMs = batchIntervalInMs;
+    this.maxBatchSize = maxBatchSize;
     this.checkServiceExecutor = Executors.newScheduledThreadPool(1);
   }
 
   public void start() {
     isRunning = true;
-    checkServiceExecutor.scheduleWithFixedDelay(this::checkBatchTask, 0, batchIntervalInMs, TimeUnit.MILLISECONDS);
+    lastBatchProduceMs = System.currentTimeMillis();
+    checkServiceExecutor.execute(this::periodicCheckTask);
   }
 
   @Override
@@ -89,6 +93,9 @@ public class ProducerBatchingService implements Closeable {
       if (prevRecord != null) {
         prevRecord.setSkipProduce(true);
       }
+      if (bufferRecordList.size() >= maxBatchSize) {
+        checkAndMaybeProduceBatchRecord();
+      }
     } finally {
       lock.unlock();
     }
@@ -107,11 +114,11 @@ public class ProducerBatchingService implements Closeable {
   }
 
   void checkAndMaybeProduceBatchRecord() {
-    if (bufferRecordList.isEmpty()) {
-      return;
-    }
     lock.lock();
     try {
+      if (bufferRecordList.isEmpty()) {
+        return;
+      }
       for (ProducerBufferRecord record: bufferRecordList) {
         if (record.shouldSkipProduce()) {
           ProducerBufferRecord latestRecord = bufferRecordIndex.get(record.getKeyBytes());
@@ -130,6 +137,7 @@ public class ProducerBatchingService implements Closeable {
         }
       }
     } finally {
+      lastBatchProduceMs = System.currentTimeMillis();
       // In any case, state should be reset after produce.
       bufferRecordList.clear();
       bufferRecordIndex.clear();
@@ -167,12 +175,27 @@ public class ProducerBatchingService implements Closeable {
     }
   }
 
-  void checkBatchTask() {
-    if (isRunning) {
+  void periodicCheckTask() {
+    while (isRunning) {
+      long sleepIntervalInMs = batchIntervalInMs;
       try {
-        checkAndMaybeProduceBatchRecord();
+        long timeSinceLastBatchProduce = System.currentTimeMillis() - lastBatchProduceMs;
+        if (timeSinceLastBatchProduce >= batchIntervalInMs) {
+          checkAndMaybeProduceBatchRecord();
+        } else {
+          // This can happen when previous batch produce time was triggered by buffer full.
+          sleepIntervalInMs = batchIntervalInMs - timeSinceLastBatchProduce;
+        }
       } catch (Exception e) {
         LOGGER.error("Caught exception when checking batch task", e);
+      }
+      try {
+        Thread.sleep(sleepIntervalInMs);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt(); // reset interrupt flag
+        break; // exit loop on interrupt
+      } catch (Exception e) {
+        LOGGER.error("Caught exception when waiting for next check", e);
       }
     }
   }

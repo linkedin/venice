@@ -1,6 +1,8 @@
 package com.linkedin.venice.samza;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.SYSTEM_PRODUCER_BATCHING_MAX_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.SYSTEM_PRODUCER_BATCHING_MAX_RECORD_NUM;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation;
@@ -161,11 +163,12 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
 
-  private Map<String, String> additionalWriterConfigs = new HashMap<>();
+  private Map<String, String> additionalConfigs = new HashMap<>();
 
   private TransportClient transportClient;
   private RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider reinitProvider;
   private long producerBatchingIntervalInMs = 0;
+  private int producerBatchMaxRecordSize = 100;
   private ProducerBatchingService producerBatchingService;
 
   @Deprecated
@@ -327,12 +330,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.time = time;
   }
 
-  public void applyAdditionalWriterConfigs(Map<String, String> additionalWriterConfigs) {
-    this.additionalWriterConfigs.putAll(additionalWriterConfigs);
-  }
-
-  public void setProducerBatchingInterval(long producerBatchingIntervalInMs) {
-    this.producerBatchingIntervalInMs = producerBatchingIntervalInMs;
+  public void applyAdditionalConfigs(Map<String, String> additionalConfigs) {
+    this.additionalConfigs.putAll(additionalConfigs);
   }
 
   public void setRouterUrl(String routerUrl) {
@@ -382,7 +381,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    */
   protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
     Properties veniceWriterProperties = new Properties();
-    veniceWriterProperties.putAll(additionalWriterConfigs);
+    veniceWriterProperties.putAll(additionalConfigs);
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
     return getVeniceWriter(store, veniceWriterProperties);
   }
@@ -441,7 +440,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(Properties properties, VeniceWriterOptions writerOptions) {
     Properties finalWriterConfigs = new Properties();
     finalWriterConfigs.putAll(properties);
-    finalWriterConfigs.putAll(additionalWriterConfigs);
+    finalWriterConfigs.putAll(additionalConfigs);
     return new VeniceWriterFactory(finalWriterConfigs).createVeniceWriter(writerOptions);
   }
 
@@ -603,9 +602,17 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     this.veniceWriter = getVeniceWriter(versionCreationResponse);
+    this.producerBatchingIntervalInMs =
+        Long.parseLong(additionalConfigs.getOrDefault(SYSTEM_PRODUCER_BATCHING_MAX_INTERVAL_MS, "0"));
+    this.producerBatchMaxRecordSize =
+        Integer.parseInt(additionalConfigs.getOrDefault(SYSTEM_PRODUCER_BATCHING_MAX_RECORD_NUM, "100"));
     if (producerBatchingIntervalInMs > 0) {
-      LOGGER.info("Producer will batch update in every {} ms.", producerBatchingIntervalInMs);
-      producerBatchingService = new ProducerBatchingService(veniceWriter, producerBatchingIntervalInMs);
+      LOGGER.info(
+          "Producer will batch update with max delay {} ms and max buffer record: {}",
+          producerBatchingIntervalInMs,
+          producerBatchMaxRecordSize);
+      producerBatchingService =
+          new ProducerBatchingService(veniceWriter, producerBatchingIntervalInMs, producerBatchMaxRecordSize);
       producerBatchingService.start();
     }
 
