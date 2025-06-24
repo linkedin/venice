@@ -3,6 +3,7 @@ package com.linkedin.venice.hadoop.task.datawriter;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
+import static com.linkedin.venice.guid.GuidUtils.DEFAULT_GUID_GENERATOR_IMPLEMENTATION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_IS_DUPLICATED_KEY_ALLOWED;
@@ -661,9 +662,13 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       EngineTaskConfigProvider engineTaskConfigProvider = getEngineTaskConfigProvider();
       Properties jobProps = engineTaskConfigProvider.getJobProps();
       // Use the UUID bits created by the VPJ driver to build a producerGUID deterministically
-      writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION, GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
-      writerProps.put(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS));
-      writerProps.put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS));
+      if (!jobProps.getProperty(GuidUtils.GUID_GENERATOR_IMPLEMENTATION)
+          .equals(DEFAULT_GUID_GENERATOR_IMPLEMENTATION)) {
+        writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION, GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
+        writerProps.put(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS));
+        writerProps
+            .put(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, jobProps.getProperty(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS));
+      }
       return new VeniceWriterFactory(writerProps);
     });
 
