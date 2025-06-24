@@ -127,14 +127,13 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     DefaultPubSubMessage mockMessage1 = createMockMessage(startOffset, false);
     DefaultPubSubMessage mockMessage2 = createMockMessage(startOffset + 1L, false);
 
-    // build poll result maps
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult1 = new HashMap<>();
-    pollResult1.put(mockTopicPartition, Collections.singletonList(mockMessage1));
+    // Use helper method to create poll result maps
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult1 =
+        createPollResultMap(mockTopicPartition, mockMessage1);
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult2 =
+        createPollResultMap(mockTopicPartition, mockMessage2);
 
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult2 = new HashMap<>();
-    pollResult2.put(mockTopicPartition, Collections.singletonList(mockMessage2));
-
-    when(mockConsumer.poll(CONSUMER_POLL_TIMEOUT)).thenReturn(pollResult1) // first poll returs a map with first the
+    when(mockConsumer.poll(CONSUMER_POLL_TIMEOUT)).thenReturn(pollResult1) // first poll returns a map with first
                                                                            // message
         .thenReturn(pollResult2) // second poll returns a map with second message
         .thenReturn(new HashMap<>()); // third poll returns an empty map, indicating no more messages
@@ -192,15 +191,14 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     DefaultPubSubMessage mockMessage1 = createMockMessage(startOffset, true);
     DefaultPubSubMessage mockMessage2 = createMockMessage(startOffset + 1L, false);
 
-    // Mock the poll function to return the mock message
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult1 = new HashMap<>();
-    pollResult1.put(mockTopicPartition, Collections.singletonList(mockMessage1));
-
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult2 = new HashMap<>();
-    pollResult2.put(mockTopicPartition, Collections.singletonList(mockMessage2));
+    // Use helper method to create poll result maps
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult1 =
+        createPollResultMap(mockTopicPartition, mockMessage1);
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult2 =
+        createPollResultMap(mockTopicPartition, mockMessage2);
 
     when(mockConsumer.poll(CONSUMER_POLL_TIMEOUT)).thenReturn(pollResult1) // First poll returns a map with one control
-        // message
+                                                                           // message
         .thenReturn(pollResult2) // Second poll returns a map with one regular message
         .thenReturn(new HashMap<>()); // Third poll returns an empty map, indicating no more messages
 
@@ -274,5 +272,19 @@ public class VeniceRawPubsubInputPartitionReaderTest {
     when(mockMessage.getOffset()).thenReturn(mockPosition);
     when(mockMessage.getKey()).thenReturn(mockKey);
     return mockMessage;
+  }
+
+  /**
+   * Helper method to create a poll result map for a single message
+   * @param topicPartition The topic partition
+   * @param message The message to include in the result
+   * @return A map containing the topic partition and message
+   */
+  private Map<PubSubTopicPartition, List<DefaultPubSubMessage>> createPollResultMap(
+      PubSubTopicPartition topicPartition,
+      DefaultPubSubMessage message) {
+    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pollResult = new HashMap<>();
+    pollResult.put(topicPartition, Collections.singletonList(message));
+    return pollResult;
   }
 }
