@@ -27,7 +27,7 @@ import org.apache.logging.log4j.Logger;
  * 2. Trigger repush to compact a store with function {@link RepushOrchestrator#repush(RepushJobRequest)} & processes the status/response of the repush job.
  */
 public class CompactionManager {
-  private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
+  private static final Logger LOGGER = LogManager.getLogger("[log-compaction] " + CompactionManager.class);
 
   private final RepushOrchestrator repushOrchestrator;
   private final long timeSinceLastLogCompactionThresholdMs;
@@ -157,13 +157,14 @@ public class CompactionManager {
         throw new VeniceException(nullResponseMessage);
       }
       LOGGER.info(
-          "[log-compaction] Repush job triggered for store: {} | exec id: {} | trigger source: {}",
+          "Repush job triggered for store: {} | exec id: {} | trigger source: {}",
           response.getName(),
           response.getExecutionId(),
           repushJobRequest.getTriggerSource().toString());
       return response;
     } catch (Exception e) {
-      LOGGER.error("[log-compaction] Failed to compact store: {}", repushJobRequest.getStoreName(), e);
+      LOGGER.error("Failed to compact store: {}", repushJobRequest.getStoreName(), e);
+      LOGGER.error("Failed to compact store: {}", repushJobRequest.getStoreName(), e);
       throw e;
     }
   }

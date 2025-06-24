@@ -34,7 +34,7 @@ import org.apache.logging.log4j.Logger;
  * See {@link CompactionManager} for the logic to determine if a store is ready for compaction
  */
 public class LogCompactionService extends AbstractVeniceService {
-  private static final Logger LOGGER = LogManager.getLogger(LogCompactionService.class);
+  private static final Logger LOGGER = LogManager.getLogger("[log-compaction] " + LogCompactionService.class);
 
   private static final int SCHEDULED_EXECUTOR_TIMEOUT_S = 60;
   public static final int PRE_EXECUTION_DELAY_MS = 0;
@@ -66,7 +66,7 @@ public class LogCompactionService extends AbstractVeniceService {
         PRE_EXECUTION_DELAY_MS,
         clusterConfigs.getLogCompactionIntervalMS(),
         TimeUnit.MILLISECONDS);
-    LOGGER.info("[log-compaction] Log compaction service is started in cluster: {}", clusterName);
+    LOGGER.info("Log compaction service is started in cluster: {}", clusterName);
     return true;
   }
 
@@ -77,12 +77,12 @@ public class LogCompactionService extends AbstractVeniceService {
       if (!executor.awaitTermination(SCHEDULED_EXECUTOR_TIMEOUT_S, TimeUnit.SECONDS)) {
         executor.shutdownNow();
         LOGGER.info(
-            "[log-compaction] Log compaction service executor shutdown timed out and is forcefully shutdown in cluster: {}",
+            "Log compaction service executor shutdown timed out and is forcefully shutdown in cluster: {}",
             clusterName);
       }
     } catch (InterruptedException e) {
       executor.shutdownNow();
-      LOGGER.info("[log-compaction] Log compaction service interrupted in cluster: {}", clusterName, e);
+      LOGGER.info("Log compaction service interrupted in cluster: {}", clusterName, e);
     }
   }
 
@@ -98,16 +98,16 @@ public class LogCompactionService extends AbstractVeniceService {
       LogContext.setStructuredLogContext(clusterConfigs.getLogContext());
       try {
         LOGGER.info(
-            "[log-compaction] Scheduled log compaction cycle started for cluster: {} at time: {}",
+            "Scheduled log compaction cycle started for cluster: {} at time: {}",
             clusterName,
             Instant.ofEpochMilli(System.currentTimeMillis()).atZone(ZoneId.systemDefault()));
         compactStoresInClusters();
         LOGGER.info(
-            "[log-compaction] Scheduled log compaction cycle ended for cluster: {} at time: {}",
+            "Scheduled log compaction cycle ended for cluster: {} at time: {}",
             clusterName,
             Instant.ofEpochMilli(System.currentTimeMillis()).atZone(ZoneId.systemDefault()));
       } catch (Throwable e) {
-        LOGGER.error("[log-compaction] Non-Exception Throwable caught", e);
+        LOGGER.error("Non-Exception Throwable caught", e);
       }
     }
 
@@ -118,13 +118,13 @@ public class LogCompactionService extends AbstractVeniceService {
               .repushStore(new RepushJobRequest(clusterName, storeInfo.getName(), RepushStoreTriggerSource.SCHEDULED));
           stats.recordStoreRepushedForScheduledCompaction(storeInfo.getName());
           LOGGER.info(
-              "[log-compaction] log compaction triggered for cluster: {} store: {} | execution ID: {}",
+              "log compaction triggered for cluster: {} store: {} | execution ID: {}",
               clusterName,
               response.getName(),
               response.getExecutionId());
         } catch (Exception e) {
           LOGGER.error(
-              "[log-compaction] Error checking if store is ready for log compaction for cluster: {} store: {} exception: {}",
+              "Error checking if store is ready for log compaction for cluster: {} store: {} exception: {}",
               clusterName,
               storeInfo.getName(),
               e);
