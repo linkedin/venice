@@ -3,7 +3,6 @@ package com.linkedin.davinci.client;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Optional;
-import java.util.concurrent.CountDownLatch;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 
@@ -22,7 +21,6 @@ public class DaVinciRecordTransformerConfig {
   private final boolean useSpecificRecordKeyDeserializer;
   private final boolean useSpecificRecordValueDeserializer;
   private int startConsumptionLatchCount;
-  private CountDownLatch startConsumptionLatch;
 
   public DaVinciRecordTransformerConfig(Builder builder) {
     this.recordTransformerFunction = Optional.ofNullable(builder.recordTransformerFunction)
