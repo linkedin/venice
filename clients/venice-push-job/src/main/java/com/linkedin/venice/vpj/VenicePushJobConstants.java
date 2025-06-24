@@ -285,6 +285,8 @@ public final class VenicePushJobConstants {
    */
   public static final String TARGETED_REGION_PUSH_ENABLED = "targeted.region.push.enabled";
 
+  public static final String MEMTABLE_HYBRID_BATCH_WRITE_ENABLED = "memtable.hybrid.batch.write.enabled";
+
   /**
    * This is experimental config to specify a list of regions used for targeted region push in VPJ.
    * {@link #TARGETED_REGION_PUSH_ENABLED} has to be enabled to use this config.
