@@ -8,6 +8,8 @@ import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LogContext;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -56,7 +58,7 @@ public class LogCompactionService extends AbstractVeniceService {
         clusterConfigs.getLogCompactionIntervalMS(),
         TimeUnit.MILLISECONDS);
     LOGGER.info(
-        "log compaction service is started in cluster: {} with interval: {} ms",
+        "Log compaction service is started in cluster: {} with interval: {} ms",
         clusterName,
         clusterConfigs.getLogCompactionIntervalMS());
     return true;
@@ -69,12 +71,12 @@ public class LogCompactionService extends AbstractVeniceService {
       if (!executor.awaitTermination(SCHEDULED_EXECUTOR_TIMEOUT_S, TimeUnit.SECONDS)) {
         executor.shutdownNow();
         LOGGER.info(
-            "log compaction service executor shutdown timed out and is forcefully shutdown in cluster: {}",
+            "Log compaction service executor shutdown timed out and is forcefully shutdown in cluster: {}",
             clusterName);
       }
     } catch (InterruptedException e) {
       executor.shutdownNow();
-      LOGGER.info("log compaction service interrupted in cluster: {}", clusterName, e);
+      LOGGER.info("Log compaction service interrupted in cluster: {}", clusterName, e);
     }
   }
 
@@ -89,7 +91,15 @@ public class LogCompactionService extends AbstractVeniceService {
     public void run() {
       LogContext.setStructuredLogContext(clusterConfigs.getLogContext());
       try {
+        LOGGER.info(
+            "Scheduled log compaction cycle started for cluster: {} at time: {}",
+            clusterName,
+            Instant.ofEpochMilli(System.currentTimeMillis()).atZone(ZoneId.systemDefault()));
         compactStoresInClusters();
+        LOGGER.info(
+            "Scheduled log compaction cycle ended for cluster: {} at time: {}",
+            clusterName,
+            Instant.ofEpochMilli(System.currentTimeMillis()).atZone(ZoneId.systemDefault()));
       } catch (Throwable e) {
         LOGGER.error("Non-Exception Throwable caught", e);
       }
