@@ -48,6 +48,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   public static final int DEFAULT_REPORTER_THREAD_SLEEP_INTERVAL_SECONDS = 60;
   public static final int DEFAULT_LAG_LOGGING_THREAD_SLEEP_INTERVAL_SECONDS = 60;
   public static final long DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS = TimeUnit.MINUTES.toMillis(10);
+  public static final long INVALID_HEARTBEAT_TIMESTAMP = 0;
+  public static final long INVALID_HEARTBEAT_LAG = Long.MAX_VALUE;
 
   private static final Logger LOGGER = LogManager.getLogger(HeartbeatMonitoringService.class);
   private final ReadOnlyStoreRepository metadataRepository;
@@ -343,13 +345,82 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   /**
    * Get maximum heartbeat lag from all regions (except separate RT regions) for a given LEADER replica.
-   * @return Max leader heartbeat lag, or Long.MAX_VALUE if any region's heartbeat is unknown.
+   * @return Max leader heartbeat lag, or {@link #INVALID_HEARTBEAT_LAG} if any region's heartbeat is unknown.
    */
   public long getReplicaLeaderMaxHeartbeatLag(
       PartitionConsumptionState partitionConsumptionState,
       String storeName,
       int version,
       boolean shouldLogLag) {
+    return getReplicaLeaderMaxHeartbeatLag(
+        partitionConsumptionState,
+        storeName,
+        version,
+        shouldLogLag,
+        System.currentTimeMillis());
+  }
+
+  /**
+   * Get minimum heartbeat timestamp from all regions (except separate RT regions) for a given LEADER replica.
+   * @return Min leader heartbeat timestamp, or {@link #INVALID_HEARTBEAT_TIMESTAMP} if any region's heartbeat is unknown.
+   */
+  public long getReplicaLeaderMinHeartbeatTimestamp(
+      PartitionConsumptionState partitionConsumptionState,
+      String storeName,
+      int version,
+      boolean shouldLogLag) {
+    // Use a fixed timestamp so there is no value overflow.
+    long currentTimestamp = System.currentTimeMillis();
+    long lag =
+        getReplicaLeaderMaxHeartbeatLag(partitionConsumptionState, storeName, version, shouldLogLag, currentTimestamp);
+    if (lag == Long.MAX_VALUE) {
+      return INVALID_HEARTBEAT_TIMESTAMP;
+    } else {
+      return currentTimestamp - lag;
+    }
+  }
+
+  /**
+   * Get heartbeat lag from local region for a given FOLLOWER replica.
+   * @return Follower heartbeat lag, or {@link #INVALID_HEARTBEAT_LAG} if local region's heartbeat is unknown.
+   */
+  public long getReplicaFollowerHeartbeatLag(
+      PartitionConsumptionState partitionConsumptionState,
+      String storeName,
+      int version,
+      boolean shouldLogLag) {
+    return getReplicaFollowerHeartbeatLag(
+        partitionConsumptionState,
+        storeName,
+        version,
+        shouldLogLag,
+        System.currentTimeMillis());
+  }
+
+  /**
+   * Get heartbeat timestamp from local region for a given FOLLOWER replica.
+   * @return Follower heartbeat timestamp, or {@link #INVALID_HEARTBEAT_TIMESTAMP} if local region's heartbeat is unknown.
+   */
+  public long getReplicaFollowerHeartbeatTimestamp(
+      PartitionConsumptionState partitionConsumptionState,
+      String storeName,
+      int version,
+      boolean shouldLogLag) {
+    long currentTimestamp = System.currentTimeMillis();
+    long lag =
+        getReplicaFollowerHeartbeatLag(partitionConsumptionState, storeName, version, shouldLogLag, currentTimestamp);
+    if (lag == INVALID_HEARTBEAT_LAG) {
+      return INVALID_HEARTBEAT_TIMESTAMP;
+    }
+    return currentTimestamp - lag;
+  }
+
+  long getReplicaLeaderMaxHeartbeatLag(
+      PartitionConsumptionState partitionConsumptionState,
+      String storeName,
+      int version,
+      boolean shouldLogLag,
+      long currentTimestamp) {
     Map<String, HeartbeatTimeStampEntry> replicaTimestampMap =
         getLeaderHeartbeatTimeStamps().getOrDefault(storeName, Collections.emptyMap())
             .getOrDefault(version, Collections.emptyMap())
@@ -360,7 +431,6 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       }
       return Long.MAX_VALUE;
     }
-    long currentTimestamp = System.currentTimeMillis();
     long maxLag = 0;
     /**
      * When initializing A/A leader lag entry, we will initialize towards all available regions, so scanning this map
@@ -394,15 +464,12 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     return maxLag;
   }
 
-  /**
-   * Get maximum heartbeat lag from local region for a given FOLLOWER replica.
-   * @return Follower heartbeat lag, or Long.MAX_VALUE if local region's heartbeat is unknown.
-   */
-  public long getReplicaFollowerHeartbeatLag(
+  long getReplicaFollowerHeartbeatLag(
       PartitionConsumptionState partitionConsumptionState,
       String storeName,
       int version,
-      boolean shouldLogLag) {
+      boolean shouldLogLag,
+      long currentTimestamp) {
     HeartbeatTimeStampEntry followerReplicaTimestamp =
         getFollowerHeartbeatTimeStamps().getOrDefault(storeName, Collections.emptyMap())
             .getOrDefault(version, Collections.emptyMap())
@@ -422,7 +489,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       }
       return Long.MAX_VALUE;
     }
-    long heartbeatLag = System.currentTimeMillis() - followerReplicaTimestamp.timestamp;
+    long heartbeatLag = currentTimestamp - followerReplicaTimestamp.timestamp;
     if (shouldLogLag) {
       LOGGER.info(
           "Replica: {} has follower heartbeat lag: {}ms from local region.",
