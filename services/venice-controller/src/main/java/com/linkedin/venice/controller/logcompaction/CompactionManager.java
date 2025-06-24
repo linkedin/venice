@@ -164,7 +164,6 @@ public class CompactionManager {
       return response;
     } catch (Exception e) {
       LOGGER.error("Failed to compact store: {}", repushJobRequest.getStoreName(), e);
-      LOGGER.error("Failed to compact store: {}", repushJobRequest.getStoreName(), e);
       throw e;
     }
   }
