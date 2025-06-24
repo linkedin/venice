@@ -26,7 +26,7 @@ import org.apache.logging.log4j.Logger;
  * 2. Trigger repush to compact a store with function {@link RepushOrchestrator#repush(RepushJobRequest)} & processes the status/response of the repush job.
  */
 public class CompactionManager {
-  private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
+  private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class + " [log-compaction]");
 
   private final RepushOrchestrator repushOrchestrator;
   private final long timeSinceLastLogCompactionThresholdMs;

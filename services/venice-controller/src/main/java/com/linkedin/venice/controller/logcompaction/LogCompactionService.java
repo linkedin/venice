@@ -29,7 +29,7 @@ import org.apache.logging.log4j.Logger;
  * See {@link CompactionManager} for the logic to determine if a store is ready for compaction
  */
 public class LogCompactionService extends AbstractVeniceService {
-  private static final Logger LOGGER = LogManager.getLogger(LogCompactionService.class);
+  private static final Logger LOGGER = LogManager.getLogger(LogCompactionService.class + " [log-compaction]");
 
   private static final int SCHEDULED_EXECUTOR_TIMEOUT_S = 60;
   public static final int PRE_EXECUTION_DELAY_MS = 0;
