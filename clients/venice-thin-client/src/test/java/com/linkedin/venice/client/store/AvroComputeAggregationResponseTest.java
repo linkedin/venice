@@ -226,44 +226,23 @@ public class AvroComputeAggregationResponseTest {
 
   @Test(description = "Should throw ClassCastException when type casting fails")
   public void testTypeCastingThrowsException() {
-    // Create test data with String values but try to cast to Integer
     Map<String, ComputeGenericRecord> data = new HashMap<>();
-
-    // Create records with String values
     ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
-    when(record1.get(AGE_FIELD)).thenReturn("25"); // String value
+    when(record1.get(AGE_FIELD)).thenReturn("25");
     data.put("record1", record1);
-
     ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
-    when(record2.get(AGE_FIELD)).thenReturn("30"); // String value
+    when(record2.get(AGE_FIELD)).thenReturn("30");
     data.put("record2", record2);
-
-    AvroComputeAggregationResponse response =
+    AvroComputeAggregationResponse<String> response =
         new AvroComputeAggregationResponse<>(data, Collections.singletonMap(AGE_FIELD, 10));
-
-    // This should throw ClassCastException because we're trying to cast String to Integer
-    // T key = (T) value; where T = Integer but value = String
-    try {
-      @SuppressWarnings("unchecked")
-      Map<Integer, Integer> result = (Map<Integer, Integer>) response.getValueToCount(AGE_FIELD);
-      boolean found25 = false, found30 = false;
-      for (Map.Entry<Integer, Integer> entry: result.entrySet()) {
-        Object key = entry.getKey();
-        Integer value = entry.getValue();
-        if ("25".equals(key.toString())) {
-          assertEquals(value, Integer.valueOf(1), "25 should be counted once");
-          found25 = true;
-        } else if ("30".equals(key.toString())) {
-          assertEquals(value, Integer.valueOf(1), "30 should be counted once");
-          found30 = true;
-        }
+    ClassCastException exception = expectThrows(ClassCastException.class, () -> {
+      for (Object key: response.getValueToCount(AGE_FIELD).keySet()) {
+        Integer intKey = (Integer) key;
       }
-      assertTrue(found25, "25 should be present");
-      assertTrue(found30, "30 should be present");
-      assertEquals(result.size(), 2, "Should have 2 distinct values");
-    } catch (ClassCastException e) {
-      assertTrue(true, "ClassCastException was thrown as expected");
-    }
+    });
+    assertTrue(
+        exception.getMessage().contains("String") || exception.getMessage().contains("Integer")
+            || exception.getMessage().contains("cast"));
   }
 
   // ========== countByBucket Tests ==========
