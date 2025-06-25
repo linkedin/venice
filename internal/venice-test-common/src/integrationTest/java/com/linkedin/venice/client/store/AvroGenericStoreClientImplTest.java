@@ -36,6 +36,7 @@ import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.logging.log4j.LogManager;
@@ -489,13 +490,13 @@ public class AvroGenericStoreClientImplTest {
       LOGGER.info("Execute test for transport client: {}", entry.getKey());
 
       // Query value 1 while not having encountered any schema yet.
-      // The current logic will always pull all the value schemas if no schema is available yet.
+      // The current logic will always read with the writer schema which will not have field c.
       Object value = entry.getValue().get(key).get();
       Assert.assertTrue(value instanceof GenericData.Record);
       GenericData.Record recordValue = (GenericData.Record) value;
       Assert.assertEquals(recordValue.get("a"), 100L);
       Assert.assertEquals(recordValue.get("b").toString(), "test_b_value");
-      Assert.assertEquals(recordValue.get("c").toString(), "c_default_value");
+      Assert.assertThrows(AvroRuntimeException.class, () -> recordValue.get("c"));
 
       // Query value 2 while having already encountered schema v1 but not schema v2 yet.
       Object value2 = entry.getValue().get(key2).get();
