@@ -331,7 +331,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
   }
 
   @Test
-  public void testStoreLifecycle_ValidateDeleted_WithLeftoverTopics() {
+  public void testStoreLifecycleValidateDeleted_WithLeftoverTopics() {
     String storeName = Utils.getUniqueString("test_validate_deleted_store_with_leftover_topics");
 
     // Create store
@@ -354,18 +354,10 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
 
     // Delete store metadata only (without trying to delete versions through normal flow)
     // This simulates the scenario where store metadata is deleted but topics remain due to disabled cleanup
-    try {
-      veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository().deleteStore(storeName);
-    } catch (Exception e) {
-      LOGGER.warn("Store deletion from metadata repository failed, continuing with test", e);
-    }
+    veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository().deleteStore(storeName);
 
     // Also delete the store config to simulate complete metadata cleanup
-    try {
-      veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreConfigAccessor().deleteConfig(storeName);
-    } catch (Exception e) {
-      LOGGER.warn("Store config deletion failed, continuing with test", e);
-    }
+    veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreConfigAccessor().deleteConfig(storeName);
 
     // Verify store is gone from metadata but topic still exists (simulating leftover scenario)
     Assert.assertNull(veniceAdmin.getStore(clusterName, storeName), "Store should be deleted from metadata");
@@ -376,18 +368,14 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
 
     Assert.assertFalse(result.isDeleted(), "Store validation should fail due to leftover topics");
     Assert.assertTrue(
-        result.getError().contains("Kafka topic still exists"),
-        "Error message should mention leftover Kafka topics. Actual error: " + result.getError());
+        result.getError().contains("PubSub topic still exists"),
+        "Error message should mention leftover PubSub topics. Actual error: " + result.getError());
     Assert.assertTrue(
         result.getError().contains(versionTopicName),
         "Error message should mention the specific leftover topic. Actual error: " + result.getError());
 
-    // Clean up the leftover topic
-    try {
-      topicManager.ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
-    } catch (Exception e) {
-      LOGGER.warn("Failed to clean up leftover topic during test cleanup", e);
-    }
+    // Clean up the leftover topic for the validation test
+    topicManager.ensureTopicIsDeletedAndBlockWithRetry(versionTopic);
 
     // Verify that after cleanup, validation passes
     StoreDeletedValidation resultAfterCleanup = veniceAdmin.validateStoreDeleted(clusterName, storeName);

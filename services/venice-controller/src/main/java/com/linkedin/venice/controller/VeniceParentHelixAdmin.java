@@ -5953,8 +5953,8 @@ public class VeniceParentHelixAdmin implements Admin {
     Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
 
     // Collect validation results from all child data centers
-    List<String> errors = new ArrayList<>();
-    List<String> notDeletedDetails = new ArrayList<>();
+    List<String> errors = new ArrayList<>(controllerClientMap.size());
+    List<String> notDeletedDetails = new ArrayList<>(controllerClientMap.size());
 
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
       String regionName = entry.getKey();

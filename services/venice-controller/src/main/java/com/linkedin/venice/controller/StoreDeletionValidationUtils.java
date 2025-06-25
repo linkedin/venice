@@ -6,11 +6,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
-import com.linkedin.venice.views.MaterializedView;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -146,10 +144,12 @@ public class StoreDeletionValidationUtils {
       String clusterName,
       String storeName) {
     try {
-      final List<VeniceSystemStoreType> systemStoreTypesToCheck = Arrays.asList(VeniceSystemStoreType.values())
-          .stream()
-          .filter(type -> type != VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE) // Not per-store
-          .collect(Collectors.toList());
+      final List<VeniceSystemStoreType> systemStoreTypesToCheck = new ArrayList<>();
+      for (VeniceSystemStoreType type: VeniceSystemStoreType.values()) {
+        if (type != VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE) { // Not per-store
+          systemStoreTypesToCheck.add(type);
+        }
+      }
 
       for (VeniceSystemStoreType systemStoreType: systemStoreTypesToCheck) {
         final String systemStoreName = systemStoreType.getSystemStoreName(storeName);
@@ -169,7 +169,7 @@ public class StoreDeletionValidationUtils {
   }
 
   /**
-   * Checks if Kafka topics related to the store still exist.
+   * Checks if PubSub topics related to the store still exist.
    */
   private static boolean checkForAnyExistingTopicResources(
       Admin admin,
@@ -178,23 +178,25 @@ public class StoreDeletionValidationUtils {
       String storeName) {
     try {
       final TopicManager topicManager = admin.getTopicManager();
-      final Set<PubSubTopic> kafkaTopics = topicManager.listTopics();
+      final Set<PubSubTopic> pubSubTopics = topicManager.listTopics();
 
-      final List<VeniceSystemStoreType> systemStoreTypesToCheck = Arrays.asList(VeniceSystemStoreType.values())
-          .stream()
-          .filter(type -> type != VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE)
-          .collect(Collectors.toList());
+      final List<VeniceSystemStoreType> systemStoreTypesToCheck = new ArrayList<>();
+      for (VeniceSystemStoreType type: VeniceSystemStoreType.values()) {
+        if (type != VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE) {
+          systemStoreTypesToCheck.add(type);
+        }
+      }
 
-      for (PubSubTopic topic: kafkaTopics) {
-        final String topicName = topic.getName();
-        if (isStoreRelatedTopic(topicName, storeName, systemStoreTypesToCheck)) {
-          result.setStoreNotDeleted(String.format("Kafka topic still exists: %s", topicName));
+      for (PubSubTopic topic: pubSubTopics) {
+        // Check if this topic is related to the store (includes main store and system store topics)
+        if (isStoreRelatedTopic(topic, storeName, systemStoreTypesToCheck)) {
+          result.setStoreNotDeleted(String.format("PubSub topic still exists: %s", topic.getName()));
           return true;
         }
       }
     } catch (Exception e) {
-      LOGGER.warn("Failed to check Kafka topics for store: {} in cluster: {}", storeName, clusterName, e);
-      result.setStoreNotDeleted("Failed to check Kafka topics: " + e.getMessage());
+      LOGGER.warn("Failed to check PubSub topics for store: {} in cluster: {}", storeName, clusterName, e);
+      result.setStoreNotDeleted("Failed to check PubSub topics: " + e.getMessage());
       return true;
     }
     return false;
@@ -211,25 +213,25 @@ public class StoreDeletionValidationUtils {
     try {
       // Since we can't use isResourceStillAlive directly with store name,
       // and containsHelixResource isn't available in Admin interface,
-      // we'll check if any Kafka topics exist for this store (which would indicate Helix resources)
+      // we'll check if any PubSub topics exist for this store (which would indicate Helix resources)
       final TopicManager topicManager = admin.getTopicManager();
-      final Set<PubSubTopic> kafkaTopics = topicManager.listTopics();
+      final Set<PubSubTopic> pubSubTopics = topicManager.listTopics();
 
-      for (PubSubTopic topic: kafkaTopics) {
-        final String topicName = topic.getName();
-        // Check for version topics that belong to this store
-        if (topicName.startsWith(storeName + "_v")) {
+      for (PubSubTopic topic: pubSubTopics) {
+        // Check for version topics that belong to this exact store
+        if (storeName.equals(topic.getStoreName()) && topic.isVersionTopic()) {
           // If a topic exists, try to check if its Helix resource exists
           try {
-            if (admin.isResourceStillAlive(topicName)) {
-              result.setStoreNotDeleted(String.format("Helix resource still exists for version topic: %s", topicName));
+            if (admin.isResourceStillAlive(topic.getName())) {
+              result.setStoreNotDeleted(
+                  String.format("Helix resource still exists for version topic: %s", topic.getName()));
               return true;
             }
           } catch (Exception e) {
             // If isResourceStillAlive throws an exception, the resource likely doesn't exist
             LOGGER.debug(
                 "Helix resource check failed for topic: {} (likely doesn't exist): {}",
-                topicName,
+                topic.getName(),
                 e.getMessage());
           }
         }
@@ -251,33 +253,34 @@ public class StoreDeletionValidationUtils {
       String clusterName,
       String storeName) {
     try {
-      final List<VeniceSystemStoreType> systemStoreTypesToCheck = Arrays.asList(VeniceSystemStoreType.values())
-          .stream()
-          .filter(type -> type != VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE)
-          .collect(Collectors.toList());
+      final List<VeniceSystemStoreType> systemStoreTypesToCheck = new ArrayList<>();
+      for (VeniceSystemStoreType type: VeniceSystemStoreType.values()) {
+        if (type != VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE) {
+          systemStoreTypesToCheck.add(type);
+        }
+      }
 
       final TopicManager topicManager = admin.getTopicManager();
-      final Set<PubSubTopic> kafkaTopics = topicManager.listTopics();
+      final Set<PubSubTopic> pubSubTopics = topicManager.listTopics();
 
       for (VeniceSystemStoreType systemStoreType: systemStoreTypesToCheck) {
         final String systemStoreName = systemStoreType.getSystemStoreName(storeName);
 
-        for (PubSubTopic topic: kafkaTopics) {
-          final String topicName = topic.getName();
+        for (PubSubTopic topic: pubSubTopics) {
           // Check for system store version topics that belong to this store
-          if (topicName.startsWith(systemStoreName + "_v")) {
+          if (systemStoreName.equals(topic.getStoreName()) && topic.isVersionTopic()) {
             // If a topic exists, try to check if its Helix resource exists
             try {
-              if (admin.isResourceStillAlive(topicName)) {
+              if (admin.isResourceStillAlive(topic.getName())) {
                 result.setStoreNotDeleted(
-                    String.format("Helix resource still exists for system store topic: %s", topicName));
+                    String.format("Helix resource still exists for system store topic: %s", topic.getName()));
                 return true;
               }
             } catch (Exception e) {
               // If isResourceStillAlive throws an exception, the resource likely doesn't exist
               LOGGER.debug(
                   "Helix resource check failed for topic: {} (likely doesn't exist): {}",
-                  topicName,
+                  topic.getName(),
                   e.getMessage());
             }
           }
@@ -293,35 +296,29 @@ public class StoreDeletionValidationUtils {
   }
 
   /**
-   * Determines if a topic name is related to the specified store.
-   * This includes version topics, real-time topics, and system store topics.
+   * Determines if a PubSub topic is related to the specified store.
+   * This includes version topics, real-time topics, view topics, and system store topics.
+   * Uses PubSubTopic's built-in store name validation for better accuracy.
    * 
-   * @param topicName the name of the topic to check
+   * @param topic the PubSub topic to check
    * @param storeName the name of the store 
    * @param systemStoreTypes the list of system store types to check against
    * @return true if the topic is related to the store, false otherwise
    */
   public static boolean isStoreRelatedTopic(
-      String topicName,
+      PubSubTopic topic,
       String storeName,
       List<VeniceSystemStoreType> systemStoreTypes) {
-    // Check for direct store prefixes (version topics, RT topics)
-    if (topicName.startsWith(storeName + "_v") || topicName.startsWith(storeName + "_rt")) {
-      return true;
-    }
 
-    // Check for materialized view topics
-    // Format: Version.composeKafkaTopic(storeName, version) + VIEW_NAME_SEPARATOR + viewName +
-    // MATERIALIZED_VIEW_TOPIC_SUFFIX
-    if (topicName.startsWith(storeName + "_v") && topicName.endsWith(MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX)) {
+    // Use PubSubTopic's built-in store name validation for better accuracy
+    if (storeName.equals(topic.getStoreName())) {
       return true;
     }
 
     // Check for system store topics
     for (VeniceSystemStoreType systemStoreType: systemStoreTypes) {
       final String systemStoreName = systemStoreType.getSystemStoreName(storeName);
-      if (topicName.startsWith(systemStoreName + "_v") || topicName.equals(systemStoreName + "_rt")
-          || topicName.startsWith(systemStoreName + "_rt_v")) {
+      if (systemStoreName.equals(topic.getStoreName())) {
         return true;
       }
     }

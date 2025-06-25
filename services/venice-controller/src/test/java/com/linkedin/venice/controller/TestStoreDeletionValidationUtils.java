@@ -54,7 +54,7 @@ public class TestStoreDeletionValidationUtils {
   }
 
   @Test
-  public void testValidateStoreDeleted_FullyDeleted_Success() {
+  public void testValidateStoreDeletedFullyDeletedSuccess() {
     // All checks return null/false indicating store is fully deleted
     when(mockStoreConfigAccessor.getStoreConfig(TEST_STORE)).thenReturn(null);
     when(mockAdmin.getStore(TEST_CLUSTER, TEST_STORE)).thenReturn(null);
@@ -72,7 +72,7 @@ public class TestStoreDeletionValidationUtils {
   }
 
   @Test
-  public void testValidateStoreDeleted_StoreConfigExists_NotDeleted() {
+  public void testValidateStoreDeletedStoreConfigExistsNotDeleted() {
     // Store config still exists
     when(mockStoreConfigAccessor.getStoreConfig(TEST_STORE)).thenReturn(mockStoreConfig);
 
@@ -84,7 +84,7 @@ public class TestStoreDeletionValidationUtils {
   }
 
   @Test
-  public void testValidateStoreDeleted_StoreMetadataExists_NotDeleted() {
+  public void testValidateStoreDeletedStoreMetadataExistsNotDeleted() {
     // Store config is null but store metadata exists
     when(mockStoreConfigAccessor.getStoreConfig(TEST_STORE)).thenReturn(null);
     when(mockAdmin.getStore(TEST_CLUSTER, TEST_STORE)).thenReturn(mockStore);
@@ -115,7 +115,7 @@ public class TestStoreDeletionValidationUtils {
   }
 
   @Test
-  public void testValidateStoreDeleted_KafkaTopicsExist_NotDeleted() {
+  public void testValidateStoreDeletedPubSubTopicsExistNotDeleted() {
     setupBasicValidationPass();
 
     // Mock version topic exists
@@ -128,14 +128,14 @@ public class TestStoreDeletionValidationUtils {
         StoreDeletionValidationUtils.validateStoreDeleted(mockAdmin, TEST_CLUSTER, TEST_STORE);
 
     assertFalse(result.isDeleted());
-    assertEquals(result.getError(), "Kafka topic still exists: " + TEST_STORE + "_v1");
+    assertEquals(result.getError(), "PubSub topic still exists: " + TEST_STORE + "_v1");
   }
 
   @Test
-  public void testValidateStoreDeleted_MainStoreHelixResourceExists_NotDeleted() {
+  public void testValidateStoreDeletedMainStoreHelixResourceExistsNotDeleted() {
     setupBasicValidationPass();
 
-    // Mock version topic exists but is NOT detected by the Kafka topic check
+    // Mock version topic exists but is NOT detected by the PubSub topic check
     // This happens when topic name doesn't match our isStoreRelatedTopic logic
     // but still has a Helix resource
     PubSubTopic mockTopic = mock(PubSubTopic.class);
@@ -150,13 +150,13 @@ public class TestStoreDeletionValidationUtils {
         StoreDeletionValidationUtils.validateStoreDeleted(mockAdmin, TEST_CLUSTER, TEST_STORE);
 
     assertFalse(result.isDeleted());
-    // Since Kafka topic check comes first and the topic matches our pattern,
-    // it will fail on Kafka topic, not Helix resource
-    assertEquals(result.getError(), "Kafka topic still exists: " + TEST_STORE + "_v1");
+    // Since PubSub topic check comes first and the topic matches our pattern,
+    // it will fail on PubSub topic, not Helix resource
+    assertEquals(result.getError(), "PubSub topic still exists: " + TEST_STORE + "_v1");
   }
 
   @Test
-  public void testValidateStoreDeleted_SystemStoreHelixResourceExists_NotDeleted() {
+  public void testValidateStoreDeletedSystemStoreHelixResourceExistsNotDeleted() {
     setupBasicValidationPass();
 
     // Mock system store version topic exists
@@ -173,13 +173,13 @@ public class TestStoreDeletionValidationUtils {
         StoreDeletionValidationUtils.validateStoreDeleted(mockAdmin, TEST_CLUSTER, TEST_STORE);
 
     assertFalse(result.isDeleted());
-    // Since Kafka topic check comes first and the topic matches our pattern,
-    // it will fail on Kafka topic, not Helix resource
-    assertEquals(result.getError(), "Kafka topic still exists: " + metaStoreName + "_v1");
+    // Since PubSub topic check comes first and the topic matches our pattern,
+    // it will fail on PubSub topic, not Helix resource
+    assertEquals(result.getError(), "PubSub topic still exists: " + metaStoreName + "_v1");
   }
 
   @Test
-  public void testValidateStoreDeleted_ExceptionDuringValidation_NotDeleted() {
+  public void testValidateStoreDeletedExceptionDuringValidationNotDeleted() {
     // Mock exception during store config check
     when(mockStoreConfigAccessor.getStoreConfig(TEST_STORE)).thenThrow(new RuntimeException("Test exception"));
 
@@ -191,21 +191,22 @@ public class TestStoreDeletionValidationUtils {
   }
 
   @Test
-  public void testValidateStoreDeleted_TopicManagerException_NotDeleted() {
+  public void testValidateStoreDeletedTopicManagerExceptionNotDeleted() {
     setupBasicValidationPass();
 
     // Mock exception during topic listing
-    when(mockTopicManager.listTopics()).thenThrow(new RuntimeException("Kafka connection error"));
+    when(mockTopicManager.listTopics()).thenThrow(new RuntimeException("PubSub connection error"));
 
     StoreDeletedValidation result =
         StoreDeletionValidationUtils.validateStoreDeleted(mockAdmin, TEST_CLUSTER, TEST_STORE);
 
     assertFalse(result.isDeleted());
-    assertEquals(result.getError(), "Failed to check Kafka topics: Kafka connection error");
+    // The exception occurs first in the main store Helix resource check, not the topic check
+    assertEquals(result.getError(), "Failed to check main store Helix resources: PubSub connection error");
   }
 
   @Test
-  public void testIsStoreRelatedTopic_VersionTopic_True() {
+  public void testIsStoreRelatedTopicVersionTopicTrue() {
     List<VeniceSystemStoreType> systemStoreTypes = Arrays.asList(VeniceSystemStoreType.values());
 
     assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(TEST_STORE + "_v1", TEST_STORE, systemStoreTypes));
@@ -221,15 +222,19 @@ public class TestStoreDeletionValidationUtils {
   }
 
   @Test
-  public void testIsStoreRelatedTopic_ViewTopic_True() {
+  public void testIsStoreRelatedTopicViewTopicTrue() {
     List<VeniceSystemStoreType> systemStoreTypes = Arrays.asList(VeniceSystemStoreType.values());
 
+    // Test change capture view topic format: storeName_v{version}_cc
+    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(TEST_STORE + "_v1_cc", TEST_STORE, systemStoreTypes));
+
+    // Test materialized view topic format: storeName_v{version}_{viewName}_mv
     assertTrue(
-        StoreDeletionValidationUtils.isStoreRelatedTopic(TEST_STORE + "_view_test", TEST_STORE, systemStoreTypes));
+        StoreDeletionValidationUtils.isStoreRelatedTopic(TEST_STORE + "_v1_testView_mv", TEST_STORE, systemStoreTypes));
   }
 
   @Test
-  public void testIsStoreRelatedTopic_SystemStoreTopic_True() {
+  public void testIsStoreRelatedTopicSystemStoreTopicTrue() {
     List<VeniceSystemStoreType> systemStoreTypes = Arrays.asList(VeniceSystemStoreType.values());
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(TEST_STORE);
 
@@ -238,7 +243,7 @@ public class TestStoreDeletionValidationUtils {
   }
 
   @Test
-  public void testIsStoreRelatedTopic_UnrelatedTopic_False() {
+  public void testIsStoreRelatedTopicUnrelatedTopicFalse() {
     List<VeniceSystemStoreType> systemStoreTypes = Arrays.asList(VeniceSystemStoreType.values());
 
     assertFalse(StoreDeletionValidationUtils.isStoreRelatedTopic("other-store_v1", TEST_STORE, systemStoreTypes));
@@ -248,7 +253,7 @@ public class TestStoreDeletionValidationUtils {
   }
 
   @Test
-  public void testStoreDeletedValidation_ToString() {
+  public void testStoreDeletedValidationToString() {
     StoreDeletedValidation deletedResult = new StoreDeletedValidation(TEST_CLUSTER, TEST_STORE);
     assertEquals(deletedResult.toString(), "Store 'test-store' in cluster 'test-cluster' is fully deleted");
 
