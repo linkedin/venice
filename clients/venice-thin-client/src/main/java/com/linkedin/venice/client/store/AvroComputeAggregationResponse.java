@@ -42,12 +42,11 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
     }
 
     // Sort by count in descending order
-    Map<T, Integer> sortedMap = new LinkedHashMap<>();
-    valueToCount.entrySet()
+    Map<T, Integer> sortedMap = valueToCount.entrySet()
         .stream()
         .sorted(Map.Entry.<T, Integer>comparingByValue().reversed())
         .limit(fieldTopKMap.get(field))
-        .forEach(entry -> sortedMap.put(entry.getKey(), entry.getValue()));
+        .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), Map::putAll);
 
     return sortedMap;
   }
