@@ -2063,19 +2063,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  private void recordRegionHybridConsumptionStats(
-      int kafkaClusterId,
-      int producedRecordSize,
-      long upstreamOffset,
-      long currentTimeMs) {
+  private void recordRegionHybridConsumptionStats(int kafkaClusterId, int producedRecordSize, long currentTimeMs) {
     if (kafkaClusterId >= 0) {
-      versionedIngestionStats.recordRegionHybridConsumption(
-          storeName,
-          versionNumber,
-          kafkaClusterId,
-          producedRecordSize,
-          upstreamOffset,
-          currentTimeMs);
+      versionedIngestionStats
+          .recordRegionHybridConsumption(storeName, versionNumber, kafkaClusterId, producedRecordSize, currentTimeMs);
       hostLevelIngestionStats.recordTotalRegionHybridBytesConsumed(kafkaClusterId, producedRecordSize, currentTimeMs);
     }
   }
@@ -2435,7 +2426,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         recordRegionHybridConsumptionStats(
             kafkaClusterId,
             consumerRecord.getPayloadSize(),
-            consumerRecord.getPosition().getNumericOffset(),
             beforeProcessingBatchRecordsTimestampMs);
         updateLatestInMemoryLeaderConsumedRTOffset(
             partitionConsumptionState,
