@@ -220,8 +220,10 @@ public class PulsarVeniceSinkTest {
     for (int i = 0; i < numRecordsToSend; i++) {
       String name = "name" + i;
       int expectedAge = i;
+      LOGGER.info("HERE HERE HERE start {} - {}", storeName, name);
 
       Awaitility.await().atMost(30, TimeUnit.SECONDS).untilAsserted(() -> {
+        LOGGER.info("HERE HERE HERE Await");
         // StdErr will have some noise like
         // "StatusLogger Log4j2 could not find a logging implementation."
         ExecResult res = execByService(
@@ -230,6 +232,7 @@ public class PulsarVeniceSinkTest {
             "-c",
             "java -jar /opt/venice/bin/venice-thin-client-all.jar " + storeName + " " + name + " " + veniceRouterUrl
                 + " " + "false" + " " + "\"\"");
+        LOGGER.info("HERE HERE HERE stdout {}", res.getStdout());
         assertTrue(res.getStdout().contains("key=" + name));
         assertFalse(res.getStdout().contains("value=null"));
         assertTrue(res.getStdout().contains("value=" + "{\"age\": " + expectedAge + ", \"name\": \"" + name + "\"}"));
@@ -307,15 +310,23 @@ public class PulsarVeniceSinkTest {
   }
 
   private ExecResult execByService(String serviceName, String... command) throws Exception {
+    LOGGER.info("HERE HERE HERE execByService: 1 - {} - {}", serviceName, command);
     Optional<ContainerState> container = environment.getContainerByServiceName(serviceName);
+    LOGGER.info("HERE HERE HERE execByService: 2 - {} - {}", serviceName, command);
     if (!container.isPresent()) {
       throw new Exception("Container not found: " + serviceName);
     }
+
+    LOGGER.info("HERE HERE HERE execByService: 3 - {} - {}", serviceName, command);
     ExecResult res = container.get().execInContainer(command);
+
+    LOGGER.info("HERE HERE HERE execByService: 4 - {} - {}", serviceName, command);
 
     String cmdStr = Arrays.toString(command);
     LOGGER
         .info("\t{} Exec\n\t{}\n\tStdOut:\n{}\n\tStdErr:\n{}\n", serviceName, cmdStr, res.getStdout(), res.getStderr());
+
+    LOGGER.info("HERE HERE HERE execByService: 5 - {} - {}", serviceName, command);
     return res;
   }
 
