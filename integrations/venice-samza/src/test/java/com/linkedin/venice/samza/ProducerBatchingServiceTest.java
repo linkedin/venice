@@ -124,30 +124,47 @@ public class ProducerBatchingServiceTest {
     Assert.assertFalse(bufferRecordIndex.isEmpty());
     Assert.assertEquals(bufferRecordList.get(0).getValueBytes(), null);
     Assert.assertTrue(bufferRecordList.get(0).shouldSkipProduce());
+    Assert.assertEquals(bufferRecordList.get(0).getLogicalTimestamp(), VeniceWriter.APP_DEFAULT_LOGICAL_TS);
+
     Assert.assertEquals(bufferRecordList.get(1).getValueBytes(), valueBytes2);
     Assert.assertFalse(bufferRecordList.get(1).shouldSkipProduce());
+    Assert.assertEquals(bufferRecordList.get(1).getLogicalTimestamp(), VeniceWriter.APP_DEFAULT_LOGICAL_TS);
+
     Assert.assertEquals(bufferRecordList.get(2).getValueBytes(), valueBytes3);
     Assert.assertFalse(bufferRecordList.get(2).shouldSkipProduce());
+    Assert.assertEquals(bufferRecordList.get(2).getLogicalTimestamp(), logicalTimestamp);
+
     Assert.assertEquals(bufferRecordList.get(3).getValueBytes(), valueBytes4);
     Assert.assertFalse(bufferRecordList.get(3).shouldSkipProduce());
+    Assert.assertEquals(bufferRecordList.get(3).getLogicalTimestamp(), VeniceWriter.APP_DEFAULT_LOGICAL_TS);
 
+    // Index should only contain 1 mapping.
     Assert.assertEquals(bufferRecordIndex.get(keyBytes1).getValueBytes(), valueBytes4);
 
     // Perform produce operation
     producerBatchingService.checkAndMaybeProduceBatchRecord();
     verify(producerBatchingService, times(3)).sendRecord(any());
+    Assert.assertTrue(bufferRecordList.isEmpty());
+    Assert.assertTrue(bufferRecordIndex.isEmpty());
 
+    // Complete callback and validate dependent callback is also completed.
+    verify(writer, times(0)).delete(eq(keyBytes1), anyLong(), any());
     ArgumentCaptor<CompletableFutureCallback> updateCallbackCaptor =
         ArgumentCaptor.forClass(CompletableFutureCallback.class);
-    verify(writer, times(1))
-        .update(eq(keyBytes1), any(), anyInt(), anyInt(), updateCallbackCaptor.capture(), anyLong());
+    verify(writer, times(1)).update(
+        eq(keyBytes1),
+        eq(valueBytes2),
+        eq(valueSchemaId),
+        eq(protocolId),
+        updateCallbackCaptor.capture(),
+        eq(VeniceWriter.APP_DEFAULT_LOGICAL_TS));
     CompletableFutureCallback updateCallback = updateCallbackCaptor.getValue();
     Assert.assertTrue(updateCallback.getDependentFutureList().isEmpty());
     Assert.assertEquals(updateCallback.getCompletableFuture(), completableFuture2);
 
     ArgumentCaptor<CompletableFutureCallback> putCallbackCaptor =
         ArgumentCaptor.forClass(CompletableFutureCallback.class);
-    verify(writer, times(2)).put(eq(keyBytes1), any(), anyInt(), anyLong(), putCallbackCaptor.capture());
+    verify(writer, times(2)).put(eq(keyBytes1), any(), eq(valueSchemaId), anyLong(), putCallbackCaptor.capture());
     List<CompletableFutureCallback> putCallbacks = putCallbackCaptor.getAllValues();
     Assert.assertTrue(putCallbacks.get(0).getDependentFutureList().isEmpty());
     Assert.assertEquals(putCallbacks.get(0).getCompletableFuture(), completableFuture3);
@@ -159,5 +176,11 @@ public class ProducerBatchingServiceTest {
     putCallbacks.get(1).onCompletion(null, null);
     Assert.assertTrue(completableFuture1.isDone());
     Assert.assertTrue(completableFuture4.isDone());
+
+    // Validate max batch size feature.
+    doReturn(1).when(producerBatchingService).getMaxBatchSize();
+    producerBatchingService.addRecordToBuffer(MessageType.DELETE, keyBytes1, null, -1, -1, completableFuture1);
+    verify(producerBatchingService, times(4)).sendRecord(any());
+    verify(writer, times(1)).delete(eq(keyBytes1), anyLong(), any());
   }
 }
