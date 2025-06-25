@@ -420,9 +420,11 @@ public class CreateVersion extends AbstractRoute {
       VersionCreationResponse responseObject = new VersionCreationResponse();
       response.type(HttpConstants.JSON);
       try {
+        boolean missingWriteAccess = !hasWriteAccessToTopic(request);
+        boolean missingReadAccess = this.checkReadMethodForKafka && !hasReadAccessToTopic(request);
+
         // Also allow allowList users to run this command
-        if (!isAllowListUser(request)
-            && (!hasWriteAccessToTopic(request) || (this.checkReadMethodForKafka && !hasReadAccessToTopic(request)))) {
+        if (!isAllowListUser(request) && (missingWriteAccess || missingReadAccess)) {
           response.status(HttpStatus.SC_FORBIDDEN);
           String userId = getPrincipalId(request);
 
@@ -431,8 +433,6 @@ public class CreateVersion extends AbstractRoute {
            * help partners to unblock by themselves.
            */
           String errorMsg;
-          boolean missingWriteAccess = !hasWriteAccessToTopic(request);
-          boolean missingReadAccess = this.checkReadMethodForKafka && !hasReadAccessToTopic(request);
           if (missingWriteAccess && missingReadAccess) {
             errorMsg = "[Error] Missing [read] and [write] ACLs for user \"" + userId
                 + "\". Please setup ACLs for your store.";
