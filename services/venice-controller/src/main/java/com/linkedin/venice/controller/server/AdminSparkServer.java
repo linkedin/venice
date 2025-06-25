@@ -300,11 +300,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository);
     JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
-    CreateVersion createVersion = new CreateVersion(
-        sslEnabled,
-        accessController,
-        this.checkReadMethodForKafka,
-        disableParentRequestTopicForStreamPushes);
+    CreateVersion createVersion = new CreateVersion(sslEnabled, accessController, this.checkReadMethodForKafka);
     CreateStore createStoreRoute = new CreateStore(sslEnabled, accessController);
     NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(sslEnabled, accessController);
     SchemaRoutes schemaRoutes = new SchemaRoutes(sslEnabled, accessController);
