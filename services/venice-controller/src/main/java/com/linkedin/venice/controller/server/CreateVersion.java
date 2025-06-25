@@ -55,6 +55,7 @@ import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import spark.Request;
+import spark.Response;
 import spark.Route;
 
 
@@ -420,13 +421,12 @@ public class CreateVersion extends AbstractRoute {
       try {
         // Also allow allowList users to run this command
         if (!isAllowListUser(request)) {
-          String userId = getPrincipalId(request);
           if (!hasWriteAccessToTopic(request)) {
-            return buildAclErrorResponse(responseObject, userId, true, false);
+            return buildAclErrorResponse(request, response, true, false);
           }
 
           if (this.checkReadMethodForKafka && !hasReadAccessToTopic(request)) {
-            return buildAclErrorResponse(responseObject, userId, false, true);
+            return buildAclErrorResponse(request, response, false, true);
           }
         }
 
@@ -458,10 +458,13 @@ public class CreateVersion extends AbstractRoute {
    * help partners to unblock by themselves.
    */
   private String buildAclErrorResponse(
-      VersionCreationResponse responseObject,
-      String userId,
+      Request request,
+      Response response,
       boolean missingWriteAccess,
       boolean missingReadAccess) throws JsonProcessingException {
+    response.status(HttpStatus.SC_FORBIDDEN);
+    VersionCreationResponse responseObject = new VersionCreationResponse();
+    String userId = getPrincipalId(request);
     String errorMessage = "Missing [{}] ACLs for user " + userId + ". Please setup ACLs for your store.";
     if (missingWriteAccess) {
       errorMessage = String.format(errorMessage, "write");
