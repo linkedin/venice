@@ -34,7 +34,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedHybridStoreQuotaMonitor;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
@@ -755,9 +754,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
     byte[] key = serializeObject(keyObject);
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-    final PubSubProducerCallback callback = new CompletableFutureCallback(completableFuture);
 
-    long logicalTimestamp = -1;
+    long logicalTimestamp = VeniceWriter.APP_DEFAULT_LOGICAL_TS;
     // Only transmit the timestamp if this is a realtime topic.
     if (valueObject instanceof VeniceObjectWithTimestamp && Version.isRealTimeTopic(topicName)) {
       VeniceObjectWithTimestamp objectWithTimestamp = (VeniceObjectWithTimestamp) valueObject;
@@ -771,20 +769,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     if (valueObject == null) {
-      if (logicalTimestamp > 0) {
-        if (producerBatchingService != null) {
-          producerBatchingService
-              .addRecordToBuffer(MessageType.DELETE, key, null, -1, -1, completableFuture, logicalTimestamp);
-        } else {
-          veniceWriter.delete(key, logicalTimestamp, callback);
-        }
-      } else {
-        if (producerBatchingService != null) {
-          producerBatchingService.addRecordToBuffer(MessageType.DELETE, key, null, -1, -1, completableFuture);
-        } else {
-          veniceWriter.delete(key, callback);
-        }
-      }
+      sendDeleteMessage(key, logicalTimestamp, completableFuture);
 
     } else {
       Schema valueObjectSchema = getSchemaFromObject(valueObject);
@@ -810,65 +795,14 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       byte[] value = serializeObject(valueObject);
 
       if (valueSchemaIdPair.getSecond() == -1) {
-        if (logicalTimestamp > 0) {
-          if (producerBatchingService != null) {
-            producerBatchingService.addRecordToBuffer(
-                MessageType.PUT,
-                key,
-                value,
-                valueSchemaIdPair.getFirst(),
-                -1,
-                completableFuture,
-                logicalTimestamp);
-          } else {
-            veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), logicalTimestamp, callback);
-          }
-        } else {
-          if (producerBatchingService != null) {
-            producerBatchingService
-                .addRecordToBuffer(MessageType.PUT, key, value, valueSchemaIdPair.getFirst(), -1, completableFuture);
-          } else {
-            veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), callback);
-          }
-        }
+        sendPutMessage(key, value, valueSchemaIdPair, logicalTimestamp, completableFuture);
       } else {
         if (!isWriteComputeEnabled) {
           throw new SamzaException(
               "Cannot write partial update record to Venice store " + storeName + " "
                   + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
         }
-        if (logicalTimestamp > 0) {
-          if (producerBatchingService != null) {
-            producerBatchingService.addRecordToBuffer(
-                MessageType.UPDATE,
-                key,
-                value,
-                valueSchemaIdPair.getFirst(),
-                valueSchemaIdPair.getSecond(),
-                completableFuture,
-                logicalTimestamp);
-          } else {
-            veniceWriter.update(
-                key,
-                value,
-                valueSchemaIdPair.getFirst(),
-                valueSchemaIdPair.getSecond(),
-                callback,
-                logicalTimestamp);
-          }
-        } else {
-          if (producerBatchingService != null) {
-            producerBatchingService.addRecordToBuffer(
-                MessageType.UPDATE,
-                key,
-                value,
-                valueSchemaIdPair.getFirst(),
-                valueSchemaIdPair.getSecond(),
-                completableFuture);
-          } else {
-            veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback);
-          }
-        }
+        sendUpdateMessage(key, value, valueSchemaIdPair, logicalTimestamp, completableFuture);
       }
     }
     return completableFuture;
@@ -1055,5 +989,74 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   // used only for testing
   void setPushMonitor(RouterBasedPushMonitor pushMonitor) {
     this.pushMonitor = Optional.of(pushMonitor);
+  }
+
+  ProducerBatchingService getProducerBatchingService() {
+    return producerBatchingService;
+  }
+
+  VeniceWriter<byte[], byte[], byte[]> getVeniceWriter() {
+    return veniceWriter;
+  }
+
+  void sendDeleteMessage(byte[] key, long logicalTimestamp, CompletableFuture<Void> completableFuture) {
+    if (getProducerBatchingService() != null) {
+      getProducerBatchingService()
+          .addRecordToBuffer(MessageType.DELETE, key, null, -1, -1, completableFuture, logicalTimestamp);
+    } else {
+      getVeniceWriter().delete(key, logicalTimestamp, new CompletableFutureCallback(completableFuture));
+    }
+  }
+
+  void sendPutMessage(
+      byte[] key,
+      byte[] value,
+      Pair<Integer, Integer> valueSchemaIdPair,
+      long logicalTimestamp,
+      CompletableFuture<Void> completableFuture) {
+
+    if (getProducerBatchingService() != null) {
+      getProducerBatchingService().addRecordToBuffer(
+          MessageType.PUT,
+          key,
+          value,
+          valueSchemaIdPair.getFirst(),
+          -1,
+          completableFuture,
+          logicalTimestamp);
+    } else {
+      getVeniceWriter().put(
+          key,
+          value,
+          valueSchemaIdPair.getFirst(),
+          logicalTimestamp,
+          new CompletableFutureCallback(completableFuture));
+    }
+  }
+
+  void sendUpdateMessage(
+      byte[] key,
+      byte[] value,
+      Pair<Integer, Integer> valueSchemaIdPair,
+      long logicalTimestamp,
+      CompletableFuture<Void> completableFuture) {
+    if (getProducerBatchingService() != null) {
+      getProducerBatchingService().addRecordToBuffer(
+          MessageType.UPDATE,
+          key,
+          value,
+          valueSchemaIdPair.getFirst(),
+          valueSchemaIdPair.getSecond(),
+          completableFuture,
+          logicalTimestamp);
+    } else {
+      getVeniceWriter().update(
+          key,
+          value,
+          valueSchemaIdPair.getFirst(),
+          valueSchemaIdPair.getSecond(),
+          new CompletableFutureCallback(completableFuture),
+          logicalTimestamp);
+    }
   }
 }
