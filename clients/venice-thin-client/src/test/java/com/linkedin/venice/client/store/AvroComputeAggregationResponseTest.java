@@ -223,7 +223,7 @@ public class AvroComputeAggregationResponseTest {
     }
   }
 
-  @Test(description = "Should throw ClassCastException when type casting fails")
+  @Test(description = "Should throw ClassCastException when type casting fails", expectedExceptions = ClassCastException.class)
   public void testTypeCastingThrowsException() {
     Map<String, ComputeGenericRecord> data = new HashMap<>();
     ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
@@ -234,14 +234,9 @@ public class AvroComputeAggregationResponseTest {
     data.put("record2", record2);
     AvroComputeAggregationResponse<String> response =
         new AvroComputeAggregationResponse<>(data, Collections.singletonMap(AGE_FIELD, 10));
-    ClassCastException exception = expectThrows(ClassCastException.class, () -> {
-      for (Object key: response.getValueToCount(AGE_FIELD).keySet()) {
-        Integer intKey = (Integer) key;
-      }
-    });
-    assertTrue(
-        exception.getMessage().contains("String") || exception.getMessage().contains("Integer")
-            || exception.getMessage().contains("cast"));
+    for (Object key: response.getValueToCount(AGE_FIELD).keySet()) {
+      Integer intKey = (Integer) key;
+    }
   }
 
   private Map<String, ComputeGenericRecord> createSimpleTestData() {
