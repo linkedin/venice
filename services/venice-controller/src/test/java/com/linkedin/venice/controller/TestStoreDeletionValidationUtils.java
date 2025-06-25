@@ -121,6 +121,7 @@ public class TestStoreDeletionValidationUtils {
     // Mock version topic exists
     PubSubTopic mockTopic = mock(PubSubTopic.class);
     when(mockTopic.getName()).thenReturn(TEST_STORE + "_v1");
+    when(mockTopic.getStoreName()).thenReturn(TEST_STORE);
     Set<PubSubTopic> topics = new HashSet<>(Arrays.asList(mockTopic));
     when(mockTopicManager.listTopics()).thenReturn(topics);
 
@@ -135,11 +136,13 @@ public class TestStoreDeletionValidationUtils {
   public void testValidateStoreDeletedMainStoreHelixResourceExistsNotDeleted() {
     setupBasicValidationPass();
 
-    // Mock version topic exists but is NOT detected by the PubSub topic check
-    // This happens when topic name doesn't match our isStoreRelatedTopic logic
-    // but still has a Helix resource
+    // Mock version topic exists and has a Helix resource
+    // The checkMainStoreHelixResources method comes before checkForAnyExistingTopicResources
+    // so it will detect the Helix resource first
     PubSubTopic mockTopic = mock(PubSubTopic.class);
     when(mockTopic.getName()).thenReturn(TEST_STORE + "_v1");
+    when(mockTopic.getStoreName()).thenReturn(TEST_STORE);
+    when(mockTopic.isVersionTopic()).thenReturn(true);
     Set<PubSubTopic> topics = new HashSet<>(Arrays.asList(mockTopic));
     when(mockTopicManager.listTopics()).thenReturn(topics);
 
@@ -150,9 +153,9 @@ public class TestStoreDeletionValidationUtils {
         StoreDeletionValidationUtils.validateStoreDeleted(mockAdmin, TEST_CLUSTER, TEST_STORE);
 
     assertFalse(result.isDeleted());
-    // Since PubSub topic check comes first and the topic matches our pattern,
-    // it will fail on PubSub topic, not Helix resource
-    assertEquals(result.getError(), "PubSub topic still exists: " + TEST_STORE + "_v1");
+    // Since checkMainStoreHelixResources comes before checkForAnyExistingTopicResources,
+    // it will fail on Helix resource check first
+    assertEquals(result.getError(), "Helix resource still exists for version topic: " + TEST_STORE + "_v1");
   }
 
   @Test
@@ -163,6 +166,7 @@ public class TestStoreDeletionValidationUtils {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(TEST_STORE);
     PubSubTopic mockTopic = mock(PubSubTopic.class);
     when(mockTopic.getName()).thenReturn(metaStoreName + "_v1");
+    when(mockTopic.getStoreName()).thenReturn(metaStoreName);
     Set<PubSubTopic> topics = new HashSet<>(Arrays.asList(mockTopic));
     when(mockTopicManager.listTopics()).thenReturn(topics);
 
@@ -209,28 +213,54 @@ public class TestStoreDeletionValidationUtils {
   public void testIsStoreRelatedTopicVersionTopicTrue() {
     List<VeniceSystemStoreType> systemStoreTypes = Arrays.asList(VeniceSystemStoreType.values());
 
-    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(TEST_STORE + "_v1", TEST_STORE, systemStoreTypes));
-    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(TEST_STORE + "_v123", TEST_STORE, systemStoreTypes));
+    // Create mock PubSubTopic for version topics
+    PubSubTopic mockTopic1 = mock(PubSubTopic.class);
+    when(mockTopic1.getStoreName()).thenReturn(TEST_STORE);
+    when(mockTopic1.getName()).thenReturn(TEST_STORE + "_v1");
+
+    PubSubTopic mockTopic2 = mock(PubSubTopic.class);
+    when(mockTopic2.getStoreName()).thenReturn(TEST_STORE);
+    when(mockTopic2.getName()).thenReturn(TEST_STORE + "_v123");
+
+    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic1, TEST_STORE, systemStoreTypes));
+    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic2, TEST_STORE, systemStoreTypes));
   }
 
   @Test
   public void testIsStoreRelatedTopic_RTTopic_True() {
     List<VeniceSystemStoreType> systemStoreTypes = Arrays.asList(VeniceSystemStoreType.values());
 
-    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(TEST_STORE + "_rt", TEST_STORE, systemStoreTypes));
-    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(TEST_STORE + "_rt_v1", TEST_STORE, systemStoreTypes));
+    // Create mock PubSubTopic for RT topics
+    PubSubTopic mockTopic1 = mock(PubSubTopic.class);
+    when(mockTopic1.getStoreName()).thenReturn(TEST_STORE);
+    when(mockTopic1.getName()).thenReturn(TEST_STORE + "_rt");
+
+    PubSubTopic mockTopic2 = mock(PubSubTopic.class);
+    when(mockTopic2.getStoreName()).thenReturn(TEST_STORE);
+    when(mockTopic2.getName()).thenReturn(TEST_STORE + "_rt_v1");
+
+    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic1, TEST_STORE, systemStoreTypes));
+    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic2, TEST_STORE, systemStoreTypes));
   }
 
   @Test
   public void testIsStoreRelatedTopicViewTopicTrue() {
     List<VeniceSystemStoreType> systemStoreTypes = Arrays.asList(VeniceSystemStoreType.values());
 
+    // Create mock PubSubTopic for view topics
+    PubSubTopic mockTopic1 = mock(PubSubTopic.class);
+    when(mockTopic1.getStoreName()).thenReturn(TEST_STORE);
+    when(mockTopic1.getName()).thenReturn(TEST_STORE + "_v1_cc");
+
+    PubSubTopic mockTopic2 = mock(PubSubTopic.class);
+    when(mockTopic2.getStoreName()).thenReturn(TEST_STORE);
+    when(mockTopic2.getName()).thenReturn(TEST_STORE + "_v1_testView_mv");
+
     // Test change capture view topic format: storeName_v{version}_cc
-    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(TEST_STORE + "_v1_cc", TEST_STORE, systemStoreTypes));
+    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic1, TEST_STORE, systemStoreTypes));
 
     // Test materialized view topic format: storeName_v{version}_{viewName}_mv
-    assertTrue(
-        StoreDeletionValidationUtils.isStoreRelatedTopic(TEST_STORE + "_v1_testView_mv", TEST_STORE, systemStoreTypes));
+    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic2, TEST_STORE, systemStoreTypes));
   }
 
   @Test
@@ -238,18 +268,39 @@ public class TestStoreDeletionValidationUtils {
     List<VeniceSystemStoreType> systemStoreTypes = Arrays.asList(VeniceSystemStoreType.values());
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(TEST_STORE);
 
-    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(metaStoreName + "_v1", TEST_STORE, systemStoreTypes));
-    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(metaStoreName + "_rt", TEST_STORE, systemStoreTypes));
+    // Create mock PubSubTopic for system store topics
+    PubSubTopic mockTopic1 = mock(PubSubTopic.class);
+    when(mockTopic1.getStoreName()).thenReturn(metaStoreName);
+    when(mockTopic1.getName()).thenReturn(metaStoreName + "_v1");
+
+    PubSubTopic mockTopic2 = mock(PubSubTopic.class);
+    when(mockTopic2.getStoreName()).thenReturn(metaStoreName);
+    when(mockTopic2.getName()).thenReturn(metaStoreName + "_rt");
+
+    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic1, TEST_STORE, systemStoreTypes));
+    assertTrue(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic2, TEST_STORE, systemStoreTypes));
   }
 
   @Test
   public void testIsStoreRelatedTopicUnrelatedTopicFalse() {
     List<VeniceSystemStoreType> systemStoreTypes = Arrays.asList(VeniceSystemStoreType.values());
 
-    assertFalse(StoreDeletionValidationUtils.isStoreRelatedTopic("other-store_v1", TEST_STORE, systemStoreTypes));
-    assertFalse(StoreDeletionValidationUtils.isStoreRelatedTopic("unrelated-topic", TEST_STORE, systemStoreTypes));
-    assertFalse(
-        StoreDeletionValidationUtils.isStoreRelatedTopic(TEST_STORE + "suffix_v1", TEST_STORE, systemStoreTypes));
+    // Create mock PubSubTopic for unrelated topics
+    PubSubTopic mockTopic1 = mock(PubSubTopic.class);
+    when(mockTopic1.getStoreName()).thenReturn("other-store");
+    when(mockTopic1.getName()).thenReturn("other-store_v1");
+
+    PubSubTopic mockTopic2 = mock(PubSubTopic.class);
+    when(mockTopic2.getStoreName()).thenReturn("unrelated");
+    when(mockTopic2.getName()).thenReturn("unrelated-topic");
+
+    PubSubTopic mockTopic3 = mock(PubSubTopic.class);
+    when(mockTopic3.getStoreName()).thenReturn(TEST_STORE + "suffix");
+    when(mockTopic3.getName()).thenReturn(TEST_STORE + "suffix_v1");
+
+    assertFalse(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic1, TEST_STORE, systemStoreTypes));
+    assertFalse(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic2, TEST_STORE, systemStoreTypes));
+    assertFalse(StoreDeletionValidationUtils.isStoreRelatedTopic(mockTopic3, TEST_STORE, systemStoreTypes));
   }
 
   @Test
