@@ -1,12 +1,9 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.HYBRID_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
-import static com.linkedin.venice.ConfigKeys.SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
@@ -19,10 +16,8 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -34,7 +29,6 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -47,9 +41,7 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
-import java.io.IOException;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -78,28 +70,32 @@ public class TestHybridQuota {
   public void setUp() {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
-    // Added a server with shared consumer enabled.
-    Properties serverPropertiesWithSharedConsumer = new Properties();
-    serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA_LEGACY, "false");
-    extraProperties.put(HELIX_HYBRID_STORE_QUOTA_ENABLED, true);
-    extraProperties.put(HYBRID_QUOTA_ENFORCEMENT_ENABLED, true);
-    extraProperties.put(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
-    extraProperties.put(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, TimeUnit.DAYS.toMillis(7) + "");
-    extraProperties.put(CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS, 0);
-    extraProperties.put(SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS, "2");
-    extraProperties.put(SERVER_UNSUB_AFTER_BATCHPUSH, "false");
 
     // N.B.: RF 2 with 3 servers is important, in order to test both the leader and follower code paths
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
-        .numberOfServers(3)
-        .numberOfRouters(1)
-        .replicationFactor(1)
+        .numberOfServers(0)
+        .numberOfRouters(0)
+        .replicationFactor(2)
         .partitionSize(1000000)
         .sslToStorageNodes(false)
         .sslToKafka(false)
         .extraProperties(extraProperties)
         .build();
     sharedVenice = ServiceFactory.getVeniceCluster(options);
+
+    Properties routerProperties = new Properties();
+    routerProperties.put(HELIX_HYBRID_STORE_QUOTA_ENABLED, true);
+
+    sharedVenice.addVeniceRouter(routerProperties);
+    // Added a server with shared consumer enabled.
+    Properties serverPropertiesWithSharedConsumer = new Properties();
+    serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA_LEGACY, "false");
+    extraProperties.put(HELIX_HYBRID_STORE_QUOTA_ENABLED, true);
+    extraProperties.put(HYBRID_QUOTA_ENFORCEMENT_ENABLED, true);
+    extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
+    sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+    sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+    sharedVenice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
     LOGGER.info("Finished creating VeniceClusterWrapper");
   }
 
@@ -247,12 +243,12 @@ public class TestHybridQuota {
               .setStorageQuotaInByte(storageQuotaInByte));
       if (isStreamReprocessing) {
         veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM_REPROCESSING); // new
-        // producer,
-        // new DIV
-        // segment.
+                                                                                                          // producer,
+                                                                                                          // new DIV
+                                                                                                          // segment.
       } else {
         veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM); // new producer, new DIV
-        // segment.
+                                                                                             // segment.
       }
       for (int i = 1; i <= 20; i++) {
         try {
@@ -295,12 +291,12 @@ public class TestHybridQuota {
         }
         if (isStreamReprocessing) {
           veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM_REPROCESSING); // new
-          // producer,
-          // new DIV
-          // segment.
+                                                                                                            // producer,
+                                                                                                            // new DIV
+                                                                                                            // segment.
         } else {
           veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM); // new producer, new DIV
-          // segment.
+                                                                                               // segment.
         }
 
         sendStreamingRecord(veniceProducer, storeName, 21);
@@ -341,132 +337,4 @@ public class TestHybridQuota {
     }
   }
 
-  @Test
-  // test batch store quota updates
-  public void testBatchStoreQuotaUpdates() throws IOException {
-    String storeName = Utils.getUniqueString("test-batch-store-quota-updates");
-    // Create store
-    File inputDir = getTempDataDirectory();
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 100);
-
-    Properties props = IntegrationTestPushUtils.defaultVPJProps(sharedVenice, inputDirPath, storeName);
-    try (ControllerClient controllerClient = createStoreForJob(sharedVenice.getClusterName(), recordSchema, props)) {
-      // run a push to create the store
-      IntegrationTestPushUtils.runVPJ(props, 1, controllerClient);
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
-        assertEquals(storeResponse.getStore().getCurrentVersion(), 1);
-      });
-
-      // Create a store with hybrid quota enabled
-      ControllerResponse response =
-          controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(1024));
-      Assert.assertFalse(response.isError());
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
-        assertEquals(storeResponse.getStore().getStorageQuotaInByte(), 1024);
-      });
-
-      Utils.sleep(TimeUnit.SECONDS.toMillis(10));
-      for (VeniceServerWrapper veniceServerWrapper: sharedVenice.getVeniceServers()) {
-        printStorageQuotaUsage(veniceServerWrapper, storeName);
-      }
-
-      LOGGER.info("### new version push job started for store: {}", storeName);
-      response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(-1));
-      Assert.assertFalse(response.isError());
-      // run another push to create a second version
-      TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema(inputDir, 10000);
-      IntegrationTestPushUtils.runVPJ(props, 2, controllerClient);
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
-        assertEquals(storeResponse.getStore().getCurrentVersion(), 2);
-      });
-      IntegrationTestPushUtils.runVPJ(props, 3, controllerClient);
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
-        assertEquals(storeResponse.getStore().getCurrentVersion(), 3);
-      });
-      // LOGGER.info(
-      // "### All metrics: {}",
-      // sharedVenice.getVeniceServers().get(0).getVeniceServer().getMetricsRepository().metrics().keySet());
-
-      for (VeniceServerWrapper veniceServerWrapper: sharedVenice.getVeniceServers()) {
-        boolean isQuotaViolated = printStorageQuotaUsage(veniceServerWrapper, storeName);
-        LOGGER.info(
-            "### Storage quota usage for store {} on server {}: isQuotaViolated: {}",
-            storeName,
-            veniceServerWrapper.getAddress(),
-            isQuotaViolated);
-        if (isQuotaViolated) {
-          VeniceServerWrapper serverWrapper = sharedVenice.getVeniceServers().get(0);
-          VeniceHelixAdmin helixAdmin = sharedVenice.getVeniceControllers().get(0).getVeniceHelixAdmin();
-          String instance = Utils.getHelixNodeIdentifier(serverWrapper.getHost(), serverWrapper.getPort());
-          helixAdmin.disableReplica(sharedVenice.getClusterName(), storeName + "_v3", instance, 1);
-          break;
-        }
-      }
-
-      Utils.sleep(30 * Time.MS_PER_SECOND);
-
-      // update quota to 2048
-      response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(512));
-      Assert.assertFalse(response.isError());
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-        StoreResponse storeResponse = TestUtils.assertCommand(controllerClient.getStore(storeName));
-        assertEquals(storeResponse.getStore().getStorageQuotaInByte(), 512);
-      });
-      for (VeniceServerWrapper veniceServerWrapper: sharedVenice.getVeniceServers()) {
-        printStorageQuotaUsage(veniceServerWrapper, storeName);
-      }
-      Utils.sleep(TimeUnit.SECONDS.toMillis(20));
-      for (VeniceServerWrapper veniceServerWrapper: sharedVenice.getVeniceServers()) {
-        printStorageQuotaUsage(veniceServerWrapper, storeName);
-      }
-
-    }
-  }
-
-  private boolean printStorageQuotaUsage(VeniceServerWrapper veniceServerWrapper, String storeName) {
-    MetricsRepository metricsRepository = veniceServerWrapper.getVeniceServer().getMetricsRepository();
-
-    // Assert.assertEquals(metricsRepository.getMetric(readQuotaRejectedQPSString).value(), 1d / 30d, 0.05);
-    // prod-ltx1/venice-server/venice-server-war.i001.venice-server.LSSSearchL2MemberEmbeddings--storage_quota_used.Gauge.rrd
-    // String readQuotaRejectedQPSString = "." + storeName + "--storage_quota_used.Gauge";
-
-    String storageQuotaUsedString = "." + storeName + "--storage_quota_used.Gauge";
-    // _current--storage_quota_used.IngestionStatsGauge
-    String currentVersionStorageQuotaUsedString = "." + storeName + "_current--storage_quota_used.IngestionStatsGauge";
-    String futureVersionStorageQuotaUsedString = "." + storeName + "_future--storage_quota_used.IngestionStatsGauge";
-    // .test-batch-store-quota-updates_67af944501383_cad489f0_total--storage_quota_used.IngestionStatsGauge
-    String totalStorageQuotaUsedString = "." + storeName + "_total--storage_quota_used.IngestionStatsGauge";
-
-    // add null check for the metric
-    // double storageQuotaUsed = metricsRepository.getMetric(storageQuotaUsedString).value();
-    double storageQuotaUsed = metricsRepository.getMetric(storageQuotaUsedString) != null
-        ? metricsRepository.getMetric(storageQuotaUsedString).value()
-        : 0.0;
-    double currentVersionStorageQuotaUsed = metricsRepository.getMetric(currentVersionStorageQuotaUsedString) != null
-        ? metricsRepository.getMetric(currentVersionStorageQuotaUsedString).value()
-        : 0.0;
-    double futureVersionStorageQuotaUsed = metricsRepository.getMetric(futureVersionStorageQuotaUsedString) != null
-        ? metricsRepository.getMetric(futureVersionStorageQuotaUsedString).value()
-        : 0.0;
-    double totalStorageQuotaUsed = metricsRepository.getMetric(totalStorageQuotaUsedString) != null
-        ? metricsRepository.getMetric(totalStorageQuotaUsedString).value()
-        : 0.0;
-
-    LOGGER.info(
-        "#### ==> Storage quota used on: {} for store {}: storageQuotaUsed: {}, currentVersionStorageQuotaUsed: {}, futureVersionStorageQuotaUsed: {}, totalStorageQuotaUsed: {}",
-        veniceServerWrapper.getAddress(),
-        storeName,
-        storageQuotaUsed,
-        currentVersionStorageQuotaUsed,
-        futureVersionStorageQuotaUsed,
-        totalStorageQuotaUsed);
-
-    // if non zero return true
-    return currentVersionStorageQuotaUsed > 1.0d;
-  }
 }
