@@ -66,15 +66,16 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
   public <T> ComputeAggregationRequestBuilder<K> countGroupByBucket(
       Map<String, Predicate<T>> bucketNameToPredicate,
       String... fieldNames) {
-    // Validate inputs
+    // bucket predicates must not be null or empty
     if (bucketNameToPredicate == null || bucketNameToPredicate.isEmpty()) {
       throw new VeniceClientException("bucketNameToPredicate cannot be null or empty");
     }
+    // field names must not be null or empty
     if (fieldNames == null || fieldNames.length == 0) {
       throw new VeniceClientException("fieldNames cannot be null or empty");
     }
 
-    // Validate bucket names
+    // Validate bucket names and predicates
     for (Map.Entry<String, Predicate<T>> entry: bucketNameToPredicate.entrySet()) {
       if (entry.getKey() == null || entry.getKey().isEmpty()) {
         throw new VeniceClientException("Bucket name cannot be null or empty");
@@ -111,7 +112,7 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
         existingBuckets.put(entry.getKey(), entry.getValue());
       }
 
-      // Project the field so we can process the values in the response
+      // For countGroupByBucket, we need to project the field itself
       delegate.project(fieldName);
     }
     return this;

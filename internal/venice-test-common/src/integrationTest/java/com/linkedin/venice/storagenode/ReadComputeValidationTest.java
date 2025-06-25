@@ -619,6 +619,7 @@ public class ReadComputeValidationTest {
    * Test countGroupByBucket aggregation functionality.
    * This test creates a store with numeric fields, then performs
    * count group by bucket aggregation on these fields using different predicates.
+   * Covers all available predicate methods for comprehensive testing.
    */
   @Test(timeOut = TIMEOUT)
   public void testCountGroupByBucketAggregation() throws Exception {
@@ -630,7 +631,8 @@ public class ReadComputeValidationTest {
         + "         { \"name\": \"salary\", \"type\": \"float\" },        "
         + "         { \"name\": \"age\", \"type\": \"int\" },        "
         + "         { \"name\": \"score\", \"type\": \"double\" },        "
-        + "         { \"name\": \"joinDate\", \"type\": \"long\" }        " + "  ]       " + " }       ";
+        + "         { \"name\": \"joinDate\", \"type\": \"long\" },        "
+        + "         { \"name\": \"department\", \"type\": \"string\" }        " + "  ]       " + " }       ";
 
     VeniceAvroKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
     VeniceAvroKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchemaWithNumericFields);
@@ -654,7 +656,7 @@ public class ReadComputeValidationTest {
     Schema valueSchema = Schema.parse(valueSchemaWithNumericFields);
     Map<Integer, GenericRecord> valuesByKey = new HashMap<>();
 
-    // Employee 1: salary=45000.0f, age=25, score=85.5, joinDate=1609459200000L (2021-01-01)
+    // Employee 1: salary=45000.0f, age=25, score=85.5, joinDate=1609459200000L (2021-01-01), department="Engineering"
     GenericRecord value1 = new GenericData.Record(valueSchema);
     value1.put("id", "1");
     value1.put("name", "Alice");
@@ -662,9 +664,10 @@ public class ReadComputeValidationTest {
     value1.put("age", 25);
     value1.put("score", 85.5);
     value1.put("joinDate", 1609459200000L);
+    value1.put("department", "Engineering");
     valuesByKey.put(1, value1);
 
-    // Employee 2: salary=75000.0f, age=35, score=92.0, joinDate=1640995200000L (2022-01-01)
+    // Employee 2: salary=75000.0f, age=35, score=92.0, joinDate=1640995200000L (2022-01-01), department="Sales"
     GenericRecord value2 = new GenericData.Record(valueSchema);
     value2.put("id", "2");
     value2.put("name", "Bob");
@@ -672,9 +675,10 @@ public class ReadComputeValidationTest {
     value2.put("age", 35);
     value2.put("score", 92.0);
     value2.put("joinDate", 1640995200000L);
+    value2.put("department", "Sales");
     valuesByKey.put(2, value2);
 
-    // Employee 3: salary=55000.0f, age=28, score=78.5, joinDate=1672531200000L (2023-01-01)
+    // Employee 3: salary=55000.0f, age=28, score=78.5, joinDate=1672531200000L (2023-01-01), department="Engineering"
     GenericRecord value3 = new GenericData.Record(valueSchema);
     value3.put("id", "3");
     value3.put("name", "Charlie");
@@ -682,9 +686,10 @@ public class ReadComputeValidationTest {
     value3.put("age", 28);
     value3.put("score", 78.5);
     value3.put("joinDate", 1672531200000L);
+    value3.put("department", "Engineering");
     valuesByKey.put(3, value3);
 
-    // Employee 4: salary=95000.0f, age=42, score=88.0, joinDate=1704067200000L (2024-01-01)
+    // Employee 4: salary=95000.0f, age=42, score=88.0, joinDate=1704067200000L (2024-01-01), department="Marketing"
     GenericRecord value4 = new GenericData.Record(valueSchema);
     value4.put("id", "4");
     value4.put("name", "Diana");
@@ -692,6 +697,7 @@ public class ReadComputeValidationTest {
     value4.put("age", 42);
     value4.put("score", 88.0);
     value4.put("joinDate", 1704067200000L);
+    value4.put("department", "Marketing");
     valuesByKey.put(4, value4);
 
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
@@ -715,78 +721,125 @@ public class ReadComputeValidationTest {
       Set<Integer> keySet = new HashSet<>(Arrays.asList(1, 2, 3, 4));
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
-        // Test countGroupByBucket on salary field with FloatPredicate
+        // Test countGroupByBucket on salary field with FloatPredicate - all methods
         Map<String, com.linkedin.venice.client.store.predicate.Predicate<Float>> salaryBuckets = new HashMap<>();
         salaryBuckets.put("low", com.linkedin.venice.client.store.predicate.FloatPredicate.lowerThan(50000.0f));
         salaryBuckets
             .put("medium", com.linkedin.venice.client.store.predicate.FloatPredicate.greaterOrEquals(50000.0f));
         salaryBuckets.put("high", com.linkedin.venice.client.store.predicate.FloatPredicate.greaterThan(80000.0f));
+        salaryBuckets
+            .put("equal_55000", com.linkedin.venice.client.store.predicate.FloatPredicate.equalTo(55000.0f, 1000.0f));
+        salaryBuckets.put(
+            "any_of_45000_75000",
+            com.linkedin.venice.client.store.predicate.FloatPredicate.anyOf(45000.0f, 75000.0f));
 
         com.linkedin.venice.client.store.ComputeAggregationResponse salaryAggResponse =
             computeStoreClient.computeAggregation().countGroupByBucket(salaryBuckets, "salary").execute(keySet).get();
 
         Map<String, Integer> salaryBucketCounts = salaryAggResponse.getBucketNameToCount("salary");
         Assert.assertNotNull(salaryBucketCounts);
-
-        // Debug: Print the actual counts
         System.out.println("Salary bucket counts: " + salaryBucketCounts);
 
-        // Check that we have results for all buckets
-        Assert.assertEquals(salaryBucketCounts.size(), 3, "Should have exactly 3 salary buckets");
-
-        // Expected counts: low=1 (45000), medium=2 (55000, 75000), high=1 (95000)
+        // Salary (float) bucket counts
+        // Data: 45000, 75000, 55000, 95000
+        // low: <50000 -> 45000 (1)
+        // medium: >=50000 -> 75000, 55000, 95000 (3)
+        // high: >80000 -> 95000 (1)
+        // equal_55000: ==55000 -> 55000 (1)
+        // any_of_45000_75000: 45000, 75000 (2)
         Assert.assertEquals(salaryBucketCounts.get("low"), Integer.valueOf(1), "Low salary count should be 1");
-        Assert.assertEquals(salaryBucketCounts.get("medium"), Integer.valueOf(2), "Medium salary count should be 2");
+        Assert.assertEquals(salaryBucketCounts.get("medium"), Integer.valueOf(3), "Medium salary count should be 3");
         Assert.assertEquals(salaryBucketCounts.get("high"), Integer.valueOf(1), "High salary count should be 1");
+        Assert.assertEquals(
+            salaryBucketCounts.get("equal_55000"),
+            Integer.valueOf(1),
+            "Equal 55000 salary count should be 1");
+        Assert.assertEquals(
+            salaryBucketCounts.get("any_of_45000_75000"),
+            Integer.valueOf(2),
+            "Any of 45000,75000 salary count should be 2");
 
-        // Test countGroupByBucket on age field with IntPredicate
+        // Test countGroupByBucket on age field with IntPredicate - all methods
         Map<String, com.linkedin.venice.client.store.predicate.Predicate<Integer>> ageBuckets = new HashMap<>();
         ageBuckets.put("young", com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(30));
         ageBuckets.put("mid_career", com.linkedin.venice.client.store.predicate.IntPredicate.greaterOrEquals(30));
         ageBuckets.put("senior", com.linkedin.venice.client.store.predicate.IntPredicate.greaterThan(40));
+        ageBuckets.put("equal_35", com.linkedin.venice.client.store.predicate.IntPredicate.equalTo(35));
+        ageBuckets.put("lower_or_equal_35", com.linkedin.venice.client.store.predicate.IntPredicate.lowerOrEquals(35));
+        ageBuckets.put("any_of_25_42", com.linkedin.venice.client.store.predicate.IntPredicate.anyOf(25, 42));
 
         com.linkedin.venice.client.store.ComputeAggregationResponse ageAggResponse =
             computeStoreClient.computeAggregation().countGroupByBucket(ageBuckets, "age").execute(keySet).get();
 
         Map<String, Integer> ageBucketCounts = ageAggResponse.getBucketNameToCount("age");
         Assert.assertNotNull(ageBucketCounts);
-
-        // Debug: Print the actual counts
         System.out.println("Age bucket counts: " + ageBucketCounts);
 
-        // Check that we have results for all buckets
-        Assert.assertEquals(ageBucketCounts.size(), 3, "Should have exactly 3 age buckets");
-
-        // Expected counts: young=2 (25, 28), mid_career=1 (35), senior=1 (42)
+        // Age (int) bucket counts
+        // Data: 25, 35, 28, 42
+        // young: <30 -> 25, 28 (2)
+        // mid_career: >=30 -> 35, 42 (2)
+        // senior: >40 -> 42 (1)
+        // equal_35: ==35 -> 35 (1)
+        // lower_or_equal_35: <=35 -> 25, 28, 35 (3)
+        // any_of_25_42: 25, 42 (2)
         Assert.assertEquals(ageBucketCounts.get("young"), Integer.valueOf(2), "Young age count should be 2");
-        Assert.assertEquals(ageBucketCounts.get("mid_career"), Integer.valueOf(1), "Mid-career age count should be 1");
+        Assert.assertEquals(ageBucketCounts.get("mid_career"), Integer.valueOf(2), "Mid career age count should be 2");
         Assert.assertEquals(ageBucketCounts.get("senior"), Integer.valueOf(1), "Senior age count should be 1");
+        Assert.assertEquals(ageBucketCounts.get("equal_35"), Integer.valueOf(1), "Equal 35 age count should be 1");
+        Assert.assertEquals(
+            ageBucketCounts.get("lower_or_equal_35"),
+            Integer.valueOf(3),
+            "Lower or equal 35 age count should be 3");
+        Assert.assertEquals(
+            ageBucketCounts.get("any_of_25_42"),
+            Integer.valueOf(2),
+            "Any of 25,42 age count should be 2");
 
-        // Test countGroupByBucket on score field with DoublePredicate
+        // Test countGroupByBucket on score field with DoublePredicate - all methods
         Map<String, com.linkedin.venice.client.store.predicate.Predicate<Double>> scoreBuckets = new HashMap<>();
         scoreBuckets.put("excellent", com.linkedin.venice.client.store.predicate.DoublePredicate.greaterThan(90.0));
         scoreBuckets.put("good", com.linkedin.venice.client.store.predicate.DoublePredicate.greaterThan(80.0));
         scoreBuckets.put("average", com.linkedin.venice.client.store.predicate.DoublePredicate.lowerOrEquals(80.0));
+        scoreBuckets.put("equal_85_5", com.linkedin.venice.client.store.predicate.DoublePredicate.equalTo(85.5, 0.1));
+        scoreBuckets
+            .put("lower_or_equal_92", com.linkedin.venice.client.store.predicate.DoublePredicate.lowerOrEquals(92.0));
+        scoreBuckets
+            .put("any_of_78_5_92_0", com.linkedin.venice.client.store.predicate.DoublePredicate.anyOf(78.5, 92.0));
 
         com.linkedin.venice.client.store.ComputeAggregationResponse scoreAggResponse =
             computeStoreClient.computeAggregation().countGroupByBucket(scoreBuckets, "score").execute(keySet).get();
 
         Map<String, Integer> scoreBucketCounts = scoreAggResponse.getBucketNameToCount("score");
         Assert.assertNotNull(scoreBucketCounts);
-
-        // Debug: Print the actual counts
         System.out.println("Score bucket counts: " + scoreBucketCounts);
 
-        // Check that we have results for all buckets
-        Assert.assertEquals(scoreBucketCounts.size(), 3, "Should have exactly 3 score buckets");
-
-        // Expected counts: excellent=1 (92.0), good=2 (85.5, 88.0), average=1 (78.5)
+        // Score (double) bucket counts
+        // Data: 85.5, 92.0, 78.5, 88.0
+        // excellent: >90.0 -> 92.0 (1)
+        // good: >80.0 -> 85.5, 92.0, 88.0 (3)
+        // average: <=80.0 -> 78.5 (1)
+        // equal_85_5: ==85.5 -> 85.5 (1)
+        // lower_or_equal_92: <=92.0 -> 85.5, 78.5, 88.0, 92.0 (4)
+        // any_of_85_5_92_0: 85.5, 92.0 (2)
         Assert
             .assertEquals(scoreBucketCounts.get("excellent"), Integer.valueOf(1), "Excellent score count should be 1");
-        Assert.assertEquals(scoreBucketCounts.get("good"), Integer.valueOf(2), "Good score count should be 2");
+        Assert.assertEquals(scoreBucketCounts.get("good"), Integer.valueOf(3), "Good score count should be 3");
         Assert.assertEquals(scoreBucketCounts.get("average"), Integer.valueOf(1), "Average score count should be 1");
+        Assert.assertEquals(
+            scoreBucketCounts.get("equal_85_5"),
+            Integer.valueOf(1),
+            "Equal 85.5 score count should be 1");
+        Assert.assertEquals(
+            scoreBucketCounts.get("lower_or_equal_92"),
+            Integer.valueOf(4),
+            "Lower or equal 92.0 score count should be 4");
+        Assert.assertEquals(
+            scoreBucketCounts.get("any_of_85_5_92_0"),
+            Integer.valueOf(2),
+            "Any of 85.5,92.0 score count should be 2");
 
-        // Test countGroupByBucket on joinDate field with LongPredicate
+        // Test countGroupByBucket on joinDate field with LongPredicate - all methods
         Map<String, com.linkedin.venice.client.store.predicate.Predicate<Long>> joinDateBuckets = new HashMap<>();
         joinDateBuckets
             .put("early", com.linkedin.venice.client.store.predicate.LongPredicate.lowerThan(1640995200000L)); // Before
@@ -798,6 +851,14 @@ public class ReadComputeValidationTest {
         joinDateBuckets
             .put("very_recent", com.linkedin.venice.client.store.predicate.LongPredicate.greaterThan(1672531200000L)); // After
                                                                                                                        // 2023
+        joinDateBuckets
+            .put("equal_2022", com.linkedin.venice.client.store.predicate.LongPredicate.equalTo(1640995200000L));
+        joinDateBuckets.put(
+            "lower_or_equal_1640995200000",
+            com.linkedin.venice.client.store.predicate.LongPredicate.lowerOrEquals(1640995200000L));
+        joinDateBuckets.put(
+            "any_of_1609459200000_1704067200000",
+            com.linkedin.venice.client.store.predicate.LongPredicate.anyOf(1609459200000L, 1704067200000L));
 
         com.linkedin.venice.client.store.ComputeAggregationResponse joinDateAggResponse =
             computeStoreClient.computeAggregation()
@@ -807,14 +868,16 @@ public class ReadComputeValidationTest {
 
         Map<String, Integer> joinDateBucketCounts = joinDateAggResponse.getBucketNameToCount("joinDate");
         Assert.assertNotNull(joinDateBucketCounts);
-
-        // Debug: Print the actual counts
         System.out.println("Join date bucket counts: " + joinDateBucketCounts);
 
-        // Check that we have results for all buckets
-        Assert.assertEquals(joinDateBucketCounts.size(), 3, "Should have exactly 3 join date buckets");
-
-        // Expected counts: early=1 (2021), recent=3 (2022, 2023, 2024), very_recent=1 (2024)
+        // Join date (long) bucket counts
+        // Data: 1609459200000L, 1640995200000L, 1672531200000L, 1704067200000L
+        // early: <1640995200000L -> 1609459200000L (1)
+        // recent: >=1640995200000L -> 1640995200000L, 1672531200000L, 1704067200000L (3)
+        // very_recent: >1672531200000L -> 1704067200000L (1)
+        // equal_2022: ==1640995200000L -> 1640995200000L (1)
+        // lower_or_equal_2023: <=1672531200000L -> 1609459200000L, 1640995200000L, 1672531200000L (3)
+        // any_of_2021_2024: 1609459200000L, 1704067200000L (2)
         Assert.assertEquals(joinDateBucketCounts.get("early"), Integer.valueOf(1), "Early join date count should be 1");
         Assert
             .assertEquals(joinDateBucketCounts.get("recent"), Integer.valueOf(3), "Recent join date count should be 3");
@@ -822,6 +885,77 @@ public class ReadComputeValidationTest {
             joinDateBucketCounts.get("very_recent"),
             Integer.valueOf(1),
             "Very recent join date count should be 1");
+        Assert.assertEquals(
+            joinDateBucketCounts.get("equal_2022"),
+            Integer.valueOf(1),
+            "Equal 2022 join date count should be 1");
+        Assert.assertEquals(
+            joinDateBucketCounts.get("lower_or_equal_2023"),
+            Integer.valueOf(3),
+            "Lower or equal 2023 join date count should be 3");
+        Assert.assertEquals(
+            joinDateBucketCounts.get("any_of_2021_2024"),
+            Integer.valueOf(2),
+            "Any of 2021,2024 join date count should be 2");
+
+        // Test countGroupByBucket on department field with StringPredicate - all methods
+        Map<String, com.linkedin.venice.client.store.predicate.Predicate<String>> departmentBuckets = new HashMap<>();
+        departmentBuckets
+            .put("engineering", com.linkedin.venice.client.store.predicate.Predicate.equalTo("Engineering"));
+        departmentBuckets.put(
+            "any_of_eng_sales",
+            com.linkedin.venice.client.store.predicate.Predicate.anyOf("Engineering", "Sales"));
+
+        com.linkedin.venice.client.store.ComputeAggregationResponse departmentAggResponse =
+            computeStoreClient.computeAggregation()
+                .countGroupByBucket(departmentBuckets, "department")
+                .execute(keySet)
+                .get();
+
+        Map<String, Integer> departmentBucketCounts = departmentAggResponse.getBucketNameToCount("department");
+        Assert.assertNotNull(departmentBucketCounts);
+        System.out.println("Department bucket counts: " + departmentBucketCounts);
+
+        // Expected counts: engineering=2 (Engineering appears twice), any_of_eng_sales=3 (Engineering twice + Sales
+        // once)
+        Assert.assertEquals(
+            departmentBucketCounts.get("engineering"),
+            Integer.valueOf(2),
+            "Engineering count should be 2");
+        Assert.assertEquals(
+            departmentBucketCounts.get("any_of_eng_sales"),
+            Integer.valueOf(3),
+            "Any of Engineering,Sales count should be 3");
+
+        // Test complex predicate combinations
+        Map<String, com.linkedin.venice.client.store.predicate.Predicate<Integer>> complexBuckets = new HashMap<>();
+        complexBuckets.put(
+            "and_combination",
+            com.linkedin.venice.client.store.predicate.Predicate.and(
+                com.linkedin.venice.client.store.predicate.IntPredicate.greaterThan(20),
+                com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(40)));
+        complexBuckets.put(
+            "or_combination",
+            com.linkedin.venice.client.store.predicate.Predicate.or(
+                com.linkedin.venice.client.store.predicate.IntPredicate.equalTo(25),
+                com.linkedin.venice.client.store.predicate.IntPredicate.equalTo(42)));
+
+        com.linkedin.venice.client.store.ComputeAggregationResponse complexAggResponse =
+            computeStoreClient.computeAggregation().countGroupByBucket(complexBuckets, "age").execute(keySet).get();
+
+        Map<String, Integer> complexBucketCounts = complexAggResponse.getBucketNameToCount("age");
+        Assert.assertNotNull(complexBucketCounts);
+        System.out.println("Complex bucket counts: " + complexBucketCounts);
+
+        // Expected: and_combination=3 (25, 28, 35), or_combination=2 (25, 42)
+        Assert.assertEquals(
+            complexBucketCounts.get("and_combination"),
+            Integer.valueOf(3),
+            "And combination count should be 3");
+        Assert.assertEquals(
+            complexBucketCounts.get("or_combination"),
+            Integer.valueOf(2),
+            "Or combination count should be 2");
       });
     }
   }

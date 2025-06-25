@@ -10,10 +10,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.store.predicate.DoublePredicate;
-import com.linkedin.venice.client.store.predicate.FloatPredicate;
 import com.linkedin.venice.client.store.predicate.IntPredicate;
-import com.linkedin.venice.client.store.predicate.LongPredicate;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.schema.SchemaReader;
 import java.util.Arrays;
@@ -29,19 +26,8 @@ import org.testng.annotations.Test;
 
 
 /**
- * Test suite for {@link AvroComputeAggregationRequestBuilder}.
- * 
- * Tests the aggregation request builder functionality for constructing compute requests
- * that perform value counting and bucket aggregation operations on Avro records.
- * 
- * Key Areas:
- * - Value counting (countGroupByValue) with topK limits and field validation
- * - Bucket aggregation (countGroupByBucket) with various predicate types
- * - Input validation for fields, predicates, and parameters
- * - Error handling for invalid schemas and missing fields
- * - Edge cases including special characters and boundary conditions
- * 
- * @see AvroComputeAggregationRequestBuilder
+ * Test suite for AvroComputeAggregationRequestBuilder.
+ * Focuses on validating field existence and type checking
  */
 public class AvroComputeAggregationRequestBuilderTest {
   private static final String JOB_TYPE_FIELD = "jobType";
@@ -146,7 +132,7 @@ public class AvroComputeAggregationRequestBuilderTest {
         CompletableFuture.completedFuture(new HashMap<>());
     when(delegate.execute(any())).thenReturn(mockFuture);
 
-    Set<String> keys = createSimpleKeySet();
+    Set<String> keys = new HashSet<>(Arrays.asList("job1", "job2"));
 
     CompletableFuture<ComputeAggregationResponse> future = builder.countGroupByValue(5, JOB_TYPE_FIELD).execute(keys);
 
@@ -230,7 +216,7 @@ public class AvroComputeAggregationRequestBuilderTest {
     when(delegate.execute(any())).thenThrow(new RuntimeException("Execution error"));
     builder.countGroupByValue(5, JOB_TYPE_FIELD);
 
-    Set<String> keys = createSimpleKeySet();
+    Set<String> keys = new HashSet<>(Arrays.asList("job1", "job2"));
 
     expectThrows(RuntimeException.class, () -> builder.execute(keys));
   }
@@ -257,7 +243,11 @@ public class AvroComputeAggregationRequestBuilderTest {
 
   @Test(description = "Should handle very long field names")
   public void testVeryLongFieldNames() {
-    String longFieldName = createVeryLongFieldName();
+    StringBuilder sb = new StringBuilder();
+    for (int i = 0; i < 1000; i++) {
+      sb.append("a");
+    }
+    String longFieldName = sb.toString();
     VeniceClientException ex =
         expectThrows(VeniceClientException.class, () -> builder.countGroupByValue(5, longFieldName));
     assertEquals(ex.getMessage(), "Field not found in schema: " + longFieldName);
@@ -287,7 +277,7 @@ public class AvroComputeAggregationRequestBuilderTest {
         CompletableFuture.completedFuture(new HashMap<>());
     when(delegate.execute(any())).thenReturn(mockFuture);
 
-    Set<String> keys = createSingleKeySet();
+    Set<String> keys = new HashSet<>(Arrays.asList("singleKey"));
     builder.countGroupByValue(5, JOB_TYPE_FIELD);
 
     CompletableFuture<ComputeAggregationResponse> future = builder.execute(keys);
@@ -302,7 +292,10 @@ public class AvroComputeAggregationRequestBuilderTest {
         CompletableFuture.completedFuture(new HashMap<>());
     when(delegate.execute(any())).thenReturn(mockFuture);
 
-    Set<String> keys = createLargeKeySet();
+    Set<String> keys = new HashSet<>();
+    for (int i = 0; i < 1000; i++) {
+      keys.add("key" + i);
+    }
 
     builder.countGroupByValue(5, JOB_TYPE_FIELD);
 
@@ -314,365 +307,159 @@ public class AvroComputeAggregationRequestBuilderTest {
 
   @Test(description = "Should accept valid bucket parameters and project fields")
   public void testValidBucketParameters() {
-    Map<String, Predicate<Integer>> ageBuckets = createSimpleAgeBuckets();
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
+    bucketPredicates.put("senior", IntPredicate.greaterOrEquals(30));
 
-    builder.countGroupByBucket(ageBuckets, AGE_FIELD);
+    builder.countGroupByBucket(bucketPredicates, AGE_FIELD);
 
     verify(delegate).project(AGE_FIELD);
   }
 
   @Test(description = "Should accept multiple fields for bucket aggregation")
   public void testMultipleFieldsForBucketAggregation() {
-    Map<String, Predicate<Integer>> ageBuckets = createSimpleAgeBuckets();
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("low", IntPredicate.lowerThan(50));
+    bucketPredicates.put("high", IntPredicate.greaterOrEquals(50));
 
-    builder.countGroupByBucket(ageBuckets, AGE_FIELD, SALARY_FIELD);
+    builder.countGroupByBucket(bucketPredicates, AGE_FIELD, SALARY_FIELD);
 
     verify(delegate).project(AGE_FIELD);
     verify(delegate).project(SALARY_FIELD);
   }
 
-  @Test(description = "Should reject null bucket predicates")
-  public void testNullBucketPredicates() {
+  @Test(description = "Should reject invalid bucket predicates")
+  public void testInvalidBucketPredicates() {
+    // Test null bucket predicates
     expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(null, AGE_FIELD));
-  }
 
-  @Test(description = "Should reject empty bucket predicates")
-  public void testEmptyBucketPredicates() {
+    // Test empty bucket predicates
     expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(new HashMap<>(), AGE_FIELD));
+
+    // Test null predicates in bucket map
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", null);
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, AGE_FIELD));
   }
 
-  @Test(description = "Should reject null bucket names")
-  public void testNullBucketNames() {
-    Map<String, Predicate<Integer>> buckets = createBucketsWithNullName();
+  @Test(description = "Should reject null and empty bucket names")
+  public void testInvalidBucketNames() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
 
-    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(buckets, AGE_FIELD));
+    // Test null bucket names
+    bucketPredicates.put(null, IntPredicate.lowerThan(30));
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, AGE_FIELD));
+
+    // Test empty bucket names
+    bucketPredicates.clear();
+    bucketPredicates.put("", IntPredicate.lowerThan(30));
+    bucketPredicates.put("   ", IntPredicate.greaterOrEquals(30));
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, AGE_FIELD));
   }
 
-  @Test(description = "Should reject empty bucket names")
-  public void testEmptyBucketNames() {
-    Map<String, Predicate<Integer>> buckets = createBucketsWithEmptyName();
+  @Test(description = "Should reject null and empty field names for bucket aggregation")
+  public void testInvalidFieldNamesForBucketAggregation() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
 
-    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(buckets, AGE_FIELD));
+    // Test null field names
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, (String[]) null));
+
+    // Test empty field names
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, new String[0]));
   }
 
-  @Test(description = "Should reject null predicates")
-  public void testNullPredicates() {
-    Map<String, Predicate<Integer>> buckets = createBucketsWithNullPredicate();
+  @Test(description = "Should reject null and empty field in array for bucket aggregation")
+  public void testInvalidFieldInArrayForBucketAggregation() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
 
-    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(buckets, AGE_FIELD));
-  }
-
-  @Test(description = "Should reject null field names for bucket aggregation")
-  public void testNullFieldNamesForBucketAggregation() {
-    Map<String, Predicate<Integer>> ageBuckets = createSimpleAgeBuckets();
-
-    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(ageBuckets, (String[]) null));
-  }
-
-  @Test(description = "Should reject empty field names for bucket aggregation")
-  public void testEmptyFieldNamesForBucketAggregation() {
-    Map<String, Predicate<Integer>> ageBuckets = createSimpleAgeBuckets();
-
-    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(ageBuckets, new String[0]));
-  }
-
-  @Test(description = "Should reject null field in array for bucket aggregation")
-  public void testNullFieldInArrayForBucketAggregation() {
-    Map<String, Predicate<Integer>> ageBuckets = createSimpleAgeBuckets();
-
+    // Test null field in array
     expectThrows(
         VeniceClientException.class,
-        () -> builder.countGroupByBucket(ageBuckets, new String[] { "validField", null }));
-  }
+        () -> builder.countGroupByBucket(bucketPredicates, new String[] { "validField", null }));
 
-  @Test(description = "Should reject empty field in array for bucket aggregation")
-  public void testEmptyFieldInArrayForBucketAggregation() {
-    Map<String, Predicate<Integer>> ageBuckets = createSimpleAgeBuckets();
-
+    // Test empty field in array
     expectThrows(
         VeniceClientException.class,
-        () -> builder.countGroupByBucket(ageBuckets, new String[] { "validField", "" }));
+        () -> builder.countGroupByBucket(bucketPredicates, new String[] { "validField", "" }));
   }
 
   @Test(description = "Should reject non-existent field for bucket aggregation")
   public void testNonExistentFieldForBucketAggregation() {
-    Map<String, Predicate<Integer>> ageBuckets = createSimpleAgeBuckets();
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
 
-    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(ageBuckets, "nonExistentField"));
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, "nonExistentField"));
+  }
+
+  @Test(description = "Should reject invalid fields for bucket aggregation")
+  public void testInvalidFieldsForBucketAggregation() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
+
+    // Test single non-existent field
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, "nonExistentField"));
+
+    // Test mixed valid and invalid fields
+    expectThrows(
+        VeniceClientException.class,
+        () -> builder.countGroupByBucket(bucketPredicates, AGE_FIELD, "nonExistentField"));
   }
 
   @Test(description = "Should support chaining countGroupByValue and countGroupByBucket")
   public void testChainingValueAndBucket() {
-    Map<String, Predicate<Integer>> ageBuckets = createComplexAgeBuckets();
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
 
-    builder.countGroupByValue(5, JOB_TYPE_FIELD).countGroupByBucket(ageBuckets, AGE_FIELD);
+    builder.countGroupByValue(5, JOB_TYPE_FIELD).countGroupByBucket(bucketPredicates, AGE_FIELD);
 
     verify(delegate).project(JOB_TYPE_FIELD);
     verify(delegate).project(AGE_FIELD);
   }
 
-  @Test(description = "Should support chaining multiple countGroupByBucket calls")
-  public void testChainingMultipleCountGroupByBucket() {
-    Map<String, Predicate<Integer>> ageBuckets = createComplexAgeBuckets();
-    Map<String, Predicate<Integer>> salaryBuckets = createSalaryBuckets();
+  @Test(description = "Should handle multiple countGroupByBucket calls")
+  public void testMultipleCountGroupByBucketCalls() {
+    Map<String, Predicate<Integer>> ageBuckets = new HashMap<>();
+    ageBuckets.put("young", IntPredicate.lowerThan(30));
+    ageBuckets.put("senior", IntPredicate.greaterOrEquals(30));
 
-    builder.countGroupByBucket(ageBuckets, AGE_FIELD).countGroupByBucket(salaryBuckets, SALARY_FIELD);
+    Map<String, Predicate<String>> jobBuckets = new HashMap<>();
+    jobBuckets.put("engineer", Predicate.equalTo("engineer"));
+    jobBuckets.put("manager", Predicate.equalTo("manager"));
 
-    verify(delegate).project(AGE_FIELD);
-    verify(delegate).project(SALARY_FIELD);
-  }
-
-  @Test(description = "Should handle multiple countGroupByBucket calls with same field")
-  public void testMultipleCountGroupByBucketCallsWithSameField() {
-    Map<String, Predicate<Integer>> ageBuckets1 = createSimpleAgeBuckets();
-    Map<String, Predicate<Integer>> ageBuckets2 = createSeniorAgeBuckets();
-
-    builder.countGroupByBucket(ageBuckets1, AGE_FIELD).countGroupByBucket(ageBuckets2, AGE_FIELD);
-
-    // Should call project 2 times for the same field
-    verify(delegate, times(2)).project(AGE_FIELD);
-  }
-
-  @Test(description = "Should execute with valid bucket parameters")
-  public void testValidBucketExecution() {
-    CompletableFuture<Map<String, ComputeGenericRecord>> mockFuture =
-        CompletableFuture.completedFuture(new HashMap<>());
-    when(delegate.execute(any())).thenReturn(mockFuture);
-
-    Map<String, Predicate<Integer>> ageBuckets = createComplexAgeBuckets();
-
-    Set<String> keys = createSimpleKeySet();
-
-    CompletableFuture<ComputeAggregationResponse> future =
-        builder.countGroupByBucket(ageBuckets, AGE_FIELD).execute(keys);
-
-    assertNotNull(future);
-    verify(delegate).execute(keys);
-  }
-
-  @Test(description = "Should handle complex bucket predicates")
-  public void testComplexBucketPredicates() {
-    Map<String, Predicate<Integer>> complexBuckets = createComplexBucketPredicates();
-
-    builder.countGroupByBucket(complexBuckets, AGE_FIELD);
-
-    verify(delegate).project(AGE_FIELD);
-  }
-
-  @Test(description = "Should handle mixed valid and invalid fields for bucket aggregation")
-  public void testMixedValidAndInvalidFieldsForBucketAggregation() {
-    Map<String, Predicate<Integer>> ageBuckets = createSimpleAgeBuckets();
-
-    expectThrows(
-        VeniceClientException.class,
-        () -> builder.countGroupByBucket(ageBuckets, AGE_FIELD, "nonExistentField"));
-  }
-
-  @Test(description = "Should handle whitespace field names for bucket aggregation")
-  public void testWhitespaceFieldNamesForBucketAggregation() {
-    Map<String, Predicate<Integer>> ageBuckets = createSimpleAgeBuckets();
-
-    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(ageBuckets, "   "));
-  }
-
-  @Test(description = "Should handle special characters in field names for bucket aggregation")
-  public void testSpecialCharactersInFieldNamesForBucketAggregation() {
-    Map<String, Predicate<Integer>> ageBuckets = createSimpleAgeBuckets();
-
-    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(ageBuckets, "field@name"));
-  }
-
-  @Test(description = "Should handle very long field names for bucket aggregation")
-  public void testVeryLongFieldNamesForBucketAggregation() {
-    Map<String, Predicate<Integer>> ageBuckets = createSimpleAgeBuckets();
-    String longFieldName = createVeryLongFieldName();
-
-    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(ageBuckets, longFieldName));
-  }
-
-  @Test(description = "Should handle LongPredicate correctly")
-  public void testLongPredicateHandling() {
-    Map<String, Predicate<Long>> salaryBuckets = createLongSalaryBuckets();
-    builder.countGroupByBucket(salaryBuckets, SALARY_FIELD);
-    verify(delegate).project(SALARY_FIELD);
-  }
-
-  @Test(description = "Should handle FloatPredicate correctly")
-  public void testFloatPredicateHandling() {
-    Map<String, Predicate<Float>> salaryBuckets = createFloatSalaryBuckets();
-    builder.countGroupByBucket(salaryBuckets, SALARY_FIELD);
-    verify(delegate).project(SALARY_FIELD);
-  }
-
-  @Test(description = "Should handle DoublePredicate correctly")
-  public void testDoublePredicateHandling() {
-    Map<String, Predicate<Double>> salaryBuckets = createDoubleSalaryBuckets();
-    builder.countGroupByBucket(salaryBuckets, SALARY_FIELD);
-    verify(delegate).project(SALARY_FIELD);
-  }
-
-  @Test(description = "Should handle StringPredicate correctly")
-  public void testStringPredicateHandling() {
-    Map<String, Predicate<String>> jobTypeBuckets = createStringJobTypeBuckets();
-    builder.countGroupByBucket(jobTypeBuckets, JOB_TYPE_FIELD);
-    verify(delegate).project(JOB_TYPE_FIELD);
-  }
-
-  @Test(description = "Should handle mixed predicate types")
-  public void testMixedPredicateTypes() {
-    Map<String, Predicate<Integer>> ageBuckets = createSimpleAgeBuckets();
-    Map<String, Predicate<Float>> salaryBuckets = createFloatSalaryBuckets();
-    builder.countGroupByBucket(ageBuckets, AGE_FIELD).countGroupByBucket(salaryBuckets, SALARY_FIELD);
-    verify(delegate).project(AGE_FIELD);
-    verify(delegate).project(SALARY_FIELD);
-  }
-
-  @Test(description = "Should handle complex predicate combinations")
-  public void testComplexPredicateCombinations() {
-    Map<String, Predicate<Integer>> ageBuckets = createComplexAgeBuckets();
-    Map<String, Predicate<String>> jobTypeBuckets = createStringJobTypeBuckets();
-    builder.countGroupByBucket(ageBuckets, AGE_FIELD).countGroupByBucket(jobTypeBuckets, JOB_TYPE_FIELD);
+    // Test chaining different fields
+    builder.countGroupByBucket(ageBuckets, AGE_FIELD).countGroupByBucket(jobBuckets, JOB_TYPE_FIELD);
     verify(delegate).project(AGE_FIELD);
     verify(delegate).project(JOB_TYPE_FIELD);
+
+    // Test chaining same field
+    Map<String, Predicate<Integer>> buckets1 = new HashMap<>();
+    buckets1.put("young", IntPredicate.lowerThan(30));
+    Map<String, Predicate<Integer>> buckets2 = new HashMap<>();
+    buckets2.put("senior", IntPredicate.greaterOrEquals(30));
+
+    builder.countGroupByBucket(buckets1, AGE_FIELD).countGroupByBucket(buckets2, AGE_FIELD);
+    verify(delegate, times(3)).project(AGE_FIELD);
   }
 
-  @Test(description = "Should handle edge cases for different predicate types")
-  public void testEdgeCasesForDifferentPredicateTypes() {
-    Map<String, Predicate<Integer>> intBuckets = createEdgeCaseIntBuckets();
-    Map<String, Predicate<Long>> longBuckets = createEdgeCaseLongBuckets();
-    Map<String, Predicate<Float>> floatBuckets = createEdgeCaseFloatBuckets();
-    builder.countGroupByBucket(intBuckets, AGE_FIELD)
-        .countGroupByBucket(longBuckets, SALARY_FIELD)
-        .countGroupByBucket(floatBuckets, SALARY_FIELD);
-    verify(delegate).project(AGE_FIELD);
-    verify(delegate, times(2)).project(SALARY_FIELD);
-  }
+  @Test(description = "Should handle edge cases for field names in bucket aggregation")
+  public void testEdgeCasesForFieldNamesInBucketAggregation() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
 
-  // Helper methods for creating test data
-  private Set<String> createSimpleKeySet() {
-    return new HashSet<>(Arrays.asList("job1", "job2"));
-  }
+    // Test whitespace field names
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, "   "));
 
-  private Set<String> createSingleKeySet() {
-    return new HashSet<>(Arrays.asList("singleKey"));
-  }
+    // Test special characters in field names
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, "field@name"));
 
-  private Set<String> createLargeKeySet() {
-    Set<String> keys = new HashSet<>();
-    for (int i = 0; i < 1000; i++) {
-      keys.add("key" + i);
-    }
-    return keys;
-  }
-
-  private String createVeryLongFieldName() {
+    // Test very long field names
     StringBuilder sb = new StringBuilder();
     for (int i = 0; i < 1000; i++) {
       sb.append("a");
     }
-    return sb.toString();
-  }
-
-  private Map<String, Predicate<Integer>> createSimpleAgeBuckets() {
-    Map<String, Predicate<Integer>> ageBuckets = new HashMap<>();
-    ageBuckets.put("young", IntPredicate.lowerThan(30));
-    ageBuckets.put("senior", IntPredicate.greaterThan(50));
-    return ageBuckets;
-  }
-
-  private Map<String, Predicate<Integer>> createComplexAgeBuckets() {
-    Map<String, Predicate<Integer>> ageBuckets = new HashMap<>();
-    ageBuckets.put("young", IntPredicate.lowerThan(30));
-    ageBuckets.put("senior", IntPredicate.greaterThan(50));
-    return ageBuckets;
-  }
-
-  private Map<String, Predicate<Integer>> createSeniorAgeBuckets() {
-    Map<String, Predicate<Integer>> ageBuckets = new HashMap<>();
-    ageBuckets.put("senior", IntPredicate.greaterThan(50));
-    return ageBuckets;
-  }
-
-  private Map<String, Predicate<Integer>> createSalaryBuckets() {
-    Map<String, Predicate<Integer>> salaryBuckets = new HashMap<>();
-    salaryBuckets.put("low", IntPredicate.lowerThan(50000));
-    salaryBuckets.put("high", IntPredicate.greaterThan(80000));
-    return salaryBuckets;
-  }
-
-  private Map<String, Predicate<Integer>> createComplexBucketPredicates() {
-    Map<String, Predicate<Integer>> complexBuckets = new HashMap<>();
-    complexBuckets.put("junior", IntPredicate.lowerThan(25));
-    complexBuckets.put("mid_level", IntPredicate.greaterOrEquals(25));
-    complexBuckets.put("senior", IntPredicate.greaterThan(40));
-    complexBuckets.put("executive", IntPredicate.greaterThan(50));
-    return complexBuckets;
-  }
-
-  private Map<String, Predicate<Integer>> createBucketsWithNullName() {
-    Map<String, Predicate<Integer>> buckets = new HashMap<>();
-    buckets.put(null, IntPredicate.greaterThan(30));
-    return buckets;
-  }
-
-  private Map<String, Predicate<Integer>> createBucketsWithEmptyName() {
-    Map<String, Predicate<Integer>> buckets = new HashMap<>();
-    buckets.put("", IntPredicate.greaterThan(30));
-    return buckets;
-  }
-
-  private Map<String, Predicate<Integer>> createBucketsWithNullPredicate() {
-    Map<String, Predicate<Integer>> buckets = new HashMap<>();
-    buckets.put("valid", null);
-    return buckets;
-  }
-
-  private Map<String, Predicate<Long>> createLongSalaryBuckets() {
-    Map<String, Predicate<Long>> salaryBuckets = new HashMap<>();
-    salaryBuckets.put("low", LongPredicate.lowerThan(50000L));
-    salaryBuckets.put("high", LongPredicate.greaterOrEquals(50000L));
-    return salaryBuckets;
-  }
-
-  private Map<String, Predicate<Float>> createFloatSalaryBuckets() {
-    Map<String, Predicate<Float>> salaryBuckets = new HashMap<>();
-    salaryBuckets.put("cheap", FloatPredicate.lowerThan(10000.0f));
-    salaryBuckets.put("expensive", FloatPredicate.greaterOrEquals(10000.0f));
-    return salaryBuckets;
-  }
-
-  private Map<String, Predicate<Double>> createDoubleSalaryBuckets() {
-    Map<String, Predicate<Double>> salaryBuckets = new HashMap<>();
-    salaryBuckets.put("low", DoublePredicate.lowerThan(10000.0));
-    salaryBuckets.put("high", DoublePredicate.greaterOrEquals(10000.0));
-    return salaryBuckets;
-  }
-
-  private Map<String, Predicate<String>> createStringJobTypeBuckets() {
-    Map<String, Predicate<String>> jobTypeBuckets = new HashMap<>();
-    jobTypeBuckets.put("engineer", Predicate.equalTo("engineer"));
-    jobTypeBuckets.put("manager", Predicate.equalTo("manager"));
-    return jobTypeBuckets;
-  }
-
-  private Map<String, Predicate<Integer>> createEdgeCaseIntBuckets() {
-    Map<String, Predicate<Integer>> intBuckets = new HashMap<>();
-    intBuckets.put("zero", IntPredicate.equalTo(0));
-    intBuckets.put("negative", IntPredicate.lowerThan(0));
-    return intBuckets;
-  }
-
-  private Map<String, Predicate<Long>> createEdgeCaseLongBuckets() {
-    Map<String, Predicate<Long>> longBuckets = new HashMap<>();
-    longBuckets.put("max", LongPredicate.equalTo(Long.MAX_VALUE));
-    longBuckets.put("min", LongPredicate.equalTo(Long.MIN_VALUE));
-    return longBuckets;
-  }
-
-  private Map<String, Predicate<Float>> createEdgeCaseFloatBuckets() {
-    Map<String, Predicate<Float>> floatBuckets = new HashMap<>();
-    floatBuckets.put("infinity", FloatPredicate.greaterThan(Float.MAX_VALUE / 2));
-    floatBuckets.put("small", FloatPredicate.lowerThan(1.0f));
-    return floatBuckets;
+    String longFieldName = sb.toString();
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, longFieldName));
   }
 }

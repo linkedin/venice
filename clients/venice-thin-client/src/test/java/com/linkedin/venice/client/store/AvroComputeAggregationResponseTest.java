@@ -5,35 +5,24 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
+import static org.testng.Assert.fail;
 
-import com.linkedin.venice.client.store.predicate.DoublePredicate;
-import com.linkedin.venice.client.store.predicate.FloatPredicate;
-import com.linkedin.venice.client.store.predicate.IntPredicate;
-import com.linkedin.venice.client.store.predicate.LongPredicate;
-import com.linkedin.venice.client.store.predicate.Predicate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import org.apache.avro.util.Utf8;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 /**
- * Test suite for {@link AvroComputeAggregationResponse}.
- * 
- * Tests the aggregation response processor for handling results from compute aggregation
- * operations on Avro records.
- * 
- * Key Areas:
- * - Value counting result processing with topK ordering and null handling
- * - Bucket aggregation result processing with various predicate types
- * - Data type handling (String, Integer, Long, Float, Double, Utf8, null)
- * - Edge cases including empty results, single records, and boundary conditions
- * - Result ordering and topK limit enforcement
- * 
- * @see AvroComputeAggregationResponse
+ * Core test suite for AvroComputeAggregationResponse value counting functionality.
+ * Focuses on essential aggregation logic, topK ordering, and edge case handling.
  */
 public class AvroComputeAggregationResponseTest {
   private static final String JOB_TYPE_FIELD = "jobType";
@@ -41,7 +30,6 @@ public class AvroComputeAggregationResponseTest {
   private static final String EXPERIENCE_FIELD = "experienceLevel";
   private static final String SALARY_FIELD = "salary";
   private static final String AGE_FIELD = "age";
-  private static final String SCORE_FIELD = "score";
 
   private Map<String, ComputeGenericRecord> computeResults;
   private Map<String, Integer> fieldTopKMap;
@@ -52,189 +40,655 @@ public class AvroComputeAggregationResponseTest {
     fieldTopKMap = new HashMap<>();
   }
 
+  // Common aggregation test method
+  private <T> void runCountByValueTest(
+      Supplier<Map<String, ComputeGenericRecord>> dataSupplier,
+      Map<String, Integer> fieldTopKMap,
+      String fieldName,
+      Consumer<Map<T, Integer>> assertionLogic) {
+    Map<String, ComputeGenericRecord> computeResults = dataSupplier.get();
+    AvroComputeAggregationResponse response = new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
+    @SuppressWarnings("unchecked")
+    Map<T, Integer> result = (Map<T, Integer>) response.getValueToCount(fieldName);
+    assertionLogic.accept(result);
+  }
+
   @Test(description = "Should correctly count simple field values")
   public void testSimpleFieldCounting() {
-    computeResults = createSimpleTestData();
-    fieldTopKMap.put(JOB_TYPE_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Expected counts: full-time=3, part-time=3
-    assertEquals(result.get("full-time"), Integer.valueOf(3));
-    assertEquals(result.get("part-time"), Integer.valueOf(3));
-    assertEquals(result.size(), 2);
+    runCountByValueTest(
+        () -> createSimpleTestData(),
+        Collections.singletonMap(JOB_TYPE_FIELD, 10),
+        JOB_TYPE_FIELD,
+        result -> {
+          assertEquals(result.get("full-time"), Integer.valueOf(3));
+          assertEquals(result.get("part-time"), Integer.valueOf(3));
+          assertEquals(result.size(), 2);
+        });
   }
 
   @Test(description = "Should respect topK limit and return descending order")
   public void testTopKAndOrdering() {
-    computeResults = createSimpleTestData();
-    fieldTopKMap.put(LOCATION_FIELD, 2);
+    runCountByValueTest(
+        () -> createSimpleTestData(),
+        Collections.singletonMap(LOCATION_FIELD, 2),
+        LOCATION_FIELD,
+        result -> {
+          // Should only return top 2 results
+          assertEquals(result.size(), 2);
 
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
+          // Verify descending order: remote=3, onsite=2
+          List<Map.Entry<?, Integer>> entries = new ArrayList<>(result.entrySet());
+          assertEquals(entries.get(0).getKey(), "remote");
+          assertEquals(entries.get(0).getValue(), Integer.valueOf(3));
+          assertEquals(entries.get(1).getKey(), "onsite");
+          assertEquals(entries.get(1).getValue(), Integer.valueOf(2));
 
-    Map<String, Integer> result = response.getValueToCount(LOCATION_FIELD);
-
-    // Should only return top 2 results
-    assertEquals(result.size(), 2);
-
-    // Verify descending order: remote=3, onsite=2
-    List<Map.Entry<String, Integer>> entries = new ArrayList<>(result.entrySet());
-    assertEquals(entries.get(0).getKey(), "remote");
-    assertEquals(entries.get(0).getValue(), Integer.valueOf(3));
-    assertEquals(entries.get(1).getKey(), "onsite");
-    assertEquals(entries.get(1).getValue(), Integer.valueOf(2));
-
-    // hybrid (count=1) should not be included
-    assertFalse(result.containsKey("hybrid"));
+          // hybrid (count=1) should not be included
+          assertFalse(result.containsKey("hybrid"));
+        });
   }
 
   @Test(description = "Should handle null values correctly")
   public void testNullValueHandling() {
-    computeResults = createNullTestData();
-    fieldTopKMap.put(JOB_TYPE_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Verify null handling: null=2, full-time=1, part-time=1
-    assertEquals(result.get(null), Integer.valueOf(2));
-    assertEquals(result.get("full-time"), Integer.valueOf(1));
-    assertEquals(result.get("part-time"), Integer.valueOf(1));
+    runCountByValueTest(
+        () -> createNullTestData(),
+        Collections.singletonMap(JOB_TYPE_FIELD, 10),
+        JOB_TYPE_FIELD,
+        result -> {
+          // Verify null handling: null=2, full-time=1, part-time=1
+          assertEquals(result.get(null), Integer.valueOf(2));
+          assertEquals(result.get("full-time"), Integer.valueOf(1));
+          assertEquals(result.get("part-time"), Integer.valueOf(1));
+        });
   }
 
   @Test(description = "Should handle Utf8 values correctly")
   public void testUtf8ValueHandling() {
-    computeResults = createUtf8TestData();
-    fieldTopKMap.put(JOB_TYPE_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Verify Utf8 conversion: full-time=2, part-time=1
-    assertEquals(result.get("full-time"), Integer.valueOf(2));
-    assertEquals(result.get("part-time"), Integer.valueOf(1));
-    assertEquals(result.size(), 2);
+    runCountByValueTest(
+        () -> createUtf8TestData(),
+        Collections.singletonMap(JOB_TYPE_FIELD, 10),
+        JOB_TYPE_FIELD,
+        result -> {
+          // Verify Utf8 conversion: full-time=2, part-time=1
+          assertEquals(result.get("full-time"), Integer.valueOf(2));
+          assertEquals(result.get("part-time"), Integer.valueOf(1));
+          assertEquals(result.size(), 2);
+        });
   }
 
   @Test(description = "Should handle numeric values correctly")
   public void testNumericValueHandling() {
-    computeResults = createNumericTestData();
-    fieldTopKMap.put(SALARY_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(SALARY_FIELD);
-
-    // Verify numeric values: 50000=2, 60000=1, 70000=1
-    assertEquals(result.get("50000"), Integer.valueOf(2));
-    assertEquals(result.get("60000"), Integer.valueOf(1));
-    assertEquals(result.get("70000"), Integer.valueOf(1));
-    assertEquals(result.size(), 3);
+    runCountByValueTest(
+        () -> createNumericTestData(),
+        Collections.singletonMap(SALARY_FIELD, 10),
+        SALARY_FIELD,
+        result -> {
+          assertEquals(result.get(50000), Integer.valueOf(2));
+          assertEquals(result.get(60000), Integer.valueOf(1));
+          assertEquals(result.get(70000), Integer.valueOf(1));
+          assertEquals(result.size(), 3);
+        });
   }
 
   @Test(description = "Should handle empty result set")
   public void testEmptyResultSet() {
-    // Empty compute results
-    fieldTopKMap.put(JOB_TYPE_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Should return empty map
-    assertTrue(result.isEmpty());
+    runCountByValueTest(
+        () -> new HashMap<>(), // Empty compute results
+        Collections.singletonMap(JOB_TYPE_FIELD, 10),
+        JOB_TYPE_FIELD,
+        result -> {
+          // Should return empty map
+          assertTrue(result.isEmpty());
+        });
   }
 
   @Test(description = "Should handle single record")
   public void testSingleRecord() {
-    computeResults = createSingleRecordTestData();
-    fieldTopKMap.put(JOB_TYPE_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Should return single entry
-    assertEquals(result.size(), 1);
-    assertEquals(result.get("full-time"), Integer.valueOf(1));
+    runCountByValueTest(
+        () -> createSingleRecordTestData(),
+        Collections.singletonMap(JOB_TYPE_FIELD, 10),
+        JOB_TYPE_FIELD,
+        result -> {
+          // Should return single entry
+          assertEquals(result.size(), 1);
+          assertEquals(result.get("full-time"), Integer.valueOf(1));
+        });
   }
 
   @Test(description = "Should handle all null values")
   public void testAllNullValues() {
-    computeResults = createAllNullTestData();
-    fieldTopKMap.put(JOB_TYPE_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Should return only null entry
-    assertEquals(result.size(), 1);
-    assertEquals(result.get(null), Integer.valueOf(3));
+    runCountByValueTest(
+        () -> createAllNullTestData(),
+        Collections.singletonMap(JOB_TYPE_FIELD, 10),
+        JOB_TYPE_FIELD,
+        result -> {
+          // Should return only null entry
+          assertEquals(result.size(), 1);
+          assertEquals(result.get(null), Integer.valueOf(3));
+        });
   }
 
   @Test(description = "Should handle topK larger than distinct values")
   public void testTopKLargerThanDistinctValues() {
-    computeResults = createSimpleTestData();
-    fieldTopKMap.put(JOB_TYPE_FIELD, 100); // Much larger than distinct values
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Should return all distinct values
-    assertEquals(result.size(), 2);
-    assertEquals(result.get("full-time"), Integer.valueOf(3));
-    assertEquals(result.get("part-time"), Integer.valueOf(3));
+    runCountByValueTest(
+        () -> createSimpleTestData(),
+        Collections.singletonMap(JOB_TYPE_FIELD, 100), // Much larger than distinct values
+        JOB_TYPE_FIELD,
+        result -> {
+          // Should return all distinct values
+          assertEquals(result.size(), 2);
+          assertEquals(result.get("full-time"), Integer.valueOf(3));
+          assertEquals(result.get("part-time"), Integer.valueOf(3));
+        });
   }
 
   @Test(description = "Should handle field not in topK map")
   public void testFieldNotInTopKMap() {
-    computeResults = createSimpleTestData();
-    // Don't add field to fieldTopKMap
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(JOB_TYPE_FIELD);
-
-    // Should return all values (no limit applied)
-    assertEquals(result.size(), 2);
-    assertEquals(result.get("full-time"), Integer.valueOf(3));
-    assertEquals(result.get("part-time"), Integer.valueOf(3));
+    runCountByValueTest(
+        () -> createSimpleTestData(),
+        new HashMap<>(), // Don't add field to fieldTopKMap
+        JOB_TYPE_FIELD,
+        result -> {
+          // Should return empty map when field is not configured for aggregation
+          assertEquals(result.size(), 0);
+          assertTrue(result.isEmpty());
+        });
   }
 
   @Test(description = "Should handle mixed data types")
   public void testMixedDataTypes() {
-    computeResults = createMixedDataTypesTestData();
-    fieldTopKMap.put(AGE_FIELD, 10);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-
-    Map<String, Integer> result = response.getValueToCount(AGE_FIELD);
-
-    // Verify mixed types are handled correctly
-    assertEquals(result.get("25"), Integer.valueOf(2));
-    assertEquals(result.get("30"), Integer.valueOf(1));
-    assertEquals(result.get("35"), Integer.valueOf(1));
-    assertEquals(result.size(), 3);
+    runCountByValueTest(
+        () -> createMixedDataTypesTestData(),
+        Collections.singletonMap(AGE_FIELD, 10),
+        AGE_FIELD,
+        result -> {
+          assertEquals(result.get(25), Integer.valueOf(2));
+          assertEquals(result.get(30), Integer.valueOf(1));
+          assertEquals(result.get(35), Integer.valueOf(1));
+          assertEquals(result.size(), 3);
+        });
   }
 
-  // ========== Test Data Creation Methods ==========
+  @Test(description = "Should handle getBucketNameToCount throws exception")
+  public void testGetBucketNameToCountThrowsException() {
+    computeResults = createSimpleTestData();
+    fieldTopKMap.put(JOB_TYPE_FIELD, 10);
+
+    AvroComputeAggregationResponse response = new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
+
+    try {
+      response.getBucketNameToCount(JOB_TYPE_FIELD);
+      fail("Should have thrown IllegalArgumentException");
+    } catch (IllegalArgumentException e) {
+      assertTrue(e.getMessage().contains("No count-by-bucket aggregation was requested for field"));
+    }
+  }
+
+  @Test(description = "Should throw ClassCastException when type casting fails")
+  public void testTypeCastingThrowsException() {
+    // Create test data with String values but try to cast to Integer
+    Map<String, ComputeGenericRecord> data = new HashMap<>();
+
+    // Create records with String values
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    when(record1.get(AGE_FIELD)).thenReturn("25"); // String value
+    data.put("record1", record1);
+
+    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
+    when(record2.get(AGE_FIELD)).thenReturn("30"); // String value
+    data.put("record2", record2);
+
+    AvroComputeAggregationResponse response =
+        new AvroComputeAggregationResponse<>(data, Collections.singletonMap(AGE_FIELD, 10));
+
+    // This should throw ClassCastException because we're trying to cast String to Integer
+    // T key = (T) value; where T = Integer but value = String
+    try {
+      @SuppressWarnings("unchecked")
+      Map<Integer, Integer> result = (Map<Integer, Integer>) response.getValueToCount(AGE_FIELD);
+      boolean found25 = false, found30 = false;
+      for (Map.Entry<Integer, Integer> entry: result.entrySet()) {
+        Object key = entry.getKey();
+        Integer value = entry.getValue();
+        if ("25".equals(key.toString())) {
+          assertEquals(value, Integer.valueOf(1), "25 should be counted once");
+          found25 = true;
+        } else if ("30".equals(key.toString())) {
+          assertEquals(value, Integer.valueOf(1), "30 should be counted once");
+          found30 = true;
+        }
+      }
+      assertTrue(found25, "25 should be present");
+      assertTrue(found30, "30 should be present");
+      assertEquals(result.size(), 2, "Should have 2 distinct values");
+    } catch (ClassCastException e) {
+      assertTrue(true, "ClassCastException was thrown as expected");
+    }
+  }
+
+  // ========== countByBucket Tests ==========
+
+  @Test(description = "Should handle all IntPredicate methods correctly")
+  public void testIntPredicateMethods() {
+    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
+    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, com.linkedin.venice.client.store.predicate.Predicate> ageBuckets = new HashMap<>();
+
+    // Test all IntPredicate methods
+    ageBuckets.put("equal_25", com.linkedin.venice.client.store.predicate.IntPredicate.equalTo(25));
+    ageBuckets.put("greater_30", com.linkedin.venice.client.store.predicate.IntPredicate.greaterThan(30));
+    ageBuckets.put("greater_equal_30", com.linkedin.venice.client.store.predicate.IntPredicate.greaterOrEquals(30));
+    ageBuckets.put("less_30", com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(30));
+    ageBuckets.put("less_equal_30", com.linkedin.venice.client.store.predicate.IntPredicate.lowerOrEquals(30));
+    ageBuckets.put("any_of", com.linkedin.venice.client.store.predicate.IntPredicate.anyOf(25, 35, 45));
+
+    fieldBucketMap.put(AGE_FIELD, ageBuckets);
+
+    // Test data: 25, 30, 35, 40, 45
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    when(record1.get(AGE_FIELD)).thenReturn(25);
+    computeResults.put("key1", record1);
+
+    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
+    when(record2.get(AGE_FIELD)).thenReturn(30);
+    computeResults.put("key2", record2);
+
+    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
+    when(record3.get(AGE_FIELD)).thenReturn(35);
+    computeResults.put("key3", record3);
+
+    ComputeGenericRecord record4 = mock(ComputeGenericRecord.class);
+    when(record4.get(AGE_FIELD)).thenReturn(40);
+    computeResults.put("key4", record4);
+
+    ComputeGenericRecord record5 = mock(ComputeGenericRecord.class);
+    when(record5.get(AGE_FIELD)).thenReturn(45);
+    computeResults.put("key5", record5);
+
+    AvroComputeAggregationResponse response =
+        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+
+    Map<String, Integer> bucketCounts = response.getBucketNameToCount(AGE_FIELD);
+
+    assertEquals(bucketCounts.get("equal_25"), Integer.valueOf(1)); // 25
+    assertEquals(bucketCounts.get("greater_30"), Integer.valueOf(3)); // 35, 40, 45
+    assertEquals(bucketCounts.get("greater_equal_30"), Integer.valueOf(4)); // 30, 35, 40, 45
+    assertEquals(bucketCounts.get("less_30"), Integer.valueOf(1)); // 25
+    assertEquals(bucketCounts.get("less_equal_30"), Integer.valueOf(2)); // 25, 30
+    assertEquals(bucketCounts.get("any_of"), Integer.valueOf(3)); // 25, 35, 45
+  }
+
+  @Test(description = "Should handle all LongPredicate methods correctly")
+  public void testLongPredicateMethods() {
+    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
+    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, com.linkedin.venice.client.store.predicate.Predicate> salaryBuckets = new HashMap<>();
+
+    // Test all LongPredicate methods
+    salaryBuckets.put("equal_50000", com.linkedin.venice.client.store.predicate.LongPredicate.equalTo(50000L));
+    salaryBuckets.put("greater_50000", com.linkedin.venice.client.store.predicate.LongPredicate.greaterThan(50000L));
+    salaryBuckets
+        .put("greater_equal_50000", com.linkedin.venice.client.store.predicate.LongPredicate.greaterOrEquals(50000L));
+    salaryBuckets.put("less_50000", com.linkedin.venice.client.store.predicate.LongPredicate.lowerThan(50000L));
+    salaryBuckets
+        .put("less_equal_50000", com.linkedin.venice.client.store.predicate.LongPredicate.lowerOrEquals(50000L));
+    salaryBuckets.put("any_of", com.linkedin.venice.client.store.predicate.LongPredicate.anyOf(40000L, 50000L, 60000L));
+
+    fieldBucketMap.put(SALARY_FIELD, salaryBuckets);
+
+    // Test data: 40000L, 50000L, 60000L, 70000L
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    when(record1.get(SALARY_FIELD)).thenReturn(40000L);
+    computeResults.put("key1", record1);
+
+    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
+    when(record2.get(SALARY_FIELD)).thenReturn(50000L);
+    computeResults.put("key2", record2);
+
+    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
+    when(record3.get(SALARY_FIELD)).thenReturn(60000L);
+    computeResults.put("key3", record3);
+
+    ComputeGenericRecord record4 = mock(ComputeGenericRecord.class);
+    when(record4.get(SALARY_FIELD)).thenReturn(70000L);
+    computeResults.put("key4", record4);
+
+    AvroComputeAggregationResponse response =
+        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+
+    Map<String, Integer> bucketCounts = response.getBucketNameToCount(SALARY_FIELD);
+
+    assertEquals(bucketCounts.get("equal_50000"), Integer.valueOf(1)); // 50000L
+    assertEquals(bucketCounts.get("greater_50000"), Integer.valueOf(2)); // 60000L, 70000L
+    assertEquals(bucketCounts.get("greater_equal_50000"), Integer.valueOf(3)); // 50000L, 60000L, 70000L
+    assertEquals(bucketCounts.get("less_50000"), Integer.valueOf(1)); // 40000L
+    assertEquals(bucketCounts.get("less_equal_50000"), Integer.valueOf(2)); // 40000L, 50000L
+    assertEquals(bucketCounts.get("any_of"), Integer.valueOf(3)); // 40000L, 50000L, 60000L
+  }
+
+  @Test(description = "Should handle all FloatPredicate methods correctly")
+  public void testFloatPredicateMethods() {
+    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
+    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, com.linkedin.venice.client.store.predicate.Predicate> salaryBuckets = new HashMap<>();
+
+    // Test all FloatPredicate methods
+    salaryBuckets.put("equal_10000", com.linkedin.venice.client.store.predicate.FloatPredicate.equalTo(10000.0f, 0.1f));
+    salaryBuckets.put("greater_10000", com.linkedin.venice.client.store.predicate.FloatPredicate.greaterThan(10000.0f));
+    salaryBuckets.put(
+        "greater_equal_10000",
+        com.linkedin.venice.client.store.predicate.FloatPredicate.greaterOrEquals(10000.0f));
+    salaryBuckets.put("less_10000", com.linkedin.venice.client.store.predicate.FloatPredicate.lowerThan(10000.0f));
+    salaryBuckets
+        .put("less_equal_10000", com.linkedin.venice.client.store.predicate.FloatPredicate.lowerOrEquals(10000.0f));
+    salaryBuckets
+        .put("any_of", com.linkedin.venice.client.store.predicate.FloatPredicate.anyOf(5000.0f, 10000.0f, 15000.0f));
+
+    fieldBucketMap.put(SALARY_FIELD, salaryBuckets);
+
+    // Test data: 5000.0f, 10000.0f, 15000.0f, 20000.0f
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    when(record1.get(SALARY_FIELD)).thenReturn(5000.0f);
+    computeResults.put("key1", record1);
+
+    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
+    when(record2.get(SALARY_FIELD)).thenReturn(10000.0f);
+    computeResults.put("key2", record2);
+
+    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
+    when(record3.get(SALARY_FIELD)).thenReturn(15000.0f);
+    computeResults.put("key3", record3);
+
+    ComputeGenericRecord record4 = mock(ComputeGenericRecord.class);
+    when(record4.get(SALARY_FIELD)).thenReturn(20000.0f);
+    computeResults.put("key4", record4);
+
+    AvroComputeAggregationResponse response =
+        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+
+    Map<String, Integer> bucketCounts = response.getBucketNameToCount(SALARY_FIELD);
+
+    assertEquals(bucketCounts.get("equal_10000"), Integer.valueOf(1)); // 10000.0f
+    assertEquals(bucketCounts.get("greater_10000"), Integer.valueOf(2)); // 15000.0f, 20000.0f
+    assertEquals(bucketCounts.get("greater_equal_10000"), Integer.valueOf(3)); // 10000.0f, 15000.0f, 20000.0f
+    assertEquals(bucketCounts.get("less_10000"), Integer.valueOf(1)); // 5000.0f
+    assertEquals(bucketCounts.get("less_equal_10000"), Integer.valueOf(2)); // 5000.0f, 10000.0f
+    assertEquals(bucketCounts.get("any_of"), Integer.valueOf(3)); // 5000.0f, 10000.0f, 15000.0f
+  }
+
+  @Test(description = "Should handle all DoublePredicate methods correctly")
+  public void testDoublePredicateMethods() {
+    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
+    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, com.linkedin.venice.client.store.predicate.Predicate> salaryBuckets = new HashMap<>();
+
+    // Test all DoublePredicate methods
+    salaryBuckets.put("equal_10000", com.linkedin.venice.client.store.predicate.DoublePredicate.equalTo(10000.0, 0.1));
+    salaryBuckets.put("greater_10000", com.linkedin.venice.client.store.predicate.DoublePredicate.greaterThan(10000.0));
+    salaryBuckets.put(
+        "greater_equal_10000",
+        com.linkedin.venice.client.store.predicate.DoublePredicate.greaterOrEquals(10000.0));
+    salaryBuckets.put("less_10000", com.linkedin.venice.client.store.predicate.DoublePredicate.lowerThan(10000.0));
+    salaryBuckets
+        .put("less_equal_10000", com.linkedin.venice.client.store.predicate.DoublePredicate.lowerOrEquals(10000.0));
+    salaryBuckets
+        .put("any_of", com.linkedin.venice.client.store.predicate.DoublePredicate.anyOf(5000.0, 10000.0, 15000.0));
+
+    fieldBucketMap.put(SALARY_FIELD, salaryBuckets);
+
+    // Test data: 5000.0, 10000.0, 15000.0, 20000.0
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    when(record1.get(SALARY_FIELD)).thenReturn(5000.0);
+    computeResults.put("key1", record1);
+
+    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
+    when(record2.get(SALARY_FIELD)).thenReturn(10000.0);
+    computeResults.put("key2", record2);
+
+    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
+    when(record3.get(SALARY_FIELD)).thenReturn(15000.0);
+    computeResults.put("key3", record3);
+
+    ComputeGenericRecord record4 = mock(ComputeGenericRecord.class);
+    when(record4.get(SALARY_FIELD)).thenReturn(20000.0);
+    computeResults.put("key4", record4);
+
+    AvroComputeAggregationResponse response =
+        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+
+    Map<String, Integer> bucketCounts = response.getBucketNameToCount(SALARY_FIELD);
+
+    assertEquals(bucketCounts.get("equal_10000"), Integer.valueOf(1)); // 10000.0
+    assertEquals(bucketCounts.get("greater_10000"), Integer.valueOf(2)); // 15000.0, 20000.0
+    assertEquals(bucketCounts.get("greater_equal_10000"), Integer.valueOf(3)); // 10000.0, 15000.0, 20000.0
+    assertEquals(bucketCounts.get("less_10000"), Integer.valueOf(1)); // 5000.0
+    assertEquals(bucketCounts.get("less_equal_10000"), Integer.valueOf(2)); // 5000.0, 10000.0
+    assertEquals(bucketCounts.get("any_of"), Integer.valueOf(3)); // 5000.0, 10000.0, 15000.0
+  }
+
+  @Test(description = "Should handle String predicate methods correctly")
+  public void testStringPredicateMethods() {
+    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
+    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, com.linkedin.venice.client.store.predicate.Predicate> jobTypeBuckets = new HashMap<>();
+
+    // Test String predicate methods
+    jobTypeBuckets.put("equal_engineer", com.linkedin.venice.client.store.predicate.Predicate.equalTo("engineer"));
+    jobTypeBuckets
+        .put("any_of", com.linkedin.venice.client.store.predicate.Predicate.anyOf("engineer", "manager", "designer"));
+
+    fieldBucketMap.put(JOB_TYPE_FIELD, jobTypeBuckets);
+
+    // Test data: "engineer", "manager", "designer", "analyst"
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    when(record1.get(JOB_TYPE_FIELD)).thenReturn("engineer");
+    computeResults.put("key1", record1);
+
+    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
+    when(record2.get(JOB_TYPE_FIELD)).thenReturn("manager");
+    computeResults.put("key2", record2);
+
+    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
+    when(record3.get(JOB_TYPE_FIELD)).thenReturn("designer");
+    computeResults.put("key3", record3);
+
+    ComputeGenericRecord record4 = mock(ComputeGenericRecord.class);
+    when(record4.get(JOB_TYPE_FIELD)).thenReturn("analyst");
+    computeResults.put("key4", record4);
+
+    AvroComputeAggregationResponse response =
+        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+
+    Map<String, Integer> bucketCounts = response.getBucketNameToCount(JOB_TYPE_FIELD);
+
+    assertEquals(bucketCounts.get("equal_engineer"), Integer.valueOf(1)); // "engineer"
+    assertEquals(bucketCounts.get("any_of"), Integer.valueOf(3)); // "engineer", "manager", "designer"
+  }
+
+  @Test(description = "Should handle complex predicate combinations")
+  public void testComplexPredicateCombinations() {
+    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
+    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, com.linkedin.venice.client.store.predicate.Predicate> ageBuckets = new HashMap<>();
+
+    // Test complex combinations
+    ageBuckets.put(
+        "and_combination",
+        com.linkedin.venice.client.store.predicate.Predicate.and(
+            com.linkedin.venice.client.store.predicate.IntPredicate.greaterThan(20),
+            com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(50)));
+    ageBuckets.put(
+        "or_combination",
+        com.linkedin.venice.client.store.predicate.Predicate.or(
+            com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(30),
+            com.linkedin.venice.client.store.predicate.IntPredicate.greaterThan(50)));
+    ageBuckets.put(
+        "nested_combination",
+        com.linkedin.venice.client.store.predicate.Predicate.and(
+            com.linkedin.venice.client.store.predicate.IntPredicate.greaterThan(20),
+            com.linkedin.venice.client.store.predicate.Predicate.or(
+                com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(30),
+                com.linkedin.venice.client.store.predicate.IntPredicate.greaterThan(50))));
+
+    fieldBucketMap.put(AGE_FIELD, ageBuckets);
+
+    // Test data: 25, 35, 55, 15, 60
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    when(record1.get(AGE_FIELD)).thenReturn(25);
+    computeResults.put("key1", record1);
+
+    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
+    when(record2.get(AGE_FIELD)).thenReturn(35);
+    computeResults.put("key2", record2);
+
+    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
+    when(record3.get(AGE_FIELD)).thenReturn(55);
+    computeResults.put("key3", record3);
+
+    ComputeGenericRecord record4 = mock(ComputeGenericRecord.class);
+    when(record4.get(AGE_FIELD)).thenReturn(15);
+    computeResults.put("key4", record4);
+
+    ComputeGenericRecord record5 = mock(ComputeGenericRecord.class);
+    when(record5.get(AGE_FIELD)).thenReturn(60);
+    computeResults.put("key5", record5);
+
+    AvroComputeAggregationResponse response =
+        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+
+    Map<String, Integer> bucketCounts = response.getBucketNameToCount(AGE_FIELD);
+
+    assertEquals(bucketCounts.get("and_combination"), Integer.valueOf(2)); // 25, 35
+    assertEquals(bucketCounts.get("or_combination"), Integer.valueOf(4)); // 25, 55, 15, 60
+    assertEquals(bucketCounts.get("nested_combination"), Integer.valueOf(3)); // 25, 55, 60
+  }
+
+  @Test(description = "Should handle edge cases and boundary conditions")
+  public void testEdgeCasesAndBoundaryConditions() {
+    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
+    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, com.linkedin.venice.client.store.predicate.Predicate> ageBuckets = new HashMap<>();
+
+    // Test edge cases
+    ageBuckets.put("zero", com.linkedin.venice.client.store.predicate.IntPredicate.equalTo(0));
+    ageBuckets.put("negative", com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(0));
+    ageBuckets.put("max_value", com.linkedin.venice.client.store.predicate.IntPredicate.equalTo(Integer.MAX_VALUE));
+    ageBuckets.put("min_value", com.linkedin.venice.client.store.predicate.IntPredicate.equalTo(Integer.MIN_VALUE));
+
+    fieldBucketMap.put(AGE_FIELD, ageBuckets);
+
+    // Test data: 0, -5, Integer.MAX_VALUE, Integer.MIN_VALUE
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    when(record1.get(AGE_FIELD)).thenReturn(0);
+    computeResults.put("key1", record1);
+
+    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
+    when(record2.get(AGE_FIELD)).thenReturn(-5);
+    computeResults.put("key2", record2);
+
+    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
+    when(record3.get(AGE_FIELD)).thenReturn(Integer.MAX_VALUE);
+    computeResults.put("key3", record3);
+
+    ComputeGenericRecord record4 = mock(ComputeGenericRecord.class);
+    when(record4.get(AGE_FIELD)).thenReturn(Integer.MIN_VALUE);
+    computeResults.put("key4", record4);
+
+    AvroComputeAggregationResponse response =
+        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+
+    Map<String, Integer> bucketCounts = response.getBucketNameToCount(AGE_FIELD);
+
+    assertEquals(bucketCounts.get("zero"), Integer.valueOf(1));
+    assertEquals(bucketCounts.get("negative"), Integer.valueOf(2)); // -5, Integer.MIN_VALUE
+    assertEquals(bucketCounts.get("max_value"), Integer.valueOf(1));
+    assertEquals(bucketCounts.get("min_value"), Integer.valueOf(1));
+  }
+
+  @Test(description = "Should handle null values and empty results")
+  public void testNullValuesAndEmptyResults() {
+    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
+    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, com.linkedin.venice.client.store.predicate.Predicate> ageBuckets = new HashMap<>();
+
+    ageBuckets.put("young", com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(30));
+    ageBuckets.put("senior", com.linkedin.venice.client.store.predicate.IntPredicate.greaterOrEquals(30));
+
+    fieldBucketMap.put(AGE_FIELD, ageBuckets);
+
+    // Test with null values
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    when(record1.get(AGE_FIELD)).thenReturn(null);
+    computeResults.put("key1", record1);
+
+    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
+    when(record2.get(AGE_FIELD)).thenReturn(25);
+    computeResults.put("key2", record2);
+
+    AvroComputeAggregationResponse response =
+        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+
+    Map<String, Integer> bucketCounts = response.getBucketNameToCount(AGE_FIELD);
+
+    assertEquals(bucketCounts.get("young"), Integer.valueOf(1));
+    assertEquals(bucketCounts.get("senior"), Integer.valueOf(0));
+
+    // Test empty result set
+    AvroComputeAggregationResponse emptyResponse =
+        new AvroComputeAggregationResponse<>(new HashMap<>(), new HashMap<>(), fieldBucketMap);
+
+    Map<String, Integer> emptyBucketCounts = emptyResponse.getBucketNameToCount(AGE_FIELD);
+
+    assertEquals(emptyBucketCounts.get("young"), Integer.valueOf(0));
+    assertEquals(emptyBucketCounts.get("senior"), Integer.valueOf(0));
+  }
+
+  @Test(description = "Should handle field not in bucket map")
+  public void testFieldNotInBucketMap() {
+    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
+    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
+    // Don't add any buckets for AGE_FIELD
+
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    when(record1.get(AGE_FIELD)).thenReturn(25);
+    computeResults.put("key1", record1);
+
+    AvroComputeAggregationResponse response =
+        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+
+    expectThrows(IllegalArgumentException.class, () -> response.getBucketNameToCount(AGE_FIELD));
+  }
+
+  @Test(description = "Should handle mixed data types in bucket counting")
+  public void testMixedDataTypesInBucketCounting() {
+    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
+    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, com.linkedin.venice.client.store.predicate.Predicate> ageBuckets = new HashMap<>();
+    ageBuckets.put("young", com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(30));
+    ageBuckets.put("senior", com.linkedin.venice.client.store.predicate.IntPredicate.greaterOrEquals(30));
+    fieldBucketMap.put(AGE_FIELD, ageBuckets);
+
+    // Test with different data types
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    when(record1.get(AGE_FIELD)).thenReturn(25); // Integer
+    computeResults.put("key1", record1);
+
+    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
+    when(record2.get(AGE_FIELD)).thenReturn(35L); // Long
+    computeResults.put("key2", record2);
+
+    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
+    when(record3.get(AGE_FIELD)).thenReturn("40"); // String
+    computeResults.put("key3", record3);
+
+    AvroComputeAggregationResponse response =
+        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+
+    Map<String, Integer> bucketCounts = response.getBucketNameToCount(AGE_FIELD);
+
+    assertEquals(bucketCounts.get("young"), Integer.valueOf(1));
+    assertEquals(bucketCounts.get("senior"), Integer.valueOf(2));
+  }
 
   private Map<String, ComputeGenericRecord> createSimpleTestData() {
     Map<String, ComputeGenericRecord> data = new HashMap<>();
@@ -408,235 +862,5 @@ public class AvroComputeAggregationResponseTest {
     data.put("job4", job4);
 
     return data;
-  }
-
-  // ========== Bucket Aggregation Tests ==========
-
-  @Test(description = "Should handle IntPredicate correctly")
-  public void testIntPredicateHandling() {
-    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, Predicate> ageBuckets = new HashMap<>();
-    ageBuckets.put("young", IntPredicate.lowerThan(30));
-    ageBuckets.put("mid", Predicate.and(IntPredicate.greaterOrEquals(30), IntPredicate.lowerThan(50)));
-    ageBuckets.put("senior", IntPredicate.greaterOrEquals(50));
-    fieldBucketMap.put(AGE_FIELD, ageBuckets);
-    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
-    when(record1.get(AGE_FIELD)).thenReturn(25); // young
-    computeResults.put("key1", record1);
-    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
-    when(record2.get(AGE_FIELD)).thenReturn(35); // mid
-    computeResults.put("key2", record2);
-    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
-    when(record3.get(AGE_FIELD)).thenReturn(55); // senior
-    computeResults.put("key3", record3);
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
-    Map<String, Integer> bucketCounts = response.getBucketNameToCount(AGE_FIELD);
-    assertEquals(bucketCounts.get("young"), Integer.valueOf(1));
-    assertEquals(bucketCounts.get("mid"), Integer.valueOf(1));
-    assertEquals(bucketCounts.get("senior"), Integer.valueOf(1));
-  }
-
-  @Test(description = "Should handle LongPredicate correctly")
-  public void testLongPredicateHandling() {
-    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, Predicate> salaryBuckets = new HashMap<>();
-    salaryBuckets.put("low", LongPredicate.lowerThan(50000L));
-    salaryBuckets.put("high", LongPredicate.greaterOrEquals(50000L));
-    fieldBucketMap.put(SALARY_FIELD, salaryBuckets);
-    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
-    when(record1.get(SALARY_FIELD)).thenReturn(40000L); // low
-    computeResults.put("key1", record1);
-    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
-    when(record2.get(SALARY_FIELD)).thenReturn(60000L); // high
-    computeResults.put("key2", record2);
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
-    Map<String, Integer> bucketCounts = response.getBucketNameToCount(SALARY_FIELD);
-    assertEquals(bucketCounts.get("low"), Integer.valueOf(1));
-    assertEquals(bucketCounts.get("high"), Integer.valueOf(1));
-  }
-
-  @Test(description = "Should handle FloatPredicate correctly")
-  public void testFloatPredicateHandling() {
-    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, Predicate> salaryBuckets = new HashMap<>();
-    salaryBuckets.put("cheap", FloatPredicate.lowerThan(10000.0f));
-    salaryBuckets.put("expensive", FloatPredicate.greaterOrEquals(10000.0f));
-    fieldBucketMap.put(SALARY_FIELD, salaryBuckets);
-    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
-    when(record1.get(SALARY_FIELD)).thenReturn(5000.0f); // cheap
-    computeResults.put("key1", record1);
-    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
-    when(record2.get(SALARY_FIELD)).thenReturn(20000.0f); // expensive
-    computeResults.put("key2", record2);
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
-    Map<String, Integer> bucketCounts = response.getBucketNameToCount(SALARY_FIELD);
-    assertEquals(bucketCounts.get("cheap"), Integer.valueOf(1));
-    assertEquals(bucketCounts.get("expensive"), Integer.valueOf(1));
-  }
-
-  @Test(description = "Should handle DoublePredicate correctly")
-  public void testDoublePredicateHandling() {
-    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, Predicate> salaryBuckets = new HashMap<>();
-    salaryBuckets.put("low", DoublePredicate.lowerThan(10000.0));
-    salaryBuckets.put("high", DoublePredicate.greaterOrEquals(10000.0));
-    fieldBucketMap.put(SALARY_FIELD, salaryBuckets);
-    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
-    when(record1.get(SALARY_FIELD)).thenReturn(5000.0); // low
-    computeResults.put("key1", record1);
-    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
-    when(record2.get(SALARY_FIELD)).thenReturn(20000.0); // high
-    computeResults.put("key2", record2);
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
-    Map<String, Integer> bucketCounts = response.getBucketNameToCount(SALARY_FIELD);
-    assertEquals(bucketCounts.get("low"), Integer.valueOf(1));
-    assertEquals(bucketCounts.get("high"), Integer.valueOf(1));
-  }
-
-  @Test(description = "Should handle StringPredicate correctly")
-  public void testStringPredicateHandling() {
-    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, Predicate> jobTypeBuckets = new HashMap<>();
-    jobTypeBuckets.put("engineer", Predicate.equalTo("engineer"));
-    jobTypeBuckets.put("manager", Predicate.equalTo("manager"));
-    fieldBucketMap.put(JOB_TYPE_FIELD, jobTypeBuckets);
-    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
-    when(record1.get(JOB_TYPE_FIELD)).thenReturn("engineer");
-    computeResults.put("key1", record1);
-    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
-    when(record2.get(JOB_TYPE_FIELD)).thenReturn("manager");
-    computeResults.put("key2", record2);
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
-    Map<String, Integer> bucketCounts = response.getBucketNameToCount(JOB_TYPE_FIELD);
-    assertEquals(bucketCounts.get("engineer"), Integer.valueOf(1));
-    assertEquals(bucketCounts.get("manager"), Integer.valueOf(1));
-  }
-
-  // ========== Additional Bucket Counting Tests ==========
-
-  @Test(description = "Should handle mixed data types in bucket counting")
-  public void testMixedDataTypesInBucketCounting() {
-    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
-
-    // Setup mixed bucket predicates
-    Map<String, Predicate> ageBuckets = new HashMap<>();
-    ageBuckets.put("young", IntPredicate.lowerThan(30));
-    fieldBucketMap.put(AGE_FIELD, ageBuckets);
-
-    Map<String, Predicate> salaryBuckets = new HashMap<>();
-    salaryBuckets.put("high", FloatPredicate.greaterThan(80000.0f));
-    fieldBucketMap.put(SALARY_FIELD, salaryBuckets);
-
-    Map<String, Predicate> scoreBuckets = new HashMap<>();
-    scoreBuckets.put("excellent", DoublePredicate.greaterThan(90.0));
-    fieldBucketMap.put(SCORE_FIELD, scoreBuckets);
-
-    // Create test records with mixed data types
-    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
-    when(record1.get(AGE_FIELD)).thenReturn(25); // young
-    when(record1.get(SALARY_FIELD)).thenReturn(90000.0f); // high
-    when(record1.get(SCORE_FIELD)).thenReturn(95.5); // excellent
-    computeResults.put("key1", record1);
-
-    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
-    when(record2.get(AGE_FIELD)).thenReturn(35); // not young
-    when(record2.get(SALARY_FIELD)).thenReturn(70000.0f); // not high
-    when(record2.get(SCORE_FIELD)).thenReturn(85.0); // not excellent
-    computeResults.put("key2", record2);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
-
-    // Test all bucket types
-    Map<String, Integer> ageBucketCounts = response.getBucketNameToCount(AGE_FIELD);
-    Map<String, Integer> salaryBucketCounts = response.getBucketNameToCount(SALARY_FIELD);
-    Map<String, Integer> scoreBucketCounts = response.getBucketNameToCount(SCORE_FIELD);
-
-    // Expected counts
-    assertEquals(ageBucketCounts.get("young"), Integer.valueOf(1));
-    assertEquals(salaryBucketCounts.get("high"), Integer.valueOf(1));
-    assertEquals(scoreBucketCounts.get("excellent"), Integer.valueOf(1));
-  }
-
-  @Test(description = "Should handle overlapping bucket predicates")
-  public void testOverlappingBucketPredicates() {
-    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
-
-    // Setup overlapping bucket predicates
-    Map<String, Predicate> ageBuckets = new HashMap<>();
-    ageBuckets.put("young", IntPredicate.lowerThan(50)); // 0-49
-    ageBuckets.put("middle", IntPredicate.greaterThan(30)); // 31+
-    // Note: ages 31-49 will match both buckets
-    fieldBucketMap.put(AGE_FIELD, ageBuckets);
-
-    // Create test records
-    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
-    when(record1.get(AGE_FIELD)).thenReturn(25); // only young
-    computeResults.put("key1", record1);
-
-    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
-    when(record2.get(AGE_FIELD)).thenReturn(40); // both young and middle
-    computeResults.put("key2", record2);
-
-    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
-    when(record3.get(AGE_FIELD)).thenReturn(60); // only middle
-    computeResults.put("key3", record3);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
-
-    Map<String, Integer> bucketCounts = response.getBucketNameToCount(AGE_FIELD);
-
-    // Expected counts: young=2 (25, 40), middle=2 (40, 60)
-    assertEquals(bucketCounts.get("young"), Integer.valueOf(2));
-    assertEquals(bucketCounts.get("middle"), Integer.valueOf(2));
-  }
-
-  @Test(description = "Should handle edge cases for bucket counting")
-  public void testEdgeCasesForBucketCounting() {
-    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
-
-    // Setup edge case bucket predicates
-    Map<String, Predicate> edgeBuckets = new HashMap<>();
-    edgeBuckets.put("zero", IntPredicate.equalTo(0));
-    edgeBuckets.put("negative", IntPredicate.lowerThan(0));
-    edgeBuckets.put("max", IntPredicate.equalTo(Integer.MAX_VALUE));
-    fieldBucketMap.put(AGE_FIELD, edgeBuckets);
-
-    // Create test records with edge values
-    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
-    when(record1.get(AGE_FIELD)).thenReturn(0); // zero
-    computeResults.put("key1", record1);
-
-    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
-    when(record2.get(AGE_FIELD)).thenReturn(-5); // negative
-    computeResults.put("key2", record2);
-
-    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
-    when(record3.get(AGE_FIELD)).thenReturn(Integer.MAX_VALUE); // max
-    computeResults.put("key3", record3);
-
-    AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
-
-    Map<String, Integer> bucketCounts = response.getBucketNameToCount(AGE_FIELD);
-
-    // Expected counts: zero=1, negative=1, max=1
-    assertEquals(bucketCounts.get("zero"), Integer.valueOf(1));
-    assertEquals(bucketCounts.get("negative"), Integer.valueOf(1));
-    assertEquals(bucketCounts.get("max"), Integer.valueOf(1));
   }
 }

@@ -36,24 +36,30 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
   }
 
   @Override
-  public Map<String, Integer> getValueToCount(String field) {
-    Map<String, Integer> valueToCount = new HashMap<>();
+  public <T> Map<T, Integer> getValueToCount(String field) {
+    // Quick check: if field doesn't exist in fieldTopKMap, return empty map
+    if (!fieldTopKMap.containsKey(field)) {
+      return new LinkedHashMap<>();
+    }
+
+    Map<T, Integer> valueToCount = new HashMap<>();
 
     for (ComputeGenericRecord record: computeResults.values()) {
       Object value = record.get(field);
       if (value instanceof Utf8) {
         value = value.toString();
       }
-      String key = (value == null) ? null : value.toString();
+      @SuppressWarnings("unchecked")
+      T key = (T) value;
       valueToCount.merge(key, 1, Integer::sum);
     }
 
     // Sort by count in descending order
-    Map<String, Integer> sortedMap = new LinkedHashMap<>();
+    Map<T, Integer> sortedMap = new LinkedHashMap<>();
     valueToCount.entrySet()
         .stream()
-        .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-        .limit(fieldTopKMap.getOrDefault(field, Integer.MAX_VALUE))
+        .sorted(Map.Entry.<T, Integer>comparingByValue().reversed())
+        .limit(fieldTopKMap.get(field))
         .forEach(entry -> sortedMap.put(entry.getKey(), entry.getValue()));
 
     return sortedMap;
@@ -61,6 +67,7 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
 
   @Override
   public Map<String, Integer> getBucketNameToCount(String fieldName) {
+    // Quick check: if field doesn't exist in fieldBucketMap, throw exception
     Map<String, Predicate> buckets = fieldBucketMap.get(fieldName);
     if (buckets == null || buckets.isEmpty()) {
       throw new IllegalArgumentException("No count-by-bucket aggregation was requested for field: " + fieldName);
@@ -72,7 +79,7 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
       bucketCounts.put(bucketName, 0);
     }
 
-    // Process all records
+    // Process all records and count bucket matches
     for (Map.Entry<K, ComputeGenericRecord> entry: computeResults.entrySet()) {
       ComputeGenericRecord record = entry.getValue();
 
