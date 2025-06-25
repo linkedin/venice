@@ -821,7 +821,7 @@ public class ReadComputeValidationTest {
         // average: <=80.0 -> 78.5 (1)
         // equal_85_5: ==85.5 -> 85.5 (1)
         // lower_or_equal_92: <=92.0 -> 85.5, 78.5, 88.0, 92.0 (4)
-        // any_of_85_5_92_0: 85.5, 92.0 (2)
+        // any_of_78_5_92_0: 78.5, 92.0 (2)
         Assert
             .assertEquals(scoreBucketCounts.get("excellent"), Integer.valueOf(1), "Excellent score count should be 1");
         Assert.assertEquals(scoreBucketCounts.get("good"), Integer.valueOf(3), "Good score count should be 3");
@@ -835,9 +835,9 @@ public class ReadComputeValidationTest {
             Integer.valueOf(4),
             "Lower or equal 92.0 score count should be 4");
         Assert.assertEquals(
-            scoreBucketCounts.get("any_of_85_5_92_0"),
+            scoreBucketCounts.get("any_of_78_5_92_0"),
             Integer.valueOf(2),
-            "Any of 85.5,92.0 score count should be 2");
+            "Any of 78.5,92.0 score count should be 2");
 
         // Test countGroupByBucket on joinDate field with LongPredicate - all methods
         Map<String, com.linkedin.venice.client.store.predicate.Predicate<Long>> joinDateBuckets = new HashMap<>();
@@ -876,8 +876,8 @@ public class ReadComputeValidationTest {
         // recent: >=1640995200000L -> 1640995200000L, 1672531200000L, 1704067200000L (3)
         // very_recent: >1672531200000L -> 1704067200000L (1)
         // equal_2022: ==1640995200000L -> 1640995200000L (1)
-        // lower_or_equal_2023: <=1672531200000L -> 1609459200000L, 1640995200000L, 1672531200000L (3)
-        // any_of_2021_2024: 1609459200000L, 1704067200000L (2)
+        // lower_or_equal_1640995200000: <=1640995200000L -> 1609459200000L, 1640995200000L (2)
+        // any_of_1609459200000_1704067200000: 1609459200000L, 1704067200000L (2)
         Assert.assertEquals(joinDateBucketCounts.get("early"), Integer.valueOf(1), "Early join date count should be 1");
         Assert
             .assertEquals(joinDateBucketCounts.get("recent"), Integer.valueOf(3), "Recent join date count should be 3");
@@ -890,13 +890,13 @@ public class ReadComputeValidationTest {
             Integer.valueOf(1),
             "Equal 2022 join date count should be 1");
         Assert.assertEquals(
-            joinDateBucketCounts.get("lower_or_equal_2023"),
-            Integer.valueOf(3),
-            "Lower or equal 2023 join date count should be 3");
-        Assert.assertEquals(
-            joinDateBucketCounts.get("any_of_2021_2024"),
+            joinDateBucketCounts.get("lower_or_equal_1640995200000"),
             Integer.valueOf(2),
-            "Any of 2021,2024 join date count should be 2");
+            "Lower or equal 1640995200000 join date count should be 2");
+        Assert.assertEquals(
+            joinDateBucketCounts.get("any_of_1609459200000_1704067200000"),
+            Integer.valueOf(2),
+            "Any of 1609459200000,1704067200000 join date count should be 2");
 
         // Test countGroupByBucket on department field with StringPredicate - all methods
         Map<String, com.linkedin.venice.client.store.predicate.Predicate<String>> departmentBuckets = new HashMap<>();
