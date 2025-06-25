@@ -196,8 +196,10 @@ public class VersionBackendTest {
     verify(recordTransformerConfig).setStartConsumptionLatchCount(3);
 
     clearInvocations(recordTransformerConfig);
+    partitionList = Arrays.asList(2, 3, 4);
+    complementSet = ComplementSet.newSet(partitionList);
     versionBackend.subscribe(complementSet);
     // Shouldn't try to start consumption on already subscribed partitions
-    verify(recordTransformerConfig).setStartConsumptionLatchCount(0);
+    verify(recordTransformerConfig).setStartConsumptionLatchCount(2);
   }
 }
