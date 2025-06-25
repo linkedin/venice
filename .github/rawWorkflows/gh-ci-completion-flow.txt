@@ -1,8 +1,6 @@
   $FlowName:
     strategy:
       fail-fast: false
-      matrix:
-        jdk: [17]
     runs-on: ubuntu-latest
     needs: $Dependency
     if: $Conditional
