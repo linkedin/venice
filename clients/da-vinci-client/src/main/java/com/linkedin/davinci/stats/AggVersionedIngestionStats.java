@@ -90,12 +90,10 @@ public class AggVersionedIngestionStats
       int version,
       int regionId,
       long bytesConsumed,
-      long offsetConsumed,
       long currentTimeMs) {
     recordVersionedAndTotalStat(storeName, version, stat -> {
       stat.recordRegionHybridBytesConsumed(regionId, bytesConsumed, currentTimeMs);
       stat.recordRegionHybridRecordsConsumed(regionId, 1, currentTimeMs);
-      stat.recordRegionHybridAvgConsumedOffset(regionId, offsetConsumed, currentTimeMs);
     });
   }
 
