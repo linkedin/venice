@@ -35,13 +35,11 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
-import com.linkedin.venice.writer.CompletableFutureCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
@@ -354,7 +352,6 @@ public class VeniceSystemProducerTest {
     doReturn(veniceWriter).when(mockProducer).getVeniceWriter();
 
     CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-    PubSubProducerCallback callback = new CompletableFutureCallback(completableFuture);
     byte[] key = "a".getBytes();
     byte[] value = "1".getBytes();
 
