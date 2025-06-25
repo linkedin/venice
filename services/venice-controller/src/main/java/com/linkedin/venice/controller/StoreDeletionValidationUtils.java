@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.views.MaterializedView;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -37,8 +38,8 @@ public class StoreDeletionValidationUtils {
    * 1. Store configuration in ZooKeeper
    * 2. Store metadata in store repository
    * 3. System stores (META_STORE and DAVINCI_PUSH_STATUS_STORE)
-   * 4. Kafka topics (version, RT, and system store topics)
-   * 5. Helix resources
+   * 4. Helix resources
+   * 5. Kafka topics (version, RT, and system store topics)
    *
    * @param admin the Venice admin instance for performing validation operations
    * @param clusterName the name of the cluster to check
@@ -64,13 +65,13 @@ public class StoreDeletionValidationUtils {
         return result;
       }
 
-      // 4. Check Kafka topics: version topics, RT topics, and system store topics
-      if (checkKafkaTopics(admin, result, clusterName, storeName)) {
+      // 4. Check Helix resources for main store
+      if (checkMainStoreHelixResources(admin, result, clusterName, storeName)) {
         return result;
       }
 
-      // 5. Check Helix resources for main store
-      if (checkMainStoreHelixResources(admin, result, clusterName, storeName)) {
+      // 5. Check Kafka topics: version topics, RT topics, and system store topics
+      if (checkForAnyExistingTopicResources(admin, result, clusterName, storeName)) {
         return result;
       }
 
@@ -170,7 +171,7 @@ public class StoreDeletionValidationUtils {
   /**
    * Checks if Kafka topics related to the store still exist.
    */
-  private static boolean checkKafkaTopics(
+  private static boolean checkForAnyExistingTopicResources(
       Admin admin,
       StoreDeletedValidation result,
       String clusterName,
@@ -305,13 +306,14 @@ public class StoreDeletionValidationUtils {
       String storeName,
       List<VeniceSystemStoreType> systemStoreTypes) {
     // Check for direct store prefixes (version topics, RT topics)
-    if (topicName.startsWith(storeName + "_v") || topicName.equals(storeName + "_rt")
-        || topicName.startsWith(storeName + "_rt_v")) {
+    if (topicName.startsWith(storeName + "_v") || topicName.startsWith(storeName + "_rt")) {
       return true;
     }
 
-    // Check for view store topics
-    if (topicName.contains("_view_") && topicName.startsWith(storeName)) {
+    // Check for materialized view topics
+    // Format: Version.composeKafkaTopic(storeName, version) + VIEW_NAME_SEPARATOR + viewName +
+    // MATERIALIZED_VIEW_TOPIC_SUFFIX
+    if (topicName.startsWith(storeName + "_v") && topicName.endsWith(MaterializedView.MATERIALIZED_VIEW_TOPIC_SUFFIX)) {
       return true;
     }
 

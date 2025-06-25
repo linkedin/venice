@@ -168,6 +168,7 @@ import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.SchemaUsageResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
+import com.linkedin.venice.controllerapi.StoreDeletedValidationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
@@ -5943,10 +5944,49 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * Validates that a store has been completely deleted from all venice clusters cross-regionally
+   * 
    * @see Admin#validateStoreDeleted(String, String)
    */
   @Override
   public StoreDeletedValidation validateStoreDeleted(String clusterName, String storeName) {
-    return getVeniceHelixAdmin().validateStoreDeleted(clusterName, storeName);
+    Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+
+    // Collect validation results from all child data centers
+    List<String> errors = new ArrayList<>();
+    List<String> notDeletedDetails = new ArrayList<>();
+
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      String regionName = entry.getKey();
+      ControllerClient controllerClient = entry.getValue();
+      try {
+        // Make the API call to the child controller
+        StoreDeletedValidationResponse response = controllerClient.validateStoreDeleted(storeName);
+        if (response.isError()) {
+          errors.add("Failed to validate store deletion in region " + regionName + ": " + response.getError());
+        } else {
+          if (!response.isStoreDeleted()) {
+            notDeletedDetails.add(regionName + ": " + response.getReason());
+          }
+        }
+      } catch (Exception e) {
+        errors.add("Exception while validating store deletion in region " + regionName + ": " + e.getMessage());
+      }
+    }
+
+    // If there were errors communicating with child controllers, throw exception
+    if (!errors.isEmpty()) {
+      throw new VeniceException(
+          "Failed to validate store deletion in some child data centers: " + String.join("; ", errors));
+    }
+
+    // Create result based on child validations
+    StoreDeletedValidation result = new StoreDeletedValidation(clusterName, storeName);
+    if (!notDeletedDetails.isEmpty()) {
+      result.setStoreNotDeleted(String.join("; ", notDeletedDetails));
+    }
+
+    return result;
   }
+
 }
