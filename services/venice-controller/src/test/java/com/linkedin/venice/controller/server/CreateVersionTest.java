@@ -149,7 +149,7 @@ public class CreateVersionTest {
     /**
      * Build a CreateVersion route.
      */
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), checkReadMethod, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), checkReadMethod);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     // Not an allowlist user.
@@ -215,7 +215,7 @@ public class CreateVersionTest {
     assertTrue(store.isIncrementalPushEnabled());
 
     // Build a CreateVersion route.
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
     doReturn(Boolean.toString(pushToSeparateTopicEnabled)).when(request)
         .queryParamOrDefault(SEPARATE_REAL_TIME_TOPIC_ENABLED, "false");
@@ -274,7 +274,7 @@ public class CreateVersionTest {
     assertTrue(store.isIncrementalPushEnabled());
 
     // Build a CreateVersion route.
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     Object result = createVersionRoute.handle(request, response);
@@ -329,7 +329,7 @@ public class CreateVersionTest {
     assertTrue(admin.isParent());
 
     // Build a CreateVersion route.
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
     Object result = createVersionRoute.handle(request, response);
     assertNotNull(result);
@@ -515,7 +515,7 @@ public class CreateVersionTest {
 
   @Test
   public void testValidatePushTypeForIncrementalPushPushType() {
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
 
     // push type is INCREMENTAL and store is not hybrid
     Store store1 = mock(Store.class);
@@ -613,7 +613,7 @@ public class CreateVersionTest {
 
   @Test
   public void testVerifyAndConfigurePartitionerSettings() {
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
 
     VersionCreationResponse response = new VersionCreationResponse();
     PartitionerConfig storePartitionerConfig = mock(PartitionerConfig.class);
@@ -662,7 +662,7 @@ public class CreateVersionTest {
 
   @Test
   public void testDetermineResponseTopic() {
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
 
     String storeName = "test_store";
     String vtName = Version.composeKafkaTopic(storeName, 1);
@@ -738,7 +738,7 @@ public class CreateVersionTest {
 
   @Test
   public void testGetCompressionStrategy() {
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
 
     // Test Case 1: Real-time topic returns NO_OP
     Version mockVersion1 = mock(Version.class);
@@ -756,7 +756,7 @@ public class CreateVersionTest {
 
   @Test
   public void testConfigureSourceFabric() {
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
 
     // Test Case 1: Native replication enabled and non-incremental push type
     Admin mockAdmin1 = mock(Admin.class);
@@ -829,7 +829,7 @@ public class CreateVersionTest {
     VersionCreationResponse response = new VersionCreationResponse();
 
     when(admin.isParent()).thenReturn(true);
-    CreateVersion createVersionNotOk = new CreateVersion(true, Optional.of(accessClient), false, true);
+    CreateVersion createVersionNotOk = new CreateVersion(true, Optional.of(accessClient), false);
     VeniceException ex = expectThrows(
         VeniceException.class,
         () -> createVersionNotOk.handleStreamPushType(admin, store, request, response));
@@ -844,7 +844,7 @@ public class CreateVersionTest {
     when(store.getName()).thenReturn(STORE_NAME);
     RequestTopicForPushRequest request = new RequestTopicForPushRequest("CLUSTER_NAME", STORE_NAME, STREAM, "JOB_ID");
     VersionCreationResponse response = new VersionCreationResponse();
-    CreateVersion createVersionOk = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersionOk = new CreateVersion(true, Optional.of(accessClient), false);
 
     // Case 1: No hybrid version
     when(admin.isParent()).thenReturn(false);
@@ -873,7 +873,7 @@ public class CreateVersionTest {
     Store store = mock(Store.class);
     String clusterName = "testCluster";
     String storeName = "testStore";
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
 
     // Case 1: Admin is parent, store has AA replication, and AA replication is enabled in all regions
     when(admin.isParent()).thenReturn(true);
@@ -902,7 +902,7 @@ public class CreateVersionTest {
     String configValue = "TestValue";
     String storeName = "testStore";
 
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
 
     // Case 1: Config is applied as AA replication is enabled
     String result = createVersion.applyConfigBasedOnReplication(configType, configValue, storeName, isAARCheckEnabled);
@@ -930,7 +930,7 @@ public class CreateVersionTest {
     Store store = mock(Store.class);
     RequestTopicForPushRequest request = new RequestTopicForPushRequest(clusterName, storeName, pushType, pushJobId);
     VersionCreationResponse response = new VersionCreationResponse();
-    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false);
     Lazy<Boolean> isActiveActiveReplicationEnabledInAllRegions = Lazy.of(() -> true);
 
     // Mock admin methods
@@ -1012,8 +1012,7 @@ public class CreateVersionTest {
 
   @Test
   public void testEmptyPushThrowsNoStoreFoundException() throws Exception {
-    CreateVersion createVersion =
-        new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false, false);
+    CreateVersion createVersion = new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false);
     Route emptyPushRoute = createVersion.emptyPush(admin);
 
     when(request.queryParams(NAME)).thenReturn(STORE_NAME);
@@ -1034,8 +1033,7 @@ public class CreateVersionTest {
 
   @Test
   public void testEmptyPushCreatesNewVersionAndReturnsSuccess() throws Exception {
-    CreateVersion createVersion =
-        new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false, false);
+    CreateVersion createVersion = new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false);
     Route emptyPushRoute = createVersion.emptyPush(admin);
 
     // Required params
@@ -1074,8 +1072,7 @@ public class CreateVersionTest {
 
   @Test
   public void testEmptyPushWithTheDuplicatePushJobIdSkipsSopAndEop() throws Exception {
-    CreateVersion createVersion =
-        new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false, false);
+    CreateVersion createVersion = new CreateVersion(false, Optional.of(NoOpDynamicAccessController.INSTANCE), false);
     Route emptyPushRoute = createVersion.emptyPush(admin);
 
     // Set up required query params

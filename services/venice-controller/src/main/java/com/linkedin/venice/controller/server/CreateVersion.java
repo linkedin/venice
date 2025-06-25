@@ -28,6 +28,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static com.linkedin.venice.meta.Version.PushType;
 import static com.linkedin.venice.meta.Version.REPLICATION_METADATA_VERSION_ID_UNSET;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -63,16 +64,13 @@ import spark.Route;
 public class CreateVersion extends AbstractRoute {
   private static final Logger LOGGER = LogManager.getLogger(CreateVersion.class);
   private final boolean checkReadMethodForKafka;
-  private final boolean disableParentRequestTopicForStreamPushes;
 
   public CreateVersion(
       boolean sslEnabled,
       Optional<DynamicAccessController> accessController,
-      boolean checkReadMethodForKafka,
-      boolean disableParentRequestTopicForStreamPushes) {
+      boolean checkReadMethodForKafka) {
     super(sslEnabled, accessController);
     this.checkReadMethodForKafka = checkReadMethodForKafka;
-    this.disableParentRequestTopicForStreamPushes = disableParentRequestTopicForStreamPushes;
   }
 
   protected static void extractOptionalParamsFromRequestTopicRequest(
@@ -420,30 +418,16 @@ public class CreateVersion extends AbstractRoute {
       VersionCreationResponse responseObject = new VersionCreationResponse();
       response.type(HttpConstants.JSON);
       try {
-        boolean missingWriteAccess = !hasWriteAccessToTopic(request);
-        boolean missingReadAccess = this.checkReadMethodForKafka && !hasReadAccessToTopic(request);
-
         // Also allow allowList users to run this command
-        if (!isAllowListUser(request) && (missingWriteAccess || missingReadAccess)) {
-          response.status(HttpStatus.SC_FORBIDDEN);
+        if (!isAllowListUser(request)) {
           String userId = getPrincipalId(request);
-
-          /**
-           * When partners have ACL issues for their push, we should provide an accurate and informative messages that
-           * help partners to unblock by themselves.
-           */
-          String errorMsg;
-          if (missingWriteAccess && missingReadAccess) {
-            errorMsg = "[Error] Missing [read] and [write] ACLs for user \"" + userId
-                + "\". Please setup ACLs for your store.";
-          } else if (missingWriteAccess) {
-            errorMsg = "[Error] Missing [write] ACLs for user \"" + userId + "\". Please setup ACLs for your store.";
-          } else {
-            errorMsg = "[Error] Missing [read] ACLs for user \"" + userId + "\". Please setup ACLs for your store.";
+          if (!hasWriteAccessToTopic(request)) {
+            return buildAclErrorResponse(responseObject, userId, true, false);
           }
-          responseObject.setError(errorMsg);
-          responseObject.setErrorType(ErrorType.BAD_REQUEST);
-          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+
+          if (this.checkReadMethodForKafka && !hasReadAccessToTopic(request)) {
+            return buildAclErrorResponse(responseObject, userId, false, true);
+          }
         }
 
         // Validate the request parameters
@@ -467,6 +451,28 @@ public class CreateVersion extends AbstractRoute {
 
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
+  }
+
+  /**
+   * When partners have ACL issues for their push, we should provide an accurate and informative messages that
+   * help partners to unblock by themselves.
+   */
+  private String buildAclErrorResponse(
+      VersionCreationResponse responseObject,
+      String userId,
+      boolean missingWriteAccess,
+      boolean missingReadAccess) throws JsonProcessingException {
+    String errorMessage = "Missing [{}] ACLs for user " + userId + ". Please setup ACLs for your store.";
+    if (missingWriteAccess) {
+      errorMessage = String.format(errorMessage, "write");
+    }
+    if (missingReadAccess) {
+      errorMessage = String.format(errorMessage, "read");
+      ;
+    }
+    responseObject.setError(errorMessage);
+    responseObject.setErrorType(ErrorType.BAD_REQUEST);
+    return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
   }
 
   /**
