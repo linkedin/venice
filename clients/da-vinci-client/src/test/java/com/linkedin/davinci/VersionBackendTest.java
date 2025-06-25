@@ -1,21 +1,42 @@
 package com.linkedin.davinci;
 
+import static org.apache.kafka.test.TestUtils.RANDOM;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.ingestion.IngestionBackend;
+import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.transformer.TestStringRecordTransformer;
+import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.meta.ReadOnlyStore;
+import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
+import com.linkedin.venice.utils.ComplementSet;
+import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -118,5 +139,65 @@ public class VersionBackendTest {
     VersionBackend.sendOutHeartbeat(backend, futureVersion);
 
     verify(mockWriter, times(2)).writeHeartbeat(storeName);
+  }
+
+  @Test
+  public void testRecordTransformerSubscribe() {
+    DaVinciBackend mockDaVinciBackend = mock(DaVinciBackend.class);
+    String storeName = "test_store";
+    Version version = new VersionImpl(storeName, 1);
+    int partitionCount = 6;
+    version.setPartitionCount(partitionCount);
+    StoreBackendStats mockStoreBackendStats = mock(StoreBackendStats.class);
+
+    File baseDataPath = Utils.getTempDataDirectory();
+    VeniceProperties backendConfig = new PropertyBuilder().put(ConfigKeys.CLUSTER_NAME, "test-cluster")
+        .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")
+        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
+        .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
+        .put(ConfigKeys.LOCAL_REGION_NAME, "dc-0")
+        .build();
+    VeniceConfigLoader veniceConfigLoader = new VeniceConfigLoader(backendConfig);
+    when(mockDaVinciBackend.getConfigLoader()).thenReturn(veniceConfigLoader);
+
+    StorageService mockStorageService = mock(StorageService.class);
+    when(mockDaVinciBackend.getStorageService()).thenReturn(mockStorageService);
+
+    IngestionBackend mockIngestionBackend = mock(IngestionBackend.class);
+    when(mockDaVinciBackend.getIngestionBackend()).thenReturn(mockIngestionBackend);
+
+    SubscriptionBasedReadOnlyStoreRepository mockStoreRepository = mock(SubscriptionBasedReadOnlyStoreRepository.class);
+    when(mockDaVinciBackend.getStoreRepository()).thenReturn(mockStoreRepository);
+
+    StoreBackend mockStoreBackend = mock(StoreBackend.class);
+    when(mockDaVinciBackend.getStoreOrThrow(anyString())).thenReturn(mockStoreBackend);
+
+    ZKStore store = TestUtils.populateZKStore(
+        (ZKStore) TestUtils.createTestStore(
+            Long.toString(RANDOM.nextLong()),
+            Long.toString(RANDOM.nextLong()),
+            System.currentTimeMillis()),
+        RANDOM);
+    ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
+    when(mockStoreRepository.getStoreOrThrow(storeName)).thenReturn(readOnlyStore);
+
+    DaVinciRecordTransformerConfig recordTransformerConfig = spy(
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .build());
+
+    when(mockDaVinciBackend.getRecordTransformerConfig()).thenReturn(recordTransformerConfig);
+
+    VersionBackend versionBackend = new VersionBackend(mockDaVinciBackend, version, mockStoreBackendStats);
+
+    Collection<Integer> partitionList = Arrays.asList(0, 1, 2);
+    ComplementSet<Integer> complementSet = ComplementSet.newSet(partitionList);
+
+    versionBackend.subscribe(complementSet);
+    verify(recordTransformerConfig).setStartConsumptionLatchCount(3);
+
+    clearInvocations(recordTransformerConfig);
+    versionBackend.subscribe(complementSet);
+    // Shouldn't try to start consumption on already subscribed partitions
+    verify(recordTransformerConfig).setStartConsumptionLatchCount(0);
   }
 }
