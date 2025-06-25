@@ -773,13 +773,14 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     if (valueObject == null) {
       if (logicalTimestamp > 0) {
         if (producerBatchingService != null) {
-          producerBatchingService.addRecordToBuffer(MessageType.DELETE, key, null, -1, -1, logicalTimestamp);
+          producerBatchingService
+              .addRecordToBuffer(MessageType.DELETE, key, null, -1, -1, completableFuture, logicalTimestamp);
         } else {
           veniceWriter.delete(key, logicalTimestamp, callback);
         }
       } else {
         if (producerBatchingService != null) {
-          producerBatchingService.addRecordToBuffer(MessageType.DELETE, key, null, -1, -1);
+          producerBatchingService.addRecordToBuffer(MessageType.DELETE, key, null, -1, -1, completableFuture);
         } else {
           veniceWriter.delete(key, callback);
         }
@@ -811,14 +812,21 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       if (valueSchemaIdPair.getSecond() == -1) {
         if (logicalTimestamp > 0) {
           if (producerBatchingService != null) {
-            producerBatchingService
-                .addRecordToBuffer(MessageType.PUT, key, value, valueSchemaIdPair.getFirst(), -1, logicalTimestamp);
+            producerBatchingService.addRecordToBuffer(
+                MessageType.PUT,
+                key,
+                value,
+                valueSchemaIdPair.getFirst(),
+                -1,
+                completableFuture,
+                logicalTimestamp);
           } else {
             veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), logicalTimestamp, callback);
           }
         } else {
           if (producerBatchingService != null) {
-            producerBatchingService.addRecordToBuffer(MessageType.PUT, key, value, valueSchemaIdPair.getFirst(), -1);
+            producerBatchingService
+                .addRecordToBuffer(MessageType.PUT, key, value, valueSchemaIdPair.getFirst(), -1, completableFuture);
           } else {
             veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), callback);
           }
@@ -837,6 +845,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
                 value,
                 valueSchemaIdPair.getFirst(),
                 valueSchemaIdPair.getSecond(),
+                completableFuture,
                 logicalTimestamp);
           } else {
             veniceWriter.update(
@@ -854,7 +863,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
                 key,
                 value,
                 valueSchemaIdPair.getFirst(),
-                valueSchemaIdPair.getSecond());
+                valueSchemaIdPair.getSecond(),
+                completableFuture);
           } else {
             veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback);
           }

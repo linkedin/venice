@@ -59,6 +59,14 @@ public class CompletableFutureCallback implements PubSubProducerCallback, Measur
     this.dependentFutureList = dependentFutureList;
   }
 
+  public List<CompletableFuture<Void>> getDependentFutureList() {
+    return dependentFutureList;
+  }
+
+  public CompletableFuture<Void> getCompletableFuture() {
+    return completableFuture;
+  }
+
   @Override
   public int getHeapSize() {
     int size = SHALLOW_CLASS_OVERHEAD;

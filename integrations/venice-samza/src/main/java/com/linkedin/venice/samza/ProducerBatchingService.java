@@ -73,31 +73,42 @@ public class ProducerBatchingService implements Closeable {
       byte[] valueBytes,
       int schemaId,
       int protocolId,
+      CompletableFuture<Void> future,
       long logicalTimestamp) {
-    lock.lock();
+    getLock().lock();
     try {
       /**
        * For logical timestamp record, timestamp compaction is not supported
        * For UPDATE, it is not supported in the current scope, support will be added in the future iteration.
        */
-      if (messageType.equals(MessageType.UPDATE) || logicalTimestamp != -1) {
-        bufferRecordList
-            .add(new ProducerBufferRecord(messageType, keyBytes, valueBytes, schemaId, protocolId, logicalTimestamp));
+      if (messageType.equals(MessageType.UPDATE) || logicalTimestamp > 0) {
+        getBufferRecordList().add(
+            new ProducerBufferRecord(
+                messageType,
+                keyBytes,
+                valueBytes,
+                schemaId,
+                protocolId,
+                future,
+                logicalTimestamp));
         return;
       }
       ProducerBufferRecord record =
-          new ProducerBufferRecord(messageType, keyBytes, valueBytes, schemaId, protocolId, logicalTimestamp);
-      bufferRecordList.add(record);
+          new ProducerBufferRecord(messageType, keyBytes, valueBytes, schemaId, protocolId, future, logicalTimestamp);
+      getBufferRecordList().add(record);
 
-      ProducerBufferRecord prevRecord = bufferRecordIndex.putIfAbsent(keyBytes, record);
+      ProducerBufferRecord prevRecord = getBufferRecordIndex().put(keyBytes, record);
+      LOGGER.info("DEBUGGING: {}, {}, {}", prevRecord, keyBytes, record);
       if (prevRecord != null) {
         prevRecord.setSkipProduce(true);
       }
-      if (bufferRecordList.size() >= maxBatchSize) {
+      // Make sure memory usage is under control
+      if (getBufferRecordList().size() >= getMaxBatchSize()) {
+        LOGGER.info("DEBUGGING");
         checkAndMaybeProduceBatchRecord();
       }
     } finally {
-      lock.unlock();
+      getLock().unlock();
     }
   }
 
@@ -109,19 +120,27 @@ public class ProducerBatchingService implements Closeable {
       byte[] keyBytes,
       byte[] valueBytes,
       int schemaId,
-      int protocolId) {
-    addRecordToBuffer(messageType, keyBytes, valueBytes, schemaId, protocolId, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
+      int protocolId,
+      CompletableFuture<Void> future) {
+    addRecordToBuffer(
+        messageType,
+        keyBytes,
+        valueBytes,
+        schemaId,
+        protocolId,
+        future,
+        VeniceWriter.APP_DEFAULT_LOGICAL_TS);
   }
 
   void checkAndMaybeProduceBatchRecord() {
-    lock.lock();
+    getLock().lock();
     try {
-      if (bufferRecordList.isEmpty()) {
+      if (getBufferRecordList().isEmpty()) {
         return;
       }
-      for (ProducerBufferRecord record: bufferRecordList) {
+      for (ProducerBufferRecord record: getBufferRecordList()) {
         if (record.shouldSkipProduce()) {
-          ProducerBufferRecord latestRecord = bufferRecordIndex.get(record.getKeyBytes());
+          ProducerBufferRecord latestRecord = getBufferRecordIndex().get(record.getKeyBytes());
           if (latestRecord != null) {
             latestRecord.addFutureToDependentFutureList(record.getFuture());
           }
@@ -139,9 +158,9 @@ public class ProducerBatchingService implements Closeable {
     } finally {
       lastBatchProduceMs = System.currentTimeMillis();
       // In any case, state should be reset after produce.
-      bufferRecordList.clear();
-      bufferRecordIndex.clear();
-      lock.unlock();
+      getBufferRecordIndex().clear();
+      getBufferRecordList().clear();
+      getLock().unlock();
     }
   }
 
@@ -151,7 +170,7 @@ public class ProducerBatchingService implements Closeable {
     callback.setDependentFutureList(record.getDependentFutureList());
     switch (messageType) {
       case PUT:
-        writer.put(
+        getWriter().put(
             record.getKeyBytes(),
             record.getValueBytes(),
             record.getSchemaId(),
@@ -159,7 +178,7 @@ public class ProducerBatchingService implements Closeable {
             callback);
         break;
       case UPDATE:
-        writer.update(
+        getWriter().update(
             record.getKeyBytes(),
             record.getValueBytes(),
             record.getSchemaId(),
@@ -168,7 +187,7 @@ public class ProducerBatchingService implements Closeable {
             record.getLogicalTimestamp());
         break;
       case DELETE:
-        writer.delete(record.getKeyBytes(), record.getLogicalTimestamp(), callback);
+        getWriter().delete(record.getKeyBytes(), record.getLogicalTimestamp(), callback);
         break;
       default:
         break;
@@ -198,5 +217,29 @@ public class ProducerBatchingService implements Closeable {
         LOGGER.error("Caught exception when waiting for next check", e);
       }
     }
+  }
+
+  VeniceWriter getWriter() {
+    return writer;
+  }
+
+  public List<ProducerBufferRecord> getBufferRecordList() {
+    return bufferRecordList;
+  }
+
+  public Map<byte[], ProducerBufferRecord> getBufferRecordIndex() {
+    return bufferRecordIndex;
+  }
+
+  public int getMaxBatchSize() {
+    return maxBatchSize;
+  }
+
+  public long getBatchIntervalInMs() {
+    return batchIntervalInMs;
+  }
+
+  public ReentrantLock getLock() {
+    return lock;
   }
 }

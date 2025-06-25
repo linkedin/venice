@@ -14,7 +14,7 @@ public class ProducerBufferRecord {
   private final int protocolId;
   private final long logicalTimestamp;
   private boolean shouldSkipProduce = false;
-  private CompletableFuture<Void> future = null;
+  private CompletableFuture<Void> future;
   private List<CompletableFuture<Void>> dependentFutureList = new ArrayList<>();
 
   public ProducerBufferRecord(
@@ -23,6 +23,7 @@ public class ProducerBufferRecord {
       byte[] valueBytes,
       int schemaId,
       int protocolId,
+      CompletableFuture<Void> future,
       long logicalTimestamp) {
     this.keyBytes = keyBytes;
     this.valueBytes = valueBytes;
@@ -31,6 +32,7 @@ public class ProducerBufferRecord {
     this.protocolId = protocolId;
     // Let's do not consider logical TS as of now.
     this.logicalTimestamp = logicalTimestamp;
+    this.future = future;
   }
 
   public boolean shouldSkipProduce() {
