@@ -98,13 +98,11 @@ public class ProducerBatchingService implements Closeable {
       getBufferRecordList().add(record);
 
       ProducerBufferRecord prevRecord = getBufferRecordIndex().put(keyBytes, record);
-      LOGGER.info("DEBUGGING: {}, {}, {}", prevRecord, keyBytes, record);
       if (prevRecord != null) {
         prevRecord.setSkipProduce(true);
       }
       // Make sure memory usage is under control
       if (getBufferRecordList().size() >= getMaxBatchSize()) {
-        LOGGER.info("DEBUGGING");
         checkAndMaybeProduceBatchRecord();
       }
     } finally {
