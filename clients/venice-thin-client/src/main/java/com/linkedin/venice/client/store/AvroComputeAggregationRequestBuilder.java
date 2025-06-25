@@ -40,13 +40,6 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
     // Validate fields exist in schema
     Schema valueSchema = schemaReader.getValueSchema(schemaReader.getLatestValueSchemaId());
     for (String fieldName: fieldNames) {
-      if (fieldName == null) {
-        throw new VeniceClientException("Field name cannot be null");
-      }
-      if (fieldName.isEmpty()) {
-        throw new VeniceClientException("Field name cannot be empty");
-      }
-
       Schema.Field field = valueSchema.getField(fieldName);
       if (field == null) {
         throw new VeniceClientException("Field not found in schema: " + fieldName);

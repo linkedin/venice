@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -24,7 +25,7 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
   public <T> Map<T, Integer> getValueToCount(String field) {
     // Quick check: if field doesn't exist in fieldTopKMap, return empty map
     if (!fieldTopKMap.containsKey(field)) {
-      return new LinkedHashMap<>();
+      return Collections.emptyMap();
     }
 
     Map<T, Integer> valueToCount = new HashMap<>();
