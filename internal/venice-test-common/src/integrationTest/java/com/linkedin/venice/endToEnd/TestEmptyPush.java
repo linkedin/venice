@@ -44,18 +44,12 @@ import java.nio.ByteBuffer;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.samza.system.SystemProducer;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
 public class TestEmptyPush {
-  @Test
-  public void testFail() {
-    Assert.fail("Gotta make sure integration test failures aren't allowed by the CI!");
-  }
-
   private VeniceClusterWrapper venice;
 
   @BeforeClass(alwaysRun = true)
