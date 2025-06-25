@@ -8,6 +8,7 @@ import com.linkedin.venice.writer.CompletableFutureCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +35,7 @@ public class ProducerBatchingService implements Closeable {
   private final int maxBatchSize;
   private final ScheduledExecutorService checkServiceExecutor;
   private final List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
-  private final Map<byte[], ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+  private final Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
   private volatile long lastBatchProduceMs;
   private volatile boolean isRunning = false;
 
@@ -96,8 +97,7 @@ public class ProducerBatchingService implements Closeable {
       ProducerBufferRecord record =
           new ProducerBufferRecord(messageType, keyBytes, valueBytes, schemaId, protocolId, future, logicalTimestamp);
       getBufferRecordList().add(record);
-
-      ProducerBufferRecord prevRecord = getBufferRecordIndex().put(keyBytes, record);
+      ProducerBufferRecord prevRecord = getBufferRecordIndex().put(ByteBuffer.wrap(keyBytes), record);
       if (prevRecord != null) {
         prevRecord.setSkipProduce(true);
       }
@@ -225,16 +225,12 @@ public class ProducerBatchingService implements Closeable {
     return bufferRecordList;
   }
 
-  public Map<byte[], ProducerBufferRecord> getBufferRecordIndex() {
+  public Map<ByteBuffer, ProducerBufferRecord> getBufferRecordIndex() {
     return bufferRecordIndex;
   }
 
   public int getMaxBatchSize() {
     return maxBatchSize;
-  }
-
-  public long getBatchIntervalInMs() {
-    return batchIntervalInMs;
   }
 
   public ReentrantLock getLock() {
