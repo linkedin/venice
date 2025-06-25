@@ -1415,8 +1415,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     LOGGER.info("Offset reset to beginning - Kafka Partition: {}-{}.", topic, partitionId);
   }
 
-  // For testing purpose only.
+  @VisibleForTesting
   public KafkaValueSerializer getKafkaValueSerializer() {
     return kafkaValueSerializer;
+  }
+
+  @VisibleForTesting
+  protected Map<String, StoreIngestionTask> getTopicNameToIngestionTaskMap() {
+    return topicNameToIngestionTaskMap;
   }
 }
