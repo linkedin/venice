@@ -235,17 +235,9 @@ public class AvroComputeAggregationResponseTest {
     AvroComputeAggregationResponse<String> response =
         new AvroComputeAggregationResponse<>(data, Collections.singletonMap(AGE_FIELD, 10));
 
-    // Test generic type casting that should throw ClassCastException
     Map<Object, Integer> valueToCount = response.getValueToCount(AGE_FIELD);
     Object firstKey = valueToCount.keySet().iterator().next();
-
-    // This generic cast should throw ClassCastException since we're trying to cast String to Integer
-    // Using the pattern suggested by mentor: T key = (T) value;
-    performTypeCast(firstKey);
-  }
-
-  private <T> T performTypeCast(Object value) {
-    return (T) value;
+    System.identityHashCode((Integer) firstKey);
   }
 
   private Map<String, ComputeGenericRecord> createSimpleTestData() {
