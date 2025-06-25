@@ -465,7 +465,7 @@ public class CreateVersion extends AbstractRoute {
     response.status(HttpStatus.SC_FORBIDDEN);
     VersionCreationResponse responseObject = new VersionCreationResponse();
     String userId = getPrincipalId(request);
-    String errorMessage = "Missing [{}] ACLs for user " + userId + ". Please setup ACLs for your store.";
+    String errorMessage = "Missing [{}] ACLs for user \"" + userId + "\". Please setup ACLs for your store.";
     if (missingWriteAccess) {
       errorMessage = String.format(errorMessage, "write");
     }
