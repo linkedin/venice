@@ -17,7 +17,6 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
@@ -39,7 +38,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(StatTrackingStoreClient.class);
-  private static final RedundantExceptionFilter EXCEPTION_FILTER = new RedundantExceptionFilter();
 
   private static final String STAT_VENICE_CLIENT_NAME = "venice_client";
   private static final String STAT_SCHEMA_READER = "schema_reader";
@@ -248,7 +246,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   private static void handleUnhealthyRequest(ClientStats clientStats, Throwable throwable, double latency) {
     int httpStatus = getUnhealthyRequestHttpStatus(throwable);
-    logException(clientStats.getName(), throwable);
     clientStats.emitUnhealthyRequestMetrics(latency, httpStatus);
     if (throwable instanceof VeniceClientHttpException) {
       clientStats.recordHttpRequest(httpStatus);
@@ -269,12 +266,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     }
     clientStats.recordResponseKeyCount(successKeyCnt);
     clientStats.recordSuccessDuplicateRequestKeyCount(duplicateEntryCnt);
-  }
-
-  private static void logException(String storeName, Throwable throwable) {
-    if (!EXCEPTION_FILTER.isRedundantException(storeName, throwable)) {
-      LOGGER.error("Unhealthy request with error: ", throwable);
-    }
   }
 
   @Override

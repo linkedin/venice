@@ -56,6 +56,7 @@ The following talks have been given about Venice:
 - 2024: [What Venice Shipped in the Last Year](https://www.youtube.com/watch?v=5pVUKUvcXyg)
 - 2024: [User Stories: Trust and Privacy Filtering using Venice](https://www.youtube.com/watch?v=JMULRvcmRyk)
 - 2024: [Fast Client: Venice Next-Gen Read Path](https://www.youtube.com/watch?v=g2FxkEQU4P8)
+- 2025: [Da Vinci: Pumping Streams into RocksDB and DuckDB](https://www.youtube.com/watch?v=hc0pgvnr3fQ)
 
 Follow us on [YouTube](https://www.youtube.com/@venicedb) to hear about it when new content is published on that 
 platform.
