@@ -468,7 +468,6 @@ public class CreateVersion extends AbstractRoute {
     }
     if (missingReadAccess) {
       errorMessage = String.format(errorMessage, "read");
-      ;
     }
     responseObject.setError(errorMessage);
     responseObject.setErrorType(ErrorType.BAD_REQUEST);
