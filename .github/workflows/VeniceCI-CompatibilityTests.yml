@@ -158,7 +158,9 @@ jobs:
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
-  CompatibilityTestsCompletionCheck:
+  # This workflow gets skipped if all upstream jobs succeeded, but it runs (and fails) if any upstream failed.
+  # This is what we want since GitHub required actions do not block merging when skipped, but can block it when failed.
+  CompatibilityTestsFailureAlert:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest

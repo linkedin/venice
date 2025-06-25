@@ -2927,16 +2927,18 @@ jobs:
           key: ${{ secrets.BUILDPULSE_ACCESS_KEY_ID }}
           secret: ${{ secrets.BUILDPULSE_SECRET_ACCESS_KEY }}
 
-  E2ETestsCompletion:
+  # This workflow gets skipped if all upstream jobs succeeded, but it runs (and fails) if any upstream failed.
+  # This is what we want since GitHub required actions do not block merging when skipped, but can block it when failed.
+  E2ETestsFailureAlert:
     strategy:
       fail-fast: false
     runs-on: ubuntu-latest
     needs: [IntegrationTests_1000, IntegrationTests_1010, IntegrationTests_1020, IntegrationTests_1030, IntegrationTests_1040, IntegrationTests_1050, IntegrationTests_1060, IntegrationTests_1070, IntegrationTests_1080, IntegrationTests_1090, IntegrationTests_1100, IntegrationTests_1110, IntegrationTests_1120, IntegrationTests_1130, IntegrationTests_1200, IntegrationTests_1210, IntegrationTests_1220, IntegrationTests_1230, IntegrationTests_1240, IntegrationTests_1250, IntegrationTests_1260, IntegrationTests_1270, IntegrationTests_1280, IntegrationTests_1400, IntegrationTests_1410, IntegrationTests_1420, IntegrationTests_1430, IntegrationTests_1440, IntegrationTests_1500, IntegrationTests_1550, IntegrationTests_9999]
     timeout-minutes: 20
+    if: ${{ cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure') }}
     steps:
-    - name: NoOp
-      shell: bash
-      run: |
-        echo "Successfully ran all E2E tests!"
-
-
+      - name: NoGood
+        shell: bash
+        run: |
+          echo "Some workflows have failed!"
+          exit 1

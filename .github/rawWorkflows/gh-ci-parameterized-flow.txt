@@ -10,7 +10,6 @@
      pull-requests: write
      issues: write
     needs: $Dependency
-    if: $Conditional
     timeout-minutes: $TimeOut
     concurrency:
      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-jdk17-$FlowName
