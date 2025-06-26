@@ -5,6 +5,7 @@ import com.linkedin.venice.client.store.predicate.FloatPredicate;
 import com.linkedin.venice.client.store.predicate.IntPredicate;
 import com.linkedin.venice.client.store.predicate.LongPredicate;
 import com.linkedin.venice.client.store.predicate.Predicate;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -38,7 +39,7 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
   public <T> Map<T, Integer> getValueToCount(String field) {
     // Quick check: if field doesn't exist in fieldTopKMap, return empty map
     if (!fieldTopKMap.containsKey(field)) {
-      return new LinkedHashMap<>();
+      return Collections.emptyMap();
     }
 
     Map<T, Integer> valueToCount = new HashMap<>();
