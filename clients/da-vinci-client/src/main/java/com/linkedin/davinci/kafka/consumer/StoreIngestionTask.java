@@ -17,6 +17,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.closeQuietlyWithErrorLogged;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
+import static com.linkedin.venice.utils.Utils.isFutureVersionReady;
 import static java.util.Comparator.comparingInt;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -2173,7 +2174,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             hybridStoreConfig.isPresent());
         newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
 
-        if (isCurrentVersion.getAsBoolean()) {
+        boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+        if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
           // Latch creation is in StateModelIngestionProgressNotifier#startConsumption() from the Helix transition
           newPartitionConsumptionState.setLatchCreated();
         }

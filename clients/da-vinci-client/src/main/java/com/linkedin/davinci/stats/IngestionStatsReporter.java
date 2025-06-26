@@ -372,12 +372,6 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
                 () -> getStats().getRegionHybridRecordsConsumed(regionId),
                 0,
                 regionNamePrefix + "_rt_records_consumed"));
-        registerSensor(
-            new IngestionStatsGauge(
-                this,
-                () -> getStats().getRegionHybridAvgConsumedOffset(regionId),
-                0,
-                regionNamePrefix + "_rt_consumed_offset"));
       }
     }
   }
