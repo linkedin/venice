@@ -194,10 +194,12 @@ public class TestDeferredVersionSwapWithoutTargetedRegionPush {
     // be retrying the roll forward until success
     cluster.addVeniceServer(new Properties());
     cluster.addVeniceServer(new Properties());
-    TestUtils.waitForNonDeterministicAssertion(
-        60,
-        TimeUnit.SECONDS,
-        () -> assertCurrentServingVersion(cluster, storeName, NEW_VERSION));
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      parentClient.rollForwardToFutureVersion(
+          storeName,
+          String.join(",", multiRegionMultiClusterWrapper.getChildRegionNames()));
+      assertCurrentServingVersion(cluster, storeName, NEW_VERSION);
+    });
 
     validateData(cluster, storeName, 100);
   }
