@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.stats;
 
-import static com.linkedin.venice.controller.stats.ControllerMetricEntity.REPUSH_STORE_ENDPOINT_CALL_COUNT;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
@@ -59,7 +58,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
     }
 
     repushStoreCallCountMetric = MetricEntityStateGeneric.create(
-        REPUSH_STORE_ENDPOINT_CALL_COUNT.getMetricEntity(),
+        ControllerMetricEntity.REPUSH_STORE_ENDPOINT_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.REPUSH_STORE_ENDPOINT_CALL_COUNT,
@@ -140,7 +139,12 @@ public class LogCompactionStats extends AbstractVeniceStats {
 
   enum ControllerTehutiMetricNameEnum implements TehutiMetricNameEnum {
     /** for {@link ControllerMetricEntity#REPUSH_STORE_ENDPOINT_CALL_COUNT} */
-    REPUSH_STORE_ENDPOINT_CALL_COUNT, STORE_NOMINATION_TO_COMPACTION_DURATION, STORE_NOMINATED_FOR_COMPACTION_COUNT,
+    REPUSH_STORE_ENDPOINT_CALL_COUNT,
+    /** for {@link ControllerMetricEntity#STORE_NOMINATION_TO_COMPACTION_TRIGGERED_DURATION} */
+    STORE_NOMINATION_TO_COMPACTION_DURATION,
+    /** for {@link ControllerMetricEntity#STORE_NOMINATED_FOR_COMPACTION_COUNT} */
+    STORE_NOMINATED_FOR_COMPACTION_COUNT,
+    /** for {@link ControllerMetricEntity#STORE_COMPACTION_TRIGGERED_COUNT} */
     STORE_COMPACTION_TRIGGERED_COUNT;
 
     private final String metricName;

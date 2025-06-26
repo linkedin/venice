@@ -65,7 +65,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceController {
   private static final Logger LOGGER = LogManager.getLogger(VeniceController.class);
   private static final String CONTROLLER_GRPC_SERVER_THREAD_NAME = "ControllerGrpcServer";
-  static final String CONTROLLER_SERVICE_NAME = "venice-controller";
+  public static final String CONTROLLER_SERVICE_NAME = "venice-controller";
   public static final String CONTROLLER_SERVICE_METRIC_PREFIX = "controller";
   public static final Collection<MetricEntity> CONTROLLER_SERVICE_METRIC_ENTITIES = Collections.unmodifiableList(
       Arrays.stream(ControllerMetricEntity.values())
