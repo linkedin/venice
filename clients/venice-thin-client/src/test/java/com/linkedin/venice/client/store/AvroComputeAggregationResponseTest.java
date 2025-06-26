@@ -47,9 +47,9 @@ public class AvroComputeAggregationResponseTest {
       String fieldName,
       Consumer<Map<T, Integer>> assertionLogic) {
     Map<String, ComputeGenericRecord> computeResults = dataSupplier.get();
-    AvroComputeAggregationResponse response = new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
-    @SuppressWarnings("unchecked")
-    Map<T, Integer> result = (Map<T, Integer>) response.getValueToCount(fieldName);
+    AvroComputeAggregationResponse<String> response =
+        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
+    Map<T, Integer> result = response.getValueToCount(fieldName);
     assertionLogic.accept(result);
   }
 
