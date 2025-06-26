@@ -5,6 +5,7 @@ import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.DoubleGauge;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.tehuti.metrics.MeasurableStat;
@@ -106,7 +107,9 @@ public abstract class MetricEntityState {
         case COUNTER:
           ((LongCounter) otelMetric).add((long) value, attributes);
           break;
-
+        case GAUGE:
+          ((DoubleGauge) otelMetric).set((long) value, attributes);
+          break;
         default:
           throw new IllegalArgumentException("Unsupported metric type: " + metricType);
       }

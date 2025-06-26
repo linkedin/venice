@@ -14,6 +14,8 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
+import io.opentelemetry.api.metrics.DoubleGauge;
+import io.opentelemetry.api.metrics.DoubleGaugeBuilder;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.DoubleHistogramBuilder;
 import io.opentelemetry.api.metrics.LongCounter;
@@ -142,6 +144,7 @@ public class VeniceOpenTelemetryMetricsRepository {
    */
   private final VeniceConcurrentHashMap<String, DoubleHistogram> histogramMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, DoubleGauge> gaugeMap = new VeniceConcurrentHashMap<>();
 
   MetricExporter getOtlpHttpMetricExporter(VeniceMetricsConfig metricsConfig) {
     OtlpHttpMetricExporterBuilder exporterBuilder =
@@ -252,6 +255,19 @@ public class VeniceOpenTelemetryMetricsRepository {
     });
   }
 
+  public DoubleGauge createGuage(MetricEntity metricEntity) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+    return gaugeMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
+      String fullMetricName = getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName());
+      DoubleGaugeBuilder builder = meter.gaugeBuilder(fullMetricName)
+          .setUnit(metricEntity.getUnit().name())
+          .setDescription(metricEntity.getDescription());
+      return builder.build();
+    });
+  }
+
   public Object createInstrument(MetricEntity metricEntity) {
     MetricType metricType = metricEntity.getMetricType();
     switch (metricType) {
@@ -261,6 +277,8 @@ public class VeniceOpenTelemetryMetricsRepository {
 
       case COUNTER:
         return createCounter(metricEntity);
+      case GAUGE:
+        return createGuage(metricEntity);
 
       default:
         throw new VeniceException("Unknown metric type: " + metricType);

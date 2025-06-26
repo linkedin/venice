@@ -21,6 +21,7 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.DoubleGauge;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
@@ -167,6 +168,12 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           assertTrue(
               instrument instanceof LongCounter,
               "Instrument should be a LongCounter for metric type: " + metricType);
+          metricEntityState.recordOtelMetric(value, attributes);
+          break;
+        case GAUGE:
+          assertTrue(
+              instrument instanceof DoubleGauge,
+              "Instrument should be a DoubleGauge for metric type: " + metricType);
           metricEntityState.recordOtelMetric(value, attributes);
           break;
         default:
