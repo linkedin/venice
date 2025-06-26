@@ -176,6 +176,7 @@ public class TestBootstrappingChangelogConsumer {
           new ChangelogClientConfig().setConsumerProperties(consumerProperties)
               .setControllerD2ServiceName(D2_SERVICE_NAME)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+              .setD2Client(IntegrationTestPushUtils.getD2Client(zkAddress))
               .setLocalD2ZkHosts(zkAddress)
               .setControllerRequestRetryCount(3)
               .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
@@ -285,6 +286,7 @@ public class TestBootstrappingChangelogConsumer {
           new ChangelogClientConfig().setConsumerProperties(consumerProperties)
               .setControllerD2ServiceName(D2_SERVICE_NAME)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+              .setD2Client(IntegrationTestPushUtils.getD2Client(zkAddress))
               .setLocalD2ZkHosts(zkAddress)
               .setControllerRequestRetryCount(3)
               .setBootstrapFileSystemPath(inputDirPath)
@@ -454,6 +456,7 @@ public class TestBootstrappingChangelogConsumer {
           new ChangelogClientConfig().setConsumerProperties(consumerProperties)
               .setControllerD2ServiceName(D2_SERVICE_NAME)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+              .setD2Client(IntegrationTestPushUtils.getD2Client(zkAddress))
               .setLocalD2ZkHosts(zkAddress)
               .setControllerRequestRetryCount(3)
               .setBootstrapFileSystemPath(inputDirPath1)

@@ -65,7 +65,8 @@ public class TestAdminToolEndToEnd {
   @BeforeClass
   public void setUp() {
     Properties properties = new Properties();
-    properties.setProperty(LOCAL_REGION_NAME, "dc-0");
+    String regionName = "dc-0";
+    properties.setProperty(LOCAL_REGION_NAME, regionName);
     properties.setProperty(ALLOW_CLUSTER_WIPE, "true");
     properties.setProperty(TOPIC_CLEANUP_DELAY_FACTOR, "0");
 
@@ -74,6 +75,7 @@ public class TestAdminToolEndToEnd {
     properties.setProperty(LOG_COMPACTION_ENABLED, "true");
 
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .regionName(regionName)
         .numberOfServers(1)
         .numberOfRouters(1)
         .replicationFactor(1)
