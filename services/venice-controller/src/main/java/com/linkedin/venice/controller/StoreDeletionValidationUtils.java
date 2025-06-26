@@ -6,7 +6,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.apache.logging.log4j.LogManager;
@@ -63,18 +62,29 @@ public class StoreDeletionValidationUtils {
         return result;
       }
 
+      // Cache the expensive listTopics() call since it's used by multiple validation methods
+      final TopicManager topicManager = admin.getTopicManager();
+      final Set<PubSubTopic> pubSubTopics;
+      try {
+        pubSubTopics = topicManager.listTopics();
+      } catch (Exception e) {
+        LOGGER.warn("Failed to list topics for store: {} in cluster: {}", storeName, clusterName, e);
+        result.setStoreNotDeleted("Failed to list topics: " + e.getMessage());
+        return result;
+      }
+
       // 4. Check Helix resources for main store
-      if (checkMainStoreHelixResources(admin, result, clusterName, storeName)) {
+      if (checkMainStoreHelixResources(admin, result, clusterName, storeName, pubSubTopics)) {
         return result;
       }
 
       // 5. Check Kafka topics: version topics, RT topics, and system store topics
-      if (checkForAnyExistingTopicResources(admin, result, clusterName, storeName)) {
+      if (checkForAnyExistingTopicResources(admin, result, clusterName, storeName, pubSubTopics)) {
         return result;
       }
 
       // 6. Check Helix resources for system stores
-      if (checkSystemStoreHelixResources(admin, result, clusterName, storeName)) {
+      if (checkSystemStoreHelixResources(admin, result, clusterName, storeName, pubSubTopics)) {
         return result;
       }
 
@@ -144,12 +154,7 @@ public class StoreDeletionValidationUtils {
       String clusterName,
       String storeName) {
     try {
-      final List<VeniceSystemStoreType> systemStoreTypesToCheck = new ArrayList<>();
-      for (VeniceSystemStoreType type: VeniceSystemStoreType.values()) {
-        if (type != VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE) { // Not per-store
-          systemStoreTypesToCheck.add(type);
-        }
-      }
+      final List<VeniceSystemStoreType> systemStoreTypesToCheck = VeniceSystemStoreType.getUserSystemStores();
 
       for (VeniceSystemStoreType systemStoreType: systemStoreTypesToCheck) {
         final String systemStoreName = systemStoreType.getSystemStoreName(storeName);
@@ -175,17 +180,10 @@ public class StoreDeletionValidationUtils {
       Admin admin,
       StoreDeletedValidation result,
       String clusterName,
-      String storeName) {
+      String storeName,
+      Set<PubSubTopic> pubSubTopics) {
     try {
-      final TopicManager topicManager = admin.getTopicManager();
-      final Set<PubSubTopic> pubSubTopics = topicManager.listTopics();
-
-      final List<VeniceSystemStoreType> systemStoreTypesToCheck = new ArrayList<>();
-      for (VeniceSystemStoreType type: VeniceSystemStoreType.values()) {
-        if (type != VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE) {
-          systemStoreTypesToCheck.add(type);
-        }
-      }
+      final List<VeniceSystemStoreType> systemStoreTypesToCheck = VeniceSystemStoreType.getUserSystemStores();
 
       for (PubSubTopic topic: pubSubTopics) {
         // Check if this topic is related to the store (includes main store and system store topics)
@@ -209,14 +207,12 @@ public class StoreDeletionValidationUtils {
       Admin admin,
       StoreDeletedValidation result,
       String clusterName,
-      String storeName) {
+      String storeName,
+      Set<PubSubTopic> pubSubTopics) {
     try {
       // Since we can't use isResourceStillAlive directly with store name,
       // and containsHelixResource isn't available in Admin interface,
       // we'll check if any PubSub topics exist for this store (which would indicate Helix resources)
-      final TopicManager topicManager = admin.getTopicManager();
-      final Set<PubSubTopic> pubSubTopics = topicManager.listTopics();
-
       for (PubSubTopic topic: pubSubTopics) {
         // Check for version topics that belong to this exact store
         if (storeName.equals(topic.getStoreName()) && topic.isVersionTopic()) {
@@ -251,17 +247,10 @@ public class StoreDeletionValidationUtils {
       Admin admin,
       StoreDeletedValidation result,
       String clusterName,
-      String storeName) {
+      String storeName,
+      Set<PubSubTopic> pubSubTopics) {
     try {
-      final List<VeniceSystemStoreType> systemStoreTypesToCheck = new ArrayList<>();
-      for (VeniceSystemStoreType type: VeniceSystemStoreType.values()) {
-        if (type != VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE) {
-          systemStoreTypesToCheck.add(type);
-        }
-      }
-
-      final TopicManager topicManager = admin.getTopicManager();
-      final Set<PubSubTopic> pubSubTopics = topicManager.listTopics();
+      final List<VeniceSystemStoreType> systemStoreTypesToCheck = VeniceSystemStoreType.getUserSystemStores();
 
       for (VeniceSystemStoreType systemStoreType: systemStoreTypesToCheck) {
         final String systemStoreName = systemStoreType.getSystemStoreName(storeName);

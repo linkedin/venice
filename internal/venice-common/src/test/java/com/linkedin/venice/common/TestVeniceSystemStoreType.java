@@ -133,4 +133,36 @@ public class TestVeniceSystemStoreType {
         VeniceSystemStoreType.getSystemStoreType(VeniceSystemStoreType.META_STORE.getPrefix() + "-extra"),
         "Should detect system store when prefix is followed by extra characters");
   }
+
+  @Test
+  public void testGetUserSystemStores() {
+    List<VeniceSystemStoreType> userSystemStores = VeniceSystemStoreType.getUserSystemStores();
+
+    // Verify that the list contains expected user system stores
+    assertTrue(
+        userSystemStores.contains(VeniceSystemStoreType.META_STORE),
+        "User system stores should include META_STORE");
+    assertTrue(
+        userSystemStores.contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE),
+        "User system stores should include DAVINCI_PUSH_STATUS_STORE");
+
+    // Verify that BATCH_JOB_HEARTBEAT_STORE is excluded
+    assertFalse(
+        userSystemStores.contains(VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE),
+        "User system stores should NOT include BATCH_JOB_HEARTBEAT_STORE");
+
+    // Verify the size (should be total enum values minus 1 for BATCH_JOB_HEARTBEAT_STORE)
+    assertEquals(
+        userSystemStores.size(),
+        VeniceSystemStoreType.values().length - 1,
+        "User system stores should contain all system store types except BATCH_JOB_HEARTBEAT_STORE");
+
+    // Verify the returned list is immutable
+    userSystemStores.add(VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE);
+    Assert.fail("Expected UnsupportedOperationException when trying to modify the returned list");
+
+    // Verify that multiple calls return the same instance (cached)
+    List<VeniceSystemStoreType> userSystemStores2 = VeniceSystemStoreType.getUserSystemStores();
+    assertTrue(userSystemStores == userSystemStores2, "getUserSystemStores should return the same cached instance");
+  }
 }

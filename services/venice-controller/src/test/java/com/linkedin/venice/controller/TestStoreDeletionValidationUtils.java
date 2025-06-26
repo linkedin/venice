@@ -205,8 +205,8 @@ public class TestStoreDeletionValidationUtils {
         StoreDeletionValidationUtils.validateStoreDeleted(mockAdmin, TEST_CLUSTER, TEST_STORE);
 
     assertFalse(result.isDeleted());
-    // The exception occurs first in the main store Helix resource check, not the topic check
-    assertEquals(result.getError(), "Failed to check main store Helix resources: PubSub connection error");
+    // With the optimization, the exception occurs during the centralized listTopics call
+    assertEquals(result.getError(), "Failed to list topics: PubSub connection error");
   }
 
   @Test

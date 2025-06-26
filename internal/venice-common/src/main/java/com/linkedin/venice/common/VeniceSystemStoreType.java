@@ -271,6 +271,29 @@ public enum VeniceSystemStoreType {
     return userStoreName;
   }
 
+  /**
+   * Returns a list of user system store types, excluding non-user system stores like BATCH_JOB_HEARTBEAT_STORE.
+   * This method provides a centralized way to get the system store types that are associated with user stores,
+   * avoiding the need to repeat filtering logic throughout the codebase.
+   * 
+   * @return an immutable list of VeniceSystemStoreType values that are user system stores
+   */
+  public static List<VeniceSystemStoreType> getUserSystemStores() {
+    return USER_SYSTEM_STORES;
+  }
+
+  // Pre-computed immutable list of user system store types for performance
+  private static final List<VeniceSystemStoreType> USER_SYSTEM_STORES;
+  static {
+    List<VeniceSystemStoreType> userSystemStores = new ArrayList<>();
+    for (VeniceSystemStoreType type: VALUES) {
+      if (type != BATCH_JOB_HEARTBEAT_STORE) {
+        userSystemStores.add(type);
+      }
+    }
+    USER_SYSTEM_STORES = Collections.unmodifiableList(userSystemStores);
+  }
+
   @VisibleForTesting
   static Map<String, VeniceSystemStoreType> getStoreTypeCache() {
     return STORE_TYPE_CACHE;
