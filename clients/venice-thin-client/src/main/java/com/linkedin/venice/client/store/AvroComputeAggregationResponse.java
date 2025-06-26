@@ -8,7 +8,6 @@ import com.linkedin.venice.client.store.predicate.Predicate;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 
 
@@ -55,12 +54,11 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
     }
 
     // Sort by count in descending order
-    Map<T, Integer> sortedMap = new LinkedHashMap<>();
-    valueToCount.entrySet()
+    Map<T, Integer> sortedMap = valueToCount.entrySet()
         .stream()
         .sorted(Map.Entry.<T, Integer>comparingByValue().reversed())
         .limit(fieldTopKMap.get(field))
-        .forEach(entry -> sortedMap.put(entry.getKey(), entry.getValue()));
+        .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), Map::putAll);
 
     return sortedMap;
   }
@@ -92,96 +90,35 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
         continue;
       }
 
+      // Convert field value if needed (Utf8 to String)
+      Object convertedValue = convertUtf8ToString(fieldValue);
+
       // Check which bucket(s) this value falls into
       for (Map.Entry<String, Predicate> bucketEntry: buckets.entrySet()) {
         String bucketName = bucketEntry.getKey();
         Predicate predicate = bucketEntry.getValue();
 
         try {
-          boolean matches = false;
-
-          // Convert field value if needed
-          Object convertedValue = convertUtf8ToString(fieldValue);
-
-          // Handle different value types
-          if (convertedValue instanceof GenericRecord) {
-            matches = predicate.evaluate((GenericRecord) convertedValue);
-          } else if (predicate instanceof LongPredicate) {
-            // Convert to Long if needed
-            Long longValue;
-            if (convertedValue instanceof Long) {
-              longValue = (Long) convertedValue;
-            } else if (convertedValue instanceof Integer) {
-              longValue = ((Integer) convertedValue).longValue();
-            } else if (convertedValue instanceof String) {
-              try {
-                longValue = Long.parseLong((String) convertedValue);
-              } catch (NumberFormatException e) {
-                continue;
-              }
-            } else {
-              continue;
-            }
-            matches = ((LongPredicate) predicate).evaluate(longValue);
-          } else if (predicate instanceof IntPredicate) {
-            // Convert to Integer if needed
-            Integer intValue;
-            if (convertedValue instanceof Integer) {
-              intValue = (Integer) convertedValue;
-            } else if (convertedValue instanceof Long) {
-              intValue = ((Long) convertedValue).intValue();
-            } else if (convertedValue instanceof String) {
-              try {
-                intValue = Integer.parseInt((String) convertedValue);
-              } catch (NumberFormatException e) {
-                continue;
-              }
-            } else {
-              continue;
-            }
-            matches = ((IntPredicate) predicate).evaluate(intValue);
-          } else if (predicate instanceof FloatPredicate) {
-            // Convert to Float if needed
-            Float floatValue;
-            if (convertedValue instanceof Float) {
-              floatValue = (Float) convertedValue;
-            } else if (convertedValue instanceof Integer) {
-              floatValue = ((Integer) convertedValue).floatValue();
-            } else if (convertedValue instanceof String) {
-              try {
-                floatValue = Float.parseFloat((String) convertedValue);
-              } catch (NumberFormatException e) {
-                continue;
-              }
-            } else {
-              continue;
-            }
-            matches = ((FloatPredicate) predicate).evaluate(floatValue);
-          } else if (predicate instanceof DoublePredicate) {
-            // Convert to Double if needed
-            Double doubleValue;
-            if (convertedValue instanceof Double) {
-              doubleValue = (Double) convertedValue;
-            } else if (convertedValue instanceof Integer) {
-              doubleValue = ((Integer) convertedValue).doubleValue();
-            } else if (convertedValue instanceof String) {
-              try {
-                doubleValue = Double.parseDouble((String) convertedValue);
-              } catch (NumberFormatException e) {
-                continue;
-              }
-            } else {
-              continue;
-            }
-            matches = ((DoublePredicate) predicate).evaluate(doubleValue);
-          } else {
-            matches = predicate.evaluate(convertedValue);
+          // Handle type conversion for numeric predicates
+          Object valueToEvaluate = convertedValue;
+          if (predicate instanceof LongPredicate && !(convertedValue instanceof Long)) {
+            valueToEvaluate = convertToLong(convertedValue);
+          } else if (predicate instanceof IntPredicate && !(convertedValue instanceof Integer)) {
+            valueToEvaluate = convertToInteger(convertedValue);
+          } else if (predicate instanceof FloatPredicate && !(convertedValue instanceof Float)) {
+            valueToEvaluate = convertToFloat(convertedValue);
+          } else if (predicate instanceof DoublePredicate && !(convertedValue instanceof Double)) {
+            valueToEvaluate = convertToDouble(convertedValue);
           }
 
-          if (matches) {
-            bucketCounts.merge(bucketName, 1, Integer::sum);
+          if (valueToEvaluate != null) {
+            boolean matches = predicate.evaluate(valueToEvaluate);
+            if (matches) {
+              bucketCounts.merge(bucketName, 1, Integer::sum);
+            }
           }
-        } catch (ClassCastException e) {
+        } catch (ClassCastException | NumberFormatException e) {
+          // If type conversion fails, skip this bucket for this record
           continue;
         }
       }
@@ -200,5 +137,77 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
       return value.toString();
     }
     return value;
+  }
+
+  /**
+   * Convert value to Long for LongPredicate evaluation.
+   */
+  private Long convertToLong(Object value) {
+    if (value instanceof Long) {
+      return (Long) value;
+    } else if (value instanceof Integer) {
+      return ((Integer) value).longValue();
+    } else if (value instanceof String) {
+      try {
+        return Long.parseLong((String) value);
+      } catch (NumberFormatException e) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Convert value to Integer for IntPredicate evaluation.
+   */
+  private Integer convertToInteger(Object value) {
+    if (value instanceof Integer) {
+      return (Integer) value;
+    } else if (value instanceof Long) {
+      return ((Long) value).intValue();
+    } else if (value instanceof String) {
+      try {
+        return Integer.parseInt((String) value);
+      } catch (NumberFormatException e) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Convert value to Float for FloatPredicate evaluation.
+   */
+  private Float convertToFloat(Object value) {
+    if (value instanceof Float) {
+      return (Float) value;
+    } else if (value instanceof Integer) {
+      return ((Integer) value).floatValue();
+    } else if (value instanceof String) {
+      try {
+        return Float.parseFloat((String) value);
+      } catch (NumberFormatException e) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Convert value to Double for DoublePredicate evaluation.
+   */
+  private Double convertToDouble(Object value) {
+    if (value instanceof Double) {
+      return (Double) value;
+    } else if (value instanceof Integer) {
+      return ((Integer) value).doubleValue();
+    } else if (value instanceof String) {
+      try {
+        return Double.parseDouble((String) value);
+      } catch (NumberFormatException e) {
+        return null;
+      }
+    }
+    return null;
   }
 }
