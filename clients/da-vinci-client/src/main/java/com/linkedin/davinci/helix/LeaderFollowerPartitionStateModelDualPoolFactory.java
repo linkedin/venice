@@ -46,8 +46,17 @@ public class LeaderFollowerPartitionStateModelDualPoolFactory extends LeaderFoll
      * Allocate different thread pools for future and non-future version Helix state transitions to avoid an issue
      * that future version push is blocked when the long-running state transitions for current versions occupy all
      * threads in the thread pool.
+     *
+     * If it is a future version that is not ready to serve yet, it will use a separate thread pool.
+     * If it is a future version that is ready to serve (PUSHED, ONLINE), it will use the same thread pool as current versions
+     * pool to not block future pushes as it can be a long-running transition
      */
-    return Utils.isFutureVersion(resourceName, storeMetadataRepo) ? futureVersionExecutorService : executorService;
+    if (Utils.isFutureVersion(resourceName, storeMetadataRepo)
+        && !Utils.isFutureVersionReady(resourceName, storeMetadataRepo)) {
+      return futureVersionExecutorService;
+    }
+
+    return executorService;
   }
 
   @Override

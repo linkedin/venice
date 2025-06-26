@@ -22,6 +22,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -551,5 +552,23 @@ public class UtilsTest {
         Utils.waitStoreVersionOrThrow(Version.composeKafkaTopic(storeName, 1), storeRepository);
     Assert.assertEquals(storeVersionInfo.getStore(), store);
     Assert.assertEquals(storeVersionInfo.getVersion(), version);
+  }
+
+  @Test
+  public void testIsFutureVersionReady() {
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    String storeName = "testIsFutureVersionReady";
+    String resource = "testIsFutureVersionReady_v1";
+
+    // Setup store and version
+    Store store = mock(Store.class);
+    Version version = mock(Version.class);
+    doReturn(version).when(store).getVersion(anyInt());
+    doReturn(store).when(storeRepository).getStoreOrThrow(storeName);
+    doReturn(0).when(store).getCurrentVersion();
+    doReturn(VersionStatus.PUSHED).when(version).getStatus();
+
+    boolean ready = Utils.isFutureVersionReady(resource, storeRepository);
+    Assert.assertTrue(ready);
   }
 }
