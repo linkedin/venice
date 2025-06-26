@@ -130,6 +130,14 @@ public class ProducerBatchingService implements Closeable {
         VeniceWriter.APP_DEFAULT_LOGICAL_TS);
   }
 
+  /**
+   * Perform a manual flush to send all the buffered data into writer, also perform a producer flush at the end.
+   */
+  public void flush() {
+    checkAndMaybeProduceBatchRecord();
+    getWriter().flush();
+  }
+
   void checkAndMaybeProduceBatchRecord() {
     getLock().lock();
     try {
@@ -138,7 +146,7 @@ public class ProducerBatchingService implements Closeable {
       }
       for (ProducerBufferRecord record: getBufferRecordList()) {
         if (record.shouldSkipProduce()) {
-          ProducerBufferRecord latestRecord = getBufferRecordIndex().get(record.getKeyBytes());
+          ProducerBufferRecord latestRecord = getBufferRecordIndex().get(ByteBuffer.wrap(record.getKeyBytes()));
           if (latestRecord != null) {
             latestRecord.addFutureToDependentFutureList(record.getFuture());
           }

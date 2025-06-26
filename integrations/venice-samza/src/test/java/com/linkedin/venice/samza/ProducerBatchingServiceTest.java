@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.CompletableFutureCallback;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -80,7 +81,7 @@ public class ProducerBatchingServiceTest {
     VeniceWriter writer = mock(VeniceWriter.class);
     doReturn(writer).when(producerBatchingService).getWriter();
     List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
-    Map<byte[], ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+    Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
     doReturn(bufferRecordIndex).when(producerBatchingService).getBufferRecordIndex();
     doReturn(bufferRecordList).when(producerBatchingService).getBufferRecordList();
     doCallRealMethod().when(producerBatchingService).addRecordToBuffer(any(), any(), any(), anyInt(), anyInt(), any());
@@ -97,7 +98,11 @@ public class ProducerBatchingServiceTest {
     CompletableFuture<Void> completableFuture3 = new CompletableFuture<>();
     CompletableFuture<Void> completableFuture4 = new CompletableFuture<>();
 
+    // Create different objects for each message to make sure buffer index map is working properly for byte array.
     byte[] keyBytes1 = "a".getBytes();
+    byte[] keyBytes2 = "a".getBytes();
+    byte[] keyBytes3 = "a".getBytes();
+    byte[] keyBytes4 = "a".getBytes();
 
     byte[] valueBytes2 = "2".getBytes();
     byte[] valueBytes3 = "3".getBytes();
@@ -109,17 +114,17 @@ public class ProducerBatchingServiceTest {
 
     producerBatchingService.addRecordToBuffer(MessageType.DELETE, keyBytes1, null, -1, -1, completableFuture1);
     producerBatchingService
-        .addRecordToBuffer(MessageType.UPDATE, keyBytes1, valueBytes2, valueSchemaId, protocolId, completableFuture2);
+        .addRecordToBuffer(MessageType.UPDATE, keyBytes2, valueBytes2, valueSchemaId, protocolId, completableFuture2);
     producerBatchingService.addRecordToBuffer(
         MessageType.PUT,
-        keyBytes1,
+        keyBytes3,
         valueBytes3,
         valueSchemaId,
         -1,
         completableFuture3,
         logicalTimestamp);
     producerBatchingService
-        .addRecordToBuffer(MessageType.PUT, keyBytes1, valueBytes4, valueSchemaId, -1, completableFuture4);
+        .addRecordToBuffer(MessageType.PUT, keyBytes4, valueBytes4, valueSchemaId, -1, completableFuture4);
     Assert.assertEquals(bufferRecordList.size(), 4);
     Assert.assertFalse(bufferRecordIndex.isEmpty());
     Assert.assertEquals(bufferRecordList.get(0).getValueBytes(), null);
@@ -139,7 +144,7 @@ public class ProducerBatchingServiceTest {
     Assert.assertEquals(bufferRecordList.get(3).getLogicalTimestamp(), VeniceWriter.APP_DEFAULT_LOGICAL_TS);
 
     // Index should only contain 1 mapping.
-    Assert.assertEquals(bufferRecordIndex.get(keyBytes1).getValueBytes(), valueBytes4);
+    Assert.assertEquals(bufferRecordIndex.get(ByteBuffer.wrap(keyBytes1)).getValueBytes(), valueBytes4);
 
     // Perform produce operation
     producerBatchingService.checkAndMaybeProduceBatchRecord();
@@ -164,7 +169,7 @@ public class ProducerBatchingServiceTest {
 
     ArgumentCaptor<CompletableFutureCallback> putCallbackCaptor =
         ArgumentCaptor.forClass(CompletableFutureCallback.class);
-    verify(writer, times(2)).put(eq(keyBytes1), any(), eq(valueSchemaId), anyLong(), putCallbackCaptor.capture());
+    verify(writer, times(2)).put(any(), any(), eq(valueSchemaId), anyLong(), putCallbackCaptor.capture());
     List<CompletableFutureCallback> putCallbacks = putCallbackCaptor.getAllValues();
     Assert.assertTrue(putCallbacks.get(0).getDependentFutureList().isEmpty());
     Assert.assertEquals(putCallbacks.get(0).getCompletableFuture(), completableFuture3);

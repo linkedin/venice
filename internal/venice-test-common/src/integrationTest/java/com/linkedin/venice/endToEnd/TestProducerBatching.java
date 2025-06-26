@@ -1,6 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithoutFlush;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
@@ -62,7 +62,6 @@ public class TestProducerBatching {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private static final int TEST_TIMEOUT_MS = 180_000;
-  private static final int ASSERTION_TIMEOUT_MS = 30_000;
 
   private static final int REPLICATION_FACTOR = 2;
   private static final String CLUSTER_NAME = "venice-cluster0";
@@ -110,17 +109,18 @@ public class TestProducerBatching {
     final String storeName = Utils.getUniqueString("store");
     String parentControllerUrl = parentController.getControllerUrl();
     VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-    Schema valueSchemaV1 = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/PersonV1.avsc"));
-    String valueFieldName = "name";
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/PersonV1.avsc"));
+    Schema updateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
           parentControllerClient
-              .createNewStore(storeName, "test_owner", STRING_SCHEMA.toString(), valueSchemaV1.toString()));
+              .createNewStore(storeName, "test_owner", STRING_SCHEMA.toString(), valueSchema.toString()));
 
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setActiveActiveReplicationEnabled(true)
               .setWriteComputationEnabled(true)
               .setPartitionCount(1)
               .setHybridRewindSeconds(10L)
@@ -142,34 +142,38 @@ public class TestProducerBatching {
         .getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM, additionalConfig, additionalConfig2);
     String key = "key";
 
-    GenericRecord value = new GenericData.Record(valueSchemaV1);
-    value.put(valueFieldName, "val");
+    // Message 1: Will be compacted by Message 2
+    GenericRecord value = new GenericData.Record(valueSchema);
+    value.put("name", "val");
     value.put("age", 99);
-    sendStreamingRecord(veniceProducer, storeName, key, value);
+    sendStreamingRecordWithoutFlush(veniceProducer, storeName, key, value);
 
-    value = new GenericData.Record(valueSchemaV1);
-    value.put(valueFieldName, "val");
+    // Message 2: Should be produced.
+    value = new GenericData.Record(valueSchema);
+    value.put("name", "val");
     value.put("age", 100);
-    sendStreamingRecord(veniceProducer, storeName, key, value);
+    sendStreamingRecordWithoutFlush(veniceProducer, storeName, key, value);
 
-    value = new GenericData.Record(valueSchemaV1);
-    value.put(valueFieldName, "val");
+    // Message 3: Should be produced (logical TS)
+    value = new GenericData.Record(valueSchema);
+    value.put("name", "val");
     value.put("age", 101);
-    sendStreamingRecord(veniceProducer, storeName, key, value, 100L);
+    sendStreamingRecordWithoutFlush(veniceProducer, storeName, key, value, 100L);
 
     String key2 = "key2";
-    value = new UpdateBuilderImpl(WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV1))
-        .setNewFieldValue("name", "DEN")
-        .build();
-    sendStreamingRecord(veniceProducer, storeName, key2, value);
-    value = new UpdateBuilderImpl(WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV1))
-        .setNewFieldValue("name", "CLE")
-        .build();
-    sendStreamingRecord(veniceProducer, storeName, key2, value);
-    value = new UpdateBuilderImpl(WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV1))
-        .setNewFieldValue("name", "OKC")
-        .build();
-    sendStreamingRecord(veniceProducer, storeName, key2, value);
+    // Message 4: Should be produced (Max Batch Size)
+    value = new GenericData.Record(valueSchema);
+    value.put("name", "DEN");
+    value.put("age", 2023);
+    sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
+    // Message 5: Should be produced.
+    value = new GenericData.Record(valueSchema);
+    value.put("name", "CLE");
+    value.put("age", 2024);
+    sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
+    // Message 6: Should be produced (UPDATE message)
+    value = new UpdateBuilderImpl(updateSchema).setNewFieldValue("name", "OKC").setNewFieldValue("age", 2025).build();
+    sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
 
     try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
@@ -178,7 +182,7 @@ public class TestProducerBatching {
           GenericRecord retrievedValue = readValue(storeReader, key);
           assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
           assertEquals(retrievedValue.get("name").toString(), "val");
-          assertEquals(retrievedValue.get("age"), 101);
+          assertEquals(retrievedValue.get("age"), 100);
 
           retrievedValue = readValue(storeReader, key2);
           assertNotNull(retrievedValue, "Key " + key2 + " should not be missing!");
@@ -189,11 +193,10 @@ public class TestProducerBatching {
       });
 
     } finally {
-      if (veniceProducer != null) {
-        veniceProducer.stop();
-      }
+      veniceProducer.stop();
     }
 
+    // Consume all the RT messages and validated how many data records were produced.
     PubSubBrokerWrapper pubSubBrokerWrapper =
         childDatacenters.get(0).getClusters().get(CLUSTER_NAME).getPubSubBrokerWrapper();
     Properties properties = new Properties();

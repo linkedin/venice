@@ -823,7 +823,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    */
   @Override
   public void flush(String s) {
-    veniceWriter.flush();
+    if (getProducerBatchingService() != null) {
+      getProducerBatchingService().flush();
+    } else {
+      getVeniceWriter().flush();
+    }
   }
 
   private static Schema getSchemaFromObject(Object object) {
