@@ -285,7 +285,7 @@ public enum VeniceSystemStoreType {
   // Pre-computed immutable list of user system store types for performance
   private static final List<VeniceSystemStoreType> USER_SYSTEM_STORES;
   static {
-    List<VeniceSystemStoreType> userSystemStores = new ArrayList<>();
+    List<VeniceSystemStoreType> userSystemStores = new ArrayList<>(VALUES.size() - 1);
     for (VeniceSystemStoreType type: VALUES) {
       if (type != BATCH_JOB_HEARTBEAT_STORE) {
         userSystemStores.add(type);
