@@ -642,7 +642,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
       } catch (Exception e) {
         LOGGER.error("Failed to enable " + LogCompactionService.class.getSimpleName(), e);
-        throw new VeniceException(e);
+        // TODO: emit metric on failed start in OTel PR
       }
     }
 
