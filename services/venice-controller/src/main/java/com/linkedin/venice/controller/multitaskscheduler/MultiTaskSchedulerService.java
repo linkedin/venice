@@ -27,7 +27,6 @@ public class MultiTaskSchedulerService extends AbstractVeniceService {
    * @param threadPoolSize
    * @param maxRetryAttempts
    */
-  // TODO: change threadPoolSize and maxRetryAttempts configurable
   public MultiTaskSchedulerService(int threadPoolSize, int maxRetryAttempts) {
     this.storeMigrationManager = StoreMigrationManager.createStoreMigrationManager(threadPoolSize, maxRetryAttempts);
   }
@@ -43,5 +42,9 @@ public class MultiTaskSchedulerService extends AbstractVeniceService {
   public void stopInner() throws Exception {
     LOGGER.info("MultiTaskScheduler service starts shutting down: ");
     storeMigrationManager.shutdown();
+  }
+
+  public StoreMigrationManager getStoreMigrationManager() {
+    return storeMigrationManager;
   }
 }

@@ -32,6 +32,8 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
+import com.linkedin.venice.controller.multitaskscheduler.StoreMigrationManager;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
@@ -78,6 +80,7 @@ import java.util.Set;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
 
@@ -1264,5 +1267,46 @@ public class TestVeniceHelixAdmin {
             "Actual message: " + e.getMessage());
       }
     }
+  }
+
+  @Test
+  public void testAutoStoreMigration() {
+    final String destCluster = "destCluster";
+    final String storeNameForMigration = "testStoreForMigration";
+    final Optional<Integer> currStep = Optional.empty();
+
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    HelixVeniceClusterResources helixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
+    MultiTaskSchedulerService multiTaskSchedulerService = mock(MultiTaskSchedulerService.class);
+    StoreMigrationManager storeMigrationManager = mock(StoreMigrationManager.class);
+
+    // Mock the method chain
+    doReturn(helixVeniceClusterResources).when(veniceHelixAdmin).getHelixVeniceClusterResources(clusterName);
+    // Optional is not empty → store migration is supported
+    doReturn(Optional.of(multiTaskSchedulerService)).when(helixVeniceClusterResources).getMultiTaskSchedulerService();
+    doReturn(storeMigrationManager).when(multiTaskSchedulerService).getStoreMigrationManager();
+
+    doCallRealMethod().when(veniceHelixAdmin)
+        .autoMigrateStore(
+            anyString(),
+            anyString(),
+            anyString(),
+            Mockito.<Optional<Integer>>any(),
+            Mockito.<Optional<Boolean>>any());
+    veniceHelixAdmin.autoMigrateStore(clusterName, destCluster, storeNameForMigration, currStep, Optional.empty());
+
+    // Assert – scheduleMigration(...) must be invoked with the exact args
+    verify(storeMigrationManager)
+        .scheduleMigration(eq(storeNameForMigration), eq(clusterName), eq(destCluster), eq(0), eq(0), eq(false));
+
+    // Optional is empty → store migration unsupported
+    doReturn(Optional.empty()).when(helixVeniceClusterResources).getMultiTaskSchedulerService();
+
+    Exception exp = expectThrows(
+        VeniceException.class,
+        () -> veniceHelixAdmin
+            .autoMigrateStore(clusterName, destCluster, storeNameForMigration, currStep, Optional.empty()));
+
+    assertTrue(exp.getMessage().contains("Store migration is not supported in this cluster: " + clusterName));
   }
 }

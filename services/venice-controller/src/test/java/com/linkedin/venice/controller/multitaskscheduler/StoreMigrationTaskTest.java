@@ -60,6 +60,7 @@ public class StoreMigrationTaskTest {
 
     when(mockRecord.getStoreMigrationStartTime()).thenReturn(Instant.now().minus(Duration.ofDays(1)));
     when(mockRecord.getStoreName()).thenReturn("testStore");
+    when(mockRecord.getAbortOnFailure()).thenReturn(true);
 
     // Simulate a status not verified and timeout occurred.
     task.setTimeout(0); // Set timeout to zero to force a timeout during the test
@@ -120,7 +121,9 @@ public class StoreMigrationTaskTest {
 
   @Test
   public void testRun_InvalidMigrationRecordStep() {
-    when(mockRecord.getCurrentStep()).thenReturn(99); // Invalid step
+    when(mockRecord.getCurrentStepEnum()).thenReturn(Step.MIGRATION_SUCCEED); // Invalid step
+    when(mockRecord.getAttempts()).thenReturn(0);
+    when(mockManager.getMaxRetryAttempts()).thenReturn(3);
 
     task.run();
 
@@ -141,14 +144,18 @@ public class StoreMigrationTaskTest {
 
   @Test
   public void testRun_ExceptionHandling_Abort() {
-    when(mockRecord.getCurrentStep()).thenThrow(new RuntimeException("Test exception"));
+    when(mockRecord.getCurrentStepEnum()).thenThrow(new RuntimeException("Test exception"));
     when(mockRecord.getAttempts()).thenReturn(3);
+    when(mockRecord.getStoreName()).thenReturn("testStore");
     when(mockManager.getMaxRetryAttempts()).thenReturn(3);
 
     task.run();
-
-    verify(mockRecord).setIsAborted(true);
+    verify(mockRecord, never()).setIsAborted(true);
     verify(mockManager).cleanupMigrationRecord(mockRecord.getStoreName());
+
+    when(mockRecord.getAbortOnFailure()).thenReturn(true);
+    task.run();
+    verify(mockRecord).setIsAborted(true);
   }
 
 }

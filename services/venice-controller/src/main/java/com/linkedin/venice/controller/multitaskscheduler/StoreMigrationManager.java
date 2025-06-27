@@ -57,7 +57,7 @@ public class StoreMigrationManager extends ScheduledTaskManager {
       String sourceCluster,
       String destinationCluster,
       int currentStep) {
-    return scheduleMigration(storeName, sourceCluster, destinationCluster, currentStep, 0);
+    return scheduleMigration(storeName, sourceCluster, destinationCluster, currentStep, 0, true);
   }
 
   public ScheduledFuture<?> scheduleMigration(
@@ -65,9 +65,12 @@ public class StoreMigrationManager extends ScheduledTaskManager {
       String sourceCluster,
       String destinationCluster,
       int currentStep,
-      int delayInSeconds) {
+      int delayInSeconds,
+      boolean abortOnFailure) {
     MigrationRecord record =
-        new MigrationRecord.Builder(storeName, sourceCluster, destinationCluster).currentStep(currentStep).build();
+        new MigrationRecord.Builder(storeName, sourceCluster, destinationCluster).currentStep(currentStep)
+            .abortOnFailure(abortOnFailure)
+            .build();
     migrationRecords.put(storeName, record);
     return scheduleNextStep(record, delayInSeconds);
   }
