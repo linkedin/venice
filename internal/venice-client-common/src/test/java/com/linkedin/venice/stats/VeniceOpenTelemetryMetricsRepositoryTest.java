@@ -112,7 +112,13 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   @Test
   public void testTransformMetricName() {
     when(mockMetricsConfig.getMetricNamingFormat()).thenReturn(SNAKE_CASE);
-    assertEquals(metricsRepository.getFullMetricName("prefix", "metric_name"), "prefix.metric_name");
+    MetricEntity metricEntity = MetricEntity.createInternalMetricEntityWithoutDimensions(
+        "metric_name",
+        MetricType.COUNTER,
+        MetricUnit.NUMBER,
+        "Test metric",
+        "prefix");
+    assertEquals(metricsRepository.getFullMetricName(metricEntity), "prefix.metric_name");
 
     String transformedName =
         transformMetricName("test.test_metric_name", VeniceOpenTelemetryMetricNamingFormat.PASCAL_CASE);

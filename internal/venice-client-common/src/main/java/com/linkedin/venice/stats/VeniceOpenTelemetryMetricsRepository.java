@@ -185,7 +185,7 @@ public class VeniceOpenTelemetryMetricsRepository {
 
     for (MetricEntity metricEntity: metricsConfig.getMetricEntities()) {
       if (metricEntity.getMetricType() == MetricType.HISTOGRAM) {
-        uniqueHistogramMetricNames.add(getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName()));
+        uniqueHistogramMetricNames.add(getFullMetricName(metricEntity));
       }
     }
 
@@ -205,8 +205,8 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
-  String getFullMetricName(String metricPrefix, String name) {
-    String fullMetricName = metricPrefix + "." + name;
+  String getFullMetricName(MetricEntity metricEntity) {
+    String fullMetricName = getMetricPrefix(metricEntity) + "." + metricEntity.getMetricName();
     validateMetricName(fullMetricName);
     return transformMetricName(fullMetricName, getMetricFormat());
   }
@@ -230,7 +230,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       return null;
     }
     return histogramMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
-      String fullMetricName = getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName());
+      String fullMetricName = getFullMetricName(metricEntity);
       DoubleHistogramBuilder builder = meter.histogramBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
           .setDescription(metricEntity.getDescription());
@@ -247,7 +247,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       return null;
     }
     return counterMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
-      String fullMetricName = getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName());
+      String fullMetricName = getFullMetricName(metricEntity);
       LongCounterBuilder builder = meter.counterBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
           .setDescription(metricEntity.getDescription());
@@ -260,7 +260,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       return null;
     }
     return gaugeMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
-      String fullMetricName = getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName());
+      String fullMetricName = getFullMetricName(metricEntity);
       DoubleGaugeBuilder builder = meter.gaugeBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
           .setDescription(metricEntity.getDescription());
