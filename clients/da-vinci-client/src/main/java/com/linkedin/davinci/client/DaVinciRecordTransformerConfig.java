@@ -20,6 +20,7 @@ public class DaVinciRecordTransformerConfig {
   private final boolean skipCompatibilityChecks;
   private final boolean useSpecificRecordKeyDeserializer;
   private final boolean useSpecificRecordValueDeserializer;
+  private int startConsumptionLatchCount;
 
   public DaVinciRecordTransformerConfig(Builder builder) {
     this.recordTransformerFunction = Optional.ofNullable(builder.recordTransformerFunction)
@@ -40,6 +41,9 @@ public class DaVinciRecordTransformerConfig {
     this.storeRecordsInDaVinci = builder.storeRecordsInDaVinci;
     this.alwaysBootstrapFromVersionTopic = builder.alwaysBootstrapFromVersionTopic;
     this.skipCompatibilityChecks = builder.skipCompatibilityChecks;
+
+    // Default = 0 to guard against NPE downstream, which shouldn't be possible.
+    this.startConsumptionLatchCount = 0;
   }
 
   /**
@@ -103,6 +107,20 @@ public class DaVinciRecordTransformerConfig {
    */
   public boolean shouldSkipCompatibilityChecks() {
     return skipCompatibilityChecks;
+  }
+
+  /**
+   * @return {@link #startConsumptionLatchCount}
+   */
+  public int getStartConsumptionLatchCount() {
+    return startConsumptionLatchCount;
+  }
+
+  /**
+   * @param startConsumptionLatchCount the count used for the latch to guarantee we finish scanning every RocksDB partition before starting remote consumption.
+   */
+  public void setStartConsumptionLatchCount(int startConsumptionLatchCount) {
+    this.startConsumptionLatchCount = startConsumptionLatchCount;
   }
 
   public static class Builder {

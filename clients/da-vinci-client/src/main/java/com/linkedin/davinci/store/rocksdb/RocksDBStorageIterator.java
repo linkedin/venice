@@ -50,4 +50,9 @@ public class RocksDBStorageIterator extends AbstractStorageIterator {
   public void seekToLast() {
     iterator.seekToLast();
   }
+
+  @Override
+  public void close() {
+    iterator.close();
+  }
 }

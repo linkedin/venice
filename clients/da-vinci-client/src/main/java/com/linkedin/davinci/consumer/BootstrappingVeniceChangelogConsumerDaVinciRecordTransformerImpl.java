@@ -269,9 +269,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   }
 
   private VeniceProperties buildVeniceConfig() {
-    return new PropertyBuilder()
-        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, changelogClientConfig.getRocksDBBlockCacheSizeInBytes())
-        .put(changelogClientConfig.getConsumerProperties())
+    return new PropertyBuilder().put(changelogClientConfig.getConsumerProperties())
+        // We don't need the block cache, since we only read each key once from disk
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0)
         .put(DATA_BASE_PATH, changelogClientConfig.getBootstrapFileSystemPath())
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false)
         .put(PERSISTENCE_TYPE, ROCKS_DB)

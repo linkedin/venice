@@ -146,25 +146,27 @@ public class DaVinciRecordTransformerUtility<K, O> {
     } else {
       // Bootstrap from local storage
       LOGGER.info("Bootstrapping from local storage for partition {}", partitionId);
-      AbstractStorageIterator iterator = storageEngine.getIterator(partitionId);
-      for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
-        byte[] keyBytes = iterator.key();
-        byte[] valueBytes = iterator.value();
-        Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(keyBytes));
-        Lazy<O> lazyValue = Lazy.of(() -> {
-          ByteBuffer valueByteBuffer = ByteBuffer.wrap(valueBytes);
-          // Skip schema id
-          valueByteBuffer.position(Integer.BYTES);
-          ByteBuffer decompressedValueBytes;
-          try {
-            decompressedValueBytes = compressor.get().decompress(valueByteBuffer);
-          } catch (IOException e) {
-            throw new RuntimeException(e);
-          }
-          return outputValueDeserializer.deserialize(decompressedValueBytes);
-        });
 
-        recordTransformer.processPut(lazyKey, lazyValue, partitionId);
+      try (AbstractStorageIterator iterator = storageEngine.getIterator(partitionId)) {
+        for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
+          byte[] keyBytes = iterator.key();
+          byte[] valueBytes = iterator.value();
+          Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(keyBytes));
+          Lazy<O> lazyValue = Lazy.of(() -> {
+            ByteBuffer valueByteBuffer = ByteBuffer.wrap(valueBytes);
+            // Skip schema id
+            valueByteBuffer.position(Integer.BYTES);
+            ByteBuffer decompressedValueBytes;
+            try {
+              decompressedValueBytes = compressor.get().decompress(valueByteBuffer);
+            } catch (IOException e) {
+              throw new RuntimeException(e);
+            }
+            return outputValueDeserializer.deserialize(decompressedValueBytes);
+          });
+
+          recordTransformer.processPut(lazyKey, lazyValue, partitionId);
+        }
       }
     }
   }
