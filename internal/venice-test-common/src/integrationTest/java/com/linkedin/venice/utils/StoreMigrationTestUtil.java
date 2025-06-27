@@ -162,4 +162,9 @@ public class StoreMigrationTestUtil {
     ControllerResponse discoveryResponse = destControllerClient.discoverCluster(storeName);
     Assert.assertEquals(discoveryResponse.getCluster(), srcClusterName);
   }
+
+  public static void deleteStore(String controllerUrl, String storeName) throws Exception {
+    String[] deleteStoreArgs = { "--delete-store", "--url", controllerUrl, "--store", storeName };
+    AdminTool.main(deleteStoreArgs);
+  }
 }

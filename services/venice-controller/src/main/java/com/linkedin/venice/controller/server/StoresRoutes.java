@@ -543,15 +543,13 @@ public class StoresRoutes extends AbstractRoute {
           AdminSparkServer.validateParams(request, MIGRATE_STORE.getParams(), admin);
           String srcClusterName = request.queryParams(CLUSTER);
           String destClusterName = request.queryParams(CLUSTER_DEST);
-          String storeName = request.queryParams(NAME);
+          String storeName = request.queryParams(STORE_NAME);
 
-          int currStep = Utils.parseIntOrDefault(
-              request.queryParams(AUTO_STORE_MIGRATION_CURRENT_STEP),
-              AUTO_STORE_MIGRATION_CURRENT_STEP,
-              0);
-          boolean abortOnFailure = Utils.parseBooleanOrFalse(
-              request.queryParams(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE),
-              AUTO_STORE_MIGRATION_ABORT_ON_FAILURE);
+          Optional<Integer> currStep =
+              Optional.ofNullable(request.queryParams(AUTO_STORE_MIGRATION_CURRENT_STEP)).map(Integer::parseInt);
+          Optional<Boolean> abortOnFailure =
+              Optional.ofNullable(request.queryParams(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE))
+                  .map(Boolean::parseBoolean);
 
           storeMigrationResponse.setSrcClusterName(srcClusterName);
           storeMigrationResponse.setCluster(destClusterName);

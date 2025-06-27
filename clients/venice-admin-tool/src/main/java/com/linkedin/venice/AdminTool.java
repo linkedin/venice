@@ -1892,7 +1892,7 @@ public class AdminTool {
     checkWhetherStoreMigrationIsAllowed(destClient);
   }
 
-  private static void storeIsMigrating(ControllerClient controllerClient, String storeName) {
+  private static void assertStoreNotMigrating(ControllerClient controllerClient, String storeName) {
     StoreResponse storeResponse = controllerClient.getStore(storeName);
     if (storeResponse.isError()) {
       printObject(storeResponse);
@@ -1903,7 +1903,8 @@ public class AdminTool {
             String.format(
                 "ERROR: store %s is migrating. Finish the current migration before starting a new one.",
                 storeName));
-
+        throw new VeniceException(
+            String.format("Store %s is migrating. Finish the current migration before starting a new one.", storeName));
       }
     }
   }
@@ -1920,7 +1921,7 @@ public class AdminTool {
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
     checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
-    storeIsMigrating(srcControllerClient, storeName);
+    assertStoreNotMigrating(srcControllerClient, storeName);
 
     StoreMigrationResponse storeMigrationResponse = srcControllerClient.migrateStore(storeName, destClusterName);
     printObject(storeMigrationResponse);
@@ -2425,8 +2426,9 @@ public class AdminTool {
     String storeName = getRequiredArgument(cmd, Arg.STORE);
     String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
     String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
-    boolean abortOnFailure = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.ABORT_ON_FAILURE, "false"));
-    int currStep = Integer.parseInt(getOptionalArgument(cmd, Arg.INITIAL_STEP, "0"));
+    Optional<Boolean> abortOnFailure =
+        Optional.ofNullable(getOptionalArgument(cmd, Arg.ABORT_ON_FAILURE)).map(Boolean::parseBoolean);
+    Optional<Integer> currStep = Optional.ofNullable(getOptionalArgument(cmd, Arg.INITIAL_STEP)).map(Integer::parseInt);
 
     if (srcClusterName.equals(destClusterName)) {
       throw new VeniceException("Source and destination cluster cannot be the same!");
@@ -2437,7 +2439,7 @@ public class AdminTool {
     ControllerClient destControllerClient =
         ControllerClientFactory.getControllerClient(destClusterName, veniceUrl, sslFactory);
     checkPreconditionForStoreMigration(srcControllerClient, destControllerClient);
-    storeIsMigrating(srcControllerClient, storeName);
+    assertStoreNotMigrating(srcControllerClient, storeName);
 
     StoreMigrationResponse storeMigrationResponse =
         srcControllerClient.autoMigrateStore(storeName, destClusterName, currStep, abortOnFailure);

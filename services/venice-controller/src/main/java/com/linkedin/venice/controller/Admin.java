@@ -182,8 +182,8 @@ public interface Admin extends AutoCloseable, Closeable {
       String srcClusterName,
       String destClusterName,
       String storeName,
-      int currStep,
-      boolean abortOnFailure);
+      Optional<Integer> currStep,
+      Optional<Boolean> abortOnFailure);
 
   /**
   * Delete the entire store including both metadata and real user's data. Before deleting a store, we should disable

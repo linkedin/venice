@@ -203,7 +203,7 @@ Commands:
     --monitor-data-recovery                           Monitor data recovery progress for a group of stores. ('--stores' overwrites
                                                       '--cluster' value).
                                                       Requires: --url --dest-fabric --datetime
-                               q                       Optional args: --stores --cluster --interval
+                                                      Optional args: --stores --cluster --interval
     --new-storage-persona                             Creates a new storage persona..
                                                       Requires: --url --cluster --storage-persona --storage-quota --store --owner
     --new-store

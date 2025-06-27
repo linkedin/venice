@@ -714,8 +714,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String srcClusterName,
       String destClusterName,
       String storeName,
-      int currStep,
-      boolean abortOnFailure) {
+      Optional<Integer> currStep,
+      Optional<Boolean> abortOnFailure) {
     veniceHelixAdmin.autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, abortOnFailure);
   }
 

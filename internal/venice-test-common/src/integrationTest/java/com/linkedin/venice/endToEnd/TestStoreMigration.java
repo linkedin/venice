@@ -838,9 +838,14 @@ public class TestStoreMigration {
   @Test(timeOut = TEST_TIMEOUT)
   public void testAutoStoreMigration() throws Exception {
     String storeName = Utils.getUniqueString("testAutoMigration");
-    createAndPushStore(srcClusterName, storeName);
-    StoreMigrationTestUtil
-        .autoStoreMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, "0", "false");
+    try {
+      createAndPushStore(srcClusterName, storeName);
+      StoreMigrationTestUtil
+          .autoStoreMigration(parentControllerUrl, storeName, srcClusterName, destClusterName, "0", "false");
+    } finally {
+      StoreMigrationTestUtil.deleteStore(parentControllerUrl, storeName);
+    }
+
   }
 
   private void verifyKillMessageInParticipantStore(

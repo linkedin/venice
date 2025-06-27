@@ -394,7 +394,7 @@ public enum Command {
   ),
   AUTO_MIGRATE_STORE(
       "auto-migrate-store", "Auto migrate store from one cluster to another cluster",
-      new Arg[] { URL, STORE, CLUSTER_SRC, CLUSTER_DEST, INITIAL_STEP, ABORT_ON_FAILURE }
+      new Arg[] { URL, STORE, CLUSTER_SRC, CLUSTER_DEST }, new Arg[] { INITIAL_STEP, ABORT_ON_FAILURE }
   ),
   MIGRATION_STATUS(
       "migration-status", "Get store migration status", new Arg[] { URL, STORE, CLUSTER_SRC, CLUSTER_DEST }

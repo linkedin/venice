@@ -79,6 +79,7 @@ import java.util.Set;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
 
@@ -1235,7 +1236,7 @@ public class TestVeniceHelixAdmin {
   public void testAutoStoreMigration() {
     final String destCluster = "destCluster";
     final String storeNameForMigration = "testStoreForMigration";
-    final int currStep = 0;
+    final Optional<Integer> currStep = Optional.empty();
 
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     HelixVeniceClusterResources helixVeniceClusterResources = mock(HelixVeniceClusterResources.class);
@@ -1249,19 +1250,25 @@ public class TestVeniceHelixAdmin {
     doReturn(storeMigrationManager).when(multiTaskSchedulerService).getStoreMigrationManager();
 
     doCallRealMethod().when(veniceHelixAdmin)
-        .autoMigrateStore(anyString(), anyString(), anyString(), anyInt(), anyBoolean());
-    veniceHelixAdmin.autoMigrateStore(clusterName, destCluster, storeNameForMigration, currStep, true);
+        .autoMigrateStore(
+            anyString(),
+            anyString(),
+            anyString(),
+            Mockito.<Optional<Integer>>any(),
+            Mockito.<Optional<Boolean>>any());
+    veniceHelixAdmin.autoMigrateStore(clusterName, destCluster, storeNameForMigration, currStep, Optional.empty());
 
     // Assert – scheduleMigration(...) must be invoked with the exact args
     verify(storeMigrationManager)
-        .scheduleMigration(eq(storeNameForMigration), eq(clusterName), eq(destCluster), eq(currStep), eq(0), eq(true));
+        .scheduleMigration(eq(storeNameForMigration), eq(clusterName), eq(destCluster), eq(0), eq(0), eq(false));
 
     // Optional is empty → store migration unsupported
     doReturn(Optional.empty()).when(helixVeniceClusterResources).getMultiTaskSchedulerService();
 
     Exception exp = expectThrows(
         VeniceException.class,
-        () -> veniceHelixAdmin.autoMigrateStore(clusterName, destCluster, storeNameForMigration, currStep, true));
+        () -> veniceHelixAdmin
+            .autoMigrateStore(clusterName, destCluster, storeNameForMigration, currStep, Optional.empty()));
 
     assertTrue(exp.getMessage().contains("Store migration is not supported in this cluster: " + clusterName));
   }
