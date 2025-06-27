@@ -382,6 +382,7 @@ public class VeniceControllerStateModel extends StateModel {
       clusterResources.stopLeakedPushStatusCleanUpService();
       clusterResources.stopDeadStoreStatsPreFetchTask();
       clusterResources.stopErrorPartitionResetTask();
+      clusterResources.stopMultiTaskSchedulerService();
       clusterResources.clear();
       clusterResources = null;
     }

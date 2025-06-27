@@ -320,13 +320,6 @@ public class HelixVeniceClusterResources implements VeniceResource {
     customizedViewRepo.clear();
     routersClusterManager.clear();
     admin.clearInstanceMonitor(clusterName);
-    if (multiTaskSchedulerService.isPresent()) {
-      try {
-        multiTaskSchedulerService.get().stop();
-      } catch (Exception e) {
-        LOGGER.error("Error when stopping multitask scheduler service for cluster: {}", clusterName, e);
-      }
-    }
   }
 
   /**
@@ -386,12 +379,28 @@ public class HelixVeniceClusterResources implements VeniceResource {
     }
   }
 
+  /**
+   * Cause {@link MultiTaskSchedulerService} service to begin executing.
+   */
   public void startMultiTaskSchedulerService() {
     if (multiTaskSchedulerService.isPresent()) {
       try {
         multiTaskSchedulerService.get().start();
       } catch (Exception e) {
         LOGGER.error("Error when starting multitask scheduler service for cluster: {}", clusterName);
+      }
+    }
+  }
+
+  /**
+   * Cause {@link MultiTaskSchedulerService} service to stop executing.
+   */
+  public void stopMultiTaskSchedulerService() {
+    if (multiTaskSchedulerService.isPresent()) {
+      try {
+        multiTaskSchedulerService.get().stop();
+      } catch (Exception e) {
+        LOGGER.error("Error when stopping multitask scheduler service for cluster: {}", clusterName, e);
       }
     }
   }
