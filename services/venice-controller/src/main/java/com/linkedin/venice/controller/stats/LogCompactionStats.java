@@ -27,7 +27,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   /** metrics */
-  private final MetricEntityStateGeneric repushStoreCallCountMetric;
+  private final MetricEntityStateGeneric repushCallCountMetric;
   private final MetricEntityStateGeneric storeNominationToCompactionCompleteDurationMetric;
   private final MetricEntityStateGeneric storeNominatedForCompactionCountMetric;
   private final MetricEntityStateGeneric storeCompactionTriggeredCountMetric;
@@ -57,11 +57,11 @@ public class LogCompactionStats extends AbstractVeniceStats {
       this.baseDimensionsMap = null;
     }
 
-    repushStoreCallCountMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.REPUSH_STORE_ENDPOINT_CALL_COUNT.getMetricEntity(),
+    repushCallCountMetric = MetricEntityStateGeneric.create(
+        ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        ControllerTehutiMetricNameEnum.REPUSH_STORE_ENDPOINT_CALL_COUNT,
+        ControllerTehutiMetricNameEnum.REPUSH_CALL_COUNT,
         Collections.singletonList(new Count()),
         baseDimensionsMap);
 
@@ -94,7 +94,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
       String storeName,
       RepushStoreTriggerSource triggerSource,
       VeniceResponseStatusCategory executionStatus) {
-    repushStoreCallCountMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
+    repushCallCountMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
       {
         put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
         put(VeniceMetricsDimensions.REPUSH_TRIGGER_SOURCE, triggerSource.getDimensionValue());
@@ -138,8 +138,8 @@ public class LogCompactionStats extends AbstractVeniceStats {
   }
 
   enum ControllerTehutiMetricNameEnum implements TehutiMetricNameEnum {
-    /** for {@link ControllerMetricEntity#REPUSH_STORE_ENDPOINT_CALL_COUNT} */
-    REPUSH_STORE_ENDPOINT_CALL_COUNT,
+    /** for {@link ControllerMetricEntity#REPUSH_CALL_COUNT} */
+    REPUSH_CALL_COUNT,
     /** for {@link ControllerMetricEntity#STORE_NOMINATION_TO_COMPACTION_COMPLETE_DURATION} */
     STORE_NOMINATION_TO_COMPACTION_COMPLETE_DURATION,
     /** for {@link ControllerMetricEntity#STORE_NOMINATED_FOR_COMPACTION_COUNT} */

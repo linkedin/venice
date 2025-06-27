@@ -58,8 +58,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
   @BeforeClass
   public void setUp() throws Exception {
     // add all the metrics that are used in the test
-    Collection<MetricEntity> metricEntities =
-        Arrays.asList(ControllerMetricEntity.REPUSH_STORE_ENDPOINT_CALL_COUNT.getMetricEntity());
+    Collection<MetricEntity> metricEntities = Arrays.asList(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricEntity());
 
     // setup metric reader to validate metric emission
     this.inMemoryMetricReader = InMemoryMetricReader.create();
@@ -120,10 +119,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // test validation
     Assert.assertFalse(repushJobResponse.isError());
-    validateMetricEmission(
-        ControllerMetricEntity.REPUSH_STORE_ENDPOINT_CALL_COUNT.getMetricName(),
-        1,
-        expectedAttributes);
+    validateMetricEmission(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricName(), 1, expectedAttributes);
   }
 
   /**
@@ -157,10 +153,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // test validation
     Assert.assertTrue(repushJobResponse.isError());
-    validateMetricEmission(
-        ControllerMetricEntity.REPUSH_STORE_ENDPOINT_CALL_COUNT.getMetricName(),
-        1,
-        expectedAttributes);
+    validateMetricEmission(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricName(), 1, expectedAttributes);
   }
 
   /**
@@ -192,10 +185,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // test validation
     Assert.assertTrue(repushJobResponse.isError());
-    validateMetricEmission(
-        ControllerMetricEntity.REPUSH_STORE_ENDPOINT_CALL_COUNT.getMetricName(),
-        1,
-        expectedAttributes);
+    validateMetricEmission(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricName(), 1, expectedAttributes);
   }
 
   /**
@@ -234,10 +224,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
     // test validation
     verify(getInternalAdmin()).repushStore(any());
-    validateMetricEmission(
-        ControllerMetricEntity.REPUSH_STORE_ENDPOINT_CALL_COUNT.getMetricName(),
-        1,
-        expectedAttributes);
+    validateMetricEmission(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricName(), 1, expectedAttributes);
   }
 
   /**
