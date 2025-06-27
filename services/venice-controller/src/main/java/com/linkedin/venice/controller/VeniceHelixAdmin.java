@@ -785,7 +785,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.compactionManager = new CompactionManager(
             repushOrchestrator,
             multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS(),
-            this.logCompactionStatsMap);
+            logCompactionStatsMap);
       } catch (Exception e) {
         LOGGER.error("[log-compaction] Failed to enable " + LogCompactionService.class.getSimpleName(), e);
         throw new VeniceException(e);
@@ -1356,10 +1356,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
     try {
-      // Scheduled log compaction metric
-      logCompactionStatsMap.get(pushJobDetailsValue.getClusterName().toString())
-          .setCompactionComplete(pushJobDetailsKey.getStoreName().toString());
-
       // Push job status detail metrics
       PushJobDetailsStatus overallStatus =
           PushJobDetailsStatus.valueOf(overallStatuses.get(overallStatuses.size() - 1).getStatus());
@@ -1403,6 +1399,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           } else {
             pushJobStatusStats.recordBatchPushSuccessSensor();
           }
+
+          // Scheduled log compaction metric
+          logCompactionStatsMap.get(pushJobDetailsValue.getClusterName().toString())
+              .setCompactionComplete(pushJobDetailsKey.getStoreName().toString());
         }
         // Append job duration in minutes to log message
         double jobDurationInMinutes = pushJobDetailsValue.getJobDurationInMs() / 60000.0;
