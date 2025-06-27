@@ -28,7 +28,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
 
   /** metrics */
   private final MetricEntityStateGeneric repushStoreCallCountMetric;
-  private final MetricEntityStateGeneric storeNominationToCompactionTriggeredDurationMetric;
+  private final MetricEntityStateGeneric storeNominationToCompactionCompleteDurationMetric;
   private final MetricEntityStateGeneric storeNominatedForCompactionCountMetric;
   private final MetricEntityStateGeneric storeCompactionTriggeredCountMetric;
 
@@ -65,11 +65,11 @@ public class LogCompactionStats extends AbstractVeniceStats {
         Collections.singletonList(new Count()),
         baseDimensionsMap);
 
-    storeNominationToCompactionTriggeredDurationMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.STORE_NOMINATION_TO_COMPACTION_TRIGGERED_DURATION.getMetricEntity(),
+    storeNominationToCompactionCompleteDurationMetric = MetricEntityStateGeneric.create(
+        ControllerMetricEntity.STORE_NOMINATION_TO_COMPACTION_COMPLETE_DURATION.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        ControllerTehutiMetricNameEnum.STORE_NOMINATION_TO_COMPACTION_DURATION,
+        ControllerTehutiMetricNameEnum.STORE_NOMINATION_TO_COMPACTION_COMPLETE_DURATION,
         Collections.singletonList(new Count()),
         baseDimensionsMap);
 
@@ -103,8 +103,8 @@ public class LogCompactionStats extends AbstractVeniceStats {
     });
   }
 
-  public void startStoreNominationToCompactionTriggeredDuration(String storeName) {
-    storeNominationToCompactionTriggeredDurationMetric
+  public void startStoreNominationToCompactionCompleteDuration(String storeName) {
+    storeNominationToCompactionCompleteDurationMetric
         .record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
           {
             put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
@@ -112,8 +112,8 @@ public class LogCompactionStats extends AbstractVeniceStats {
         });
   }
 
-  public void endStoreNominationToCompactionTriggeredDuration(String storeName) {
-    storeNominationToCompactionTriggeredDurationMetric
+  public void endStoreNominationToCompactionCompleteDuration(String storeName) {
+    storeNominationToCompactionCompleteDurationMetric
         .record(0, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
           {
             put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
@@ -140,8 +140,8 @@ public class LogCompactionStats extends AbstractVeniceStats {
   enum ControllerTehutiMetricNameEnum implements TehutiMetricNameEnum {
     /** for {@link ControllerMetricEntity#REPUSH_STORE_ENDPOINT_CALL_COUNT} */
     REPUSH_STORE_ENDPOINT_CALL_COUNT,
-    /** for {@link ControllerMetricEntity#STORE_NOMINATION_TO_COMPACTION_TRIGGERED_DURATION} */
-    STORE_NOMINATION_TO_COMPACTION_DURATION,
+    /** for {@link ControllerMetricEntity#STORE_NOMINATION_TO_COMPACTION_COMPLETE_DURATION} */
+    STORE_NOMINATION_TO_COMPACTION_COMPLETE_DURATION,
     /** for {@link ControllerMetricEntity#STORE_NOMINATED_FOR_COMPACTION_COUNT} */
     STORE_NOMINATED_FOR_COMPACTION_COUNT,
     /** for {@link ControllerMetricEntity#STORE_COMPACTION_TRIGGERED_COUNT} */

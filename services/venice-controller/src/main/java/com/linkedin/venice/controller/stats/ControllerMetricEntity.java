@@ -17,7 +17,7 @@ public enum ControllerMetricEntity {
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of all calls to a controller endpoint",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, REPUSH_STORE_TRIGGER_SOURCE)
   ),
-  STORE_NOMINATION_TO_COMPACTION_TRIGGERED_DURATION(
+  STORE_NOMINATION_TO_COMPACTION_COMPLETE_DURATION(
       MetricType.GAUGE, MetricUnit.NUMBER,
       "This metric indicates the duration from when a store is first nominated for compaction until a repush DAG is triggered on the same store (regardless of repush DAG run success/failure)."
           + " When a store is nominated for scheduled compaction and remains uncompacted, this metric will be at 1."

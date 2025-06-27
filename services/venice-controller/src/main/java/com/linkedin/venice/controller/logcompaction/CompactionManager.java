@@ -73,8 +73,7 @@ public class CompactionManager {
       if (isCompactionReady(storeInfo)) {
         storesReadyForCompaction.add(storeInfo);
         LogCompactionStats stats = statsMap.get(clusterName);
-        stats.startStoreNominationToCompactionTriggeredDuration(storeInfo.getName());
-        stats.recordStoreNominatedForCompactionCount(storeInfo.getName());
+        stats.startStoreNominationToCompactionCompleteDuration(storeInfo.getName());
       }
     }
     return storesReadyForCompaction;

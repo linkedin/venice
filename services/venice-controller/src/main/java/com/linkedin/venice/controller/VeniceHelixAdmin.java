@@ -270,7 +270,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
@@ -465,6 +464,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final LogContext logContext;
 
   final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
+  static final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
 
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -632,29 +632,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     dataRecoveryManager =
         new DataRecoveryManager(this, icProvider, pubSubTopicRepository, participantStoreClientsManager);
 
-    if (multiClusterConfigs.isLogCompactionEnabled()) {
-      Class<? extends RepushOrchestrator> repushOrchestratorClass =
-          ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
-      try {
-        RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
-            repushOrchestratorClass,
-            new Class[] { VeniceProperties.class },
-            new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
-        compactionManager = new CompactionManager(
-            repushOrchestrator,
-            multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS(),
-            multiClusterConfigs.getClusters()
-                .stream()
-                .collect(
-                    Collectors.toMap(
-                        Function.identity(),
-                        clusterName -> new LogCompactionStats(metricsRepository, clusterName))));
-      } catch (Exception e) {
-        LOGGER.error("[log-compaction] Failed to enable " + LogCompactionService.class.getSimpleName(), e);
-        throw new VeniceException(e);
-      }
-    }
-
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
     initRoutines.add(
         new SystemSchemaInitializationRoutine(
@@ -755,6 +732,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         helixAdminClient);
 
     for (String clusterName: multiClusterConfigs.getClusters()) {
+      if (!multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()) {
+        logCompactionStatsMap.putIfAbsent(clusterName, new LogCompactionStats(metricsRepository, clusterName));
+      }
+
       if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
         continue;
       }
@@ -792,6 +773,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       });
     }
+
+    if (multiClusterConfigs.isLogCompactionEnabled()) {
+      Class<? extends RepushOrchestrator> repushOrchestratorClass =
+          ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
+      try {
+        RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
+            repushOrchestratorClass,
+            new Class[] { VeniceProperties.class },
+            new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
+        this.compactionManager = new CompactionManager(
+            repushOrchestrator,
+            multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS(),
+            this.logCompactionStatsMap);
+      } catch (Exception e) {
+        LOGGER.error("[log-compaction] Failed to enable " + LogCompactionService.class.getSimpleName(), e);
+        throw new VeniceException(e);
+      }
+    }
+
     emptyPushZSTDDictionary =
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
 
@@ -1356,6 +1356,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
     try {
+      // Scheduled log compaction metric
+      logCompactionStatsMap.get(pushJobDetailsValue.getClusterName().toString())
+          .endStoreNominationToCompactionCompleteDuration(pushJobDetailsKey.getStoreName().toString());
+
+      // Push job status detail metrics
       PushJobDetailsStatus overallStatus =
           PushJobDetailsStatus.valueOf(overallStatuses.get(overallStatuses.size() - 1).getStatus());
       if (PushJobDetailsStatus.isTerminal(overallStatus.getValue())) {

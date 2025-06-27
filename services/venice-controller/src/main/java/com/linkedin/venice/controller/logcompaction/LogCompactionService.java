@@ -116,7 +116,7 @@ public class LogCompactionService extends AbstractVeniceService {
         try {
           RepushJobResponse response = admin
               .repushStore(new RepushJobRequest(clusterName, storeInfo.getName(), RepushStoreTriggerSource.SCHEDULED));
-          stats.endStoreNominationToCompactionTriggeredDuration(storeInfo.getName());
+          stats.endStoreNominationToCompactionCompleteDuration(storeInfo.getName());
           stats.recordStoreCompactionTriggeredCount(storeInfo.getName());
           LOGGER.info(
               "log compaction triggered for cluster: {} store: {} | execution ID: {}",
