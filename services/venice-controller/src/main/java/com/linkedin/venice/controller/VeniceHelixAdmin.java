@@ -1358,7 +1358,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     try {
       // Scheduled log compaction metric
       logCompactionStatsMap.get(pushJobDetailsValue.getClusterName().toString())
-          .endStoreNominationToCompactionCompleteDuration(pushJobDetailsKey.getStoreName().toString());
+          .setCompactionComplete(pushJobDetailsKey.getStoreName().toString());
 
       // Push job status detail metrics
       PushJobDetailsStatus overallStatus =

@@ -18,7 +18,7 @@ public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of all calls to a controller endpoint",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, REPUSH_TRIGGER_SOURCE)
   ),
-  STORE_NOMINATION_TO_COMPACTION_COMPLETE_DURATION(
+  COMPACTION_ELIGIBLE_STATE(
       MetricType.GAUGE, MetricUnit.NUMBER,
       "This metric indicates the duration from when a store is first nominated for compaction until the store is compacted successfully."
           + " When a store is nominated for scheduled compaction and remains uncompacted, this metric will be at 1."
