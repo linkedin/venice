@@ -30,7 +30,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
   private final MetricEntityStateGeneric repushCallCountMetric;
   private final MetricEntityStateGeneric compactionEligibleMetric;
   private final MetricEntityStateGeneric storeNominatedForCompactionCountMetric;
-  private final MetricEntityStateGeneric storeCompactionTriggeredCountMetric;
+  private final MetricEntityStateGeneric storeCompactionTriggerStatusMetric;
 
   public LogCompactionStats(MetricsRepository metricsRepository, String clusterName) {
     super(metricsRepository, "LogCompactionStats");
@@ -81,11 +81,11 @@ public class LogCompactionStats extends AbstractVeniceStats {
         Collections.singletonList(new Count()),
         baseDimensionsMap);
 
-    storeCompactionTriggeredCountMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.STORE_COMPACTION_TRIGGERED_COUNT.getMetricEntity(),
+    storeCompactionTriggerStatusMetric = MetricEntityStateGeneric.create(
+        ControllerMetricEntity.STORE_COMPACTION_TRIGGER_STATUS.getMetricEntity(),
         otelRepository,
         this::registerSensor,
-        ControllerTehutiMetricNameEnum.STORE_COMPACTION_TRIGGERED_COUNT,
+        ControllerTehutiMetricNameEnum.STORE_COMPACTION_TRIGGER_STATUS,
         Collections.singletonList(new Count()),
         baseDimensionsMap);
   }
@@ -127,8 +127,10 @@ public class LogCompactionStats extends AbstractVeniceStats {
     });
   }
 
-  public void recordStoreCompactionTriggeredCount(String storeName) {
-    storeCompactionTriggeredCountMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
+  public void recordStoreCompactionTriggerStatus(
+      String storeName,
+      VeniceResponseStatusCategory triggerAttemptResponse) {
+    storeCompactionTriggerStatusMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
       {
         put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
       }
@@ -142,8 +144,8 @@ public class LogCompactionStats extends AbstractVeniceStats {
     COMPACTION_ELIGIBLE_STATE,
     /** for {@link ControllerMetricEntity#STORE_NOMINATED_FOR_COMPACTION_COUNT} */
     STORE_NOMINATED_FOR_COMPACTION_COUNT,
-    /** for {@link ControllerMetricEntity#STORE_COMPACTION_TRIGGERED_COUNT} */
-    STORE_COMPACTION_TRIGGERED_COUNT;
+    /** for {@link ControllerMetricEntity#STORE_COMPACTION_TRIGGER_STATUS} */
+    STORE_COMPACTION_TRIGGER_STATUS;
 
     private final String metricName;
 

@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.REPUSH_TRIGGER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
 
@@ -29,10 +30,10 @@ public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of stores nominated for scheduled compaction",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
   ),
-  STORE_COMPACTION_TRIGGERED_COUNT(
+  STORE_COMPACTION_TRIGGER_STATUS(
       MetricType.COUNTER, MetricUnit.NUMBER,
       "Count of stores for which a repush DAG is triggered for scheduled compaction",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
   ),;
 
   private final MetricEntity metricEntity;
