@@ -15,7 +15,7 @@ public enum RepushStoreTriggerSource implements VeniceDimensionInterface {
    */
   @Override
   public VeniceMetricsDimensions getDimensionName() {
-    return VeniceMetricsDimensions.REPUSH_STORE_TRIGGER_SOURCE;
+    return VeniceMetricsDimensions.REPUSH_TRIGGER_SOURCE;
   }
 
   @Override

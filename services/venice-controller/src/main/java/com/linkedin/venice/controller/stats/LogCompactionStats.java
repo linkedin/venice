@@ -97,7 +97,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
     repushStoreCallCountMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
       {
         put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-        put(VeniceMetricsDimensions.REPUSH_STORE_TRIGGER_SOURCE, triggerSource.getDimensionValue());
+        put(VeniceMetricsDimensions.REPUSH_TRIGGER_SOURCE, triggerSource.getDimensionValue());
         put(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY, executionStatus.getDimensionValue());
       }
     });

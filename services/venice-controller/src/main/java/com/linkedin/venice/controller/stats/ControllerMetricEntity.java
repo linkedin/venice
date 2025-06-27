@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.REPUSH_STORE_TRIGGER_SOURCE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.REPUSH_TRIGGER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.utils.Utils.setOf;
@@ -16,7 +16,7 @@ import java.util.Set;
 public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
   REPUSH_STORE_ENDPOINT_CALL_COUNT(
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of all calls to a controller endpoint",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, REPUSH_STORE_TRIGGER_SOURCE)
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, REPUSH_TRIGGER_SOURCE)
   ),
   STORE_NOMINATION_TO_COMPACTION_COMPLETE_DURATION(
       MetricType.GAUGE, MetricUnit.NUMBER,

@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.REPUSH_STORE_TRIGGER_SOURCE;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.REPUSH_TRIGGER_SOURCE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
@@ -102,7 +102,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
         .put(
-            REPUSH_STORE_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
+            REPUSH_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
             RepushStoreTriggerSource.MANUAL.getDimensionValue())
         .put(
             VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
@@ -137,7 +137,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
         .put(
-            REPUSH_STORE_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
+            REPUSH_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
             RepushStoreTriggerSource.MANUAL.getDimensionValue())
         .put(
             VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
@@ -174,7 +174,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
         .put(
-            REPUSH_STORE_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
+            REPUSH_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
             RepushStoreTriggerSource.MANUAL.getDimensionValue())
         .put(
             VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
@@ -212,7 +212,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
         .put(
-            REPUSH_STORE_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
+            REPUSH_TRIGGER_SOURCE.getDimensionNameInDefaultFormat(),
             RepushStoreTriggerSource.SCHEDULED.getDimensionValue())
         .put(
             VENICE_RESPONSE_STATUS_CODE_CATEGORY.getDimensionNameInDefaultFormat(),
