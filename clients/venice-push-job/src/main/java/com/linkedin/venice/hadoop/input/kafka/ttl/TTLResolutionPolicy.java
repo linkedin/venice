@@ -14,7 +14,13 @@ public enum TTLResolutionPolicy {
    * Only real-time(RT) data, which can contain the RMD, will be TTLed. If the data doesn't contain RMD,
    * it means the data comes from batch or the store is not AA-enabled, this policy will fail the VPJ job.
    */
-  RT_WRITE_ONLY(0);
+  RT_WRITE_ONLY(0),
+
+  /**
+   * Can support Batch and Real-time data. If the data doesn't contain RMD, then use the record's logical or producer
+   * timestamp as the field-level RMD timestamp.
+   */
+  FALLBACK_TO_RECORD_TIMESTAMP(1);
 
   private final int value;
 

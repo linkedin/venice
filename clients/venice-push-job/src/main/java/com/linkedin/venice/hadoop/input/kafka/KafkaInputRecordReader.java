@@ -13,6 +13,7 @@ import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
@@ -197,6 +198,10 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
           key.key = ByteBuffer.wrap(kafkaKey.getKey(), 0, kafkaKey.getKeyLength());
         }
         value.offset = pubSubMessage.getPosition().getNumericOffset();
+        ProducerMetadata producerMetadata = kafkaMessageEnvelope.getProducerMetadata();
+        value.logicalTs = producerMetadata.logicalTimestamp < 0
+            ? pubSubMessage.getPosition().getNumericOffset()
+            : producerMetadata.messageTimestamp;
         switch (messageType) {
           case PUT:
             Put put = (Put) kafkaMessageEnvelope.payloadUnion;

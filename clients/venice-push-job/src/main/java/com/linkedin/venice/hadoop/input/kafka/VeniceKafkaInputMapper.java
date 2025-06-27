@@ -82,4 +82,9 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<KafkaInputMappe
     Utils.closeQuietlyWithErrorLogged(veniceFilterChain);
     super.close();
   }
+
+  @Override
+  protected long getRecordTimestamp(KafkaInputMapperValue kafkaInputMapperValue) {
+    return kafkaInputMapperValue.getLogicalTs();
+  }
 }

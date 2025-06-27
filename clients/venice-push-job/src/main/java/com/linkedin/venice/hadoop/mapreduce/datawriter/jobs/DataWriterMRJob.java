@@ -65,7 +65,6 @@ import com.linkedin.venice.hadoop.input.kafka.KafkaInputMRPartitioner;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputValueGroupingComparator;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
-import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.mapreduce.common.JobUtils;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.map.VeniceAvroMapper;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.map.VeniceVsonMapper;
@@ -162,8 +161,7 @@ public class DataWriterMRJob extends DataWriterComputeJob {
       conf.setBoolean(REPUSH_TTL_ENABLE, pushJobSetting.repushTTLEnabled);
       conf.setLong(REPUSH_TTL_START_TIMESTAMP, pushJobSetting.repushTTLStartTimeMs);
       if (pushJobSetting.repushTTLEnabled) {
-        // Currently, we only support one policy. Thus, we don't allow overriding it.
-        conf.setInt(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue());
+        conf.setInt(REPUSH_TTL_POLICY, pushJobSetting.ttlResolutionPolicy.getValue());
         conf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
         conf.set(VALUE_SCHEMA_DIR, pushJobSetting.valueSchemaDir);
       }

@@ -19,6 +19,11 @@ public class VeniceKafkaInputTTLFilter extends VeniceRmdTTLFilter<KafkaInputMapp
     return kafkaInputMapperValue.schemaId;
   }
 
+  @Override
+  protected long getLogicalTimestamp(final KafkaInputMapperValue kafkaInputMapperValue) {
+    return kafkaInputMapperValue.logicalTs;
+  }
+
   protected int getRmdProtocolId(final KafkaInputMapperValue kafkaInputMapperValue) {
     return kafkaInputMapperValue.replicationMetadataVersionId;
   }

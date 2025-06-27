@@ -92,7 +92,11 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
     if (skipRmdRecord(value)) {
       return false;
     }
-    if (Objects.requireNonNull(ttlPolicy) == TTLResolutionPolicy.RT_WRITE_ONLY) {
+
+    Objects.requireNonNull(ttlPolicy);
+
+    if (ttlPolicy == TTLResolutionPolicy.RT_WRITE_ONLY
+        || ttlPolicy == TTLResolutionPolicy.FALLBACK_TO_RECORD_TIMESTAMP) {
       return filterByTTLandMaybeUpdateValue(value);
     }
     throw new UnsupportedOperationException(ttlPolicy + " policy is not supported.");
@@ -105,15 +109,22 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
 
   boolean filterByTTLandMaybeUpdateValue(final INPUT_VALUE value) {
     ByteBuffer rmdPayload = getRmdPayload(value);
-    if (rmdPayload == null || !rmdPayload.hasRemaining()) {
+    boolean hasRmdPayload = rmdPayload != null && rmdPayload.hasRemaining();
+    if (!hasRmdPayload && ttlPolicy == TTLResolutionPolicy.RT_WRITE_ONLY) {
       throw new IllegalStateException(
           "The record doesn't contain required RMD field. Please check if your store has A/A enabled");
     }
     int valueSchemaId = getSchemaId(value);
     int id = getRmdProtocolId(value);
     RmdVersionId rmdVersionId = new RmdVersionId(valueSchemaId, id);
-    GenericRecord rmdRecord =
-        rmdDeserializerCache.computeIfAbsent(rmdVersionId, this::generateRmdDeserializer).deserialize(rmdPayload);
+    final GenericRecord rmdRecord;
+    if (hasRmdPayload) {
+      rmdRecord =
+          rmdDeserializerCache.computeIfAbsent(rmdVersionId, this::generateRmdDeserializer).deserialize(rmdPayload);
+    } else {
+      long logicalTimestamp = getLogicalTimestamp(value);
+      return logicalTimestamp <= filterTimestamp;
+    }
     Object rmdTimestampObject = rmdRecord.get(TIMESTAMP_FIELD_POS);
     RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(rmdTimestampObject);
     // For value-level RMD timestamp, just compare the value with the filter TS.
@@ -202,4 +213,6 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
   protected boolean skipRmdRecord(final INPUT_VALUE value) {
     return false;
   }
+
+  protected abstract long getLogicalTimestamp(final INPUT_VALUE value);
 }

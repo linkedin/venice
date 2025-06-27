@@ -7,41 +7,48 @@ import java.nio.ByteBuffer;
 
 
 /**
- * This class is responsible to filter records based on the RMD information and the ttl config by taking chunked records {@link ChunkAssembler.ValueBytesAndSchemaId}.
+ * This class is responsible to filter records based on the RMD information and the ttl config by taking chunked records {@link ChunkAssembler.ChunkedValueWithMetadata}.
  */
-public class VeniceChunkedPayloadTTLFilter extends VeniceRmdTTLFilter<ChunkAssembler.ValueBytesAndSchemaId> {
+public class VeniceChunkedPayloadTTLFilter extends VeniceRmdTTLFilter<ChunkAssembler.ChunkedValueWithMetadata> {
   public VeniceChunkedPayloadTTLFilter(VeniceProperties props) throws IOException {
     super(props);
   }
 
   @Override
-  protected int getSchemaId(ChunkAssembler.ValueBytesAndSchemaId valueBytesAndSchemaId) {
-    return valueBytesAndSchemaId.getSchemaID();
+  protected int getSchemaId(ChunkAssembler.ChunkedValueWithMetadata chunkedValueWithMetadata) {
+    return chunkedValueWithMetadata.getSchemaID();
   }
 
   @Override
-  protected int getRmdProtocolId(ChunkAssembler.ValueBytesAndSchemaId valueBytesAndSchemaId) {
-    return valueBytesAndSchemaId.getReplicationMetadataVersionId();
+  protected int getRmdProtocolId(ChunkAssembler.ChunkedValueWithMetadata chunkedValueWithMetadata) {
+    return chunkedValueWithMetadata.getReplicationMetadataVersionId();
   }
 
   @Override
-  protected ByteBuffer getRmdPayload(ChunkAssembler.ValueBytesAndSchemaId valueBytesAndSchemaId) {
-    return valueBytesAndSchemaId.getReplicationMetadataPayload();
+  protected ByteBuffer getRmdPayload(ChunkAssembler.ChunkedValueWithMetadata chunkedValueWithMetadata) {
+    return chunkedValueWithMetadata.getReplicationMetadataPayload();
   }
 
   @Override
-  protected ByteBuffer getValuePayload(ChunkAssembler.ValueBytesAndSchemaId valueBytesAndSchemaId) {
-    byte[] valueBytes = valueBytesAndSchemaId.getBytes();
+  protected ByteBuffer getValuePayload(ChunkAssembler.ChunkedValueWithMetadata chunkedValueWithMetadata) {
+    byte[] valueBytes = chunkedValueWithMetadata.getBytes();
     return valueBytes == null ? null : ByteBuffer.wrap(valueBytes);
   }
 
   @Override
-  protected void updateRmdPayload(ChunkAssembler.ValueBytesAndSchemaId valueBytesAndSchemaId, ByteBuffer payload) {
-    valueBytesAndSchemaId.setReplicationMetadataPayload(payload);
+  protected void updateRmdPayload(
+      ChunkAssembler.ChunkedValueWithMetadata chunkedValueWithMetadata,
+      ByteBuffer payload) {
+    chunkedValueWithMetadata.setReplicationMetadataPayload(payload);
   }
 
   @Override
-  protected void updateValuePayload(ChunkAssembler.ValueBytesAndSchemaId valueBytesAndSchemaId, byte[] payload) {
-    valueBytesAndSchemaId.setBytes(payload);
+  protected void updateValuePayload(ChunkAssembler.ChunkedValueWithMetadata chunkedValueWithMetadata, byte[] payload) {
+    chunkedValueWithMetadata.setBytes(payload);
+  }
+
+  @Override
+  protected long getLogicalTimestamp(ChunkAssembler.ChunkedValueWithMetadata chunkedValueWithMetadata) {
+    return chunkedValueWithMetadata.getLogicalTimestamp();
   }
 }
