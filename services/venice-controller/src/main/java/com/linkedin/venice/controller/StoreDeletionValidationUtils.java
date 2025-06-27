@@ -4,6 +4,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import java.util.List;
@@ -43,8 +44,11 @@ public class StoreDeletionValidationUtils {
    * @param storeName the name of the store to validate deletion for
    * @return StoreDeletedValidation indicating whether the store is fully deleted or what resources remain
    */
-  public static StoreDeletedValidation validateStoreDeleted(Admin admin, String clusterName, String storeName) {
-    final StoreDeletedValidation result = new StoreDeletedValidation(clusterName, storeName);
+  public static StoreDeletedValidation validateStoreDeleted(
+      VeniceHelixAdmin admin,
+      String clusterName,
+      String storeName) {
+    StoreDeletedValidation result = new StoreDeletedValidation(clusterName, storeName);
 
     try {
       // 1. Check if Store Config still exists in ZooKeeper
@@ -52,19 +56,14 @@ public class StoreDeletionValidationUtils {
         return result;
       }
 
-      // 2. Check if Store metadata still exists in store repository
-      if (checkStoreMetadata(admin, result, clusterName, storeName)) {
-        return result;
-      }
-
-      // 3. Check system store metadata
-      if (checkSystemStoreMetadata(admin, result, clusterName, storeName)) {
+      // 2. Check if Store metadata still exists in store repository (main store and system stores)
+      if (checkAllStoreMetadata(admin, result, clusterName, storeName)) {
         return result;
       }
 
       // Cache the expensive listTopics() call since it's used by multiple validation methods
-      final TopicManager topicManager = admin.getTopicManager();
-      final Set<PubSubTopic> pubSubTopics;
+      TopicManager topicManager = admin.getTopicManager();
+      Set<PubSubTopic> pubSubTopics;
       try {
         pubSubTopics = topicManager.listTopics();
       } catch (Exception e) {
@@ -73,18 +72,13 @@ public class StoreDeletionValidationUtils {
         return result;
       }
 
-      // 4. Check Helix resources for main store
-      if (checkMainStoreHelixResources(admin, result, clusterName, storeName, pubSubTopics)) {
+      // 3. Check Helix resources for main store and system stores
+      if (checkAllHelixResources(admin, result, clusterName, storeName)) {
         return result;
       }
 
-      // 5. Check Kafka topics: version topics, RT topics, and system store topics
+      // 4. Check Kafka topics: version topics, RT topics, and system store topics
       if (checkForAnyExistingTopicResources(admin, result, clusterName, storeName, pubSubTopics)) {
-        return result;
-      }
-
-      // 6. Check Helix resources for system stores
-      if (checkSystemStoreHelixResources(admin, result, clusterName, storeName, pubSubTopics)) {
         return result;
       }
 
@@ -103,7 +97,7 @@ public class StoreDeletionValidationUtils {
    * Checks if store configuration still exists in ZooKeeper.
    */
   private static boolean checkStoreConfig(
-      Admin admin,
+      VeniceHelixAdmin admin,
       StoreDeletedValidation result,
       String clusterName,
       String storeName) {
@@ -124,18 +118,30 @@ public class StoreDeletionValidationUtils {
   }
 
   /**
-   * Checks if store metadata still exists in the store repository.
+   * Checks if store metadata still exists in the store repository for both main store and system stores.
    */
-  private static boolean checkStoreMetadata(
-      Admin admin,
+  private static boolean checkAllStoreMetadata(
+      VeniceHelixAdmin admin,
       StoreDeletedValidation result,
       String clusterName,
       String storeName) {
     try {
+      // Check main store metadata
       final Store store = admin.getStore(clusterName, storeName);
       if (store != null) {
         result.setStoreNotDeleted("Store metadata still exists in storeRepository.");
         return true;
+      }
+
+      // Check system store metadata
+      for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.getUserSystemStores()) {
+        final String systemStoreName = systemStoreType.getSystemStoreName(storeName);
+        final Store systemStore = admin.getStore(clusterName, systemStoreName);
+        if (systemStore != null) {
+          result.setStoreNotDeleted(
+              String.format("System store metadata still exists in storeRepository: %s", systemStoreName));
+          return true;
+        }
       }
     } catch (Exception e) {
       LOGGER.warn("Failed to check store metadata for store: {} in cluster: {}", storeName, clusterName, e);
@@ -146,48 +152,18 @@ public class StoreDeletionValidationUtils {
   }
 
   /**
-   * Checks if system store metadata still exists.
-   */
-  private static boolean checkSystemStoreMetadata(
-      Admin admin,
-      StoreDeletedValidation result,
-      String clusterName,
-      String storeName) {
-    try {
-      final List<VeniceSystemStoreType> systemStoreTypesToCheck = VeniceSystemStoreType.getUserSystemStores();
-
-      for (VeniceSystemStoreType systemStoreType: systemStoreTypesToCheck) {
-        final String systemStoreName = systemStoreType.getSystemStoreName(storeName);
-        final Store systemStore = admin.getStore(clusterName, systemStoreName);
-        if (systemStore != null) {
-          result.setStoreNotDeleted(
-              String.format("System store metadata still exists in storeRepository: %s", systemStoreName));
-          return true;
-        }
-      }
-    } catch (Exception e) {
-      LOGGER.warn("Failed to check system store metadata for store: {} in cluster: {}", storeName, clusterName, e);
-      result.setStoreNotDeleted("Failed to check system store metadata: " + e.getMessage());
-      return true;
-    }
-    return false;
-  }
-
-  /**
    * Checks if PubSub topics related to the store still exist.
    */
   private static boolean checkForAnyExistingTopicResources(
-      Admin admin,
+      VeniceHelixAdmin admin,
       StoreDeletedValidation result,
       String clusterName,
       String storeName,
       Set<PubSubTopic> pubSubTopics) {
     try {
-      final List<VeniceSystemStoreType> systemStoreTypesToCheck = VeniceSystemStoreType.getUserSystemStores();
-
       for (PubSubTopic topic: pubSubTopics) {
         // Check if this topic is related to the store (includes main store and system store topics)
-        if (isStoreRelatedTopic(topic, storeName, systemStoreTypesToCheck)) {
+        if (isStoreRelatedTopic(topic, storeName, VeniceSystemStoreType.getUserSystemStores())) {
           result.setStoreNotDeleted(String.format("PubSub topic still exists: %s", topic.getName()));
           return true;
         }
@@ -201,86 +177,56 @@ public class StoreDeletionValidationUtils {
   }
 
   /**
-   * Checks if Helix resources for the main store still exist.
+   * Checks if Helix resources for both main store and system stores still exist.
+   * This method directly queries Helix for all resources and filters for store-related ones.
+   * It does not depend on existing PubSub topics.
    */
-  private static boolean checkMainStoreHelixResources(
-      Admin admin,
+  private static boolean checkAllHelixResources(
+      VeniceHelixAdmin admin,
       StoreDeletedValidation result,
       String clusterName,
-      String storeName,
-      Set<PubSubTopic> pubSubTopics) {
+      String storeName) {
     try {
-      // Since we can't use isResourceStillAlive directly with store name,
-      // and containsHelixResource isn't available in Admin interface,
-      // we'll check if any PubSub topics exist for this store (which would indicate Helix resources)
-      for (PubSubTopic topic: pubSubTopics) {
-        // Check for version topics that belong to this exact store
-        if (storeName.equals(topic.getStoreName()) && topic.isVersionTopic()) {
-          // If a topic exists, try to check if its Helix resource exists
-          try {
-            if (admin.isResourceStillAlive(topic.getName())) {
-              result.setStoreNotDeleted(
-                  String.format("Helix resource still exists for version topic: %s", topic.getName()));
-              return true;
-            }
-          } catch (Exception e) {
-            // If isResourceStillAlive throws an exception, the resource likely doesn't exist
-            LOGGER.debug(
-                "Helix resource check failed for topic: {} (likely doesn't exist): {}",
-                topic.getName(),
-                e.getMessage());
-          }
+      List<String> allResources = admin.getAllLiveHelixResources(clusterName);
+
+      for (String resourceName: allResources) {
+        if (isHelixResourceRelatedToStore(resourceName, storeName)) {
+          result.setStoreNotDeleted(String.format("Helix resource still exists: %s", resourceName));
+          return true;
         }
       }
     } catch (Exception e) {
-      LOGGER.warn("Failed to check main store Helix resources for store: {} in cluster: {}", storeName, clusterName, e);
-      result.setStoreNotDeleted("Failed to check main store Helix resources: " + e.getMessage());
+      LOGGER.warn("Failed to check Helix resources for store: {} in cluster: {}", storeName, clusterName, e);
+      result.setStoreNotDeleted("Failed to check Helix resources: " + e.getMessage());
       return true;
     }
     return false;
   }
 
   /**
-   * Checks if Helix resources for system stores still exist.
+   * Determines if a Helix resource name is related to the specified store.
+   * Uses existing Venice utilities for parsing store names from version topics.
    */
-  private static boolean checkSystemStoreHelixResources(
-      Admin admin,
-      StoreDeletedValidation result,
-      String clusterName,
-      String storeName,
-      Set<PubSubTopic> pubSubTopics) {
-    try {
-      final List<VeniceSystemStoreType> systemStoreTypesToCheck = VeniceSystemStoreType.getUserSystemStores();
+  private static boolean isHelixResourceRelatedToStore(String resourceName, String storeName) {
+    // Use existing Version utility to check if it's a version topic
+    if (Version.isVersionTopic(resourceName)) {
+      // Use existing Version utility to parse store name
+      String resourceStoreName = Version.parseStoreFromVersionTopic(resourceName);
 
-      for (VeniceSystemStoreType systemStoreType: systemStoreTypesToCheck) {
-        final String systemStoreName = systemStoreType.getSystemStoreName(storeName);
+      // Check if it's a version topic for the main store
+      if (storeName.equals(resourceStoreName)) {
+        return true;
+      }
 
-        for (PubSubTopic topic: pubSubTopics) {
-          // Check for system store version topics that belong to this store
-          if (systemStoreName.equals(topic.getStoreName()) && topic.isVersionTopic()) {
-            // If a topic exists, try to check if its Helix resource exists
-            try {
-              if (admin.isResourceStillAlive(topic.getName())) {
-                result.setStoreNotDeleted(
-                    String.format("Helix resource still exists for system store topic: %s", topic.getName()));
-                return true;
-              }
-            } catch (Exception e) {
-              // If isResourceStillAlive throws an exception, the resource likely doesn't exist
-              LOGGER.debug(
-                  "Helix resource check failed for topic: {} (likely doesn't exist): {}",
-                  topic.getName(),
-                  e.getMessage());
-            }
-          }
+      // Check if it's a version topic for any system store
+      for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.getUserSystemStores()) {
+        String systemStoreName = systemStoreType.getSystemStoreName(storeName);
+        if (systemStoreName.equals(resourceStoreName)) {
+          return true;
         }
       }
-    } catch (Exception e) {
-      LOGGER
-          .warn("Failed to check system store Helix resources for store: {} in cluster: {}", storeName, clusterName, e);
-      result.setStoreNotDeleted("Failed to check system store Helix resources: " + e.getMessage());
-      return true;
     }
+
     return false;
   }
 

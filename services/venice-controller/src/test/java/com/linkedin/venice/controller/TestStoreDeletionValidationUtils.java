@@ -28,7 +28,7 @@ import org.testng.annotations.Test;
  * Tests all validation scenarios including edge cases and error handling.
  */
 public class TestStoreDeletionValidationUtils {
-  private Admin mockAdmin;
+  private VeniceHelixAdmin mockAdmin;
   private HelixVeniceClusterResources mockHelixResources;
   private ZkStoreConfigAccessor mockStoreConfigAccessor;
   private TopicManager mockTopicManager;
@@ -40,7 +40,7 @@ public class TestStoreDeletionValidationUtils {
 
   @BeforeMethod
   public void setUp() {
-    mockAdmin = mock(Admin.class);
+    mockAdmin = mock(VeniceHelixAdmin.class);
     mockHelixResources = mock(HelixVeniceClusterResources.class);
     mockStoreConfigAccessor = mock(ZkStoreConfigAccessor.class);
     mockTopicManager = mock(TopicManager.class);
@@ -51,6 +51,9 @@ public class TestStoreDeletionValidationUtils {
     when(mockAdmin.getHelixVeniceClusterResources(TEST_CLUSTER)).thenReturn(mockHelixResources);
     when(mockHelixResources.getStoreConfigAccessor()).thenReturn(mockStoreConfigAccessor);
     when(mockAdmin.getTopicManager()).thenReturn(mockTopicManager);
+
+    // Mock getAllLiveHelixResources to return empty list by default
+    when(mockAdmin.getAllLiveHelixResources(TEST_CLUSTER)).thenReturn(Collections.emptyList());
   }
 
   @Test
@@ -136,50 +139,33 @@ public class TestStoreDeletionValidationUtils {
   public void testValidateStoreDeletedMainStoreHelixResourceExistsNotDeleted() {
     setupBasicValidationPass();
 
-    // Mock version topic exists and has a Helix resource
-    // The checkMainStoreHelixResources method comes before checkForAnyExistingTopicResources
-    // so it will detect the Helix resource first
-    PubSubTopic mockTopic = mock(PubSubTopic.class);
-    when(mockTopic.getName()).thenReturn(TEST_STORE + "_v1");
-    when(mockTopic.getStoreName()).thenReturn(TEST_STORE);
-    when(mockTopic.isVersionTopic()).thenReturn(true);
-    Set<PubSubTopic> topics = new HashSet<>(Arrays.asList(mockTopic));
-    when(mockTopicManager.listTopics()).thenReturn(topics);
-
-    // Mock that the version topic has a Helix resource
-    when(mockAdmin.isResourceStillAlive(TEST_STORE + "_v1")).thenReturn(true);
+    // Mock that a Helix resource exists for the store version topic
+    List<String> helixResources = Arrays.asList(TEST_STORE + "_v1");
+    when(mockAdmin.getAllLiveHelixResources(TEST_CLUSTER)).thenReturn(helixResources);
 
     StoreDeletedValidation result =
         StoreDeletionValidationUtils.validateStoreDeleted(mockAdmin, TEST_CLUSTER, TEST_STORE);
 
     assertFalse(result.isDeleted());
-    // Since checkMainStoreHelixResources comes before checkForAnyExistingTopicResources,
-    // it will fail on Helix resource check first
-    assertEquals(result.getError(), "Helix resource still exists for version topic: " + TEST_STORE + "_v1");
+    // Now that we're using VeniceHelixAdmin mock, the Helix resource check should work
+    assertEquals(result.getError(), "Helix resource still exists: " + TEST_STORE + "_v1");
   }
 
   @Test
   public void testValidateStoreDeletedSystemStoreHelixResourceExistsNotDeleted() {
     setupBasicValidationPass();
 
-    // Mock system store version topic exists
+    // Mock system store Helix resource exists
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(TEST_STORE);
-    PubSubTopic mockTopic = mock(PubSubTopic.class);
-    when(mockTopic.getName()).thenReturn(metaStoreName + "_v1");
-    when(mockTopic.getStoreName()).thenReturn(metaStoreName);
-    Set<PubSubTopic> topics = new HashSet<>(Arrays.asList(mockTopic));
-    when(mockTopicManager.listTopics()).thenReturn(topics);
-
-    // Mock that the system store version topic has a Helix resource
-    when(mockAdmin.isResourceStillAlive(metaStoreName + "_v1")).thenReturn(true);
+    List<String> helixResources = Arrays.asList(metaStoreName + "_v1");
+    when(mockAdmin.getAllLiveHelixResources(TEST_CLUSTER)).thenReturn(helixResources);
 
     StoreDeletedValidation result =
         StoreDeletionValidationUtils.validateStoreDeleted(mockAdmin, TEST_CLUSTER, TEST_STORE);
 
     assertFalse(result.isDeleted());
-    // Since PubSub topic check comes first and the topic matches our pattern,
-    // it will fail on PubSub topic, not Helix resource
-    assertEquals(result.getError(), "PubSub topic still exists: " + metaStoreName + "_v1");
+    // Now the Helix resource check should work and detect the system store resource
+    assertEquals(result.getError(), "Helix resource still exists: " + metaStoreName + "_v1");
   }
 
   @Test

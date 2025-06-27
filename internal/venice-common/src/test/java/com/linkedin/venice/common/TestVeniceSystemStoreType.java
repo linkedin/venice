@@ -158,8 +158,12 @@ public class TestVeniceSystemStoreType {
         "User system stores should contain all system store types except BATCH_JOB_HEARTBEAT_STORE");
 
     // Verify the returned list is immutable
-    userSystemStores.add(VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE);
-    Assert.fail("Expected UnsupportedOperationException when trying to modify the returned list");
+    try {
+      userSystemStores.add(VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE);
+      Assert.fail("Expected UnsupportedOperationException when trying to modify the returned list");
+    } catch (UnsupportedOperationException e) {
+      // Expected behavior - the list should be immutable
+    }
 
     // Verify that multiple calls return the same instance (cached)
     List<VeniceSystemStoreType> userSystemStores2 = VeniceSystemStoreType.getUserSystemStores();
