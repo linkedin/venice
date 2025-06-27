@@ -20,7 +20,7 @@ public enum TTLResolutionPolicy {
    * Can support Batch and Real-time data. If the data doesn't contain RMD, then use the record's logical or producer
    * timestamp as the field-level RMD timestamp.
    */
-  FALLBACK_TO_RECORD_TIMESTAMP(1);
+  BEST_EFFORT(1);
 
   private final int value;
 

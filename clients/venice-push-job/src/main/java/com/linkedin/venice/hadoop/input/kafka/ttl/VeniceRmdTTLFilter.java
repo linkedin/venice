@@ -95,8 +95,7 @@ public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilt
 
     Objects.requireNonNull(ttlPolicy);
 
-    if (ttlPolicy == TTLResolutionPolicy.RT_WRITE_ONLY
-        || ttlPolicy == TTLResolutionPolicy.FALLBACK_TO_RECORD_TIMESTAMP) {
+    if (ttlPolicy == TTLResolutionPolicy.RT_WRITE_ONLY || ttlPolicy == TTLResolutionPolicy.BEST_EFFORT) {
       return filterByTTLandMaybeUpdateValue(value);
     }
     throw new UnsupportedOperationException(ttlPolicy + " policy is not supported.");
