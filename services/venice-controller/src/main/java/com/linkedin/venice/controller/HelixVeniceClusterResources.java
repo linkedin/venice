@@ -320,6 +320,13 @@ public class HelixVeniceClusterResources implements VeniceResource {
     customizedViewRepo.clear();
     routersClusterManager.clear();
     admin.clearInstanceMonitor(clusterName);
+    if (multiTaskSchedulerService.isPresent()) {
+      try {
+        multiTaskSchedulerService.get().stop();
+      } catch (Exception e) {
+        LOGGER.error("Error when stopping multitask scheduler service for cluster: {}", clusterName, e);
+      }
+    }
   }
 
   /**
