@@ -199,8 +199,9 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         }
         value.offset = pubSubMessage.getPosition().getNumericOffset();
         ProducerMetadata producerMetadata = kafkaMessageEnvelope.getProducerMetadata();
-        value.logicalTs = producerMetadata.logicalTimestamp < 0
-            ? pubSubMessage.getPosition().getNumericOffset()
+        // If a record has a logical timestamp, we will use it. Otherwise, we will use the producer timestamp.
+        value.logicalTs = producerMetadata.logicalTimestamp >= 0
+            ? producerMetadata.logicalTimestamp
             : producerMetadata.messageTimestamp;
         switch (messageType) {
           case PUT:
