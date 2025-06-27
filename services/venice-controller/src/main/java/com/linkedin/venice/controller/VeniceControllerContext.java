@@ -156,16 +156,14 @@ public class VeniceControllerContext {
 
     private void addDefaultValues() {
       if (metricsRepository == null && !isMetricsRepositorySet) {
-        // initialise propertiesList to prevent NPE in VeniceMetricsRepository initialisation
-        if (propertiesList == null) {
-          propertiesList = Collections.singletonList(new VeniceProperties());
-        }
 
         metricsRepository = VeniceMetricsRepository.getVeniceMetricsRepository(
             CONTROLLER_SERVICE_NAME,
             CONTROLLER_SERVICE_METRIC_PREFIX,
             CONTROLLER_SERVICE_METRIC_ENTITIES,
-            propertiesList.get(0).getAsMap());
+            (propertiesList == null || propertiesList.isEmpty())
+                ? new VeniceProperties().getAsMap()
+                : propertiesList.get(0).getAsMap());
         // TODO OTel: today, this gets the properties of the first cluster. This is not ideal.
         // We need to figure out how to build a common controller-specific config/properties list
       }
