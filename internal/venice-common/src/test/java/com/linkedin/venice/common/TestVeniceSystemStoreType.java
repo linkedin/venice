@@ -136,8 +136,8 @@ public class TestVeniceSystemStoreType {
   }
 
   @Test
-  public void testGetUserSystemStores() {
-    List<VeniceSystemStoreType> userSystemStores = VeniceSystemStoreType.getUserSystemStores();
+  public void testUserSystemStores() {
+    List<VeniceSystemStoreType> userSystemStores = VeniceSystemStoreType.USER_SYSTEM_STORES;
 
     // Verify that the list contains expected user system stores
     assertTrue(
@@ -163,8 +163,8 @@ public class TestVeniceSystemStoreType {
         UnsupportedOperationException.class,
         () -> userSystemStores.add(VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE));
 
-    // Verify that multiple calls return lists with the same content (defensive copies)
-    List<VeniceSystemStoreType> userSystemStores2 = VeniceSystemStoreType.getUserSystemStores();
-    assertEquals(userSystemStores, userSystemStores2, "getUserSystemStores should return lists with the same content");
+    // Verify that the field returns the same cached instance (no defensive copies)
+    List<VeniceSystemStoreType> userSystemStores2 = VeniceSystemStoreType.USER_SYSTEM_STORES;
+    assertTrue(userSystemStores == userSystemStores2, "USER_SYSTEM_STORES should return the same cached instance");
   }
 }

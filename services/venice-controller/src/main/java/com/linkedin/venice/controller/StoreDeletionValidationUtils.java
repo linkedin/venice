@@ -134,7 +134,7 @@ public class StoreDeletionValidationUtils {
       }
 
       // Check system store metadata
-      for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.getUserSystemStores()) {
+      for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.USER_SYSTEM_STORES) {
         final String systemStoreName = systemStoreType.getSystemStoreName(storeName);
         final Store systemStore = admin.getStore(clusterName, systemStoreName);
         if (systemStore != null) {
@@ -162,8 +162,23 @@ public class StoreDeletionValidationUtils {
       Set<PubSubTopic> pubSubTopics) {
     try {
       for (PubSubTopic topic: pubSubTopics) {
-        // Check if this topic is related to the store (includes main store and system store topics)
-        if (isStoreRelatedTopic(topic, storeName)) {
+        String topicStoreName = topic.getStoreName();
+
+        // Check if it's the main store
+        boolean isRelated = storeName.equals(topicStoreName);
+
+        // Check if it's any system store
+        if (!isRelated) {
+          for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.USER_SYSTEM_STORES) {
+            String systemStoreName = systemStoreType.getSystemStoreName(storeName);
+            if (systemStoreName.equals(topicStoreName)) {
+              isRelated = true;
+              break;
+            }
+          }
+        }
+
+        if (isRelated) {
           result.setStoreNotDeleted(String.format("PubSub topic still exists: %s", topic.getName()));
           return true;
         }
@@ -190,9 +205,28 @@ public class StoreDeletionValidationUtils {
       List<String> allResources = admin.getAllLiveHelixResources(clusterName);
 
       for (String resourceName: allResources) {
-        if (isHelixResourceRelatedToStore(resourceName, storeName)) {
-          result.setStoreNotDeleted(String.format("Helix resource still exists: %s", resourceName));
-          return true;
+        // Only check version topics for Helix resources
+        if (Version.isVersionTopic(resourceName)) {
+          String resourceStoreName = Version.parseStoreFromVersionTopic(resourceName);
+
+          // Check if it's the main store
+          boolean isRelated = storeName.equals(resourceStoreName);
+
+          // Check if it's any system store
+          if (!isRelated) {
+            for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.USER_SYSTEM_STORES) {
+              String systemStoreName = systemStoreType.getSystemStoreName(storeName);
+              if (systemStoreName.equals(resourceStoreName)) {
+                isRelated = true;
+                break;
+              }
+            }
+          }
+
+          if (isRelated) {
+            result.setStoreNotDeleted(String.format("Helix resource still exists: %s", resourceName));
+            return true;
+          }
         }
       }
     } catch (Exception e) {
@@ -200,33 +234,6 @@ public class StoreDeletionValidationUtils {
       result.setStoreNotDeleted("Failed to check Helix resources: " + e.getMessage());
       return true;
     }
-    return false;
-  }
-
-  /**
-   * Determines if a Helix resource name is related to the specified store.
-   * Uses existing Venice utilities for parsing store names from version topics.
-   */
-  private static boolean isHelixResourceRelatedToStore(String resourceName, String storeName) {
-    // Use existing Version utility to check if it's a version topic
-    if (Version.isVersionTopic(resourceName)) {
-      // Use existing Version utility to parse store name
-      String resourceStoreName = Version.parseStoreFromVersionTopic(resourceName);
-
-      // Check if it's a version topic for the main store
-      if (storeName.equals(resourceStoreName)) {
-        return true;
-      }
-
-      // Check if it's a version topic for any system store
-      for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.getUserSystemStores()) {
-        String systemStoreName = systemStoreType.getSystemStoreName(storeName);
-        if (systemStoreName.equals(resourceStoreName)) {
-          return true;
-        }
-      }
-    }
-
     return false;
   }
 
@@ -240,15 +247,17 @@ public class StoreDeletionValidationUtils {
    * @return true if the topic is related to the store, false otherwise
    */
   public static boolean isStoreRelatedTopic(PubSubTopic topic, String storeName) {
-    // Use PubSubTopic's built-in store name validation for better accuracy
-    if (storeName.equals(topic.getStoreName())) {
+    String topicStoreName = topic.getStoreName();
+
+    // Check if it's the main store
+    if (storeName.equals(topicStoreName)) {
       return true;
     }
 
-    // Check for system store topics
-    for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.getUserSystemStores()) {
+    // Check if it's any system store
+    for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.USER_SYSTEM_STORES) {
       String systemStoreName = systemStoreType.getSystemStoreName(storeName);
-      if (systemStoreName.equals(topic.getStoreName())) {
+      if (systemStoreName.equals(topicStoreName)) {
         return true;
       }
     }
