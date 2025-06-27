@@ -279,7 +279,7 @@ public enum VeniceSystemStoreType {
    * @return an immutable list of VeniceSystemStoreType values that are user system stores
    */
   public static List<VeniceSystemStoreType> getUserSystemStores() {
-    return USER_SYSTEM_STORES;
+    return Collections.unmodifiableList(new ArrayList<>(USER_SYSTEM_STORES));
   }
 
   // Pre-computed immutable list of user system store types for performance

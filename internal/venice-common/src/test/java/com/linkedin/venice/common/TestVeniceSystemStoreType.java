@@ -165,8 +165,8 @@ public class TestVeniceSystemStoreType {
       // Expected behavior - the list should be immutable
     }
 
-    // Verify that multiple calls return the same instance (cached)
+    // Verify that multiple calls return lists with the same content (defensive copies)
     List<VeniceSystemStoreType> userSystemStores2 = VeniceSystemStoreType.getUserSystemStores();
-    assertTrue(userSystemStores == userSystemStores2, "getUserSystemStores should return the same cached instance");
+    assertEquals(userSystemStores, userSystemStores2, "getUserSystemStores should return lists with the same content");
   }
 }
