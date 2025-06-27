@@ -64,7 +64,7 @@ public class TestInMemoryChunkAssembler {
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
     Assert.assertNotNull(assembledValue);
@@ -89,7 +89,7 @@ public class TestInMemoryChunkAssembler {
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         rmdChunkingEnabledChunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
     Assert.assertNotNull(assembledValue);
@@ -122,7 +122,7 @@ public class TestInMemoryChunkAssembler {
         0);
     values.remove(1); // Remove the second value which should be a manifest
 
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
     Assert.assertNull(assembledValue);
   }
@@ -193,7 +193,7 @@ public class TestInMemoryChunkAssembler {
     allValues.addAll(values2);
     allValues.addAll(values1);
 
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
 
     // Large value A still gets assembled
@@ -292,7 +292,7 @@ public class TestInMemoryChunkAssembler {
     allValues.addAll(values2);
     allValues.addAll(values1);
 
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
     // Large value B wins since it comes after large value A
     Assert.assertNotNull(assembledValue);
@@ -353,7 +353,7 @@ public class TestInMemoryChunkAssembler {
     allValues.addAll(values2);
     allValues.addAll(values1);
 
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
     // Large value B wins since it comes after large value A and the duplicated chunk does not matter
     Assert.assertNotNull(assembledValue);
@@ -414,7 +414,7 @@ public class TestInMemoryChunkAssembler {
     allValues.addAll(values2);
     allValues.addAll(values1);
 
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
     // Large value B wins since it comes after large value A and the duplicated manifest does not matter
     Assert.assertNotNull(assembledValue);
@@ -443,7 +443,7 @@ public class TestInMemoryChunkAssembler {
         0);
     byte[] regularValueBytes = createChunkBytes(100, 23);
     values.add(0, createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
     Assert.assertNotNull(assembledValue);
@@ -473,7 +473,7 @@ public class TestInMemoryChunkAssembler {
 
     byte[] regularValueBytes = createChunkBytes(100, 23);
     values.add(0, createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
     Assert.assertNotNull(assembledValue);
@@ -500,7 +500,7 @@ public class TestInMemoryChunkAssembler {
     Collections.reverse(values); // value wins
 
     final byte[] serializedKey = createChunkBytes(0, 5);
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
     Assert.assertNotNull(assembledValue);
@@ -527,7 +527,7 @@ public class TestInMemoryChunkAssembler {
     Collections.reverse(values);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
     Assert.assertNotNull(assembledValue);
@@ -556,7 +556,7 @@ public class TestInMemoryChunkAssembler {
         0);
     // "Delete value" at the end
     values.add(0, createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
     Assert.assertNull(assembledValue);
   }
@@ -585,7 +585,7 @@ public class TestInMemoryChunkAssembler {
 
     // "Delete value" at the end
     values.add(0, createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
     Assert.assertNull(assembledValue);
@@ -607,7 +607,7 @@ public class TestInMemoryChunkAssembler {
     Collections.reverse(values);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
     Assert.assertNull(assembledValue);
@@ -639,7 +639,7 @@ public class TestInMemoryChunkAssembler {
     byte[] regularValueBytes = createChunkBytes(100, 23);
     values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, 0, MapperValueType.PUT));
 
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
     Assert.assertNotNull(assembledValue);
@@ -671,7 +671,7 @@ public class TestInMemoryChunkAssembler {
             1));
     byte[] regularValueBytes = createChunkBytes(100, 23);
     values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, 0, MapperValueType.PUT));
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
     Assert.assertNotNull(assembledValue);
@@ -703,7 +703,7 @@ public class TestInMemoryChunkAssembler {
             1));
     values.add(createRegularValue(new byte[0], -1, 0, MapperValueType.DELETE));
 
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
     Assert.assertNotNull(assembledValue);
@@ -734,7 +734,7 @@ public class TestInMemoryChunkAssembler {
     values.remove(ThreadLocalRandom.current().nextInt(values.size() - 3) + 2);
     values.add(createRegularValue(new byte[0], -1, 0, MapperValueType.DELETE));
 
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
     Assert.assertNull(assembledValue);
