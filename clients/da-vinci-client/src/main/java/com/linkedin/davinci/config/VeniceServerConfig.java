@@ -218,12 +218,14 @@ import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -645,6 +647,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean isParticipantMessageStoreEnabled;
   private final long consumerPollTrackerStaleThresholdInSeconds;
+  private final LogContext logContext;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -655,6 +658,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     super(serverProperties, kafkaClusterMap);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
     listenerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
+    logContext = new LogContext.Builder().setComponentName(VeniceComponent.SERVER.name())
+        .setRegionName(getRegionName())
+        .setInstanceName(Utils.getHelixNodeIdentifier(listenerHostname, listenerPort))
+        .build();
     isGrpcEnabled = serverProperties.getBoolean(ENABLE_GRPC_READ_SERVER, false);
     grpcPort = isGrpcEnabled ? serverProperties.getInt(GRPC_READ_SERVER_PORT) : -1;
 
@@ -2040,5 +2047,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getConsumerPollTrackerStaleThresholdSeconds() {
     return consumerPollTrackerStaleThresholdInSeconds;
+  }
+
+  public LogContext getLogContext() {
+    return logContext;
   }
 }

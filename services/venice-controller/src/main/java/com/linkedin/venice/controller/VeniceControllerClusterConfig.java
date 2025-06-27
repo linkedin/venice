@@ -203,6 +203,7 @@ import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCount
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -1148,7 +1149,10 @@ public class VeniceControllerClusterConfig {
         props.getLong(CONTROLLER_DEFERRED_VERSION_SWAP_SLEEP_MS, TimeUnit.MINUTES.toMillis(1));
     this.deferredVersionSwapServiceEnabled = props.getBoolean(CONTROLLER_DEFERRED_VERSION_SWAP_SERVICE_ENABLED, false);
     this.skipDeferredVersionSwapForDVCEnabled = props.getBoolean(SKIP_DEFERRED_VERSION_SWAP_FOR_DVC_ENABLED, true);
-    this.logContext = new LogContext.Builder().setRegionName(regionName).setComponentName("controller").build();
+    this.logContext = new LogContext.Builder().setRegionName(regionName)
+        .setInstanceName(Utils.getHelixNodeIdentifier(adminHostname, adminPort))
+        .setComponentName(VeniceComponent.CONTROLLER.name())
+        .build();
     this.deferredVersionSwapBufferTime = props.getDouble(DEFERRED_VERSION_SWAP_BUFFER_TIME, 1.1);
   }
 

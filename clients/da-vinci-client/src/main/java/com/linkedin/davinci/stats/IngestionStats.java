@@ -4,6 +4,7 @@ import static com.linkedin.venice.stats.StatsErrorCode.INACTIVE_STORE_INGESTION_
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.davinci.kafka.consumer.StorageUtilizationManager;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.stats.LongAdderRateGauge;
 import com.linkedin.venice.utils.RegionUtils;
@@ -64,6 +65,8 @@ public class IngestionStats {
   public static final String BATCH_PROCESSING_REQUEST_RECORDS = "batch_processing_request_records";
   public static final String BATCH_PROCESSING_REQUEST_LATENCY = "batch_processing_request_latency";
   public static final String BATCH_PROCESSING_REQUEST_ERROR = "batch_processing_request_error";
+
+  public static final String STORAGE_QUOTA_USED = "storage_quota_used";
 
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
   private StoreIngestionTask ingestionTask;
@@ -635,5 +638,18 @@ public class IngestionStats {
      This can cause problems when metrics are aggregated. Use only when zero makes semantic sense.
     */
     return Double.isFinite(value) ? value : 0;
+  }
+
+  /**
+   * Retrieves the storage quota usage for the current ingestion task.
+   *
+   * @return The disk quota usage as a double value, or 0 if unavailable.
+   */
+  public double getStorageQuotaUsed() {
+    if (!hasActiveIngestionTask()) {
+      return 0;
+    }
+    StorageUtilizationManager storageManager = ingestionTask.getStorageUtilizationManager();
+    return (storageManager != null) ? storageManager.getDiskQuotaUsage() : 0;
   }
 }
