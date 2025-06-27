@@ -29,7 +29,7 @@ public enum MetricType {
   COUNTER,
 
   /**
-   * For UpDownCounter: A counter that can be added to or subtracted from. Emits the absolute value of the metric value.
+   * For Gauge: Emits the absolute value of the metric value.
    */
   GAUGE;
 }
