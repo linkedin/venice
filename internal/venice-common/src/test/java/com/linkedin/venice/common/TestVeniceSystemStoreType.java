@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.meta.Store;
@@ -158,12 +159,9 @@ public class TestVeniceSystemStoreType {
         "User system stores should contain all system store types except BATCH_JOB_HEARTBEAT_STORE");
 
     // Verify the returned list is immutable
-    try {
-      userSystemStores.add(VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE);
-      Assert.fail("Expected UnsupportedOperationException when trying to modify the returned list");
-    } catch (UnsupportedOperationException e) {
-      // Expected behavior - the list should be immutable
-    }
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> userSystemStores.add(VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE));
 
     // Verify that multiple calls return lists with the same content (defensive copies)
     List<VeniceSystemStoreType> userSystemStores2 = VeniceSystemStoreType.getUserSystemStores();

@@ -163,7 +163,7 @@ public class StoreDeletionValidationUtils {
     try {
       for (PubSubTopic topic: pubSubTopics) {
         // Check if this topic is related to the store (includes main store and system store topics)
-        if (isStoreRelatedTopic(topic, storeName, VeniceSystemStoreType.getUserSystemStores())) {
+        if (isStoreRelatedTopic(topic, storeName)) {
           result.setStoreNotDeleted(String.format("PubSub topic still exists: %s", topic.getName()));
           return true;
         }
@@ -237,22 +237,17 @@ public class StoreDeletionValidationUtils {
    * 
    * @param topic the PubSub topic to check
    * @param storeName the name of the store 
-   * @param systemStoreTypes the list of system store types to check against
    * @return true if the topic is related to the store, false otherwise
    */
-  public static boolean isStoreRelatedTopic(
-      PubSubTopic topic,
-      String storeName,
-      List<VeniceSystemStoreType> systemStoreTypes) {
-
+  public static boolean isStoreRelatedTopic(PubSubTopic topic, String storeName) {
     // Use PubSubTopic's built-in store name validation for better accuracy
     if (storeName.equals(topic.getStoreName())) {
       return true;
     }
 
     // Check for system store topics
-    for (VeniceSystemStoreType systemStoreType: systemStoreTypes) {
-      final String systemStoreName = systemStoreType.getSystemStoreName(storeName);
+    for (VeniceSystemStoreType systemStoreType: VeniceSystemStoreType.getUserSystemStores()) {
+      String systemStoreName = systemStoreType.getSystemStoreName(storeName);
       if (systemStoreName.equals(topic.getStoreName())) {
         return true;
       }

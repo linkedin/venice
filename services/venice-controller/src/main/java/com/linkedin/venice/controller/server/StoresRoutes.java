@@ -1224,7 +1224,7 @@ public class StoresRoutes extends AbstractRoute {
         }
         AdminSparkServer.validateParams(request, VALIDATE_STORE_DELETED.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
+        String storeName = request.queryParams(STORE_NAME);
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
 
