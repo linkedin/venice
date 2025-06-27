@@ -9,10 +9,11 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import java.util.Set;
 
 
-public enum ControllerMetricEntity {
+public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
   REPUSH_STORE_ENDPOINT_CALL_COUNT(
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of all calls to a controller endpoint",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, REPUSH_STORE_TRIGGER_SOURCE)
