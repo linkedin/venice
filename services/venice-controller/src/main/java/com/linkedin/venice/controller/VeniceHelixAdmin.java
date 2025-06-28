@@ -1368,8 +1368,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           isIncrementalPush = Boolean.parseBoolean(pushJobDetailsValue.getPushJobConfigs().get(incPushKey).toString());
         }
         StringBuilder logMessage = new StringBuilder();
+        CharSequence storeName = pushJobDetailsKey.getStoreName();
         logMessage.append("Push job status for store name: ")
-            .append(pushJobDetailsKey.getStoreName())
+            .append(storeName)
             .append(", version: ")
             .append(pushJobDetailsKey.getVersionNumber())
             .append(", cluster: ")
@@ -1401,8 +1402,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
 
           // Scheduled log compaction metric
-          logCompactionStatsMap.get(pushJobDetailsValue.getClusterName().toString())
-              .setCompactionComplete(pushJobDetailsKey.getStoreName().toString());
+          logCompactionStatsMap.get(cluster).setCompactionComplete(storeName.toString());
         }
         // Append job duration in minutes to log message
         double jobDurationInMinutes = pushJobDetailsValue.getJobDurationInMs() / 60000.0;
