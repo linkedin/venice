@@ -1,10 +1,6 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.store.predicate.DoublePredicate;
-import com.linkedin.venice.client.store.predicate.FloatPredicate;
-import com.linkedin.venice.client.store.predicate.IntPredicate;
-import com.linkedin.venice.client.store.predicate.LongPredicate;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.schema.SchemaReader;
 import java.util.HashMap;
@@ -97,40 +93,18 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
 
   /**
    * Checks if the predicate type is compatible with the given Avro schema type.
+   * Uses polymorphism to delegate type checking to each predicate implementation.
    */
   private boolean isPredicateTypeCompatible(Predicate<?> predicate, Schema schema) {
-    Schema.Type avroType = schema.getType();
-
-    if (predicate instanceof LongPredicate) {
-      return avroType == Schema.Type.LONG || avroType == Schema.Type.INT;
-    } else if (predicate instanceof IntPredicate) {
-      return avroType == Schema.Type.INT;
-    } else if (predicate instanceof FloatPredicate) {
-      return avroType == Schema.Type.FLOAT || avroType == Schema.Type.INT;
-    } else if (predicate instanceof DoublePredicate) {
-      return avroType == Schema.Type.DOUBLE || avroType == Schema.Type.FLOAT || avroType == Schema.Type.INT;
-    } else {
-      // For generic predicates, we allow them to work with any type
-      // The actual type checking will happen at runtime
-      return true;
-    }
+    return predicate.isCompatibleWithSchema(schema);
   }
 
   /**
    * Gets a human-readable description of the predicate type.
+   * Uses the predicate's class name for simple and direct type identification.
    */
   private String getPredicateType(Predicate<?> predicate) {
-    if (predicate instanceof LongPredicate) {
-      return "LongPredicate";
-    } else if (predicate instanceof IntPredicate) {
-      return "IntPredicate";
-    } else if (predicate instanceof FloatPredicate) {
-      return "FloatPredicate";
-    } else if (predicate instanceof DoublePredicate) {
-      return "DoublePredicate";
-    } else {
-      return "GenericPredicate";
-    }
+    return predicate.getClass().getSimpleName();
   }
 
   @Override

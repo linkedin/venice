@@ -14,4 +14,9 @@ public class EqualsPredicate<T> implements Predicate<T> {
   public boolean evaluate(T value) {
     return Objects.equals(this.expectedValue, value);
   }
+
+  @Override
+  public String toString() {
+    return "EqualsPredicate{expectedValue=" + expectedValue + "}";
+  }
 }

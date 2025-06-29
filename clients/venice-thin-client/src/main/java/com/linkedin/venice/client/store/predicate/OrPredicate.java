@@ -15,4 +15,9 @@ public class OrPredicate<T> extends CompositePredicate<T> {
 
     return false;
   }
+
+  @Override
+  public String toString() {
+    return "OrPredicate{predicates=" + java.util.Arrays.toString(predicates) + "}";
+  }
 }
