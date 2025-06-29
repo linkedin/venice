@@ -7,27 +7,32 @@ import com.linkedin.venice.client.store.predicate.IntPredicate;
 import com.linkedin.venice.client.store.predicate.LongPredicate;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.schema.SchemaReader;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 
 
 /**
  * Implementation of {@link ComputeAggregationRequestBuilder} that supports counting field values
- * and grouping them by their values and buckets.
+ * and grouping them by their values and buckets. This implementation works completely on the client side
+ * without requiring any server-side compute functionality.
  */
 public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregationRequestBuilder<K> {
-  private final AvroComputeRequestBuilderV3<K> delegate;
+  private final AvroGenericStoreClient<K, Object> storeClient;
   private final Map<String, Integer> fieldTopKMap = new HashMap<>();
   private final Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
   private final SchemaReader schemaReader;
 
   public AvroComputeAggregationRequestBuilder(
-      AvroGenericReadComputeStoreClient storeClient,
+      AvroGenericStoreClient<K, Object> storeClient,
       SchemaReader schemaReader) {
-    this.delegate = (AvroComputeRequestBuilderV3<K>) storeClient.compute();
+    this.storeClient = storeClient;
     this.schemaReader = schemaReader;
   }
 
@@ -143,10 +148,9 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
     // Validate fields exist in schema
     validateFieldNames(fieldNames);
 
-    // Store topK value for each field and project the field
+    // Store topK value for each field
     for (String fieldName: fieldNames) {
       fieldTopKMap.put(fieldName, topK);
-      delegate.project(fieldName);
     }
     return this;
   }
@@ -176,7 +180,7 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
     // Validate predicate types match field schema types
     validatePredicateTypes(bucketNameToPredicate, fieldNames);
 
-    // Store bucket predicates for each field and project the field
+    // Store bucket predicates for each field
     for (String fieldName: fieldNames) {
       Map<String, Predicate> existingBuckets = fieldBucketMap.get(fieldName);
       if (existingBuckets == null) {
@@ -188,20 +192,101 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
       for (Map.Entry<String, Predicate<T>> entry: bucketNameToPredicate.entrySet()) {
         existingBuckets.put(entry.getKey(), entry.getValue());
       }
-
-      delegate.project(fieldName);
     }
     return this;
   }
 
   @Override
   public CompletableFuture<ComputeAggregationResponse> execute(Set<K> keys) throws VeniceClientException {
+    System.out.println("=== CLIENT SIDE AGG EXECUTE ===");
     if (keys == null || keys.isEmpty()) {
       throw new VeniceClientException("keys cannot be null or empty");
     }
 
-    // Execute the compute request
-    return delegate.execute(keys)
-        .thenApply(result -> new AvroComputeAggregationResponse<>(result, fieldTopKMap, fieldBucketMap));
+    // Execute pure client-side aggregation
+    return CompletableFuture.supplyAsync(() -> {
+      try {
+        // Fetch all data from the store
+        Map<K, Object> allData = new HashMap<>();
+        for (K key: keys) {
+          try {
+            Object value = storeClient.get(key).get(15, TimeUnit.SECONDS);
+            if (value != null) {
+              allData.put(key, value);
+            }
+          } catch (Exception e) {
+            // Skip keys that fail to fetch
+            System.err.println("Failed to fetch key " + key + ": " + e.getMessage());
+          }
+        }
+
+        // Convert to ComputeGenericRecord format for compatibility
+        Map<K, ComputeGenericRecord> computeResults = new HashMap<>();
+        for (Map.Entry<K, Object> entry: allData.entrySet()) {
+          if (entry.getValue() instanceof GenericRecord) {
+            GenericRecord record = (GenericRecord) entry.getValue();
+            computeResults.put(entry.getKey(), new ClientSideComputeGenericRecord(record));
+          }
+        }
+
+        // Create and return the aggregation response
+        return new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap, fieldBucketMap);
+      } catch (Exception e) {
+        throw new VeniceClientException("Failed to execute client-side aggregation", e);
+      }
+    });
+  }
+
+  /**
+   * Simple wrapper class to make GenericRecord compatible with ComputeGenericRecord
+   */
+  private static class ClientSideComputeGenericRecord extends ComputeGenericRecord {
+    private final GenericRecord record;
+
+    public ClientSideComputeGenericRecord(GenericRecord record) {
+      super(createMockRecordWithErrorField(), record.getSchema());
+      this.record = record;
+    }
+
+    private static GenericRecord createMockRecordWithErrorField() {
+      // Create a simple mock record with just the error field
+      Schema.Field errorField = new Schema.Field(
+          "__veniceComputationError__",
+          Schema.createUnion(Schema.create(Schema.Type.NULL), Schema.createMap(Schema.create(Schema.Type.STRING))),
+          null,
+          null);
+
+      Schema mockSchema = Schema.createRecord("MockRecord", null, null, false, Arrays.asList(errorField));
+
+      GenericRecord mockRecord = new GenericData.Record(mockSchema);
+      mockRecord.put("__veniceComputationError__", null);
+
+      return mockRecord;
+    }
+
+    @Override
+    public void put(String key, Object v) {
+      record.put(key, v);
+    }
+
+    @Override
+    public Object get(String key) {
+      return record.get(key);
+    }
+
+    @Override
+    public void put(int i, Object v) {
+      record.put(i, v);
+    }
+
+    @Override
+    public Object get(int i) {
+      return record.get(i);
+    }
+
+    @Override
+    public Schema getSchema() {
+      return record.getSchema();
+    }
   }
 }

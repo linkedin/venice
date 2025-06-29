@@ -1,0 +1,6 @@
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/Users/leoli/Desktop/venice-by-leo-2/clients/venice-thin-client/src/main/java/com/linkedin/venice/client/build/venice-producer/libs/venice-producer-0.4.544-all.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/Users/leoli/Desktop/venice-by-leo-2/clients/venice-thin-client/src/main/java/com/linkedin/venice/client/build/venice-thin-client/libs/venice-thin-client-6.0.84-standalone.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/Users/leoli/Desktop/venice-by-leo-2/clients/venice-admin-tool/build/libs/venice-admin-tool-all.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [org.apache.logging.slf4j.Log4jLoggerFactory]
