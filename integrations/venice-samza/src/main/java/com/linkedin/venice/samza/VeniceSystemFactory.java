@@ -369,7 +369,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
           partitioners,
           SystemTime.INSTANCE);
       p.setRouterUrl(routerUrl);
-      p.applyAdditionalWriterConfigs(config);
+      p.applyAdditionalConfigs(config);
       return p;
     }
 
@@ -440,7 +440,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         // need this
         sslFactory,
         partitioners);
-    systemProducer.applyAdditionalWriterConfigs(config);
+    systemProducer.applyAdditionalConfigs(config);
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
     return systemProducer;
   }

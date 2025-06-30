@@ -2307,6 +2307,16 @@ public class ConfigKeys {
   public static final String CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS =
       "client.producer.schema.refresh.interval.seconds";
 
+  /**
+   * The max interval for system producer batching feature.
+   */
+  public static final String SYSTEM_PRODUCER_BATCHING_MAX_INTERVAL_MS = "system.producer.batching.max.interval.ms";
+
+  /**
+   * The max number of records system store batching feature can hold in buffer.
+   */
+  public static final String SYSTEM_PRODUCER_BATCHING_MAX_RECORD_NUM = "system.producer.batching.max.record.num";
+
   /*
    * The memory up-limit for the ingestion path while using RocksDB Plaintable format.
    * Currently, this option is only meaningful for DaVinci use cases.
