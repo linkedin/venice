@@ -4,10 +4,10 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.replication.merge.MergeConflictResolverFactory;
@@ -71,6 +71,7 @@ import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
@@ -83,7 +84,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestionTask {
   private static final Logger LOGGER = LogManager.getLogger(ActiveActiveStoreIngestionTask.class);
-  private static final byte[] BINARY_DECODER_PARAM = new byte[16];
 
   private final int rmdProtocolVersionId;
   private final MergeConflictResolver mergeConflictResolver;
@@ -93,14 +93,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private final RemoteIngestionRepairService remoteIngestionRepairService;
   private final Lazy<IngestionBatchProcessor> ingestionBatchProcessorLazy;
 
-  private static class ReusableObjects {
-    // reuse buffer for rocksDB value object
-    final ByteBuffer reusedByteBuffer = ByteBuffer.allocate(1024 * 1024);
-    final BinaryDecoder binaryDecoder =
-        AvroCompatibilityHelper.newBinaryDecoder(BINARY_DECODER_PARAM, 0, BINARY_DECODER_PARAM.length, null);
-  }
-
-  private final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(ReusableObjects::new);
+  private final Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier;
 
   public ActiveActiveStoreIngestionTask(
       StorageService storageService,
@@ -155,6 +148,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             isWriteComputationEnabled,
             getServerConfig().isComputeFastAvroEnabled());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
+    this.reusableObjectsSupplier = Objects.requireNonNull(builder.getReusableObjectsSupplier());
     this.ingestionBatchProcessorLazy = Lazy.of(() -> {
       if (!serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
         LOGGER.info("AA/WC workload parallel processing is disabled for store version: {}", getKafkaVersionTopic());
@@ -814,9 +808,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(key);
     if (transientRecord == null) {
       long lookupStartTimeInNS = System.nanoTime();
-      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
-      ByteBuffer reusedRawValue = reusableObjects.reusedByteBuffer;
-      BinaryDecoder binaryDecoder = reusableObjects.binaryDecoder;
+      IngestionTaskReusableObjects reusableObjects = reusableObjectsSupplier.get();
+      ByteBuffer reusedRawValue = reusableObjects.getReusedByteBuffer();
+      BinaryDecoder binaryDecoder = reusableObjects.getBinaryDecoder();
 
       originalValue = databaseLookupWithConcurrencyLimit(
           () -> RawBytesChunkingAdapter.INSTANCE.getWithSchemaId(

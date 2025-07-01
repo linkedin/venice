@@ -18,6 +18,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
@@ -115,6 +116,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
@@ -478,6 +480,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           new AggVersionedDaVinciRecordTransformerStats(metricsRepository, metadataRepo, serverConfig);
     }
 
+    Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier =
+        serverConfig.getIngestionTaskReusableObjectsStrategy().supplier();
+
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
         .setStorageMetadataService(storageMetadataService)
@@ -505,6 +510,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setHeartbeatMonitoringService(heartbeatMonitoringService)
         .setAAWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
         .setAAWCIngestionStorageLookupThreadPool(aaWCIngestionStorageLookupThreadPool)
+        .setReusableObjectsSupplier(reusableObjectsSupplier)
         .build();
   }
 

@@ -4,6 +4,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
@@ -31,6 +32,7 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 
 
@@ -127,6 +129,7 @@ public class StoreIngestionTaskFactory {
     private Runnable runnableForKillIngestionTasksForNonCurrentVersions;
     private ExecutorService aaWCWorkLoadProcessingThreadPool;
     private ExecutorService aaWCIngestionStorageLookupThreadPool;
+    private Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier;
 
     private interface Setter {
       void apply();
@@ -345,6 +348,14 @@ public class StoreIngestionTaskFactory {
 
     public ExecutorService getAAWCWorkLoadProcessingThreadPool() {
       return this.aaWCWorkLoadProcessingThreadPool;
+    }
+
+    public Builder setReusableObjectsSupplier(Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier) {
+      return set(() -> this.reusableObjectsSupplier = reusableObjectsSupplier);
+    }
+
+    public Supplier<IngestionTaskReusableObjects> getReusableObjectsSupplier() {
+      return this.reusableObjectsSupplier;
     }
   }
 }

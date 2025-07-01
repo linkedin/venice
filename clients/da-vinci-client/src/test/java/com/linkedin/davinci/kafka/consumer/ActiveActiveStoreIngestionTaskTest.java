@@ -26,6 +26,7 @@ import static org.testng.Assert.expectThrows;
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
@@ -200,8 +201,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertEquals("Hello World", new String(resultByteArray));
   }
 
-  @Test
-  public void testisReadyToServeAnnouncedWithRTLag() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "ingestionTaskReusableObjectsStrategy")
+  public void testisReadyToServeAnnouncedWithRTLag(IngestionTaskReusableObjects.Strategy itroStrategy) {
     // Setup store/schema/storage repository
     ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
@@ -224,6 +225,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     builder.setMetadataRepository(readOnlyStoreRepository);
     builder.setServerConfig(serverConfig);
     builder.setSchemaRepository(readOnlySchemaRepository);
+    builder.setReusableObjectsSupplier(itroStrategy.supplier());
 
     // Set up version config and store config
     HybridStoreConfig hybridStoreConfig =

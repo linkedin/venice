@@ -6,6 +6,7 @@ import static com.linkedin.venice.compression.CompressionStrategy.ZSTD_WITH_DICT
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.client.DaVinciConfig;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
@@ -156,6 +157,11 @@ public class DataProviderUtils {
   @DataProvider(name = "sharedConsumerStrategy")
   public static Object[][] sharedConsumerStrategy() {
     return allPermutationGenerator(KafkaConsumerService.ConsumerAssignmentStrategy.values());
+  }
+
+  @DataProvider(name = "ingestionTaskReusableObjectsStrategy")
+  public static Object[][] ingestionTaskReusableObjectsStrategy() {
+    return allPermutationGenerator(IngestionTaskReusableObjects.Strategy.values());
   }
 
   /**

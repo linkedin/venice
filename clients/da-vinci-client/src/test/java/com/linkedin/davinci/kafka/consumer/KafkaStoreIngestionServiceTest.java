@@ -25,6 +25,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
@@ -162,6 +163,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(30l).when(mockVeniceServerConfig).getKafkaFetchQuotaTimeWindow();
     doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(mockVeniceServerConfig)
         .getPubSubPositionTypeRegistry();
+    doReturn(IngestionTaskReusableObjects.Strategy.SINGLETON_THREAD_LOCAL).when(mockVeniceServerConfig)
+        .getIngestionTaskReusableObjectsStrategy();
 
     VeniceClusterConfig mockVeniceClusterConfig = mock(VeniceClusterConfig.class);
     Properties properties = new Properties();
