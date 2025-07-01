@@ -122,6 +122,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICAT
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
@@ -212,6 +213,7 @@ import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCount
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
@@ -648,6 +650,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean isParticipantMessageStoreEnabled;
   private final long consumerPollTrackerStaleThresholdInSeconds;
   private final LogContext logContext;
+  private final IngestionTaskReusableObjects.Strategy ingestionTaskReusableObjectsStrategy;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -1107,6 +1110,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_LOAD_CONTROLLER_COMPUTE_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
     consumerPollTrackerStaleThresholdInSeconds = serverProperties
         .getLong(SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS, TimeUnit.MINUTES.toSeconds(15));
+    this.ingestionTaskReusableObjectsStrategy = IngestionTaskReusableObjects.Strategy.valueOf(
+        serverProperties.getString(
+            SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY,
+            IngestionTaskReusableObjects.Strategy.THREAD_LOCAL_PER_INGESTION_TASK.name()));
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -2051,5 +2058,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public LogContext getLogContext() {
     return logContext;
+  }
+
+  public IngestionTaskReusableObjects.Strategy getIngestionTaskReusableObjectsStrategy() {
+    return this.ingestionTaskReusableObjectsStrategy;
   }
 }

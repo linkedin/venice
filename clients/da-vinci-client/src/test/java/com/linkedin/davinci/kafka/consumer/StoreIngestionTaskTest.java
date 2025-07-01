@@ -86,6 +86,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.helix.StateModelIngestionProgressNotifier;
 import com.linkedin.davinci.ingestion.LagType;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.PushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
@@ -1158,6 +1159,7 @@ public abstract class StoreIngestionTaskTest {
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setPartitionStateSerializer(partitionStateSerializer)
         .setRunnableForKillIngestionTasksForNonCurrentVersions(runnableForKillNonCurrentVersion)
+        .setReusableObjectsSupplier(IngestionTaskReusableObjects.Strategy.SINGLETON_THREAD_LOCAL.supplier())
         .setAAWCWorkLoadProcessingThreadPool(
             Executors.newFixedThreadPool(2, new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING")))
         .setAAWCIngestionStorageLookupThreadPool(

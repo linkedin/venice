@@ -18,6 +18,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.StoreBufferService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskFactory;
@@ -903,6 +904,7 @@ public class TestUtils {
         .setServerConfig(mock(VeniceServerConfig.class))
         .setServerConfig(mockVeniceServerConfig)
         .setPartitionStateSerializer(mock(InternalAvroSpecificSerializer.class))
+        .setReusableObjectsSupplier(IngestionTaskReusableObjects.Strategy.SINGLETON_THREAD_LOCAL.supplier())
         .setIsDaVinciClient(false);
   }
 

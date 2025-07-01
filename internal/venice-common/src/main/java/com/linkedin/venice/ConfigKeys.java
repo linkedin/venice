@@ -2777,4 +2777,11 @@ public class ConfigKeys {
    */
   public static final String SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED =
       "server.use.heartbeat.lag.for.ready.to.serve.check.enabled";
+
+  /**
+   * The strategy for how to share memory-heavy objects used in the ingestion hot path.
+   */
+  public static final String SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY =
+      "server.ingestion.task.reusable.objects.strategy";
+
 }
