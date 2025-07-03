@@ -11,4 +11,9 @@ public class IntGreaterOrEqualsPredicate implements IntPredicate {
   public boolean evaluate(int value) {
     return value >= threshold;
   }
+
+  @Override
+  public String toString() {
+    return "IntGreaterOrEqualsPredicate{threshold=" + threshold + "}";
+  }
 }

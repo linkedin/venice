@@ -22,4 +22,9 @@ public class DoubleEqualsPredicate implements DoublePredicate {
     // Only check epsilon for finite numbers
     return Math.abs(value - expectedValue) <= epsilon;
   }
+
+  @Override
+  public String toString() {
+    return "DoubleEqualsPredicate{expectedValue=" + expectedValue + ", epsilon=" + epsilon + "}";
+  }
 }

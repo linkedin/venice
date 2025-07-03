@@ -19,4 +19,9 @@ public class FloatGreaterThanPredicate implements FloatPredicate {
   public boolean evaluate(float value) {
     return (value - threshold) > epsilon;
   }
+
+  @Override
+  public String toString() {
+    return "FloatGreaterThanPredicate{threshold=" + threshold + "}";
+  }
 }
