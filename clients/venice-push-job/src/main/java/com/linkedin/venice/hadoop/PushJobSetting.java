@@ -4,6 +4,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
+import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -65,6 +66,7 @@ public class PushJobSetting implements Serializable {
   public boolean repushTTLEnabled;
   // specify time to drop stale records.
   public long repushTTLStartTimeMs;
+  public TTLResolutionPolicy ttlResolutionPolicy;
   // HDFS directory to cache RMD schemas
   public String rmdSchemaDir;
   public String valueSchemaDir;

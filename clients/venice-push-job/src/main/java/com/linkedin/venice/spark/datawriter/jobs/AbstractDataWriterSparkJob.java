@@ -56,7 +56,6 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.hadoop.PushJobSetting;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
-import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
 import com.linkedin.venice.jobs.DataWriterComputeJob;
@@ -205,8 +204,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
       jobConf.set(REPUSH_TTL_ENABLE, pushJobSetting.repushTTLEnabled);
       jobConf.set(REPUSH_TTL_START_TIMESTAMP, pushJobSetting.repushTTLStartTimeMs);
       if (pushJobSetting.repushTTLEnabled) {
-        // Currently, we only support one policy. Thus, we don't allow overriding it.
-        jobConf.set(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue());
+        jobConf.set(REPUSH_TTL_POLICY, pushJobSetting.ttlResolutionPolicy.getValue());
         jobConf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
       }
       // Pass the compression strategy of source version to repush MR job
