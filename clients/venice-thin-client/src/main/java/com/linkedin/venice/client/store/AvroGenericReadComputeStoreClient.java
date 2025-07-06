@@ -68,6 +68,6 @@ public interface AvroGenericReadComputeStoreClient<K, V> extends AvroGenericStor
    * @throws VeniceClientException if there is an error creating the builder.
    */
   default ComputeAggregationRequestBuilder<K> computeAggregation() throws VeniceClientException {
-    return new AvroComputeAggregationRequestBuilder<>((AvroGenericStoreClient<K, Object>) this, getSchemaReader());
+    return new AvroComputeAggregationRequestBuilder<>(this, getSchemaReader());
   }
 }

@@ -232,8 +232,11 @@ public class QueryTool {
           .setVeniceURL(url)
           .setVsonClient(isVsonStore)
           .setSslFactory(factory);
+      // Cast to AvroGenericReadComputeStoreClient to access computeAggregation method
+      AvroGenericReadComputeStoreClient<Object, Object> computeStoreClient =
+          (AvroGenericReadComputeStoreClient<Object, Object>) client;
       AvroComputeAggregationRequestBuilder<Object> builder =
-          new AvroComputeAggregationRequestBuilder<>(client, ClientFactory.getSchemaReader(clientConfig));
+          new AvroComputeAggregationRequestBuilder<>(computeStoreClient, ClientFactory.getSchemaReader(clientConfig));
       builder.countGroupByValue(topK, fields);
 
       System.out.println("About to execute client-side aggregation with keys: " + keys);
@@ -299,8 +302,11 @@ public class QueryTool {
           .setVeniceURL(url)
           .setVsonClient(isVsonStore)
           .setSslFactory(factory);
+      // Cast to AvroGenericReadComputeStoreClient to access computeAggregation method
+      AvroGenericReadComputeStoreClient<Object, Object> computeStoreClient =
+          (AvroGenericReadComputeStoreClient<Object, Object>) client;
       AvroComputeAggregationRequestBuilder<Object> builder =
-          new AvroComputeAggregationRequestBuilder<>(client, ClientFactory.getSchemaReader(clientConfig));
+          new AvroComputeAggregationRequestBuilder<>(computeStoreClient, ClientFactory.getSchemaReader(clientConfig));
       builder.countGroupByBucket(bucketPredicates, fields);
 
       ComputeAggregationResponse response = builder.execute(keys).get(60, TimeUnit.SECONDS);
