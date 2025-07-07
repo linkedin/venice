@@ -1,7 +1,8 @@
-package com.linkedin.venice.unit.kafka.consumer.poll;
+package com.linkedin.venice.pubsub.mock.adapter.consumer.poll;
 
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.adapter.MockInMemoryPartitionPosition;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -15,20 +16,20 @@ import java.util.Set;
  */
 public class DuplicatingPollStrategy extends AbstractPollStrategy {
   private final AbstractPollStrategy basePollStrategy;
-  private final Set<PubSubTopicPartitionOffset> partitionOffsets;
+  private final Set<MockInMemoryPartitionPosition> partitionOffsets;
   private final Map<PubSubTopicPartition, Long> amountOfIntroducedDupes = new HashMap<>();
 
   public DuplicatingPollStrategy(
       AbstractPollStrategy basePollStrategy,
-      Set<PubSubTopicPartitionOffset> partitionOffsets) {
+      Set<MockInMemoryPartitionPosition> partitionOffsets) {
     super(basePollStrategy.keepPollingWhenEmpty);
     this.basePollStrategy = basePollStrategy;
     this.partitionOffsets = partitionOffsets;
   }
 
   @Override
-  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets) {
-    PubSubTopicPartitionOffset nextPoll = basePollStrategy.getNextPoll(offsets);
+  protected MockInMemoryPartitionPosition getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets) {
+    MockInMemoryPartitionPosition nextPoll = basePollStrategy.getNextPoll(offsets);
 
     if (nextPoll == null) {
       return null;
@@ -38,7 +39,8 @@ public class DuplicatingPollStrategy extends AbstractPollStrategy {
     InMemoryPubSubPosition offset = nextPoll.getPubSubPosition();
     offset = offset.getPositionAfterNRecords(getAmountOfDupes(topicPartition));
 
-    PubSubTopicPartitionOffset nextPollWithAdjustedOffset = new PubSubTopicPartitionOffset(topicPartition, offset);
+    MockInMemoryPartitionPosition nextPollWithAdjustedOffset =
+        new MockInMemoryPartitionPosition(topicPartition, offset);
 
     if (partitionOffsets.contains(nextPoll)) {
       if (!amountOfIntroducedDupes.containsKey(topicPartition)) {

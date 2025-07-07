@@ -7,8 +7,8 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubBroker;
 import com.linkedin.venice.throttle.EventThrottler;
-import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -25,9 +25,9 @@ public class KafkaClusterBasedRecordThrottlerTest {
   @Test
   public void testRecordsCanBeThrottledPerRegion() {
     String topic = Utils.getUniqueString("topic");
-    InMemoryKafkaBroker inMemoryLocalKafkaBroker = new InMemoryKafkaBroker("local");
+    InMemoryPubSubBroker inMemoryLocalKafkaBroker = new InMemoryPubSubBroker("local");
     inMemoryLocalKafkaBroker.createTopic(topic, 2);
-    InMemoryKafkaBroker inMemoryRemoteKafkaBroker = new InMemoryKafkaBroker("remote");
+    InMemoryPubSubBroker inMemoryRemoteKafkaBroker = new InMemoryPubSubBroker("remote");
     inMemoryRemoteKafkaBroker.createTopic(topic, 2);
 
     AtomicLong remoteKafkaQuota = new AtomicLong(10);

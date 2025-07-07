@@ -6,8 +6,8 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.pubsub.adapter.PubSubProducerCallbackSimpleImpl;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.mock.adapter.PubSubProducerCallbackSimpleImpl;
 import com.linkedin.venice.utils.ExceptionUtils;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;

@@ -1,4 +1,4 @@
-package com.linkedin.venice.unit.kafka.consumer;
+package com.linkedin.venice.pubsub.mock.adapter.consumer;
 
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -8,10 +8,10 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
-import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
-import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
-import com.linkedin.venice.unit.kafka.MockInMemoryAdminAdapter;
-import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubBroker;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.MockInMemoryAdminAdapter;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.PollStrategy;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Duration;
 import java.util.Collection;
@@ -22,19 +22,19 @@ import java.util.Set;
 
 
 /**
- * A {@link PubSubConsumerAdapter} implementation which reads messages from the {@link InMemoryKafkaBroker}.
+ * A {@link PubSubConsumerAdapter} implementation which reads messages from the {@link InMemoryPubSubBroker}.
  *
  * Used in unit tests as a lightweight alternative to a full-fledged integration test. Can be configured
  * with various {@link PollStrategy} implementations in order to tweak the consuming behavior.
  *
- * When {@link MockInMemoryConsumer} is used to simulate the shared consumer behavior, there might be 2 different threads calling the methods
+ * When {@link MockInMemoryConsumerAdapter} is used to simulate the shared consumer behavior, there might be 2 different threads calling the methods
  * from this class. For example, consumer task thread from {@link com.linkedin.davinci.kafka.consumer.KafkaConsumerService} will
- * periodically call {@link MockInMemoryConsumer#poll(long)} and {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask} thread
- * is calling {@link MockInMemoryConsumer#resetOffset(PubSubTopicPartition)}, which may cause test failure.
+ * periodically call {@link MockInMemoryConsumerAdapter#poll(long)} and {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask} thread
+ * is calling {@link MockInMemoryConsumerAdapter#resetOffset(PubSubTopicPartition)}, which may cause test failure.
  *
  */
-public class MockInMemoryConsumer implements PubSubConsumerAdapter {
-  private final InMemoryKafkaBroker broker;
+public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
+  private final InMemoryPubSubBroker broker;
   private final Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets = new VeniceConcurrentHashMap<>();
   private final PollStrategy pollStrategy;
   private final PubSubConsumerAdapter delegate;
@@ -47,7 +47,10 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
    *                 do not return the result of the mock, but rather the results of the in-memory
    *                 consumer components.
    */
-  public MockInMemoryConsumer(InMemoryKafkaBroker broker, PollStrategy pollStrategy, PubSubConsumerAdapter delegate) {
+  public MockInMemoryConsumerAdapter(
+      InMemoryPubSubBroker broker,
+      PollStrategy pollStrategy,
+      PubSubConsumerAdapter delegate) {
     this.broker = broker;
     this.pollStrategy = pollStrategy;
     this.delegate = delegate;

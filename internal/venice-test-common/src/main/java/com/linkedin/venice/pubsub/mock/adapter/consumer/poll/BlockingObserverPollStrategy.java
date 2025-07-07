@@ -1,7 +1,8 @@
-package com.linkedin.venice.unit.kafka.consumer.poll;
+package com.linkedin.venice.pubsub.mock.adapter.consumer.poll;
 
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.adapter.MockInMemoryPartitionPosition;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -15,19 +16,19 @@ import java.util.function.Consumer;
  */
 public class BlockingObserverPollStrategy extends AbstractPollStrategy {
   private final AbstractPollStrategy basePollStrategy;
-  private final Consumer<PubSubTopicPartitionOffset> observer;
+  private final Consumer<MockInMemoryPartitionPosition> observer;
 
   public BlockingObserverPollStrategy(
       AbstractPollStrategy basePollStrategy,
-      Consumer<PubSubTopicPartitionOffset> observer) {
+      Consumer<MockInMemoryPartitionPosition> observer) {
     super(basePollStrategy.keepPollingWhenEmpty);
     this.basePollStrategy = basePollStrategy;
     this.observer = observer;
   }
 
   @Override
-  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets) {
-    PubSubTopicPartitionOffset nextPoll = basePollStrategy.getNextPoll(offsets);
+  protected MockInMemoryPartitionPosition getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets) {
+    MockInMemoryPartitionPosition nextPoll = basePollStrategy.getNextPoll(offsets);
     observer.accept(nextPoll);
     return nextPoll;
   }

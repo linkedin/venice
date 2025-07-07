@@ -1,7 +1,8 @@
-package com.linkedin.venice.unit.kafka.consumer.poll;
+package com.linkedin.venice.pubsub.mock.adapter.consumer.poll;
 
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.adapter.MockInMemoryPartitionPosition;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
 import java.util.List;
@@ -28,7 +29,7 @@ public class RandomPollStrategy extends AbstractPollStrategy {
   }
 
   @Override
-  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets) {
+  protected MockInMemoryPartitionPosition getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets) {
     if (offsets.isEmpty()) {
       Utils.sleep(50); // So that keepPollingWhenEmpty doesn't lead to 10 null polls per ms
       return null;
@@ -40,6 +41,6 @@ public class RandomPollStrategy extends AbstractPollStrategy {
         pubSubTopicPartitions.get((int) Math.round(Math.random() * (numberOfPubSubTopicPartitions - 1)));
     InMemoryPubSubPosition offset = offsets.get(pubSubTopicPartition);
 
-    return new PubSubTopicPartitionOffset(pubSubTopicPartition, offset);
+    return new MockInMemoryPartitionPosition(pubSubTopicPartition, offset);
   }
 }

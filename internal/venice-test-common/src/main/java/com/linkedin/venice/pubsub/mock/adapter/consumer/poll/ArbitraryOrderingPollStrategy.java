@@ -1,7 +1,8 @@
-package com.linkedin.venice.unit.kafka.consumer.poll;
+package com.linkedin.venice.pubsub.mock.adapter.consumer.poll;
 
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.adapter.MockInMemoryPartitionPosition;
 import java.util.Map;
 import java.util.Queue;
 
@@ -11,15 +12,15 @@ import java.util.Queue;
  * at construction time.
  */
 public class ArbitraryOrderingPollStrategy extends AbstractPollStrategy {
-  private final Queue<PubSubTopicPartitionOffset> pollDeliveryOrder;
+  private final Queue<MockInMemoryPartitionPosition> pollDeliveryOrder;
 
-  public ArbitraryOrderingPollStrategy(Queue<PubSubTopicPartitionOffset> pollDeliveryOrder) {
+  public ArbitraryOrderingPollStrategy(Queue<MockInMemoryPartitionPosition> pollDeliveryOrder) {
     super(false);
     this.pollDeliveryOrder = pollDeliveryOrder;
   }
 
   @Override
-  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets) {
+  protected MockInMemoryPartitionPosition getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets) {
     if (offsets.isEmpty()) {
       // Not subscribed yet
       return null;

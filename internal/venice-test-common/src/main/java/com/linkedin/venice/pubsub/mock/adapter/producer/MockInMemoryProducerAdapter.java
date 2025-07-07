@@ -1,4 +1,4 @@
-package com.linkedin.venice.unit.kafka.producer;
+package com.linkedin.venice.pubsub.mock.adapter.producer;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -8,9 +8,9 @@ import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
-import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
-import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
-import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubBroker;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubMessage;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMaps;
 import java.util.concurrent.CompletableFuture;
@@ -20,12 +20,12 @@ import java.util.concurrent.Future;
 
 /**
  * A {@link PubSubProducerAdapter} implementation which interacts with the
- * {@link InMemoryKafkaBroker} in order to make unit tests more lightweight.
+ * {@link InMemoryPubSubBroker} in order to make unit tests more lightweight.
  */
 public class MockInMemoryProducerAdapter implements PubSubProducerAdapter {
-  private final InMemoryKafkaBroker broker;
+  private final InMemoryPubSubBroker broker;
 
-  public MockInMemoryProducerAdapter(InMemoryKafkaBroker broker) {
+  public MockInMemoryProducerAdapter(InMemoryPubSubBroker broker) {
     this.broker = broker;
   }
 
@@ -43,7 +43,7 @@ public class MockInMemoryProducerAdapter implements PubSubProducerAdapter {
       PubSubMessageHeaders headers,
       PubSubProducerCallback callback) {
     InMemoryPubSubPosition inMemoryPubSubPosition =
-        broker.produce(topic, partition, new InMemoryKafkaMessage(key, value, headers));
+        broker.produce(topic, partition, new InMemoryPubSubMessage(key, value, headers));
     PubSubProduceResult produceResult = new SimplePubSubProduceResultImpl(topic, partition, inMemoryPubSubPosition, -1);
     if (callback != null) {
       callback.onCompletion(produceResult, null);

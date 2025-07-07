@@ -1,18 +1,18 @@
-package com.linkedin.venice.unit.kafka.consumer.poll;
+package com.linkedin.venice.pubsub.mock.adapter;
 
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import java.util.Objects;
 
 
-public class PubSubTopicPartitionOffset {
+public class MockInMemoryPartitionPosition {
   private final PubSubTopicPartition pubSubTopicPartition;
   private final InMemoryPubSubPosition pubSubPosition;
 
   private final int hashCode;
 
-  public PubSubTopicPartitionOffset(PubSubTopicPartition pubSubTopicPartition, PubSubPosition pubSubPosition) {
+  public MockInMemoryPartitionPosition(PubSubTopicPartition pubSubTopicPartition, PubSubPosition pubSubPosition) {
     this.pubSubTopicPartition = pubSubTopicPartition;
 
     if (!(pubSubPosition instanceof InMemoryPubSubPosition)) {
@@ -40,10 +40,10 @@ public class PubSubTopicPartitionOffset {
     if (this == o) {
       return true;
     }
-    if (o == null || !(o instanceof PubSubTopicPartitionOffset)) {
+    if (o == null || !(o instanceof MockInMemoryPartitionPosition)) {
       return false;
     }
-    PubSubTopicPartitionOffset that = (PubSubTopicPartitionOffset) o;
+    MockInMemoryPartitionPosition that = (MockInMemoryPartitionPosition) o;
     return pubSubTopicPartition.equals(that.getPubSubTopicPartition()) && pubSubPosition.equals(that.pubSubPosition);
   }
 }

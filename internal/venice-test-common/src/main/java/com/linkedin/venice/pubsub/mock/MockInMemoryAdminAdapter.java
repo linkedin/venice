@@ -1,4 +1,4 @@
-package com.linkedin.venice.unit.kafka;
+package com.linkedin.venice.pubsub.mock;
 
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 
@@ -30,10 +30,10 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
   private final Map<PubSubTopic, PubSubTopicConfiguration> topicPubSubTopicConfigurationMap = new HashMap<>();
   private final Map<PubSubTopic, List<PubSubTopicPartitionInfo>> topicPartitionNumMap = new HashMap<>();
 
-  private final InMemoryKafkaBroker inMemoryKafkaBroker;
+  private final InMemoryPubSubBroker inMemoryPubSubBroker;
 
-  public MockInMemoryAdminAdapter(InMemoryKafkaBroker inMemoryKafkaBroker) {
-    this.inMemoryKafkaBroker = inMemoryKafkaBroker;
+  public MockInMemoryAdminAdapter(InMemoryPubSubBroker inMemoryPubSubBroker) {
+    this.inMemoryPubSubBroker = inMemoryPubSubBroker;
   }
 
   @Override
@@ -43,7 +43,7 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
       int replication,
       PubSubTopicConfiguration topicPubSubTopicConfiguration) {
     if (!topicPubSubTopicConfigurationMap.containsKey(topic)) {
-      inMemoryKafkaBroker.createTopic(topic.getName(), numPartitions);
+      inMemoryPubSubBroker.createTopic(topic.getName(), numPartitions);
     }
     // Emulates kafka default setting.
     if (!topicPubSubTopicConfiguration.minInSyncReplicas().isPresent()) {

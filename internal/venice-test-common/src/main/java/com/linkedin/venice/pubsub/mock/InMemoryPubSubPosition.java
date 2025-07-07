@@ -1,4 +1,4 @@
-package com.linkedin.venice.unit.kafka;
+package com.linkedin.venice.pubsub.mock;
 
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;

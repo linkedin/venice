@@ -1,4 +1,4 @@
-package com.linkedin.venice.unit.kafka;
+package com.linkedin.venice.pubsub.mock;
 
 import java.util.ArrayList;
 import java.util.Optional;
@@ -7,15 +7,15 @@ import java.util.Optional;
 /**
  * Maintains queues for each partition of an in-memory topic.
  *
- * @see InMemoryKafkaBroker
+ * @see InMemoryPubSubBroker
  */
-class InMemoryKafkaTopic {
-  private final ArrayList<InMemoryKafkaMessage>[] partitions;
+class InMemoryPubSubTopic {
+  private final ArrayList<InMemoryPubSubMessage>[] partitions;
 
-  InMemoryKafkaTopic(int partitionCount) {
+  InMemoryPubSubTopic(int partitionCount) {
     if (partitionCount < 1) {
       throw new IllegalArgumentException(
-          "Cannot create a " + InMemoryKafkaTopic.class.getSimpleName() + " with less than 1 partition.");
+          "Cannot create a " + InMemoryPubSubTopic.class.getSimpleName() + " with less than 1 partition.");
     }
     partitions = new ArrayList[partitionCount];
     for (int i = 0; i < partitionCount; i++) {
@@ -25,14 +25,14 @@ class InMemoryKafkaTopic {
 
   /**
    * @param partition The partition in which to produce a message.
-   * @param message The {@link InMemoryKafkaMessage} to produce into the partition.
+   * @param message The {@link InMemoryPubSubMessage} to produce into the partition.
    * @return the offset of the produced message
    * @throws IllegalArgumentException if the partition does not exist
    */
-  synchronized InMemoryPubSubPosition produce(int partition, InMemoryKafkaMessage message)
+  synchronized InMemoryPubSubPosition produce(int partition, InMemoryPubSubMessage message)
       throws IllegalArgumentException {
     checkPartitionCount(partition);
-    ArrayList<InMemoryKafkaMessage> partitionQueue = partitions[partition];
+    ArrayList<InMemoryPubSubMessage> partitionQueue = partitions[partition];
     InMemoryPubSubPosition nextOffset = InMemoryPubSubPosition.of(partitionQueue.size());
     partitionQueue.add(message);
     return nextOffset;
@@ -41,19 +41,19 @@ class InMemoryKafkaTopic {
   /**
    * @param partition from which to consume
    * @param position the position from which to consume
-   * @return Some {@link InMemoryKafkaMessage} instance, or the {@link Optional#empty()} instance if that partition is drained.
+   * @return Some {@link InMemoryPubSubMessage} instance, or the {@link Optional#empty()} instance if that partition is drained.
    * @throws IllegalArgumentException if the partition or offset does not exist
    */
-  Optional<InMemoryKafkaMessage> consume(int partition, InMemoryPubSubPosition position)
+  Optional<InMemoryPubSubMessage> consume(int partition, InMemoryPubSubPosition position)
       throws IllegalArgumentException {
     checkPartitionCount(partition);
-    ArrayList<InMemoryKafkaMessage> partitionQueue = partitions[partition];
+    ArrayList<InMemoryPubSubMessage> partitionQueue = partitions[partition];
 
     long internalOffset = position.getNumericOffset();
     if (internalOffset > Integer.MAX_VALUE) {
       throw new IllegalArgumentException(
           "Offsets larger than " + Integer.MAX_VALUE + " are not supported by "
-              + InMemoryKafkaTopic.class.getSimpleName());
+              + InMemoryPubSubTopic.class.getSimpleName());
     }
 
     try {

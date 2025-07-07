@@ -1,4 +1,4 @@
-package com.linkedin.venice.unit.kafka.consumer.poll;
+package com.linkedin.venice.pubsub.mock.adapter.consumer.poll;
 
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -7,9 +7,10 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
-import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
-import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubBroker;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubMessage;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.adapter.MockInMemoryPartitionPosition;
 import com.linkedin.venice.utils.ByteUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,10 +36,11 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     this.maxMessagePerPoll = maxMessagePerPoll;
   }
 
-  protected abstract PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets);
+  protected abstract MockInMemoryPartitionPosition getNextPoll(
+      Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets);
 
   public synchronized Map<PubSubTopicPartition, List<DefaultPubSubMessage>> poll(
-      InMemoryKafkaBroker broker,
+      InMemoryPubSubBroker broker,
       Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets,
       long timeout) {
 
@@ -48,7 +50,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     int numberOfRecords = 0;
 
     while (numberOfRecords < maxMessagePerPoll && System.currentTimeMillis() < startTime + timeout) {
-      PubSubTopicPartitionOffset nextPoll = getNextPoll(offsets);
+      MockInMemoryPartitionPosition nextPoll = getNextPoll(offsets);
       if (nextPoll == null) {
         if (keepPollingWhenEmpty) {
           continue;
@@ -65,7 +67,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
        * returns the next message specified in the delivery order, which is causing confusion.
         */
       InMemoryPubSubPosition nextPosition = position.getNextPosition();
-      Optional<InMemoryKafkaMessage> message = broker.consume(topic, partition, nextPosition);
+      Optional<InMemoryPubSubMessage> message = broker.consume(topic, partition, nextPosition);
       if (message.isPresent()) {
         if (!AdminTopicUtils.isAdminTopic(topic)) {
           /**

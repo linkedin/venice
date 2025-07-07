@@ -81,20 +81,20 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubBroker;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.SimplePartitioner;
+import com.linkedin.venice.pubsub.mock.adapter.MockInMemoryPartitionPosition;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.MockInMemoryConsumerAdapter;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.AbstractPollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.ArbitraryOrderingPollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.CompositePollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.FilteringPollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.PollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.RandomPollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
-import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
-import com.linkedin.venice.unit.kafka.SimplePartitioner;
-import com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer;
-import com.linkedin.venice.unit.kafka.consumer.poll.AbstractPollStrategy;
-import com.linkedin.venice.unit.kafka.consumer.poll.ArbitraryOrderingPollStrategy;
-import com.linkedin.venice.unit.kafka.consumer.poll.CompositePollStrategy;
-import com.linkedin.venice.unit.kafka.consumer.poll.FilteringPollStrategy;
-import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
-import com.linkedin.venice.unit.kafka.consumer.poll.PubSubTopicPartitionOffset;
-import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
-import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -165,7 +165,7 @@ public class AdminConsumptionTaskTest {
   private OffsetManager offsetManager;
   private AdminTopicMetadataAccessor adminTopicMetadataAccessor;
   private ExecutorService executor;
-  private InMemoryKafkaBroker inMemoryKafkaBroker;
+  private InMemoryPubSubBroker inMemoryPubSubBroker;
   private VeniceWriter veniceWriter;
   private ExecutionIdAccessor executionIdAccessor;
 
@@ -175,9 +175,9 @@ public class AdminConsumptionTaskTest {
     topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
     executor = Executors.newCachedThreadPool();
-    inMemoryKafkaBroker = new InMemoryKafkaBroker("local");
-    inMemoryKafkaBroker.createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC);
-    veniceWriter = getVeniceWriter(inMemoryKafkaBroker);
+    inMemoryPubSubBroker = new InMemoryPubSubBroker("local");
+    inMemoryPubSubBroker.createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC);
+    veniceWriter = getVeniceWriter(inMemoryPubSubBroker);
     executionIdAccessor = new InMemoryExecutionIdAccessor();
 
     mockKafkaConsumer = mock(PubSubConsumerAdapter.class);
@@ -209,7 +209,7 @@ public class AdminConsumptionTaskTest {
     veniceWriter.close();
   }
 
-  private VeniceWriter getVeniceWriter(InMemoryKafkaBroker inMemoryKafkaBroker) {
+  private VeniceWriter getVeniceWriter(InMemoryPubSubBroker inMemoryPubSubBroker) {
     Properties props = new Properties();
     props.put(VeniceWriter.CHECK_SUM_TYPE, CheckSumType.NONE.name());
     VeniceWriterOptions veniceWriterOptions =
@@ -222,7 +222,7 @@ public class AdminConsumptionTaskTest {
     return new VeniceWriter(
         veniceWriterOptions,
         new VeniceProperties(props),
-        new MockInMemoryProducerAdapter(inMemoryKafkaBroker));
+        new MockInMemoryProducerAdapter(inMemoryPubSubBroker));
   }
 
   private AdminConsumptionTask getAdminConsumptionTask(PollStrategy pollStrategy, boolean isParent) {
@@ -246,8 +246,8 @@ public class AdminConsumptionTaskTest {
       boolean remoteConsumptionEnabled,
       String remoteKafkaServerUrl,
       int maxWorkerThreadPoolSize) {
-    MockInMemoryConsumer inMemoryKafkaConsumer =
-        new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
+    MockInMemoryConsumerAdapter inMemoryKafkaConsumer =
+        new MockInMemoryConsumerAdapter(inMemoryPubSubBroker, pollStrategy, mockKafkaConsumer);
 
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
@@ -269,11 +269,11 @@ public class AdminConsumptionTaskTest {
         "dc-0");
   }
 
-  private PubSubTopicPartitionOffset getTopicPartitionOffsetPair(PubSubProduceResult produceResult) {
+  private MockInMemoryPartitionPosition getTopicPartitionOffsetPair(PubSubProduceResult produceResult) {
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(
         pubSubTopicRepository.getTopic(produceResult.getTopic()),
         produceResult.getPartition());
-    return new PubSubTopicPartitionOffset(pubSubTopicPartition, produceResult.getPubSubPosition());
+    return new MockInMemoryPartitionPosition(pubSubTopicPartition, produceResult.getPubSubPosition());
   }
 
   private long getLastOffset(String clusterName) {
@@ -532,7 +532,7 @@ public class AdminConsumptionTaskTest {
 
     Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
     pollStrategies.add(new RandomPollStrategy());
-    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
+    Queue<MockInMemoryPartitionPosition> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
     pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
     PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
@@ -602,7 +602,7 @@ public class AdminConsumptionTaskTest {
             AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
         .get();
 
-    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
+    Queue<MockInMemoryPartitionPosition> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
     PollStrategy pollStrategy = new ArbitraryOrderingPollStrategy(pollDeliveryOrder);
 
@@ -647,9 +647,9 @@ public class AdminConsumptionTaskTest {
         getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 3),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-    Set<PubSubTopicPartitionOffset> set = new HashSet<>();
+    Set<MockInMemoryPartitionPosition> set = new HashSet<>();
     set.add(
-        new PubSubTopicPartitionOffset(
+        new MockInMemoryPartitionPosition(
             new PubSubTopicPartitionImpl(
                 pubSubTopicRepository.getTopic(topicName),
                 AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
@@ -737,7 +737,7 @@ public class AdminConsumptionTaskTest {
     String storeName2 = "test_store2";
     String storeName3 = "test_store3";
 
-    VeniceWriter oldVeniceWriter = getVeniceWriter(inMemoryKafkaBroker);
+    VeniceWriter oldVeniceWriter = getVeniceWriter(inMemoryPubSubBroker);
     Future<PubSubProduceResult> metadataForStoreName0Future = oldVeniceWriter.put(
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName0, owner, keySchema, valueSchema, 1),
@@ -826,7 +826,7 @@ public class AdminConsumptionTaskTest {
         getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // This scenario mostly happens when leader controller fails over
-    veniceWriter = getVeniceWriter(inMemoryKafkaBroker);
+    veniceWriter = getVeniceWriter(inMemoryPubSubBroker);
     veniceWriter.put(
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
@@ -1286,9 +1286,9 @@ public class AdminConsumptionTaskTest {
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // We need to actually create a gap in producer metadata too in order to craft a valid DIV exception.
-    Set<PubSubTopicPartitionOffset> set = new HashSet<>();
+    Set<MockInMemoryPartitionPosition> set = new HashSet<>();
     set.add(
-        new PubSubTopicPartitionOffset(
+        new MockInMemoryPartitionPosition(
             new PubSubTopicPartitionImpl(
                 pubSubTopicRepository.getTopic(topicName),
                 AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),

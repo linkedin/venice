@@ -31,9 +31,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_RESET_ERROR_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter.getPosition;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
-import static com.linkedin.venice.unit.kafka.producer.MockInMemoryProducerAdapter.getPosition;
 import static com.linkedin.venice.utils.TestUtils.getOffsetRecord;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
@@ -171,6 +171,21 @@ import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubBroker;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
+import com.linkedin.venice.pubsub.mock.SimplePartitioner;
+import com.linkedin.venice.pubsub.mock.adapter.MockInMemoryPartitionPosition;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.MockInMemoryConsumerAdapter;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.AbstractPollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.ArbitraryOrderingPollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.BlockingObserverPollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.CompositePollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.DuplicatingPollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.FilteringPollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.PollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.RandomPollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter;
+import com.linkedin.venice.pubsub.mock.adapter.producer.TransformingProducerAdapter;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
@@ -183,21 +198,6 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.throttle.EventThrottler;
-import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
-import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
-import com.linkedin.venice.unit.kafka.SimplePartitioner;
-import com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer;
-import com.linkedin.venice.unit.kafka.consumer.poll.AbstractPollStrategy;
-import com.linkedin.venice.unit.kafka.consumer.poll.ArbitraryOrderingPollStrategy;
-import com.linkedin.venice.unit.kafka.consumer.poll.BlockingObserverPollStrategy;
-import com.linkedin.venice.unit.kafka.consumer.poll.CompositePollStrategy;
-import com.linkedin.venice.unit.kafka.consumer.poll.DuplicatingPollStrategy;
-import com.linkedin.venice.unit.kafka.consumer.poll.FilteringPollStrategy;
-import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
-import com.linkedin.venice.unit.kafka.consumer.poll.PubSubTopicPartitionOffset;
-import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
-import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducerAdapter;
-import com.linkedin.venice.unit.kafka.producer.TransformingProducerAdapter;
 import com.linkedin.venice.unit.matchers.ExceptionClassMatcher;
 import com.linkedin.venice.unit.matchers.LongEqualOrGreaterThanMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
@@ -351,10 +351,10 @@ public abstract class StoreIngestionTaskTest {
     IngestionNotificationDispatcher.PROGRESS_REPORT_INTERVAL = -1; // Report all the time.
   }
 
-  private InMemoryKafkaBroker inMemoryLocalKafkaBroker;
-  private InMemoryKafkaBroker inMemoryRemoteKafkaBroker;
-  private MockInMemoryConsumer inMemoryLocalKafkaConsumer;
-  private MockInMemoryConsumer inMemoryRemoteKafkaConsumer;
+  private InMemoryPubSubBroker inMemoryLocalKafkaBroker;
+  private InMemoryPubSubBroker inMemoryRemoteKafkaBroker;
+  private MockInMemoryConsumerAdapter inMemoryLocalKafkaConsumer;
+  private MockInMemoryConsumerAdapter inMemoryRemoteKafkaConsumer;
   private VeniceWriterFactory mockWriterFactory;
   private VeniceWriter localVeniceWriter;
   private StorageService mockStorageService;
@@ -525,9 +525,9 @@ public abstract class StoreIngestionTaskTest {
     barTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_BAR);
     mockedPubSubPosition = mock(PubSubPosition.class);
 
-    inMemoryLocalKafkaBroker = new InMemoryKafkaBroker("local");
+    inMemoryLocalKafkaBroker = new InMemoryPubSubBroker("local");
     inMemoryLocalKafkaBroker.createTopic(topic, PARTITION_COUNT);
-    inMemoryRemoteKafkaBroker = new InMemoryKafkaBroker("remote");
+    inMemoryRemoteKafkaBroker = new InMemoryPubSubBroker("remote");
     inMemoryRemoteKafkaBroker.createTopic(topic, PARTITION_COUNT);
 
     localVeniceWriter = getVeniceWriter(new MockInMemoryProducerAdapter(inMemoryLocalKafkaBroker));
@@ -638,7 +638,7 @@ public abstract class StoreIngestionTaskTest {
     return new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), producerAdapter);
   }
 
-  private VeniceWriter getCorruptedVeniceWriter(byte[] valueToCorrupt, InMemoryKafkaBroker kafkaBroker) {
+  private VeniceWriter getCorruptedVeniceWriter(byte[] valueToCorrupt, InMemoryPubSubBroker kafkaBroker) {
     return getVeniceWriter(
         new CorruptedKafkaProducerAdapter(new MockInMemoryProducerAdapter(kafkaBroker), topic, valueToCorrupt));
   }
@@ -1044,11 +1044,12 @@ public abstract class StoreIngestionTaskTest {
     doReturn(refCountedSE).when(storageService).getRefCountedStorageEngine(this.topic);
 
     inMemoryLocalKafkaConsumer =
-        new MockInMemoryConsumer(inMemoryLocalKafkaBroker, pollStrategy, mockLocalKafkaConsumer);
+        new MockInMemoryConsumerAdapter(inMemoryLocalKafkaBroker, pollStrategy, mockLocalKafkaConsumer);
 
     inMemoryRemoteKafkaConsumer = remotePollStrategy
-        .map(strategy -> new MockInMemoryConsumer(inMemoryRemoteKafkaBroker, strategy, mockRemoteKafkaConsumer))
-        .orElseGet(() -> new MockInMemoryConsumer(inMemoryRemoteKafkaBroker, pollStrategy, mockRemoteKafkaConsumer));
+        .map(strategy -> new MockInMemoryConsumerAdapter(inMemoryRemoteKafkaBroker, strategy, mockRemoteKafkaConsumer))
+        .orElseGet(
+            () -> new MockInMemoryConsumerAdapter(inMemoryRemoteKafkaBroker, pollStrategy, mockRemoteKafkaConsumer));
 
     doAnswer(invocation -> {
       PubSubConsumerAdapterContext consumerContext = invocation.getArgument(0, PubSubConsumerAdapterContext.class);
@@ -1349,15 +1350,18 @@ public abstract class StoreIngestionTaskTest {
     setStoreVersionStateSupplier(storeVersionState);
   }
 
-  private PubSubTopicPartitionOffset getTopicPartitionOffsetPair(PubSubProduceResult produceResult) {
+  private MockInMemoryPartitionPosition getTopicPartitionOffsetPair(PubSubProduceResult produceResult) {
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(
         pubSubTopicRepository.getTopic(produceResult.getTopic()),
         produceResult.getPartition());
-    return new PubSubTopicPartitionOffset(pubSubTopicPartition, produceResult.getPubSubPosition());
+    return new MockInMemoryPartitionPosition(pubSubTopicPartition, produceResult.getPubSubPosition());
   }
 
-  private PubSubTopicPartitionOffset getTopicPartitionOffsetPair(String topic, int partition, PubSubPosition offset) {
-    return new PubSubTopicPartitionOffset(
+  private MockInMemoryPartitionPosition getTopicPartitionOffsetPair(
+      String topic,
+      int partition,
+      PubSubPosition offset) {
+    return new MockInMemoryPartitionPosition(
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partition),
         offset);
   }
@@ -1434,7 +1438,7 @@ public abstract class StoreIngestionTaskTest {
     pollStrategies.add(new RandomPollStrategy());
 
     // We re-deliver the old put out of order, so we can make sure it's ignored.
-    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
+    Queue<MockInMemoryPartitionPosition> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(putProduceResult));
     pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
 
@@ -1520,7 +1524,7 @@ public abstract class StoreIngestionTaskTest {
     PubSubProduceResult putMetadata4 =
         (PubSubProduceResult) localVeniceWriter.put(putKeyFoo2, putValue, SCHEMA_ID).get();
 
-    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
+    Queue<MockInMemoryPartitionPosition> pollDeliveryOrder = new LinkedList<>();
     /**
      * The reason to put offset -1 and offset 0 in the deliveryOrder queue is that the SOS and SOP need to be polled.
      */
@@ -1528,7 +1532,7 @@ public abstract class StoreIngestionTaskTest {
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(topic, PARTITION_FOO, InMemoryPubSubPosition.of(0)));
     /**
      * The reason to put "putMetadata1" and "putMetadata3" in the deliveryOrder queue is that
-     * {@link AbstractPollStrategy#poll(InMemoryKafkaBroker, Map, com.linkedin.venice.unit.kafka.InMemoryPubSubPosition)} is always trying to return the next message
+     * {@link AbstractPollStrategy#poll(InMemoryPubSubBroker, Map, InMemoryPubSubPosition)} is always trying to return the next message
      * after whats in the queue. One at a time. Here we want to only deliver the unique entries after compaction:
      * putMetadata2 and putMetadata4
      */
@@ -1864,7 +1868,7 @@ public abstract class StoreIngestionTaskTest {
 
     PollStrategy pollStrategy = new FilteringPollStrategy(
         new RandomPollStrategy(),
-        Utils.setOf(new PubSubTopicPartitionOffset(barTopicPartition, barOffsetToSkip)));
+        Utils.setOf(new MockInMemoryPartitionPosition(barTopicPartition, barOffsetToSkip)));
 
     StoreIngestionTaskTestConfig config =
         new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
@@ -1901,7 +1905,9 @@ public abstract class StoreIngestionTaskTest {
     PollStrategy pollStrategy = new DuplicatingPollStrategy(
         new RandomPollStrategy(),
         Utils.mutableSetOf(
-            new PubSubTopicPartitionOffset(new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_BAR), barOffsetToDupe)));
+            new MockInMemoryPartitionPosition(
+                new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_BAR),
+                barOffsetToDupe)));
 
     StoreIngestionTaskTestConfig config =
         new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
@@ -2115,7 +2121,9 @@ public abstract class StoreIngestionTaskTest {
     PollStrategy pollStrategy = new FilteringPollStrategy(
         new RandomPollStrategy(),
         Utils.setOf(
-            new PubSubTopicPartitionOffset(new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO), fooOffsetToSkip)));
+            new MockInMemoryPartitionPosition(
+                new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
+                fooOffsetToSkip)));
 
     LOGGER.info("lastOffsetBeforeEOP: {}, lastOffset: {}", lastOffsetBeforeEOP, lastOffset);
 
@@ -4099,7 +4107,7 @@ public abstract class StoreIngestionTaskTest {
     }
   }
 
-  private Consumer<PubSubTopicPartitionOffset> getObserver(
+  private Consumer<MockInMemoryPartitionPosition> getObserver(
       List<Long> resubscriptionOffsetForVT,
       List<Long> resubscriptionOffsetForRT) {
     return topicPartitionOffset -> {
@@ -4181,9 +4189,9 @@ public abstract class StoreIngestionTaskTest {
     // Set two observers for both local and remote consumer thread, these observers will trigger resubscription by
     // setting
     // the version role to Backup when the offset reaches the specified value.
-    Consumer<PubSubTopicPartitionOffset> localObserver =
+    Consumer<MockInMemoryPartitionPosition> localObserver =
         getObserver(resubscriptionOffsetForLocalVT, resubscriptionOffsetForLocalRT);
-    Consumer<PubSubTopicPartitionOffset> remoteObserver =
+    Consumer<MockInMemoryPartitionPosition> remoteObserver =
         getObserver(Collections.emptyList(), resubscriptionOffsetForRemoteRT);
     PollStrategy localPollStrategy = new BlockingObserverPollStrategy(new RandomPollStrategy(false), localObserver);
     remotePollStrategy = Optional.of(new BlockingObserverPollStrategy(new RandomPollStrategy(false), remoteObserver));
