@@ -3,6 +3,7 @@ package com.linkedin.venice.unit.kafka.consumer.poll;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
+import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
 import java.util.List;
 import java.util.Map;
 
@@ -17,6 +18,6 @@ import java.util.Map;
 public interface PollStrategy {
   Map<PubSubTopicPartition, List<DefaultPubSubMessage>> poll(
       InMemoryKafkaBroker broker,
-      Map<PubSubTopicPartition, Long> offsets,
+      Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets,
       long timeout);
 }

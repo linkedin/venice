@@ -1,5 +1,6 @@
 package com.linkedin.venice.unit.kafka.producer;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
@@ -13,6 +14,8 @@ import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMaps;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 
 /**
@@ -66,5 +69,18 @@ public class MockInMemoryProducerAdapter implements PubSubProducerAdapter {
   @Override
   public String getBrokerAddress() {
     return broker.getKafkaBootstrapServer();
+  }
+
+  public static InMemoryPubSubPosition getPosition(Future<PubSubProduceResult> produceResultFuture)
+      throws ExecutionException, InterruptedException {
+    if (produceResultFuture == null || produceResultFuture.get() == null) {
+      throw new VeniceException("Produce result future is null or empty.");
+    }
+    if (!(produceResultFuture.get().getPubSubPosition() instanceof InMemoryPubSubPosition)) {
+      throw new VeniceException(
+          "Produce result future does not contain InMemoryPubSubPosition: "
+              + produceResultFuture.get().getPubSubPosition());
+    }
+    return (InMemoryPubSubPosition) produceResultFuture.get().getPubSubPosition();
   }
 }

@@ -5,11 +5,11 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
+import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
 import com.linkedin.venice.utils.ByteUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,11 +35,11 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     this.maxMessagePerPoll = maxMessagePerPoll;
   }
 
-  protected abstract PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, Long> offsets);
+  protected abstract PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets);
 
   public synchronized Map<PubSubTopicPartition, List<DefaultPubSubMessage>> poll(
       InMemoryKafkaBroker broker,
-      Map<PubSubTopicPartition, Long> offsets,
+      Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets,
       long timeout) {
 
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> records = new HashMap<>();
@@ -57,15 +57,15 @@ public abstract class AbstractPollStrategy implements PollStrategy {
         }
       }
       PubSubTopicPartition pubSubTopicPartition = nextPoll.getPubSubTopicPartition();
-      long offset = nextPoll.getOffset();
+      InMemoryPubSubPosition position = nextPoll.getPubSubPosition();
       String topic = pubSubTopicPartition.getPubSubTopic().getName();
       int partition = pubSubTopicPartition.getPartitionNumber();
       /**
        * TODO: need to understand why "+ 1" here, since for {@link ArbitraryOrderingPollStrategy}, it always
        * returns the next message specified in the delivery order, which is causing confusion.
         */
-      long nextOffset = offset + 1;
-      Optional<InMemoryKafkaMessage> message = broker.consume(topic, partition, nextOffset);
+      InMemoryPubSubPosition nextPosition = position.getNextPosition();
+      Optional<InMemoryKafkaMessage> message = broker.consume(topic, partition, nextPosition);
       if (message.isPresent()) {
         if (!AdminTopicUtils.isAdminTopic(topic)) {
           /**
@@ -88,7 +88,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
             message.get().key,
             message.get().value,
             pubSubTopicPartition,
-            ApacheKafkaOffsetPosition.of(nextOffset),
+            nextPosition,
             System.currentTimeMillis(),
             -1,
             message.get().headers);
@@ -96,7 +96,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
           records.put(pubSubTopicPartition, new ArrayList<>());
         }
         records.get(pubSubTopicPartition).add(consumerRecord);
-        incrementOffset(offsets, pubSubTopicPartition, offset);
+        incrementOffset(offsets, pubSubTopicPartition, position);
         numberOfRecords++;
       } else if (keepPollingWhenEmpty) {
         continue;
@@ -110,9 +110,9 @@ public abstract class AbstractPollStrategy implements PollStrategy {
   }
 
   protected void incrementOffset(
-      Map<PubSubTopicPartition, Long> offsets,
+      Map<PubSubTopicPartition, InMemoryPubSubPosition> positionMap,
       PubSubTopicPartition topicPartition,
-      long offset) {
-    offsets.put(topicPartition, offset + 1);
+      InMemoryPubSubPosition position) {
+    positionMap.put(topicPartition, position.getNextPosition());
   }
 }

@@ -1,6 +1,7 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
 import java.util.Map;
 import java.util.Queue;
 import javax.annotation.Nullable;
@@ -22,7 +23,7 @@ public class CompositePollStrategy extends AbstractPollStrategy {
 
   @Nullable
   @Override
-  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, Long> offsets) {
+  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets) {
     // We need to make sure some topic + partition has been subscribed before polling
     while (!pollStrategies.isEmpty() && !offsets.isEmpty()) {
       AbstractPollStrategy pollStrategy = pollStrategies.peek();

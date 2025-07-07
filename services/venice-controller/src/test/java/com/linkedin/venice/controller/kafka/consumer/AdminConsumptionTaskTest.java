@@ -84,6 +84,7 @@ import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
+import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer;
 import com.linkedin.venice.unit.kafka.consumer.poll.AbstractPollStrategy;
@@ -272,7 +273,7 @@ public class AdminConsumptionTaskTest {
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(
         pubSubTopicRepository.getTopic(produceResult.getTopic()),
         produceResult.getPartition());
-    return new PubSubTopicPartitionOffset(pubSubTopicPartition, produceResult.getOffset());
+    return new PubSubTopicPartitionOffset(pubSubTopicPartition, produceResult.getPubSubPosition());
   }
 
   private long getLastOffset(String clusterName) {
@@ -636,13 +637,11 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    long offsetToSkip =
-        ((PubSubProduceResult) veniceWriter
-            .put(
-                emptyKeyBytes,
-                getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
-                AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-            .get()).getOffset();
+    InMemoryPubSubPosition offsetToSkip = MockInMemoryProducerAdapter.getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
     veniceWriter.put(
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 3),
@@ -654,7 +653,7 @@ public class AdminConsumptionTaskTest {
             new PubSubTopicPartitionImpl(
                 pubSubTopicRepository.getTopic(topicName),
                 AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            offsetToSkip - 1));
+            offsetToSkip.getPreviousPosition()));
     PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false), set);
 
     // The stores don't exist
@@ -1293,7 +1292,7 @@ public class AdminConsumptionTaskTest {
             new PubSubTopicPartitionImpl(
                 pubSubTopicRepository.getTopic(topicName),
                 AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            2L));
+            InMemoryPubSubPosition.of(2)));
     PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false), set);
     AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
     executor.submit(task);

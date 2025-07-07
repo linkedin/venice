@@ -2,7 +2,7 @@ package com.linkedin.venice.unit.kafka;
 
 import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.utils.TestUtils;
-import java.util.HashMap;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -17,7 +17,7 @@ import java.util.Optional;
  * @see MockInMemoryProducerAdapter
  */
 public class InMemoryKafkaBroker {
-  private final Map<String, InMemoryKafkaTopic> topics = new HashMap<>();
+  private final Map<String, InMemoryKafkaTopic> topics = new VeniceConcurrentHashMap<>();
   private final int port;
   private final String brokerNamePrefix;
 
@@ -53,10 +53,10 @@ public class InMemoryKafkaBroker {
    * @return Some {@link InMemoryKafkaMessage} instance, or the {@link Optional#empty()} instance if that partition is drained.
    * @throws IllegalArgumentException if the topic or partition does not exist.
    */
-  public Optional<InMemoryKafkaMessage> consume(String topicName, int partition, long offset)
+  public Optional<InMemoryKafkaMessage> consume(String topicName, int partition, InMemoryPubSubPosition position)
       throws IllegalArgumentException {
     InMemoryKafkaTopic topic = getTopic(topicName);
-    return topic.consume(partition, offset);
+    return topic.consume(partition, position);
   }
 
   public int getPartitionCount(String topicName) {
@@ -87,5 +87,9 @@ public class InMemoryKafkaBroker {
 
   public Long endOffsets(String topicName, int partition) {
     return topics.get(topicName).getEndOffsets(partition);
+  }
+
+  public InMemoryPubSubPosition endPosition(String topicName, int partition) {
+    return topics.get(topicName).endPosition(partition);
   }
 }

@@ -1,6 +1,7 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -14,19 +15,19 @@ import java.util.Set;
  */
 public class DuplicatingPollStrategy extends AbstractPollStrategy {
   private final AbstractPollStrategy basePollStrategy;
-  private final Set<PubSubTopicPartitionOffset> PubSubTopicPartitionOffsetsToDuplicate;
+  private final Set<PubSubTopicPartitionOffset> partitionOffsets;
   private final Map<PubSubTopicPartition, Long> amountOfIntroducedDupes = new HashMap<>();
 
   public DuplicatingPollStrategy(
       AbstractPollStrategy basePollStrategy,
-      Set<PubSubTopicPartitionOffset> PubSubTopicPartitionOffsetsToDuplicate) {
+      Set<PubSubTopicPartitionOffset> partitionOffsets) {
     super(basePollStrategy.keepPollingWhenEmpty);
     this.basePollStrategy = basePollStrategy;
-    this.PubSubTopicPartitionOffsetsToDuplicate = PubSubTopicPartitionOffsetsToDuplicate;
+    this.partitionOffsets = partitionOffsets;
   }
 
   @Override
-  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, Long> offsets) {
+  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets) {
     PubSubTopicPartitionOffset nextPoll = basePollStrategy.getNextPoll(offsets);
 
     if (nextPoll == null) {
@@ -34,24 +35,24 @@ public class DuplicatingPollStrategy extends AbstractPollStrategy {
     }
 
     PubSubTopicPartition topicPartition = nextPoll.getPubSubTopicPartition();
-    long offset = nextPoll.getOffset();
-    offset += getAmountOfDupes(topicPartition);
+    InMemoryPubSubPosition offset = nextPoll.getPubSubPosition();
+    offset = offset.getPositionAfterNRecords(getAmountOfDupes(topicPartition));
 
     PubSubTopicPartitionOffset nextPollWithAdjustedOffset = new PubSubTopicPartitionOffset(topicPartition, offset);
 
-    if (PubSubTopicPartitionOffsetsToDuplicate.contains(nextPoll)) {
+    if (partitionOffsets.contains(nextPoll)) {
       if (!amountOfIntroducedDupes.containsKey(topicPartition)) {
         amountOfIntroducedDupes.put(topicPartition, 0L);
       }
       long previousAmountOfDupes = getAmountOfDupes(topicPartition);
       amountOfIntroducedDupes.put(topicPartition, previousAmountOfDupes + 1);
-      PubSubTopicPartitionOffsetsToDuplicate.remove(nextPoll);
+      partitionOffsets.remove(nextPoll);
     }
 
     return nextPollWithAdjustedOffset;
   }
 
-  private long getAmountOfDupes(PubSubTopicPartition PubSubTopicPartition) {
-    return amountOfIntroducedDupes.getOrDefault(PubSubTopicPartition, 0L);
+  private long getAmountOfDupes(PubSubTopicPartition topicPartition) {
+    return amountOfIntroducedDupes.getOrDefault(topicPartition, 0L);
   }
 }

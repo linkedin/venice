@@ -1,6 +1,7 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
 import java.util.Map;
 import java.util.Queue;
 
@@ -18,7 +19,7 @@ public class ArbitraryOrderingPollStrategy extends AbstractPollStrategy {
   }
 
   @Override
-  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, Long> offsets) {
+  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets) {
     if (offsets.isEmpty()) {
       // Not subscribed yet
       return null;

@@ -1,6 +1,7 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
 import java.util.Map;
 import java.util.Set;
 
@@ -22,10 +23,10 @@ public class FilteringPollStrategy extends AbstractPollStrategy {
   }
 
   @Override
-  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, Long> offsets) {
+  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets) {
     PubSubTopicPartitionOffset nextPoll = basePollStrategy.getNextPoll(offsets);
     if (topicPartitionOffsetsToFilterOut.contains(nextPoll)) {
-      incrementOffset(offsets, nextPoll.getPubSubTopicPartition(), nextPoll.getOffset());
+      incrementOffset(offsets, nextPoll.getPubSubTopicPartition(), nextPoll.getPubSubPosition());
       return getNextPoll(offsets);
     }
     return nextPoll;

@@ -1,20 +1,21 @@
 package com.linkedin.venice.unit.kafka.consumer;
 
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
+import com.linkedin.venice.unit.kafka.InMemoryPubSubPosition;
 import com.linkedin.venice.unit.kafka.MockInMemoryAdminAdapter;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -31,14 +32,13 @@ import java.util.Set;
  * periodically call {@link MockInMemoryConsumer#poll(long)} and {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask} thread
  * is calling {@link MockInMemoryConsumer#resetOffset(PubSubTopicPartition)}, which may cause test failure.
  *
- * TODO: Remove synchronized keyword in this class when consumer operations in consumption task is event-driven.
  */
 public class MockInMemoryConsumer implements PubSubConsumerAdapter {
   private final InMemoryKafkaBroker broker;
-  private final Map<PubSubTopicPartition, Long> offsets = new HashMap<>();
+  private final Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets = new VeniceConcurrentHashMap<>();
   private final PollStrategy pollStrategy;
   private final PubSubConsumerAdapter delegate;
-  private final Set<PubSubTopicPartition> pausedTopicPartitions = new HashSet<>();
+  private final Set<PubSubTopicPartition> pausedTopicPartitions = VeniceConcurrentHashMap.newKeySet();
 
   private MockInMemoryAdminAdapter adminAdapter;
 
@@ -55,14 +55,25 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
 
   @Override
   public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
-    pausedTopicPartitions.remove(pubSubTopicPartition);
-    delegate.subscribe(pubSubTopicPartition, lastReadOffset);
-    offsets.put(pubSubTopicPartition, lastReadOffset);
+    subscribe(pubSubTopicPartition, InMemoryPubSubPosition.of(lastReadOffset));
   }
 
   @Override
-  public void subscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition lastReadPubSubPosition) {
-    throw new UnsupportedOperationException("Not implemented");
+  public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition lastReadPubSubPosition) {
+    InMemoryPubSubPosition lastReadPosition;
+    if (lastReadPubSubPosition == PubSubSymbolicPosition.EARLIEST) {
+      lastReadPosition = InMemoryPubSubPosition.of(-1L);
+    } else if (lastReadPubSubPosition == PubSubSymbolicPosition.LATEST) {
+      lastReadPosition = (InMemoryPubSubPosition) endPosition(pubSubTopicPartition);
+    } else if (lastReadPubSubPosition instanceof InMemoryPubSubPosition) {
+      lastReadPosition = (InMemoryPubSubPosition) lastReadPubSubPosition;
+    } else {
+      throw new IllegalArgumentException("Unsupported PubSubPosition type: " + lastReadPubSubPosition.getClass());
+    }
+
+    pausedTopicPartitions.remove(pubSubTopicPartition);
+    delegate.subscribe(pubSubTopicPartition, lastReadPosition);
+    offsets.put(pubSubTopicPartition, lastReadPosition);
   }
 
   @Override
@@ -73,7 +84,7 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public void batchUnsubscribe(Set<PubSubTopicPartition> pubSubTopicPartitionSet) {
+  public synchronized void batchUnsubscribe(Set<PubSubTopicPartition> pubSubTopicPartitionSet) {
     delegate.batchUnsubscribe(pubSubTopicPartitionSet);
     for (PubSubTopicPartition topicPartition: pubSubTopicPartitionSet) {
       offsets.remove(topicPartition);
@@ -87,11 +98,11 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
       throw new PubSubUnsubscribedTopicPartitionException(pubSubTopicPartition);
     }
     delegate.resetOffset(pubSubTopicPartition);
-    offsets.put(pubSubTopicPartition, OffsetRecord.LOWEST_OFFSET);
+    offsets.put(pubSubTopicPartition, InMemoryPubSubPosition.of(-1L));
   }
 
   @Override
-  public void close() {
+  public synchronized void close() {
     delegate.close();
     pausedTopicPartitions.clear();
     offsets.clear();
@@ -105,10 +116,10 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
           "The MockInMemoryConsumer's delegate can only be used to verify calls, not to return arbitrary instances.");
     }
 
-    Map<PubSubTopicPartition, Long> offsetsToPoll = new HashMap<>();
-    for (Map.Entry<PubSubTopicPartition, Long> entry: offsets.entrySet()) {
+    Map<PubSubTopicPartition, InMemoryPubSubPosition> offsetsToPoll = new HashMap<>();
+    for (Map.Entry<PubSubTopicPartition, InMemoryPubSubPosition> entry: offsets.entrySet()) {
       PubSubTopicPartition topicPartition = entry.getKey();
-      Long offset = entry.getValue();
+      InMemoryPubSubPosition offset = entry.getValue();
       if (!pausedTopicPartitions.contains(entry.getKey())) {
         offsetsToPoll.put(topicPartition, offset);
       }
@@ -116,9 +127,9 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
 
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pubSubMessages =
         pollStrategy.poll(broker, offsetsToPoll, timeout);
-    for (Map.Entry<PubSubTopicPartition, Long> entry: offsetsToPoll.entrySet()) {
+    for (Map.Entry<PubSubTopicPartition, InMemoryPubSubPosition> entry: offsetsToPoll.entrySet()) {
       PubSubTopicPartition topicPartition = entry.getKey();
-      Long offsetToPoll = entry.getValue();
+      InMemoryPubSubPosition offsetToPoll = entry.getValue();
       if (offsets.containsKey(topicPartition)) {
         offsets.put(topicPartition, offsetToPoll);
       }
@@ -127,16 +138,16 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public boolean hasAnySubscription() {
+  public synchronized boolean hasAnySubscription() {
     return !offsets.isEmpty();
   }
 
   @Override
-  public boolean hasSubscription(PubSubTopicPartition pubSubTopicPartition) {
+  public synchronized boolean hasSubscription(PubSubTopicPartition pubSubTopicPartition) {
     return offsets.containsKey(pubSubTopicPartition);
   }
 
-  public Map<PubSubTopicPartition, Long> getOffsets() {
+  public synchronized Map<PubSubTopicPartition, InMemoryPubSubPosition> getOffsets() {
     return offsets;
   }
 
@@ -155,27 +166,47 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public Set<PubSubTopicPartition> getAssignment() {
+  public synchronized Set<PubSubTopicPartition> getAssignment() {
     return offsets.keySet();
   }
 
   @Override
-  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
+  public synchronized Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
     return null;
   }
 
   @Override
-  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+  public synchronized PubSubPosition getPositionByTimestamp(
+      PubSubTopicPartition pubSubTopicPartition,
+      long timestamp,
+      Duration timeout) {
     return null;
   }
 
   @Override
-  public Long beginningOffset(PubSubTopicPartition partition, Duration timeout) {
+  public synchronized Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+    return null;
+  }
+
+  @Override
+  public synchronized PubSubPosition getPositionByTimestamp(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+    return null;
+  }
+
+  @Override
+  public synchronized Long beginningOffset(PubSubTopicPartition partition, Duration timeout) {
     return 0L;
   }
 
   @Override
-  public Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
+  public synchronized PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
+    return PubSubSymbolicPosition.EARLIEST;
+  }
+
+  @Override
+  public synchronized Map<PubSubTopicPartition, Long> endOffsets(
+      Collection<PubSubTopicPartition> partitions,
+      Duration timeout) {
     Map<PubSubTopicPartition, Long> retOffsets = new HashMap<>();
     for (PubSubTopicPartition pubSubTopicPartition: partitions) {
       retOffsets.put(pubSubTopicPartition, endOffset(pubSubTopicPartition));
@@ -184,13 +215,30 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
+  public synchronized Map<PubSubTopicPartition, PubSubPosition> endPositions(
+      Collection<PubSubTopicPartition> partitions,
+      Duration timeout) {
+    Map<PubSubTopicPartition, PubSubPosition> retPositions = new HashMap<>(partitions.size());
+    for (PubSubTopicPartition pubSubTopicPartition: partitions) {
+      retPositions.put(pubSubTopicPartition, endPosition(pubSubTopicPartition));
+    }
+    return retPositions;
+  }
+
+  @Override
+  public synchronized Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
     return broker
         .endOffsets(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
   }
 
   @Override
-  public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
+  public synchronized PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition) {
+    return broker
+        .endPosition(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
+  }
+
+  @Override
+  public synchronized List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
     if (adminAdapter != null) {
       return adminAdapter.partitionsFor(topic);
     } else {
@@ -198,7 +246,7 @@ public class MockInMemoryConsumer implements PubSubConsumerAdapter {
     }
   }
 
-  public void setMockInMemoryAdminAdapter(MockInMemoryAdminAdapter adminAdapter) {
+  public synchronized void setMockInMemoryAdminAdapter(MockInMemoryAdminAdapter adminAdapter) {
     this.adminAdapter = adminAdapter;
   }
 }

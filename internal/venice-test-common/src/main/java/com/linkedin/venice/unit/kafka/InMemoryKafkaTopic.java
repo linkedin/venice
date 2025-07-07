@@ -40,22 +40,24 @@ class InMemoryKafkaTopic {
 
   /**
    * @param partition from which to consume
-   * @param offset of the message to consume within the partition
+   * @param position the position from which to consume
    * @return Some {@link InMemoryKafkaMessage} instance, or the {@link Optional#empty()} instance if that partition is drained.
    * @throws IllegalArgumentException if the partition or offset does not exist
    */
-  Optional<InMemoryKafkaMessage> consume(int partition, long offset) throws IllegalArgumentException {
+  Optional<InMemoryKafkaMessage> consume(int partition, InMemoryPubSubPosition position)
+      throws IllegalArgumentException {
     checkPartitionCount(partition);
     ArrayList<InMemoryKafkaMessage> partitionQueue = partitions[partition];
 
-    if (offset > Integer.MAX_VALUE) {
+    long internalOffset = position.getNumericOffset();
+    if (internalOffset > Integer.MAX_VALUE) {
       throw new IllegalArgumentException(
           "Offsets larger than " + Integer.MAX_VALUE + " are not supported by "
               + InMemoryKafkaTopic.class.getSimpleName());
     }
 
     try {
-      return Optional.of(partitionQueue.get((int) offset));
+      return Optional.of(partitionQueue.get((int) internalOffset));
     } catch (IndexOutOfBoundsException e) {
       return Optional.empty();
     }
@@ -76,5 +78,9 @@ class InMemoryKafkaTopic {
 
   Long getEndOffsets(int partition) {
     return (long) partitions[partition].size();
+  }
+
+  InMemoryPubSubPosition endPosition(int partition) {
+    return InMemoryPubSubPosition.of(getEndOffsets(partition));
   }
 }

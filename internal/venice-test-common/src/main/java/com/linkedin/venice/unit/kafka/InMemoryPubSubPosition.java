@@ -45,6 +45,13 @@ public class InMemoryPubSubPosition implements PubSubPosition {
     return InMemoryPubSubPosition.of(internalOffset + 1);
   }
 
+  public InMemoryPubSubPosition getPreviousPosition() {
+    if (internalOffset < -1) {
+      throw new IllegalStateException("Cannot get previous position for offset: " + internalOffset);
+    }
+    return InMemoryPubSubPosition.of(internalOffset - 1);
+  }
+
   /**
    * Get position that is after the current position by n records.
    * @param n the number of records to skip
