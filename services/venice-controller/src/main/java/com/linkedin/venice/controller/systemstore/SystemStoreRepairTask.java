@@ -26,8 +26,8 @@ import org.apache.logging.log4j.Logger;
 /**
  * This class tries to scan all cluster which current parent controller is the leader controller.
  * It will perform the following action for each system store of each cluster:
- * 1. Check system store is created / has current version.
- * 2. Send heartbeat to system store and check if heartbeat is received.
+ * 1. Check system store is created.
+ * 2. Send heartbeat to system store and check if heartbeat is received after certain wait period.
  * 3. If system store failed any of the check in (1) / (2), it will try to run empty push to repair the system store,
  * until maximum retry of repair is reached.
  * It will emit metrics to indicate bad system store counts per cluster and how many stores are not fixable by the task.
@@ -96,17 +96,24 @@ public class SystemStoreRepairTask implements Runnable {
         }
         String pushJobId = SYSTEM_STORE_REPAIR_JOB_PREFIX + System.currentTimeMillis();
         try {
-          Version version = UserSystemStoreLifeCycleHelper
-              .materializeSystemStore(getParentAdmin(), clusterName, systemStoreName, pushJobId);
+          Version version = getNewSystemStoreVersion(clusterName, systemStoreName, pushJobId);
           systemStoreToRepairJobVersionMap.put(systemStoreName, version.getNumber());
         } catch (Exception e) {
           LOGGER.warn("Unable to run empty push job for store: {} in cluster: {}", systemStoreName, clusterName, e);
         }
       }
       for (Map.Entry<String, Integer> entry: systemStoreToRepairJobVersionMap.entrySet()) {
-        if (pollSystemStorePushStatusUntilCompleted(clusterName, entry.getKey(), entry.getValue())) {
-          unhealthySystemStoreSet.remove(entry.getKey());
-          LOGGER.info("System store: {} in cluster: {} has been fixed by repair job.", entry.getKey(), clusterName);
+        try {
+          if (pollSystemStorePushStatusUntilCompleted(clusterName, entry.getKey(), entry.getValue())) {
+            unhealthySystemStoreSet.remove(entry.getKey());
+            LOGGER.info("System store: {} in cluster: {} has been fixed by repair job.", entry.getKey(), clusterName);
+          }
+        } catch (Exception e) {
+          LOGGER.warn(
+              "Caught exception when trying to poll system store: {} repair job in cluster: {}.",
+              entry.getKey(),
+              clusterName,
+              e);
         }
       }
     }
@@ -192,11 +199,6 @@ public class SystemStoreRepairTask implements Runnable {
       }
       // We will not check newly created system stores.
       if (isStoreNewlyCreated(userStoreToCreationTimestampMap.getOrDefault(store.getName(), 0L))) {
-        continue;
-      }
-      // System store does not have an online serving version.
-      if (store.getCurrentVersion() == 0) {
-        newUnhealthySystemStoreSet.add(store.getName());
         continue;
       }
 
@@ -365,5 +367,10 @@ public class SystemStoreRepairTask implements Runnable {
 
   int getMaxRepairRetry() {
     return maxRepairRetry;
+  }
+
+  Version getNewSystemStoreVersion(String clusterName, String systemStoreName, String pushJobId) {
+    return UserSystemStoreLifeCycleHelper
+        .materializeSystemStore(getParentAdmin(), clusterName, systemStoreName, pushJobId);
   }
 }

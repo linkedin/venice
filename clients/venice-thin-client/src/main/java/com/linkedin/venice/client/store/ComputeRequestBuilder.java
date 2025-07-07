@@ -13,7 +13,7 @@ import java.util.concurrent.CompletableFuture;
 import org.apache.avro.generic.GenericRecord;
 
 
-public interface ComputeRequestBuilder<K> {
+public interface ComputeRequestBuilder<K> extends ExecutableRequestBuilder<K, Map<K, ComputeGenericRecord>> {
   /**
    * Setup project fields, and right now only top-level fields are supported.
    * @param fieldNames
@@ -71,14 +71,6 @@ public interface ComputeRequestBuilder<K> {
 
   /**
    * Send compute request to Venice, and this should be the last step of the compute specification.
-   * @param keys : keys for the candidate records
-   * @return
-   * @throws VeniceClientException
-   */
-  CompletableFuture<Map<K, ComputeGenericRecord>> execute(Set<K> keys) throws VeniceClientException;
-
-  /**
-   * Send compute request to Venice, and this should be the last step of the compute specification.
    * The difference between this function and the previous {@link #execute(Set)} is that this function will return
    * the available response instead of throwing a {@link java.util.concurrent.TimeoutException} when timeout happens:
    * streamingExecute(keys).get(timeout, units);
@@ -111,8 +103,9 @@ public interface ComputeRequestBuilder<K> {
    * @throws VeniceClientException
    */
   @Experimental
-  default void executeWithFilter(Predicate predicate, StreamingCallback<GenericRecord, GenericRecord> callback)
-      throws VeniceClientException {
+  default void executeWithFilter(
+      Predicate<GenericRecord> predicate,
+      StreamingCallback<GenericRecord, GenericRecord> callback) throws VeniceClientException {
     throw new VeniceClientException(
         "Please use AvroGenericStoreClient#compute() to generate a Compute Request Builder");
   }

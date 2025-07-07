@@ -227,8 +227,22 @@ public class TestActiveActiveIngestion {
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
 
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
+      // Append a MARKER record 222 to the end of the RT topic to act as an anchor.
+      // This helps determine when all prior records have been processed (i.e., accepted or dropped in DCR),
+      // ensuring deterministic behavior for subsequent verification steps.
+      runSamzaStreamJob(veniceProducer, storeName, mockTime, 1, 0, 222);
+    }
+
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(clusterWrapper.getRandomRouterURL()))) {
+
+      // Wait until the MARKER record 222 is available, indicating all prior records have been handled.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNotNull(client.get(Integer.toString(222)).get(), "Leader has not processed all records yet");
+      });
+
       // We sent a bunch of deletes to the keys we wrote previously that should have been dropped by DCR. Validate
       // they're still there.
       int validGet = 0;

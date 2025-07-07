@@ -2,7 +2,7 @@ package com.linkedin.davinci.utils;
 
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -18,10 +18,10 @@ import org.apache.logging.log4j.Logger;
 
 public abstract class ChunkAssembler {
   private static final Logger LOGGER = LogManager.getLogger(ChunkAssembler.class);
-  protected final AbstractStorageEngine bufferStorageEngine;
+  protected final StorageEngine bufferStorageEngine;
   private final boolean skipFailedToAssembleRecords;
 
-  public ChunkAssembler(AbstractStorageEngine bufferStorageEngine, boolean skipFailedToAssembleRecords) {
+  public ChunkAssembler(StorageEngine bufferStorageEngine, boolean skipFailedToAssembleRecords) {
     this.bufferStorageEngine = bufferStorageEngine;
     // disable noisy logs
     this.bufferStorageEngine.suppressLogs(true);
@@ -42,10 +42,7 @@ public abstract class ChunkAssembler {
       long recordOffset,
       VeniceCompressor compressor) {
     ByteBufferValueRecord<ByteBuffer> assembledRecord = null;
-
-    if (!bufferStorageEngine.containsPartition(pubSubTopicPartition.getPartitionNumber())) {
-      bufferStorageEngine.addStoragePartition(pubSubTopicPartition.getPartitionNumber());
-    }
+    bufferStorageEngine.addStoragePartitionIfAbsent(pubSubTopicPartition.getPartitionNumber());
     // If this is a record chunk, store the chunk and return null for processing this record
     if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
       bufferStorageEngine.put(
@@ -105,5 +102,10 @@ public abstract class ChunkAssembler {
 
   public void clearBuffer() {
     bufferStorageEngine.drop();
+  }
+
+  public static boolean isChunkedRecord(int schemaId) {
+    return schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()
+        || schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
   }
 }

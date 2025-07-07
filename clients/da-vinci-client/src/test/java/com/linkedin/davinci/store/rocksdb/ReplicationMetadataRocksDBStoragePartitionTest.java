@@ -11,6 +11,7 @@ import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.AggVersionedStorageEngineStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
+import com.linkedin.davinci.store.StorageEngineAccessor;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
@@ -47,7 +48,7 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
-public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStorageEngineTest {
+public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStorageEngineTest<RocksDBStorageEngine> {
   private static final int PARTITION_ID = 0;
 
   private static final String storeName = Version.composeKafkaTopic(Utils.getUniqueString("rocksdb_store_test"), 1);
@@ -123,7 +124,8 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         mockReadOnlyStoreRepository);
     storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
-    testStoreEngine = storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null);
+    testStoreEngine = StorageEngineAccessor
+        .getInnerStorageEngine(storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null));
     createStoreForTest();
     String stringSchema = "\"string\"";
     Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(stringSchema, 1);

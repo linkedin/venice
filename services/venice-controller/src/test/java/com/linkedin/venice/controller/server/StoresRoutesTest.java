@@ -180,6 +180,25 @@ public class StoresRoutesTest {
   }
 
   @Test
+  public void testCleanExecutionIds() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class, RETURNS_DEEP_STUBS);
+    String DEST_CLUSTER = "dest_cluster";
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(TEST_CLUSTER);
+    Request request = mock(Request.class);
+    doReturn(LEADER_CONTROLLER.getPath()).when(request).pathInfo();
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request).queryParams(eq(ControllerApiConstants.STORE_NAME));
+    Route cleanExecutionIdRoute =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).cleanExecutionIds(mockAdmin);
+
+    TrackableControllerResponse trackableControllerResponse = ObjectMapperFactory.getInstance()
+        .readValue(
+            cleanExecutionIdRoute.handle(request, mock(Response.class)).toString(),
+            TrackableControllerResponse.class);
+    Assert.assertFalse(trackableControllerResponse.isError());
+  }
+
+  @Test
   public void testGetFutureVersionForChildController() throws Exception {
     Admin mockAdmin = mock(VeniceHelixAdmin.class);
     doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);

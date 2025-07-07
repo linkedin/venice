@@ -54,7 +54,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_700;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PERMISSION_777;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_ATTEMPTS;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_STATUS_UPLOAD_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OVERRIDE_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
@@ -81,6 +81,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_P
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.PushJobCheckpoints;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.ZstdWithDictCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -247,7 +248,7 @@ public class VenicePushJob implements AutoCloseable {
   private InputStorageQuotaTracker inputStorageQuotaTracker;
   private final PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
   private PushJobHeartbeatSender pushJobHeartbeatSender = null;
-  private boolean pushJobStatusUploadDisabledHasBeenLogged = false;
+  private volatile boolean pushJobStatusUploadDisabledHasBeenLogged = false;
   private final ScheduledExecutorService timeoutExecutor;
 
   /**
@@ -348,13 +349,13 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
-    pushJobSettingToReturn.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
     pushJobSettingToReturn.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
     pushJobSettingToReturn.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
     pushJobSettingToReturn.pollJobStatusIntervalMs =
         props.getLong(POLL_JOB_STATUS_INTERVAL_MS, DEFAULT_POLL_STATUS_INTERVAL_MS);
     pushJobSettingToReturn.jobStatusInUnknownStateTimeoutMs =
         props.getLong(JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS, DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS);
+    pushJobSettingToReturn.pushJobTimeoutOverrideMs = props.getLong(PUSH_JOB_TIMEOUT_OVERRIDE_MS, -1L);
     pushJobSettingToReturn.sendControlMessagesDirectly = props.getBoolean(SEND_CONTROL_MESSAGES_DIRECTLY, false);
     pushJobSettingToReturn.enableWriteCompute = props.getBoolean(ENABLE_WRITE_COMPUTE, false);
     pushJobSettingToReturn.pushToSeparateRealtimeTopicEnabled =
@@ -890,17 +891,43 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * Timeout on the entire push job that kills the job if it runs longer than the store's configured bootstrap timeout.
+   * Sets up a timeout monitor that will cancel and fail the push job if it runs longer than the allowed time.
+   * The timeout duration is determined by one of the following:
+   * <ul>
+   *   <li>If {@code pushJobSetting.pushJobTimeoutOverrideMs} is set to a positive value, it takes precedence.</li>
+   *   <li>Otherwise, the timeout is derived from the store's {@code bootstrapToOnlineTimeoutInHours} setting.</li>
+   * </ul>
+   *
+   * If the resolved timeout is less than or equal to 0, no timeout monitor is scheduled.
    */
   private void setupJobTimeoutMonitor() {
-    long bootstrapToOnlineTimeoutInHours =
-        getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
+    long timeoutMs;
+
+    if (pushJobSetting.pushJobTimeoutOverrideMs > 0) {
+      timeoutMs = pushJobSetting.pushJobTimeoutOverrideMs;
+      LOGGER.info(
+          "Using overridden push job timeout: {} ms ({} hours)",
+          timeoutMs,
+          TimeUnit.MILLISECONDS.toHours(timeoutMs));
+    } else {
+      long timeoutInHours = getStoreResponse(pushJobSetting.storeName).getStore().getBootstrapToOnlineTimeoutInHours();
+      timeoutMs = TimeUnit.HOURS.toMillis(timeoutInHours);
+      LOGGER.info("Using store-configured push job timeout: {} hours ({} ms)", timeoutInHours, timeoutMs);
+    }
+
+    if (timeoutMs <= 0) {
+      LOGGER.info(
+          "Store: {} does not have a valid bootstrap-to-online timeout configured. Skipping timeout monitor.",
+          pushJobSetting.storeName);
+      return;
+    }
+
     timeoutExecutor.schedule(() -> {
       cancel();
       throw new VeniceTimeoutException(
-          "Failing push-job for store " + pushJobSetting.storeName + " which is still running after "
-              + bootstrapToOnlineTimeoutInHours + " hours.");
-    }, bootstrapToOnlineTimeoutInHours, TimeUnit.HOURS);
+          "Failing push-job for store " + pushJobSetting.storeName + " which is still running after " + timeoutMs
+              + " ms (" + TimeUnit.MILLISECONDS.toHours(timeoutMs) + " hours)");
+    }, timeoutMs, TimeUnit.MILLISECONDS);
   }
 
   private void buildHDFSSchemaDir() throws IOException {
@@ -1488,19 +1515,23 @@ public class VenicePushJob implements AutoCloseable {
     try {
       pushJobDetails.totalNumberOfRecords = taskTracker.getOutputRecordsCount();
       pushJobDetails.totalKeyBytes = taskTracker.getTotalKeySize();
-      // size of uncompressed value
+      // total size of uncompressed value
       pushJobDetails.totalRawValueBytes = taskTracker.getTotalUncompressedValueSize();
-      // size of the final stored data in SN (can be compressed using NO_OP/GZIP/ZSTD_WITH_DICT)
+      // total size of the final stored data in SN (can be compressed using NO_OP/GZIP/ZSTD_WITH_DICT)
       pushJobDetails.totalCompressedValueBytes = taskTracker.getTotalValueSize();
-      // size of the Gzip compressed data
+      // total size of the Gzip compressed data
       pushJobDetails.totalGzipCompressedValueBytes = taskTracker.getTotalGzipCompressedValueSize();
-      // size of the Zstd with Dict compressed data
+      // total size of the Zstd with Dict compressed data
       pushJobDetails.totalZstdWithDictCompressedValueBytes = taskTracker.getTotalZstdCompressedValueSize();
+      // total records exceeding record size before compression
+      pushJobDetails.totalUncompressedRecordTooLargeFailures = taskTracker.getUncompressedRecordTooLargeFailureCount();
+      // size of largest uncompressed value
+      pushJobDetails.largestUncompressedValueSizeBytes = taskTracker.getLargestUncompressedValueSize();
       LOGGER.info(
           "Data writer job summary: " + "\n\tTotal number of records: {}" + "\n\tSize of keys: {}"
               + "\n\tSize of uncompressed values: {}" + "\n\tConfigured value compression strategy: {}"
               + "\n\tSize of compressed values: {}" + "\n\tFinal data size stored in Venice: {}"
-              + "\n\tCompression Metrics collection: {}",
+              + "\n\tCompression Metrics collection: {}" + "\n\tUncompressed records too large: {}",
           pushJobDetails.totalNumberOfRecords,
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalKeyBytes),
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalRawValueBytes),
@@ -1508,7 +1539,11 @@ public class VenicePushJob implements AutoCloseable {
           ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalCompressedValueBytes),
           ByteUtils.generateHumanReadableByteCountString(
               pushJobDetails.totalKeyBytes + pushJobDetails.totalCompressedValueBytes),
-          pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled");
+          pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled",
+          pushJobDetails.totalUncompressedRecordTooLargeFailures);
+      if (pushJobDetails.largestUncompressedValueSizeBytes > 0) {
+        LOGGER.info("\t Largest Uncompressed value size: {}", pushJobDetails.largestUncompressedValueSizeBytes);
+      }
       if (pushJobSetting.compressionMetricCollectionEnabled) {
         LOGGER.info(
             "\tData size if compressed using Gzip: {}",
@@ -1697,18 +1732,65 @@ public class VenicePushJob implements AutoCloseable {
     return tuple;
   }
 
-  private void sendPushJobDetailsToController() {
-    if (!pushJobSetting.enablePushJobStatusUpload) {
-      if (!pushJobStatusUploadDisabledHasBeenLogged) {
-        pushJobStatusUploadDisabledHasBeenLogged = true;
-        LOGGER.warn("Unable to send push job details for monitoring purpose. Feature is disabled");
-      }
-      return;
-    } else if (pushJobDetails == null) {
+  /**
+   * Tracks the last reported status to prevent duplicate terminal failure updates to the controller.
+   * Duplicate terminal statuses (e.g., ERROR, KILLED) may be misinterpreted in controller-side metrics,
+   * potentially skewing push job SLO calculations and causing confusion.
+   */
+  private volatile PushJobDetailsStatus lastReportedStatus = PushJobDetailsStatus.UNKNOWN;
+  private final Object lastReportedStatusLock = new Object();
+
+  private static PushJobDetailsStatus getCurrentOverallStatus(PushJobDetails pushJobDetails) {
+    if (pushJobDetails != null && pushJobDetails.overallStatus != null && !pushJobDetails.overallStatus.isEmpty()) {
+      return PushJobDetailsStatus
+          .valueOf(pushJobDetails.overallStatus.get(pushJobDetails.overallStatus.size() - 1).status);
+    }
+    return PushJobDetailsStatus.UNKNOWN;
+  }
+
+  /**
+   * Determines whether the push job status update should be skipped.
+   *
+   * <p>This method checks for several conditions that would make a status update unnecessary or
+   * potentially harmful:
+   * <ul>
+   *   <li>If status uploads are disabled via config, the update is skipped and a warning is logged
+   *       (only once).</li>
+   *   <li>If the push job details are not initialized, the update is skipped.</li>
+   *   <li>If the last reported status was a terminal failure (ERROR or KILLED) and the current status
+   *       is also a terminal failure, the update is skipped to avoid redundant controller updates,
+   *       which may negatively affect downstream metrics.</li>
+   * </ul>
+   *
+   * @return {@code true} if the status update should be skipped, {@code false} otherwise.
+   */
+  private boolean shouldSkipPushJobStatusUpdate() {
+    // Check if pushJobDetails is populated
+    if (pushJobDetails == null) {
       LOGGER.warn("Unable to send push job details for monitoring purpose. The payload was not populated properly");
-      return;
+      return true;
     }
 
+    PushJobDetailsStatus currentStatus = getCurrentOverallStatus(this.pushJobDetails);
+
+    // Early exit if both current and last status are terminal failures (ERROR or KILLED)
+    // This check is deliberately done outside the synchronized block to avoid locking in no-op paths.
+    if (PushJobDetailsStatus.isFailed(currentStatus) && PushJobDetailsStatus.isFailed(lastReportedStatus)) {
+      LOGGER.info(
+          "Skipping status update. Already reported terminal failure status: {} and current status is also terminal: {}",
+          lastReportedStatus,
+          currentStatus);
+      return true;
+    }
+
+    return false;
+  }
+
+  @VisibleForTesting
+  void sendPushJobDetailsToController() {
+    if (shouldSkipPushJobStatusUpdate()) {
+      return;
+    }
     // update push job details with more info if needed
     updatePushJobDetailsWithConfigs();
     updatePushJobDetailsWithLivenessHeartbeatException();
@@ -1717,14 +1799,34 @@ public class VenicePushJob implements AutoCloseable {
     try {
       pushJobDetails.reportTimestamp = System.currentTimeMillis();
       int version = pushJobSetting.version <= 0 ? UNCREATED_VERSION_NUMBER : pushJobSetting.version;
-      ControllerResponse response = controllerClient.sendPushJobDetails(
-          pushJobSetting.storeName,
-          version,
-          pushJobDetailsSerializer.serialize(null, pushJobDetails));
-      getSentPushJobDetailsTracker().record(pushJobSetting.storeName, version, pushJobDetails);
-
-      if (response.isError()) {
-        LOGGER.warn("Failed to send push job details. {} Details: {}", NON_CRITICAL_EXCEPTION, response.getError());
+      synchronized (lastReportedStatusLock) {
+        PushJobDetails pushJobDetailsCopy = this.pushJobDetails;
+        PushJobDetailsStatus currentStatus = getCurrentOverallStatus(pushJobDetailsCopy);
+        // Re-check terminal status inside synchronized block for correctness
+        if (PushJobDetailsStatus.isFailed(currentStatus) && PushJobDetailsStatus.isFailed(lastReportedStatus)) {
+          LOGGER.info(
+              "Skipping status update for store: {} version: {}. Already reported terminal failure: {} and current status is also terminal: {}",
+              pushJobSetting.storeName,
+              version,
+              lastReportedStatus,
+              currentStatus);
+          return;
+        }
+        ControllerResponse response = controllerClient.sendPushJobDetails(
+            pushJobSetting.storeName,
+            version,
+            pushJobDetailsSerializer.serialize(null, pushJobDetailsCopy));
+        if (response.isError()) {
+          LOGGER.warn("Failed to send push job details. {} Details: {}", NON_CRITICAL_EXCEPTION, response.getError());
+        } else {
+          LOGGER.info(
+              "Successfully reported push job status: {} for store: {} version: {}",
+              currentStatus,
+              pushJobSetting.storeName,
+              version);
+          lastReportedStatus = currentStatus;
+        }
+        getSentPushJobDetailsTracker().record(pushJobSetting.storeName, version, pushJobDetailsCopy);
       }
     } catch (Exception e) {
       LOGGER.error("Exception caught while sending push job details. {}", NON_CRITICAL_EXCEPTION, e);
@@ -2726,5 +2828,13 @@ public class VenicePushJob implements AutoCloseable {
 
   PushJobDetails getPushJobDetails() {
     return pushJobDetails;
+  }
+
+  @VisibleForTesting
+  void addPushJobDetailsOverallStatus(PushJobDetailsStatus pushJobDetailsStatus) {
+    if (pushJobDetails.overallStatus == null) {
+      pushJobDetails.overallStatus = new ArrayList<>();
+    }
+    pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(pushJobDetailsStatus.getValue()));
   }
 }

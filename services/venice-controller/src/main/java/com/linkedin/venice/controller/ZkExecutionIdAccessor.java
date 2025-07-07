@@ -11,7 +11,10 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -156,6 +159,28 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
       executionIdMap.put(storeName, lastSucceededExecutionId);
       return executionIdMap;
     });
+  }
+
+  public Map<String, Long> cleanExecutionIdMap(String clusterName, Set<String> allStores) {
+    String path = getLastSucceededExecutionIdMapPath(clusterName);
+    AtomicReference<Map<String, Long>> executionIdsCleaned = new AtomicReference<>(new HashMap<>());
+    AtomicReference<Map<String, Long>> executionIdsToKeep = new AtomicReference<>(new HashMap<>());
+
+    HelixUtils.compareAndUpdate(zkMapAccessor, path, ZK_RETRY_COUNT, executionIdMap -> {
+      // initializing `executionIdsCleaned` with all the entries
+      executionIdsCleaned.set(executionIdMap);
+      Map<String, Long> filteredExecutionIds = executionIdMap.entrySet()
+          .parallelStream()
+          .filter(entry -> allStores.contains(entry.getKey()))
+          .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+      executionIdsToKeep.set(filteredExecutionIds);
+      return filteredExecutionIds;
+    });
+
+    // update `executionIdsCleaned` by removing the entries that are kept
+    executionIdsCleaned.get().keySet().removeAll(executionIdsToKeep.get().keySet());
+
+    return executionIdsCleaned.get();
   }
 
   private Long getExecutionIdFromZk(String path) {

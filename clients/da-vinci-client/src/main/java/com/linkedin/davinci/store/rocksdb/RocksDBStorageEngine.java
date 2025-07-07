@@ -8,6 +8,7 @@ import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.StorageEngineStats;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -22,6 +23,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.function.ToLongFunction;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -42,15 +44,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   private final RocksDBStorageEngineFactory factory;
   private final VeniceStoreVersionConfig storeConfig;
   private final boolean replicationMetadataEnabled;
-
-  /**
-   * The cached value will be refreshed by {@link #getStoreSizeInBytes()}.
-   */
-  private long cachedDiskUsage = 0;
-  /**
-   * The cached value will be refreshed by {@link #getRMDSizeInBytes()}.
-   */
-  private long cachedRMDDiskUsage = 0;
+  private final StorageEngineStats stats;
 
   public RocksDBStorageEngine(
       VeniceStoreVersionConfig storeConfig,
@@ -92,6 +86,13 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
       }
     }
 
+    this.stats = new RocksDBStorageEngineStats(
+        storeDbPath,
+        this::getRMDSizeInBytes,
+        this::getDuplicateKeyCountEstimate,
+        this::getKeyCountEstimate,
+        this::hasMemorySpaceLeft);
+
     // restoreStoragePartitions will create metadata partition if not exist.
     restoreStoragePartitions(storeConfig.isRestoreMetadataPartition(), storeConfig.isRestoreDataPartitions());
 
@@ -99,6 +100,11 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
       // Persist RocksDB table format option used in building the storage engine.
       persistStoreEngineConfig();
     }
+  }
+
+  // For testing purpose only.
+  protected AbstractStoragePartition getMetadataPartition() {
+    return super.getMetadataPartition();
   }
 
   @Override
@@ -148,42 +154,24 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     }
   }
 
-  public long getDuplicateKeyCountEstimate() {
-    Set<Integer> partitionIds = super.getPartitionIds();
-    long duplicateCount = 0;
-    for (int partitionId: partitionIds) {
-      RocksDBStoragePartition partition;
-      try {
-        partition = (RocksDBStoragePartition) super.getPartitionOrThrow(partitionId);
-      } catch (VeniceException e) {
-        LOGGER.warn(
-            "Could not find partition {} for store {}",
-            Utils.getReplicaId(getStoreVersionName(), partitionId),
-            super.getStoreVersionName());
-        continue;
-      }
-      duplicateCount += partition.getDuplicateKeyCountEstimate();
-    }
-    return duplicateCount;
+  private long getRMDSizeInBytes() {
+    return getStatSumAcrossPartitions(RocksDBStoragePartition::getRmdByteUsage);
   }
 
-  public long getKeyCountEstimate() {
-    Set<Integer> partitionIds = super.getPartitionIds();
-    long keyCount = 0;
+  private long getDuplicateKeyCountEstimate() {
+    return getStatSumAcrossPartitions(RocksDBStoragePartition::getDuplicateKeyCountEstimate);
+  }
 
-    for (int partitionId: partitionIds) {
-      RocksDBStoragePartition partition;
-      try {
-        partition = (RocksDBStoragePartition) super.getPartitionOrThrow(partitionId);
-        keyCount += partition.getKeyCountEstimate();
-      } catch (Exception e) {
-        LOGGER.warn(
-            "Could not find partition {} for store {}",
-            Utils.getReplicaId(getStoreVersionName(), partitionId),
-            super.getStoreVersionName());
-      }
+  private long getKeyCountEstimate() {
+    return getStatSumAcrossPartitions(RocksDBStoragePartition::getKeyCountEstimate);
+  }
+
+  private long getStatSumAcrossPartitions(ToLongFunction<RocksDBStoragePartition> statGetter) {
+    long sum = 0;
+    for (RocksDBStoragePartition partition: getPartitions()) {
+      sum += executeWithSafeGuard(partition.getPartitionId(), () -> statGetter.applyAsLong(partition));
     }
-    return keyCount;
+    return sum;
   }
 
   @Override
@@ -203,48 +191,6 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
         }
       }
     }
-  }
-
-  @Override
-  public long getRMDSizeInBytes() {
-    Set<Integer> partitionIds = super.getPartitionIds();
-    long diskUsage = 0;
-    for (int i: partitionIds) {
-      AbstractStoragePartition partition;
-      try {
-        partition = super.getPartitionOrThrow(i);
-      } catch (VeniceException e) {
-        LOGGER.warn("Could not find partition {} for store {}", i, super.getStoreVersionName());
-        continue;
-      }
-      diskUsage += partition.getRmdByteUsage();
-    }
-    cachedRMDDiskUsage = diskUsage;
-
-    return diskUsage;
-  }
-
-  public long getCachedRMDSizeInBytes() {
-    return cachedRMDDiskUsage;
-  }
-
-  @Override
-  public long getStoreSizeInBytes() {
-    File storeDbDir = new File(storeDbPath);
-    if (storeDbDir.exists()) {
-      /**
-       * {@link FileUtils#sizeOf(File)} will throw {@link IllegalArgumentException} if the file/dir doesn't exist.
-       */
-      cachedDiskUsage = FileUtils.sizeOf(storeDbDir);
-    } else {
-      cachedDiskUsage = 0;
-    }
-    return cachedDiskUsage;
-  }
-
-  @Override
-  public long getCachedStoreSizeInBytes() {
-    return cachedDiskUsage;
   }
 
   // package-private for testing purposes
@@ -306,8 +252,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
         + SERVER_CONFIG_FILE_NAME;
   }
 
-  @Override
-  public boolean hasMemorySpaceLeft() {
+  private boolean hasMemorySpaceLeft() {
     SstFileManager sstFileManager = factory.getSstFileManagerForMemoryLimiter();
     if (sstFileManager == null) {
       // Memory limiter is disabled.
@@ -332,5 +277,10 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   public AbstractStorageIterator getIterator(int partitionId) {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     return partition.getIterator();
+  }
+
+  @Override
+  public StorageEngineStats getStats() {
+    return this.stats;
   }
 }

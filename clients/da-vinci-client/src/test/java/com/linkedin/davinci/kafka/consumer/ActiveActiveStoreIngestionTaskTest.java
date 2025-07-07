@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -25,6 +26,7 @@ import static org.testng.Assert.expectThrows;
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
@@ -33,7 +35,7 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -84,8 +86,11 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -99,6 +104,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -195,8 +201,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertEquals("Hello World", new String(resultByteArray));
   }
 
-  @Test
-  public void testisReadyToServeAnnouncedWithRTLag() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "ingestionTaskReusableObjectsStrategy")
+  public void testisReadyToServeAnnouncedWithRTLag(IngestionTaskReusableObjects.Strategy itroStrategy) {
     // Setup store/schema/storage repository
     ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
@@ -219,13 +225,16 @@ public class ActiveActiveStoreIngestionTaskTest {
     builder.setMetadataRepository(readOnlyStoreRepository);
     builder.setServerConfig(serverConfig);
     builder.setSchemaRepository(readOnlySchemaRepository);
-    builder.setStorageEngineRepository(storageEngineRepository);
+    builder.setReusableObjectsSupplier(itroStrategy.supplier());
 
     // Set up version config and store config
     HybridStoreConfig hybridStoreConfig =
         new HybridStoreConfigImpl(100L, 100L, 100L, BufferReplayPolicy.REWIND_FROM_EOP);
 
     StorageService storageService = mock(StorageService.class);
+    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(storageService)
+        .getRefCountedStorageEngine(anyString());
+
     Store store = new ZKStore(
         STORE_NAME,
         "Felix",
@@ -502,7 +511,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     /**
      * The 1st key does not have any chunk but only has a top level key.
      */
-    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = mock(StorageEngine.class);
     ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
     String stringSchema = "\"string\"";
     when(schemaRepository.getSupersetOrLatestValueSchema(storeName))
@@ -788,4 +797,161 @@ public class ActiveActiveStoreIngestionTaskTest {
     }
     verify(dvcIngestionTask, times(1)).consumerSubscribe(pubSubTopicPartition, 100L, "validPubSubAddress");
   }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGetStorageOperationTypeForDaVinci(boolean isDeferredWrite) {
+    ByteBuffer payload = ByteBuffer.wrap("abc".getBytes());
+    ByteBuffer emptyPayload = ByteBuffer.allocate(0);
+    Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    partitionConsumptionStateMap.put(1, pcs);
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).checkStorageOperationCommonInvalidPattern(any(), any());
+    doCallRealMethod().when(ingestionTask).getStorageOperationTypeForPut(anyInt(), any());
+    doCallRealMethod().when(ingestionTask).getStorageOperationTypeForDelete(anyInt(), any());
+    Put putWithEmptyPayloadAndWithoutRmd = new Put();
+    putWithEmptyPayloadAndWithoutRmd.putValue = emptyPayload;
+    Put putWithEmptyPayloadAndWithEmptyRmd = new Put();
+    putWithEmptyPayloadAndWithEmptyRmd.putValue = emptyPayload;
+    putWithEmptyPayloadAndWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Put putWithEmptyPayloadAndWithRmd = new Put();
+    putWithEmptyPayloadAndWithRmd.putValue = emptyPayload;
+    putWithEmptyPayloadAndWithRmd.replicationMetadataPayload = payload;
+    Put putWithPayloadAndWithoutRmd = new Put();
+    putWithPayloadAndWithoutRmd.putValue = payload;
+    Put putWithPayloadAndWithEmptyRmd = new Put();
+    putWithPayloadAndWithEmptyRmd.putValue = payload;
+    putWithPayloadAndWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Put putWithPayloadAndWithRmd = new Put();
+    putWithPayloadAndWithRmd.putValue = payload;
+    putWithPayloadAndWithRmd.replicationMetadataPayload = payload;
+
+    Delete deleteWithoutRmd = new Delete();
+    Delete deleteWithEmptyRmd = new Delete();
+    deleteWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Delete deleteWithRmd = new Delete();
+    deleteWithRmd.replicationMetadataPayload = payload;
+
+    doReturn(partitionConsumptionStateMap).when(ingestionTask).getPartitionConsumptionStateMap();
+    // PCS == null should not persist.
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForDelete(0, deleteWithoutRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
+    /**
+     * Da Vinci case
+     */
+    doReturn(true).when(ingestionTask).isDaVinciClient();
+
+    doReturn(isDeferredWrite).when(pcs).isDeferredWrite();
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForDelete(1, deleteWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithoutRmd));
+
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithEmptyRmd),
+        isDeferredWrite
+            ? ActiveActiveStoreIngestionTask.StorageOperationType.SKIP
+            : ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithEmptyRmd));
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithEmptyRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithRmd),
+        isDeferredWrite
+            ? ActiveActiveStoreIngestionTask.StorageOperationType.SKIP
+            : ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testGetStorageOperationTypeForServer(boolean isEndOfPush) {
+    ByteBuffer payload = ByteBuffer.wrap("abc".getBytes());
+    ByteBuffer emptyPayload = ByteBuffer.allocate(0);
+    Map<Integer, PartitionConsumptionState> partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
+    PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
+    partitionConsumptionStateMap.put(1, pcs);
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    doCallRealMethod().when(ingestionTask).checkStorageOperationCommonInvalidPattern(any(), any());
+    doCallRealMethod().when(ingestionTask).getStorageOperationTypeForPut(anyInt(), any());
+    doCallRealMethod().when(ingestionTask).getStorageOperationTypeForDelete(anyInt(), any());
+    Put putWithEmptyPayloadAndWithoutRmd = new Put();
+    putWithEmptyPayloadAndWithoutRmd.putValue = emptyPayload;
+    Put putWithEmptyPayloadAndWithEmptyRmd = new Put();
+    putWithEmptyPayloadAndWithEmptyRmd.putValue = emptyPayload;
+    putWithEmptyPayloadAndWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Put putWithEmptyPayloadAndWithRmd = new Put();
+    putWithEmptyPayloadAndWithRmd.putValue = emptyPayload;
+    putWithEmptyPayloadAndWithRmd.replicationMetadataPayload = payload;
+    Put putWithPayloadAndWithoutRmd = new Put();
+    putWithPayloadAndWithoutRmd.putValue = payload;
+    Put putWithPayloadAndWithEmptyRmd = new Put();
+    putWithPayloadAndWithEmptyRmd.putValue = payload;
+    putWithPayloadAndWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Put putWithPayloadAndWithRmd = new Put();
+    putWithPayloadAndWithRmd.putValue = payload;
+    putWithPayloadAndWithRmd.replicationMetadataPayload = payload;
+
+    Delete deleteWithoutRmd = new Delete();
+    Delete deleteWithEmptyRmd = new Delete();
+    deleteWithEmptyRmd.replicationMetadataPayload = emptyPayload;
+    Delete deleteWithRmd = new Delete();
+    deleteWithRmd.replicationMetadataPayload = payload;
+
+    doReturn(partitionConsumptionStateMap).when(ingestionTask).getPartitionConsumptionStateMap();
+    // PCS == null should not persist.
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForDelete(0, deleteWithoutRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.SKIP);
+
+    doReturn(false).when(ingestionTask).isDaVinciClient();
+    // deferred write = false.
+    doReturn(isEndOfPush).when(pcs).isEndOfPushReceived();
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForDelete(1, deleteWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithoutRmd));
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithoutRmd));
+
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithEmptyRmd),
+        isEndOfPush
+            ? ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD
+            : ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithEmptyRmd));
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithEmptyRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE);
+
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForDelete(1, deleteWithRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForPut(1, putWithEmptyPayloadAndWithRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.RMD_CHUNK);
+    Assert.assertEquals(
+        ingestionTask.getStorageOperationTypeForPut(1, putWithPayloadAndWithRmd),
+        ActiveActiveStoreIngestionTask.StorageOperationType.VALUE_AND_RMD);
+  }
+
 }

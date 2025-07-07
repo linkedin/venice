@@ -1,11 +1,13 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask.VIEW_WRITER_CLOSE_TIMEOUT_IN_MS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -32,6 +34,7 @@ import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.view.MaterializedViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
@@ -47,8 +50,10 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.MaterializedViewParameters;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
@@ -61,13 +66,18 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -103,6 +113,10 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
   private VeniceViewWriterFactory mockVeniceViewWriterFactory;
   private HostLevelIngestionStats hostLevelIngestionStats;
+  private StorageMetadataService mockStorageMetadataService;
+  private ReadOnlyStoreRepository storeRepository;
+  private VeniceServerConfig mockVeniceServerConfig;
+  private TopicManagerRepository mockTopicManagerRepository;
 
   @Test
   public void testCheckWhetherToCloseUnusedVeniceWriter() {
@@ -204,23 +218,28 @@ public class LeaderFollowerStoreIngestionTaskTest {
   }
 
   public void setUp() throws InterruptedException {
+    setUp(false);
+  }
+
+  public void setUp(boolean isHybrid) throws InterruptedException {
     String storeName = Utils.getUniqueString("store");
     int versionNumber = 1;
     mockStorageService = mock(StorageService.class);
-    VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
+    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(mockStorageService)
+        .getRefCountedStorageEngine(anyString());
+    mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     hostLevelIngestionStats = mock(HostLevelIngestionStats.class);
     AggHostLevelIngestionStats aggHostLevelIngestionStats = mock(AggHostLevelIngestionStats.class);
     doReturn(hostLevelIngestionStats).when(aggHostLevelIngestionStats).getStoreStats(storeName);
     StorageMetadataService inMemoryStorageMetadataService = new InMemoryStorageMetadataService();
-    StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
-        .setServerConfig(mockVeniceServerConfig)
-        .setPubSubTopicRepository(pubSubTopicRepository)
-        .setVeniceViewWriterFactory(mockVeniceViewWriterFactory)
-        .setHeartbeatMonitoringService(mock(HeartbeatMonitoringService.class))
-        .setCompressorFactory(new StorageEngineBackedCompressorFactory(inMemoryStorageMetadataService))
-        .setHostLevelIngestionStats(aggHostLevelIngestionStats);
+    StoreIngestionTaskFactory.Builder builder = getStoreIngestionTaskBuilder(
+        isHybrid,
+        storeName,
+        pubSubTopicRepository,
+        inMemoryStorageMetadataService,
+        aggHostLevelIngestionStats);
     when(builder.getSchemaRepo().getKeySchema(storeName)).thenReturn(new SchemaEntry(1, "\"string\""));
     mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     mockStoreBufferService = (StoreBufferService) builder.getStoreBufferService();
@@ -239,11 +258,14 @@ public class LeaderFollowerStoreIngestionTaskTest {
     mockConsumerAction = mock(ConsumerAction.class);
 
     mockProperties = new Properties();
+    mockProperties.put(KAFKA_BOOTSTRAP_SERVERS, "bootStrapServers");
     mockBooleanSupplier = mock(BooleanSupplier.class);
     mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     String versionTopic = version.kafkaTopicName();
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
-
+    mockStorageMetadataService = builder.getStorageMetadataService();
+    storeRepository = builder.getMetadataRepo();
+    mockTopicManagerRepository = builder.getTopicManagerRepository();
     leaderFollowerStoreIngestionTask = spy(
         new LeaderFollowerStoreIngestionTask(
             mockStorageService,
@@ -260,6 +282,30 @@ public class LeaderFollowerStoreIngestionTaskTest {
             null));
 
     leaderFollowerStoreIngestionTask.addPartitionConsumptionState(0, mockPartitionConsumptionState);
+  }
+
+  public StoreIngestionTaskFactory.Builder getStoreIngestionTaskBuilder(
+      boolean isHybrid,
+      String storeName,
+      PubSubTopicRepository pubSubTopicRepository,
+      StorageMetadataService inMemoryStorageMetadataService,
+      AggHostLevelIngestionStats aggHostLevelIngestionStats) {
+    if (isHybrid) {
+      return TestUtils.getStoreIngestionTaskBuilder(storeName, true)
+          .setServerConfig(mockVeniceServerConfig)
+          .setPubSubTopicRepository(pubSubTopicRepository)
+          .setVeniceViewWriterFactory(mockVeniceViewWriterFactory)
+          .setHeartbeatMonitoringService(mock(HeartbeatMonitoringService.class))
+          .setCompressorFactory(new StorageEngineBackedCompressorFactory(inMemoryStorageMetadataService))
+          .setHostLevelIngestionStats(aggHostLevelIngestionStats);
+    }
+    return TestUtils.getStoreIngestionTaskBuilder(storeName)
+        .setServerConfig(mockVeniceServerConfig)
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .setVeniceViewWriterFactory(mockVeniceViewWriterFactory)
+        .setHeartbeatMonitoringService(mock(HeartbeatMonitoringService.class))
+        .setCompressorFactory(new StorageEngineBackedCompressorFactory(inMemoryStorageMetadataService))
+        .setHostLevelIngestionStats(aggHostLevelIngestionStats);
   }
 
   /**
@@ -606,5 +652,60 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(ControlMessageType.START_OF_SEGMENT.getValue()).when(mockControlMessage).getControlMessageType();
     assertFalse(
         mockIngestionTask.shouldSyncOffsetFromSnapshot(nonSegmentControlMessage, mockPartitionConsumptionState));
+  }
+
+  @Test
+  public void testFutureVersionLatchStatus() throws InterruptedException {
+    setUp(true);
+
+    // Setup subscribe action
+    when(mockConsumerAction.getType()).thenReturn(ConsumerActionType.SUBSCRIBE);
+    when(mockConsumerAction.getTopic()).thenReturn("test-topic");
+    when(mockConsumerAction.getPartition()).thenReturn(0);
+    LeaderFollowerPartitionStateModel.LeaderSessionIdChecker mockLeaderSessionIdChecker =
+        mock(LeaderFollowerPartitionStateModel.LeaderSessionIdChecker.class);
+    when(mockConsumerAction.getLeaderSessionIdChecker()).thenReturn(mockLeaderSessionIdChecker);
+    when(mockLeaderSessionIdChecker.isSessionIdValid()).thenReturn(true);
+
+    // Setup partition
+    mockTopicPartition = mock(PubSubTopicPartition.class);
+    PubSubTopic pubSubTopic = mock(PubSubTopic.class);
+    when(mockTopicPartition.getPubSubTopic()).thenReturn(pubSubTopic);
+    when(pubSubTopic.getName()).thenReturn("test-topic");
+    OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
+    when(mockOffsetRecord.getLeaderTopic()).thenReturn("test");
+    when(mockOffsetRecord.isEndOfPushReceived()).thenReturn(true);
+    when(mockStorageMetadataService.getLastOffset(any(), anyInt())).thenReturn(mockOffsetRecord);
+    when(mockConsumerAction.getTopicPartition()).thenReturn(mockTopicPartition);
+    when(mockPartitionConsumptionState.getOffsetRecord()).thenReturn(mockOffsetRecord);
+
+    // Setup store. Mark current version as false and make future version ONLINE to trigger Utils.isFutureVersionReady
+    when(mockBooleanSupplier.getAsBoolean()).thenReturn(false);
+    when(storeRepository.getStore(anyString())).thenReturn(mockStore);
+    Version mockVersion = mock(Version.class);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.ONLINE);
+    when(mockStore.getVersion(1)).thenReturn(mockVersion);
+    when(mockStore.getCurrentVersion()).thenReturn(0);
+    when(mockVersion.isHybrid()).thenReturn(true);
+
+    // Setup server properties
+    VeniceProperties properties = new VeniceProperties();
+    when(mockVeniceServerConfig.getClusterProperties()).thenReturn(properties);
+    when(mockVeniceServerConfig.getKafkaConsumerConfigsForLocalConsumption()).thenReturn(properties);
+
+    // Setup topic manager
+    TopicManager mockTopicManager = mock(TopicManager.class);
+    doReturn(mockTopicManager).when(mockTopicManagerRepository).getLocalTopicManager();
+    doReturn(mockTopicManager).when(mockTopicManagerRepository).getTopicManager(anyString());
+    doReturn((long) StatsErrorCode.LAG_MEASUREMENT_FAILURE.code).when(mockTopicManager)
+        .getLatestOffsetCached(any(), anyInt());
+    doReturn(0L).when(mockTopicManager).getLatestOffsetCached(any(), anyInt());
+    doReturn(10L).when(mockTopicManager).getLatestOffsetCached(any(), anyInt());
+
+    // Run SIT to process the mock consumer action
+    leaderFollowerStoreIngestionTask.processCommonConsumerAction(mockConsumerAction);
+
+    // Verify that we enter the block to release the latch
+    verify(leaderFollowerStoreIngestionTask, times(1)).measureLagWithCallToPubSub(any(), any(), anyInt(), anyLong());
   }
 }

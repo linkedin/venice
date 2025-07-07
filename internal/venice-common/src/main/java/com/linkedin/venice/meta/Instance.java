@@ -136,12 +136,6 @@ public class Instance {
         scheme + "://[" + host + "]:" + portNumber : scheme + "://" + host + ":" + portNumber;
   }
 
-  @JsonIgnore
-  @Deprecated
-  public String getUrl() {
-    return getUrl(false);
-  }
-
   private int validatePort(String name, int port) {
     if (port < 0 || port > 65535) {
       throw new IllegalArgumentException("Invalid " + name + ": " + port);

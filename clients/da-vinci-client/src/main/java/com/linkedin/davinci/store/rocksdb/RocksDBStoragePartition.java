@@ -826,13 +826,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         return keyStatistics.getTickerCount(COMPACTION_KEY_DROP_NEWER_ENTRY)
             + keyStatistics.getTickerCount(COMPACTION_KEY_DROP_USER);
       }
-      return -1;
+      return 0;
     } finally {
       readCloseRWLock.readLock().unlock();
     }
   }
 
-  public long getKeyCountEstimate() throws RocksDBException {
+  public long getKeyCountEstimate() {
     return getRocksDBStatValue("rocksdb.estimate-num-keys");
   }
 
@@ -965,7 +965,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   public long getRocksDBStatValue(String statName) {
     readCloseRWLock.readLock().lock();
     try {
-      makeSureRocksDBIsStillOpen();
       return rocksDB.getLongProperty(statName);
     } catch (RocksDBException e) {
       throw new VeniceException(

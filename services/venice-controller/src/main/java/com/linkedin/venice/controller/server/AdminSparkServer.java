@@ -12,6 +12,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.AUTO_MIGRATE_STO
 import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES;
+import static com.linkedin.venice.controllerapi.ControllerRoute.CLEAN_EXECUTION_IDS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_DISCOVERY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_HEALTH_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.COMPARE_STORE;
@@ -300,11 +301,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository);
     JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
-    CreateVersion createVersion = new CreateVersion(
-        sslEnabled,
-        accessController,
-        this.checkReadMethodForKafka,
-        disableParentRequestTopicForStreamPushes);
+    CreateVersion createVersion = new CreateVersion(sslEnabled, accessController, this.checkReadMethodForKafka);
     CreateStore createStoreRoute = new CreateStore(sslEnabled, accessController);
     NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(sslEnabled, accessController);
     SchemaRoutes schemaRoutes = new SchemaRoutes(sslEnabled, accessController);
@@ -331,6 +328,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(
         LIST_STORES.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getAllStores(admin)));
+    httpService.get(
+        CLEAN_EXECUTION_IDS.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.cleanExecutionIds(admin)));
     httpService.get(
         CLUSTER_HEALTH_STORES.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getAllStoresStatuses(admin)));

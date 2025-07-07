@@ -312,6 +312,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
 
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
+  public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -629,23 +630,22 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireAdminMessageExecutionIdLock(clusterName);
     try {
       checkAndRepairCorruptedExecutionId(clusterName);
+      // Obtain the cluster level read lock so during a graceful shutdown or leadership handover there will be no
+      // execution id gap (execution id is generated but the message is not sent).
       try (AutoCloseableLock ignore = veniceHelixAdmin.getHelixVeniceClusterResources(clusterName)
           .getClusterLockManager()
           .createClusterReadLock()) {
-        // Obtain the cluster level read lock so during a graceful shutdown or leadership handover there will be no
-        // execution id gap (execution id is generated but the message is not sent).
+
+        // Validate message before acquiring execution id
+        int writerSchemaId = getWriterSchemaIdFromZK(clusterName);
+        AdminOperationSerializer.validate(message, writerSchemaId);
+
+        // Acquire execution id, any exception thrown after this point will result to a missing execution id.
         AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
         AdminCommandExecution execution =
             adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
         message.executionId = execution.getExecutionId();
         VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
-        Map<String, Long> metadata = adminTopicMetadataAccessor.getMetadata(clusterName);
-        int adminOperationProtocolVersion = (int) AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata);
-        int writerSchemaId = (adminOperationProtocolVersion > 0
-            && adminOperationProtocolVersion <= AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-                ? adminOperationProtocolVersion
-                : AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
-
         byte[] serializedValue = adminOperationSerializer.serialize(message, writerSchemaId);
         try {
           Future<PubSubProduceResult> future = veniceWriter.put(emptyKeyByteArr, serializedValue, writerSchemaId);
@@ -740,6 +740,22 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
     return result;
+  }
+
+  /**
+   * Fetches the writer schema ID from ZK.
+   * If the upstream protocol version (the one in /adminTopicMetadata) is -1 or larger than latest schema, returns the latest;
+   * otherwise, returns the version in ZK.
+   * @param clusterName The name of the cluster for which the writer schema id is to be fetched.
+   * @return The writer schema id to be used to serialize the admin operation.
+   */
+  private int getWriterSchemaIdFromZK(String clusterName) {
+    Map<String, Long> metadata = adminTopicMetadataAccessor.getMetadata(clusterName);
+    int adminOperationProtocolVersion = (int) AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata);
+    return (adminOperationProtocolVersion > 0
+        && adminOperationProtocolVersion <= AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
+            ? adminOperationProtocolVersion
+            : AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
   }
 
   private void checkAndRepairCorruptedExecutionId(String clusterName) {
@@ -2140,36 +2156,28 @@ public class VeniceParentHelixAdmin implements Admin {
           "Sending roll forward command to future version {} for store {} to child controllers",
           futureVersionBeforeRollForward,
           storeName);
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+      Set<String> failedRegions = new HashSet<>();
+      Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+      for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+        ControllerClient controllerClient = entry.getValue();
+        RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+          failedRegions.remove(entry.getKey());
+          ControllerResponse response = controllerClient.rollForwardToFutureVersion(storeName, regionFilter);
+          if (response.isError()) {
+            LOGGER.info("Roll forward in region {} failed with error: {}", entry.getKey(), response.getError());
+            failedRegions.add(entry.getKey());
+            throw new VeniceException(
+                "Roll forward failed in the following regions: " + failedRegions
+                    + " Please try the roll forward action again");
+          }
+        }, 5, Duration.ofMillis(100), Duration.ofMillis(500), Duration.ofSeconds(10), RETRY_FAILURE_TYPES);
+      }
+
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
       LOGGER.info(
-          "Truncating topic {} after child controllers consumed the roll forward messages to not block new versions",
+          "Truncating topic {} after child controllers tried to roll forward to not block new versions",
           kafkaTopic);
       truncateKafkaTopic(kafkaTopic);
-
-      // check whether the roll forward is successful in all regions in regionFilter.
-      // Add retries to let the child controllers finish processing the roll forward command
-      Map<String, Integer> failedRegions = new HashMap<>();
-      int finalFutureVersionBeforeRollForward = futureVersionBeforeRollForward;
-      RetryUtils.executeWithMaxAttempt(() -> {
-        Map<String, Integer> currentVersionsAfterRollForward = getCurrentVersionsForMultiColos(clusterName, storeName);
-        failedRegions.clear();
-        currentVersionsAfterRollForward.forEach((region, currentVersion) -> {
-          if (isRegionPartOfRegionsFilterList(region, regionFilter)
-              && currentVersion < finalFutureVersionBeforeRollForward) {
-            failedRegions.put(region, currentVersion);
-          }
-        });
-        if (!failedRegions.isEmpty()) {
-          StringBuilder sb = new StringBuilder();
-          sb.append("Roll forward failed in regions: ");
-          for (Map.Entry<String, Integer> entry: failedRegions.entrySet()) {
-            sb.append(entry.getKey()).append(" with current version: ").append(entry.getValue()).append(",");
-          }
-          sb.append(". Roll forward will be retried until it is successful.");
-          throw new VeniceException(sb.toString());
-        }
-      }, 5, Duration.ofMillis(200), Arrays.asList(VeniceException.class));
 
       LOGGER.info(
           "Roll forward to future version {} is successful in all regions for store {}",
@@ -3918,14 +3926,16 @@ public class VeniceParentHelixAdmin implements Admin {
       parentStore.updateVersionStatus(versionNum, PUSHED);
       repository.updateStore(parentStore);
       LOGGER.info(
-          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          "Updating parent store {} version {} status to {} for target region push w/ deferred swap",
+          parentStore.getName(),
           versionNum,
           PUSHED);
     } else if (failedRegions.size() > 0) {
       parentStore.updateVersionStatus(versionNum, ERROR);
       repository.updateStore(parentStore);
       LOGGER.info(
-          "Updating parent store version {} status to {} for target region push w/ deferred swap",
+          "Updating parent store {} version {} status to {} for target region push w/ deferred swap",
+          parentStore.getName(),
           versionNum,
           ERROR);
     }
@@ -5247,14 +5257,23 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getDeadStores(clusterName, storeName, includeSystemStores);
   }
 
-  /**
-   * @return the largest used version number for the given store from the store graveyard.
-   */
   @Override
   public int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName) {
     Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    int aggregatedLargestUsedVersionNumber =
-        getVeniceHelixAdmin().getStoreGraveyard().getLargestUsedVersionNumber(storeName);
+    int aggregatedLargestUsedVersionNumber = getStoreGraveyard().getLargestUsedVersionNumber(storeName);
+    for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
+      VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
+      if (response.getVersion() > aggregatedLargestUsedVersionNumber) {
+        aggregatedLargestUsedVersionNumber = response.getVersion();
+      }
+    }
+    return aggregatedLargestUsedVersionNumber;
+  }
+
+  @Override
+  public int getLargestUsedVersion(String clusterName, String storeName) {
+    Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    int aggregatedLargestUsedVersionNumber = getVeniceHelixAdmin().getLargestUsedVersion(clusterName, storeName);
     for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
       VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
       if (response.getVersion() > aggregatedLargestUsedVersionNumber) {

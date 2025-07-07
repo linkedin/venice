@@ -119,7 +119,6 @@ public class VeniceAdaptiveIngestionThrottler extends EventThrottler {
     }
     if (isSignalIdle) {
       signalIdleCount += 1;
-      LOGGER.info("No active signal found, increasing idle count to {}/{}", signalIdleCount, signalIdleThreshold);
       if (signalIdleCount == signalIdleThreshold) {
         if (currentThrottlerIndex.get() < throttlerNum - 1) {
           currentThrottlerIndex.incrementAndGet();

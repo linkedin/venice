@@ -905,6 +905,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.LIST_STORES, queryParams, MultiStoreResponse.class);
   }
 
+  public CleanExecutionIdsResponse cleanExecutionIds(String clusterName) {
+    QueryParams queryParams = newParams().add(CLUSTER, clusterName);
+    return request(ControllerRoute.CLEAN_EXECUTION_IDS, queryParams, CleanExecutionIdsResponse.class);
+  }
+
   public MultiStoreStatusResponse listStoresStatuses() {
     return request(ControllerRoute.CLUSTER_HEALTH_STORES, newParams(), MultiStoreStatusResponse.class);
   }

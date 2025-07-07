@@ -41,7 +41,8 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
-import com.linkedin.venice.helix.HelixState;
+import com.linkedin.venice.helix.SafeHelixDataAccessor;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
@@ -1021,6 +1022,7 @@ public class TestVeniceHelixAdmin {
     VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
+    when(veniceHelixAdmin.getSslFactory()).thenReturn(Optional.empty());
     doCallRealMethod().when(veniceParentHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
     doCallRealMethod().when(veniceHelixAdmin).getAdminOperationVersionFromControllers(clusterName);
     doReturn(Optional.empty()).when(veniceHelixAdmin).getSslFactory();
@@ -1030,39 +1032,40 @@ public class TestVeniceHelixAdmin {
     // Mock current version in leader is 2
     when(veniceHelixAdmin.getLocalAdminOperationProtocolVersion()).thenReturn(2L);
 
-    // Mock response for standby controllers
+    // Mock response for non-leader controllers
     AdminOperationProtocolVersionControllerResponse response1 = new AdminOperationProtocolVersionControllerResponse();
     response1.setLocalAdminOperationProtocolVersion(1);
-    response1.setLocalControllerName("standbyHost1_1234");
+    response1.setLocalControllerName("controller1_1234");
     AdminOperationProtocolVersionControllerResponse response2 = new AdminOperationProtocolVersionControllerResponse();
     response2.setLocalAdminOperationProtocolVersion(2);
-    response2.setLocalControllerName("standbyHost2_1234");
+    response2.setLocalControllerName("controller2_1234");
 
-    List<Instance> standbyControllers = new ArrayList<>();
-    standbyControllers.add(new Instance("1", "standbyHost1", 1234));
-    standbyControllers.add(new Instance("2", "standbyHost2", 1234));
+    List<Instance> liveInstances = new ArrayList<>();
+    Instance leaderInstance = new Instance("4", "leaderHost", 1234);
+    liveInstances.add(new Instance("1", "controller1", 1234));
+    liveInstances.add(new Instance("2", "controller2", 1234));
+    liveInstances.add(leaderInstance);
 
-    when(veniceHelixAdmin.getControllersByHelixState(clusterName, HelixState.STANDBY_STATE))
-        .thenReturn(standbyControllers);
-    when(veniceHelixAdmin.getLeaderController(clusterName)).thenReturn(new Instance("3", "leaderHost", 1234));
+    when(veniceHelixAdmin.getAllLiveInstanceControllers()).thenReturn(liveInstances);
+    when(veniceHelixAdmin.getLeaderController(clusterName)).thenReturn(leaderInstance);
 
     try (MockedStatic<ControllerClient> controllerClientMockedStatic = mockStatic(ControllerClient.class)) {
       ControllerClient client = mock(ControllerClient.class);
       controllerClientMockedStatic
           .when(() -> ControllerClient.constructClusterControllerClient(eq(clusterName), any(), any()))
           .thenReturn(client);
-      when(client.getLocalAdminOperationProtocolVersion("http://standbyHost1:1234")).thenReturn(response1);
-      when(client.getLocalAdminOperationProtocolVersion("http://standbyHost2:1234")).thenReturn(response2);
+      when(client.getLocalAdminOperationProtocolVersion("http://controller1:1234")).thenReturn(response1);
+      when(client.getLocalAdminOperationProtocolVersion("http://controller2:1234")).thenReturn(response2);
 
       Map<String, Long> controllerNameToVersionMap =
           veniceParentHelixAdmin.getAdminOperationVersionFromControllers(clusterName);
       assertEquals(controllerNameToVersionMap.size(), 3);
       assertTrue(
-          controllerNameToVersionMap.containsKey("standbyHost1_1234")
-              && controllerNameToVersionMap.get("standbyHost1_1234") == 1L);
+          controllerNameToVersionMap.containsKey("controller1_1234")
+              && controllerNameToVersionMap.get("controller1_1234") == 1L);
       assertTrue(
-          controllerNameToVersionMap.containsKey("standbyHost2_1234")
-              && controllerNameToVersionMap.get("standbyHost2_1234") == 2L);
+          controllerNameToVersionMap.containsKey("controller2_1234")
+              && controllerNameToVersionMap.get("controller2_1234") == 2L);
       assertTrue(
           controllerNameToVersionMap.containsKey("leaderHost_1234")
               && controllerNameToVersionMap.get("leaderHost_1234") == 2L);
@@ -1073,6 +1076,7 @@ public class TestVeniceHelixAdmin {
   public void testFailedGetAdminOperationVersionsForStandbyControllers() {
     VeniceParentHelixAdmin veniceParentHelixAdmin = mock(VeniceParentHelixAdmin.class);
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+
     when(veniceParentHelixAdmin.getVeniceHelixAdmin()).thenReturn(veniceHelixAdmin);
     doReturn(Optional.empty()).when(veniceHelixAdmin).getSslFactory();
     doReturn("leaderHost_1234").when(veniceHelixAdmin).getControllerName();
@@ -1082,20 +1086,19 @@ public class TestVeniceHelixAdmin {
     // Mock current version in leader is 2
     when(veniceHelixAdmin.getLocalAdminOperationProtocolVersion()).thenReturn(2L);
 
-    // Mock response for standby controllers
-    List<Instance> standbyControllers = new ArrayList<>();
-    standbyControllers.add(new Instance("1", "standbyHost1", 1234));
-    standbyControllers.add(new Instance("2", "standbyHost2", 1234));
+    // Mock response for controllers
+    ArrayList<Instance> instances = new ArrayList<>();
+    instances.add(new Instance("1", "controller1", 1234));
+    instances.add(new Instance("2", "controller2", 1234));
 
     AdminOperationProtocolVersionControllerResponse response1 = new AdminOperationProtocolVersionControllerResponse();
     response1.setLocalAdminOperationProtocolVersion(1);
-    response1.setLocalControllerName("standbyHost1_1234");
+    response1.setLocalControllerName("controller1_1234");
     AdminOperationProtocolVersionControllerResponse failedResponse =
         new AdminOperationProtocolVersionControllerResponse();
     failedResponse.setError("Failed to get version");
 
-    when(veniceHelixAdmin.getControllersByHelixState(clusterName, HelixState.STANDBY_STATE))
-        .thenReturn(standbyControllers);
+    when(veniceHelixAdmin.getAllLiveInstanceControllers()).thenReturn(instances);
     when(veniceHelixAdmin.getLeaderController(clusterName)).thenReturn(new Instance("3", "leaderHost", 1234));
 
     try (MockedStatic<ControllerClient> controllerClientMockedStatic = mockStatic(ControllerClient.class)) {
@@ -1103,12 +1106,19 @@ public class TestVeniceHelixAdmin {
       controllerClientMockedStatic
           .when(() -> ControllerClient.constructClusterControllerClient(eq(clusterName), any(), any()))
           .thenReturn(client);
-      when(client.getLocalAdminOperationProtocolVersion("http://standbyHost1:1234")).thenReturn(response1);
-      when(client.getLocalAdminOperationProtocolVersion("http://standbyHost2:1234")).thenReturn(failedResponse);
+      when(client.getLocalAdminOperationProtocolVersion("http://controller1:1234")).thenReturn(response1);
+      when(client.getLocalAdminOperationProtocolVersion("http://controller2:1234")).thenReturn(failedResponse);
 
-      expectThrows(
-          VeniceException.class,
-          () -> veniceParentHelixAdmin.getAdminOperationVersionFromControllers(clusterName));
+      Map<String, Long> controllerNameToVersionMap =
+          veniceParentHelixAdmin.getAdminOperationVersionFromControllers(clusterName);
+
+      assertEquals(controllerNameToVersionMap.size(), 2);
+      assertTrue(
+          controllerNameToVersionMap.containsKey("controller1_1234")
+              && controllerNameToVersionMap.get("controller1_1234") == 1L);
+      assertTrue(
+          controllerNameToVersionMap.containsKey("leaderHost_1234")
+              && controllerNameToVersionMap.get("leaderHost_1234") == 2L);
     }
   }
 
@@ -1131,6 +1141,33 @@ public class TestVeniceHelixAdmin {
     doCallRealMethod().when(veniceHelixAdmin).getControllersByHelixState(any(), any());
 
     expectThrows(VeniceException.class, () -> veniceHelixAdmin.getControllersByHelixState(clusterName, "state"));
+  }
+
+  @Test
+  public void testGetAllLiveInstanceControllers() {
+    VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    SafeHelixManager safeHelixManager = mock(SafeHelixManager.class);
+    SafeHelixDataAccessor safeHelixDataAccessor = mock(SafeHelixDataAccessor.class);
+    VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
+
+    doCallRealMethod().when(veniceHelixAdmin).getAllLiveInstanceControllers();
+    doReturn(safeHelixManager).when(veniceHelixAdmin).getHelixManager();
+    doReturn(safeHelixDataAccessor).when(safeHelixManager).getHelixDataAccessor();
+    doReturn(controllerMultiClusterConfig).when(veniceHelixAdmin).getMultiClusterConfigs();
+    doReturn(1235).when(controllerMultiClusterConfig).getAdminSecurePort();
+    doReturn(1236).when(controllerMultiClusterConfig).getAdminGrpcPort();
+    doReturn(1237).when(controllerMultiClusterConfig).getAdminSecureGrpcPort();
+    when(veniceHelixAdmin.getControllerClusterName()).thenReturn("controllerClusterName");
+
+    // When there is no live instance controller, it should throw an exception
+    doReturn(Collections.emptyList()).when(safeHelixDataAccessor).getChildNames(any());
+    expectThrows(VeniceException.class, () -> veniceHelixAdmin.getAllLiveInstanceControllers());
+
+    // When there are live instance controllers, it should return the list
+    List<String> liveInstances = Arrays.asList("controller1_1234", "controller2_1234");
+    doReturn(liveInstances).when(safeHelixDataAccessor).getChildNames(any());
+    List<Instance> liveInstanceControllers = veniceHelixAdmin.getAllLiveInstanceControllers();
+    assertEquals(liveInstanceControllers.size(), 2);
   }
 
   /** Skip if regionFilter doesn’t include this region */

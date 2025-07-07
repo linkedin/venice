@@ -11,8 +11,8 @@ import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStoragePartition;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -52,7 +52,7 @@ public class BlobSnapshotManagerTest {
 
   @Test(timeOut = TIMEOUT)
   public void testHybridSnapshot() {
-    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = Mockito.mock(StorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
     Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
 
@@ -94,7 +94,7 @@ public class BlobSnapshotManagerTest {
     doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
-    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = Mockito.mock(StorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
     Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
@@ -136,7 +136,7 @@ public class BlobSnapshotManagerTest {
     doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
-    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = Mockito.mock(StorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
     Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
@@ -180,7 +180,7 @@ public class BlobSnapshotManagerTest {
     doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
-    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = Mockito.mock(StorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
     Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
@@ -226,7 +226,7 @@ public class BlobSnapshotManagerTest {
     doReturn(blobTransferPartitionMetadata).when(blobSnapshotManager).prepareMetadata(blobTransferPayload);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
-    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = Mockito.mock(StorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
     Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
@@ -285,7 +285,7 @@ public class BlobSnapshotManagerTest {
     Mockito.doNothing().when(blobSnapshotManager).cleanupSnapshot(TOPIC_NAME, PARTITION_ID);
 
     AbstractStoragePartition storagePartition = Mockito.mock(AbstractStoragePartition.class);
-    AbstractStorageEngine storageEngine = Mockito.mock(AbstractStorageEngine.class);
+    StorageEngine storageEngine = Mockito.mock(StorageEngine.class);
     Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
     Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
     Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);

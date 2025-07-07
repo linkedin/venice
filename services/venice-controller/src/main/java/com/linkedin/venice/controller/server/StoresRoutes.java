@@ -68,8 +68,11 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
+import com.linkedin.venice.controllerapi.CleanExecutionIdsResponse;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
@@ -260,6 +263,28 @@ public class StoresRoutes extends AbstractRoute {
           storeNameList[i] = selectedStoreList.get(i).getName();
         }
         veniceResponse.setStores(storeNameList);
+      }
+    };
+  }
+
+  public Route cleanExecutionIds(Admin admin) {
+    return new VeniceRouteHandler<CleanExecutionIdsResponse>(CleanExecutionIdsResponse.class) {
+      @Override
+      public void internalHandle(Request request, CleanExecutionIdsResponse veniceResponse) {
+        String cluster = request.queryParams(CLUSTER);
+        VeniceHelixAdmin veniceHelixAdmin;
+        if (admin instanceof VeniceParentHelixAdmin) {
+          veniceHelixAdmin = ((VeniceParentHelixAdmin) admin).getVeniceHelixAdmin();
+        } else {
+          veniceHelixAdmin = (VeniceHelixAdmin) admin;
+        }
+
+        Set<String> allStores =
+            veniceHelixAdmin.getAllStores(cluster).stream().map(Store::getName).collect(Collectors.toSet());
+        Map<String, Long> executionIdsCleaned =
+            veniceHelixAdmin.getExecutionIdAccessor().cleanExecutionIdMap(cluster, allStores);
+
+        veniceResponse.setCleanedExecutionIds(executionIdsCleaned);
       }
     };
   }
@@ -1090,7 +1115,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#getLargestUsedVersionFromStoreGraveyard(String, String)
+   * @see Admin#getLargestUsedVersion(String, String)
    */
   public Route getStoreLargestUsedVersion(Admin admin) {
     return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
@@ -1099,7 +1124,7 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, GET_STORES_IN_CLUSTER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(STORE_NAME);
-        veniceResponse.setVersion(admin.getLargestUsedVersionFromStoreGraveyard(cluster, storeName));
+        veniceResponse.setVersion(admin.getLargestUsedVersion(cluster, storeName));
       }
     };
   }

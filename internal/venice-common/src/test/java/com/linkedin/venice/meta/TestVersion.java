@@ -141,29 +141,31 @@ public class TestVersion {
       boolean isRT,
       boolean isSR,
       boolean isVTorSR,
-      boolean isVersioned) {
+      boolean isVersioned,
+      boolean isSeperateTopic) {
     assert (Version.isVersionTopic(topic) == isVT);
     assert (Version.isRealTimeTopic(topic) == isRT);
     assert (Version.isStreamReprocessingTopic(topic) == isSR);
     assert (Version.isVersionTopicOrStreamReprocessingTopic(topic) == isVTorSR);
     assert (Version.isATopicThatIsVersioned(topic) == isVersioned);
+    assert (Version.isIncrementalPushTopic(topic) == isSeperateTopic);
   }
 
   @Test
   public void testIsTopic() {
-    verifyTopic("abc_rt", false, true, false, false, false);
-    verifyTopic("abc", false, false, false, false, false);
-    verifyTopic("abc_v12df", false, false, false, false, false);
-    verifyTopic("abc_v123", true, false, false, true, true);
-    verifyTopic("abc_v123_sr", false, false, true, true, true);
-    verifyTopic("abc_v12ab3_sr", false, false, false, false, false);
-    verifyTopic("abc_v_sr", false, false, false, false, false);
-    verifyTopic("abc_v1", true, false, false, true, true);
-    verifyTopic("abc_v1_sr", false, false, true, true, true);
-    verifyTopic("abc_v1_cc", false, false, false, false, true);
-    verifyTopic("abc_mv", false, false, false, false, true);
-    verifyTopic("abc_rt_v1", false, true, false, false, false);
-    verifyTopic("abc_rt_v1_sep", false, true, false, false, false);
+    verifyTopic("abc_rt", false, true, false, false, false, false);
+    verifyTopic("abc", false, false, false, false, false, false);
+    verifyTopic("abc_v12df", false, false, false, false, false, false);
+    verifyTopic("abc_v123", true, false, false, true, true, false);
+    verifyTopic("abc_v123_sr", false, false, true, true, true, false);
+    verifyTopic("abc_v12ab3_sr", false, false, false, false, false, false);
+    verifyTopic("abc_v_sr", false, false, false, false, false, false);
+    verifyTopic("abc_v1", true, false, false, true, true, false);
+    verifyTopic("abc_v1_sr", false, false, true, true, true, false);
+    verifyTopic("abc_v1_cc", false, false, false, false, true, false);
+    verifyTopic("abc_mv", false, false, false, false, true, false);
+    verifyTopic("abc_rt_v1", false, true, false, false, false, false);
+    verifyTopic("abc_rt_v1_sep", false, true, false, false, false, true);
   }
 
   @Test

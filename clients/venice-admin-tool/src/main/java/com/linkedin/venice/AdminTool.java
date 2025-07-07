@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -260,6 +261,11 @@ public class AdminTool {
         case LIST_STORES:
           storeResponse = queryStoreList(cmd);
           printObject(storeResponse);
+          break;
+        case CLEAN_EXECUTION_IDS:
+          String cluster = getRequiredArgument(cmd, Arg.CLUSTER);
+          response = controllerClient.cleanExecutionIds(cluster);
+          printObject(response);
           break;
         case DESCRIBE_STORE:
           storeName = getRequiredArgument(cmd, Arg.STORE, Command.DESCRIBE_STORE);
@@ -1253,6 +1259,7 @@ public class AdminTool {
     stringMapParam(cmd, Arg.PARTITIONER_PARAMS, p -> params.setPartitionerParams(p), argSet);
     integerParam(cmd, Arg.VERSION, p -> params.setCurrentVersion(p), argSet);
     integerParam(cmd, Arg.LARGEST_USED_VERSION_NUMBER, p -> params.setLargestUsedVersionNumber(p), argSet);
+    integerParam(cmd, Arg.LARGEST_USED_RT_VERSION_NUMBER, p -> params.setLargestUsedRTVersionNumber(p), argSet);
     booleanParam(cmd, Arg.READABILITY, p -> params.setEnableReads(p), argSet);
     booleanParam(cmd, Arg.WRITEABILITY, p -> params.setEnableWrites(p), argSet);
     longParam(cmd, Arg.STORAGE_QUOTA, p -> params.setStorageQuotaInByte(p), argSet);
@@ -1722,6 +1729,7 @@ public class AdminTool {
             .setPubSubPositionTypeRegistry(PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties))
             .setTopicMetadataFetcherConsumerPoolSize(1)
             .setTopicMetadataFetcherThreadPoolSize(1)
+            .setVeniceComponent(VeniceComponent.ADMIN_TOOL)
             .build();
 
     try (TopicManager topicManager =

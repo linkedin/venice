@@ -21,6 +21,7 @@ import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_ASYNC_START_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_DECOMPRESSION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_IP_SPOOFING_CHECK_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_RESOLUTION_RETRY_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_RESOLUTION_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY;
@@ -203,6 +204,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int clientResolutionRetryAttempts;
   private final long clientResolutionRetryBackoffMs;
   private final int clientSslHandshakeQueueCapacity;
+  private final boolean clientIPSpoofingCheckEnabled;
   private final long readQuotaThrottlingLeaseTimeoutMs;
   private final boolean routerHeartBeatEnabled;
   private final int httpClient5PoolSize;
@@ -267,7 +269,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
       clusterToD2Map = props.getMap(CLUSTER_TO_D2);
       clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2, Collections.emptyMap());
-      refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
+      refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 9);
       refreshIntervalForZkReconnectInMs =
           props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
       routerNettyGracefulShutdownPeriodSeconds = props.getInt(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 10);
@@ -346,6 +348,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       clientResolutionRetryAttempts = props.getInt(ROUTER_CLIENT_RESOLUTION_RETRY_ATTEMPTS, 3);
       clientResolutionRetryBackoffMs = props.getLong(ROUTER_CLIENT_RESOLUTION_RETRY_BACKOFF_MS, 5 * Time.MS_PER_SECOND);
       clientSslHandshakeQueueCapacity = props.getInt(ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY, 500000);
+      clientIPSpoofingCheckEnabled = props.getBoolean(ROUTER_CLIENT_IP_SPOOFING_CHECK_ENABLED, true);
 
       readQuotaThrottlingLeaseTimeoutMs =
           props.getLong(ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS, 6 * Time.MS_PER_HOUR);
@@ -799,6 +802,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public int getClientSslHandshakeQueueCapacity() {
     return clientSslHandshakeQueueCapacity;
+  }
+
+  public boolean isClientIPSpoofingCheckEnabled() {
+    return clientIPSpoofingCheckEnabled;
   }
 
   public long getReadQuotaThrottlingLeaseTimeoutMs() {

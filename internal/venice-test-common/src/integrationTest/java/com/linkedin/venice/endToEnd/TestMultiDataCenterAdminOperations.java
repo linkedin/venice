@@ -1,19 +1,32 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.writer.VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
+
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.ExecutionIdAccessor;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -57,6 +70,15 @@ public class TestMultiDataCenterAdminOperations {
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties serverProperties = new Properties();
+    Properties parentControllerProperties = new Properties();
+    // Setup segment duration time to be 5 seconds so that we can test the admin operations when current segment is
+    // ended
+    parentControllerProperties.put(MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, TimeUnit.SECONDS.toMillis(5));
+    // Disable topic cleanup since parent and child are sharing the same kafka cluster.
+    parentControllerProperties.setProperty(
+        ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS,
+        String.valueOf(Long.MAX_VALUE));
+
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
             .numberOfClusters(NUMBER_OF_CLUSTERS)
@@ -66,7 +88,8 @@ public class TestMultiDataCenterAdminOperations {
             .numberOfRouters(1)
             .replicationFactor(1)
             .forkServer(false)
-            .serverProperties(serverProperties);
+            .serverProperties(serverProperties)
+            .parentControllerProperties(parentControllerProperties);
     multiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
 
@@ -190,6 +213,56 @@ public class TestMultiDataCenterAdminOperations {
     });
   }
 
+  @Test(timeOut = 2 * TEST_TIMEOUT)
+  public void testFailedAdminMessageWhenBadSemanticIsDetected() {
+    String storeName = Utils.getUniqueString("test-store");
+    String clusterName = CLUSTER_NAMES[0];
+    VeniceControllerWrapper parentController =
+        multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl());
+    // Update the admin operation version to new version - 85 - to test bad message
+    AdminTopicMetadataResponse updateProtocolVersionResponse =
+        parentControllerClient.updateAdminOperationProtocolVersion(clusterName, 85L);
+    assertFalse(updateProtocolVersionResponse.isError(), "Failed to update protocol version");
+
+    // Create store
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+    Assert.assertFalse(newStoreResponse.isError());
+    emptyPushToStore(parentControllerClient, storeName, 1);
+
+    // Get current execution ID
+    VeniceParentHelixAdmin parentAdmin = (VeniceParentHelixAdmin) parentController.getVeniceAdmin();
+    ExecutionIdAccessor executionIdAccessor = parentAdmin.getVeniceHelixAdmin().getExecutionIdAccessor();
+    long beforeBadMessageExecutionId = executionIdAccessor.getLastGeneratedExecutionId(clusterName);
+
+    // Store update with invalid semantic
+    ControllerResponse updateStore =
+        parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setGlobalRtDivEnabled(true));
+    Assert.assertTrue(updateStore.isError());
+    assertTrue(updateStore.getError().contains("New semantic is being used"));
+
+    // After sending a bad message with invalid semantic usage, the execution ID should not change
+    long afterBadMessageExecutionId = executionIdAccessor.getLastGeneratedExecutionId(clusterName);
+
+    assertEquals(
+        beforeBadMessageExecutionId,
+        afterBadMessageExecutionId,
+        "Execution ID should not change after sending a bad message with invalid semantic usage");
+
+    // Sleep to ensure new segment is created
+    Utils.sleep(TimeUnit.SECONDS.toMillis(5));
+
+    // A new push should pass
+    emptyPushToStore(parentControllerClient, storeName, 2);
+
+    // Reset the admin operation protocol version back to the latest version
+    updateProtocolVersionResponse = parentControllerClient.updateAdminOperationProtocolVersion(
+        clusterName,
+        (long) AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    assertFalse(updateProtocolVersionResponse.isError(), "Failed to update protocol version");
+  }
+
   private byte[] getStoreUpdateMessage(
       String clusterName,
       String storeName,
@@ -213,4 +286,20 @@ public class TestMultiDataCenterAdminOperations {
     return adminOperationSerializer
         .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
+
+  private void emptyPushToStore(ControllerClient parentControllerClient, String storeName, int expectedVersion) {
+    VersionCreationResponse vcr = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push"), 1L);
+    assertFalse(vcr.isError());
+    assertEquals(
+        vcr.getVersion(),
+        expectedVersion,
+        "requesting a topic for a push should provide version number " + expectedVersion);
+
+    TestUtils.waitForNonDeterministicPushCompletion(
+        Version.composeKafkaTopic(storeName, expectedVersion),
+        parentControllerClient,
+        30,
+        TimeUnit.SECONDS);
+  }
+
 }

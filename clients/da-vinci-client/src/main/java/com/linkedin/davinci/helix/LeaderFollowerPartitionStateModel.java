@@ -13,7 +13,6 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.CompletableFuture;
@@ -98,9 +97,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       // A future version is ready to serve if it's status is either PUSHED or ONLINE
       // PUSHED is set for future versions of a target region push with deferred swap
       // ONLINE is set for future versions of a push with deferred swap
-      boolean isFutureVersionReady =
-          currentVersion < version && (store.getVersionStatus(version).equals(VersionStatus.PUSHED)
-              || store.getVersionStatus(version).equals(VersionStatus.ONLINE));
+      boolean isFutureVersionReady = Utils.isFutureVersionReady(resourceName, getStoreRepo());
 
       /**
        * For current version and already completed future versions, firstly create a latch, then start ingestion and wait

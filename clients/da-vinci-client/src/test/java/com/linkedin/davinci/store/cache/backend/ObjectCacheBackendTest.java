@@ -2,7 +2,7 @@ package com.linkedin.davinci.store.cache.backend;
 
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.cache.VeniceStoreCacheStorageEngine;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -60,7 +60,7 @@ public class ObjectCacheBackendTest {
         cachedValued);
 
     // Make sure we get something back
-    AbstractStorageEngine cachedStorageEngine = cacheBackend.getStorageEngine(TOPIC_NAME);
+    StorageEngine cachedStorageEngine = cacheBackend.getStorageEngine(TOPIC_NAME);
     Assert.assertNotNull(cachedStorageEngine);
 
     // ....and make sure it's legit

@@ -2,7 +2,6 @@ package com.linkedin.davinci.store.cache;
 
 import com.github.benmanes.caffeine.cache.AsyncCacheLoader;
 import com.linkedin.davinci.store.AbstractStorageEngine;
-import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheConfig;
 import com.linkedin.venice.meta.PersistenceType;
@@ -35,18 +34,12 @@ public class VeniceStoreCacheStorageEngine extends AbstractStorageEngine<VeniceS
     omniPartition = new VeniceStoreCacheStoragePartition(0, cacheConfig, keySchema, asyncCacheLoader);
     // Add the 0 partitionId automatically in order to satisfy the supers metadata (and we automatically created the
     // omniPartition for this engine)
-    this.addStoragePartition(0);
+    this.addStoragePartitionIfAbsent(0);
   }
 
   @Override
   public PersistenceType getType() {
     return PersistenceType.CACHE;
-  }
-
-  @Override
-  public long getStoreSizeInBytes() {
-    // could support this by iterating through the partitions and adding, or, just using a single partition
-    throw new UnsupportedOperationException("Method getStoreSizeInBytes not implemented!!");
   }
 
   @Override
@@ -67,7 +60,7 @@ public class VeniceStoreCacheStorageEngine extends AbstractStorageEngine<VeniceS
   }
 
   @Override
-  public synchronized AbstractStoragePartition getPartitionOrThrow(int partitionId) {
+  public synchronized VeniceStoreCacheStoragePartition getPartitionOrThrow(int partitionId) {
     return omniPartition;
   }
 

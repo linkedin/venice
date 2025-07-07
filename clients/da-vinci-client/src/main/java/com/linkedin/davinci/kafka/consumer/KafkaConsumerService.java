@@ -516,41 +516,22 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   }
 
   public long getOffsetLagBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    return getSomeOffsetFor(
-        versionTopic,
-        pubSubTopicPartition,
-        PubSubConsumerAdapter::getOffsetLag,
-        aggStats::recordTotalOffsetLagIsAbsent,
-        aggStats::recordTotalOffsetLagIsPresent);
+    return getSomeOffsetFor(versionTopic, pubSubTopicPartition, PubSubConsumerAdapter::getOffsetLag);
   }
 
   public long getLatestOffsetBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    return getSomeOffsetFor(
-        versionTopic,
-        pubSubTopicPartition,
-        PubSubConsumerAdapter::getLatestOffset,
-        aggStats::recordTotalLatestOffsetIsAbsent,
-        aggStats::recordTotalLatestOffsetIsPresent);
+    return getSomeOffsetFor(versionTopic, pubSubTopicPartition, PubSubConsumerAdapter::getLatestOffset);
   }
 
   private long getSomeOffsetFor(
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition,
-      OffsetGetter offsetGetter,
-      Runnable sensorIfAbsent,
-      Runnable sensorIfPresent) {
+      OffsetGetter offsetGetter) {
     PubSubConsumerAdapter consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     if (consumer == null) {
-      sensorIfAbsent.run();
       return -1;
     } else {
-      long result = offsetGetter.apply(consumer, pubSubTopicPartition);
-      if (result < 0) {
-        sensorIfAbsent.run();
-      } else {
-        sensorIfPresent.run();
-      }
-      return result;
+      return offsetGetter.apply(consumer, pubSubTopicPartition);
     }
   }
 
@@ -576,10 +557,16 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
         double msgRate = partitionStats.getMessageRate();
         double byteRate = partitionStats.getBytesRate();
         long lastSuccessfulPollTimestamp = partitionStats.getLastSuccessfulPollTimestamp();
-        long elapsedTimeSinceLastPollInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
-        if (lastSuccessfulPollTimestamp != ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP) {
-          elapsedTimeSinceLastPollInMs =
-              LatencyUtils.getElapsedTimeFromMsToMs(consumptionTask.getLastSuccessfulPollTimestamp());
+        long elapsedTimeSinceLastRecordForPartitionInMs = ConsumptionTask.DEFAULT_TOPIC_PARTITION_NO_POLL_TIMESTAMP;
+
+        // Consumer level elapsed time
+        long elapsedTimeSinceLastConsumerPollInMs =
+            LatencyUtils.getElapsedTimeFromMsToMs(consumptionTask.getLastSuccessfulPollTimestamp());
+
+        // Partition level elapsed time
+        if (lastSuccessfulPollTimestamp > 0) {
+          elapsedTimeSinceLastRecordForPartitionInMs =
+              LatencyUtils.getElapsedTimeFromMsToMs(lastSuccessfulPollTimestamp);
         }
         PubSubTopic destinationVersionTopic = consumptionTask.getDestinationIdentifier(topicPartition);
         String destinationVersionTopicName = destinationVersionTopic == null ? "" : destinationVersionTopic.getName();
@@ -589,7 +576,8 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
             msgRate,
             byteRate,
             consumerIdStr,
-            elapsedTimeSinceLastPollInMs,
+            elapsedTimeSinceLastConsumerPollInMs,
+            elapsedTimeSinceLastRecordForPartitionInMs,
             destinationVersionTopicName);
         topicPartitionIngestionInfoMap.put(topicPartition, topicPartitionIngestionInfo);
       }

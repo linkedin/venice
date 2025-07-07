@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.logcompaction;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -25,7 +26,7 @@ import org.apache.logging.log4j.Logger;
  * 2. Trigger repush to compact a store with function {@link RepushOrchestrator#repush(RepushJobRequest)} & processes the status/response of the repush job.
  */
 public class CompactionManager {
-  private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class);
+  private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class + " [log-compaction]");
 
   private final RepushOrchestrator repushOrchestrator;
   private final long timeSinceLastLogCompactionThresholdMs;
@@ -74,7 +75,8 @@ public class CompactionManager {
   public boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
 
-    return isHybridStore && isLastCompactionTimeOlderThanThreshold(timeSinceLastLogCompactionThresholdMs, storeInfo);
+    return isHybridStore && isLastCompactionTimeOlderThanThreshold(timeSinceLastLogCompactionThresholdMs, storeInfo)
+        && storeInfo.isActiveActiveReplicationEnabled() && !VeniceSystemStoreUtils.isSystemStore(storeInfo.getName());
   }
 
   /**

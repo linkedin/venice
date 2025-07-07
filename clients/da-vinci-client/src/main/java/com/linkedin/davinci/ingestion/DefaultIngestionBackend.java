@@ -8,14 +8,17 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.File;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -34,7 +37,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
   private final StorageService storageService;
   private final KafkaStoreIngestionService storeIngestionService;
   private final VeniceServerConfig serverConfig;
-  private final Map<String, AtomicReference<AbstractStorageEngine>> topicStorageEngineReferenceMap =
+  private final Map<String, AtomicReference<StorageEngine>> topicStorageEngineReferenceMap =
       new VeniceConcurrentHashMap<>();
   private final BlobTransferManager blobTransferManager;
 
@@ -61,8 +64,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
     syncStoreVersionConfig(storeAndVersion.getStore(), storeConfig);
 
     Runnable runnable = () -> {
-      AbstractStorageEngine storageEngine =
-          storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
+      StorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, partition, svsSupplier);
       topicStorageEngineReferenceMap.compute(storeVersion, (key, storageEngineAtomicReference) -> {
         if (storageEngineAtomicReference != null) {
           storageEngineAtomicReference.set(storageEngine);
@@ -129,21 +131,33 @@ public class DefaultIngestionBackend implements IngestionBackend {
     // After decide to bootstrap from blobs transfer, close the partition, clean up the offset and partition folder,
     // but the metadata partition is not removed.
     String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
-    AbstractStorageEngine storageEngine = storageService.getStorageEngine(kafkaTopic);
-    if (storageEngine != null) {
+    StorageEngine storageEngine = storageService.getStorageEngine(kafkaTopic);
+    if (storageEngine != null && storageEngine.containsPartition(partitionId)) {
       storageEngine.dropPartition(partitionId, false);
+      LOGGER.info(
+          "Due to storage engine contains this partition, clean up the offset and delete partition folder for topic {} partition {} before bootstrap from blob transfer",
+          kafkaTopic,
+          partitionId);
     }
-    LOGGER.info(
-        "Clean up the offset and delete partition folder for topic {} partition {} before bootstrap from blob transfer",
-        kafkaTopic,
-        partitionId);
+
+    // double check that the partition folder is not existed before bootstrapping from blobs transfer,
+    // as the partition should not exist due to previous dropPartition call.
+    String partitionFolder = RocksDBUtils.composePartitionDbDir(serverConfig.getRocksDBPath(), kafkaTopic, partitionId);
+    File partitionFolderDir = new File(partitionFolder);
+    if (partitionFolderDir.exists()) {
+      LOGGER.error(
+          "Partition folder {} for {} is existed with files {}.",
+          partitionFolder,
+          Utils.getReplicaId(kafkaTopic, partitionId),
+          Arrays.toString(partitionFolderDir.list()));
+    }
 
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
         .handle((inputStream, throwable) -> {
           updateBlobTransferResponseStats(throwable == null, storeName, versionNumber);
           if (throwable != null) {
             LOGGER.error(
-                "Failed to bootstrap partition {} from blobs transfer for store {} with exception {}",
+                "Failed to bootstrap partition {} from blobs transfer for store {} with exception {}, falling back to kafka ingestion.",
                 partitionId,
                 storeName,
                 throwable);
@@ -152,6 +166,13 @@ public class DefaultIngestionBackend implements IngestionBackend {
                 "Successfully bootstrapped partition {} from blobs transfer for store {}",
                 partitionId,
                 storeName);
+
+            if (partitionFolderDir.exists()) {
+              LOGGER.info(
+                  "Successfully bootstrapped from blob transfer {} with files: {}",
+                  Utils.getReplicaId(kafkaTopic, partitionId),
+                  Arrays.toString(partitionFolderDir.list()));
+            }
           }
           return null;
         });
@@ -246,9 +267,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   @Override
-  public void setStorageEngineReference(
-      String topicName,
-      AtomicReference<AbstractStorageEngine> storageEngineReference) {
+  public void setStorageEngineReference(String topicName, AtomicReference<StorageEngine> storageEngineReference) {
     if (storageEngineReference == null) {
       topicStorageEngineReferenceMap.remove(topicName);
     } else {

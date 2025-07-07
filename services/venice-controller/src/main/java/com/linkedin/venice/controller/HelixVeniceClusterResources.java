@@ -144,7 +144,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
             zkClient,
             adapterSerializer,
             clusterName,
-            metaStoreWriter));
+            metaStoreWriter,
+            config.getRefreshAttemptsForZkReconnect()));
 
     SafeHelixManager spectatorManager;
     if (this.helixManager.getInstanceType() == InstanceType.SPECTATOR) {
@@ -167,9 +168,8 @@ public class HelixVeniceClusterResources implements VeniceResource {
         clusterName,
         zkClient,
         adapterSerializer,
-        config.getRefreshAttemptsForZkReconnect(),
-        config.getRefreshIntervalForZkReconnectInMs(),
-        config.getLogContext());
+        config.getLogContext(),
+        config.getRefreshAttemptsForZkReconnect());
     String aggregateRealTimeSourceKafkaUrl =
         config.getChildDataCenterKafkaUrlMap().get(config.getAggregateRealTimeSourceRegion());
     boolean unregisterMetricEnabled = config.isUnregisterMetricForDeletedStoreEnabled();
@@ -245,8 +245,10 @@ public class HelixVeniceClusterResources implements VeniceResource {
     }
 
     if (config.isParent() && config.isLogCompactionSchedulingEnabled()) {
+      LOGGER.info("[log-compaction] Log compaction service is enabled for cluster: {}", clusterName);
       this.logCompactionService = new LogCompactionService(admin, clusterName, config);
     } else {
+      LOGGER.info("[log-compaction] Log compaction service is disabled for cluster: {}", clusterName);
       this.logCompactionService = null;
     }
 
