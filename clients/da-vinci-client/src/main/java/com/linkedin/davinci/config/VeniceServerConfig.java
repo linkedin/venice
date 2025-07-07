@@ -2063,7 +2063,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public int getDaVinciRecordTransformerOnRecoveryThreadPoolSize() {
     return daVinciRecordTransformerOnRecoveryThreadPoolSize;
   }
-  
+
   public LogContext getLogContext() {
     return logContext;
   }
