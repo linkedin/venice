@@ -17,7 +17,7 @@ import java.util.Set;
 public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
   REPUSH_CALL_COUNT(
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of all calls to a controller endpoint",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, REPUSH_TRIGGER_SOURCE)
+      setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY, VENICE_CLUSTER_NAME, REPUSH_TRIGGER_SOURCE)
   ),
   COMPACTION_ELIGIBLE_STATE(
       MetricType.GAUGE, MetricUnit.NUMBER,
