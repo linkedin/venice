@@ -165,6 +165,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   protected static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   final private Map<String, SparkServerStats> statsMap;
+  final private Map<String, Map<String, SparkServerStats>> statsMapByPath;
   final private SparkServerStats nonclusterSpecificStats;
 
   private static String REQUEST_START_TIME = "startTime";
@@ -207,11 +208,22 @@ public class AdminSparkServer extends AbstractVeniceService {
     // close it so we don't close it in stopInner()
     this.admin = admin;
     statsMap = new HashMap<>(clusters.size());
+    statsMapByPath = new HashMap<>(clusters.size());
     String statsPrefix = sslEnabled ? "secure_" : "";
     for (String cluster: clusters) {
       statsMap.put(
           cluster,
           new SparkServerStats(metricsRepository, cluster + "." + statsPrefix + "controller_spark_server"));
+
+      statsMapByPath.put(cluster, new HashMap<>(ControllerRoute.values().length));
+      for (ControllerRoute route: ControllerRoute.values()) {
+        statsMapByPath.get(cluster)
+            .put(
+                route.getPath(),
+                new SparkServerStats(
+                    metricsRepository,
+                    cluster + "." + route.getPath() + "." + statsPrefix + "controller_spark_server"));
+      }
     }
     nonclusterSpecificStats = new SparkServerStats(metricsRepository, "." + statsPrefix + "controller_spark_server");
     EmbeddedServers.add(EmbeddedServers.Identifiers.JETTY, new VeniceSparkServerFactory(jettyConfigOverrides));
@@ -280,16 +292,23 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.after((request, response) -> {
       AuditInfo audit = new AuditInfo(request);
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
+      // TODO PRANAV verify pathInfo matches ControllerRoutes enum
+      SparkServerStats statsByPath = statsMapByPath.get(request.queryParams(CLUSTER)).get(request.pathInfo());
       if (stats == null) {
         stats = nonclusterSpecificStats;
+      }
+      if (statsByPath == null) {
+        statsByPath = nonclusterSpecificStats;
       }
       long latency = System.currentTimeMillis() - (long) request.attribute(REQUEST_START_TIME);
       if ((boolean) request.attribute(REQUEST_SUCCEED)) {
         LOGGER.info(audit.successString());
         stats.recordSuccessfulRequestLatency(latency);
+        statsByPath.recordSuccessfulRequestLatency(latency);
       } else {
         LOGGER.info(audit.failureString(response.body()));
         stats.recordFailedRequestLatency(latency);
+        statsByPath.recordFailedRequestLatency(latency);
       }
       LogContext.clearLogContext();
     });
