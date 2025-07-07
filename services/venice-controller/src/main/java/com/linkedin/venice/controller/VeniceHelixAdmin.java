@@ -1402,7 +1402,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
 
           // Scheduled log compaction metric
-          logCompactionStatsMap.get(cluster).setCompactionComplete(storeName.toString());
+          Utf8 pushIdKey = new Utf8("pushid");
+          if (Version.isPushIdRePush(pushJobDetailsValue.getPushJobConfigs().get(pushIdKey).toString())) {
+            logCompactionStatsMap.get(cluster).setCompactionComplete(storeName.toString());
+          }
         }
         // Append job duration in minutes to log message
         double jobDurationInMinutes = pushJobDetailsValue.getJobDurationInMs() / 60000.0;
