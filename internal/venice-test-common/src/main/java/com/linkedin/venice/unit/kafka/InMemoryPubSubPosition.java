@@ -2,12 +2,13 @@ package com.linkedin.venice.unit.kafka;
 
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import java.nio.ByteBuffer;
 
 
 public class InMemoryPubSubPosition implements PubSubPosition {
   private final long internalOffset;
 
-  public InMemoryPubSubPosition(long offset) {
+  private InMemoryPubSubPosition(long offset) {
     this.internalOffset = offset;
   }
 
@@ -16,13 +17,45 @@ public class InMemoryPubSubPosition implements PubSubPosition {
     return internalOffset;
   }
 
+  public static InMemoryPubSubPosition of(long offset) {
+    return new InMemoryPubSubPosition(offset);
+  }
+
   @Override
   public PubSubPositionWireFormat getPositionWireFormat() {
-    throw new UnsupportedOperationException("getPositionWireFormat is not supported in InMemoryPubSubPosition");
+    PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
+    wireFormat.type = -42;
+    ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
+    buffer.putLong(internalOffset);
+    buffer.flip();
+    wireFormat.rawBytes = buffer;
+    return wireFormat;
   }
 
   @Override
   public int getHeapSize() {
     return 0;
+  }
+
+  /**
+   * Only {@link InMemoryPubSubPosition} supports this kind of API
+   * @return a new {@link InMemoryPubSubPosition} with the internal offset incremented by 1
+   */
+  public InMemoryPubSubPosition getNextPosition() {
+    return InMemoryPubSubPosition.of(internalOffset + 1);
+  }
+
+  /**
+   * Get position that is after the current position by n records.
+   * @param n the number of records to skip
+   * @return a new {@link InMemoryPubSubPosition} with the internal offset incremented by n
+   */
+  public InMemoryPubSubPosition getPositionAfterNRecords(long n) {
+    return InMemoryPubSubPosition.of(internalOffset + n);
+  }
+
+  @Override
+  public String toString() {
+    return "InMemoryPubSubPosition{" + internalOffset + '}';
   }
 }

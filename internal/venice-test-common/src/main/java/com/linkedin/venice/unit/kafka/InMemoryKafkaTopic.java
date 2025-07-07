@@ -33,7 +33,7 @@ class InMemoryKafkaTopic {
       throws IllegalArgumentException {
     checkPartitionCount(partition);
     ArrayList<InMemoryKafkaMessage> partitionQueue = partitions[partition];
-    InMemoryPubSubPosition nextOffset = new InMemoryPubSubPosition(partitionQueue.size());
+    InMemoryPubSubPosition nextOffset = InMemoryPubSubPosition.of(partitionQueue.size());
     partitionQueue.add(message);
     return nextOffset;
   }
