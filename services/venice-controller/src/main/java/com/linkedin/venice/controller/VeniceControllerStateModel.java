@@ -373,6 +373,7 @@ public class VeniceControllerStateModel extends StateModel {
   /** synchronized because concurrent calls could cause a NPE */
   private synchronized void clearResources() {
     if (clusterResources != null) {
+      clusterResources.stopMultiTaskSchedulerService();
       clusterResources.stopLogCompactionService();
       clusterResources.stopProtocolVersionAutoDetectionService();
       /**
@@ -382,7 +383,6 @@ public class VeniceControllerStateModel extends StateModel {
       clusterResources.stopLeakedPushStatusCleanUpService();
       clusterResources.stopDeadStoreStatsPreFetchTask();
       clusterResources.stopErrorPartitionResetTask();
-      clusterResources.stopMultiTaskSchedulerService();
       clusterResources.clear();
       clusterResources = null;
     }
