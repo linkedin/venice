@@ -31,6 +31,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DELETE_UNASSIGNED_PARTITIONS
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_HEARTBEAT_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_WAIT_FOR_VERSION_INFO_MS_CONFIG;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
@@ -46,6 +47,7 @@ import static com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMul
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
@@ -274,6 +276,14 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SERVER_RESUBSCRIPTION_TRIGGERED_BY_VERSION_INGESTION_CONTEXT_CHANGE_ENABLED, true)
           .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 512 * 1024 * 1024L)
           .put(ROCKSDB_RMD_BLOCK_CACHE_SIZE_IN_BYTES, 128 * 1024 * 1024L)
+
+          /**
+           * Experimental mode... overriding the main code default to take it through its paces in integration tests.
+           * TODO: Remove this override once this is certified to become the new main code default.
+           */
+          .put(
+              SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY,
+              IngestionTaskReusableObjects.Strategy.SINGLETON_THREAD_LOCAL)
           .put(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, serverDeleteUnassignedPartitionsOnStartup);
       if (sslToKafka) {
         serverPropsBuilder.put(PUBSUB_SECURITY_PROTOCOL_LEGACY, PubSubSecurityProtocol.SSL.name());

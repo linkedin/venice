@@ -2783,4 +2783,10 @@ public class ConfigKeys {
    */
   public static final String DAVINCI_RECORD_TRANSFORMER_ON_RECOVERY_THREAD_POOL_SIZE =
       "davinci.record.transformer.on.recovery.thread.pool.size";
+
+  /**
+   * The strategy for how to share memory-heavy objects used in the ingestion hot path.
+   */
+  public static final String SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY =
+      "server.ingestion.task.reusable.objects.strategy";
 }

@@ -18,6 +18,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
@@ -115,6 +116,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
@@ -478,6 +480,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           new AggVersionedDaVinciRecordTransformerStats(metricsRepository, metadataRepo, serverConfig);
     }
 
+    Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier =
+        serverConfig.getIngestionTaskReusableObjectsStrategy().supplier();
+
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
         .setStorageMetadataService(storageMetadataService)
@@ -505,6 +510,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setHeartbeatMonitoringService(heartbeatMonitoringService)
         .setAAWCWorkLoadProcessingThreadPool(aaWCWorkLoadProcessingThreadPool)
         .setAAWCIngestionStorageLookupThreadPool(aaWCIngestionStorageLookupThreadPool)
+        .setReusableObjectsSupplier(reusableObjectsSupplier)
         .build();
   }
 
@@ -763,11 +769,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     LOGGER.info("Promoting partition: {} of topic: {} to leader.", partitionId, topic);
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+      PubSubTopicPartition replica = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
       if (consumerTask != null && consumerTask.isRunning()) {
-        consumerTask
-            .promoteToLeader(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId), checker);
+        consumerTask.promoteToLeader(replica, checker);
       } else {
-        LOGGER.warn("Ignoring standby to leader transition message for Topic {} Partition {}", topic, partitionId);
+        LOGGER.warn(
+            "Ignoring standby to leader transition message for replica: {} since SIT {}",
+            replica,
+            consumerTask == null ? "does not exist" : "is not running");
       }
     }
   }
@@ -781,11 +790,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     LOGGER.info("Demoting partition: {} of topic: {} to standby.", partitionId, topic);
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+      PubSubTopicPartition pubSubTopicPartition =
+          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
       if (consumerTask != null && consumerTask.isRunning()) {
-        consumerTask
-            .demoteToStandby(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId), checker);
+        consumerTask.demoteToStandby(pubSubTopicPartition, checker);
       } else {
-        LOGGER.warn("Ignoring leader to standby transition message for Topic {} Partition {}", topic, partitionId);
+        LOGGER.warn(
+            "Ignoring leader to standby transition message for replica: {} since SIT {}",
+            pubSubTopicPartition,
+            consumerTask == null ? "does not exist" : "is not running");
       }
     }
   }
@@ -1065,16 +1078,28 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private void scanAndCloseIdleConsumptionTasks() {
     try {
-      LOGGER.info("Number of ingestion tasks before cleaning: {}", topicNameToIngestionTaskMap.size());
+      int numberOfTasksBeforeCleaning = topicNameToIngestionTaskMap.size();
       for (Map.Entry<String, StoreIngestionTask> entry: topicNameToIngestionTaskMap.entrySet()) {
         String topicName = entry.getKey();
         StoreIngestionTask task = entry.getValue();
-        if (task.isIdleOverThreshold()) {
-          LOGGER.info("Found idle task for topic {}, shutting it down.", topicName);
-          shutdownIdleIngestionTask(topicName);
+        if (!task.isIdleOverThreshold()) {
+          continue;
         }
+        if (task.isCurrentVersion.getAsBoolean() && task.hasReplicas()) {
+          // If the task is idle but corresponds to the current version and still has replicas,
+          // it should not be shut down. Doing so would remove components like
+          // StorageUtilizationManager, leading to incorrect stats reporting.
+          continue;
+        }
+        LOGGER.info(
+            "Found idle task for store-version: {}, which belongs to non-current version, " + "shutting down the task.",
+            topicName);
+        shutdownIdleIngestionTask(topicName);
       }
-      LOGGER.info("Number of active ingestion tasks after cleaning: {}", topicNameToIngestionTaskMap.size());
+      LOGGER.info(
+          "Number of active ingestion tasks before cleaning: {}, after cleaning: {}",
+          numberOfTasksBeforeCleaning,
+          topicNameToIngestionTaskMap.size());
     } catch (Exception e) {
       LOGGER.error("Error when attempting to shutdown idle store ingestion tasks", e);
     }
@@ -1396,8 +1421,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     LOGGER.info("Offset reset to beginning - Kafka Partition: {}-{}.", topic, partitionId);
   }
 
-  // For testing purpose only.
+  @VisibleForTesting
   public KafkaValueSerializer getKafkaValueSerializer() {
     return kafkaValueSerializer;
+  }
+
+  @VisibleForTesting
+  protected Map<String, StoreIngestionTask> getTopicNameToIngestionTaskMap() {
+    return topicNameToIngestionTaskMap;
   }
 }

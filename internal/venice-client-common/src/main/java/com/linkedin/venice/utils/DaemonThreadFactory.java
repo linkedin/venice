@@ -3,7 +3,6 @@ package com.linkedin.venice.utils;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.annotation.Nullable;
-import org.apache.logging.log4j.ThreadContext;
 
 
 /**
@@ -32,7 +31,7 @@ public class DaemonThreadFactory implements ThreadFactory {
       try {
         r.run();
       } finally {
-        ThreadContext.clearAll(); // prevent context leakage across tasks
+        LogContext.clearLogContext();
       }
     };
 

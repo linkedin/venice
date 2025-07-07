@@ -103,6 +103,9 @@ public class VeniceLeaderFollowerStateModelTest extends
     // When its future version that is completed, it should have a latch in place.
     when(mockStore.getCurrentVersion()).thenReturn(0);
     when(mockStore.getVersionStatus(1)).thenReturn(VersionStatus.PUSHED);
+    Version mockVersion = mock(Version.class);
+    when(mockStore.getVersion(1)).thenReturn(mockVersion);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.PUSHED);
     testStateModel.onBecomeStandbyFromOffline(mockMessage, mockContext);
     verify(mockNotifier, times(2)).startConsumption(mockMessage.getResourceName(), testPartition);
     verify(mockNotifier, times(2)).waitConsumptionCompleted(
@@ -113,6 +116,7 @@ public class VeniceLeaderFollowerStateModelTest extends
 
     // When its future version that is not completed, it should not have a latch in place
     when(mockStore.getVersionStatus(1)).thenReturn(VersionStatus.STARTED);
+    when(mockVersion.getStatus()).thenReturn(VersionStatus.STARTED);
     testStateModel.onBecomeStandbyFromOffline(mockMessage, mockContext);
     verify(mockNotifier, times(2)).startConsumption(mockMessage.getResourceName(), testPartition);
     verify(mockNotifier, times(2)).waitConsumptionCompleted(

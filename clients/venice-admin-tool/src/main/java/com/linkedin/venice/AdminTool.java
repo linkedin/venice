@@ -1256,6 +1256,7 @@ public class AdminTool {
     stringMapParam(cmd, Arg.PARTITIONER_PARAMS, p -> params.setPartitionerParams(p), argSet);
     integerParam(cmd, Arg.VERSION, p -> params.setCurrentVersion(p), argSet);
     integerParam(cmd, Arg.LARGEST_USED_VERSION_NUMBER, p -> params.setLargestUsedVersionNumber(p), argSet);
+    integerParam(cmd, Arg.LARGEST_USED_RT_VERSION_NUMBER, p -> params.setLargestUsedRTVersionNumber(p), argSet);
     booleanParam(cmd, Arg.READABILITY, p -> params.setEnableReads(p), argSet);
     booleanParam(cmd, Arg.WRITEABILITY, p -> params.setEnableWrites(p), argSet);
     longParam(cmd, Arg.STORAGE_QUOTA, p -> params.setStorageQuotaInByte(p), argSet);

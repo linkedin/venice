@@ -171,7 +171,10 @@ public class HelixParticipationService extends AbstractVeniceService
 
   @Override
   public boolean startInner() {
-    LOGGER.info("Attempting to start HelixParticipation service");
+    LOGGER.info(
+        "Attempting to start HelixParticipation service for participant: {} in cluster: {}",
+        participantName,
+        clusterName);
     VeniceServerConfig config = veniceConfigLoader.getVeniceServerConfig();
     HelixManagerProperty helixManagerProperty = buildHelixManagerProperty(config);
     helixManager = new SafeHelixManager(

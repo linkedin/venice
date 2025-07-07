@@ -17,6 +17,7 @@ import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.closeQuietlyWithErrorLogged;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
+import static com.linkedin.venice.utils.Utils.isFutureVersionReady;
 import static java.util.Comparator.comparingInt;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -52,6 +53,7 @@ import com.linkedin.davinci.utils.InMemoryChunkAssembler;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -235,6 +237,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final TopicManagerRepository topicManagerRepository;
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
+  private final AtomicInteger activeReplicaCount = new AtomicInteger(0);
   protected final AbstractStoreBufferService storeBufferService;
 
   /**
@@ -488,7 +491,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storageEngine = Objects.requireNonNull(refCountedStorageEngine.get());
 
     this.serverConfig = builder.getServerConfig();
-
     this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
 
     this.aggKafkaConsumerService = Objects.requireNonNull(builder.getAggKafkaConsumerService());
@@ -694,6 +696,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public synchronized void subscribePartition(PubSubTopicPartition topicPartition) {
+    activeReplicaCount.incrementAndGet();
+    LOGGER.info("Bootstrap replica: {}. Active replica count in SIT: {}", topicPartition, activeReplicaCount.get());
     subscribePartition(topicPartition, true);
   }
 
@@ -763,7 +767,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This is always a Helix triggered action.
    */
   public CompletableFuture<Void> dropStoragePartitionGracefully(PubSubTopicPartition topicPartition) {
+    activeReplicaCount.decrementAndGet();
     int partitionId = topicPartition.getPartitionNumber();
+    LOGGER.info("Drop replica: {}. Active replica count in SIT: {}", topicPartition, activeReplicaCount.get());
     synchronized (this) {
       if (isRunning()) {
         LOGGER.info(
@@ -785,13 +791,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Drops a partition synchrnously. This is invoked when processing a DROP_PARTITION message.
+   * Drops a partition synchronously. This is invoked when processing a DROP_PARTITION message.
    */
   private void dropPartitionSynchronously(PubSubTopicPartition topicPartition) {
-    LOGGER.info("{} Dropping partition: {}", ingestionTaskName, topicPartition);
+    LOGGER.info("Dropping replica: {}", topicPartition);
     int partition = topicPartition.getPartitionNumber();
+    LOGGER.info("Removing storage utilization manager for replica: {}", topicPartition);
+    storageUtilizationManager.removePartition(partition);
     this.storageService.dropStorePartition(storeVersionConfig, partition, true);
-    LOGGER.info("{} Dropped partition: {}", ingestionTaskName, topicPartition);
+    LOGGER.info("Dropped replica: {}", topicPartition);
   }
 
   public boolean hasAnySubscription() {
@@ -1646,7 +1654,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @Override
   public void run() {
-    LogContext.setRegionLogContext(serverConfig.getRegionName());
+    LogContext.setStructuredLogContext(serverConfig.getLogContext());
     CountDownLatch shutdownLatch = gracefulShutdownLatch.get();
     boolean doFlush = true;
     try {
@@ -2193,7 +2201,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             hybridStoreConfig.isPresent());
         newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
 
-        if (isCurrentVersion.getAsBoolean()) {
+        boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+        if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
           // Latch creation is in StateModelIngestionProgressNotifier#startConsumption() from the Helix transition
           newPartitionConsumptionState.setLatchCreated();
         }
@@ -2273,7 +2282,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * two variables to avoid the race condition.
          */
         partitionConsumptionStateMap.remove(partition);
-        storageUtilizationManager.removePartition(partition);
+        if (consumerAction.isHelixTriggeredAction()) {
+          LOGGER.info(
+              "Removing tracking of replica: {} from storage utilization manager as this UNSUBSCRIBE is helix triggered action",
+              topicPartition);
+          storageUtilizationManager.removePartition(partition);
+        }
         getDataIntegrityValidator().clearPartition(partition);
         // Reset the error partition tracking
         PartitionExceptionInfo partitionExceptionInfo = partitionIngestionExceptionList.get(partition);
@@ -2626,7 +2640,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         errorMessage += ". Consumption will be halted.";
         ingestionNotificationDispatcher
             .reportError(Collections.singletonList(partitionConsumptionState), errorMessage, e);
-        unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, faultyPartition));
+        unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, faultyPartition), false);
       } else {
         LOGGER.warn(
             "{}. Consumption will continue because it is either a current version replica or EOP has already been received. {}",
@@ -4402,7 +4416,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
               LOGGER.info(msg);
             }
-            unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, partition));
+            unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, partition), false);
           }
           partitionConsumptionState.recordReadyToServeInOffsetRecord();
         } else {
@@ -4806,7 +4820,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionRole = versionRole;
   }
 
-  // For testing only
+  @VisibleForTesting
   Map<Integer, PartitionConsumptionState> getPartitionConsumptionStateMap() {
     return partitionConsumptionStateMap;
   }
@@ -4840,4 +4854,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return (isGlobalRtDivEnabled()) ? pcs.getLatestConsumedVtOffset() : pcs.getLatestProcessedLocalVersionTopicOffset();
   }
 
+  public StorageUtilizationManager getStorageUtilizationManager() {
+    return storageUtilizationManager;
+  }
+
+  /**
+   * Checks whether there are any replicas currently present on this host.
+   * <p>
+   * For batch-only stores, a replica might be removed from the PCS map but still physically
+   * present on the host. {@code activeReplicaCount} counter tracks the replica's lifecycle
+   * from the bootstrap stage through to the drop stage.
+   */
+  protected boolean hasReplicas() {
+    return activeReplicaCount.get() > 0;
+  }
 }
