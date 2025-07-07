@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.StringJoiner;
 import spark.Request;
 
@@ -24,18 +25,26 @@ public class AuditInfo {
 
   @Override
   public String toString() {
-    return formatAuditMessage("[AUDIT]", null);
+    return formatAuditMessage("[AUDIT]", null, Optional.empty());
   }
 
   public String successString() {
-    return formatAuditMessage("[AUDIT]", "SUCCESS");
+    return formatAuditMessage("[AUDIT]", "SUCCESS", Optional.empty());
+  }
+
+  public String successString(long latency) {
+    return formatAuditMessage("[AUDIT]", "SUCCESS", Optional.of(latency));
   }
 
   public String failureString(String errMsg) {
-    return formatAuditMessage("[AUDIT]", "FAILURE: " + (errMsg != null ? errMsg : ""));
+    return formatAuditMessage("[AUDIT]", "FAILURE: " + (errMsg != null ? errMsg : ""), Optional.empty());
   }
 
-  private String formatAuditMessage(String prefix, String status) {
+  public String failureString(String errMsg, long latency) {
+    return formatAuditMessage("[AUDIT]", "FAILURE: " + (errMsg != null ? errMsg : ""), Optional.of(latency));
+  }
+
+  private String formatAuditMessage(String prefix, String status, Optional<Long> latency) {
     StringJoiner joiner = new StringJoiner(" ").add(prefix);
 
     if (status != null) {
@@ -43,6 +52,8 @@ public class AuditInfo {
     }
 
     joiner.add(method).add(url).add(params.toString()).add("ClientIP: " + clientIp);
+
+    latency.ifPresent(l -> joiner.add("Latency: " + l + " ms"));
 
     return joiner.toString();
   }
