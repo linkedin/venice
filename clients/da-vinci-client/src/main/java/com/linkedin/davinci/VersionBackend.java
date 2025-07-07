@@ -373,11 +373,9 @@ public class VersionBackend {
       StorageEngine engine = storageEngine.get();
       if (partitionFutures.containsKey(partition)) {
         LOGGER.info("Partition {} of {}  is subscribed, ignoring subscribe request.", partition, this);
-        partitionCount -= 1;
       } else if (suppressLiveUpdates && engine != null && engine.containsPartition(partition)) {
         // If live update suppression is enabled and local data exists, don't start ingestion and report ready to serve.
         partitionFutures.computeIfAbsent(partition, k -> CompletableFuture.completedFuture(null));
-        partitionCount -= 1;
       } else {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
         partitionsToStartConsumption.add(partition);
