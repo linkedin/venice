@@ -52,6 +52,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceOpenTelemetryMetricsRepository {
   private static final Logger LOGGER = LogManager.getLogger(VeniceOpenTelemetryMetricsRepository.class);
   public static final RedundantLogFilter REDUNDANT_LOG_FILTER = RedundantLogFilter.getRedundantLogFilter();
+  public static final String DEFAULT_METRIC_PREFIX = "venice.";
   private final VeniceMetricsConfig metricsConfig;
   private SdkMeterProvider sdkMeterProvider = null;
   private final boolean emitOpenTelemetryMetrics;
@@ -212,7 +213,7 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   static String createFullMetricPrefix(String metricPrefix) {
-    return "venice." + metricPrefix;
+    return DEFAULT_METRIC_PREFIX + metricPrefix;
   }
 
   final String getMetricPrefix() {

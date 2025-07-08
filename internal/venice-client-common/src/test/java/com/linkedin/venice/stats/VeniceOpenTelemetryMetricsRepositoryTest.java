@@ -38,6 +38,7 @@ import org.testng.annotations.Test;
 
 public class VeniceOpenTelemetryMetricsRepositoryTest {
   private VeniceOpenTelemetryMetricsRepository metricsRepository;
+  private static final String TEST_PREFIX = "test_prefix";
 
   private VeniceMetricsConfig mockMetricsConfig;
 
@@ -46,7 +47,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
     when(mockMetricsConfig.emitOtelMetrics()).thenReturn(true);
     when(mockMetricsConfig.getMetricNamingFormat()).thenReturn(SNAKE_CASE);
-    when(mockMetricsConfig.getMetricPrefix()).thenReturn("test_prefix");
+    when(mockMetricsConfig.getMetricPrefix()).thenReturn(TEST_PREFIX);
     when(mockMetricsConfig.getServiceName()).thenReturn("test_service");
     when(mockMetricsConfig.exportOtelMetricsToEndpoint()).thenReturn(true);
     when(mockMetricsConfig.getOtelEndpoint()).thenReturn("http://localhost:4318");
@@ -112,13 +113,20 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   @Test
   public void testTransformMetricName() {
     when(mockMetricsConfig.getMetricNamingFormat()).thenReturn(SNAKE_CASE);
-    MetricEntity metricEntity = MetricEntity.createInternalMetricEntityWithoutDimensions(
-        "metric_name",
+    String testMetricName = "test_metric_name";
+    MetricEntity metricEntity = new MetricEntity(
+        testMetricName,
         MetricType.COUNTER,
         MetricUnit.NUMBER,
         "Test metric",
-        "prefix");
-    assertEquals(metricsRepository.getFullMetricName(metricEntity), "prefix.metric_name");
+        new HashSet<>(singletonList(VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
+    assertEquals(
+        metricsRepository.getFullMetricName(metricEntity),
+        String.format(
+            "%s%s.%s",
+            VeniceOpenTelemetryMetricsRepository.DEFAULT_METRIC_PREFIX,
+            TEST_PREFIX,
+            testMetricName));
 
     String transformedName =
         transformMetricName("test.test_metric_name", VeniceOpenTelemetryMetricNamingFormat.PASCAL_CASE);
