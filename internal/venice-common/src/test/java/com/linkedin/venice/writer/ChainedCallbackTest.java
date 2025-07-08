@@ -12,7 +12,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class CompletableFutureCallbackTest {
+public class ChainedCallbackTest {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testSetDependentFuture(boolean hasException) {
     CompletableFuture<Void> future = new CompletableFuture<>();
@@ -20,20 +20,22 @@ public class CompletableFutureCallbackTest {
 
     CompletableFuture<Void> dependentFuture1 = new CompletableFuture<>();
     CompletableFuture<Void> dependentFuture2 = new CompletableFuture<>();
-    List<CompletableFuture<Void>> list = new ArrayList<>();
-    list.add(dependentFuture1);
-    list.add(dependentFuture2);
-    callback.setDependentFutureList(list);
-
-    Assert.assertEquals(callback.getDependentFutureList().size(), 2);
+    CompletableFutureCallback callback1 = new CompletableFutureCallback(dependentFuture1);
+    CompletableFutureCallback callback2 = new CompletableFutureCallback(dependentFuture2);
+    List<PubSubProducerCallback> list = new ArrayList<>();
+    list.add(callback1);
+    list.add(callback2);
+    ChainedPubSubCallback chainedPubSubCallback = new ChainedPubSubCallback(callback, list);
     callback.setCallback(mock(PubSubProducerCallback.class));
+    callback1.setCallback(mock(PubSubProducerCallback.class));
+    callback2.setCallback(mock(PubSubProducerCallback.class));
     if (hasException) {
-      callback.onCompletion(null, new VeniceException("Test"));
+      chainedPubSubCallback.onCompletion(null, new VeniceException("Test"));
       Assert.assertTrue(future.isCompletedExceptionally());
       Assert.assertTrue(dependentFuture1.isCompletedExceptionally());
       Assert.assertTrue(dependentFuture2.isCompletedExceptionally());
     } else {
-      callback.onCompletion(null, null);
+      chainedPubSubCallback.onCompletion(null, null);
       Assert.assertTrue(future.isDone());
       Assert.assertTrue(dependentFuture1.isDone());
       Assert.assertTrue(dependentFuture2.isDone());

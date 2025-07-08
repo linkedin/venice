@@ -1,8 +1,6 @@
 package com.linkedin.venice.samza;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SYSTEM_PRODUCER_BATCHING_MAX_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.SYSTEM_PRODUCER_BATCHING_MAX_RECORD_NUM;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation;
@@ -31,7 +29,6 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
@@ -166,9 +163,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   private TransportClient transportClient;
   private RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider reinitProvider;
-  private long producerBatchingIntervalInMs = 0;
-  private int producerBatchMaxRecordSize = 100;
-  private ProducerBatchingService producerBatchingService;
 
   @Deprecated
   public VeniceSystemProducer(
@@ -601,19 +595,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     this.veniceWriter = getVeniceWriter(versionCreationResponse);
-    this.producerBatchingIntervalInMs =
-        Long.parseLong(additionalConfigs.getOrDefault(SYSTEM_PRODUCER_BATCHING_MAX_INTERVAL_MS, "0"));
-    this.producerBatchMaxRecordSize =
-        Integer.parseInt(additionalConfigs.getOrDefault(SYSTEM_PRODUCER_BATCHING_MAX_RECORD_NUM, "100"));
-    if (producerBatchingIntervalInMs > 0) {
-      LOGGER.info(
-          "Producer will batch update with max delay {} ms and max buffer record: {}",
-          producerBatchingIntervalInMs,
-          producerBatchMaxRecordSize);
-      producerBatchingService =
-          new ProducerBatchingService(veniceWriter, producerBatchingIntervalInMs, producerBatchMaxRecordSize);
-      producerBatchingService.start();
-    }
 
     if (pushMonitor.isPresent()) {
       /**
@@ -655,7 +636,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   @Override
   public synchronized void stop() {
     this.isStarted = false;
-    Utils.closeQuietlyWithErrorLogged(producerBatchingService);
     Utils.closeQuietlyWithErrorLogged(veniceWriter);
     if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor.isPresent()) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
@@ -769,8 +749,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     if (valueObject == null) {
-      sendDeleteMessage(key, logicalTimestamp, completableFuture);
-
+      getVeniceWriter().delete(key, logicalTimestamp, new CompletableFutureCallback(completableFuture));
     } else {
       Schema valueObjectSchema = getSchemaFromObject(valueObject);
 
@@ -795,14 +774,25 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       byte[] value = serializeObject(valueObject);
 
       if (valueSchemaIdPair.getSecond() == -1) {
-        sendPutMessage(key, value, valueSchemaIdPair, logicalTimestamp, completableFuture);
+        getVeniceWriter().put(
+            key,
+            value,
+            valueSchemaIdPair.getFirst(),
+            logicalTimestamp,
+            new CompletableFutureCallback(completableFuture));
       } else {
         if (!isWriteComputeEnabled) {
           throw new SamzaException(
               "Cannot write partial update record to Venice store " + storeName + " "
                   + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
         }
-        sendUpdateMessage(key, value, valueSchemaIdPair, logicalTimestamp, completableFuture);
+        getVeniceWriter().update(
+            key,
+            value,
+            valueSchemaIdPair.getFirst(),
+            valueSchemaIdPair.getSecond(),
+            new CompletableFutureCallback(completableFuture),
+            logicalTimestamp);
       }
     }
     return completableFuture;
@@ -823,11 +813,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    */
   @Override
   public void flush(String s) {
-    if (getProducerBatchingService() != null) {
-      getProducerBatchingService().flush();
-    } else {
-      getVeniceWriter().flush();
-    }
+    getVeniceWriter().flush();
   }
 
   private static Schema getSchemaFromObject(Object object) {
@@ -995,72 +981,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.pushMonitor = Optional.of(pushMonitor);
   }
 
-  ProducerBatchingService getProducerBatchingService() {
-    return producerBatchingService;
-  }
-
   VeniceWriter<byte[], byte[], byte[]> getVeniceWriter() {
     return veniceWriter;
-  }
-
-  void sendDeleteMessage(byte[] key, long logicalTimestamp, CompletableFuture<Void> completableFuture) {
-    if (getProducerBatchingService() != null) {
-      getProducerBatchingService()
-          .addRecordToBuffer(MessageType.DELETE, key, null, -1, -1, completableFuture, logicalTimestamp);
-    } else {
-      getVeniceWriter().delete(key, logicalTimestamp, new CompletableFutureCallback(completableFuture));
-    }
-  }
-
-  void sendPutMessage(
-      byte[] key,
-      byte[] value,
-      Pair<Integer, Integer> valueSchemaIdPair,
-      long logicalTimestamp,
-      CompletableFuture<Void> completableFuture) {
-
-    if (getProducerBatchingService() != null) {
-      getProducerBatchingService().addRecordToBuffer(
-          MessageType.PUT,
-          key,
-          value,
-          valueSchemaIdPair.getFirst(),
-          -1,
-          completableFuture,
-          logicalTimestamp);
-    } else {
-      getVeniceWriter().put(
-          key,
-          value,
-          valueSchemaIdPair.getFirst(),
-          logicalTimestamp,
-          new CompletableFutureCallback(completableFuture));
-    }
-  }
-
-  void sendUpdateMessage(
-      byte[] key,
-      byte[] value,
-      Pair<Integer, Integer> valueSchemaIdPair,
-      long logicalTimestamp,
-      CompletableFuture<Void> completableFuture) {
-    if (getProducerBatchingService() != null) {
-      getProducerBatchingService().addRecordToBuffer(
-          MessageType.UPDATE,
-          key,
-          value,
-          valueSchemaIdPair.getFirst(),
-          valueSchemaIdPair.getSecond(),
-          completableFuture,
-          logicalTimestamp);
-    } else {
-      getVeniceWriter().update(
-          key,
-          value,
-          valueSchemaIdPair.getFirst(),
-          valueSchemaIdPair.getSecond(),
-          new CompletableFutureCallback(completableFuture),
-          logicalTimestamp);
-    }
   }
 }

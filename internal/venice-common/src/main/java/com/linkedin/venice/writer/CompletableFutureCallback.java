@@ -5,7 +5,6 @@ import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 import com.linkedin.venice.memory.Measurable;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 
@@ -21,7 +20,6 @@ public class CompletableFutureCallback implements PubSubProducerCallback, Measur
 
   private final CompletableFuture<Void> completableFuture;
   private PubSubProducerCallback callback = null;
-  private List<CompletableFuture<Void>> dependentFutureList = null;
 
   public CompletableFutureCallback(CompletableFuture<Void> completableFuture) {
     this.completableFuture = completableFuture;
@@ -32,18 +30,8 @@ public class CompletableFutureCallback implements PubSubProducerCallback, Measur
     callback.onCompletion(produceResult, e);
     if (e == null) {
       completableFuture.complete(null);
-      if (dependentFutureList != null) {
-        for (CompletableFuture<Void> dependentFuture: dependentFutureList) {
-          dependentFuture.complete(null);
-        }
-      }
     } else {
       completableFuture.completeExceptionally(e);
-      if (dependentFutureList != null) {
-        for (CompletableFuture<Void> dependentFuture: dependentFutureList) {
-          dependentFuture.completeExceptionally(e);
-        }
-      }
     }
   }
 
@@ -53,14 +41,6 @@ public class CompletableFutureCallback implements PubSubProducerCallback, Measur
 
   public void setCallback(PubSubProducerCallback callback) {
     this.callback = callback;
-  }
-
-  public void setDependentFutureList(List<CompletableFuture<Void>> dependentFutureList) {
-    this.dependentFutureList = dependentFutureList;
-  }
-
-  public List<CompletableFuture<Void>> getDependentFutureList() {
-    return dependentFutureList;
   }
 
   public CompletableFuture<Void> getCompletableFuture() {

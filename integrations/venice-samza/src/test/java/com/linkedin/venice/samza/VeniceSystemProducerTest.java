@@ -2,20 +2,15 @@ package com.linkedin.venice.samza;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -31,13 +26,11 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -49,7 +42,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.samza.system.OutgoingMessageEnvelope;
@@ -338,79 +330,5 @@ public class VeniceSystemProducerTest {
         canonicalSchemaStrCache.estimatedSize() < 10,
         "The size of the cache shouldn't go beyond 10 when specifying the maximum size as 3 even with estimation, but got: "
             + cacheSize);
-  }
-
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testSendRecord(boolean batchProduceEnabled) {
-    VeniceSystemProducer mockProducer = mock(VeniceSystemProducer.class);
-    doCallRealMethod().when(mockProducer).sendPutMessage(any(), any(), any(), anyLong(), any());
-    doCallRealMethod().when(mockProducer).sendUpdateMessage(any(), any(), any(), anyLong(), any());
-    doCallRealMethod().when(mockProducer).sendDeleteMessage(any(), anyLong(), any());
-    ProducerBatchingService producerBatchingService = batchProduceEnabled ? mock(ProducerBatchingService.class) : null;
-    VeniceWriter veniceWriter = mock(VeniceWriter.class);
-    doReturn(producerBatchingService).when(mockProducer).getProducerBatchingService();
-    doReturn(veniceWriter).when(mockProducer).getVeniceWriter();
-
-    CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-    byte[] key = "a".getBytes();
-    byte[] value = "1".getBytes();
-
-    int valueSchemaId = 100;
-    int protocolId = 200;
-    Pair<Integer, Integer> valueSchemaIdPair = new Pair<>(valueSchemaId, protocolId);
-    long logicalTimestamp = 10000L;
-
-    // PUT
-    mockProducer.sendPutMessage(key, value, valueSchemaIdPair, logicalTimestamp, completableFuture);
-    if (batchProduceEnabled) {
-      verify(producerBatchingService, times(1)).addRecordToBuffer(
-          eq(MessageType.PUT),
-          eq(key),
-          eq(value),
-          eq(valueSchemaId),
-          anyInt(),
-          eq(completableFuture),
-          eq(logicalTimestamp));
-      verify(veniceWriter, times(0)).put(eq(key), eq(value), eq(valueSchemaId), eq(logicalTimestamp), any());
-    } else {
-      Assert.assertNull(mockProducer.getProducerBatchingService());
-      verify(veniceWriter, times(1)).put(eq(key), eq(value), eq(valueSchemaId), eq(logicalTimestamp), any());
-    }
-
-    // DELETE
-    mockProducer.sendDeleteMessage(key, logicalTimestamp, completableFuture);
-    if (batchProduceEnabled) {
-      verify(producerBatchingService, times(1)).addRecordToBuffer(
-          eq(MessageType.DELETE),
-          eq(key),
-          eq(null),
-          anyInt(),
-          anyInt(),
-          eq(completableFuture),
-          eq(logicalTimestamp));
-      verify(veniceWriter, times(0)).delete(eq(key), eq(logicalTimestamp), any());
-    } else {
-      Assert.assertNull(mockProducer.getProducerBatchingService());
-      verify(veniceWriter, times(1)).delete(eq(key), eq(logicalTimestamp), any());
-    }
-
-    // UPDATE
-    mockProducer.sendUpdateMessage(key, value, valueSchemaIdPair, logicalTimestamp, completableFuture);
-    if (batchProduceEnabled) {
-      verify(producerBatchingService, times(1)).addRecordToBuffer(
-          eq(MessageType.UPDATE),
-          eq(key),
-          eq(value),
-          eq(valueSchemaId),
-          eq(protocolId),
-          eq(completableFuture),
-          eq(logicalTimestamp));
-      verify(veniceWriter, times(0))
-          .update(eq(key), eq(value), eq(protocolId), eq(valueSchemaId), any(), eq(logicalTimestamp));
-    } else {
-      Assert.assertNull(mockProducer.getProducerBatchingService());
-      verify(veniceWriter, times(1))
-          .update(eq(key), eq(value), eq(valueSchemaId), eq(protocolId), any(), eq(logicalTimestamp));
-    }
   }
 }

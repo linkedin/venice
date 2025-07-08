@@ -8,6 +8,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import java.util.Comparator;
 import java.util.Objects;
 
 
@@ -34,6 +35,10 @@ public class VeniceWriterOptions {
   private final int producerCount;
   private final int producerThreadCount;
   private final int producerQueueSize;
+  // Batching Venice Writer config
+  private final long batchIntervalInMs;
+  private final int maxBatchSizeInBytes;
+  private final Comparator keyComparator;
 
   public String getBrokerAddress() {
     return brokerAddress;
@@ -95,6 +100,18 @@ public class VeniceWriterOptions {
     return producerQueueSize;
   }
 
+  public long getBatchIntervalInMs() {
+    return batchIntervalInMs;
+  }
+
+  public int getMaxBatchSizeInBytes() {
+    return maxBatchSizeInBytes;
+  }
+
+  public Comparator getKeyComparator() {
+    return keyComparator;
+  }
+
   PubSubMessageSerializer getPubSubMessageSerializer() {
     return pubSubMessageSerializer;
   }
@@ -116,6 +133,9 @@ public class VeniceWriterOptions {
     producerThreadCount = builder.producerThreadCount;
     producerQueueSize = builder.producerQueueSize;
     pubSubMessageSerializer = builder.pubSubMessageSerializer;
+    batchIntervalInMs = builder.batchIntervalInMs;
+    maxBatchSizeInBytes = builder.maxBatchSizeInBytes;
+    keyComparator = builder.keyComparator;
   }
 
   @Override
@@ -173,6 +193,9 @@ public class VeniceWriterOptions {
     private int producerCount = 1;
     private int producerThreadCount = 1;
     private int producerQueueSize = 5 * 1024 * 1024; // 5MB by default
+    private long batchIntervalInMs = 0; // Not enabled by default
+    private int maxBatchSizeInBytes = 10 * 1024 * 1024; // 10MB batch size by default
+    private Comparator keyComparator = null;
 
     private void addDefaults() {
       if (keyPayloadSerializer == null) {
@@ -283,6 +306,21 @@ public class VeniceWriterOptions {
 
     public Builder setPubSubMessageSerializer(PubSubMessageSerializer pubSubMessageSerializer) {
       this.pubSubMessageSerializer = pubSubMessageSerializer;
+      return this;
+    }
+
+    public Builder setBatchIntervalInMs(long batchIntervalInMs) {
+      this.batchIntervalInMs = batchIntervalInMs;
+      return this;
+    }
+
+    public Builder setMaxBatchSizeInBytes(int maxBatchSizeInBytes) {
+      this.maxBatchSizeInBytes = maxBatchSizeInBytes;
+      return this;
+    }
+
+    public Builder setKeyComparator(Comparator keyComparator) {
+      this.keyComparator = keyComparator;
       return this;
     }
   }
