@@ -15,7 +15,7 @@ public class DoubleEqualsPredicate implements DoublePredicate {
     if (this.expectedValue == value) {
       return true;
     }
-    // Handle NaN cases
+    // Handle NaN case
     if (Double.isNaN(value)) {
       return Double.isNaN(expectedValue);
     }
