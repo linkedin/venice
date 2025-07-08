@@ -12,12 +12,13 @@ import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.serialization.StringSerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantLock;
 import org.mockito.ArgumentCaptor;
@@ -29,6 +30,8 @@ public class BatchingVeniceWriterTest {
   @Test
   public void testSendRecord() {
     BatchingVeniceWriter<byte[], byte[], byte[]> writer = mock(BatchingVeniceWriter.class);
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = mock(VeniceWriter.class);
+    doReturn(internalWriter).when(writer).getVeniceWriter();
     doCallRealMethod().when(writer).sendRecord(any());
     byte[] keyBytes = "abc".getBytes();
     byte[] valueBytes = "def".getBytes();
@@ -38,7 +41,7 @@ public class BatchingVeniceWriterTest {
     int protocolId = 200;
     long logicalTimestamp = 10000L;
 
-    ProducerBufferRecord<byte[], byte[], byte[]> putRecord = new ProducerBufferRecord<>(
+    ProducerBufferRecord<byte[], byte[]> putRecord = new ProducerBufferRecord<>(
         MessageType.PUT,
         keyBytes,
         valueBytes,
@@ -48,9 +51,9 @@ public class BatchingVeniceWriterTest {
         completableFutureCallback,
         logicalTimestamp);
     writer.sendRecord(putRecord);
-    verify(writer, times(1)).internalPut(eq(keyBytes), eq(valueBytes), eq(valueSchemaId), eq(logicalTimestamp), any());
+    verify(internalWriter, times(1)).put(eq(keyBytes), eq(valueBytes), eq(valueSchemaId), eq(logicalTimestamp), any());
 
-    ProducerBufferRecord<byte[], byte[], byte[]> deleteRecord = new ProducerBufferRecord<>(
+    ProducerBufferRecord<byte[], byte[]> deleteRecord = new ProducerBufferRecord<>(
         MessageType.DELETE,
         keyBytes,
         null,
@@ -60,9 +63,9 @@ public class BatchingVeniceWriterTest {
         completableFutureCallback,
         logicalTimestamp);
     writer.sendRecord(deleteRecord);
-    verify(writer, times(1)).internalDelete(eq(keyBytes), eq(logicalTimestamp), any());
+    verify(internalWriter, times(1)).delete(eq(keyBytes), eq(logicalTimestamp), any());
 
-    ProducerBufferRecord<byte[], byte[], byte[]> updateRecord = new ProducerBufferRecord<>(
+    ProducerBufferRecord<byte[], byte[]> updateRecord = new ProducerBufferRecord<>(
         MessageType.UPDATE,
         keyBytes,
         null,
@@ -72,22 +75,26 @@ public class BatchingVeniceWriterTest {
         completableFutureCallback,
         logicalTimestamp);
     writer.sendRecord(updateRecord);
-    verify(writer, times(1))
-        .internalUpdate(eq(keyBytes), eq(valueBytes), eq(valueSchemaId), eq(protocolId), eq(logicalTimestamp), any());
-
+    verify(internalWriter, times(1))
+        .update(eq(keyBytes), eq(valueBytes), eq(valueSchemaId), eq(protocolId), any(), eq(logicalTimestamp));
   }
 
   @Test
   public void testAddRecordAndBatchProduce() {
-    BatchingVeniceWriter<byte[], byte[], byte[]> writer = mock(BatchingVeniceWriter.class);
-    List<ProducerBufferRecord<byte[], byte[], byte[]>> bufferRecordList = new ArrayList<>();
-    Comparator<byte[]> comparator = Comparator.comparing(ByteBuffer::wrap);
-    Map<byte[], ProducerBufferRecord<byte[], byte[], byte[]>> bufferRecordIndex = new TreeMap<>(comparator);
+    BatchingVeniceWriter<String, byte[], byte[]> writer = mock(BatchingVeniceWriter.class);
+    VeniceWriter<byte[], byte[], byte[]> internalWriter = mock(VeniceWriter.class);
+    doReturn(internalWriter).when(writer).getVeniceWriter();
+    VeniceKafkaSerializer keySerializer = new StringSerializer();
+    doReturn(keySerializer).when(writer).getKeySerializer();
+    doReturn("abc").when(writer).getTopicName();
+    List<ProducerBufferRecord<byte[], byte[]>> bufferRecordList = new ArrayList<>();
+    Map<ByteBuffer, ProducerBufferRecord<byte[], byte[]>> bufferRecordIndex = new VeniceConcurrentHashMap<>();
     doReturn(bufferRecordIndex).when(writer).getBufferRecordIndex();
     doReturn(bufferRecordList).when(writer).getBufferRecordList();
     doCallRealMethod().when(writer).addRecordToBuffer(any(), any(), any(), any(), anyInt(), anyInt(), any(), anyLong());
     doCallRealMethod().when(writer).checkAndMaybeProduceBatchRecord();
     doCallRealMethod().when(writer).sendRecord(any());
+
     doCallRealMethod().when(writer).put(any(), any(), anyInt(), any());
     doCallRealMethod().when(writer).put(any(), any(), anyInt(), anyLong(), any());
     doCallRealMethod().when(writer).delete(any(), any());
@@ -110,10 +117,8 @@ public class BatchingVeniceWriterTest {
     callback4.setCallback(mock(PubSubProducerCallback.class));
 
     // Create different objects for each message to make sure buffer index map is working properly for byte array.
-    byte[] keyBytes1 = "a".getBytes();
-    byte[] keyBytes2 = "a".getBytes();
-    byte[] keyBytes3 = "a".getBytes();
-    byte[] keyBytes4 = "a".getBytes();
+    String key = "a";
+    byte[] serializedKey = key.getBytes();
 
     byte[] valueBytes2 = "2".getBytes();
     byte[] valueBytes3 = "3".getBytes();
@@ -123,10 +128,10 @@ public class BatchingVeniceWriterTest {
     int protocolId = 200;
     long logicalTimestamp = 10000L;
 
-    writer.delete(keyBytes1, callback1);
-    writer.update(keyBytes2, valueBytes2, valueSchemaId, protocolId, callback2);
-    writer.put(keyBytes3, valueBytes3, valueSchemaId, logicalTimestamp, callback3);
-    writer.put(keyBytes4, valueBytes4, valueSchemaId, callback4);
+    writer.delete(key, callback1);
+    writer.update(key, valueBytes2, valueSchemaId, protocolId, callback2);
+    writer.put(key, valueBytes3, valueSchemaId, logicalTimestamp, callback3);
+    writer.put(key, valueBytes4, valueSchemaId, callback4);
     Assert.assertEquals(bufferRecordList.size(), 4);
     Assert.assertFalse(bufferRecordIndex.isEmpty());
     Assert.assertNull(bufferRecordList.get(0).getValue());
@@ -146,7 +151,7 @@ public class BatchingVeniceWriterTest {
     Assert.assertEquals(bufferRecordList.get(3).getLogicalTimestamp(), VeniceWriter.APP_DEFAULT_LOGICAL_TS);
 
     // Index should only contain 1 mapping.
-    Assert.assertEquals(bufferRecordIndex.get(keyBytes1).getValue(), valueBytes4);
+    Assert.assertEquals(bufferRecordIndex.get(ByteBuffer.wrap(serializedKey)).getValue(), valueBytes4);
 
     // Perform produce operation
     writer.checkAndMaybeProduceBatchRecord();
@@ -155,23 +160,23 @@ public class BatchingVeniceWriterTest {
     Assert.assertTrue(bufferRecordIndex.isEmpty());
 
     // Complete callback and validate dependent callback is also completed.
-    verify(writer, times(0)).internalDelete(eq(keyBytes1), anyLong(), any());
+    verify(internalWriter, times(0)).delete(eq(serializedKey), anyLong(), any());
 
     ArgumentCaptor<PubSubProducerCallback> updateCallbackCaptor = ArgumentCaptor.forClass(PubSubProducerCallback.class);
-    verify(writer, times(1)).internalUpdate(
-        eq(keyBytes1),
+    verify(internalWriter, times(1)).update(
+        eq(serializedKey),
         eq(valueBytes2),
         eq(valueSchemaId),
         eq(protocolId),
-        eq(VeniceWriter.APP_DEFAULT_LOGICAL_TS),
-        updateCallbackCaptor.capture());
+        updateCallbackCaptor.capture(),
+        eq(VeniceWriter.APP_DEFAULT_LOGICAL_TS));
 
     PubSubProducerCallback updateCallback = updateCallbackCaptor.getValue();
     Assert.assertTrue(updateCallback instanceof CompletableFutureCallback);
     Assert.assertEquals(((CompletableFutureCallback) updateCallback).getCompletableFuture(), completableFuture2);
 
     ArgumentCaptor<PubSubProducerCallback> putCallbackCaptor = ArgumentCaptor.forClass(PubSubProducerCallback.class);
-    verify(writer, times(2)).internalPut(any(), any(), eq(valueSchemaId), anyLong(), putCallbackCaptor.capture());
+    verify(internalWriter, times(2)).put(any(), any(), eq(valueSchemaId), anyLong(), putCallbackCaptor.capture());
     List<PubSubProducerCallback> putCallbacks = putCallbackCaptor.getAllValues();
     Assert.assertTrue(putCallbacks.get(0) instanceof CompletableFutureCallback);
     Assert.assertEquals(((CompletableFutureCallback) putCallbacks.get(0)).getCompletableFuture(), completableFuture3);
@@ -193,8 +198,8 @@ public class BatchingVeniceWriterTest {
     // Validate max batch size feature.
     doReturn(1).when(writer).getMaxBatchSizeInBytes();
     doReturn(10).when(writer).getBufferSizeInBytes();
-    writer.delete(keyBytes1, callback1);
+    writer.delete(key, callback1);
     verify(writer, times(4)).sendRecord(any());
-    verify(writer, times(1)).internalDelete(eq(keyBytes1), anyLong(), any());
+    verify(internalWriter, times(1)).delete(eq(serializedKey), anyLong(), any());
   }
 }

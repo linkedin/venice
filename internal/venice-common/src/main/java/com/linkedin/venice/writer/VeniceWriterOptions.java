@@ -8,7 +8,6 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
-import java.util.Comparator;
 import java.util.Objects;
 
 
@@ -38,7 +37,6 @@ public class VeniceWriterOptions {
   // Batching Venice Writer config
   private final long batchIntervalInMs;
   private final int maxBatchSizeInBytes;
-  private final Comparator keyComparator;
 
   public String getBrokerAddress() {
     return brokerAddress;
@@ -108,10 +106,6 @@ public class VeniceWriterOptions {
     return maxBatchSizeInBytes;
   }
 
-  public Comparator getKeyComparator() {
-    return keyComparator;
-  }
-
   PubSubMessageSerializer getPubSubMessageSerializer() {
     return pubSubMessageSerializer;
   }
@@ -135,7 +129,6 @@ public class VeniceWriterOptions {
     pubSubMessageSerializer = builder.pubSubMessageSerializer;
     batchIntervalInMs = builder.batchIntervalInMs;
     maxBatchSizeInBytes = builder.maxBatchSizeInBytes;
-    keyComparator = builder.keyComparator;
   }
 
   @Override
@@ -194,8 +187,7 @@ public class VeniceWriterOptions {
     private int producerThreadCount = 1;
     private int producerQueueSize = 5 * 1024 * 1024; // 5MB by default
     private long batchIntervalInMs = 0; // Not enabled by default
-    private int maxBatchSizeInBytes = 10 * 1024 * 1024; // 10MB batch size by default
-    private Comparator keyComparator = null;
+    private int maxBatchSizeInBytes = 5 * 1024 * 1024; // 5MB batch size by default
 
     private void addDefaults() {
       if (keyPayloadSerializer == null) {
@@ -247,6 +239,31 @@ public class VeniceWriterOptions {
 
     public Builder(String topic) {
       this.topicName = Objects.requireNonNull(topic, "Topic name cannot be null for VeniceWriterOptions");
+    }
+
+    /**
+     * Create a new {@link Builder} instance from an existing {@link VeniceWriterOptions} instance.
+     * Having a dummy topic here is to avoid ambiguous constructor match for compiler.
+     */
+    public Builder(String topic, VeniceWriterOptions options) {
+      this.topicName = Objects.requireNonNull(topic, "Topic name cannot be null for VeniceWriterOptions");
+      this.keyPayloadSerializer = options.keyPayloadSerializer;
+      this.valuePayloadSerializer = options.valuePayloadSerializer;
+      this.writeComputePayloadSerializer = options.writeComputePayloadSerializer;
+      this.partitioner = options.partitioner;
+      this.time = options.time;
+      this.partitionCount = options.partitionCount;
+      this.chunkingEnabled = options.chunkingEnabled;
+      this.rmdChunkingEnabled = options.rmdChunkingEnabled;
+      this.maxRecordSizeBytes = options.maxRecordSizeBytes;
+      this.brokerAddress = options.brokerAddress;
+      this.producerCompressionEnabled = options.producerCompressionEnabled;
+      this.producerCount = options.producerCount;
+      this.producerThreadCount = options.producerThreadCount;
+      this.producerQueueSize = options.producerQueueSize;
+      this.pubSubMessageSerializer = options.pubSubMessageSerializer;
+      this.batchIntervalInMs = options.batchIntervalInMs;
+      this.maxBatchSizeInBytes = options.maxBatchSizeInBytes;
     }
 
     public Builder setKeyPayloadSerializer(VeniceKafkaSerializer keyPayloadSerializer) {
@@ -316,11 +333,6 @@ public class VeniceWriterOptions {
 
     public Builder setMaxBatchSizeInBytes(int maxBatchSizeInBytes) {
       this.maxBatchSizeInBytes = maxBatchSizeInBytes;
-      return this;
-    }
-
-    public Builder setKeyComparator(Comparator keyComparator) {
-      this.keyComparator = keyComparator;
       return this;
     }
   }

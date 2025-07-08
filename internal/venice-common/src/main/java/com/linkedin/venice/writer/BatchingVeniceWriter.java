@@ -6,15 +6,16 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.serialization.DefaultSerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
@@ -22,6 +23,19 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * This class is a batching implementation of {@link VeniceWriter}. There are two configs that control the batching
+ * behavior:
+ * (1) Max batch interval: Maximum delay of a batch of records before it is produced.
+ * (2) Max batch buffer size: Maximum size of buffer records before it is produced.
+ * If any of the limit is reached, the buffered batch will be flushed and produced.
+ * For messages within the same batch, only the last one will be produced into the topic, except for those mentioned below.
+ * (1) UPDATE message: It will be supported in the future.
+ * (2) Message with logical timestamp: It will be sent out individually.
+ *
+ * When the last message is produced, its callback will be completed (either successfully or exceptionally), all the
+ * related messages' callbacks will also be completed with the same result.
+ */
 public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
   public static final Logger LOGGER = LogManager.getLogger(BatchingVeniceWriter.class);
 
@@ -29,9 +43,10 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
   private final int maxBatchSizeInBytes;
   private final ReentrantLock lock = new ReentrantLock();
   private final ScheduledExecutorService checkServiceExecutor;
-  private final List<ProducerBufferRecord<K, V, U>> bufferRecordList = new ArrayList<>();
-  private final Map<K, ProducerBufferRecord<K, V, U>> bufferRecordIndex;
-  private final Comparator<K> keyComparator;
+  private final List<ProducerBufferRecord<V, U>> bufferRecordList = new ArrayList<>();
+  private final Map<ByteBuffer, ProducerBufferRecord<V, U>> bufferRecordIndex;
+  private final VeniceWriter<byte[], V, U> veniceWriter;
+  private final VeniceKafkaSerializer keySerializer;
   private volatile long lastBatchProduceMs;
   private volatile boolean isRunning;
   private int bufferSizeInBytes;
@@ -43,18 +58,21 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
     super(params, props, producerAdapter);
     this.batchIntervalInMs = params.getBatchIntervalInMs();
     this.maxBatchSizeInBytes = params.getMaxBatchSizeInBytes();
-    this.keyComparator = params.getKeyComparator();
-    this.bufferRecordIndex = new TreeMap<>(keyComparator);
+    this.bufferRecordIndex = new VeniceConcurrentHashMap<>();
     this.checkServiceExecutor = Executors.newScheduledThreadPool(1);
-    isRunning = true;
+    this.keySerializer = params.getKeyPayloadSerializer();
+    VeniceWriterOptions internalWriterParams =
+        new VeniceWriterOptions.Builder(params.getTopicName(), params).setKeyPayloadSerializer(new DefaultSerializer())
+            .build();
+    this.veniceWriter = new VeniceWriter<>(internalWriterParams, props, producerAdapter);
+    // Start the service.
     lastBatchProduceMs = System.currentTimeMillis();
-    checkServiceExecutor.execute(this::periodicCheckTask);
+    isRunning = true;
   }
 
   @Override
   public CompletableFuture<PubSubProduceResult> delete(K key, long logicalTs, PubSubProducerCallback callback) {
-    addRecordToBuffer(MessageType.DELETE, key, null, null, -1, -1, callback, logicalTs);
-    return null;
+    return addRecordToBuffer(MessageType.DELETE, key, null, null, -1, -1, callback, logicalTs);
   }
 
   @Override
@@ -69,9 +87,7 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       int valueSchemaId,
       long logicalTs,
       PubSubProducerCallback callback) {
-    addRecordToBuffer(MessageType.PUT, key, value, null, valueSchemaId, -1, callback, logicalTs);
-    // TODO: Add the link later;
-    return null;
+    return addRecordToBuffer(MessageType.PUT, key, value, null, valueSchemaId, -1, callback, logicalTs);
   }
 
   @Override
@@ -84,19 +100,26 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
   }
 
   @Override
-  public Future<PubSubProduceResult> update(
+  public CompletableFuture<PubSubProduceResult> update(
       K key,
       U update,
       int valueSchemaId,
       int derivedSchemaId,
       PubSubProducerCallback callback,
       long logicalTs) {
-    addRecordToBuffer(MessageType.UPDATE, key, null, update, valueSchemaId, derivedSchemaId, callback, logicalTs);
-    return null;
+    return addRecordToBuffer(
+        MessageType.UPDATE,
+        key,
+        null,
+        update,
+        valueSchemaId,
+        derivedSchemaId,
+        callback,
+        logicalTs);
   }
 
   @Override
-  public Future<PubSubProduceResult> update(
+  public CompletableFuture<PubSubProduceResult> update(
       K key,
       U update,
       int valueSchemaId,
@@ -123,7 +146,7 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
     super.close(gracefulClose);
   }
 
-  void periodicCheckTask() {
+  private void periodicCheckTask() {
     while (isRunning) {
       long sleepIntervalInMs = batchIntervalInMs;
       try {
@@ -154,11 +177,11 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       if (getBufferRecordList().isEmpty()) {
         return;
       }
-      for (ProducerBufferRecord<K, V, U> record: getBufferRecordList()) {
+      for (ProducerBufferRecord<V, U> record: getBufferRecordList()) {
         if (record.shouldSkipProduce()) {
-          ProducerBufferRecord<K, V, U> latestRecord = getBufferRecordIndex().get(record.getKey());
+          ProducerBufferRecord<V, U> latestRecord =
+              getBufferRecordIndex().get(ByteBuffer.wrap(record.getSerializedKey()));
           if (latestRecord != null) {
-            LOGGER.info("DEBUGGING ADD DEP CALLBACK: {} {}", latestRecord, record);
             latestRecord.addDependentCallback(record.getCallback());
           }
           continue;
@@ -178,7 +201,7 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
     }
   }
 
-  void addRecordToBuffer(
+  CompletableFuture<PubSubProduceResult> addRecordToBuffer(
       MessageType messageType,
       K key,
       V value,
@@ -187,6 +210,8 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       int protocolId,
       PubSubProducerCallback callback,
       long logicalTimestamp) {
+    byte[] serializedKey = getKeySerializer().serialize(getTopicName(), key);
+    CompletableFuture<PubSubProduceResult> result;
     getLock().lock();
     try {
       /**
@@ -194,26 +219,46 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
        * For UPDATE, it is not supported in the current scope, support will be added in the future iteration.
        */
       if (messageType.equals(MessageType.UPDATE) || logicalTimestamp > 0) {
-        getBufferRecordList().add(
-            new ProducerBufferRecord<>(
-                messageType,
-                key,
-                value,
-                update,
-                schemaId,
-                protocolId,
-                callback,
-                logicalTimestamp));
-        return;
+        ProducerBufferRecord<V, U> record = new ProducerBufferRecord<>(
+            messageType,
+            serializedKey,
+            value,
+            update,
+            schemaId,
+            protocolId,
+            callback,
+            logicalTimestamp);
+        CompletableFuture<PubSubProduceResult> produceFuture = new CompletableFuture<>();
+        record.setProduceResultFuture(produceFuture);
+        getBufferRecordList().add(record);
+        return produceFuture;
       }
-      ProducerBufferRecord<K, V, U> record =
-          new ProducerBufferRecord<>(messageType, key, value, update, schemaId, protocolId, callback, logicalTimestamp);
+      ProducerBufferRecord<V, U> record = new ProducerBufferRecord<>(
+          messageType,
+          serializedKey,
+          value,
+          update,
+          schemaId,
+          protocolId,
+          callback,
+          logicalTimestamp);
       bufferSizeInBytes += record.getHeapSize();
       getBufferRecordList().add(record);
-      ProducerBufferRecord<K, V, U> prevRecord = getBufferRecordIndex().put(key, record);
+      ProducerBufferRecord<V, U> prevRecord = getBufferRecordIndex().put(ByteBuffer.wrap(serializedKey), record);
+      result = null;
       if (prevRecord != null) {
         prevRecord.setSkipProduce(true);
+        result = prevRecord.getProduceResultFuture();
       }
+      // Try to reuse the same produce future.
+      if (result == null) {
+        result = new CompletableFuture<>();
+        if (prevRecord != null) {
+          prevRecord.setProduceResultFuture(result);
+        }
+      }
+      record.setProduceResultFuture(result);
+
       // Make sure memory usage is under control
       if (getBufferSizeInBytes() >= getMaxBatchSizeInBytes()) {
         checkAndMaybeProduceBatchRecord();
@@ -221,48 +266,62 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
     } finally {
       getLock().unlock();
     }
+    return result;
   }
 
-  void sendRecord(ProducerBufferRecord<K, V, U> record) {
+  void sendRecord(ProducerBufferRecord<V, U> record) {
     MessageType messageType = record.getMessageType();
     PubSubProducerCallback finalCallback = record.getCallback();
     if (!record.getDependentCallbackList().isEmpty()) {
-      LOGGER.info("DEBUGGING: CHAINED: {}, {}", record.getKey(), record.getDependentCallbackList().size());
       finalCallback = new ChainedPubSubCallback(record.getCallback(), record.getDependentCallbackList());
-    } else {
-      LOGGER.info("DEBUGGING: NOT CHAINED: {}, {}", record.getKey(), record.getDependentCallbackList().size());
     }
+    CompletableFuture<PubSubProduceResult> produceFuture = null;
     switch (messageType) {
       case PUT:
-        internalPut(
-            record.getKey(),
+        produceFuture = getVeniceWriter().put(
+            record.getSerializedKey(),
             record.getValue(),
             record.getSchemaId(),
             record.getLogicalTimestamp(),
             finalCallback);
         break;
       case UPDATE:
-        internalUpdate(
-            record.getKey(),
+        produceFuture = getVeniceWriter().update(
+            record.getSerializedKey(),
             record.getUpdate(),
             record.getSchemaId(),
             record.getProtocolId(),
-            record.getLogicalTimestamp(),
-            finalCallback);
+            finalCallback,
+            record.getLogicalTimestamp());
         break;
       case DELETE:
-        internalDelete(record.getKey(), record.getLogicalTimestamp(), finalCallback);
+        produceFuture =
+            getVeniceWriter().delete(record.getSerializedKey(), record.getLogicalTimestamp(), finalCallback);
         break;
       default:
         break;
     }
+    // Chain up the produce future.
+    if (produceFuture != null) {
+      produceFuture.whenComplete((result, ex) -> {
+        if (ex != null) {
+          record.getProduceResultFuture().completeExceptionally(ex);
+        } else {
+          record.getProduceResultFuture().complete(result);
+        }
+      });
+    }
   }
 
-  List<ProducerBufferRecord<K, V, U>> getBufferRecordList() {
+  void start() {
+    checkServiceExecutor.execute(this::periodicCheckTask);
+  }
+
+  List<ProducerBufferRecord<V, U>> getBufferRecordList() {
     return bufferRecordList;
   }
 
-  Map<K, ProducerBufferRecord<K, V, U>> getBufferRecordIndex() {
+  Map<ByteBuffer, ProducerBufferRecord<V, U>> getBufferRecordIndex() {
     return bufferRecordIndex;
   }
 
@@ -278,27 +337,11 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
     return bufferSizeInBytes;
   }
 
-  Future<PubSubProduceResult> internalUpdate(
-      K key,
-      U update,
-      int valueSchemaId,
-      int derivedSchemaId,
-      long logicalTs,
-      PubSubProducerCallback callback) {
-    return super.update(key, update, valueSchemaId, derivedSchemaId, callback, logicalTs);
+  VeniceKafkaSerializer getKeySerializer() {
+    return keySerializer;
   }
 
-  Future<PubSubProduceResult> internalDelete(K key, long logicalTs, PubSubProducerCallback callback) {
-    return super.delete(key, logicalTs, callback);
+  VeniceWriter<byte[], V, U> getVeniceWriter() {
+    return veniceWriter;
   }
-
-  Future<PubSubProduceResult> internalPut(
-      K key,
-      V value,
-      int valueSchemaId,
-      long logicalTs,
-      PubSubProducerCallback callback) {
-    return super.put(key, value, valueSchemaId, logicalTs, callback);
-  }
-
 }

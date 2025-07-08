@@ -5,14 +5,16 @@ import static com.linkedin.venice.memory.ClassSizeEstimator.getClassOverhead;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.memory.InstanceSizeEstimator;
 import com.linkedin.venice.memory.Measurable;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 
-public class ProducerBufferRecord<K, V, U> implements Measurable {
+public class ProducerBufferRecord<V, U> implements Measurable {
   private static final int SHALLOW_CLASS_OVERHEAD = getClassOverhead(ProducerBufferRecord.class);
-  private final K key;
+  private final byte[] serializedKey;
   private final V value;
   private final U update;
   private final MessageType messageType;
@@ -22,17 +24,18 @@ public class ProducerBufferRecord<K, V, U> implements Measurable {
   private boolean shouldSkipProduce = false;
   private PubSubProducerCallback callback;
   private List<PubSubProducerCallback> dependentCallbackList = new ArrayList<>();
+  private CompletableFuture<PubSubProduceResult> produceResultFuture = null;
 
   public ProducerBufferRecord(
       MessageType messageType,
-      K key,
+      byte[] serializedKey,
       V value,
       U update,
       int schemaId,
       int protocolId,
       PubSubProducerCallback callback,
       long logicalTimestamp) {
-    this.key = key;
+    this.serializedKey = serializedKey;
     this.value = value;
     this.update = update;
     this.messageType = messageType;
@@ -51,8 +54,8 @@ public class ProducerBufferRecord<K, V, U> implements Measurable {
     this.shouldSkipProduce = shouldSkipProduce;
   }
 
-  public K getKey() {
-    return key;
+  public byte[] getSerializedKey() {
+    return serializedKey;
   }
 
   public V getValue() {
@@ -91,10 +94,18 @@ public class ProducerBufferRecord<K, V, U> implements Measurable {
     return callback;
   }
 
+  public CompletableFuture<PubSubProduceResult> getProduceResultFuture() {
+    return produceResultFuture;
+  }
+
+  public void setProduceResultFuture(CompletableFuture<PubSubProduceResult> produceResultFuture) {
+    this.produceResultFuture = produceResultFuture;
+  }
+
   @Override
   public int getHeapSize() {
     int size = SHALLOW_CLASS_OVERHEAD;
-    size += InstanceSizeEstimator.getObjectSize(key);
+    size += InstanceSizeEstimator.getObjectSize(serializedKey);
     if (value != null) {
       size += InstanceSizeEstimator.getObjectSize(value);
     }

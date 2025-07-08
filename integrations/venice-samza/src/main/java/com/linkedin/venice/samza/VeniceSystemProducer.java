@@ -12,6 +12,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.r2.transport.common.TransportClientFactory;
 import com.linkedin.r2.transport.http.client.HttpClientFactory;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -424,6 +425,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     VeniceWriterOptions.Builder builder = new VeniceWriterOptions.Builder(store.getKafkaTopic()).setTime(time)
         .setPartitioner(venicePartitioner)
         .setPartitionCount(partitionCount)
+        .setBatchIntervalInMs(
+            Long.parseLong(veniceWriterProperties.getProperty(ConfigKeys.WRITER_BATCHING_MAX_INTERVAL_MS, "0")))
+        .setMaxBatchSizeInBytes(
+            Integer.parseInt(
+                veniceWriterProperties.getProperty(ConfigKeys.WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES, "5242880")))
         .setChunkingEnabled(isChunkingEnabled);
     extractConcurrentProducerConfig(veniceWriterProperties, builder);
     return constructVeniceWriter(veniceWriterProperties, builder.build());

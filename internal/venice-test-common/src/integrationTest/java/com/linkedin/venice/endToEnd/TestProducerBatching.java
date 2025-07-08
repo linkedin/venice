@@ -136,12 +136,12 @@ public class TestProducerBatching {
     }
     SystemProducer veniceProducer = null;
     VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-    Pair<String, String> additionalConfig = new Pair<>(ConfigKeys.SYSTEM_PRODUCER_BATCHING_MAX_INTERVAL_MS, "10");
-    Pair<String, String> additionalConfig2 = new Pair<>(ConfigKeys.SYSTEM_PRODUCER_BATCHING_MAX_RECORD_NUM, "4");
+    Pair<String, String> additionalConfig = new Pair<>(ConfigKeys.WRITER_BATCHING_MAX_INTERVAL_MS, "10");
+    Pair<String, String> additionalConfig2 = new Pair<>(ConfigKeys.WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES, "1024000");
     veniceProducer = IntegrationTestPushUtils
         .getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM, additionalConfig, additionalConfig2);
-    String key = "key";
 
+    String key = "key";
     // Message 1: Will be compacted by Message 2
     GenericRecord value = new GenericData.Record(valueSchema);
     value.put("name", "val");
@@ -161,16 +161,18 @@ public class TestProducerBatching {
     sendStreamingRecordWithoutFlush(veniceProducer, storeName, key, value, 100L);
 
     String key2 = "key2";
-    // Message 4: Should be produced (Max Batch Size)
+    // Message 4: Will be compacted by Message 5
     value = new GenericData.Record(valueSchema);
     value.put("name", "DEN");
     value.put("age", 2023);
     sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
+
     // Message 5: Should be produced.
     value = new GenericData.Record(valueSchema);
     value.put("name", "CLE");
     value.put("age", 2024);
     sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
+
     // Message 6: Should be produced (UPDATE message)
     value = new UpdateBuilderImpl(updateSchema).setNewFieldValue("name", "OKC").setNewFieldValue("age", 2025).build();
     sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
@@ -223,7 +225,7 @@ public class TestProducerBatching {
           }
         }
       }
-      Assert.assertEquals(messageCount, 5);
+      Assert.assertEquals(messageCount, 4);
     }
   }
 

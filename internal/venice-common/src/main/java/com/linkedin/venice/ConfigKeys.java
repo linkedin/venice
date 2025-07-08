@@ -2308,14 +2308,14 @@ public class ConfigKeys {
       "client.producer.schema.refresh.interval.seconds";
 
   /**
-   * The max interval for system producer batching feature.
+   * The max interval for Venice writer batching feature.
    */
-  public static final String SYSTEM_PRODUCER_BATCHING_MAX_INTERVAL_MS = "system.producer.batching.max.interval.ms";
+  public static final String WRITER_BATCHING_MAX_INTERVAL_MS = "writer.batching.max.interval.ms";
 
   /**
-   * The max number of records system store batching feature can hold in buffer.
+   * The max size of buffer in bytes for Venice writer batching feature.
    */
-  public static final String SYSTEM_PRODUCER_BATCHING_MAX_RECORD_NUM = "system.producer.batching.max.record.num";
+  public static final String WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES = "writer.batching.max.buffer.size.in.bytes";
 
   /*
    * The memory up-limit for the ingestion path while using RocksDB Plaintable format.
