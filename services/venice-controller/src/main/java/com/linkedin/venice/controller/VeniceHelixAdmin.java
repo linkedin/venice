@@ -1404,8 +1404,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
 
           // Scheduled log compaction metric
-          Utf8 pushIdKey = new Utf8("pushid");
-          if (Version.isPushIdRePush(pushJobDetailsValue.getPushJobConfigs().get(pushIdKey).toString())) {
+          if (Version.isPushIdRePush(pushJobDetailsValue.getPushId().toString())) {
             logCompactionStatsMap.get(cluster).setCompactionComplete(storeName.toString());
           }
         }
