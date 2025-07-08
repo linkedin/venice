@@ -122,6 +122,9 @@ public class QueryTool {
     } else {
       throw new VeniceException("Unknown facet counting mode: " + facetCountingMode);
     }
+
+    // 确保程序正确退出
+    System.exit(0);
   }
 
   public static Map<String, String> queryStoreForKey(
@@ -232,16 +235,11 @@ public class QueryTool {
           .setVeniceURL(url)
           .setVsonClient(isVsonStore)
           .setSslFactory(factory);
-      // Cast to AvroGenericReadComputeStoreClient to access computeAggregation method
       AvroGenericReadComputeStoreClient<Object, Object> computeStoreClient =
           (AvroGenericReadComputeStoreClient<Object, Object>) client;
       AvroComputeAggregationRequestBuilder<Object> builder =
           new AvroComputeAggregationRequestBuilder<>(computeStoreClient, ClientFactory.getSchemaReader(clientConfig));
       builder.countGroupByValue(topK, fields);
-
-      System.out.println("About to execute client-side aggregation with keys: " + keys);
-      System.out.println("Fields to aggregate: " + String.join(", ", fields));
-      System.out.println("TopK: " + topK);
 
       ComputeAggregationResponse response = builder.execute(keys).get(60, TimeUnit.SECONDS);
 
@@ -297,12 +295,18 @@ public class QueryTool {
       // Parse bucket definitions
       Map<String, Predicate<Integer>> bucketPredicates = parseBucketDefinitions(bucketDefinitions);
 
-      // Execute countByBucket aggregation
+      // Print bucket definitions in a nice way
+      System.out.println("Bucket Definitions:");
+      for (Map.Entry<String, Predicate<Integer>> entry: bucketPredicates.entrySet()) {
+        System.out.println("  - " + entry.getKey() + ": " + entry.getValue().toString());
+      }
+      System.out.println();
+
+      // Create a pure client-side aggregation builder
       ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(store)
           .setVeniceURL(url)
           .setVsonClient(isVsonStore)
           .setSslFactory(factory);
-      // Cast to AvroGenericReadComputeStoreClient to access computeAggregation method
       AvroGenericReadComputeStoreClient<Object, Object> computeStoreClient =
           (AvroGenericReadComputeStoreClient<Object, Object>) client;
       AvroComputeAggregationRequestBuilder<Object> builder =

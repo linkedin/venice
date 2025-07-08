@@ -5,10 +5,13 @@ import com.linkedin.venice.client.store.predicate.FloatPredicate;
 import com.linkedin.venice.client.store.predicate.IntPredicate;
 import com.linkedin.venice.client.store.predicate.LongPredicate;
 import com.linkedin.venice.client.store.predicate.Predicate;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 
 
@@ -16,18 +19,18 @@ import org.apache.avro.util.Utf8;
  * Implementation of {@link ComputeAggregationResponse} that handles the results of count-by-value and count-by-bucket aggregations.
  */
 public class AvroComputeAggregationResponse<K> implements ComputeAggregationResponse {
-  private final Map<K, ComputeGenericRecord> computeResults;
+  private final Map<K, ? extends GenericRecord> computeResults;
   private final Map<String, Integer> fieldTopKMap;
   private final Map<String, Map<String, Predicate>> fieldBucketMap;
 
   public AvroComputeAggregationResponse(
-      Map<K, ComputeGenericRecord> computeResults,
+      Map<K, ? extends GenericRecord> computeResults,
       Map<String, Integer> fieldTopKMap) {
     this(computeResults, fieldTopKMap, new HashMap<>());
   }
 
   public AvroComputeAggregationResponse(
-      Map<K, ComputeGenericRecord> computeResults,
+      Map<K, ? extends GenericRecord> computeResults,
       Map<String, Integer> fieldTopKMap,
       Map<String, Map<String, Predicate>> fieldBucketMap) {
     this.computeResults = computeResults;
@@ -44,7 +47,7 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
 
     Map<T, Integer> valueToCount = new HashMap<>();
 
-    for (ComputeGenericRecord record: computeResults.values()) {
+    for (GenericRecord record: computeResults.values()) {
       Object value = record.get(field);
       if (value instanceof Utf8) {
         value = value.toString();
@@ -54,12 +57,16 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
       valueToCount.merge(key, 1, Integer::sum);
     }
 
-    // Sort by count in descending order
-    Map<T, Integer> sortedMap = valueToCount.entrySet()
-        .stream()
-        .sorted(Map.Entry.<T, Integer>comparingByValue().reversed())
-        .limit(fieldTopKMap.get(field))
-        .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), Map::putAll);
+    // Sort by count in descending order and limit to topK
+    List<Map.Entry<T, Integer>> sortedEntries = new ArrayList<>(valueToCount.entrySet());
+    sortedEntries.sort(Map.Entry.<T, Integer>comparingByValue().reversed());
+
+    int topK = fieldTopKMap.get(field);
+    Map<T, Integer> sortedMap = new LinkedHashMap<>();
+    for (int i = 0; i < Math.min(topK, sortedEntries.size()); i++) {
+      Map.Entry<T, Integer> entry = sortedEntries.get(i);
+      sortedMap.put(entry.getKey(), entry.getValue());
+    }
 
     return sortedMap;
   }
@@ -79,8 +86,8 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
     }
 
     // Process all records and count bucket matches
-    for (Map.Entry<K, ComputeGenericRecord> entry: computeResults.entrySet()) {
-      ComputeGenericRecord record = entry.getValue();
+    for (Map.Entry<K, ? extends GenericRecord> entry: computeResults.entrySet()) {
+      GenericRecord record = entry.getValue();
 
       if (record == null) {
         continue;

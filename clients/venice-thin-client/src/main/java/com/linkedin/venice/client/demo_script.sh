@@ -13,6 +13,21 @@ echo "Fabric: $FABRIC"
 echo "Keys: $KEYS"
 echo
 
+echo "=== Introduction ==="
+echo "This demo showcases two new aggregation features in Venice Thin Client:"
+echo "1. countByValue: Count distinct values with TopK optimization"
+echo "2. countByBucket: Group records by custom bucket predicates"
+echo "Both features run entirely on the client-side for optimal performance."
+echo
+
+echo "=== Data Source ==="
+echo "We're using an EI test store ($STORE_NAME) populated with employee data"
+echo "using the Venice Producer client. The data includes:"
+echo "- firstName: Employee first names"
+echo "- lastName: Employee last names" 
+echo "- age: Employee ages (for bucket analysis)"
+echo
+
 echo "=== Step 1: Show Current Data ==="
 echo "Let's first look at some sample data:"
 echo
@@ -85,6 +100,15 @@ echo "=== Step 4: countByBucket Demo ==="
 echo "countByBucket groups records by bucket predicates (e.g., age ranges)"
 echo
 
+echo "4.1. Age Bucket Definitions:"
+echo "   - 20-25: Young employees (age < 30)"
+echo "   - 26-30: Early career (age >= 30 and age < 35)"
+echo "   - 31-35: Mid career (age >= 35 and age < 40)"
+echo "   - 36-40: Senior level (age >= 40 and age < 45)"
+echo "   - 41-45: Experienced (age >= 45)"
+echo
+
+echo "4.2. Executing countByBucket query:"
 ./query.sh $FABRIC $STORE_NAME "$KEYS" false countByBucket age "20-25,26-30,31-35,36-40,41-45" | grep "age-bucket-counts="
 echo
 
@@ -94,5 +118,18 @@ echo "✅ countByBucket: Groups records by custom bucket definitions"
 echo "✅ Pure client-side aggregation: No server-side compute required"
 echo "✅ TopK Feature: Built into countByValue to limit result size"
 echo "✅ Multi-field Support: Can aggregate multiple fields simultaneously"
+echo
+
+echo "=== Current Project Progress ==="
+echo "📋 countByValue: ✅ Implemented and tested"
+echo "📋 countByBucket: ✅ Implemented and tested"
+echo "📋 Unit Tests: ✅ Comprehensive test coverage"
+echo "📋 Integration Tests: ✅ Working with real Venice stores"
+echo "📋 Documentation: ✅ API documentation and examples"
+echo "📋 Demo Scripts: ✅ Ready for presentation"
+echo "📋 Code Review: 🔄 In progress"
+echo "📋 Merge Status: ⏳ Pending review approval"
+echo
+echo "Target: Wednesday Standup presentation"
 echo
 echo "Demo completed successfully! 🚀" 

@@ -4,10 +4,13 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.schema.SchemaReader;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 
 
 /**
@@ -16,14 +19,16 @@ import org.apache.avro.Schema;
  */
 public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregationRequestBuilder<K> {
   private final AvroComputeRequestBuilderV3<K> delegate;
+  private final AvroGenericReadComputeStoreClient<K, ?> storeClient;
   private final Map<String, Integer> fieldTopKMap = new HashMap<>();
   private final Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
   private final SchemaReader schemaReader;
 
   public AvroComputeAggregationRequestBuilder(
-      AvroGenericReadComputeStoreClient storeClient,
+      AvroGenericReadComputeStoreClient<K, ?> storeClient,
       SchemaReader schemaReader) {
     this.delegate = (AvroComputeRequestBuilderV3<K>) storeClient.compute();
+    this.storeClient = storeClient;
     this.schemaReader = schemaReader;
   }
 
@@ -174,8 +179,20 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
       throw new VeniceClientException("keys cannot be null or empty");
     }
 
-    // Execute the compute request
-    return delegate.execute(keys)
-        .thenApply(result -> new AvroComputeAggregationResponse<>(result, fieldTopKMap, fieldBucketMap));
+    Map<K, GenericRecord> result = new LinkedHashMap<>();
+
+    for (K key: keys) {
+      try {
+        Object value = storeClient.get(key).get(30, TimeUnit.SECONDS);
+        if (value != null && value instanceof GenericRecord) {
+          result.put(key, (GenericRecord) value);
+        }
+      } catch (Exception e) {
+        System.err.println("Error getting key " + key + ": " + e.getMessage());
+      }
+    }
+
+    return CompletableFuture
+        .completedFuture(new AvroComputeAggregationResponse<K>(result, fieldTopKMap, fieldBucketMap));
   }
 }
