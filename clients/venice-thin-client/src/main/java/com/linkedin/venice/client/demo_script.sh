@@ -101,11 +101,11 @@ echo "countByBucket groups records by bucket predicates (e.g., age ranges)"
 echo
 
 echo "4.1. Age Bucket Definitions:"
-echo "   - 20-25: Young employees (age < 30)"
-echo "   - 26-30: Early career (age >= 30 and age < 35)"
-echo "   - 31-35: Mid career (age >= 35 and age < 40)"
-echo "   - 36-40: Senior level (age >= 40 and age < 45)"
-echo "   - 41-45: Experienced (age >= 45)"
+echo "   - 20-25: Young employees (20 <= age < 25)"
+echo "   - 26-30: Early career (26 <= age < 30)"
+echo "   - 31-35: Mid career (31 <= age < 35)"
+echo "   - 36-40: Senior level (36 <= age < 40)"
+echo "   - 41-45: Experienced (41 <= age < 45)"
 echo
 
 echo "4.2. Executing countByBucket query:"
