@@ -198,31 +198,4 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
     return null;
   }
 
-  /**
-   * Convert value to Integer for IntPredicate evaluation.
-   */
-  private Integer convertToInteger(Object value) {
-    return convertToType(value, Integer.class);
-  }
-
-  /**
-   * Convert value to Long for LongPredicate evaluation.
-   */
-  private Long convertToLong(Object value) {
-    return convertToType(value, Long.class);
-  }
-
-  /**
-   * Convert value to Float for FloatPredicate evaluation.
-   */
-  private Float convertToFloat(Object value) {
-    return convertToType(value, Float.class);
-  }
-
-  /**
-   * Convert value to Double for DoublePredicate evaluation.
-   */
-  private Double convertToDouble(Object value) {
-    return convertToType(value, Double.class);
-  }
 }
