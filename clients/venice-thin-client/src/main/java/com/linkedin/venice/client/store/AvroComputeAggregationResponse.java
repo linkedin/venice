@@ -45,10 +45,7 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
     Map<T, Integer> valueToCount = new HashMap<>();
 
     for (ComputeGenericRecord record: computeResults.values()) {
-      Object value = record.get(field);
-      if (value instanceof Utf8) {
-        value = value.toString();
-      }
+      Object value = convertUtf8ToString(record.get(field));
       @SuppressWarnings("unchecked")
       T key = (T) value;
       valueToCount.merge(key, 1, Integer::sum);
@@ -102,14 +99,14 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
         try {
           // Handle type conversion for numeric predicates
           Object valueToEvaluate = convertedValue;
-          if (predicate instanceof LongPredicate && !(convertedValue instanceof Long)) {
-            valueToEvaluate = convertToLong(convertedValue);
-          } else if (predicate instanceof IntPredicate && !(convertedValue instanceof Integer)) {
-            valueToEvaluate = convertToInteger(convertedValue);
-          } else if (predicate instanceof FloatPredicate && !(convertedValue instanceof Float)) {
-            valueToEvaluate = convertToFloat(convertedValue);
-          } else if (predicate instanceof DoublePredicate && !(convertedValue instanceof Double)) {
-            valueToEvaluate = convertToDouble(convertedValue);
+          if (predicate instanceof LongPredicate) {
+            valueToEvaluate = convertToType(convertedValue, Long.class);
+          } else if (predicate instanceof IntPredicate) {
+            valueToEvaluate = convertToType(convertedValue, Integer.class);
+          } else if (predicate instanceof FloatPredicate) {
+            valueToEvaluate = convertToType(convertedValue, Float.class);
+          } else if (predicate instanceof DoublePredicate) {
+            valueToEvaluate = convertToType(convertedValue, Double.class);
           }
 
           if (valueToEvaluate != null) {
@@ -141,20 +138,63 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
   }
 
   /**
-   * Convert value to Long for LongPredicate evaluation.
+   * Generic method to convert value to the target type for predicate evaluation.
+   * Supports Integer, Long, Float, and Double conversions.
    */
-  private Long convertToLong(Object value) {
-    if (value instanceof Long) {
-      return (Long) value;
-    } else if (value instanceof Integer) {
-      return ((Integer) value).longValue();
-    } else if (value instanceof String) {
-      try {
-        return Long.parseLong((String) value);
-      } catch (NumberFormatException e) {
-        return null;
+  @SuppressWarnings("unchecked")
+  private <T> T convertToType(Object value, Class<T> targetType) {
+    if (value == null) {
+      return null;
+    }
+
+    // If already the target type, return as is
+    if (targetType.isInstance(value)) {
+      return (T) value;
+    }
+
+    // Handle numeric conversions
+    if (targetType == Integer.class) {
+      if (value instanceof Long) {
+        return (T) Integer.valueOf(((Long) value).intValue());
+      } else if (value instanceof String) {
+        try {
+          return (T) Integer.valueOf(Integer.parseInt((String) value));
+        } catch (NumberFormatException e) {
+          return null;
+        }
+      }
+    } else if (targetType == Long.class) {
+      if (value instanceof Integer) {
+        return (T) Long.valueOf(((Integer) value).longValue());
+      } else if (value instanceof String) {
+        try {
+          return (T) Long.valueOf(Long.parseLong((String) value));
+        } catch (NumberFormatException e) {
+          return null;
+        }
+      }
+    } else if (targetType == Float.class) {
+      if (value instanceof Integer) {
+        return (T) Float.valueOf(((Integer) value).floatValue());
+      } else if (value instanceof String) {
+        try {
+          return (T) Float.valueOf(Float.parseFloat((String) value));
+        } catch (NumberFormatException e) {
+          return null;
+        }
+      }
+    } else if (targetType == Double.class) {
+      if (value instanceof Integer) {
+        return (T) Double.valueOf(((Integer) value).doubleValue());
+      } else if (value instanceof String) {
+        try {
+          return (T) Double.valueOf(Double.parseDouble((String) value));
+        } catch (NumberFormatException e) {
+          return null;
+        }
       }
     }
+
     return null;
   }
 
@@ -162,53 +202,27 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
    * Convert value to Integer for IntPredicate evaluation.
    */
   private Integer convertToInteger(Object value) {
-    if (value instanceof Integer) {
-      return (Integer) value;
-    } else if (value instanceof Long) {
-      return ((Long) value).intValue();
-    } else if (value instanceof String) {
-      try {
-        return Integer.parseInt((String) value);
-      } catch (NumberFormatException e) {
-        return null;
-      }
-    }
-    return null;
+    return convertToType(value, Integer.class);
+  }
+
+  /**
+   * Convert value to Long for LongPredicate evaluation.
+   */
+  private Long convertToLong(Object value) {
+    return convertToType(value, Long.class);
   }
 
   /**
    * Convert value to Float for FloatPredicate evaluation.
    */
   private Float convertToFloat(Object value) {
-    if (value instanceof Float) {
-      return (Float) value;
-    } else if (value instanceof Integer) {
-      return ((Integer) value).floatValue();
-    } else if (value instanceof String) {
-      try {
-        return Float.parseFloat((String) value);
-      } catch (NumberFormatException e) {
-        return null;
-      }
-    }
-    return null;
+    return convertToType(value, Float.class);
   }
 
   /**
    * Convert value to Double for DoublePredicate evaluation.
    */
   private Double convertToDouble(Object value) {
-    if (value instanceof Double) {
-      return (Double) value;
-    } else if (value instanceof Integer) {
-      return ((Integer) value).doubleValue();
-    } else if (value instanceof String) {
-      try {
-        return Double.parseDouble((String) value);
-      } catch (NumberFormatException e) {
-        return null;
-      }
-    }
-    return null;
+    return convertToType(value, Double.class);
   }
 }

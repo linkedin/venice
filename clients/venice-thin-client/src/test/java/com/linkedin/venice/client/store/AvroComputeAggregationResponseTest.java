@@ -648,6 +648,73 @@ public class AvroComputeAggregationResponseTest {
     assertEquals(bucketCounts.get("senior"), Integer.valueOf(2));
   }
 
+  @Test(description = "Should handle all numeric type conversion combinations in convertToType")
+  public void testAllNumericTypeConversionCombinations() {
+    Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
+    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, Predicate> testBuckets = new HashMap<>();
+
+    // Test all numeric type conversion combinations with unique values
+    testBuckets.put("int_to_long", LongPredicate.equalTo(100L));
+    testBuckets.put("int_to_float", FloatPredicate.equalTo(200.0f, 0.1f));
+    testBuckets.put("int_to_double", DoublePredicate.equalTo(300.0, 0.1));
+    testBuckets.put("long_to_int", IntPredicate.equalTo(400));
+    testBuckets.put("string_to_int", IntPredicate.equalTo(500));
+    testBuckets.put("string_to_long", LongPredicate.equalTo(600L));
+    testBuckets.put("string_to_float", FloatPredicate.equalTo(700.0f, 0.1f));
+    testBuckets.put("string_to_double", DoublePredicate.equalTo(800.0, 0.1));
+
+    fieldBucketMap.put("testField", testBuckets);
+
+    // Test data with different types for conversion testing - each value matches only one predicate
+    ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
+    when(record1.get("testField")).thenReturn(100); // Integer -> Long
+    computeResults.put("key1", record1);
+
+    ComputeGenericRecord record2 = mock(ComputeGenericRecord.class);
+    when(record2.get("testField")).thenReturn(200); // Integer -> Float
+    computeResults.put("key2", record2);
+
+    ComputeGenericRecord record3 = mock(ComputeGenericRecord.class);
+    when(record3.get("testField")).thenReturn(300); // Integer -> Double
+    computeResults.put("key3", record3);
+
+    ComputeGenericRecord record4 = mock(ComputeGenericRecord.class);
+    when(record4.get("testField")).thenReturn(400L); // Long -> Integer
+    computeResults.put("key4", record4);
+
+    ComputeGenericRecord record5 = mock(ComputeGenericRecord.class);
+    when(record5.get("testField")).thenReturn("500"); // String -> Integer
+    computeResults.put("key5", record5);
+
+    ComputeGenericRecord record6 = mock(ComputeGenericRecord.class);
+    when(record6.get("testField")).thenReturn("600"); // String -> Long
+    computeResults.put("key6", record6);
+
+    ComputeGenericRecord record7 = mock(ComputeGenericRecord.class);
+    when(record7.get("testField")).thenReturn("700.0"); // String -> Float
+    computeResults.put("key7", record7);
+
+    ComputeGenericRecord record8 = mock(ComputeGenericRecord.class);
+    when(record8.get("testField")).thenReturn("800.0"); // String -> Double
+    computeResults.put("key8", record8);
+
+    AvroComputeAggregationResponse response =
+        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+
+    Map<String, Integer> bucketCounts = response.getBucketNameToCount("testField");
+
+    // Verify all type conversions work correctly - each bucket should have exactly 1 match
+    assertEquals(bucketCounts.get("int_to_long"), Integer.valueOf(1));
+    assertEquals(bucketCounts.get("int_to_float"), Integer.valueOf(1));
+    assertEquals(bucketCounts.get("int_to_double"), Integer.valueOf(1));
+    assertEquals(bucketCounts.get("long_to_int"), Integer.valueOf(1));
+    assertEquals(bucketCounts.get("string_to_int"), Integer.valueOf(1));
+    assertEquals(bucketCounts.get("string_to_long"), Integer.valueOf(1));
+    assertEquals(bucketCounts.get("string_to_float"), Integer.valueOf(1));
+    assertEquals(bucketCounts.get("string_to_double"), Integer.valueOf(1));
+  }
+
   private Map<String, ComputeGenericRecord> createSimpleTestData() {
     Map<String, ComputeGenericRecord> data = new HashMap<>();
 

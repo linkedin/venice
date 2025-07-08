@@ -85,7 +85,7 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
                   bucketName,
                   fieldName,
                   fieldSchema.getType(),
-                  getPredicateType(predicate)));
+                  predicate.getClass().getSimpleName()));
         }
       }
     }
@@ -97,14 +97,6 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
    */
   private boolean isPredicateTypeCompatible(Predicate<?> predicate, Schema schema) {
     return predicate.isCompatibleWithSchema(schema);
-  }
-
-  /**
-   * Gets a human-readable description of the predicate type.
-   * Uses the predicate's class name for simple and direct type identification.
-   */
-  private String getPredicateType(Predicate<?> predicate) {
-    return predicate.getClass().getSimpleName();
   }
 
   @Override

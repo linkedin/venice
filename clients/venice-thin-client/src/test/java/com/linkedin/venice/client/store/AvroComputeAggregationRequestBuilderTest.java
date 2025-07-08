@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -461,5 +462,46 @@ public class AvroComputeAggregationRequestBuilderTest {
     }
     String longFieldName = sb.toString();
     expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, longFieldName));
+  }
+
+  @Test(description = "Should reject predicate type mismatch with field schema type")
+  public void testPredicateTypeMismatch() {
+    Map<String, Predicate<String>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("test", Predicate.equalTo("test"));
+
+    // Test using StringPredicate with INT field (AGE_FIELD is int type)
+    VeniceClientException ex =
+        expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, AGE_FIELD));
+
+    assertTrue(ex.getMessage().contains("Predicate type mismatch"));
+    assertTrue(ex.getMessage().contains("age"));
+    assertTrue(ex.getMessage().contains("INT"));
+    assertTrue(ex.getMessage().contains("EqualsPredicate"));
+  }
+
+  @Test(description = "Should reject IntPredicate with String field")
+  public void testIntPredicateWithStringField() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
+
+    // Test using IntPredicate with String field (JOB_TYPE_FIELD is string type)
+    VeniceClientException ex =
+        expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, JOB_TYPE_FIELD));
+
+    assertTrue(ex.getMessage().contains("Predicate type mismatch"));
+    assertTrue(ex.getMessage().contains("jobType"));
+    assertTrue(ex.getMessage().contains("STRING"));
+    assertTrue(ex.getMessage().contains("IntLowerThanPredicate"));
+  }
+
+  @Test(description = "Should accept correct predicate type with matching field schema")
+  public void testCorrectPredicateTypeWithMatchingField() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
+    bucketPredicates.put("senior", IntPredicate.greaterOrEquals(30));
+
+    // This should work because AGE_FIELD is int type and we're using IntPredicate
+    builder.countGroupByBucket(bucketPredicates, AGE_FIELD);
+    verify(delegate).project(AGE_FIELD);
   }
 }
