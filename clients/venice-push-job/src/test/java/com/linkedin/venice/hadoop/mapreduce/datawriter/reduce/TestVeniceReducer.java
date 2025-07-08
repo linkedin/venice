@@ -1,16 +1,20 @@
 package com.linkedin.venice.hadoop.mapreduce.datawriter.reduce;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_VIEW_CONFIGS;
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME;
 import static com.linkedin.venice.hadoop.mapreduce.counter.MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME;
+import static com.linkedin.venice.hadoop.mapreduce.datawriter.reduce.VeniceReducer.MAP_REDUCE_JOB_ID_PROP;
 import static com.linkedin.venice.utils.Utils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DERIVED_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ENABLE_WRITE_COMPUTE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
@@ -46,6 +50,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.MaterializedView;
 import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
@@ -112,6 +117,24 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     jobConf.setInt(DERIVED_SCHEMA_ID_PROP, 2);
     jobConf.setBoolean(ENABLE_WRITE_COMPUTE, true);
     testReduceWithTooLargeValueAndChunkingDisabled(mockWriter, jobConf);
+  }
+
+  private VeniceProperties getTestProps() {
+    Properties props = new Properties();
+    props.put(MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
+    props.put(VALUE_SCHEMA_ID_PROP, 1);
+    props.put(KAFKA_BOOTSTRAP_SERVERS, "localhost:8090"); // Destination Kafka cluster
+    props.put(KAFKA_INPUT_BROKER_URL, "localhost:9092"); // Source Kafka cluster
+    return new VeniceProperties(props);
+  }
+
+  @Test
+  public void testWriteFactory() {
+    VeniceReducer reducer = new VeniceReducer();
+    reducer.configure(setupJobConf(100));
+    reducer.configureTask(getTestProps());
+    VeniceWriterFactory factory = reducer.getVeniceWriterFactory();
+    Assert.assertNotNull(factory);
   }
 
   private void testReduceWithTooLargeValueAndChunkingDisabled(AbstractVeniceWriter mockWriter, JobConf jobConf) {

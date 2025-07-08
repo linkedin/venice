@@ -279,6 +279,10 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     this.veniceWriterFactory = Lazy.of(() -> factory);
   }
 
+  public VeniceWriterFactory getVeniceWriterFactory() {
+    return veniceWriterFactory.get();
+  }
+
   protected DataWriterTaskTracker getDataWriterTaskTracker() {
     return dataWriterTaskTracker;
   }
