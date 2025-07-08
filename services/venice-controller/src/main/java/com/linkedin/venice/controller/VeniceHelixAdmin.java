@@ -732,7 +732,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         helixAdminClient);
 
     for (String clusterName: multiClusterConfigs.getClusters()) {
-      if (!multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()) {
+      if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()) {
         logCompactionStatsMap.putIfAbsent(clusterName, new LogCompactionStats(metricsRepository, clusterName));
       }
 
