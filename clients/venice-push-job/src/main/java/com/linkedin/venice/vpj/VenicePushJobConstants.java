@@ -285,6 +285,11 @@ public final class VenicePushJobConstants {
    */
   public static final String TARGETED_REGION_PUSH_ENABLED = "targeted.region.push.enabled";
 
+  /**
+   * Config to enable memtable based ingestion of hybrid store batch push. In this mode servers
+   * will not use SST table writer to ingest batch data for hybrid store stores. This will help in
+   * preventing log compaction of contol messages from speculative producers. 
+   */
   public static final String MEMTABLE_HYBRID_BATCH_WRITE_ENABLED = "memtable.hybrid.batch.write.enabled";
 
   /**
