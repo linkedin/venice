@@ -13,6 +13,7 @@ import org.testng.annotations.Test;
 public class LogContextTest {
   private static final String REGION_NAME = "us-west-1";
   private static final String COMPONENT_NAME = "router";
+  private static final String INSTANCE_ID = "instance_1235";
 
   @BeforeMethod
   public void setUp() {
@@ -26,12 +27,16 @@ public class LogContextTest {
 
   @Test
   public void testBuilderCreatesCorrectContext() {
-    LogContext context = LogContext.newBuilder().setRegionName(REGION_NAME).setComponentName(COMPONENT_NAME).build();
+    LogContext context = LogContext.newBuilder()
+        .setRegionName(REGION_NAME)
+        .setInstanceName(INSTANCE_ID)
+        .setComponentName(COMPONENT_NAME)
+        .build();
 
     assertNotNull(context);
     assertEquals(context.getRegionName(), REGION_NAME);
     assertEquals(context.getComponentName(), COMPONENT_NAME);
-    assertEquals(context.toString(), COMPONENT_NAME + "--" + REGION_NAME);
+    assertEquals(context.toString(), COMPONENT_NAME + ":" + REGION_NAME + ":" + INSTANCE_ID);
   }
 
   @Test

@@ -230,9 +230,10 @@ public class HelixVeniceClusterResources implements VeniceResource {
     }
 
     if (config.isParent() && config.isLogCompactionSchedulingEnabled()) {
-      LOGGER.info("Log compaction service is enabled for cluster: {}", clusterName);
+      LOGGER.info("[log-compaction] Log compaction service is enabled for cluster: {}", clusterName);
       this.logCompactionService = new LogCompactionService(admin, clusterName, config, metricsRepository);
     } else {
+      LOGGER.info("[log-compaction] Log compaction service is disabled for cluster: {}", clusterName);
       this.logCompactionService = null;
     }
 
