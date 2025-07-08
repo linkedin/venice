@@ -128,16 +128,15 @@ public class AvroComputeAggregationRequestBuilderTest {
 
   @Test(description = "Should execute with valid parameters")
   public void testValidExecution() {
-    CompletableFuture<Map<String, ComputeGenericRecord>> mockFuture =
-        CompletableFuture.completedFuture(new HashMap<>());
-    when(delegate.execute(any())).thenReturn(mockFuture);
+    CompletableFuture<Map<String, Object>> mockFuture = CompletableFuture.completedFuture(new HashMap<>());
+    when(storeClient.batchGet(any())).thenReturn(mockFuture);
 
     Set<String> keys = new HashSet<>(Arrays.asList("job1", "job2"));
 
     CompletableFuture<ComputeAggregationResponse> future = builder.countGroupByValue(5, JOB_TYPE_FIELD).execute(keys);
 
     assertNotNull(future);
-    verify(delegate).execute(keys);
+    verify(storeClient).batchGet(keys);
   }
 
   @Test(description = "Should reject null and empty keys")
@@ -273,9 +272,8 @@ public class AvroComputeAggregationRequestBuilderTest {
 
   @Test(description = "Should handle execution with single key")
   public void testExecutionWithSingleKey() {
-    CompletableFuture<Map<String, ComputeGenericRecord>> mockFuture =
-        CompletableFuture.completedFuture(new HashMap<>());
-    when(delegate.execute(any())).thenReturn(mockFuture);
+    CompletableFuture<Map<String, Object>> mockFuture = CompletableFuture.completedFuture(new HashMap<>());
+    when(storeClient.batchGet(any())).thenReturn(mockFuture);
 
     Set<String> keys = new HashSet<>(Arrays.asList("singleKey"));
     builder.countGroupByValue(5, JOB_TYPE_FIELD);
@@ -283,14 +281,13 @@ public class AvroComputeAggregationRequestBuilderTest {
     CompletableFuture<ComputeAggregationResponse> future = builder.execute(keys);
 
     assertNotNull(future);
-    verify(delegate).execute(keys);
+    verify(storeClient).batchGet(keys);
   }
 
   @Test(description = "Should handle execution with large key set")
   public void testExecutionWithLargeKeySet() {
-    CompletableFuture<Map<String, ComputeGenericRecord>> mockFuture =
-        CompletableFuture.completedFuture(new HashMap<>());
-    when(delegate.execute(any())).thenReturn(mockFuture);
+    CompletableFuture<Map<String, Object>> mockFuture = CompletableFuture.completedFuture(new HashMap<>());
+    when(storeClient.batchGet(any())).thenReturn(mockFuture);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < 1000; i++) {
@@ -302,7 +299,7 @@ public class AvroComputeAggregationRequestBuilderTest {
     CompletableFuture<ComputeAggregationResponse> future = builder.execute(keys);
 
     assertNotNull(future);
-    verify(delegate).execute(keys);
+    verify(storeClient).batchGet(keys);
   }
 
   @Test(description = "Should accept valid bucket parameters and project fields")

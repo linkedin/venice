@@ -8,6 +8,11 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.client.store.predicate.DoublePredicate;
+import com.linkedin.venice.client.store.predicate.FloatPredicate;
+import com.linkedin.venice.client.store.predicate.IntPredicate;
+import com.linkedin.venice.client.store.predicate.LongPredicate;
+import com.linkedin.venice.client.store.predicate.Predicate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -48,7 +53,7 @@ public class AvroComputeAggregationResponseTest {
       Consumer<Map<T, Integer>> assertionLogic) {
     Map<String, ComputeGenericRecord> computeResults = dataSupplier.get();
     AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
+        new AvroComputeAggregationResponse<String>(computeResults, fieldTopKMap);
     Map<T, Integer> result = response.getValueToCount(fieldName);
     assertionLogic.accept(result);
   }
@@ -214,7 +219,8 @@ public class AvroComputeAggregationResponseTest {
     computeResults = createSimpleTestData();
     fieldTopKMap.put(JOB_TYPE_FIELD, 10);
 
-    AvroComputeAggregationResponse response = new AvroComputeAggregationResponse<>(computeResults, fieldTopKMap);
+    AvroComputeAggregationResponse<String> response =
+        new AvroComputeAggregationResponse<String>(computeResults, fieldTopKMap);
 
     try {
       response.getBucketNameToCount(JOB_TYPE_FIELD);
@@ -234,7 +240,7 @@ public class AvroComputeAggregationResponseTest {
     when(record2.get(AGE_FIELD)).thenReturn("30");
     data.put("record2", record2);
     AvroComputeAggregationResponse<String> response =
-        new AvroComputeAggregationResponse<>(data, Collections.singletonMap(AGE_FIELD, 10));
+        new AvroComputeAggregationResponse<String>(data, Collections.singletonMap(AGE_FIELD, 10));
 
     Map<Object, Integer> valueToCount = response.getValueToCount(AGE_FIELD);
     Object firstKey = valueToCount.keySet().iterator().next();
@@ -246,16 +252,16 @@ public class AvroComputeAggregationResponseTest {
   @Test(description = "Should handle all IntPredicate methods correctly")
   public void testIntPredicateMethods() {
     Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, com.linkedin.venice.client.store.predicate.Predicate> ageBuckets = new HashMap<>();
+    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, Predicate> ageBuckets = new HashMap<>();
 
     // Test all IntPredicate methods
-    ageBuckets.put("equal_25", com.linkedin.venice.client.store.predicate.IntPredicate.equalTo(25));
-    ageBuckets.put("greater_30", com.linkedin.venice.client.store.predicate.IntPredicate.greaterThan(30));
-    ageBuckets.put("greater_equal_30", com.linkedin.venice.client.store.predicate.IntPredicate.greaterOrEquals(30));
-    ageBuckets.put("less_30", com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(30));
-    ageBuckets.put("less_equal_30", com.linkedin.venice.client.store.predicate.IntPredicate.lowerOrEquals(30));
-    ageBuckets.put("any_of", com.linkedin.venice.client.store.predicate.IntPredicate.anyOf(25, 35, 45));
+    ageBuckets.put("equal_25", IntPredicate.equalTo(25));
+    ageBuckets.put("greater_30", IntPredicate.greaterThan(30));
+    ageBuckets.put("greater_equal_30", IntPredicate.greaterOrEquals(30));
+    ageBuckets.put("less_30", IntPredicate.lowerThan(30));
+    ageBuckets.put("less_equal_30", IntPredicate.lowerOrEquals(30));
+    ageBuckets.put("any_of", IntPredicate.anyOf(25, 35, 45));
 
     fieldBucketMap.put(AGE_FIELD, ageBuckets);
 
@@ -280,8 +286,8 @@ public class AvroComputeAggregationResponseTest {
     when(record5.get(AGE_FIELD)).thenReturn(45);
     computeResults.put("key5", record5);
 
-    AvroComputeAggregationResponse response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+    AvroComputeAggregationResponse<String> response =
+        new AvroComputeAggregationResponse<String>(computeResults, new HashMap<>(), fieldBucketMap);
 
     Map<String, Integer> bucketCounts = response.getBucketNameToCount(AGE_FIELD);
 
@@ -296,18 +302,16 @@ public class AvroComputeAggregationResponseTest {
   @Test(description = "Should handle all LongPredicate methods correctly")
   public void testLongPredicateMethods() {
     Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, com.linkedin.venice.client.store.predicate.Predicate> salaryBuckets = new HashMap<>();
+    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, Predicate> salaryBuckets = new HashMap<>();
 
     // Test all LongPredicate methods
-    salaryBuckets.put("equal_50000", com.linkedin.venice.client.store.predicate.LongPredicate.equalTo(50000L));
-    salaryBuckets.put("greater_50000", com.linkedin.venice.client.store.predicate.LongPredicate.greaterThan(50000L));
-    salaryBuckets
-        .put("greater_equal_50000", com.linkedin.venice.client.store.predicate.LongPredicate.greaterOrEquals(50000L));
-    salaryBuckets.put("less_50000", com.linkedin.venice.client.store.predicate.LongPredicate.lowerThan(50000L));
-    salaryBuckets
-        .put("less_equal_50000", com.linkedin.venice.client.store.predicate.LongPredicate.lowerOrEquals(50000L));
-    salaryBuckets.put("any_of", com.linkedin.venice.client.store.predicate.LongPredicate.anyOf(40000L, 50000L, 60000L));
+    salaryBuckets.put("equal_50000", LongPredicate.equalTo(50000L));
+    salaryBuckets.put("greater_50000", LongPredicate.greaterThan(50000L));
+    salaryBuckets.put("greater_equal_50000", LongPredicate.greaterOrEquals(50000L));
+    salaryBuckets.put("less_50000", LongPredicate.lowerThan(50000L));
+    salaryBuckets.put("less_equal_50000", LongPredicate.lowerOrEquals(50000L));
+    salaryBuckets.put("any_of", LongPredicate.anyOf(40000L, 50000L, 60000L));
 
     fieldBucketMap.put(SALARY_FIELD, salaryBuckets);
 
@@ -328,8 +332,8 @@ public class AvroComputeAggregationResponseTest {
     when(record4.get(SALARY_FIELD)).thenReturn(70000L);
     computeResults.put("key4", record4);
 
-    AvroComputeAggregationResponse response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+    AvroComputeAggregationResponse<String> response =
+        new AvroComputeAggregationResponse<String>(computeResults, new HashMap<>(), fieldBucketMap);
 
     Map<String, Integer> bucketCounts = response.getBucketNameToCount(SALARY_FIELD);
 
@@ -344,20 +348,16 @@ public class AvroComputeAggregationResponseTest {
   @Test(description = "Should handle all FloatPredicate methods correctly")
   public void testFloatPredicateMethods() {
     Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, com.linkedin.venice.client.store.predicate.Predicate> salaryBuckets = new HashMap<>();
+    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, Predicate> salaryBuckets = new HashMap<>();
 
     // Test all FloatPredicate methods
-    salaryBuckets.put("equal_10000", com.linkedin.venice.client.store.predicate.FloatPredicate.equalTo(10000.0f, 0.1f));
-    salaryBuckets.put("greater_10000", com.linkedin.venice.client.store.predicate.FloatPredicate.greaterThan(10000.0f));
-    salaryBuckets.put(
-        "greater_equal_10000",
-        com.linkedin.venice.client.store.predicate.FloatPredicate.greaterOrEquals(10000.0f));
-    salaryBuckets.put("less_10000", com.linkedin.venice.client.store.predicate.FloatPredicate.lowerThan(10000.0f));
-    salaryBuckets
-        .put("less_equal_10000", com.linkedin.venice.client.store.predicate.FloatPredicate.lowerOrEquals(10000.0f));
-    salaryBuckets
-        .put("any_of", com.linkedin.venice.client.store.predicate.FloatPredicate.anyOf(5000.0f, 10000.0f, 15000.0f));
+    salaryBuckets.put("equal_10000", FloatPredicate.equalTo(10000.0f, 0.1f));
+    salaryBuckets.put("greater_10000", FloatPredicate.greaterThan(10000.0f));
+    salaryBuckets.put("greater_equal_10000", FloatPredicate.greaterOrEquals(10000.0f));
+    salaryBuckets.put("less_10000", FloatPredicate.lowerThan(10000.0f));
+    salaryBuckets.put("less_equal_10000", FloatPredicate.lowerOrEquals(10000.0f));
+    salaryBuckets.put("any_of", FloatPredicate.anyOf(5000.0f, 10000.0f, 15000.0f));
 
     fieldBucketMap.put(SALARY_FIELD, salaryBuckets);
 
@@ -378,8 +378,8 @@ public class AvroComputeAggregationResponseTest {
     when(record4.get(SALARY_FIELD)).thenReturn(20000.0f);
     computeResults.put("key4", record4);
 
-    AvroComputeAggregationResponse response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+    AvroComputeAggregationResponse<String> response =
+        new AvroComputeAggregationResponse<String>(computeResults, new HashMap<>(), fieldBucketMap);
 
     Map<String, Integer> bucketCounts = response.getBucketNameToCount(SALARY_FIELD);
 
@@ -394,20 +394,16 @@ public class AvroComputeAggregationResponseTest {
   @Test(description = "Should handle all DoublePredicate methods correctly")
   public void testDoublePredicateMethods() {
     Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, com.linkedin.venice.client.store.predicate.Predicate> salaryBuckets = new HashMap<>();
+    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, Predicate> salaryBuckets = new HashMap<>();
 
     // Test all DoublePredicate methods
-    salaryBuckets.put("equal_10000", com.linkedin.venice.client.store.predicate.DoublePredicate.equalTo(10000.0, 0.1));
-    salaryBuckets.put("greater_10000", com.linkedin.venice.client.store.predicate.DoublePredicate.greaterThan(10000.0));
-    salaryBuckets.put(
-        "greater_equal_10000",
-        com.linkedin.venice.client.store.predicate.DoublePredicate.greaterOrEquals(10000.0));
-    salaryBuckets.put("less_10000", com.linkedin.venice.client.store.predicate.DoublePredicate.lowerThan(10000.0));
-    salaryBuckets
-        .put("less_equal_10000", com.linkedin.venice.client.store.predicate.DoublePredicate.lowerOrEquals(10000.0));
-    salaryBuckets
-        .put("any_of", com.linkedin.venice.client.store.predicate.DoublePredicate.anyOf(5000.0, 10000.0, 15000.0));
+    salaryBuckets.put("equal_10000", DoublePredicate.equalTo(10000.0, 0.1));
+    salaryBuckets.put("greater_10000", DoublePredicate.greaterThan(10000.0));
+    salaryBuckets.put("greater_equal_10000", DoublePredicate.greaterOrEquals(10000.0));
+    salaryBuckets.put("less_10000", DoublePredicate.lowerThan(10000.0));
+    salaryBuckets.put("less_equal_10000", DoublePredicate.lowerOrEquals(10000.0));
+    salaryBuckets.put("any_of", DoublePredicate.anyOf(5000.0, 10000.0, 15000.0));
 
     fieldBucketMap.put(SALARY_FIELD, salaryBuckets);
 
@@ -428,8 +424,8 @@ public class AvroComputeAggregationResponseTest {
     when(record4.get(SALARY_FIELD)).thenReturn(20000.0);
     computeResults.put("key4", record4);
 
-    AvroComputeAggregationResponse response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+    AvroComputeAggregationResponse<String> response =
+        new AvroComputeAggregationResponse<String>(computeResults, new HashMap<>(), fieldBucketMap);
 
     Map<String, Integer> bucketCounts = response.getBucketNameToCount(SALARY_FIELD);
 
@@ -444,13 +440,12 @@ public class AvroComputeAggregationResponseTest {
   @Test(description = "Should handle String predicate methods correctly")
   public void testStringPredicateMethods() {
     Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, com.linkedin.venice.client.store.predicate.Predicate> jobTypeBuckets = new HashMap<>();
+    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, Predicate> jobTypeBuckets = new HashMap<>();
 
     // Test String predicate methods
-    jobTypeBuckets.put("equal_engineer", com.linkedin.venice.client.store.predicate.Predicate.equalTo("engineer"));
-    jobTypeBuckets
-        .put("any_of", com.linkedin.venice.client.store.predicate.Predicate.anyOf("engineer", "manager", "designer"));
+    jobTypeBuckets.put("equal_engineer", Predicate.equalTo("engineer"));
+    jobTypeBuckets.put("any_of", Predicate.anyOf("engineer", "manager", "designer"));
 
     fieldBucketMap.put(JOB_TYPE_FIELD, jobTypeBuckets);
 
@@ -471,8 +466,8 @@ public class AvroComputeAggregationResponseTest {
     when(record4.get(JOB_TYPE_FIELD)).thenReturn("analyst");
     computeResults.put("key4", record4);
 
-    AvroComputeAggregationResponse response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+    AvroComputeAggregationResponse<String> response =
+        new AvroComputeAggregationResponse<String>(computeResults, new HashMap<>(), fieldBucketMap);
 
     Map<String, Integer> bucketCounts = response.getBucketNameToCount(JOB_TYPE_FIELD);
 
@@ -483,27 +478,16 @@ public class AvroComputeAggregationResponseTest {
   @Test(description = "Should handle complex predicate combinations")
   public void testComplexPredicateCombinations() {
     Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, com.linkedin.venice.client.store.predicate.Predicate> ageBuckets = new HashMap<>();
+    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, Predicate> ageBuckets = new HashMap<>();
 
     // Test complex combinations
-    ageBuckets.put(
-        "and_combination",
-        com.linkedin.venice.client.store.predicate.Predicate.and(
-            com.linkedin.venice.client.store.predicate.IntPredicate.greaterThan(20),
-            com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(50)));
-    ageBuckets.put(
-        "or_combination",
-        com.linkedin.venice.client.store.predicate.Predicate.or(
-            com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(30),
-            com.linkedin.venice.client.store.predicate.IntPredicate.greaterThan(50)));
+    ageBuckets.put("and_combination", Predicate.and(IntPredicate.greaterThan(20), IntPredicate.lowerThan(50)));
+    ageBuckets.put("or_combination", Predicate.or(IntPredicate.lowerThan(30), IntPredicate.greaterThan(50)));
     ageBuckets.put(
         "nested_combination",
-        com.linkedin.venice.client.store.predicate.Predicate.and(
-            com.linkedin.venice.client.store.predicate.IntPredicate.greaterThan(20),
-            com.linkedin.venice.client.store.predicate.Predicate.or(
-                com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(30),
-                com.linkedin.venice.client.store.predicate.IntPredicate.greaterThan(50))));
+        Predicate
+            .and(IntPredicate.greaterThan(20), Predicate.or(IntPredicate.lowerThan(30), IntPredicate.greaterThan(50))));
 
     fieldBucketMap.put(AGE_FIELD, ageBuckets);
 
@@ -528,8 +512,8 @@ public class AvroComputeAggregationResponseTest {
     when(record5.get(AGE_FIELD)).thenReturn(60);
     computeResults.put("key5", record5);
 
-    AvroComputeAggregationResponse response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+    AvroComputeAggregationResponse<String> response =
+        new AvroComputeAggregationResponse<String>(computeResults, new HashMap<>(), fieldBucketMap);
 
     Map<String, Integer> bucketCounts = response.getBucketNameToCount(AGE_FIELD);
 
@@ -541,14 +525,14 @@ public class AvroComputeAggregationResponseTest {
   @Test(description = "Should handle edge cases and boundary conditions")
   public void testEdgeCasesAndBoundaryConditions() {
     Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, com.linkedin.venice.client.store.predicate.Predicate> ageBuckets = new HashMap<>();
+    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, Predicate> ageBuckets = new HashMap<>();
 
     // Test edge cases
-    ageBuckets.put("zero", com.linkedin.venice.client.store.predicate.IntPredicate.equalTo(0));
-    ageBuckets.put("negative", com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(0));
-    ageBuckets.put("max_value", com.linkedin.venice.client.store.predicate.IntPredicate.equalTo(Integer.MAX_VALUE));
-    ageBuckets.put("min_value", com.linkedin.venice.client.store.predicate.IntPredicate.equalTo(Integer.MIN_VALUE));
+    ageBuckets.put("zero", IntPredicate.equalTo(0));
+    ageBuckets.put("negative", IntPredicate.lowerThan(0));
+    ageBuckets.put("max_value", IntPredicate.equalTo(Integer.MAX_VALUE));
+    ageBuckets.put("min_value", IntPredicate.equalTo(Integer.MIN_VALUE));
 
     fieldBucketMap.put(AGE_FIELD, ageBuckets);
 
@@ -569,8 +553,8 @@ public class AvroComputeAggregationResponseTest {
     when(record4.get(AGE_FIELD)).thenReturn(Integer.MIN_VALUE);
     computeResults.put("key4", record4);
 
-    AvroComputeAggregationResponse response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+    AvroComputeAggregationResponse<String> response =
+        new AvroComputeAggregationResponse<String>(computeResults, new HashMap<>(), fieldBucketMap);
 
     Map<String, Integer> bucketCounts = response.getBucketNameToCount(AGE_FIELD);
 
@@ -583,11 +567,11 @@ public class AvroComputeAggregationResponseTest {
   @Test(description = "Should handle null values and empty results")
   public void testNullValuesAndEmptyResults() {
     Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, com.linkedin.venice.client.store.predicate.Predicate> ageBuckets = new HashMap<>();
+    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, Predicate> ageBuckets = new HashMap<>();
 
-    ageBuckets.put("young", com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(30));
-    ageBuckets.put("senior", com.linkedin.venice.client.store.predicate.IntPredicate.greaterOrEquals(30));
+    ageBuckets.put("young", IntPredicate.lowerThan(30));
+    ageBuckets.put("senior", IntPredicate.greaterOrEquals(30));
 
     fieldBucketMap.put(AGE_FIELD, ageBuckets);
 
@@ -600,8 +584,8 @@ public class AvroComputeAggregationResponseTest {
     when(record2.get(AGE_FIELD)).thenReturn(25);
     computeResults.put("key2", record2);
 
-    AvroComputeAggregationResponse response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+    AvroComputeAggregationResponse<String> response =
+        new AvroComputeAggregationResponse<String>(computeResults, new HashMap<>(), fieldBucketMap);
 
     Map<String, Integer> bucketCounts = response.getBucketNameToCount(AGE_FIELD);
 
@@ -609,8 +593,8 @@ public class AvroComputeAggregationResponseTest {
     assertEquals(bucketCounts.get("senior"), Integer.valueOf(0));
 
     // Test empty result set
-    AvroComputeAggregationResponse emptyResponse =
-        new AvroComputeAggregationResponse<>(new HashMap<>(), new HashMap<>(), fieldBucketMap);
+    AvroComputeAggregationResponse<String> emptyResponse =
+        new AvroComputeAggregationResponse<String>(new HashMap<>(), new HashMap<>(), fieldBucketMap);
 
     Map<String, Integer> emptyBucketCounts = emptyResponse.getBucketNameToCount(AGE_FIELD);
 
@@ -621,15 +605,15 @@ public class AvroComputeAggregationResponseTest {
   @Test(description = "Should handle field not in bucket map")
   public void testFieldNotInBucketMap() {
     Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
     // Don't add any buckets for AGE_FIELD
 
     ComputeGenericRecord record1 = mock(ComputeGenericRecord.class);
     when(record1.get(AGE_FIELD)).thenReturn(25);
     computeResults.put("key1", record1);
 
-    AvroComputeAggregationResponse response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+    AvroComputeAggregationResponse<String> response =
+        new AvroComputeAggregationResponse<String>(computeResults, new HashMap<>(), fieldBucketMap);
 
     expectThrows(IllegalArgumentException.class, () -> response.getBucketNameToCount(AGE_FIELD));
   }
@@ -637,10 +621,10 @@ public class AvroComputeAggregationResponseTest {
   @Test(description = "Should handle mixed data types in bucket counting")
   public void testMixedDataTypesInBucketCounting() {
     Map<String, ComputeGenericRecord> computeResults = new HashMap<>();
-    Map<String, Map<String, com.linkedin.venice.client.store.predicate.Predicate>> fieldBucketMap = new HashMap<>();
-    Map<String, com.linkedin.venice.client.store.predicate.Predicate> ageBuckets = new HashMap<>();
-    ageBuckets.put("young", com.linkedin.venice.client.store.predicate.IntPredicate.lowerThan(30));
-    ageBuckets.put("senior", com.linkedin.venice.client.store.predicate.IntPredicate.greaterOrEquals(30));
+    Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
+    Map<String, Predicate> ageBuckets = new HashMap<>();
+    ageBuckets.put("young", IntPredicate.lowerThan(30));
+    ageBuckets.put("senior", IntPredicate.greaterOrEquals(30));
     fieldBucketMap.put(AGE_FIELD, ageBuckets);
 
     // Test with different data types
@@ -656,8 +640,8 @@ public class AvroComputeAggregationResponseTest {
     when(record3.get(AGE_FIELD)).thenReturn("40"); // String
     computeResults.put("key3", record3);
 
-    AvroComputeAggregationResponse response =
-        new AvroComputeAggregationResponse<>(computeResults, new HashMap<>(), fieldBucketMap);
+    AvroComputeAggregationResponse<String> response =
+        new AvroComputeAggregationResponse<String>(computeResults, new HashMap<>(), fieldBucketMap);
 
     Map<String, Integer> bucketCounts = response.getBucketNameToCount(AGE_FIELD);
 
