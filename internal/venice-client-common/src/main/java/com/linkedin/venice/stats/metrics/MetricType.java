@@ -30,6 +30,7 @@ public enum MetricType {
 
   /**
    * For Gauge: Emits the absolute value of the metric value.
+   * refer {@link io.opentelemetry.api.metrics.DoubleGauge} for using DoubleGauge
    */
   GAUGE;
 }
