@@ -6,6 +6,7 @@ import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Total;
 
 
+@Deprecated
 public class HelixMessageChannelStats extends AbstractVeniceStats {
   private static final String NAME_SUFFIX = "-helix_message_channel";
   /**

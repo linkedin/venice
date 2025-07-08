@@ -2,7 +2,6 @@ package com.linkedin.venice.fastclient.grpc;
 
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.GRPC_SERVER_WORKER_THREAD_COUNT;
-import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 
@@ -65,7 +64,6 @@ public class VeniceGrpcEndToEndTest {
     Utils.thisIsLocalhost();
 
     Properties props = new Properties();
-    props.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "false");
     props.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "true");
     props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
     props.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");

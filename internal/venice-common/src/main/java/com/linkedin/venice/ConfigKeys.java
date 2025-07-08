@@ -1653,11 +1653,6 @@ public class ConfigKeys {
   public static final String CONTROLLER_EARLY_DELETE_BACKUP_ENABLED = "controller.early.delete.backup.enabled";
 
   /**
-   * Flag to indicate which push monitor controller will pick up for an upcoming push
-   */
-  public static final String PUSH_MONITOR_TYPE = "push.monitor.type";
-
-  /**
    * Flag to enable the participant message store setup and write operations to the store.
    */
   public static final String PARTICIPANT_MESSAGE_STORE_ENABLED = "participant.message.store.enabled";
@@ -1679,6 +1674,7 @@ public class ConfigKeys {
    * Flag to enable the controller to send kill push job helix messages to the storage node upon consuming kill push job
    * admin messages.
    */
+  @Deprecated
   public static final String ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED = "admin.helix.messaging.channel.enabled";
 
   /**

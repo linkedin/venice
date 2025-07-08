@@ -259,6 +259,10 @@ public class RocksDBStoragePartitionTest {
     removeDir(storeDir);
   }
 
+  /**
+   * This test takes way too long... both per-permutation and because there are so many permutations.
+   * TODO: Speed it up, or else refactor the permutations into several subclasses so they can run concurrently.
+   */
   @Test(dataProvider = "Six-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testIngestion(
       boolean sorted,
@@ -277,6 +281,7 @@ public class RocksDBStoragePartitionTest {
     options.setCreateIfMissing(true);
 
     int padding = 100;
+    // TODO: decide if we really need this many records? this might be the cause of the slowness...
     int numberOfRecords = 101000;
     Map<String, String> inputRecords = generateInput(numberOfRecords, sorted, padding);
     Properties extraProps = new Properties();
