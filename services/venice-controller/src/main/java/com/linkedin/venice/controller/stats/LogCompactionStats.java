@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.stats;
 
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 
+import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
@@ -94,47 +95,52 @@ public class LogCompactionStats extends AbstractVeniceStats {
       String storeName,
       RepushStoreTriggerSource triggerSource,
       VeniceResponseStatusCategory executionStatus) {
-    repushCallCountMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
-      {
-        put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-        put(VeniceMetricsDimensions.REPUSH_TRIGGER_SOURCE, triggerSource.getDimensionValue());
-        put(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY, executionStatus.getDimensionValue());
-      }
-    });
+    repushCallCountMetric.record(
+        1,
+        ImmutableMap.<VeniceMetricsDimensions, String>builder()
+            .putAll(baseDimensionsMap)
+            .put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
+            .put(VeniceMetricsDimensions.REPUSH_TRIGGER_SOURCE, triggerSource.getDimensionValue())
+            .put(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY, executionStatus.getDimensionValue())
+            .build());
   }
 
   public void setCompactionEligible(String storeName) {
-    compactionEligibleMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
-      {
-        put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-      }
-    });
+    compactionEligibleMetric.record(
+        1,
+        ImmutableMap.<VeniceMetricsDimensions, String>builder()
+            .putAll(baseDimensionsMap)
+            .put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
+            .build());
   }
 
   public void setCompactionComplete(String storeName) {
-    compactionEligibleMetric.record(0, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
-      {
-        put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-      }
-    });
+    compactionEligibleMetric.record(
+        0,
+        ImmutableMap.<VeniceMetricsDimensions, String>builder()
+            .putAll(baseDimensionsMap)
+            .put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
+            .build());
   }
 
   public void recordStoreNominatedForCompactionCount(String storeName) {
-    storeNominatedForCompactionCountMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
-      {
-        put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-      }
-    });
+    storeNominatedForCompactionCountMetric.record(
+        1,
+        ImmutableMap.<VeniceMetricsDimensions, String>builder()
+            .putAll(baseDimensionsMap)
+            .put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
+            .build());
   }
 
   public void recordStoreCompactionTriggerStatus(
       String storeName,
       VeniceResponseStatusCategory triggerAttemptResponse) {
-    storeCompactionTriggerStatusMetric.record(1, new HashMap<VeniceMetricsDimensions, String>(baseDimensionsMap) {
-      {
-        put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName);
-      }
-    });
+    storeCompactionTriggerStatusMetric.record(
+        1,
+        ImmutableMap.<VeniceMetricsDimensions, String>builder()
+            .putAll(baseDimensionsMap)
+            .put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
+            .build());
   }
 
   enum ControllerTehutiMetricNameEnum implements TehutiMetricNameEnum {

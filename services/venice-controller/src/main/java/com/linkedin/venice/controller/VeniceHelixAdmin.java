@@ -787,7 +787,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS(),
             logCompactionStatsMap);
       } catch (Exception e) {
-        LOGGER.error("[log-compaction] Failed to enable " + LogCompactionService.class.getSimpleName(), e);
+        LOGGER.error(
+            "[log-compaction] Failed to enable repush for log compaction " + CompactionManager.class.getSimpleName(),
+            e);
         throw new VeniceException(e);
       }
     }
