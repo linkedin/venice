@@ -361,6 +361,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final long CONTROLLER_CLUSTER_RESOURCE_EV_CHECK_DELAY_MS = 500;
   private static final long HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS = 500;
   private static final long HELIX_RESOURCE_ASSIGNMENT_LOG_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1);
+  private static final long HELIX_MANAGER_DISCONNECT_TIMEOUT_MS = 1 * Time.MS_PER_MINUTE;
 
   protected static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
   protected static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
@@ -7599,20 +7600,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
-    StatusMessageChannel messageChannel = resources.getMessageChannel();
-    // As we should already have retry outside of this function call, so we do not need to retry again inside.
-    int retryCount = 1;
-    // Broadcast kill message to all of storage nodes assigned to given resource. Helix will help us to only send
-    // message to the live instances.
-    // The alternative way here is that get the storage nodes in BOOTSTRAP state of given resource, then send the
-    // kill message node by node. Considering the simplicity, broadcast is a better.
-    // In prospective of performance, each time helix sending a message needs to read the whole LIVE_INSTANCE and
-    // EXTERNAL_VIEW from ZK, so sending message nodes by nodes would generate lots of useless read requests. Of course
-    // broadcast would generate useless write requests to ZK(N-M useless messages, N=number of nodes assigned to
-    // resource,
-    // M=number of nodes have completed the ingestion or have not started). But considering the number of nodes in
-    // our cluster is not too big, so it's not a big deal here.
     if (multiClusterConfigs.getControllerConfig(clusterName).isAdminHelixMessagingChannelEnabled()) {
+      StatusMessageChannel messageChannel = resources.getMessageChannel();
+      // As we should already have retry outside of this function call, so we do not need to retry again inside.
+      int retryCount = 1;
+      // Broadcast kill message to all of storage nodes assigned to given resource. Helix will help us to only send
+      // message to the live instances.
+      // The alternative way here is that get the storage nodes in BOOTSTRAP state of given resource, then send the
+      // kill message node by node. Considering the simplicity, broadcast is a better.
+      // In prospective of performance, each time helix sending a message needs to read the whole LIVE_INSTANCE and
+      // EXTERNAL_VIEW from ZK, so sending message nodes by nodes would generate lots of useless read requests. Of
+      // course
+      // broadcast would generate useless write requests to ZK(N-M useless messages, N=number of nodes assigned to
+      // resource,
+      // M=number of nodes have completed the ingestion or have not started). But considering the number of nodes in
+      // our cluster is not too big, so it's not a big deal here.
       messageChannel.sendToStorageNodes(clusterName, new KillOfflinePushMessage(kafkaTopic), kafkaTopic, retryCount);
     }
     if (multiClusterConfigs.getControllerConfig(clusterName).isParticipantMessageStoreEnabled()
@@ -8074,23 +8076,43 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void close() {
-    Utils.closeQuietlyWithErrorLogged(getPushStatusStoreReader());
-    pushStatusStoreWriter.ifPresent(PushStatusStoreWriter::close);
+    long closeStartTime = System.currentTimeMillis();
+    ExecutorService ex = Executors.newSingleThreadExecutor();
+    try {
+      // This disconnect sometimes hangs... hence why we treat it this way...
+      Future helixManagerDisconnectFuture = ex.submit(this.helixManager::disconnect);
 
-    helixManager.disconnect();
-    Utils.closeQuietlyWithErrorLogged(zkSharedSystemStoreRepository);
-    Utils.closeQuietlyWithErrorLogged(zkSharedSchemaRepository);
-    zkClient.close();
-    jobTrackingVeniceWriterMap.forEach((k, v) -> Utils.closeQuietlyWithErrorLogged(v));
-    jobTrackingVeniceWriterMap.clear();
-    dataRecoveryManager.close();
-    participantStoreClientsManager.close();
-    Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
-    Utils.closeQuietlyWithErrorLogged(pushJobDetailsStoreClient);
-    Utils.closeQuietlyWithErrorLogged(livenessHeartbeatStoreClient);
-    clusterControllerClientPerColoMap.forEach(
-        (clusterName, controllerClientMap) -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
-    D2ClientUtils.shutdownClient(d2Client);
+      // Close everything else, which usually works fine...
+      Utils.closeQuietlyWithErrorLogged(getPushStatusStoreReader());
+      this.pushStatusStoreWriter.ifPresent(Utils::closeQuietlyWithErrorLogged);
+      Utils.closeQuietlyWithErrorLogged(this.zkSharedSystemStoreRepository);
+      Utils.closeQuietlyWithErrorLogged(this.zkSharedSchemaRepository);
+      try {
+        zkClient.close();
+      } catch (Exception e) {
+        LOGGER.error("Failed to close zkClient. Swallowing and moving on.", e);
+      }
+      this.jobTrackingVeniceWriterMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
+      this.jobTrackingVeniceWriterMap.clear();
+      Utils.closeQuietlyWithErrorLogged(this.dataRecoveryManager);
+      Utils.closeQuietlyWithErrorLogged(this.participantStoreClientsManager);
+      Utils.closeQuietlyWithErrorLogged(this.topicManagerRepository);
+      Utils.closeQuietlyWithErrorLogged(this.pushJobDetailsStoreClient);
+      Utils.closeQuietlyWithErrorLogged(this.livenessHeartbeatStoreClient);
+      this.clusterControllerClientPerColoMap.values()
+          .forEach(ccMap -> ccMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
+      D2ClientUtils.shutdownClient(this.d2Client);
+
+      long elapsedTime = System.currentTimeMillis() - closeStartTime;
+      long remainingTime = Math.max(1, HELIX_MANAGER_DISCONNECT_TIMEOUT_MS - elapsedTime);
+      helixManagerDisconnectFuture.get(remainingTime, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException | ExecutionException | TimeoutException e) {
+      LOGGER.error("Timed out waiting for helixManagerDisconnectFuture. Swallowing and moving on.", e);
+    } finally {
+      ex.shutdownNow();
+      long elapsedTime = System.currentTimeMillis() - closeStartTime;
+      LOGGER.info("{} took {} ms to close.", VeniceHelixAdmin.class.getSimpleName(), elapsedTime);
+    }
   }
 
   /**
