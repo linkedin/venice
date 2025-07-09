@@ -24,7 +24,7 @@ echo "=== Data Source ==="
 echo "We're using an EI test store ($STORE_NAME) populated with employee data"
 echo "using the Venice Producer client. The data includes:"
 echo "- firstName: Employee first names"
-echo "- lastName: Employee last names" 
+echo "- lastName: Employee last names"
 echo "- age: Employee ages (for bucket analysis)"
 echo
 
@@ -108,8 +108,35 @@ echo "   - 36-40: Senior level (36 <= age < 40)"
 echo "   - 41-45: Experienced (41 <= age < 45)"
 echo
 
-echo "4.2. Executing countByBucket query:"
-./query.sh $FABRIC $STORE_NAME "$KEYS" false countByBucket age "20-25,26-30,31-35,36-40,41-45" | grep "age-bucket-counts="
+echo "4.2. Age Distribution Results:"
+BUCKET_RESULTS=$(./query.sh $FABRIC $STORE_NAME "$KEYS" false countByBucket age "20-25,26-30,31-35,36-40,41-45" | grep "age-bucket-counts=" | sed 's/.*age-bucket-counts=//')
+
+BUCKET_RESULTS=$(echo "$BUCKET_RESULTS" | sed 's/^{//' | sed 's/}$//')
+
+TEMP_FILE=$(mktemp)
+
+echo "$BUCKET_RESULTS" | tr ',' '\n' | while IFS='=' read -r bucket count; do
+    bucket=$(echo "$bucket" | tr -d ' ')
+    count=$(echo "$count" | tr -d ' ')
+
+    case $bucket in
+        "20-25") echo "Young employees: $count" >> "$TEMP_FILE" ;;
+        "26-30") echo "Early career: $count" >> "$TEMP_FILE" ;;
+        "31-35") echo "Mid career: $count" >> "$TEMP_FILE" ;;
+        "36-40") echo "Senior level: $count" >> "$TEMP_FILE" ;;
+        "41-45") echo "Experienced: $count" >> "$TEMP_FILE" ;;
+        *) echo "$bucket: $count" >> "$TEMP_FILE" ;;
+    esac
+done
+
+for category in "Young employees" "Early career" "Mid career" "Senior level" "Experienced"; do
+    if grep -q "^$category:" "$TEMP_FILE"; then
+        count=$(grep "^$category:" "$TEMP_FILE" | cut -d':' -f2 | tr -d ' ')
+        echo "   $category: $count"
+    fi
+done
+
+rm "$TEMP_FILE"
 echo
 
 echo "=== Demo Summary ==="
@@ -132,4 +159,4 @@ echo "📋 Merge Status: ⏳ Pending review approval"
 echo
 echo "Target: Wednesday Standup presentation"
 echo
-echo "Demo completed successfully! 🚀" 
+echo "Demo completed successfully! 🚀"

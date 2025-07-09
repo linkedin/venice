@@ -122,8 +122,6 @@ public class QueryTool {
     } else {
       throw new VeniceException("Unknown facet counting mode: " + facetCountingMode);
     }
-
-    // 确保程序正确退出
     System.exit(0);
   }
 
