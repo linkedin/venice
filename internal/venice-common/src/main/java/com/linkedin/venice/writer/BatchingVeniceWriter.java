@@ -8,6 +8,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
@@ -183,6 +184,10 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       if (getBufferRecordList().isEmpty()) {
         return;
       }
+      // A simple trick to make sure each time batch produce timestamp is different from previous one.
+      if (System.currentTimeMillis() == lastBatchProduceMs) {
+        Utils.sleep(1);
+      }
       for (ProducerBufferRecord<V, U> record: getBufferRecordList()) {
         if (record.shouldSkipProduce()) {
           ProducerBufferRecord<V, U> latestRecord =
@@ -251,17 +256,12 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       bufferSizeInBytes += record.getHeapSize();
       getBufferRecordList().add(record);
       ProducerBufferRecord<V, U> prevRecord = getBufferRecordIndex().put(ByteBuffer.wrap(serializedKey), record);
-      result = null;
       if (prevRecord != null) {
         prevRecord.setSkipProduce(true);
+        // Try to reuse the same produce future.
         result = prevRecord.getProduceResultFuture();
-      }
-      // Try to reuse the same produce future.
-      if (result == null) {
+      } else {
         result = new CompletableFuture<>();
-        if (prevRecord != null) {
-          prevRecord.setProduceResultFuture(result);
-        }
       }
       record.setProduceResultFuture(result);
 
