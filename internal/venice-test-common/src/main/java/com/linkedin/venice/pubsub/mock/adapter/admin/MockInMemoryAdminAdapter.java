@@ -1,4 +1,4 @@
-package com.linkedin.venice.pubsub.mock;
+package com.linkedin.venice.pubsub.mock.adapter.admin;
 
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 
@@ -13,6 +13,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubBroker;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.time.Duration;

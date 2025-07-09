@@ -68,7 +68,7 @@ public class MockInMemoryProducerAdapter implements PubSubProducerAdapter {
 
   @Override
   public String getBrokerAddress() {
-    return broker.getKafkaBootstrapServer();
+    return broker.getPubSubBrokerAddress();
   }
 
   public static InMemoryPubSubPosition getPosition(Future<PubSubProduceResult> produceResultFuture)

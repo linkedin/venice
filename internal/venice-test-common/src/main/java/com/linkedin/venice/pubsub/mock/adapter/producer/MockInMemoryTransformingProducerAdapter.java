@@ -17,11 +17,13 @@ import java.util.concurrent.CompletableFuture;
  *
  * This can be used in unit tests to inject corrupt data.
  */
-public class TransformingProducerAdapter implements PubSubProducerAdapter {
+public class MockInMemoryTransformingProducerAdapter implements PubSubProducerAdapter {
   private final PubSubProducerAdapter baseProducer;
   private final SendMessageParametersTransformer transformer;
 
-  public TransformingProducerAdapter(PubSubProducerAdapter baseProducer, SendMessageParametersTransformer transformer) {
+  public MockInMemoryTransformingProducerAdapter(
+      PubSubProducerAdapter baseProducer,
+      SendMessageParametersTransformer transformer) {
     this.baseProducer = baseProducer;
     this.transformer = transformer;
   }

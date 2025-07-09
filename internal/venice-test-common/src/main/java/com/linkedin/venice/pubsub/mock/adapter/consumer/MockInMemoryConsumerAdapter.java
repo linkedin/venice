@@ -10,7 +10,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubBroker;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
-import com.linkedin.venice.pubsub.mock.MockInMemoryAdminAdapter;
+import com.linkedin.venice.pubsub.mock.adapter.admin.MockInMemoryAdminAdapter;
 import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.PollStrategy;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Duration;

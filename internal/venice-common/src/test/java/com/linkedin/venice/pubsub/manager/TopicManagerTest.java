@@ -50,7 +50,7 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.mock.InMemoryPubSubBroker;
-import com.linkedin.venice.pubsub.mock.MockInMemoryAdminAdapter;
+import com.linkedin.venice.pubsub.mock.adapter.admin.MockInMemoryAdminAdapter;
 import com.linkedin.venice.pubsub.mock.adapter.consumer.MockInMemoryConsumerAdapter;
 import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter;
@@ -119,7 +119,7 @@ public class TopicManagerTest {
         .create(any(PubSubConsumerAdapterContext.class));
 
     Properties properties = new Properties();
-    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, inMemoryPubSubBroker.getKafkaBootstrapServer());
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, inMemoryPubSubBroker.getPubSubBrokerAddress());
     VeniceProperties pubSubProperties = new VeniceProperties(properties);
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> pubSubProperties)

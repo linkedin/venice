@@ -21,6 +21,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COM
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_DATA_REPLICATION_POLICY;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
+import static com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter.getPosition;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -76,6 +77,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -330,10 +332,10 @@ public class AdminConsumptionTaskTest {
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
     if (isParent) {
       verify(topicManager, timeout(TIMEOUT)).createTopic(pubSubTopic, 1, 1, true, false, Optional.empty());
-      verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+      verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), any(PubSubPosition.class));
     } else {
       verify(topicManager, never()).createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any());
-      verify(mockKafkaConsumer, never()).subscribe(any(), anyLong());
+      verify(mockKafkaConsumer, never()).subscribe(any(), any(PubSubPosition.class));
     }
     task.close();
     executor.shutdown();
@@ -366,7 +368,7 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), any(PubSubPosition.class));
     verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
     verify(admin, timeout(TIMEOUT)).killOfflinePush(clusterName, storeTopicName, false);
@@ -421,7 +423,7 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), any(PubSubPosition.class));
     verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT).times(2)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
   }
@@ -552,7 +554,7 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), any(PubSubPosition.class));
     verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
   }
@@ -621,7 +623,7 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), any(PubSubPosition.class));
     verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
     // Kill message is before persisted offset
@@ -633,28 +635,33 @@ public class AdminConsumptionTaskTest {
     String storeName1 = "test_store1";
     String storeName2 = "test_store2";
     String storeName3 = "test_store3";
-    veniceWriter.put(
-        emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    InMemoryPubSubPosition offsetToSkip = MockInMemoryProducerAdapter.getPosition(
+    InMemoryPubSubPosition offset1 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    System.out.println("Offset for store creation message 1: " + offset1);
+    InMemoryPubSubPosition offsetToSkip = getPosition(
         veniceWriter.put(
             emptyKeyBytes,
             getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
             AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
-    veniceWriter.put(
-        emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 3),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    InMemoryPubSubPosition offset3 = getPosition(
+        veniceWriter.put(
+            emptyKeyBytes,
+            getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 3),
+            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION));
+    System.out.println("Offset for store creation message 3: " + offset3);
 
-    Set<MockInMemoryPartitionPosition> set = new HashSet<>();
-    set.add(
+    Set<MockInMemoryPartitionPosition> topicPartitionOffsetsToFilterOut = new HashSet<>();
+    topicPartitionOffsetsToFilterOut.add(
         new MockInMemoryPartitionPosition(
             new PubSubTopicPartitionImpl(
                 pubSubTopicRepository.getTopic(topicName),
                 AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
             offsetToSkip.getPreviousPosition()));
-    PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false), set);
+    PollStrategy pollStrategy =
+        new FilteringPollStrategy(new RandomPollStrategy(false), topicPartitionOffsetsToFilterOut);
 
     // The stores don't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName1);
@@ -683,7 +690,7 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
     verify(stats, atLeastOnce()).recordAdminTopicDIVErrorReportCount();
     verify(admin, atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, times(1)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, times(1)).subscribe(any(), any(PubSubPosition.class));
     verify(mockKafkaConsumer, times(1)).unSubscribe(any());
     verify(admin, times(1)).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
     verify(admin, never()).createStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
@@ -812,7 +819,7 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), any(PubSubPosition.class));
     verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
   }
@@ -848,7 +855,7 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), any(PubSubPosition.class));
     verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
 
     verify(admin, never()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
@@ -874,7 +881,7 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), any(PubSubPosition.class));
     verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, never()).killOfflinePush(clusterName, storeTopicName, false);
   }
@@ -1085,7 +1092,7 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), any(PubSubPosition.class));
     verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
 
     verify(admin, atLeastOnce()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
@@ -1729,7 +1736,7 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), any(PubSubPosition.class));
     verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
 
     verify(admin, atLeastOnce()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);

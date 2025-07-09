@@ -6,6 +6,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -18,17 +20,24 @@ import java.util.Optional;
  * @see MockInMemoryProducerAdapter
  */
 public class InMemoryPubSubBroker {
+  private static final Logger LOGGER = LogManager.getLogger(InMemoryPubSubBroker.class);
+
   private final Map<String, InMemoryPubSubTopic> topics = new VeniceConcurrentHashMap<>();
+  private final String brokerAddress;
   private final int port;
-  private final String brokerNamePrefix;
 
   public InMemoryPubSubBroker(String brokerNamePrefix) {
-    port = TestUtils.getFreePort();
-    this.brokerNamePrefix = brokerNamePrefix;
+    this.port = TestUtils.getFreePort();
+    this.brokerAddress = brokerNamePrefix + "_InMemoryKafkaBroker:" + port;
+    LOGGER.info(
+        "Created a new {} with address: {}",
+        InMemoryPubSubBroker.class.getSimpleName(),
+        getPubSubBrokerAddress());
   }
 
   public synchronized void createTopic(String topicName, int partitionCount) {
     if (topics.containsKey(topicName)) {
+      LOGGER.warn("The topic {} already exists in this {}, not creating it again.", topicName, brokerAddress);
       throw new IllegalStateException(
           "The topic " + topicName + " already exists in this " + InMemoryPubSubBroker.class.getSimpleName());
     }
@@ -80,10 +89,10 @@ public class InMemoryPubSubBroker {
   }
 
   /**
-   * @return an synthetic broker server url.
+   * @return a synthetic broker server url.
    */
-  public String getKafkaBootstrapServer() {
-    return brokerNamePrefix + "_InMemoryKafkaBroker:" + port;
+  public String getPubSubBrokerAddress() {
+    return brokerAddress;
   }
 
   public Long endOffsets(String topicName, int partition) {
@@ -92,5 +101,9 @@ public class InMemoryPubSubBroker {
 
   public InMemoryPubSubPosition endPosition(String topicName, int partition) {
     return topics.get(topicName).endPosition(partition);
+  }
+
+  public int getPort() {
+    return port;
   }
 }

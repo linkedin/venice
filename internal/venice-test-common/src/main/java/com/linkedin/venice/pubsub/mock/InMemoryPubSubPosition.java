@@ -65,4 +65,22 @@ public class InMemoryPubSubPosition implements PubSubPosition {
   public String toString() {
     return "InMemoryPubSubPosition{" + internalOffset + '}';
   }
+
+  // implementation of equals and hashCode is not needed for this class
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    InMemoryPubSubPosition that = (InMemoryPubSubPosition) o;
+    return internalOffset == that.internalOffset;
+  }
+
+  @Override
+  public int hashCode() {
+    return Long.hashCode(internalOffset);
+  }
 }
