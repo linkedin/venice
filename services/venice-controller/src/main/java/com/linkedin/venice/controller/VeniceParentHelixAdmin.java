@@ -701,6 +701,24 @@ public class VeniceParentHelixAdmin implements Admin {
     sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
   }
 
+  /**
+   * This method is used to auto-migrate a store from one cluster to another.
+   * @param srcClusterName
+   * @param destClusterName
+   * @param storeName
+   * @param currStep
+   * @param abortOnFailure
+   */
+  @Override
+  public void autoMigrateStore(
+      String srcClusterName,
+      String destClusterName,
+      String storeName,
+      Optional<Integer> currStep,
+      Optional<Boolean> abortOnFailure) {
+    veniceHelixAdmin.autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, abortOnFailure);
+  }
+
   @Override
   public Set<Integer> getInUseValueSchemaIds(String clusterName, String storeName) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
