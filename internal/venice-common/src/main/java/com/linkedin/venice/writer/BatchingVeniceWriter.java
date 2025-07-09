@@ -129,6 +129,12 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
   }
 
   @Override
+  public void flush() {
+    checkAndMaybeProduceBatchRecord();
+    getVeniceWriter().flush();
+  }
+
+  @Override
   public void close(boolean gracefulClose) {
     isRunning = false;
     if (gracefulClose) {
