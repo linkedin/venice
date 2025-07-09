@@ -22,6 +22,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -173,6 +174,12 @@ public class RecordTransformerTest {
     verify(storageEngine, never()).clearPartitionOffset(partitionId);
     verify(storageEngine).getIterator(partitionId);
     verify(iterator).close();
+
+    // Ensure partition is put into read-only mode before iterating, and adjusted to default settings after
+    verify(storageEngine)
+        .adjustStoragePartition(eq(partitionId), eq(StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ), any());
+    verify(storageEngine)
+        .adjustStoragePartition(eq(partitionId), eq(StoragePartitionAdjustmentTrigger.REOPEN_WITH_DEFAULTS), any());
   }
 
   @Test

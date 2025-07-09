@@ -358,10 +358,22 @@ public class DaVinciClientRecordTransformerTest {
       recordTransformer.clearInMemoryDB();
       assertTrue(recordTransformer.isInMemoryDBEmpty());
 
+      // Submit online write to ensure writes are still possible after iterating over RocksDB
+      try (OnlineVeniceProducer producer = OnlineProducerFactory.createProducer(
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setD2Client(d2Client)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
+          VeniceProperties.empty(),
+          null)) {
+        int key = numKeys + 1;
+        String value = "a" + key;
+        producer.asyncPut(key, value).get();
+      }
+
       clientWithRecordTransformer.start();
       clientWithRecordTransformer.subscribeAll().get();
 
-      for (int k = 1; k <= numKeys; ++k) {
+      for (int k = 1; k <= numKeys + 1; ++k) {
         Object valueObj = clientWithRecordTransformer.get(k).get();
         String expectedValue = "a" + k + "Transformed";
         assertEquals(valueObj.toString(), expectedValue);
