@@ -4,6 +4,7 @@ import static org.apache.kafka.test.TestUtils.RANDOM;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
@@ -194,12 +195,19 @@ public class VersionBackendTest {
 
     versionBackend.subscribe(complementSet);
     verify(recordTransformerConfig).setStartConsumptionLatchCount(3);
+    verify(mockIngestionBackend).startConsumption(any(), eq(0));
+    verify(mockIngestionBackend).startConsumption(any(), eq(1));
+    verify(mockIngestionBackend).startConsumption(any(), eq(2));
 
     clearInvocations(recordTransformerConfig);
+    clearInvocations(mockIngestionBackend);
     partitionList = Arrays.asList(2, 3, 4);
     complementSet = ComplementSet.newSet(partitionList);
     versionBackend.subscribe(complementSet);
     // Shouldn't try to start consumption on already subscribed partitions
-    verify(recordTransformerConfig).setStartConsumptionLatchCount(2);
+    verify(mockIngestionBackend, never()).startConsumption(any(), eq(2));
+    verify(mockIngestionBackend).startConsumption(any(), eq(3));
+    verify(mockIngestionBackend).startConsumption(any(), eq(4));
+    verify(recordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
   }
 }

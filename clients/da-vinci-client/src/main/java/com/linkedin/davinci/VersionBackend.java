@@ -384,7 +384,7 @@ public class VersionBackend {
       futures.add(partitionFutures.get(partition));
     }
 
-    if (recordTransformerConfig != null) {
+    if (recordTransformerConfig != null && recordTransformerConfig.getStartConsumptionLatchCount() == 0) {
       recordTransformerConfig.setStartConsumptionLatchCount(partitionsToStartConsumption.size());
     }
 
