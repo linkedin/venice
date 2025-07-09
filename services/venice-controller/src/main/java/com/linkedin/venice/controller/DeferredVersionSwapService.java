@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.meta.VersionStatus.*;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
