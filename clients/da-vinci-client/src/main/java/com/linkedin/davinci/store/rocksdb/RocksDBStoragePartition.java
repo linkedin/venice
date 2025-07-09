@@ -189,9 +189,21 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     this.writeOptions = new WriteOptions().setDisableWAL(this.partitionId != METADATA_PARTITION_ID);
 
     this.iteratorReadOptions = new ReadOptions().setReadaheadSize(rocksDBServerConfig.getIteratorReadAheadSizeInBytes())
-        .setPinData(rocksDBServerConfig.isIteratorPinDataEnabled())
-        .setFillCache(rocksDBServerConfig.isIteratorFillCacheEnabled())
-        .setBackgroundPurgeOnIteratorCleanup(rocksDBServerConfig.isIteratorBackgroundPurgeEnabled());
+        /*
+         * Setting this to false prevents data blocks accessed during iteration from being pinned in memory,
+         * allowing them to be evicted from the block cache and saving memory.
+         */
+        .setPinData(false)
+        /*
+         * Setting this to false disables caching of blocks loaded by the iterator in the block cache,
+         * reducing memory usage and eliminating the eviction costs in the LRU block cache.
+         */
+        .setFillCache(false)
+        /*
+         * Setting this to true, allows for iterator cleanup operations to be performed asynchronously leading to
+         * false iterator closing times.
+         */
+        .setBackgroundPurgeOnIteratorCleanup(true);
 
     // For multiple column family enable atomic flush
     if (columnFamilyNameList.size() > 1 && rocksDBServerConfig.isAtomicFlushEnabled()) {
