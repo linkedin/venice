@@ -2779,6 +2779,21 @@ public class ConfigKeys {
       "server.use.heartbeat.lag.for.ready.to.serve.check.enabled";
 
   /**
+   * If enabled, the parent-controller's multitask scheduler service would be enabled
+   */
+  public static final String MULTITASK_SCHEDULER_SERVICE_ENABLED = "multitask.scheduler.service.enabled";
+
+  /**
+   * (Only matters if MULTITASK_SCHEDULER_SERVICE_ENABLED true). Class name of {@link com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService} implementation
+   */
+  public static final String STORE_MIGRATION_THREAD_POOL_SIZE = "store.migration.thread.pool.size";
+
+  /**
+   * (Only matters if MULTITASK_SCHEDULER_SERVICE_ENABLED true). Class name of {@link com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService} implementation
+   */
+  public static final String STORE_MIGRATION_MAX_RETRY_ATTEMPTS = "store.migration.max.retry.attempts";
+
+  /**
    * The strategy for how to share memory-heavy objects used in the ingestion hot path.
    */
   public static final String SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY =

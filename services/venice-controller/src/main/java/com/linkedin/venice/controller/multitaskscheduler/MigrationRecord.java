@@ -10,6 +10,7 @@ public class MigrationRecord {
   private Step currentStep;
   private Instant storeMigrationStartTime;
   private int attempts;
+  private boolean abortOnFailure = true;
   private boolean isAborted = false;
 
   public enum Step {
@@ -54,6 +55,7 @@ public class MigrationRecord {
     this.storeMigrationStartTime = builder.storeMigrationStartTime;
     this.attempts = builder.attempts;
     this.isAborted = builder.isAborted;
+    this.abortOnFailure = builder.abortOnFailure;
   }
 
   public String getStoreName() {
@@ -112,11 +114,23 @@ public class MigrationRecord {
     return isAborted;
   }
 
+  public boolean getAbortOnFailure() {
+    return abortOnFailure;
+  }
+
   public String toString() {
-    return "MigrationRecord{" + "storeName='" + storeName + '\'' + ", sourceCluster='" + sourceCluster + '\''
-        + ", destinationCluster='" + destinationCluster + '\'' + ", currentStep=" + currentStep
-        + ", storeMigrationStartTime=" + storeMigrationStartTime + ", attempts=" + attempts + ", isAborted=" + isAborted
-        + '}';
+    return String.format(
+        "MigrationRecord{storeName='%s', sourceCluster='%s', destinationCluster='%s', "
+            + "currentStep=%s(%d), storeMigrationStartTime=%s, attempts=%d, " + "isAborted=%b, abortOnFailure=%b}",
+        storeName,
+        sourceCluster,
+        destinationCluster,
+        currentStep,
+        currentStep.getStepNumber(),
+        storeMigrationStartTime,
+        attempts,
+        isAborted,
+        abortOnFailure);
   }
 
   public static class Builder {
@@ -127,6 +141,7 @@ public class MigrationRecord {
     private Instant storeMigrationStartTime = Instant.ofEpochMilli(-1);
     private int attempts = 0;
     private boolean isAborted = false;
+    private boolean abortOnFailure = true;
 
     public Builder(String storeName, String sourceCluster, String destinationCluster) {
       this.storeName = storeName;
@@ -146,6 +161,11 @@ public class MigrationRecord {
 
     public Builder aborted(boolean isAborted) {
       this.isAborted = isAborted;
+      return this;
+    }
+
+    public Builder abortOnFailure(boolean abortOnFailure) {
+      this.abortOnFailure = abortOnFailure;
       return this;
     }
 

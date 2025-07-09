@@ -15,6 +15,7 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -157,6 +158,69 @@ public class TestAdminTool {
     doReturn(destMetaSystemStoreResponse).when(destControllerClient).getStore(metaSystemStoreName);
 
     Assert.assertFalse(AdminTool.isClonedStoreOnline(srcControllerClient, destControllerClient, storeName));
+  }
+
+  @Test
+  public void testAutoMigrateStore() throws ParseException, IOException {
+    String storeName = "testAutoMigrateStore";
+    String srcCluster = "testCluster1";
+    String dstCluster = "testCluster2";
+    String initialStep = "0";
+    String abortOnFailure = "true";
+
+    String[] argsWithOptionalFlags =
+        { "--auto-migrate-store", "--url", "controllerUrl", "--store", storeName, "--cluster-src", srcCluster,
+            "--cluster-dest", dstCluster, "--initial-step", initialStep, "--abort-on-failure", abortOnFailure };
+    CommandLine fullCmd = AdminTool.getCommandLine(argsWithOptionalFlags);
+    String[] argsMandatoryOnly = { "--auto-migrate-store", "--url", "controllerUrl", "--store", storeName,
+        "--cluster-src", srcCluster, "--cluster-dest", dstCluster };
+    CommandLine BasicCmd = AdminTool.getCommandLine(argsMandatoryOnly);
+
+    try (MockedStatic<ControllerClientFactory> controllerClientFactoryMockedStatic =
+        Mockito.mockStatic(ControllerClientFactory.class)) {
+
+      ControllerClient srcControllerClient = mock(ControllerClient.class);
+      ControllerClient destControllerClient = mock(ControllerClient.class);
+
+      StoreMigrationResponse storeMigrationPreconditionCheckResponse = new StoreMigrationResponse();
+      storeMigrationPreconditionCheckResponse.setStoreMigrationAllowed(true);
+      Mockito.when(srcControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationPreconditionCheckResponse);
+      Mockito.when(destControllerClient.isStoreMigrationAllowed()).thenReturn(storeMigrationPreconditionCheckResponse);
+
+      StoreMigrationResponse storeAutoMigrationResponse = new StoreMigrationResponse();
+      storeAutoMigrationResponse.setSrcClusterName(srcCluster);
+      storeAutoMigrationResponse.setCluster(dstCluster);
+      storeAutoMigrationResponse.setName(storeName);
+      Mockito.when(srcControllerClient.autoMigrateStore(eq(storeName), eq(dstCluster), any(), any()))
+          .thenReturn(storeAutoMigrationResponse);
+
+      StoreResponse storeResponse = new StoreResponse();
+      StoreInfo srcStoreInfo = createStore(storeName, true);
+      srcStoreInfo.setMigrating(false);
+      storeResponse.setStore(srcStoreInfo);
+      Mockito.when(srcControllerClient.getStore(storeName)).thenReturn(storeResponse);
+
+      // Create two different controller clients for the source and destination clusters.
+      controllerClientFactoryMockedStatic
+          .when(() -> ControllerClientFactory.getControllerClient(eq(srcCluster), anyString(), any()))
+          .thenReturn(srcControllerClient);
+      controllerClientFactoryMockedStatic
+          .when(() -> ControllerClientFactory.getControllerClient(eq(dstCluster), anyString(), any()))
+          .thenReturn(destControllerClient);
+
+      AdminTool.autoMigrateStore(fullCmd);
+      Mockito.verify(srcControllerClient).autoMigrateStore(storeName, dstCluster, Optional.of(0), Optional.of(true));
+      AdminTool.autoMigrateStore(BasicCmd);
+      Mockito.verify(srcControllerClient).autoMigrateStore(storeName, dstCluster, Optional.empty(), Optional.empty());
+
+      srcStoreInfo.setMigrating(true);
+      storeResponse.setStore(srcStoreInfo);
+
+      VeniceException ex = Assert.expectThrows(VeniceException.class, () -> AdminTool.autoMigrateStore(BasicCmd));
+      String expectedMsg =
+          String.format("Store %s is migrating. Finish the current migration before starting a new one.", storeName);
+      Assert.assertEquals(ex.getMessage(), expectedMsg);
+    }
   }
 
   @Test
