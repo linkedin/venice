@@ -148,11 +148,6 @@ public enum StatsErrorCode {
   KAFKA_CLIENT_METRICS_DEFAULT(-24),
 
   /**
-   * There was an exception when retrieving a metric value.  Please consult application logs to determine the root cause!
-   */
-  UNKNOWN_METRIC_EXCEPTION(-25),
-
-  /**
    * This metric should not be emitted as it is a metric specific to an A/A store.
    */
   ACTIVE_ACTIVE_NOT_ENABLED(-25);
