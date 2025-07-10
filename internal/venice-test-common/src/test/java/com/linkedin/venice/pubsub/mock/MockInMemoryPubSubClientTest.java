@@ -18,7 +18,6 @@ import com.linkedin.venice.pubsub.mock.adapter.consumer.MockInMemoryConsumerAdap
 import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.utils.PubSubHelper;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -88,16 +87,16 @@ public class MockInMemoryPubSubClientTest {
     consumerAdapter.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
 
     // 5. Poll records
-    List<String> consumedValues = new ArrayList<>();
-    List<Long> consumedOffsets = new ArrayList<>();
+    List<KafkaMessageEnvelope> consumedValues = new ArrayList<>();
+    List<InMemoryPubSubPosition> consumedOffsets = new ArrayList<>();
     int retries = 0;
-    while (consumedValues.size() < recordCount && retries < 100) {
+    while (consumedValues.size() < recordCount && retries < 10000) {
       Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polled = consumerAdapter.poll(100);
       List<DefaultPubSubMessage> messages = polled.get(topicPartition);
       if (messages != null) {
         for (DefaultPubSubMessage msg: messages) {
-          consumedOffsets.add(msg.getOffset());
-          consumedValues.add(new String(msg.getValue(), StandardCharsets.UTF_8));
+          consumedOffsets.add((InMemoryPubSubPosition) msg.getPosition());
+          consumedValues.add(msg.getValue());
         }
       }
       retries++;
@@ -106,10 +105,10 @@ public class MockInMemoryPubSubClientTest {
     Assert.assertEquals(consumedOffsets.size(), recordCount, "Did not consume all expected records");
     Assert.assertEquals(consumedValues.size(), recordCount, "Mismatch in consumed values count");
 
-    // // 6. Validate offsets and values
-    // for (int i = 0; i < recordCount; i++) {
-    // Assert.assertEquals((long) consumedOffsets.get(i), i, "Mismatch in consumed offset at index " + i);
-    // Assert.assertEquals(consumedValues.get(i), expectedValues.get(i), "Mismatch in value at offset " + i);
-    // }
+    // 6. Validate offsets and values
+    for (int i = 0; i < recordCount; i++) {
+      Assert.assertEquals(consumedOffsets.get(i).getInternalOffset(), i, "Mismatch in consumed offset at index " + i);
+      Assert.assertEquals(consumedValues.get(i), expectedValues.get(i), "Mismatch in value at offset " + i);
+    }
   }
 }

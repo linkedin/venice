@@ -1587,7 +1587,7 @@ public abstract class StoreIngestionTaskTest {
       verify(mockSchemaRepo, timeout(TEST_TIMEOUT_MS)).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
       // Verify it commits the offset to Offset Manager
-      OffsetRecord expected = getOffsetRecord(fooLastOffset.getNumericOffset());
+      OffsetRecord expected = getOffsetRecord(fooLastOffset.getInternalOffset());
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).put(topic, PARTITION_FOO, expected);
     }, aaConfig);
   }
@@ -1624,7 +1624,7 @@ public abstract class StoreIngestionTaskTest {
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
 
-      OffsetRecord expected = getOffsetRecord(existingSchemaOffset.getNumericOffset());
+      OffsetRecord expected = getOffsetRecord(existingSchemaOffset.getInternalOffset());
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).put(topic, PARTITION_FOO, expected);
     }, aaConfig);
     runTest(config);
@@ -1693,31 +1693,31 @@ public abstract class StoreIngestionTaskTest {
        * we need to add 1 to last data message offset.
        */
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .completed(topic, PARTITION_FOO, fooNextOffset.getNumericOffset(), "STANDBY");
+          .completed(topic, PARTITION_FOO, fooNextOffset.getInternalOffset(), "STANDBY");
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .completed(topic, PARTITION_BAR, barNextOffset.getNumericOffset(), "STANDBY");
+          .completed(topic, PARTITION_BAR, barNextOffset.getInternalOffset(), "STANDBY");
       verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .completed(topic, PARTITION_FOO, fooNextOffset.getNumericOffset(), "STANDBY");
+          .completed(topic, PARTITION_FOO, fooNextOffset.getInternalOffset(), "STANDBY");
       verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .completed(topic, PARTITION_BAR, barNextOffset.getNumericOffset(), "STANDBY");
+          .completed(topic, PARTITION_BAR, barNextOffset.getInternalOffset(), "STANDBY");
       verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .completed(topic, PARTITION_FOO, fooNextOffset.getNumericOffset(), "STANDBY");
+          .completed(topic, PARTITION_FOO, fooNextOffset.getInternalOffset(), "STANDBY");
       verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .completed(topic, PARTITION_BAR, barNextOffset.getNumericOffset(), "STANDBY");
+          .completed(topic, PARTITION_BAR, barNextOffset.getInternalOffset(), "STANDBY");
       verify(mockStorageMetadataService)
-          .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNextOffset.getNumericOffset(), true)));
+          .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNextOffset.getInternalOffset(), true)));
       verify(mockStorageMetadataService)
-          .put(eq(topic), eq(PARTITION_BAR), eq(getOffsetRecord(barNextOffset.getNumericOffset(), true)));
+          .put(eq(topic), eq(PARTITION_BAR), eq(getOffsetRecord(barNextOffset.getInternalOffset(), true)));
       verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
       verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
-      verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset.getNumericOffset());
-      verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barLastOffset.getNumericOffset());
+      verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset.getInternalOffset());
+      verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barLastOffset.getInternalOffset());
       verify(mockPartitionStatusNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
       verify(mockPartitionStatusNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
       verify(mockPartitionStatusNotifier, atLeastOnce())
-          .endOfPushReceived(topic, PARTITION_FOO, fooLastOffset.getNumericOffset());
+          .endOfPushReceived(topic, PARTITION_FOO, fooLastOffset.getInternalOffset());
       verify(mockPartitionStatusNotifier, atLeastOnce())
-          .endOfPushReceived(topic, PARTITION_BAR, barLastOffset.getNumericOffset());
+          .endOfPushReceived(topic, PARTITION_BAR, barLastOffset.getInternalOffset());
     }, aaConfig);
   }
 
@@ -1871,8 +1871,8 @@ public abstract class StoreIngestionTaskTest {
   @Test(dataProvider = "aaConfigProvider")
   public void testDetectionOfMissingRecord(AAConfig aaConfig) throws Exception {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
-    PubSubPosition fooLastOffset = getPosition(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
-    PubSubPosition barOffsetToSkip = getPosition(localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
+    InMemoryPubSubPosition fooLastOffset = getPosition(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
+    InMemoryPubSubPosition barOffsetToSkip = getPosition(localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
 
@@ -1883,7 +1883,7 @@ public abstract class StoreIngestionTaskTest {
     StoreIngestionTaskTestConfig config =
         new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
           verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-              .endOfPushReceived(topic, PARTITION_FOO, fooLastOffset.getNumericOffset());
+              .endOfPushReceived(topic, PARTITION_FOO, fooLastOffset.getInternalOffset());
           verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
               eq(topic),
               eq(PARTITION_BAR),
@@ -1922,11 +1922,11 @@ public abstract class StoreIngestionTaskTest {
     StoreIngestionTaskTestConfig config =
         new StoreIngestionTaskTestConfig(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
           verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-              .endOfPushReceived(topic, PARTITION_FOO, fooLastOffset.getNumericOffset());
+              .endOfPushReceived(topic, PARTITION_FOO, fooLastOffset.getInternalOffset());
           verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-              .endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe.getNumericOffset());
+              .endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe.getInternalOffset());
           verify(mockLogNotifier, after(TEST_TIMEOUT_MS).never())
-              .endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe.getNextPosition().getNumericOffset());
+              .endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe.getNextPosition().getInternalOffset());
 
           // After we verified that completed() is called, the rest should be guaranteed to be finished, so no need for
           // timeouts
@@ -2061,7 +2061,7 @@ public abstract class StoreIngestionTaskTest {
         TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
           for (Object[] args: mockNotifierProgress) {
             if (args[0].equals(topic) && args[1].equals(PARTITION_BAR)
-                && ((long) args[2]) >= lastOffsetBeforeEOP.getNumericOffset()) {
+                && ((long) args[2]) >= lastOffsetBeforeEOP.getInternalOffset()) {
               return true;
             }
           }
@@ -2070,7 +2070,7 @@ public abstract class StoreIngestionTaskTest {
         TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
           for (Object[] args: mockNotifierCompleted) {
             if (args[0].equals(topic) && args[1].equals(PARTITION_BAR)
-                && ((long) args[2]) > lastOffsetBeforeEOP.getNumericOffset()) {
+                && ((long) args[2]) > lastOffsetBeforeEOP.getInternalOffset()) {
               return true;
             }
           }
@@ -2170,7 +2170,7 @@ public abstract class StoreIngestionTaskTest {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(
           eq(topic),
           eq(PARTITION_FOO),
-          LongEqualOrGreaterThanMatcher.get(fooLastOffset.getNumericOffset()),
+          LongEqualOrGreaterThanMatcher.get(fooLastOffset.getInternalOffset()),
           eq("STANDBY"));
 
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
@@ -2507,7 +2507,7 @@ public abstract class StoreIngestionTaskTest {
 
       storeIngestionTaskUnderTest.kill();
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .endOfPushReceived(topic, PARTITION_FOO, fooLastOffset.getNumericOffset());
+          .endOfPushReceived(topic, PARTITION_FOO, fooLastOffset.getInternalOffset());
     }, aaConfig);
   }
 
@@ -2852,23 +2852,23 @@ public abstract class StoreIngestionTaskTest {
         verify(mockStorageMetadataService).put(
             eq(topic),
             eq(PARTITION_FOO),
-            eq(getOffsetRecord(fooOffset.getNextPosition().getNumericOffset(), true)));
+            eq(getOffsetRecord(fooOffset.getNextPosition().getInternalOffset(), true)));
         // sync the offset when receiving StartOfIncrementalPush and EndOfIncrementalPush
         verify(mockStorageMetadataService).put(
             eq(topic),
             eq(PARTITION_FOO),
-            eq(getOffsetRecord(fooNewOffset.getPreviousPosition().getNumericOffset(), true)));
+            eq(getOffsetRecord(fooNewOffset.getPreviousPosition().getInternalOffset(), true)));
         verify(mockStorageMetadataService).put(
             eq(topic),
             eq(PARTITION_FOO),
-            eq(getOffsetRecord(fooNewOffset.getNextPosition().getNumericOffset(), true)));
+            eq(getOffsetRecord(fooNewOffset.getNextPosition().getInternalOffset(), true)));
 
         verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
 
         // since notifier reporting happens before offset update, it actually reports previous offsets
-        verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset.getNumericOffset());
+        verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset.getInternalOffset());
         verify(mockLogNotifier, atLeastOnce())
-            .endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset.getNumericOffset(), version);
+            .endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset.getInternalOffset(), version);
       });
     }, aaConfig);
     config.setHybridStoreConfig(Optional.of(hybridStoreConfig)).setIncrementalPushEnabled(true);
@@ -2966,7 +2966,7 @@ public abstract class StoreIngestionTaskTest {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(
           eq(topic),
           eq(PARTITION_BAR),
-          LongEqualOrGreaterThanMatcher.get(barLastOffset.getNumericOffset()),
+          LongEqualOrGreaterThanMatcher.get(barLastOffset.getInternalOffset()),
           eq("STANDBY"));
 
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(eq(topic), eq(PARTITION_FOO), anyString(), any());

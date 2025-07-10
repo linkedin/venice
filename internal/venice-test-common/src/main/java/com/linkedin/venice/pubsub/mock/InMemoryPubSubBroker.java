@@ -29,10 +29,7 @@ public class InMemoryPubSubBroker {
   public InMemoryPubSubBroker(String brokerNamePrefix) {
     this.port = TestUtils.getFreePort();
     this.brokerAddress = brokerNamePrefix + "_InMemoryKafkaBroker:" + port;
-    LOGGER.info(
-        "Created a new {} with address: {}",
-        InMemoryPubSubBroker.class.getSimpleName(),
-        getPubSubBrokerAddress());
+    LOGGER.info("Created a new {} with address: {}", InMemoryPubSubBroker.class.getSimpleName(), brokerAddress);
   }
 
   public synchronized void createTopic(String topicName, int partitionCount) {

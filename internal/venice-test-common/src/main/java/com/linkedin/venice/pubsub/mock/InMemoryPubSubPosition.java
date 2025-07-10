@@ -17,6 +17,18 @@ public class InMemoryPubSubPosition implements PubSubPosition {
     return internalOffset;
   }
 
+  /**
+   * Returns the internal offset used by this implementation.
+   * <p>
+   * This method was added to support test cases that rely on accessing the internal offset directly,
+   * without depending on {@link #getNumericOffset()}, which will be removed from the interface in the future.
+   *
+   * @return the internal offset value
+   */
+  public long getInternalOffset() {
+    return internalOffset;
+  }
+
   public static InMemoryPubSubPosition of(long offset) {
     return new InMemoryPubSubPosition(offset);
   }
