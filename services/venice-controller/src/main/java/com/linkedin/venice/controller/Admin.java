@@ -65,6 +65,8 @@ import org.apache.avro.Schema;
 
 
 public interface Admin extends AutoCloseable, Closeable {
+  Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
+
   // Wrapper to include both overall offline push status and other extra useful info
   class OfflinePushStatusInfo {
     private ExecutionStatus executionStatus;
@@ -74,7 +76,6 @@ public interface Admin extends AutoCloseable, Closeable {
     private String statusDetails;
     private Map<String, String> extraDetails;
     private List<UncompletedPartition> uncompletedPartitions;
-    final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
 
     /** N.B.: Test-only constructor ): */
     public OfflinePushStatusInfo(ExecutionStatus executionStatus) {
