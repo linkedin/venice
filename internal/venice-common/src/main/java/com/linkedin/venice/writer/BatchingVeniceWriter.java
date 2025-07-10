@@ -222,15 +222,16 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       PubSubProducerCallback callback,
       long logicalTimestamp) {
     byte[] serializedKey = getKeySerializer().serialize(getTopicName(), key);
-    CompletableFuture<PubSubProduceResult> result;
+    CompletableFuture<PubSubProduceResult> produceResultFuture;
     getLock().lock();
     try {
       /**
        * For logical timestamp record, timestamp compaction is not supported
        * For UPDATE, it is not supported in the current scope, support will be added in the future iteration.
        */
+      ProducerBufferRecord<V, U> record;
       if (messageType.equals(MessageType.UPDATE) || logicalTimestamp > 0) {
-        ProducerBufferRecord<V, U> record = new ProducerBufferRecord<>(
+        record = new ProducerBufferRecord<>(
             messageType,
             serializedKey,
             value,
@@ -239,32 +240,29 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
             protocolId,
             callback,
             logicalTimestamp);
-        CompletableFuture<PubSubProduceResult> produceFuture = new CompletableFuture<>();
-        record.setProduceResultFuture(produceFuture);
-        getBufferRecordList().add(record);
-        return produceFuture;
-      }
-      ProducerBufferRecord<V, U> record = new ProducerBufferRecord<>(
-          messageType,
-          serializedKey,
-          value,
-          update,
-          schemaId,
-          protocolId,
-          callback,
-          logicalTimestamp);
-      bufferSizeInBytes += record.getHeapSize();
-      getBufferRecordList().add(record);
-      ProducerBufferRecord<V, U> prevRecord = getBufferRecordIndex().put(ByteBuffer.wrap(serializedKey), record);
-      if (prevRecord != null) {
-        prevRecord.setSkipProduce(true);
-        // Try to reuse the same produce future.
-        result = prevRecord.getProduceResultFuture();
+        produceResultFuture = new CompletableFuture<>();
       } else {
-        result = new CompletableFuture<>();
+        record = new ProducerBufferRecord<>(
+            messageType,
+            serializedKey,
+            value,
+            update,
+            schemaId,
+            protocolId,
+            callback,
+            logicalTimestamp);
+        bufferSizeInBytes += record.getHeapSize();
+        ProducerBufferRecord<V, U> prevRecord = getBufferRecordIndex().put(ByteBuffer.wrap(serializedKey), record);
+        if (prevRecord != null) {
+          prevRecord.setSkipProduce(true);
+          // Try to reuse the same produce future.
+          produceResultFuture = prevRecord.getProduceResultFuture();
+        } else {
+          produceResultFuture = new CompletableFuture<>();
+        }
       }
-      record.setProduceResultFuture(result);
-
+      record.setProduceResultFuture(produceResultFuture);
+      getBufferRecordList().add(record);
       // Make sure memory usage is under control
       if (getBufferSizeInBytes() >= getMaxBatchSizeInBytes()) {
         checkAndMaybeProduceBatchRecord();
@@ -272,7 +270,7 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
     } finally {
       getLock().unlock();
     }
-    return result;
+    return produceResultFuture;
   }
 
   void sendRecord(ProducerBufferRecord<V, U> record) {
