@@ -358,7 +358,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final RecordDeserializer recordTransformerKeyDeserializer;
   private final Map<Integer, Schema> schemaIdToSchemaMap;
   private BlockingDaVinciRecordTransformer recordTransformer;
-  private AtomicBoolean recordTransformerOnRecoveryFailure;
   private ExecutorService recordTransformerOnRecoveryThreadPool;
 
   protected final String localKafkaServer;
@@ -558,7 +557,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           this.recordTransformerInputValueSchema,
           outputValueSchema,
           recordTransformerConfig);
-      this.recordTransformerOnRecoveryFailure = new AtomicBoolean(false);
       this.recordTransformerOnRecoveryThreadPool =
           Executors.newFixedThreadPool(serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize());
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
@@ -733,7 +731,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
         } catch (Exception e) {
           LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {}", getReplicaId(topicPartition), e);
-          recordTransformerOnRecoveryFailure.set(true);
+          setLastStoreIngestionException(e);
         }
       });
     } else {
@@ -1664,10 +1662,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
       while (isRunning()) {
-        if (recordTransformer != null && recordTransformerOnRecoveryFailure.get()) {
-          throw new VeniceException("DaVinciRecordTransformer onRecovery failed. Killing SIT");
-        }
-
         Store store = storeRepository.getStoreOrThrow(storeName);
         if (!skipAfterBatchPushUnsubEnabled) {
           refreshIngestionContextIfChanged(store);
