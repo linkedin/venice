@@ -2,11 +2,13 @@ package com.linkedin.venice.pubsub.mock;
 
 import static org.mockito.Mockito.mock;
 
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -15,9 +17,11 @@ import com.linkedin.venice.pubsub.mock.adapter.admin.MockInMemoryAdminAdapter;
 import com.linkedin.venice.pubsub.mock.adapter.consumer.MockInMemoryConsumerAdapter;
 import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter;
+import com.linkedin.venice.utils.PubSubHelper;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.apache.logging.log4j.LogManager;
@@ -63,17 +67,16 @@ public class MockInMemoryPubSubClientTest {
     Assert.assertTrue(adminAdapter.containsTopicWithPartitionCheck(topicPartition), "Topic creation failed");
 
     // 2. Produce 500 messages
-    List<String> expectedValues = new ArrayList<>();
+    List<KafkaMessageEnvelope> expectedValues = new ArrayList<>();
     List<Long> producedOffsets = new ArrayList<>();
     for (int i = 0; i < recordCount; i++) {
-      String value = "value-" + i;
-      expectedValues.add(value);
-      byte[] keyBytes = ("key-" + i).getBytes(StandardCharsets.UTF_8);
-      byte[] valueBytes = value.getBytes(StandardCharsets.UTF_8);
-      CompletableFuture<PubSubProduceResult> future =
-          producerAdapter.sendMessage(topicPartition, keyBytes, valueBytes, new PubSubMessageHeaders(), null);
+      KafkaKey key = PubSubHelper.getDummyKey();
+      KafkaMessageEnvelope value = PubSubHelper.getDummyValue();
+      CompletableFuture<PubSubProduceResult> future = producerAdapter
+          .sendMessage(topicPartition.getTopicName(), topicPartition.getPartitionNumber(), key, value, null, null);
       PubSubProduceResult result = future.get();
       producedOffsets.add(result.getOffset());
+      expectedValues.add(value);
     }
 
     // 3. Verify produce offsets
@@ -84,25 +87,25 @@ public class MockInMemoryPubSubClientTest {
     // 4. Subscribe consumer from EARLIEST
     consumerAdapter.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
 
-    // // 5. Poll records
-    // List<String> consumedValues = new ArrayList<>();
-    // List<Long> consumedOffsets = new ArrayList<>();
-    // int retries = 0;
-    // while (consumedValues.size() < recordCount && retries < 100) {
-    // Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polled = consumerAdapter.poll(100);
-    // List<DefaultPubSubMessage> messages = polled.get(topicPartition);
-    // if (messages != null) {
-    // for (DefaultPubSubMessage msg : messages) {
-    // consumedOffsets.add(msg.getOffset());
-    // consumedValues.add(new String(msg.getValue(), StandardCharsets.UTF_8));
-    // }
-    // }
-    // retries++;
-    // }
-    //
-    // Assert.assertEquals(consumedOffsets.size(), recordCount, "Did not consume all expected records");
-    // Assert.assertEquals(consumedValues.size(), recordCount, "Mismatch in consumed values count");
-    //
+    // 5. Poll records
+    List<String> consumedValues = new ArrayList<>();
+    List<Long> consumedOffsets = new ArrayList<>();
+    int retries = 0;
+    while (consumedValues.size() < recordCount && retries < 100) {
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polled = consumerAdapter.poll(100);
+      List<DefaultPubSubMessage> messages = polled.get(topicPartition);
+      if (messages != null) {
+        for (DefaultPubSubMessage msg: messages) {
+          consumedOffsets.add(msg.getOffset());
+          consumedValues.add(new String(msg.getValue(), StandardCharsets.UTF_8));
+        }
+      }
+      retries++;
+    }
+
+    Assert.assertEquals(consumedOffsets.size(), recordCount, "Did not consume all expected records");
+    Assert.assertEquals(consumedValues.size(), recordCount, "Mismatch in consumed values count");
+
     // // 6. Validate offsets and values
     // for (int i = 0; i < recordCount; i++) {
     // Assert.assertEquals((long) consumedOffsets.get(i), i, "Mismatch in consumed offset at index " + i);
