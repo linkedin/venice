@@ -256,7 +256,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
     jobConf.set(ZSTD_DICTIONARY_CREATION_SUCCESS, pushJobSetting.isZstdDictCreationSuccess);
 
-    if (pushJobSetting.isMemtableBatchWriteEnabled) {
+    if (pushJobSetting.isBatchWriteOptimizationForHybridStoreEnabled) {
       jobConf.set(GUID_GENERATOR_IMPLEMENTATION, DEFAULT_GUID_GENERATOR_IMPLEMENTATION);
     } else {
       // We generate a random UUID once, and the tasks of the compute job can use this to build the same producerGUID

@@ -77,8 +77,6 @@ public class PushJobSetting implements Serializable {
   public boolean d2Routing;
   public String targetedRegions;
   public boolean isTargetedRegionPushEnabled;
-  public boolean isMemtableBatchWriteEnabled;
-
   public boolean isTargetRegionPushWithDeferredSwapEnabled;
   public boolean isSystemSchemaReaderEnabled;
   public String systemSchemaClusterD2ServiceName;
@@ -166,5 +164,5 @@ public class PushJobSetting implements Serializable {
 
   public String materializedViewConfigFlatMap;
 
-  public boolean isMemabledBatchWriteForHybridEnabled;
+  public boolean isBatchWriteOptimizationForHybridStoreEnabled;
 }

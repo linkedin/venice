@@ -259,7 +259,6 @@ public final class VenicePushJobConstants {
    */
   public static final String ZSTD_COMPRESSION_LEVEL = "zstd.compression.level";
   public static final int DEFAULT_BATCH_BYTES_SIZE = 1000000;
-  public static final boolean SORTED = true;
   /**
    * The rewind override when performing re-push to prevent data loss; if the store has higher rewind config setting than
    * 1 days, adopt the store config instead; otherwise, override the rewind config to 1 day if push job config doesn't
@@ -288,9 +287,9 @@ public final class VenicePushJobConstants {
   /**
    * Config to enable memtable based ingestion of hybrid store batch push. In this mode servers
    * will not use SST table writer to ingest batch data for hybrid store stores. This will help in
-   * preventing log compaction of contol messages from speculative producers. 
+   * preventing log compaction of contol messages from speculative producers.
    */
-  public static final String MEMTABLE_HYBRID_BATCH_WRITE_ENABLED = "memtable.hybrid.batch.write.enabled";
+  public static final String HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED = "hybrid.batch.write.optimization.enabled";
 
   /**
    * This is experimental config to specify a list of regions used for targeted region push in VPJ.
