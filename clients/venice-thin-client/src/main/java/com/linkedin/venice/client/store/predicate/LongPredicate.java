@@ -1,6 +1,7 @@
 package com.linkedin.venice.client.store.predicate;
 
 import com.linkedin.venice.annotation.Experimental;
+import org.apache.avro.Schema;
 
 
 public interface LongPredicate extends Predicate<Long> {
@@ -10,6 +11,11 @@ public interface LongPredicate extends Predicate<Long> {
   @Override
   default boolean evaluate(Long value) {
     return value != null && evaluate(value.longValue());
+  }
+
+  @Override
+  default boolean isCompatibleWithSchema(Schema schema) {
+    return schema.getType() == Schema.Type.LONG;
   }
 
   @Experimental

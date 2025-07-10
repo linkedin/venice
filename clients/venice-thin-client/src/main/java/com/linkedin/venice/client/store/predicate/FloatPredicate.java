@@ -1,6 +1,7 @@
 package com.linkedin.venice.client.store.predicate;
 
 import com.linkedin.venice.annotation.Experimental;
+import org.apache.avro.Schema;
 
 
 @Experimental
@@ -11,6 +12,11 @@ public interface FloatPredicate extends Predicate<Float> {
   @Override
   default boolean evaluate(Float value) {
     return value != null && evaluate(value.floatValue());
+  }
+
+  @Override
+  default boolean isCompatibleWithSchema(Schema schema) {
+    return schema.getType() == Schema.Type.FLOAT;
   }
 
   @Experimental
