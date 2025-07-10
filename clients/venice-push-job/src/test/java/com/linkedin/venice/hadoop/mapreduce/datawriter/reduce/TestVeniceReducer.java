@@ -13,6 +13,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_INTERVAL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -39,6 +40,7 @@ import com.linkedin.venice.hadoop.mapreduce.engine.HadoopJobClientProvider;
 import com.linkedin.venice.hadoop.mapreduce.engine.MapReduceEngineTaskConfigProvider;
 import com.linkedin.venice.hadoop.task.datawriter.AbstractPartitionWriter;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -124,6 +126,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     props.put(MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
     props.put(VALUE_SCHEMA_ID_PROP, 1);
     props.put(KAFKA_BOOTSTRAP_SERVERS, "localhost:8090"); // Destination Kafka cluster
+    props.put(TOPIC_PROP, "store_v1"); // Destination topic
     props.put(KAFKA_INPUT_BROKER_URL, "localhost:9092"); // Source Kafka cluster
     return new VeniceProperties(props);
   }
@@ -135,6 +138,13 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     reducer.configureTask(getTestProps());
     VeniceWriterFactory factory = reducer.getVeniceWriterFactory();
     Assert.assertNotNull(factory);
+    VeniceWriter veniceWriter1 = factory.createVeniceWriter(
+        new VeniceWriterOptions.Builder("store_v1").setBrokerAddress("localhost:8090").setPartitionCount(1).build());
+    VeniceWriter veniceWriter2 = factory.createVeniceWriter(
+        new VeniceWriterOptions.Builder("store_v1").setBrokerAddress("localhost:8090").setPartitionCount(1).build());
+    GUID guid1 = veniceWriter1.getProducerGUID();
+    GUID guid2 = veniceWriter2.getProducerGUID();
+    Assert.assertNotEquals(guid1, guid2);
   }
 
   private void testReduceWithTooLargeValueAndChunkingDisabled(AbstractVeniceWriter mockWriter, JobConf jobConf) {
