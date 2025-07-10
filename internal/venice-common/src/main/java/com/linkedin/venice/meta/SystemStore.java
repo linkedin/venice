@@ -632,6 +632,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isCompactionEnabled() {
+    return zkSharedStore.isCompactionEnabled();
+  }
+
+  @Override
+  public void setCompactionEnabled(boolean compactionEnabled) {
+    throwUnsupportedOperationException("setCompactionEnabled");
+  }
+
+  @Override
   public long getMinCompactionLagSeconds() {
     return zkSharedStore.getMinCompactionLagSeconds();
   }

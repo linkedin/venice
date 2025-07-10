@@ -931,6 +931,7 @@ public class VeniceParentHelixAdminTest {
   }
 
   private void testUpdateConfigs(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
+    testUpdateCompactionEnabled(parentControllerClient, childControllerClient);
     testUpdateCompactionLag(parentControllerClient, childControllerClient);
     testUpdateMaxRecordSize(parentControllerClient, childControllerClient);
     testUpdateBlobTransfer(parentControllerClient, childControllerClient);
@@ -987,6 +988,17 @@ public class VeniceParentHelixAdminTest {
       Assert.assertEquals(response.getStore().getTargetRegionSwap(), region);
       Assert.assertEquals(response.getStore().getTargetRegionSwapWaitTime(), waitTime);
       Assert.assertEquals(response.getStore().getIsDavinciHeartbeatReported(), isDavinci);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+  }
+
+  private void testUpdateCompactionEnabled(ControllerClient parentClient, ControllerClient childClient) {
+    final boolean expectedCompactionEnabled = false;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setCompactionEnabled(expectedCompactionEnabled);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert.assertEquals(response.getStore().isCompactionEnabled(), expectedCompactionEnabled);
     };
     testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
   }

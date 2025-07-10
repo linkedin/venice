@@ -12,6 +12,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DECOMPRESSION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_REPLICATION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_DAVINCI_PUSH_STATUS_STORE;
@@ -151,6 +152,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
             .setTargetRegionSwapWaitTime(srcStore.getTargetRegionSwapWaitTime())
             .setGlobalRtDivEnabled(srcStore.isGlobalRtDivEnabled())
+            .setCompactionEnabled(srcStore.isCompactionEnabled())
             .setMaxCompactionLagSeconds(srcStore.getMaxCompactionLagSeconds())
             .setMinCompactionLagSeconds(srcStore.getMinCompactionLagSeconds())
             .setNearlineProducerCountPerWriter(srcStore.getNearlineProducerCountPerWriter())
@@ -707,6 +709,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public UpdateStoreQueryParams setDisableStoreView() {
     return (UpdateStoreQueryParams) add(DISABLE_STORE_VIEW, true);
+  }
+
+  public UpdateStoreQueryParams setCompactionEnabled(boolean compactionEnabled) {
+    return putBoolean(COMPACTION_ENABLED, compactionEnabled);
+  }
+
+  public Optional<Boolean> getCompactionEnabled() {
+    return getBoolean(COMPACTION_ENABLED);
   }
 
   public UpdateStoreQueryParams setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {

@@ -973,6 +973,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setDaVinciPushStatusStoreEnabled(isDaVinciPushStatusStoreEnabled());
     storeProperties.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     // storeProperties.setApplyTargetVersionFilterForIncPush(isApplyTargetVersionFilterForIncPush());
+    storeProperties.setCompactionEnabled(isCompactionEnabled());
     storeProperties.setMinCompactionLagSeconds(getMinCompactionLagSeconds());
     storeProperties.setMaxCompactionLagSeconds(getMaxCompactionLagSeconds());
     storeProperties.setMaxRecordSizeBytes(getMaxRecordSizeBytes());
@@ -1489,6 +1490,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isCompactionEnabled() {
+    return this.delegate.isCompactionEnabled();
+  }
+
+  @Override
+  public void setCompactionEnabled(boolean compactionEnabled) {
     throw new UnsupportedOperationException();
   }
 
