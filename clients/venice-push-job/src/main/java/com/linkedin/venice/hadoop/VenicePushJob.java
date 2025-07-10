@@ -782,7 +782,7 @@ public class VenicePushJob implements AutoCloseable {
         }
         if (pushJobSetting.sendControlMessagesDirectly) {
           getVeniceWriter(pushJobSetting).broadcastStartOfPush(
-              !pushJobSetting.isBatchWriteOptimizationForHybridStoreEnabled,
+              pushJobSetting.hybridStoreConfig == null || !pushJobSetting.isBatchWriteOptimizationForHybridStoreEnabled,
               pushJobSetting.isChunkingEnabled,
               pushJobSetting.topicCompressionStrategy,
               optionalCompressionDictionary,
@@ -2247,7 +2247,7 @@ public class VenicePushJob implements AutoCloseable {
             pushType,
             pushId,
             askControllerToSendControlMessage,
-            !setting.isBatchWriteOptimizationForHybridStoreEnabled,
+            setting.hybridStoreConfig == null || !setting.isBatchWriteOptimizationForHybridStoreEnabled,
             finalWriteComputeEnabled,
             Optional.of(partitioners),
             dictionary,
