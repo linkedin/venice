@@ -83,6 +83,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -116,6 +117,7 @@ public class DaVinciBackend implements Closeable {
   private BlobTransferManager<Void> blobTransferManager;
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   private final boolean writeBatchingPushStatus;
+  private final Map<String, Store> cachedStores = new ConcurrentHashMap<>();
 
   public DaVinciBackend(
       ClientConfig clientConfig,
@@ -655,6 +657,14 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
+  public Store putStoreInCache(String storeName, Store store) {
+    return cachedStores.put(storeName, store);
+  }
+
+  public Store getCachedStore(String storeName) {
+    return cachedStores.get(storeName);
+  }
+
   protected void deleteStore(String storeName) {
     StoreBackend storeBackend = storeByNameMap.remove(storeName);
     if (storeBackend != null) {
@@ -721,9 +731,15 @@ public class DaVinciBackend implements Closeable {
     @Override
     public void handleStoreChanged(Store store) {
       StoreBackend storeBackend = storeByNameMap.get(store.getName());
+      putStoreInCache(store.getName(), store);
       if (storeBackend != null) {
         DaVinciBackend.this.handleStoreChanged(storeBackend);
       }
+    }
+
+    @Override
+    public void handleStoreCreated(Store store) {
+      putStoreInCache(store.getName(), store);
     }
 
     @Override
