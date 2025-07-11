@@ -45,11 +45,11 @@ import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
-import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
 import com.linkedin.davinci.store.record.ByteBufferValueRecord;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ByteArrayKey;
-import com.linkedin.davinci.utils.InMemoryChunkAssembler;
+import com.linkedin.davinci.utils.ChunkAssembler;
+import com.linkedin.davinci.utils.RocksDBChunkAssembler;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.ConfigKeys;
@@ -351,7 +351,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final IngestionNotificationDispatcher ingestionNotificationDispatcher;
 
-  protected final InMemoryChunkAssembler chunkAssembler;
+  protected final ChunkAssembler chunkAssembler;
   private final Optional<ObjectCacheBackend> cacheBackend;
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   private final Schema recordTransformerInputValueSchema;
@@ -524,7 +524,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.recordTransformerConfig = recordTransformerConfig;
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
-      this.chunkAssembler = new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName));
+      this.chunkAssembler = new RocksDBChunkAssembler(storageEngine, true);
 
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
       if (recordTransformerConfig.useSpecificRecordKeyDeserializer()) {

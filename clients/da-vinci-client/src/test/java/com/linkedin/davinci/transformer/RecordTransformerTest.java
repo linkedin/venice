@@ -2,6 +2,7 @@ package com.linkedin.davinci.transformer;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -23,6 +24,7 @@ import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumerDaVinci
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
+import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -30,6 +32,8 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSpecificDeserializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.lang.reflect.Field;
 import java.util.Optional;
@@ -133,21 +137,31 @@ public class RecordTransformerTest {
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
 
-    DaVinciRecordTransformer<Integer, String, String> recordTransformer = new TestStringRecordTransformer(
-        storeVersion,
-        keySchema,
-        valueSchema,
-        valueSchema,
-        dummyRecordTransformerConfig);
+    TestStringRecordTransformer recordTransformer = spy(
+        new TestStringRecordTransformer(
+            storeVersion,
+            keySchema,
+            valueSchema,
+            valueSchema,
+            dummyRecordTransformerConfig));
     assertEquals(recordTransformer.getStoreVersion(), storeVersion);
+    DaVinciRecordTransformerUtility recordTransformerUtility = recordTransformer.getRecordTransformerUtility();
 
     AbstractStorageIterator iterator = mock(AbstractStorageIterator.class);
     when(iterator.isValid()).thenReturn(true).thenReturn(false);
-    when(iterator.key()).thenReturn("mockKey".getBytes());
-    when(iterator.value()).thenReturn("mockValue".getBytes());
+    int key = 2;
+    String value = "mockValue";
+    int schemaId = 1;
+    VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
+
+    RecordSerializer<Integer> keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema);
+    when(iterator.key()).thenReturn(keySerializer.serialize(key));
+
+    byte[] valueByteArray = recordTransformerUtility.prependSchemaIdToHeader(value, schemaId, NO_OP_COMPRESSOR).array();
+    when(iterator.value()).thenReturn(valueByteArray);
 
     StorageEngine storageEngine = mock(StorageEngine.class);
-    Lazy<VeniceCompressor> compressor = Lazy.of(() -> mock(VeniceCompressor.class));
+    Lazy<VeniceCompressor> compressor = Lazy.of(() -> NO_OP_COMPRESSOR);
 
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
     when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
@@ -173,13 +187,39 @@ public class RecordTransformerTest {
     recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
     verify(storageEngine, never()).clearPartitionOffset(partitionId);
     verify(storageEngine).getIterator(partitionId);
+    verify(iterator).value();
     verify(iterator).close();
+    assertFalse(recordTransformer.isInMemoryDBEmpty());
+    assertEquals(recordTransformer.get(key), value);
 
     // Ensure partition is put into read-only mode before iterating, and adjusted to default settings after
     verify(storageEngine)
         .adjustStoragePartition(eq(partitionId), eq(StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ), any());
     verify(storageEngine)
         .adjustStoragePartition(eq(partitionId), eq(StoragePartitionAdjustmentTrigger.REOPEN_WITH_DEFAULTS), any());
+
+    // Test scenario where there's only chunks in the db, which should be skipped
+    clearInvocations(storageEngine);
+    clearInvocations(iterator);
+    recordTransformer.clearInMemoryDB();
+    byte[] chunkByteArray = recordTransformerUtility
+        .prependSchemaIdToHeader(value, AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(), NO_OP_COMPRESSOR)
+        .array();
+    byte[] manifestByteArray =
+        recordTransformerUtility
+            .prependSchemaIdToHeader(
+                value,
+                AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
+                NO_OP_COMPRESSOR)
+            .array();
+    when(iterator.value()).thenReturn(chunkByteArray).thenReturn(manifestByteArray);
+    when(iterator.isValid()).thenReturn(true).thenReturn(true).thenReturn(false);
+
+    recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
+    assertTrue(recordTransformer.isInMemoryDBEmpty());
+    verify(storageEngine).getIterator(partitionId);
+    verify(iterator, times(2)).value();
+    verify(iterator).close();
   }
 
   @Test
