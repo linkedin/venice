@@ -4,7 +4,6 @@ import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.StoragePartitionConfig;
-import com.linkedin.davinci.utils.ChunkAssembler;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -163,15 +162,9 @@ public class DaVinciRecordTransformerUtility<K, O> {
         for (iterator.seekToFirst(); iterator.isValid(); iterator.next()) {
           byte[] keyBytes = iterator.key();
           byte[] valueBytes = iterator.value();
-          ByteBuffer valueByteBuffer = ByteBuffer.wrap(valueBytes);
-          int schemaId = valueByteBuffer.getInt();
-
-          if (ChunkAssembler.isChunkedRecord(schemaId)) {
-            continue;
-          }
-
           Lazy<K> lazyKey = Lazy.of(() -> keyDeserializer.deserialize(keyBytes));
           Lazy<O> lazyValue = Lazy.of(() -> {
+            ByteBuffer valueByteBuffer = ByteBuffer.wrap(valueBytes);
             // Skip schema id
             valueByteBuffer.position(Integer.BYTES);
             ByteBuffer decompressedValueBytes;
