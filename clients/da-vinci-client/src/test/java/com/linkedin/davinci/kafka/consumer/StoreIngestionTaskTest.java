@@ -1682,8 +1682,10 @@ public abstract class StoreIngestionTaskTest {
     InMemoryPubSubPosition barLastOffset = getPosition(localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     InMemoryPubSubPosition barNextOffset = barLastOffset.getNextPosition();
 
-    doReturn(fooNextOffset).when(mockTopicManager).getLatestOffsetCachedNonBlocking(any(), eq(PARTITION_FOO));
-    doReturn(barNextOffset).when(mockTopicManager).getLatestOffsetCachedNonBlocking(any(), eq(PARTITION_BAR));
+    doReturn(fooNextOffset.getInternalOffset()).when(mockTopicManager)
+        .getLatestOffsetCachedNonBlocking(any(), eq(PARTITION_FOO));
+    doReturn(barNextOffset.getInternalOffset()).when(mockTopicManager)
+        .getLatestOffsetCachedNonBlocking(any(), eq(PARTITION_BAR));
     localVeniceWriter.broadcastEndOfPush(Collections.emptyMap());
 
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
@@ -2373,7 +2375,7 @@ public abstract class StoreIngestionTaskTest {
 
   @Test(dataProvider = "sortedInputAndAAConfigProvider")
   public void testDataValidationCheckPointing(SortedInput sortedInput, AAConfig aaConfig) throws Exception {
-    final Map<Integer, Long> maxOffsetPerPartition = new HashMap<>();
+    final Map<Integer, InMemoryPubSubPosition> maxOffsetPerPartition = new HashMap<>();
     final Map<Pair<Integer, ByteArray>, ByteArray> pushedRecords = new HashMap<>();
     final int totalNumberOfMessages = 1000;
     final int totalNumberOfConsumptionRestarts = 10;
@@ -2386,8 +2388,9 @@ public abstract class StoreIngestionTaskTest {
       byte[] value = getNumberedValue(i);
 
       PubSubProduceResult produceResult = (PubSubProduceResult) localVeniceWriter.put(key, value, SCHEMA_ID).get();
+      InMemoryPubSubPosition dataRecordPosition = (InMemoryPubSubPosition) produceResult.getPubSubPosition();
 
-      maxOffsetPerPartition.put(produceResult.getPartition(), produceResult.getOffset());
+      maxOffsetPerPartition.put(produceResult.getPartition(), dataRecordPosition);
       pushedRecords.put(new Pair(produceResult.getPartition(), new ByteArray(key)), new ByteArray(value));
     }
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -2436,7 +2439,7 @@ public abstract class StoreIngestionTaskTest {
           .filter(entry -> relevantPartitions.contains(entry.getKey()))
           .forEach(entry -> {
             int partition = entry.getKey();
-            long offset = entry.getValue();
+            long offset = entry.getValue().getInternalOffset();
             LOGGER.info("Verifying completed was called for partition {} and offset {} or greater.", partition, offset);
             verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT).atLeastOnce())
                 .completed(eq(topic), eq(partition), LongEqualOrGreaterThanMatcher.get(offset), eq("STANDBY"));
@@ -2453,7 +2456,7 @@ public abstract class StoreIngestionTaskTest {
         PubSubTopicPartition pubSubTopicPartition =
             new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partition);
         verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT).atLeast(totalNumberOfConsumptionRestarts + 1))
-            .subscribe(eq(pubSubTopicPartition), anyLong());
+            .subscribe(eq(pubSubTopicPartition), any(PubSubPosition.class));
         verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT).atLeast(totalNumberOfConsumptionRestarts))
             .unSubscribe(eq(pubSubTopicPartition));
 
@@ -4116,8 +4119,8 @@ public abstract class StoreIngestionTaskTest {
   }
 
   private Consumer<MockInMemoryPartitionPosition> getObserver(
-      List<Long> resubscriptionOffsetForVT,
-      List<Long> resubscriptionOffsetForRT) {
+      List<InMemoryPubSubPosition> resubscriptionOffsetForVT,
+      List<InMemoryPubSubPosition> resubscriptionOffsetForRT) {
     return topicPartitionOffset -> {
 
       if (topicPartitionOffset == null || topicPartitionOffset.getPubSubPosition() == null) {
@@ -4146,7 +4149,7 @@ public abstract class StoreIngestionTaskTest {
     };
   }
 
-  @Test
+  @Test(timeOut = 60000)
   public void testResubscribeAfterRoleChange() throws Exception {
     String realTimeTopicName = Utils.composeRealTimeTopic(storeNameWithoutVersionInfo);
     PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(realTimeTopicName);
@@ -4176,9 +4179,12 @@ public abstract class StoreIngestionTaskTest {
         BufferReplayPolicy.REWIND_FROM_EOP);
 
     final int batchMessagesNum = 100;
-    final List<Long> resubscriptionOffsetForLocalVT = Arrays.asList(30L, 70L);
-    final List<Long> resubscriptionOffsetForLocalRT = Collections.singletonList(40L);
-    final List<Long> resubscriptionOffsetForRemoteRT = Collections.singletonList(50L);
+    final List<InMemoryPubSubPosition> resubscriptionOffsetForLocalVT =
+        Arrays.asList(InMemoryPubSubPosition.of(30L), InMemoryPubSubPosition.of(70L));
+    final List<InMemoryPubSubPosition> resubscriptionOffsetForLocalRT =
+        Collections.singletonList(InMemoryPubSubPosition.of(40L));
+    final List<InMemoryPubSubPosition> resubscriptionOffsetForRemoteRT =
+        Collections.singletonList(InMemoryPubSubPosition.of(50L));
 
     // Prepare resubscription number to be verified after ingestion.
     int totalResubscriptionTriggered = resubscriptionOffsetForLocalVT.size() + resubscriptionOffsetForLocalRT.size()
@@ -4251,11 +4257,11 @@ public abstract class StoreIngestionTaskTest {
           verify(mockRemoteKafkaConsumer, atLeast(totalRemoteRtResubscriptionTriggered))
               .unSubscribe(fooRtTopicPartition);
           verify(mockLocalKafkaConsumer, atLeast(totalLocalVtResubscriptionTriggered))
-              .subscribe(eq(fooTopicPartition), anyLong());
+              .subscribe(eq(fooTopicPartition), any(PubSubPosition.class));
           verify(mockLocalKafkaConsumer, atLeast(totalLocalRtResubscriptionTriggered))
-              .subscribe(eq(fooRtTopicPartition), anyLong());
+              .subscribe(eq(fooRtTopicPartition), any(PubSubPosition.class));
           verify(mockRemoteKafkaConsumer, atLeast(totalRemoteRtResubscriptionTriggered))
-              .subscribe(eq(fooRtTopicPartition), anyLong());
+              .subscribe(eq(fooRtTopicPartition), any(PubSubPosition.class));
         }, AA_ON);
     config.setPollStrategy(localPollStrategy)
         .setHybridStoreConfig(Optional.of(hybridStoreConfig))
