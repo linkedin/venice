@@ -172,6 +172,7 @@ public class TestBootstrappingChangelogConsumer {
       consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
       consumerProperties.put(CLUSTER_NAME, clusterName);
       consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
+      consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
       ChangelogClientConfig globalChangelogClientConfig =
           new ChangelogClientConfig().setConsumerProperties(consumerProperties)
               .setControllerD2ServiceName(D2_SERVICE_NAME)
@@ -281,6 +282,7 @@ public class TestBootstrappingChangelogConsumer {
       consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
       consumerProperties.put(CLUSTER_NAME, clusterName);
       consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
+      consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
       ChangelogClientConfig globalChangelogClientConfig =
           new ChangelogClientConfig().setConsumerProperties(consumerProperties)
               .setControllerD2ServiceName(D2_SERVICE_NAME)
@@ -449,6 +451,7 @@ public class TestBootstrappingChangelogConsumer {
       consumerProperties.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
       consumerProperties.put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
       consumerProperties.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+      consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
 
       ChangelogClientConfig globalChangelogClientConfig =
           new ChangelogClientConfig().setConsumerProperties(consumerProperties)
@@ -548,6 +551,7 @@ public class TestBootstrappingChangelogConsumer {
             .setRegionName(REGION_NAME)
             .build())) {
       Properties consumerProperties = new Properties();
+      consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
       String localKafkaUrl = localKafka.getAddress();
       consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
       consumerProperties.put(CLUSTER_NAME, clusterName);
@@ -642,6 +646,7 @@ public class TestBootstrappingChangelogConsumer {
             .build())) {
       String localKafkaUrl = localKafka.getAddress();
       Properties consumerProperties = new Properties();
+      consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
       consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
       consumerProperties.put(CLUSTER_NAME, clusterName);
       consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
