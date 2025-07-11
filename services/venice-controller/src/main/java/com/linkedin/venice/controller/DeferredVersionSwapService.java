@@ -65,6 +65,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private Set<String> stalledVersionSwapSet = new HashSet<>();
   private Map<String, Integer> failedRollforwardRetryCountMap = new HashMap<>();
   private static final int MAX_ROLL_FORWARD_RETRY_LIMIT = 5;
+  private static final Set<VersionStatus> versionSwapCompletionStatuses = new HashSet<>();
+  private static final Set<VersionStatus> terminalPushVersionStatuses = new HashSet<>();
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -73,6 +75,13 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     this.veniceParentHelixAdmin = admin;
     this.veniceControllerMultiClusterConfig = multiClusterConfig;
     this.deferredVersionSwapStats = deferredVersionSwapStats;
+
+    versionSwapCompletionStatuses.add(ONLINE);
+    versionSwapCompletionStatuses.add(PARTIALLY_ONLINE);
+    versionSwapCompletionStatuses.add(ERROR);
+
+    terminalPushVersionStatuses.add(ONLINE);
+    terminalPushVersionStatuses.add(KILLED);
   }
 
   @Override
@@ -303,11 +312,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
     // The version could've been manually rolled forward in non target regions. If that is the case, we should check if
     // we emitted any stalled metric for it and remove it if so
-    Set<VersionStatus> versionSwapCompletionStatuses = new HashSet<>();
-    versionSwapCompletionStatuses.add(ONLINE);
-    versionSwapCompletionStatuses.add(PARTIALLY_ONLINE);
-    versionSwapCompletionStatuses.add(ERROR);
-
     if (stalledVersionSwapSet.contains(storeName)) {
       boolean didPushCompleteInNonTargetRegions = doesRegionsHaveVersionStatus(
           nonTargetRegions,
@@ -322,9 +326,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
 
     Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetRegionsString);
-    Set<VersionStatus> terminalPushVersionStatuses = new HashSet<>();
-    terminalPushVersionStatuses.add(ONLINE);
-    terminalPushVersionStatuses.add(KILLED);
     switch (targetVersion.getStatus()) {
       case STARTED:
         // Because the parent status is updated when we poll for the job status, the parent status will not always be an
@@ -580,6 +581,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
           for (Store parentStore: parentStores) {
             int targetVersionNum = parentStore.getLargestUsedVersionNumber();
+            if (targetVersionNum < 1) {
+              continue;
+            }
+
             Version targetVersion = parentStore.getVersion(targetVersionNum);
             if (targetVersion == null) {
               String message = "Parent version is null for store " + parentStore.getName() + " for target version "
