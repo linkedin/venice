@@ -98,6 +98,7 @@ public class TestCompactionManager {
     StoreInfo store3 = new StoreInfo();
     StoreInfo store4 = new StoreInfo();
     StoreInfo store5 = new StoreInfo();
+    StoreInfo store6 = new StoreInfo();
 
     // Set store names
     store1.setName(TEST_STORE_NAME_PREFIX + "1");
@@ -105,6 +106,7 @@ public class TestCompactionManager {
     store3.setName(TEST_STORE_NAME_PREFIX + "3");
     store4.setName(TEST_STORE_NAME_PREFIX + "4");
     store5.setName(TEST_STORE_NAME_PREFIX + "5");
+    store6.setName(TEST_STORE_NAME_PREFIX + "6");
 
     // Return Version mocks when getVersion() is called
     store1.setVersions(Collections.singletonList(version1));
@@ -112,12 +114,14 @@ public class TestCompactionManager {
     store3.setVersions(Collections.singletonList(version3));
     store4.setVersions(Arrays.asList(version4, ongoingPushVersion));
     store5.setVersions(Collections.singletonList(version5));
+    store6.setVersions(Collections.singletonList(version1));
 
     // Mock HybridStoreConfig for the first two StoreInfo instances
     store1.setHybridStoreConfig(mock(HybridStoreConfig.class));
     store2.setHybridStoreConfig(mock(HybridStoreConfig.class));
     store4.setHybridStoreConfig(mock(HybridStoreConfig.class));
     store5.setHybridStoreConfig(mock(HybridStoreConfig.class));
+    store6.setHybridStoreConfig(mock(HybridStoreConfig.class));
 
     // Set isActiveActiveReplicationEnabled for the first two StoreInfo instances
     store1.setActiveActiveReplicationEnabled(true);
@@ -125,6 +129,14 @@ public class TestCompactionManager {
     store3.setActiveActiveReplicationEnabled(true);
     store4.setActiveActiveReplicationEnabled(true);
     store5.setActiveActiveReplicationEnabled(false);
+    store6.setActiveActiveReplicationEnabled(true);
+
+    // Set compaction enabled for all but store6
+    store1.setCompactionEnabled(true);
+    store2.setCompactionEnabled(true);
+    store3.setCompactionEnabled(true);
+    store4.setCompactionEnabled(true);
+    store5.setCompactionEnabled(true);
 
     // Add StoreInfo instances to the list
     storeInfoList.add(store1);
@@ -132,6 +144,7 @@ public class TestCompactionManager {
     storeInfoList.add(store3);
     storeInfoList.add(store4);
     storeInfoList.add(store5);
+    storeInfoList.add(store6);
 
     // Verify stores compaction-ready status
     Assert.assertTrue(testCompactionManager.isCompactionReady(store1)); // compacted more than threshold time (>24hrs)
@@ -140,6 +153,7 @@ public class TestCompactionManager {
     Assert.assertFalse(testCompactionManager.isCompactionReady(store4)); // ongoing push version within threshold time
                                                                          // (<24hrs)
     Assert.assertFalse(testCompactionManager.isCompactionReady(store5)); // non-AA store
+    Assert.assertFalse(testCompactionManager.isCompactionReady(store6)); // config false
 
     // Test
     List<StoreInfo> compactionReadyStores = testCompactionManager.filterStoresForCompaction(storeInfoList);
@@ -151,6 +165,7 @@ public class TestCompactionManager {
     assertFalse(compactionReadyStores.contains(store3));
     assertFalse(compactionReadyStores.contains(store4));
     assertFalse(compactionReadyStores.contains(store5));
+    assertFalse(compactionReadyStores.contains(store6));
   }
 
   @Test(expectedExceptions = VeniceException.class)

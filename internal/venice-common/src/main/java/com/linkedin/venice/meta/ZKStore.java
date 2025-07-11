@@ -870,6 +870,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public void setCompactionEnabled(boolean compactionEnabled) {
+    this.storeProperties.compactionEnabled = compactionEnabled;
+  }
+
+  @Override
+  public boolean isCompactionEnabled() {
+    return this.storeProperties.compactionEnabled;
+  }
+
+  @Override
   public void setMinCompactionLagSeconds(long minCompactionLagSeconds) {
     this.storeProperties.minCompactionLagSeconds = minCompactionLagSeconds;
   }
