@@ -31,7 +31,6 @@ public class LogCompactionStats extends AbstractVeniceStats {
   private final MetricEntityStateGeneric repushCallCountMetric;
   private final MetricEntityStateGeneric compactionEligibleMetric;
   private final MetricEntityStateGeneric storeNominatedForCompactionCountMetric;
-  private final MetricEntityStateGeneric storeCompactionTriggerStatusMetric;
 
   public LogCompactionStats(MetricsRepository metricsRepository, String clusterName) {
     super(metricsRepository, "LogCompactionStats");
@@ -81,14 +80,6 @@ public class LogCompactionStats extends AbstractVeniceStats {
         ControllerTehutiMetricNameEnum.STORE_NOMINATED_FOR_COMPACTION_COUNT,
         Collections.singletonList(new Count()),
         baseDimensionsMap);
-
-    storeCompactionTriggerStatusMetric = MetricEntityStateGeneric.create(
-        ControllerMetricEntity.STORE_COMPACTION_TRIGGER_STATUS.getMetricEntity(),
-        otelRepository,
-        this::registerSensor,
-        ControllerTehutiMetricNameEnum.STORE_COMPACTION_TRIGGER_STATUS,
-        Collections.singletonList(new Count()),
-        baseDimensionsMap);
   }
 
   public void recordRepushStoreCall(
@@ -132,26 +123,13 @@ public class LogCompactionStats extends AbstractVeniceStats {
             .build());
   }
 
-  public void recordStoreCompactionTriggerStatus(
-      String storeName,
-      VeniceResponseStatusCategory triggerAttemptResponse) {
-    storeCompactionTriggerStatusMetric.record(
-        1,
-        ImmutableMap.<VeniceMetricsDimensions, String>builder()
-            .putAll(baseDimensionsMap)
-            .put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
-            .build());
-  }
-
   enum ControllerTehutiMetricNameEnum implements TehutiMetricNameEnum {
     /** for {@link ControllerMetricEntity#REPUSH_CALL_COUNT} */
     REPUSH_CALL_COUNT,
     /** for {@link ControllerMetricEntity#COMPACTION_ELIGIBLE_STATE} */
     COMPACTION_ELIGIBLE_STATE,
     /** for {@link ControllerMetricEntity#STORE_NOMINATED_FOR_COMPACTION_COUNT} */
-    STORE_NOMINATED_FOR_COMPACTION_COUNT,
-    /** for {@link ControllerMetricEntity#STORE_COMPACTION_TRIGGER_STATUS} */
-    STORE_COMPACTION_TRIGGER_STATUS;
+    STORE_NOMINATED_FOR_COMPACTION_COUNT;
 
     private final String metricName;
 

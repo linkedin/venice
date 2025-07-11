@@ -9,7 +9,6 @@ import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
-import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.LogContext;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Instant;
@@ -120,14 +119,12 @@ public class LogCompactionService extends AbstractVeniceService {
         try {
           RepushJobResponse response = admin
               .repushStore(new RepushJobRequest(clusterName, storeInfo.getName(), RepushStoreTriggerSource.SCHEDULED));
-          stats.recordStoreCompactionTriggerStatus(storeInfo.getName(), VeniceResponseStatusCategory.SUCCESS);
           LOGGER.info(
               "Succeeded to trigger log compaction for store: {} in cluster: {} | execution ID: {}",
               response.getName(),
               clusterName,
               response.getExecutionId());
         } catch (Exception e) {
-          stats.recordStoreCompactionTriggerStatus(storeInfo.getName(), VeniceResponseStatusCategory.FAIL);
           LOGGER.error(
               "Failed to trigger log compaction for store: {} in cluster: {}",
               storeInfo.getName(),

@@ -169,4 +169,9 @@ public class CompactionManager {
       throw e;
     }
   }
+
+  @VisibleForTesting
+  public RepushOrchestrator getRepushOrchestrator() {
+    return repushOrchestrator;
+  }
 }

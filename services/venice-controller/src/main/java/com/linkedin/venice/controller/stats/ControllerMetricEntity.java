@@ -29,12 +29,7 @@ public enum ControllerMetricEntity implements ModuleMetricEntityInterface {
   STORE_NOMINATED_FOR_COMPACTION_COUNT(
       MetricType.COUNTER, MetricUnit.NUMBER, "Count of stores nominated for scheduled compaction",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME)
-  ),
-  STORE_COMPACTION_TRIGGER_STATUS(
-      MetricType.COUNTER, MetricUnit.NUMBER,
-      "Count of stores for which a repush DAG is triggered for scheduled compaction",
-      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
-  ),;
+  );
 
   private final MetricEntity metricEntity;
   private final String metricName;

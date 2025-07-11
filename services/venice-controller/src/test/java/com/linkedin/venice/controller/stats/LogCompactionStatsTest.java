@@ -7,6 +7,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -15,6 +16,7 @@ import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.controller.AbstractTestVeniceParentHelixAdmin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
 import com.linkedin.venice.controller.server.StoresRoutes;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
@@ -34,10 +36,11 @@ import io.opentelemetry.sdk.testing.exporter.InMemoryMetricReader;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 import spark.QueryParamsMap;
 import spark.Request;
@@ -54,8 +57,9 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
 
   private Route repushStoreRoute; // route to test repushStore() endpoint
   private LogCompactionService logCompactionService; // mock log compaction service
+  private CompactionManager mockCompactionManager;
 
-  @BeforeClass
+  @BeforeMethod
   public void setUp() throws Exception {
     // add all the metrics that are used in the test
     Collection<MetricEntity> metricEntities = Arrays.asList(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricEntity());
@@ -72,6 +76,20 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
     setupInternalMocks();
     doReturn(true).when(getConfig()).isLogCompactionEnabled(); // enable log compaction to initialise LogCompactionStats
                                                                // in VeniceParentHelixAdmin
+    // VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
+    // when(mockClusterConfig.isLogCompactionEnabled()).thenReturn(true);
+
+    VeniceControllerMultiClusterConfig mockMultiClusterConfigs = mock(VeniceControllerMultiClusterConfig.class);
+    when(mockMultiClusterConfigs.getControllerConfig(anyString())).thenReturn(getConfig());
+
+    when(getInternalAdmin().getMultiClusterConfigs()).thenReturn(mockMultiClusterConfigs);
+
+    this.mockCompactionManager = mock(CompactionManager.class);
+    when(getInternalAdmin().getCompactionManager()).thenReturn(mockCompactionManager);
+
+    Map<String, LogCompactionStats> logCompactionStatsMap =
+        Collections.singletonMap(TEST_CLUSTER_NAME, new LogCompactionStats(metricsRepository, TEST_CLUSTER_NAME));
+    when(getInternalAdmin().getLogCompactionStatsMap()).thenReturn(logCompactionStatsMap);
 
     initializeParentAdmin(Optional.empty(), Optional.of(metricsRepository)); // initialises VeniceParentHelixAdmin
                                                                              // parentAdmin for testing
@@ -216,7 +234,9 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         .thenReturn(Collections.singletonList(mockTestStoreInfo));
 
     // mock successful response
-    when(getInternalAdmin().repushStore(any())).thenReturn(new RepushJobResponse(TEST_STORE_NAME, TEST_EXECUTION_ID));
+    doCallRealMethod().when(getInternalAdmin()).repushStore(any());
+    when(mockCompactionManager.repushStore(any()))
+        .thenReturn(new RepushJobResponse(TEST_STORE_NAME, TEST_EXECUTION_ID));
 
     // start log compaction service to trigger scheduled repush
     logCompactionService.startInner();
