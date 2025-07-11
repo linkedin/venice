@@ -24,6 +24,11 @@
       "type": "long"
     },
     {
+      "name": "logicalTs",
+      "doc": "The logical timestamp of the record in the original Kafka topic partition",
+      "type": "long"
+    },
+    {
       "name": "schemaId",
       "doc": "The schema id of the original record",
       "type": "int"

@@ -43,13 +43,14 @@ public class ChunkAssembler {
    *    (a). If there is no manifest captured yet, ignore.
    *    (b). If there is a manifest captured previously, check whether the current chunk belongs to it or not.
    */
-  public ValueBytesAndSchemaId assembleAndGetValue(final byte[] keyBytes, final Iterator<byte[]> valueIterator) {
+  public ChunkedValueWithMetadata assembleAndGetValue(final byte[] keyBytes, final Iterator<byte[]> valueIterator) {
     if (!valueIterator.hasNext()) {
       throw new IllegalArgumentException("Expect values to be not empty.");
     }
 
     KafkaInputMapperValue reusedMapperValue = null;
     ChunkedValueManifest latestChunkedValueManifest = null;
+    long latestChunkedValueManifestLogicalTs = -1;
     int latestChunkedValueManifestRMDVersionId = -1;
     ByteBuffer latestChunkedValueManifestRMDPayload = null;
     ChunkedValueManifest latestChunkedRmdManifest = null;
@@ -92,11 +93,12 @@ public class ChunkAssembler {
          * The latest event is a delete event.
          */
         if (reusedMapperValue.replicationMetadataPayload.remaining() != 0) {
-          return new ValueBytesAndSchemaId(
+          return new ChunkedValueWithMetadata(
               null,
               reusedMapperValue.schemaId,
               reusedMapperValue.replicationMetadataVersionId,
-              reusedMapperValue.replicationMetadataPayload);
+              reusedMapperValue.replicationMetadataPayload,
+              reusedMapperValue.logicalTs);
         }
         return null;
       }
@@ -109,11 +111,12 @@ public class ChunkAssembler {
         /**
          * The latest event is a put event.
          */
-        return new ValueBytesAndSchemaId(
+        return new ChunkedValueWithMetadata(
             ByteUtils.extractByteArray(reusedMapperValue.value),
             reusedMapperValue.schemaId,
             reusedMapperValue.replicationMetadataVersionId,
-            reusedMapperValue.replicationMetadataPayload);
+            reusedMapperValue.replicationMetadataPayload,
+            reusedMapperValue.logicalTs);
       }
 
       if (reusedMapperValue.schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
@@ -122,6 +125,7 @@ public class ChunkAssembler {
           latestChunkedValueManifest = manifestSerializer.deserialize(
               ByteUtils.extractByteArray(reusedMapperValue.value),
               AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+          latestChunkedValueManifestLogicalTs = reusedMapperValue.logicalTs;
           int valueChunkCount = latestChunkedValueManifest.keysWithChunkIdSuffix.size();
           valueChunks = new byte[valueChunkCount][];
           valueChunkKeySuffixes = new ByteBuffer[valueChunkCount];
@@ -200,11 +204,12 @@ public class ChunkAssembler {
                 .format("Expect %d byte(s) but got %d byte(s)", latestChunkedValueManifest.size, totalValueByteCount));
       }
       if (!isRmdChunkingEnabled) {
-        return new ValueBytesAndSchemaId(
+        return new ChunkedValueWithMetadata(
             concatenateAllChunks(valueChunks, totalValueByteCount),
             latestChunkedValueManifest.schemaId,
             latestChunkedValueManifestRMDVersionId,
-            latestChunkedValueManifestRMDPayload);
+            latestChunkedValueManifestRMDPayload,
+            latestChunkedValueManifestLogicalTs);
       }
 
       if (rmdChunksFound != rmdChunks.length) {
@@ -216,11 +221,12 @@ public class ChunkAssembler {
         throw new VeniceException(
             String.format("Expect %d byte(s) but got %d byte(s)", latestChunkedRmdManifest.size, totalRmdByteCount));
       }
-      return new ValueBytesAndSchemaId(
+      return new ChunkedValueWithMetadata(
           concatenateAllChunks(valueChunks, totalValueByteCount),
           latestChunkedValueManifest.schemaId,
           latestChunkedValueManifestRMDVersionId,
-          ByteBuffer.wrap(concatenateAllChunks(rmdChunks, totalRmdByteCount)));
+          ByteBuffer.wrap(concatenateAllChunks(rmdChunks, totalRmdByteCount)),
+          latestChunkedValueManifestLogicalTs);
 
     }
   }
@@ -247,17 +253,19 @@ public class ChunkAssembler {
     return concatenatedChunk;
   }
 
-  public static class ValueBytesAndSchemaId {
+  public static class ChunkedValueWithMetadata {
     private final int schemaID;
     private final int replicationMetadataVersionId;
     private byte[] bytes;
     private ByteBuffer replicationMetadataPayload;
+    private final long logicalTimestamp;
 
-    ValueBytesAndSchemaId(byte[] bytes, int schemaID, int rmdId, ByteBuffer rmdPayload) {
+    ChunkedValueWithMetadata(byte[] bytes, int schemaID, int rmdId, ByteBuffer rmdPayload, long logicalTimestamp) {
       this.bytes = bytes;
       this.schemaID = schemaID;
       this.replicationMetadataVersionId = rmdId;
       this.replicationMetadataPayload = rmdPayload;
+      this.logicalTimestamp = logicalTimestamp;
     }
 
     public byte[] getBytes() {
@@ -276,6 +284,10 @@ public class ChunkAssembler {
       return replicationMetadataPayload;
     }
 
+    public long getLogicalTimestamp() {
+      return logicalTimestamp;
+    }
+
     public void setReplicationMetadataPayload(ByteBuffer replicationMetadataPayload) {
       this.replicationMetadataPayload = replicationMetadataPayload;
     }
@@ -283,5 +295,6 @@ public class ChunkAssembler {
     public void setBytes(byte[] bytes) {
       this.bytes = bytes;
     }
+
   }
 }
