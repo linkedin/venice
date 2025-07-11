@@ -22,6 +22,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -171,7 +172,14 @@ public class RecordTransformerTest {
     when(storageEngine.getIterator(partitionId)).thenReturn(iterator);
     recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
     verify(storageEngine, never()).clearPartitionOffset(partitionId);
-    verify(storageEngine, times(1)).getIterator(partitionId);
+    verify(storageEngine).getIterator(partitionId);
+    verify(iterator).close();
+
+    // Ensure partition is put into read-only mode before iterating, and adjusted to default settings after
+    verify(storageEngine)
+        .adjustStoragePartition(eq(partitionId), eq(StoragePartitionAdjustmentTrigger.PREPARE_FOR_READ), any());
+    verify(storageEngine)
+        .adjustStoragePartition(eq(partitionId), eq(StoragePartitionAdjustmentTrigger.REOPEN_WITH_DEFAULTS), any());
   }
 
   @Test
@@ -217,6 +225,7 @@ public class RecordTransformerTest {
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
+    dummyRecordTransformerConfig.setStartConsumptionLatchCount(1);
 
     DaVinciRecordTransformer<Integer, String, String> clientRecordTransformer = spy(
         new TestStringRecordTransformer(
@@ -237,14 +246,16 @@ public class RecordTransformerTest {
     blockingRecordTransformer.onStartVersionIngestion(true);
     verify(clientRecordTransformer).onStartVersionIngestion(true);
 
+    assertEquals(blockingRecordTransformer.getCountDownStartConsumptionLatchCount(), 1L);
     assertTrue(blockingRecordTransformer.getStoreRecordsInDaVinci());
-
     assertEquals(blockingRecordTransformer.getKeySchema().getType(), Schema.Type.INT);
-
     assertEquals(blockingRecordTransformer.getOutputValueSchema().getType(), Schema.Type.STRING);
 
+    blockingRecordTransformer.countDownStartConsumptionLatch();
+    assertEquals(blockingRecordTransformer.getCountDownStartConsumptionLatchCount(), 0L);
+
     DaVinciRecordTransformerResult<String> recordTransformerResult =
-        blockingRecordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId);
+        blockingRecordTransformer.internalTransformAndProcessPut(lazyKey, lazyValue, partitionId);
     verify(clientRecordTransformer).transform(lazyKey, lazyValue, partitionId);
     verify(clientRecordTransformer).processPut(eq(lazyKey), any(), eq(partitionId));
     assertEquals(recordTransformerResult.getValue(), value + "Transformed");
