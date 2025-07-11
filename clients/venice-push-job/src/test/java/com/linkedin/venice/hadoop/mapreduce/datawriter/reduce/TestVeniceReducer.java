@@ -132,7 +132,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
   }
 
   @Test
-  public void testWriteFactory() {
+  public void testSpeculativeWriteFactory() {
     VeniceReducer reducer = new VeniceReducer();
     reducer.configure(setupJobConf(100));
     reducer.configureTask(getTestProps());
