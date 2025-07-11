@@ -88,6 +88,7 @@ public class VeniceChangelogConsumerClientFactory {
     } else {
       adjustedConsumerId = consumerId;
     }
+
     return storeClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, adjustedConsumerId), name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
           getNewStoreChangelogClientConfig(storeName).setSpecificValue(valueClass);
@@ -130,13 +131,14 @@ public class VeniceChangelogConsumerClientFactory {
       Class<K> keyClass,
       Class<V> valueClass,
       Schema valueSchema) {
-    return storeBootstrappingClientMap.computeIfAbsent(suffixConsumerIdToStore(storeName, consumerId), name -> {
+    String consumerName = suffixConsumerIdToStore(storeName, consumerId);
+
+    return storeBootstrappingClientMap.computeIfAbsent(consumerName, name -> {
       ChangelogClientConfig newStoreChangelogClientConfig =
           getNewStoreChangelogClientConfig(storeName).setSpecificKey(keyClass)
               .setSpecificValue(valueClass)
-              .setSpecificValueSchema(valueSchema);
-      String viewClass = getViewClass(newStoreChangelogClientConfig, storeName);
-      String consumerName = suffixConsumerIdToStore(storeName + "-" + viewClass.getClass().getSimpleName(), consumerId);
+              .setSpecificValueSchema(valueSchema)
+              .setConsumerName(consumerName);
 
       if (globalChangelogClientConfig.isExperimentalClientEnabled()) {
         return new BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K, V>(

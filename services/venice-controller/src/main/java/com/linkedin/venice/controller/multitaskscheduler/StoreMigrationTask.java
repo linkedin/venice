@@ -54,7 +54,7 @@ class StoreMigrationTask implements Runnable {
         record.incrementAttempts();
         manager.scheduleNextStep(this, 60); // Reschedule for 1 minute later
       } else {
-        abortMigration();
+        handleMigrationFailure();
       }
     }
   }
@@ -87,7 +87,7 @@ class StoreMigrationTask implements Runnable {
       record.resetAttempts();
       manager.scheduleNextStep(this, 0);
     } else if (isTimeout()) {
-      abortMigration();
+      handleMigrationFailure();
     } else {
       manager.scheduleNextStep(this, 60); // Reschedule for 1 minute later
     }
@@ -105,7 +105,7 @@ class StoreMigrationTask implements Runnable {
     } else {
       record.incrementAttempts();
       if (record.getAttempts() > manager.getMaxRetryAttempts()) {
-        abortMigration();
+        handleMigrationFailure();
       } else {
         manager.scheduleNextStep(this, 60); // Reschedule for 1 minute later
       }
@@ -123,7 +123,7 @@ class StoreMigrationTask implements Runnable {
       record.resetAttempts();
       manager.scheduleNextStep(this, 0);
     } else if (record.getAttempts() > manager.getMaxRetryAttempts()) {
-      abortMigration();
+      handleMigrationFailure();
     } else {
       record.incrementAttempts();
       manager.scheduleNextStep(this, 60); // Reschedule for 1 minute later
@@ -145,8 +145,14 @@ class StoreMigrationTask implements Runnable {
     this.timeoutDuration = Duration.ofHours(hours);
   }
 
-  private void abortMigration() {
+  private void handleMigrationFailure() {
     manager.cleanupMigrationRecord(record.getStoreName());
-    record.setIsAborted(true);
+    // Rollback the store migrated to the destination cluster
+    if (record.getAbortOnFailure()) {
+      LOGGER.info("Aborting migration for store: {}", record.getStoreName());
+      // TODO: Implement logic to abort the migration process
+      record.setIsAborted(true);
+    }
+
   }
 }

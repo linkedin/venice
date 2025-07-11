@@ -209,7 +209,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public static final AtomicLong VENICE_WRITER_CLOSE_FAILED_COUNT = new AtomicLong(0);
 
-  private static final long DEFAULT_MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS =
+  /**
+   * Default elapsed time for a segment in milliseconds.
+   */
+  public static final long DEFAULT_MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS =
       TimeUnit.MILLISECONDS.convert(5, TimeUnit.MINUTES);
 
   /**
@@ -947,8 +950,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *         is sending this message to version topic with extra info: offset in the real-time topic.
    * @param logicalTs - An timestamp field to indicate when this record was produced from apps view.
    * @param putMetadata - a PutMetadata containing replication metadata related fields (can be null).
-   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
-   * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
+   * @return a java.util.concurrent.Future for the RecordMetadata that will be assigned to this record.
+   * Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
   public CompletableFuture<PubSubProduceResult> put(

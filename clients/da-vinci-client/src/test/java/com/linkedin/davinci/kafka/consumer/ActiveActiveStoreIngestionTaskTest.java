@@ -26,6 +26,7 @@ import static org.testng.Assert.expectThrows;
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
@@ -86,6 +87,7 @@ import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -199,8 +201,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertEquals("Hello World", new String(resultByteArray));
   }
 
-  @Test
-  public void testisReadyToServeAnnouncedWithRTLag() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "ingestionTaskReusableObjectsStrategy")
+  public void testisReadyToServeAnnouncedWithRTLag(IngestionTaskReusableObjects.Strategy itroStrategy) {
     // Setup store/schema/storage repository
     ReadOnlyStoreRepository readOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     ReadOnlySchemaRepository readOnlySchemaRepository = mock(ReadOnlySchemaRepository.class);
@@ -223,13 +225,16 @@ public class ActiveActiveStoreIngestionTaskTest {
     builder.setMetadataRepository(readOnlyStoreRepository);
     builder.setServerConfig(serverConfig);
     builder.setSchemaRepository(readOnlySchemaRepository);
-    builder.setStorageEngineRepository(storageEngineRepository);
+    builder.setReusableObjectsSupplier(itroStrategy.supplier());
 
     // Set up version config and store config
     HybridStoreConfig hybridStoreConfig =
         new HybridStoreConfigImpl(100L, 100L, 100L, BufferReplayPolicy.REWIND_FROM_EOP);
 
     StorageService storageService = mock(StorageService.class);
+    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(storageService)
+        .getRefCountedStorageEngine(anyString());
+
     Store store = new ZKStore(
         STORE_NAME,
         "Felix",

@@ -536,6 +536,7 @@ public class ReadComputeValidationTest {
     Schema valueSchema = Schema.parse(valueSchemaSimple);
     Map<Integer, GenericRecord> valuesByKey = new HashMap<>();
 
+
     // Create test job records using helper method
     valuesByKey.put(1, createJobRecord(valueSchema, "1", "full-time", "remote"));
     valuesByKey.put(2, createJobRecord(valueSchema, "2", "part-time", "onsite"));
@@ -543,6 +544,7 @@ public class ReadComputeValidationTest {
     valuesByKey.put(4, createJobRecord(valueSchema, "4", "part-time", "hybrid"));
     valuesByKey.put(5, createJobRecord(valueSchema, "5", "full-time", "remote"));
     valuesByKey.put(6, createJobRecord(valueSchema, "6", "part-time", "onsite"));
+
 
     PubSubProducerAdapterFactory pubSubProducerAdapterFactory =
         veniceCluster.getPubSubBrokerWrapper().getPubSubClientsFactory().getProducerAdapterFactory();
@@ -1082,4 +1084,5 @@ public class ReadComputeValidationTest {
       });
     }
   }
+  
 }

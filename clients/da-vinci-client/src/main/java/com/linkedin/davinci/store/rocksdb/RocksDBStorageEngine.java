@@ -169,7 +169,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   private long getStatSumAcrossPartitions(ToLongFunction<RocksDBStoragePartition> statGetter) {
     long sum = 0;
     for (RocksDBStoragePartition partition: getPartitions()) {
-      sum += statGetter.applyAsLong(partition);
+      sum += executeWithSafeGuard(partition.getPartitionId(), () -> statGetter.applyAsLong(partition));
     }
     return sum;
   }

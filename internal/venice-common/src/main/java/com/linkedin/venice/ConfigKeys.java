@@ -1987,6 +1987,11 @@ public class ConfigKeys {
   public static final String BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER = "blob.transfer.max.concurrent.snapshot.user";
   // this is a config to decide max file transfer timeout time in minutes in server side.
   public static final String BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN = "blob.transfer.max.timeout.in.min";
+  // this is a config to decide the max file receive timeout time in minutes in client side.
+  public static final String BLOB_RECEIVE_MAX_TIMEOUT_IN_MIN = "blob.receive.max.timeout.in.min";
+  // This is a config to set the reader idle timeout (in seconds) on the client side to handle scenarios where the
+  // server shuts down before transfer completes.
+  public static final String BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS = "blob.receive.reader.idle.time.in.seconds";
   // this is a config to decide the max allowed offset lag to use kafka, even if the blob transfer is enable.
   public static final String BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD =
       "blob.transfer.disabled.offset.lag.threshold";
@@ -2772,4 +2777,26 @@ public class ConfigKeys {
    */
   public static final String SERVER_USE_HEARTBEAT_LAG_FOR_READY_TO_SERVE_CHECK_ENABLED =
       "server.use.heartbeat.lag.for.ready.to.serve.check.enabled";
+
+  /**
+   * If enabled, the parent-controller's multitask scheduler service would be enabled
+   */
+  public static final String MULTITASK_SCHEDULER_SERVICE_ENABLED = "multitask.scheduler.service.enabled";
+
+  /**
+   * (Only matters if MULTITASK_SCHEDULER_SERVICE_ENABLED true). Class name of {@link com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService} implementation
+   */
+  public static final String STORE_MIGRATION_THREAD_POOL_SIZE = "store.migration.thread.pool.size";
+
+  /**
+   * (Only matters if MULTITASK_SCHEDULER_SERVICE_ENABLED true). Class name of {@link com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService} implementation
+   */
+  public static final String STORE_MIGRATION_MAX_RETRY_ATTEMPTS = "store.migration.max.retry.attempts";
+
+  /**
+   * The strategy for how to share memory-heavy objects used in the ingestion hot path.
+   */
+  public static final String SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY =
+      "server.ingestion.task.reusable.objects.strategy";
+
 }

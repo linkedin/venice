@@ -24,6 +24,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointData;
 import static org.testng.Assert.assertEquals;
+import static org.testng.AssertJUnit.assertTrue;
 
 import com.linkedin.davinci.consumer.stats.BasicConsumerStats;
 import com.linkedin.venice.stats.ClientType;
@@ -66,10 +67,10 @@ public class BasicConsumerStatsTest {
 
     consumerStats.emitCurrentConsumingVersionMetrics((int) minVersion, (int) maxVersion);
 
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + MINIMUM_CONSUMING_VERSION.getMetricName() + ".Gauge", minVersion);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + MAXIMUM_CONSUMING_VERSION.getMetricName() + ".Gauge", maxVersion);
+    validateTehutiMetric(tehutiMetricPrefix + "--" + MINIMUM_CONSUMING_VERSION.getMetricName() + ".Gauge", minVersion);
+    validateTehutiMetric(tehutiMetricPrefix + "--" + MAXIMUM_CONSUMING_VERSION.getMetricName() + ".Gauge", maxVersion);
 
-    validateMinMaxSumAggregationsOtelMetrics(
+    validateMinMaxSumAggregationsOtelMetric(
         storeName,
         CURRENT_CONSUMING_VERSION.getMetricEntity().getMetricName(),
         minVersion,
@@ -83,9 +84,9 @@ public class BasicConsumerStatsTest {
     double delay = 100;
     consumerStats.emitHeartBeatDelayMetrics((long) delay);
 
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + MAX_PARTITION_LAG.getMetricName() + ".Max", delay);
+    validateTehutiMetric(tehutiMetricPrefix + "--" + MAX_PARTITION_LAG.getMetricName() + ".Max", delay);
 
-    validateMinMaxSumAggregationsOtelMetrics(
+    validateMinMaxSumAggregationsOtelMetric(
         storeName,
         HEART_BEAT_DELAY.getMetricEntity().getMetricName(),
         delay,
@@ -97,51 +98,56 @@ public class BasicConsumerStatsTest {
   @Test
   public void testEmitPollSuccessCountMetrics() {
     consumerStats.emitPollCountMetrics(SUCCESS);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + POLL_SUCCESS_COUNT.getMetricName() + ".Count", 1);
-    validateLongCounterOtelMetrics(storeName, POLL_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
+    validateTehutiRateMetric(tehutiMetricPrefix + "--" + POLL_SUCCESS_COUNT.getMetricName() + ".Rate");
+    validateLongCounterOtelMetric(storeName, POLL_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
   }
 
   @Test
   public void testEmitPollFailCallCountMetrics() {
     consumerStats.emitPollCountMetrics(FAIL);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + POLL_FAIL_COUNT.getMetricName() + ".Count", 1);
-    validateLongCounterOtelMetrics(storeName, POLL_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
+    validateTehutiRateMetric(tehutiMetricPrefix + "--" + POLL_FAIL_COUNT.getMetricName() + ".Rate");
+    validateLongCounterOtelMetric(storeName, POLL_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
   }
 
   @Test
   public void testEmitVersionSwapSuccessCountMetrics() {
     consumerStats.emitVersionSwapCountMetrics(SUCCESS);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Count", 1);
-    validateLongCounterOtelMetrics(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
+    validateTehutiRateMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_SUCCESS_COUNT.getMetricName() + ".Rate");
+    validateLongCounterOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
   }
 
   @Test
   public void testEmitVersionSwapFailCountMetrics() {
     consumerStats.emitVersionSwapCountMetrics(FAIL);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Count", 1);
-    validateLongCounterOtelMetrics(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
+    validateTehutiRateMetric(tehutiMetricPrefix + "--" + VERSION_SWAP_FAIL_COUNT.getMetricName() + ".Rate");
+    validateLongCounterOtelMetric(storeName, VERSION_SWAP_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
   }
 
   @Test
   public void testEmitChunkedRecordSuccessCountMetrics() {
     consumerStats.emitChunkedRecordCountMetrics(SUCCESS);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + CHUNKED_RECORD_SUCCESS_COUNT.getMetricName() + ".Count", 1);
-    validateLongCounterOtelMetrics(storeName, CHUNKED_RECORD_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
+    validateTehutiRateMetric(tehutiMetricPrefix + "--" + CHUNKED_RECORD_SUCCESS_COUNT.getMetricName() + ".Rate");
+    validateLongCounterOtelMetric(storeName, CHUNKED_RECORD_COUNT.getMetricEntity().getMetricName(), 1, SUCCESS);
   }
 
   @Test
   public void testEmitChunkedRecordFailCountMetrics() {
     consumerStats.emitChunkedRecordCountMetrics(FAIL);
-    validateTehutiMetrics(tehutiMetricPrefix + "--" + CHUNKED_RECORD_FAIL_COUNT.getMetricName() + ".Count", 1);
-    validateLongCounterOtelMetrics(storeName, CHUNKED_RECORD_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
+    validateTehutiRateMetric(tehutiMetricPrefix + "--" + CHUNKED_RECORD_FAIL_COUNT.getMetricName() + ".Rate");
+    validateLongCounterOtelMetric(storeName, CHUNKED_RECORD_COUNT.getMetricEntity().getMetricName(), 1, FAIL);
   }
 
-  private void validateTehutiMetrics(String metricName, double expectedValue) {
+  private void validateTehutiMetric(String metricName, double expectedValue) {
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
     assertEquals(metrics.get(metricName).value(), expectedValue);
   }
 
-  private void validateMinMaxSumAggregationsOtelMetrics(
+  private void validateTehutiRateMetric(String metricName) {
+    Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+    assertTrue(metrics.get(metricName).value() > 0);
+  }
+
+  private void validateMinMaxSumAggregationsOtelMetric(
       String storeName,
       String metricName,
       double expectedMin,
@@ -161,7 +167,7 @@ public class BasicConsumerStatsTest {
         otelMetricPrefix);
   }
 
-  private void validateLongCounterOtelMetrics(
+  private void validateLongCounterOtelMetric(
       String storeName,
       String metricName,
       double expectedValue,

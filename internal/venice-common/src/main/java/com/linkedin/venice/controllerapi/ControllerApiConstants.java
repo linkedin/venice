@@ -9,6 +9,9 @@ public class ControllerApiConstants {
 
   public static final String IS_ABORT_MIGRATION_CLEANUP = "is_abort_migration_cleanup";
   public static final String STORE_NAME = "store_name";
+
+  public static final String AUTO_STORE_MIGRATION_CURRENT_STEP = "auto_store_migration_current_step";
+  public static final String AUTO_STORE_MIGRATION_ABORT_ON_FAILURE = "auto_store_migration_abort_on_failure";
   /**
    * @deprecated Use {@link #STORE_NAME} instead.
    */

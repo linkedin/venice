@@ -19,23 +19,26 @@ import org.apache.zookeeper.Watcher;
  */
 public class CachedResourceZkStateListener implements IZkStateListener {
   private final Logger logger;
-  public static final int DEFAULT_RETRY_LOAD_ATTEMPTS = 1;
-  public static final long DEFAULT_RETRY_LOAD_INTERVAL_IN_MS = TimeUnit.SECONDS.toMillis(10);
+  public static final int DEFAULT_REFRESH_ATTEMPTS_FOR_ZK_RECONNECT = 1;
+  public static final long DEFAULT_REFRESH_INTERVAL_FOR_ZK_RECONNECT_IS_MS = TimeUnit.SECONDS.toMillis(10);
   private final VeniceResource resource;
-  private final int retryLoadAttempts;
-  private final long retryLoadIntervalInMs;
+  private final int refreshAttemptsForZkReconnect;
+  private final long refreshIntervalForZkReconnectInMs;
   private volatile boolean disconnected = false;
 
   public CachedResourceZkStateListener(VeniceResource resource) {
     // By default, we only retry once after connection is reconnected.
-    this(resource, DEFAULT_RETRY_LOAD_ATTEMPTS, DEFAULT_RETRY_LOAD_INTERVAL_IN_MS);
+    this(resource, DEFAULT_REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, DEFAULT_REFRESH_INTERVAL_FOR_ZK_RECONNECT_IS_MS);
   }
 
-  public CachedResourceZkStateListener(VeniceResource resource, int retryLoadAttempts, long retryLoadIntervalInMs) {
+  public CachedResourceZkStateListener(
+      VeniceResource resource,
+      int refreshAttemptsForZkReconnect,
+      long refreshIntervalForZkReconnectInMs) {
     this.resource = resource;
     this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + getResourceName() + "]");
-    this.retryLoadAttempts = retryLoadAttempts;
-    this.retryLoadIntervalInMs = retryLoadIntervalInMs;
+    this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
+    this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
   }
 
   /**
@@ -59,25 +62,26 @@ public class CachedResourceZkStateListener implements IZkStateListener {
           // there is only one refresh operation on the fly.
           // As we met the issue that ZK could return partial result just after connection is reconnected.
           // In order to reduce the possibility that we get not-up-to-date data, we keep loading data for
-          // retryLoadAttempts with retryLoadIntervalInMs between each two loading.
-          // Sleep a random time(no more than retryLoadIntervalInMs) to avoid thunderstorm issue that all nodes are
+          // refreshAttemptsForZkReconnect with refreshIntervalForZkReconnectInMs between each two loading.
+          // Sleep a random time(no more than refreshIntervalForZkReconnectInMs) to avoid thunderstorm issue that all
+          // nodes are
           // trying to refresh resource at the same time if there is a network issue in that DC.
-          Utils.sleep((long) (Math.random() * retryLoadIntervalInMs));
+          Utils.sleep((long) (Math.random() * refreshIntervalForZkReconnectInMs));
           int attempt = 1;
-          while (attempt <= retryLoadAttempts) {
+          while (attempt <= refreshAttemptsForZkReconnect) {
             logger.info(
                 "Attempt #{} of {}: Refresh resource after connection is reconnected.",
                 attempt,
-                retryLoadAttempts);
+                refreshAttemptsForZkReconnect);
             try {
               resource.refresh();
-              logger.info("Attempt #{} of {}: Refresh completed.", attempt, retryLoadAttempts);
+              logger.info("Attempt #{} of {}: Refresh completed.", attempt, refreshAttemptsForZkReconnect);
               return;
             } catch (Exception e) {
               logger.error("Can not refresh resource correctly after client is reconnected", e);
-              if (attempt < retryLoadAttempts) {
-                logger.info("Will retry after {} ms", retryLoadIntervalInMs);
-                Utils.sleep(retryLoadIntervalInMs);
+              if (attempt < refreshAttemptsForZkReconnect) {
+                logger.info("Will retry after {} ms", refreshIntervalForZkReconnectInMs);
+                Utils.sleep(refreshIntervalForZkReconnectInMs);
               }
               attempt++;
             }

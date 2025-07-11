@@ -24,7 +24,8 @@ import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
@@ -61,6 +62,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
@@ -78,6 +80,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import org.apache.avro.Schema;
@@ -90,7 +93,6 @@ import org.testng.annotations.Test;
 @Test
 public abstract class KafkaStoreIngestionServiceTest {
   private StorageService mockStorageService;
-  private StorageEngineRepository mockStorageEngineRepository;
   private VeniceConfigLoader mockVeniceConfigLoader;
   private StorageMetadataService storageMetadataService;
   private ClusterInfoProvider mockClusterInfoProvider;
@@ -107,9 +109,8 @@ public abstract class KafkaStoreIngestionServiceTest {
   @BeforeMethod(alwaysRun = true)
   public void setUp() {
     mockStorageService = mock(StorageService.class);
-    mockStorageEngineRepository = mock(StorageEngineRepository.class);
-    when(mockStorageService.getStorageEngineRepository()).thenReturn(mockStorageEngineRepository);
-    doReturn(mock(StorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());
+    doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(mockStorageService)
+        .getRefCountedStorageEngine(anyString());
     storageMetadataService = mock(StorageMetadataService.class);
     mockClusterInfoProvider = mock(ClusterInfoProvider.class);
     mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
@@ -162,6 +163,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(30l).when(mockVeniceServerConfig).getKafkaFetchQuotaTimeWindow();
     doReturn(PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY).when(mockVeniceServerConfig)
         .getPubSubPositionTypeRegistry();
+    doReturn(IngestionTaskReusableObjects.Strategy.SINGLETON_THREAD_LOCAL).when(mockVeniceServerConfig)
+        .getIngestionTaskReusableObjectsStrategy();
 
     VeniceClusterConfig mockVeniceClusterConfig = mock(VeniceClusterConfig.class);
     Properties properties = new Properties();
@@ -396,7 +399,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     Mockito.when(mockSchemaRepo.getKeySchema(topicName)).thenReturn(Mockito.mock(SchemaEntry.class));
 
     StorageEngine storageEngine1 = mock(StorageEngine.class);
-    Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine1);
+    doReturn(new ReferenceCounted<>(storageEngine1, se -> {})).when(mockStorageService)
+        .getRefCountedStorageEngine(topicName);
 
     mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
     doReturn(mockStore).when(mockMetadataRepo).getStore(storeName);
@@ -411,7 +415,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     assertNull(closedStoreIngestionTask);
 
     StorageEngine storageEngine2 = mock(StorageEngine.class);
-    Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine2);
+    doReturn(new ReferenceCounted<>(storageEngine2, se -> {})).when(mockStorageService)
+        .getRefCountedStorageEngine(topicName);
     kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0);
     StoreIngestionTask newStoreIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     Assert.assertNotNull(newStoreIngestionTask);
@@ -466,9 +471,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
-
-    StorageEngine storageEngine1 = mock(StorageEngine.class);
-    Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine1);
 
     mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
     doReturn(mockStore).when(mockMetadataRepo).getStore(storeName);
@@ -584,6 +586,16 @@ public abstract class KafkaStoreIngestionServiceTest {
     storeConfigField.setAccessible(true);
     storeConfigField.set(storeIngestionTask, config);
 
+    Field activeReplicaCountField = StoreIngestionTask.class.getDeclaredField("activeReplicaCount");
+    activeReplicaCountField.setAccessible(true);
+    AtomicInteger activeReplicaCount = new AtomicInteger(0);
+    activeReplicaCountField.set(storeIngestionTask, activeReplicaCount);
+
+    StorageUtilizationManager storageUtilizationManager = mock(StorageUtilizationManager.class);
+    Field storageUtilizationManagerField = StoreIngestionTask.class.getDeclaredField("storageUtilizationManager");
+    storageUtilizationManagerField.setAccessible(true);
+    storageUtilizationManagerField.set(storeIngestionTask, storageUtilizationManager);
+
     // Verify that when the ingestion task is running, it drops the store partition asynchronously
     when(storeIngestionTask.isRunning()).thenReturn(true);
     kafkaStoreIngestionService.dropStoragePartitionGracefully(config, partitionId);
@@ -637,9 +649,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
 
-    StorageEngine storageEngine1 = mock(StorageEngine.class);
-    Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine1);
-
     mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
     doReturn(mockStore).when(mockMetadataRepo).getStore(storeName);
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
@@ -660,6 +669,190 @@ public abstract class KafkaStoreIngestionServiceTest {
       Assert.assertNull(kafkaStoreIngestionService.getStoreIngestionTask(topicName));
     });
     kafkaStoreIngestionService.close();
+  }
+
+  @Test
+  public void testIdleSitCleanupSkipsCurrentVersionSitWithReplicas() {
+    kafkaStoreIngestionService = new KafkaStoreIngestionService(
+        mockStorageService,
+        mockVeniceConfigLoader,
+        storageMetadataService,
+        mockClusterInfoProvider,
+        mockMetadataRepo,
+        mockSchemaRepo,
+        mockLiveClusterConfigRepo,
+        new MetricsRepository(),
+        Optional.empty(),
+        Optional.empty(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        Optional.empty(),
+        null,
+        false,
+        compressorFactory,
+        Optional.empty(),
+        null,
+        false,
+        null,
+        mockPubSubClientsFactory,
+        Optional.empty(),
+        null,
+        null,
+        null);
+    kafkaStoreIngestionService.start();
+    String topicName = "test-store_v1";
+    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    Store mockStore = new ZKStore(
+        storeName,
+        "unit-test",
+        0,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+
+    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
+    mockStore.setCurrentVersion(1);
+    doReturn(mockStore).when(mockMetadataRepo).getStore(storeName);
+    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
+    doReturn(new StoreVersionInfo(mockStore, mockStore.getVersion(1))).when(mockMetadataRepo)
+        .waitVersion(eq(storeName), eq(1), any());
+    VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(topicName, veniceProperties);
+    kafkaStoreIngestionService.startConsumption(config, 0);
+    // kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1, true);
+    final StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    // Unsubscribe from partition 0 to make the store ingestion task idle
+    Set<PubSubTopicPartition> topicPartitionsToUnsubscribe = new HashSet<>();
+    topicPartitionsToUnsubscribe.add(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topicName), 0));
+    storeIngestionTask.consumerBatchUnsubscribe(topicPartitionsToUnsubscribe);
+    // Verify that the store ingestion task is marked as idle and eventually closed
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+      Assert.assertTrue(storeIngestionTask.isIdleOverThreshold());
+    });
+    // verify has active replicas
+    assertTrue(storeIngestionTask.hasReplicas());
+    assertTrue(storeIngestionTask.isCurrentVersion.getAsBoolean());
+    // verify SIT is not null and it is not closed
+    assertNotNull(kafkaStoreIngestionService.getStoreIngestionTask(topicName));
+    assertTrue(kafkaStoreIngestionService.getStoreIngestionTask(topicName).isRunning());
+
+    kafkaStoreIngestionService.close();
+  }
+
+  @Test
+  public void testPromoteToLeader() {
+    kafkaStoreIngestionService = new KafkaStoreIngestionService(
+        mockStorageService,
+        mockVeniceConfigLoader,
+        storageMetadataService,
+        mockClusterInfoProvider,
+        mockMetadataRepo,
+        mockSchemaRepo,
+        mockLiveClusterConfigRepo,
+        new MetricsRepository(),
+        Optional.empty(),
+        Optional.empty(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        Optional.empty(),
+        null,
+        false,
+        compressorFactory,
+        Optional.empty(),
+        null,
+        false,
+        null,
+        mockPubSubClientsFactory,
+        Optional.empty(),
+        null,
+        null,
+        null);
+
+    VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    PubSubTopic topic = pubSubTopicRepository.getTopic("test-store_v1");
+    VeniceStoreVersionConfig veniceStoreVersionConfig = new VeniceStoreVersionConfig(topic.getName(), veniceProperties);
+    int partitionId = 0;
+    LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker =
+        mock(LeaderFollowerPartitionStateModel.LeaderSessionIdChecker.class);
+
+    // Case: SIT does not exist for the topic
+    assertFalse(kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().containsKey(topic.getName()));
+    kafkaStoreIngestionService.promoteToLeader(veniceStoreVersionConfig, partitionId, checker);
+    assertFalse(kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().containsKey(topic.getName()));
+
+    // Case: SIT exists for the topic but is not running
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().put(topic.getName(), storeIngestionTask);
+    doReturn(false).when(storeIngestionTask).isRunning();
+    kafkaStoreIngestionService.promoteToLeader(veniceStoreVersionConfig, partitionId, checker);
+    verify(storeIngestionTask, never()).promoteToLeader(
+        any(PubSubTopicPartition.class),
+        any(LeaderFollowerPartitionStateModel.LeaderSessionIdChecker.class));
+
+    // Case: SIT exists for the topic and is running
+    assertTrue(kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().containsKey(topic.getName()));
+    doReturn(true).when(storeIngestionTask).isRunning();
+    kafkaStoreIngestionService.promoteToLeader(veniceStoreVersionConfig, partitionId, checker);
+    verify(storeIngestionTask).promoteToLeader(
+        any(PubSubTopicPartition.class),
+        any(LeaderFollowerPartitionStateModel.LeaderSessionIdChecker.class));
+  }
+
+  @Test
+  public void testDemoteToStandby() {
+    kafkaStoreIngestionService = new KafkaStoreIngestionService(
+        mockStorageService,
+        mockVeniceConfigLoader,
+        storageMetadataService,
+        mockClusterInfoProvider,
+        mockMetadataRepo,
+        mockSchemaRepo,
+        mockLiveClusterConfigRepo,
+        new MetricsRepository(),
+        Optional.empty(),
+        Optional.empty(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        Optional.empty(),
+        null,
+        false,
+        compressorFactory,
+        Optional.empty(),
+        null,
+        false,
+        null,
+        mockPubSubClientsFactory,
+        Optional.empty(),
+        null,
+        null,
+        null);
+
+    VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    PubSubTopic topic = pubSubTopicRepository.getTopic("test-store_v1");
+    VeniceStoreVersionConfig veniceStoreVersionConfig = new VeniceStoreVersionConfig(topic.getName(), veniceProperties);
+    int partitionId = 0;
+    LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker =
+        mock(LeaderFollowerPartitionStateModel.LeaderSessionIdChecker.class);
+
+    // Case: SIT does not exist for the topic
+    assertFalse(kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().containsKey(topic.getName()));
+    kafkaStoreIngestionService.demoteToStandby(veniceStoreVersionConfig, partitionId, checker);
+    assertFalse(kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().containsKey(topic.getName()));
+
+    // Case: SIT exists for the topic but is not running
+    StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
+    kafkaStoreIngestionService.getTopicNameToIngestionTaskMap().put(topic.getName(), storeIngestionTask);
+    doReturn(false).when(storeIngestionTask).isRunning();
+    kafkaStoreIngestionService.demoteToStandby(veniceStoreVersionConfig, partitionId, checker);
+    verify(storeIngestionTask, never()).demoteToStandby(
+        any(PubSubTopicPartition.class),
+        any(LeaderFollowerPartitionStateModel.LeaderSessionIdChecker.class));
+
+    // Case: SIT exists for the topic and is running
+    doReturn(true).when(storeIngestionTask).isRunning();
+    kafkaStoreIngestionService.demoteToStandby(veniceStoreVersionConfig, partitionId, checker);
+    verify(storeIngestionTask).demoteToStandby(
+        any(PubSubTopicPartition.class),
+        any(LeaderFollowerPartitionStateModel.LeaderSessionIdChecker.class));
   }
 
   @Test

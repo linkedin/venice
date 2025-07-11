@@ -23,7 +23,8 @@ public enum Arg {
   VERSION("version", "v", true, "Active store version number"),
   LARGEST_USED_VERSION_NUMBER(
       "largest-used-version", "luv", true, "Largest used store version number (whether active or not)"
-  ), PUSH_ID("push-id", "pid", true, "Push Id"),
+  ), LARGEST_USED_RT_VERSION_NUMBER("largest-used-rt-version", "lurtv", true, "Largest used RT store version number"),
+  PUSH_ID("push-id", "pid", true, "Push Id"),
   STORE_SIZE("store-size", "ss", true, "Size of the store in bytes, used to calculate partitioning"),
   KEY_SCHEMA("key-schema-file", "ks", true, "Path to text file with key schema"),
   VALUE_SCHEMA_ID("value-schema-id", "vid", true, "value schema id"),
@@ -306,7 +307,9 @@ public enum Arg {
   ), ENABLE_STORE_MIGRATION("enable-store-migration", "esm", true, "Toggle store migration store config"),
   ADMIN_OPERATION_PROTOCOL_VERSION(
       "admin-operation-protocol-version", "aopv", true, "Admin operation protocol version"
-  ), GLOBAL_RT_DIV_ENABLED("global-rt-div-enabled", "grde", true, "Enable Global RT DIV for a store");
+  ), GLOBAL_RT_DIV_ENABLED("global-rt-div-enabled", "grde", true, "Enable Global RT DIV for a store"),
+  INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
+  ABORT_ON_FAILURE("abort-on-failure", "aof", true, "Abort the auto store migration if any step fails"),;
 
   private final String argName;
   private final String first;

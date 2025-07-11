@@ -4,13 +4,13 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
-import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
@@ -32,6 +32,7 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 
 
@@ -106,7 +107,6 @@ public class StoreIngestionTaskFactory {
 
     private HeartbeatMonitoringService heartbeatMonitoringService;
     private VeniceViewWriterFactory veniceViewWriterFactory;
-    private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
     private Queue<VeniceNotifier> leaderFollowerNotifiers;
     private ReadOnlySchemaRepository schemaRepo;
@@ -129,6 +129,7 @@ public class StoreIngestionTaskFactory {
     private Runnable runnableForKillIngestionTasksForNonCurrentVersions;
     private ExecutorService aaWCWorkLoadProcessingThreadPool;
     private ExecutorService aaWCIngestionStorageLookupThreadPool;
+    private Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier;
 
     private interface Setter {
       void apply();
@@ -187,16 +188,8 @@ public class StoreIngestionTaskFactory {
       return this.metaStoreWriter;
     }
 
-    public StorageEngineRepository getStorageEngineRepository() {
-      return storageEngineRepository;
-    }
-
     public StorageMetadataService getStorageMetadataService() {
       return storageMetadataService;
-    }
-
-    public Builder setStorageEngineRepository(StorageEngineRepository storageEngineRepository) {
-      return set(() -> this.storageEngineRepository = storageEngineRepository);
     }
 
     public Builder setStorageMetadataService(StorageMetadataService storageMetadataService) {
@@ -355,6 +348,14 @@ public class StoreIngestionTaskFactory {
 
     public ExecutorService getAAWCWorkLoadProcessingThreadPool() {
       return this.aaWCWorkLoadProcessingThreadPool;
+    }
+
+    public Builder setReusableObjectsSupplier(Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier) {
+      return set(() -> this.reusableObjectsSupplier = reusableObjectsSupplier);
+    }
+
+    public Supplier<IngestionTaskReusableObjects> getReusableObjectsSupplier() {
+      return this.reusableObjectsSupplier;
     }
   }
 }

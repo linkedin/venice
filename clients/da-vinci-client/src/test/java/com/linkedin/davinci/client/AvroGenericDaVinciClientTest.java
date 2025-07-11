@@ -88,7 +88,10 @@ public class AvroGenericDaVinciClientTest {
 
     ReadOnlySchemaRepository mockSchemaRepository = mock(ReadOnlySchemaRepository.class);
     Schema mockKeySchema = new Schema.Parser().parse("{\"type\": \"int\"}");
+    SchemaEntry mockValueSchemaEntry = mock(SchemaEntry.class);
+    when(mockValueSchemaEntry.getId()).thenReturn(1);
     when(mockSchemaRepository.getKeySchema(anyString())).thenReturn(new SchemaEntry(1, mockKeySchema));
+    when(mockSchemaRepository.getSupersetOrLatestValueSchema(anyString())).thenReturn(mockValueSchemaEntry);
     when(mockBackend.getSchemaRepository()).thenReturn(mockSchemaRepository);
 
     // Use reflection to set the private static daVinciBackend field

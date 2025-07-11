@@ -22,4 +22,9 @@ public class LongAnyOfPredicate implements LongPredicate {
     }
     return false;
   }
+
+  @Override
+  public String toString() {
+    return "LongAnyOfPredicate{expectedValues=" + java.util.Arrays.toString(expectedValues) + "}";
+  }
 }

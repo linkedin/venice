@@ -142,7 +142,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       partitionIds.stream()
           .sorted((o1, o2) -> Integer.compare(o2, o1)) // reverse order, to minimize array resizing in {@link
                                                        // SparseConcurrentList}
-          .forEach(this::addStoragePartition);
+          .forEach(this::addStoragePartitionIfAbsent);
     }
   }
 
@@ -191,7 +191,10 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   @Override
-  public void addStoragePartition(int partitionId) {
+  public synchronized void addStoragePartitionIfAbsent(int partitionId) {
+    if (containsPartition(partitionId)) {
+      return;
+    }
     addStoragePartition(new StoragePartitionConfig(storeVersionName, partitionId));
   }
 
@@ -430,7 +433,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     });
   }
 
-  private <T> T executeWithSafeGuard(int partitionId, Callable<T> callable) {
+  protected <T> T executeWithSafeGuard(int partitionId, Callable<T> callable) {
     ReadWriteLock readWriteLock = getRWLockForPartitionOrThrow(partitionId);
     readWriteLock.readLock().lock();
     try {
