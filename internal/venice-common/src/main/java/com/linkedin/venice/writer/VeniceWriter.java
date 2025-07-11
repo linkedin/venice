@@ -1148,6 +1148,17 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return update(key, update, valueSchemaId, derivedSchemaId, callback, APP_DEFAULT_LOGICAL_TS);
   }
 
+  @Override
+  public CompletableFuture<PubSubProduceResult> update(
+      K key,
+      U update,
+      int valueSchemaId,
+      int derivedSchemaId,
+      long logicalTimestamp,
+      PubSubProducerCallback callback) {
+    return update(key, update, valueSchemaId, derivedSchemaId, callback, logicalTimestamp);
+  }
+
   public CompletableFuture<PubSubProduceResult> update(
       K key,
       U update,

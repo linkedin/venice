@@ -30,6 +30,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
@@ -154,7 +155,7 @@ public class VeniceSystemProducerTest {
     versionCreationResponse.setPartitions(2);
     versionCreationResponse.setKafkaTopic("test_store_v1");
 
-    VeniceWriter<byte[], byte[], byte[]> resultantVeniceWriter =
+    AbstractVeniceWriter<byte[], byte[], byte[]> resultantVeniceWriter =
         veniceSystemProducerSpy.getVeniceWriter(versionCreationResponse);
 
     Properties capturedProperties = propertiesArgumentCaptor.getValue();

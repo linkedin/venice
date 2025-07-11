@@ -1,5 +1,6 @@
 package com.linkedin.venice.writer;
 
+import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -11,13 +12,14 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.logging.log4j.LogManager;
@@ -25,8 +27,15 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class is a batching implementation of {@link VeniceWriter}. There are two configs that control the batching
- * behavior:
+ * This class is a batching implementation of {@link VeniceWriter}.
+ * The intention of this class is to:
+ * (1) Reduce message volumes sent to Venice backend.
+ * (2) Avoid generating messages for the same key with the same timestamp for the same writer. Today's Active/Active DCR
+ * algorithm will compare field value to break tie when two messages arrive with the same timestamp. This makes sure this
+ * case will not happen if each key is only produced by single writer and user will always see the latest value in the
+ * producing order.
+ *
+ * There are two configs that control the batching behavior:
  * (1) Max batch interval: Maximum delay of a batch of records before it is produced.
  * (2) Max batch buffer size: Maximum size of buffer records before it is produced.
  * If any of the limit is reached, the buffered batch will be flushed and produced.
@@ -37,15 +46,15 @@ import org.apache.logging.log4j.Logger;
  * When the last message is produced, its callback will be completed (either successfully or exceptionally), all the
  * related messages' callbacks will also be completed with the same result.
  */
-public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
+public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final Logger LOGGER = LogManager.getLogger(BatchingVeniceWriter.class);
 
   private final long batchIntervalInMs;
   private final int maxBatchSizeInBytes;
   private final ReentrantLock lock = new ReentrantLock();
-  private final ScheduledExecutorService checkServiceExecutor;
+  private final ExecutorService checkServiceExecutor = Executors.newSingleThreadExecutor();
   private final List<ProducerBufferRecord<V, U>> bufferRecordList = new ArrayList<>();
-  private final Map<ByteBuffer, ProducerBufferRecord<V, U>> bufferRecordIndex;
+  private final Map<ByteBuffer, ProducerBufferRecord<V, U>> bufferRecordIndex = new VeniceConcurrentHashMap<>();
   private final VeniceWriter<byte[], V, U> veniceWriter;
   private final VeniceKafkaSerializer keySerializer;
   private volatile long lastBatchProduceMs;
@@ -56,12 +65,17 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       VeniceWriterOptions params,
       VeniceProperties props,
       PubSubProducerAdapter producerAdapter) {
-    super(params, props, producerAdapter);
+    super(params.getTopicName());
     this.batchIntervalInMs = params.getBatchIntervalInMs();
     this.maxBatchSizeInBytes = params.getMaxBatchSizeInBytes();
-    this.bufferRecordIndex = new VeniceConcurrentHashMap<>();
-    this.checkServiceExecutor = Executors.newScheduledThreadPool(1);
     this.keySerializer = params.getKeyPayloadSerializer();
+    /**
+     * We introduce an internal Venice writer with byte[] as the key type for any input key type. This is to make sure
+     * internal buffer is indexed correctly when input key type is byte[]. For internal buffer index map, if key type is
+     * byte[], comparison will be incorrect as byte[] is compared by reference, instead of value.
+     * Since we will serialize key into byte[] in the internal buffer and later use it to produce with internal writer,
+     * internal writer should only have the default No-Op key serializer. 
+     */
     VeniceWriterOptions internalWriterParams =
         new VeniceWriterOptions.Builder(params.getTopicName(), params).setKeyPayloadSerializer(new DefaultSerializer())
             .build();
@@ -74,6 +88,35 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
   @Override
   public CompletableFuture<PubSubProduceResult> delete(K key, long logicalTs, PubSubProducerCallback callback) {
     return addRecordToBuffer(MessageType.DELETE, key, null, null, -1, -1, callback, logicalTs);
+  }
+
+  @Override
+  public CompletableFuture<PubSubProduceResult> put(
+      K key,
+      V value,
+      int valueSchemaId,
+      PubSubProducerCallback callback,
+      PutMetadata putMetadata) {
+    return null;
+  }
+
+  @Override
+  public CompletableFuture<PubSubProduceResult> put(
+      K key,
+      V value,
+      int valueSchemaId,
+      long logicalTimestamp,
+      PubSubProducerCallback callback,
+      PutMetadata putMetadata) {
+    return null;
+  }
+
+  @Override
+  public CompletableFuture<PubSubProduceResult> delete(
+      K key,
+      PubSubProducerCallback callback,
+      DeleteMetadata deleteMetadata) {
+    return null;
   }
 
   @Override
@@ -106,17 +149,8 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       U update,
       int valueSchemaId,
       int derivedSchemaId,
-      PubSubProducerCallback callback,
-      long logicalTs) {
-    return addRecordToBuffer(
-        MessageType.UPDATE,
-        key,
-        null,
-        update,
-        valueSchemaId,
-        derivedSchemaId,
-        callback,
-        logicalTs);
+      PubSubProducerCallback callback) {
+    return update(key, update, valueSchemaId, derivedSchemaId, APP_DEFAULT_LOGICAL_TS, callback);
   }
 
   @Override
@@ -125,8 +159,17 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       U update,
       int valueSchemaId,
       int derivedSchemaId,
+      long logicalTimestamp,
       PubSubProducerCallback callback) {
-    return update(key, update, valueSchemaId, derivedSchemaId, callback, APP_DEFAULT_LOGICAL_TS);
+    return addRecordToBuffer(
+        MessageType.UPDATE,
+        key,
+        null,
+        update,
+        valueSchemaId,
+        derivedSchemaId,
+        callback,
+        logicalTimestamp);
   }
 
   @Override
@@ -150,7 +193,11 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
     } else {
       checkServiceExecutor.shutdownNow();
     }
-    super.close(gracefulClose);
+  }
+
+  @Override
+  public void close() throws IOException {
+    close(true);
   }
 
   private void periodicCheckTask() {
@@ -208,6 +255,7 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
       // In any case, state should be reset after produce.
       getBufferRecordIndex().clear();
       getBufferRecordList().clear();
+      bufferSizeInBytes = 0;
       getLock().unlock();
     }
   }
@@ -251,7 +299,6 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
             protocolId,
             callback,
             logicalTimestamp);
-        bufferSizeInBytes += record.getHeapSize();
         ProducerBufferRecord<V, U> prevRecord = getBufferRecordIndex().put(ByteBuffer.wrap(serializedKey), record);
         if (prevRecord != null) {
           prevRecord.setSkipProduce(true);
@@ -261,6 +308,7 @@ public class BatchingVeniceWriter<K, V, U> extends VeniceWriter<K, V, U> {
           produceResultFuture = new CompletableFuture<>();
         }
       }
+      bufferSizeInBytes += record.getHeapSize();
       record.setProduceResultFuture(produceResultFuture);
       getBufferRecordList().add(record);
       // Make sure memory usage is under control

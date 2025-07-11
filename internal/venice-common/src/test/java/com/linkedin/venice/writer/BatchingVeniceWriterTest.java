@@ -100,7 +100,7 @@ public class BatchingVeniceWriterTest {
     doCallRealMethod().when(writer).delete(any(), any());
     doCallRealMethod().when(writer).delete(any(), anyLong(), any());
     doCallRealMethod().when(writer).update(any(), any(), anyInt(), anyInt(), any());
-    doCallRealMethod().when(writer).update(any(), any(), anyInt(), anyInt(), any(), anyLong());
+    doCallRealMethod().when(writer).update(any(), any(), anyInt(), anyInt(), anyLong(), any());
     ReentrantLock lock = new ReentrantLock();
     doReturn(lock).when(writer).getLock();
     doReturn(100000).when(writer).getMaxBatchSizeInBytes();
