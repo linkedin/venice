@@ -164,30 +164,26 @@ public class PushStatusCollector {
       ExecutionStatusWithDetails daVinciStatus = pushStatus.getDaVinciStatus();
       String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.topicName);
       Store store = storeRepository.getStore(storeName);
+      int dvcRetryCount = topicToNoDaVinciStatusRetryCountMap.getOrDefault(pushStatus.topicName, 0);
       if (daVinciStatus.isNoDaVinciStatusReport()) {
-        LOGGER.info(
-            "Received empty DaVinci status report for topic: {}. Server status: {}, DvcStatus: {}",
-            pushStatus.topicName,
-            pushStatus.getServerStatus(),
-            daVinciStatus);
-        // poll DaVinci status more
-        int noDaVinciStatusRetryAttempts = topicToNoDaVinciStatusRetryCountMap.compute(pushStatus.topicName, (k, v) -> {
-          if (v == null) {
-            return 1;
-          }
-          return v + 1;
-        });
-        if (noDaVinciStatusRetryAttempts <= daVinciPushStatusNoReportRetryMaxAttempts) {
+        if (dvcRetryCount < daVinciPushStatusNoReportRetryMaxAttempts) {
+          LOGGER.info(
+              "Received empty DaVinci status report for topic: {}. Server status: {}, DvcStatus: {}",
+              pushStatus.topicName,
+              pushStatus.getServerStatus(),
+              daVinciStatus);
+          // poll DaVinci status more
+          topicToNoDaVinciStatusRetryCountMap.compute(pushStatus.topicName, (k, v) -> {
+            if (v == null) {
+              return 1;
+            }
+            return v + 1;
+          });
           daVinciStatus = new ExecutionStatusWithDetails(ExecutionStatus.NOT_STARTED, daVinciStatus.getDetails());
           pushStatus.setDaVinciStatus(daVinciStatus);
-        } else {
-          topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
-
-          // Update dvc heartbeat to false if there is no dvc status
-          if (store.getIsDavinciHeartbeatReported()) {
-            store.setIsDavinciHeartbeatReported(false);
-            storeRepository.updateStore(store);
-          }
+        } else if (store.getIsDavinciHeartbeatReported()) { // Update dvc heartbeat to false if there is no dvc status
+          store.setIsDavinciHeartbeatReported(false);
+          storeRepository.updateStore(store);
         }
       } else {
         topicToNoDaVinciStatusRetryCountMap.remove(pushStatus.topicName);
