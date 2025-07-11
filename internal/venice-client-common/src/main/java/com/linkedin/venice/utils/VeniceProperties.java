@@ -548,6 +548,9 @@ public class VeniceProperties implements Serializable {
     for (String keyValuePair: keyValuePairs) {
       // One entry could have multiple ":". For example, "<ID>:<Kafka URL>:<port>". In this case, we split the String by
       // its first ":" so that we get key=<ID> and value=<Kafka URL>:<port>
+      if (keyValuePair.isEmpty()) {
+        continue;
+      }
       int indexOfFirstColon = keyValuePair.indexOf(':');
       if (indexOfFirstColon == -1) {
         throw new VeniceException(

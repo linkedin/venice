@@ -2,6 +2,7 @@ package com.linkedin.venice.utils;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.ConfigKeys;
@@ -160,6 +161,16 @@ public class VenicePropertiesTest {
     assertEquals(resultProperties.getProperty("key1"), "value1");
     assertEquals(resultProperties.getProperty("key2"), "value2");
     assertEquals(resultProperties.getProperty("key3"), "value3");
+  }
+
+  @Test
+  public void testGetIntKeyedMapWithEmptyValue() {
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP, "");
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+    Int2ObjectMap<String> result =
+        veniceProperties.getIntKeyedMap(ConfigKeys.PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP);
+    assertTrue(result.isEmpty());
   }
 
   @Test

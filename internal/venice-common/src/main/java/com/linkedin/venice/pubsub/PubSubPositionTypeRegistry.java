@@ -222,7 +222,12 @@ public class PubSubPositionTypeRegistry {
    */
   public static PubSubPositionTypeRegistry fromPropertiesOrDefault(VeniceProperties properties) {
     if (properties.containsKey(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP)) {
-      return new PubSubPositionTypeRegistry(properties.getIntKeyedMap(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP));
+      Int2ObjectMap<String> int2ObjectMap = properties.getIntKeyedMap(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP);
+      if (int2ObjectMap.isEmpty()) {
+        return PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
+      } else {
+        return new PubSubPositionTypeRegistry(properties.getIntKeyedMap(PUBSUB_TYPE_ID_TO_POSITION_CLASS_NAME_MAP));
+      }
     }
     return PubSubPositionTypeRegistry.RESERVED_POSITION_TYPE_REGISTRY;
   }
