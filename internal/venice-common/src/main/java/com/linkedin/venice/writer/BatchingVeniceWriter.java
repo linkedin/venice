@@ -21,6 +21,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -58,7 +59,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   private final VeniceWriter<byte[], V, U> veniceWriter;
   private final VeniceKafkaSerializer keySerializer;
   private volatile long lastBatchProduceMs;
-  private volatile boolean isRunning;
+  private AtomicBoolean isRunning;
   private int bufferSizeInBytes;
 
   public BatchingVeniceWriter(
@@ -74,15 +75,13 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
      * internal buffer is indexed correctly when input key type is byte[]. For internal buffer index map, if key type is
      * byte[], comparison will be incorrect as byte[] is compared by reference, instead of value.
      * Since we will serialize key into byte[] in the internal buffer and later use it to produce with internal writer,
-     * internal writer should only have the default No-Op key serializer. 
+     * internal writer should only have the default No-Op key serializer.
      */
     VeniceWriterOptions internalWriterParams =
         new VeniceWriterOptions.Builder(params.getTopicName(), params).setKeyPayloadSerializer(new DefaultSerializer())
             .build();
     this.veniceWriter = new VeniceWriter<>(internalWriterParams, props, producerAdapter);
-    // Start the service.
-    lastBatchProduceMs = System.currentTimeMillis();
-    isRunning = true;
+
   }
 
   @Override
@@ -180,7 +179,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
 
   @Override
   public void close(boolean gracefulClose) {
-    isRunning = false;
+    isRunning.set(false);
     if (gracefulClose) {
       checkServiceExecutor.shutdown();
       try {
@@ -201,7 +200,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   }
 
   private void periodicCheckTask() {
-    while (isRunning) {
+    while (isRunning.get()) {
       long sleepIntervalInMs = batchIntervalInMs;
       try {
         long timeSinceLastBatchProduce = System.currentTimeMillis() - lastBatchProduceMs;
@@ -269,6 +268,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       int protocolId,
       PubSubProducerCallback callback,
       long logicalTimestamp) {
+    maybeStartCheckExecutor();
     byte[] serializedKey = getKeySerializer().serialize(getTopicName(), key);
     CompletableFuture<PubSubProduceResult> produceResultFuture;
     getLock().lock();
@@ -365,8 +365,12 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
     }
   }
 
-  void start() {
-    checkServiceExecutor.execute(this::periodicCheckTask);
+  void maybeStartCheckExecutor() {
+    // Start the service only once
+    if (isRunning.compareAndSet(false, true)) {
+      checkServiceExecutor.execute(this::periodicCheckTask);
+      lastBatchProduceMs = System.currentTimeMillis();
+    }
   }
 
   List<ProducerBufferRecord<V, U>> getBufferRecordList() {

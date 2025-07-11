@@ -88,7 +88,6 @@ public class VeniceWriterFactory {
     if (options.getBatchIntervalInMs() > 0) {
       BatchingVeniceWriter<K, V, U> batchingWriter =
           new BatchingVeniceWriter<>(options, veniceProperties, producerAdapter);
-      batchingWriter.start();
       return batchingWriter;
     }
     return new VeniceWriter<>(options, veniceProperties, producerAdapter);
