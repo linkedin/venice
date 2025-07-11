@@ -58,8 +58,8 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   private final Map<ByteBuffer, ProducerBufferRecord<V, U>> bufferRecordIndex = new VeniceConcurrentHashMap<>();
   private final VeniceWriter<byte[], V, U> veniceWriter;
   private final VeniceKafkaSerializer keySerializer;
+  private final AtomicBoolean isRunning = new AtomicBoolean(false);
   private volatile long lastBatchProduceMs;
-  private AtomicBoolean isRunning;
   private int bufferSizeInBytes;
 
   public BatchingVeniceWriter(
