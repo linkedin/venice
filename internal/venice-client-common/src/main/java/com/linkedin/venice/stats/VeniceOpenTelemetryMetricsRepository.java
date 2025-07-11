@@ -14,6 +14,8 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
+import io.opentelemetry.api.metrics.DoubleGauge;
+import io.opentelemetry.api.metrics.DoubleGaugeBuilder;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.DoubleHistogramBuilder;
 import io.opentelemetry.api.metrics.LongCounter;
@@ -50,6 +52,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceOpenTelemetryMetricsRepository {
   private static final Logger LOGGER = LogManager.getLogger(VeniceOpenTelemetryMetricsRepository.class);
   public static final RedundantLogFilter REDUNDANT_LOG_FILTER = RedundantLogFilter.getRedundantLogFilter();
+  public static final String DEFAULT_METRIC_PREFIX = "venice.";
   private final VeniceMetricsConfig metricsConfig;
   private SdkMeterProvider sdkMeterProvider = null;
   private final boolean emitOpenTelemetryMetrics;
@@ -142,6 +145,7 @@ public class VeniceOpenTelemetryMetricsRepository {
    */
   private final VeniceConcurrentHashMap<String, DoubleHistogram> histogramMap = new VeniceConcurrentHashMap<>();
   private final VeniceConcurrentHashMap<String, LongCounter> counterMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, DoubleGauge> gaugeMap = new VeniceConcurrentHashMap<>();
 
   MetricExporter getOtlpHttpMetricExporter(VeniceMetricsConfig metricsConfig) {
     OtlpHttpMetricExporterBuilder exporterBuilder =
@@ -182,7 +186,7 @@ public class VeniceOpenTelemetryMetricsRepository {
 
     for (MetricEntity metricEntity: metricsConfig.getMetricEntities()) {
       if (metricEntity.getMetricType() == MetricType.HISTOGRAM) {
-        uniqueHistogramMetricNames.add(getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName()));
+        uniqueHistogramMetricNames.add(getFullMetricName(metricEntity));
       }
     }
 
@@ -202,14 +206,14 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
-  String getFullMetricName(String metricPrefix, String name) {
-    String fullMetricName = metricPrefix + "." + name;
+  String getFullMetricName(MetricEntity metricEntity) {
+    String fullMetricName = getMetricPrefix(metricEntity) + "." + metricEntity.getMetricName();
     validateMetricName(fullMetricName);
     return transformMetricName(fullMetricName, getMetricFormat());
   }
 
   static String createFullMetricPrefix(String metricPrefix) {
-    return "venice." + metricPrefix;
+    return DEFAULT_METRIC_PREFIX + metricPrefix;
   }
 
   final String getMetricPrefix() {
@@ -227,7 +231,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       return null;
     }
     return histogramMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
-      String fullMetricName = getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName());
+      String fullMetricName = getFullMetricName(metricEntity);
       DoubleHistogramBuilder builder = meter.histogramBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
           .setDescription(metricEntity.getDescription());
@@ -244,8 +248,21 @@ public class VeniceOpenTelemetryMetricsRepository {
       return null;
     }
     return counterMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
-      String fullMetricName = getFullMetricName(getMetricPrefix(metricEntity), metricEntity.getMetricName());
+      String fullMetricName = getFullMetricName(metricEntity);
       LongCounterBuilder builder = meter.counterBuilder(fullMetricName)
+          .setUnit(metricEntity.getUnit().name())
+          .setDescription(metricEntity.getDescription());
+      return builder.build();
+    });
+  }
+
+  public DoubleGauge createGuage(MetricEntity metricEntity) {
+    if (!emitOpenTelemetryMetrics()) {
+      return null;
+    }
+    return gaugeMap.computeIfAbsent(metricEntity.getMetricName(), key -> {
+      String fullMetricName = getFullMetricName(metricEntity);
+      DoubleGaugeBuilder builder = meter.gaugeBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
           .setDescription(metricEntity.getDescription());
       return builder.build();
@@ -261,6 +278,8 @@ public class VeniceOpenTelemetryMetricsRepository {
 
       case COUNTER:
         return createCounter(metricEntity);
+      case GAUGE:
+        return createGuage(metricEntity);
 
       default:
         throw new VeniceException("Unknown metric type: " + metricType);

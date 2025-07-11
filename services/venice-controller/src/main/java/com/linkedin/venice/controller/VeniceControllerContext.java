@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES;
+import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_METRIC_PREFIX;
 import static com.linkedin.venice.controller.VeniceController.CONTROLLER_SERVICE_NAME;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -10,7 +12,7 @@ import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
-import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
@@ -154,7 +156,16 @@ public class VeniceControllerContext {
 
     private void addDefaultValues() {
       if (metricsRepository == null && !isMetricsRepositorySet) {
-        metricsRepository = TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME);
+
+        metricsRepository = VeniceMetricsRepository.getVeniceMetricsRepository(
+            CONTROLLER_SERVICE_NAME,
+            CONTROLLER_SERVICE_METRIC_PREFIX,
+            CONTROLLER_SERVICE_METRIC_ENTITIES,
+            (propertiesList == null || propertiesList.isEmpty())
+                ? new VeniceProperties().getAsMap()
+                : propertiesList.get(0).getAsMap());
+        // TODO OTel: today, this gets the properties of the first cluster. This is not ideal.
+        // We need to figure out how to build a common controller-specific config/properties list
       }
       if (serviceDiscoveryAnnouncers == null && !isServiceDiscoveryAnnouncerSet) {
         serviceDiscoveryAnnouncers = Collections.emptyList();

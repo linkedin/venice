@@ -7,12 +7,17 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.stats.VeniceMetricsConfig;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -36,7 +41,17 @@ public class TestCompactionManager {
     mockRepushOrchestrator = mock(RepushOrchestrator.class);
     testCompactionManager = new CompactionManager(
         mockRepushOrchestrator,
-        TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD));
+        TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD),
+        Collections.singletonMap(
+            TEST_CLUSTER_NAME,
+            new LogCompactionStats(
+                new VeniceMetricsRepository(
+                    new VeniceMetricsConfig.Builder().setServiceName(VeniceController.CONTROLLER_SERVICE_NAME)
+                        .setMetricPrefix(VeniceController.CONTROLLER_SERVICE_METRIC_PREFIX)
+                        .setEmitOtelMetrics(true)
+                        .setMetricEntities(VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES)
+                        .build()),
+                TEST_CLUSTER_NAME)));
   }
 
   /**
@@ -142,7 +157,8 @@ public class TestCompactionManager {
     Assert.assertFalse(testCompactionManager.isCompactionReady(store5)); // non-AA store
 
     // Test
-    List<StoreInfo> compactionReadyStores = testCompactionManager.filterStoresForCompaction(storeInfoList);
+    List<StoreInfo> compactionReadyStores =
+        testCompactionManager.filterStoresForCompaction(storeInfoList, TEST_CLUSTER_NAME);
 
     // Test validation
     assertEquals(compactionReadyStores.size(), 2); // change if the number of eligible test stores in the list changes
@@ -162,7 +178,7 @@ public class TestCompactionManager {
     RepushJobRequest repushJobRequest = new RepushJobRequest(
         TEST_CLUSTER_NAME,
         Utils.getUniqueString(TEST_STORE_NAME_PREFIX),
-        RepushJobRequest.MANUAL_TRIGGER);
+        RepushStoreTriggerSource.MANUAL);
 
     // Call the repushStore method and expect a VeniceException
     testCompactionManager.repushStore(repushJobRequest);
