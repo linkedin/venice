@@ -96,7 +96,8 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       int valueSchemaId,
       PubSubProducerCallback callback,
       PutMetadata putMetadata) {
-    return null;
+    throw new UnsupportedOperationException(
+        this.getClass().getSimpleName() + " does not support put method with put metadata");
   }
 
   @Override
@@ -107,7 +108,8 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       long logicalTimestamp,
       PubSubProducerCallback callback,
       PutMetadata putMetadata) {
-    return null;
+    throw new UnsupportedOperationException(
+        this.getClass().getSimpleName() + " does not support put method with put metadata");
   }
 
   @Override
@@ -115,7 +117,8 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       K key,
       PubSubProducerCallback callback,
       DeleteMetadata deleteMetadata) {
-    return null;
+    throw new UnsupportedOperationException(
+        this.getClass().getSimpleName() + " does not support delete method with delete metadata");
   }
 
   @Override

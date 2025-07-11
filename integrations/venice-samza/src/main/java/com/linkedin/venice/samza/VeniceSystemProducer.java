@@ -758,7 +758,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     if (valueObject == null) {
-      getVeniceWriter().delete(key, logicalTimestamp, new CompletableFutureCallback(completableFuture));
+      getInternalWriter().delete(key, logicalTimestamp, new CompletableFutureCallback(completableFuture));
     } else {
       Schema valueObjectSchema = getSchemaFromObject(valueObject);
 
@@ -783,7 +783,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       byte[] value = serializeObject(valueObject);
 
       if (valueSchemaIdPair.getSecond() == -1) {
-        getVeniceWriter().put(
+        getInternalWriter().put(
             key,
             value,
             valueSchemaIdPair.getFirst(),
@@ -795,7 +795,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
               "Cannot write partial update record to Venice store " + storeName + " "
                   + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
         }
-        getVeniceWriter().update(
+        getInternalWriter().update(
             key,
             value,
             valueSchemaIdPair.getFirst(),
@@ -925,8 +925,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     return this.kafkaBootstrapServers;
   }
 
-  public VeniceWriter<byte[], byte[], byte[]> getInternalProducer() {
-    return (VeniceWriter<byte[], byte[], byte[]>) this.veniceWriter;
+  public AbstractVeniceWriter<byte[], byte[], byte[]> getInternalWriter() {
+    return this.veniceWriter;
   }
 
   protected void setControllerClient(D2ControllerClient controllerClient) {
@@ -988,9 +988,5 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   // used only for testing
   void setPushMonitor(RouterBasedPushMonitor pushMonitor) {
     this.pushMonitor = Optional.of(pushMonitor);
-  }
-
-  AbstractVeniceWriter<byte[], byte[], byte[]> getVeniceWriter() {
-    return veniceWriter;
   }
 }
