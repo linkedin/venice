@@ -12,6 +12,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.r2.transport.common.TransportClientFactory;
 import com.linkedin.r2.transport.http.client.HttpClientFactory;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -31,7 +32,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedHybridStoreQuotaMonitor;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
@@ -49,6 +49,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.CompletableFutureCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -156,11 +157,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private Optional<String> discoveryUrl = Optional.empty();
   private Optional<String> routerUrl = Optional.empty();
 
-  private VeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
+  private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
 
-  private Map<String, String> additionalWriterConfigs = new HashMap<>();
+  private Map<String, String> additionalConfigs = new HashMap<>();
 
   private TransportClient transportClient;
   private RouterBasedHybridStoreQuotaMonitor.TransportClientReinitProvider reinitProvider;
@@ -324,8 +325,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.time = time;
   }
 
-  public void applyAdditionalWriterConfigs(Map<String, String> additionalWriterConfigs) {
-    this.additionalWriterConfigs.putAll(additionalWriterConfigs);
+  public void applyAdditionalConfigs(Map<String, String> additionalConfigs) {
+    this.additionalConfigs.putAll(additionalConfigs);
   }
 
   public void setRouterUrl(String routerUrl) {
@@ -373,9 +374,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    * This method is overridden and not used by LinkedIn internally.
    * Please update the overridden method accordingly after modifying this method.
    */
-  protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
+  protected AbstractVeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
     Properties veniceWriterProperties = new Properties();
-    veniceWriterProperties.putAll(additionalWriterConfigs);
+    veniceWriterProperties.putAll(additionalConfigs);
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
     return getVeniceWriter(store, veniceWriterProperties);
   }
@@ -406,7 +407,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   /**
    * Please don't remove this method since it is still being used by LinkedIn internally.
    */
-  protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
+  protected AbstractVeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
       VersionCreationResponse store,
       Properties veniceWriterProperties) {
     Integer partitionCount = pushType.isBatchOrStreamReprocessing()
@@ -425,17 +426,24 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     VeniceWriterOptions.Builder builder = new VeniceWriterOptions.Builder(store.getKafkaTopic()).setTime(time)
         .setPartitioner(venicePartitioner)
         .setPartitionCount(partitionCount)
+        .setBatchIntervalInMs(
+            Long.parseLong(veniceWriterProperties.getProperty(ConfigKeys.WRITER_BATCHING_MAX_INTERVAL_MS, "0")))
+        .setMaxBatchSizeInBytes(
+            Integer.parseInt(
+                veniceWriterProperties.getProperty(ConfigKeys.WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES, "5242880")))
         .setChunkingEnabled(isChunkingEnabled);
     extractConcurrentProducerConfig(veniceWriterProperties, builder);
     return constructVeniceWriter(veniceWriterProperties, builder.build());
   }
 
   // trickery for unit testing
-  VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(Properties properties, VeniceWriterOptions writerOptions) {
+  AbstractVeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(
+      Properties properties,
+      VeniceWriterOptions writerOptions) {
     Properties finalWriterConfigs = new Properties();
     finalWriterConfigs.putAll(properties);
-    finalWriterConfigs.putAll(additionalWriterConfigs);
-    return new VeniceWriterFactory(finalWriterConfigs).createVeniceWriter(writerOptions);
+    finalWriterConfigs.putAll(additionalConfigs);
+    return new VeniceWriterFactory(finalWriterConfigs).createAbstractVeniceWriter(writerOptions);
   }
 
   protected void setupClientsAndReInitProvider() {
@@ -735,9 +743,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
     byte[] key = serializeObject(keyObject);
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-    final PubSubProducerCallback callback = new CompletableFutureCallback(completableFuture);
 
-    long logicalTimestamp = -1;
+    long logicalTimestamp = VeniceWriter.APP_DEFAULT_LOGICAL_TS;
     // Only transmit the timestamp if this is a realtime topic.
     if (valueObject instanceof VeniceObjectWithTimestamp && Version.isRealTimeTopic(topicName)) {
       VeniceObjectWithTimestamp objectWithTimestamp = (VeniceObjectWithTimestamp) valueObject;
@@ -751,11 +758,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     if (valueObject == null) {
-      if (logicalTimestamp > 0) {
-        veniceWriter.delete(key, logicalTimestamp, callback);
-      } else {
-        veniceWriter.delete(key, callback);
-      }
+      getInternalWriter().delete(key, logicalTimestamp, new CompletableFutureCallback(completableFuture));
     } else {
       Schema valueObjectSchema = getSchemaFromObject(valueObject);
 
@@ -780,28 +783,25 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       byte[] value = serializeObject(valueObject);
 
       if (valueSchemaIdPair.getSecond() == -1) {
-        if (logicalTimestamp > 0) {
-          veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), logicalTimestamp, callback);
-        } else {
-          veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), callback);
-        }
+        getInternalWriter().put(
+            key,
+            value,
+            valueSchemaIdPair.getFirst(),
+            logicalTimestamp,
+            new CompletableFutureCallback(completableFuture));
       } else {
         if (!isWriteComputeEnabled) {
           throw new SamzaException(
               "Cannot write partial update record to Venice store " + storeName + " "
                   + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
         }
-        if (logicalTimestamp > 0) {
-          veniceWriter.update(
-              key,
-              value,
-              valueSchemaIdPair.getFirst(),
-              valueSchemaIdPair.getSecond(),
-              callback,
-              logicalTimestamp);
-        } else {
-          veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback);
-        }
+        getInternalWriter().update(
+            key,
+            value,
+            valueSchemaIdPair.getFirst(),
+            valueSchemaIdPair.getSecond(),
+            logicalTimestamp,
+            new CompletableFutureCallback(completableFuture));
       }
     }
     return completableFuture;
@@ -822,7 +822,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    */
   @Override
   public void flush(String s) {
-    veniceWriter.flush();
+    getInternalWriter().flush();
   }
 
   private static Schema getSchemaFromObject(Object object) {
@@ -925,7 +925,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     return this.kafkaBootstrapServers;
   }
 
-  public VeniceWriter<byte[], byte[], byte[]> getInternalProducer() {
+  public AbstractVeniceWriter<byte[], byte[], byte[]> getInternalWriter() {
     return this.veniceWriter;
   }
 

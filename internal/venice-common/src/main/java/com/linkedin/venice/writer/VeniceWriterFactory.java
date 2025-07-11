@@ -83,6 +83,16 @@ public class VeniceWriterFactory {
     return new VeniceWriter<>(options, veniceProperties, producerAdapter);
   }
 
+  public <K, V, U> AbstractVeniceWriter<K, V, U> createAbstractVeniceWriter(VeniceWriterOptions options) {
+    PubSubProducerAdapter producerAdapter = buildPubSubProducerAdapter(options);
+    if (options.getBatchIntervalInMs() > 0) {
+      BatchingVeniceWriter<K, V, U> batchingWriter =
+          new BatchingVeniceWriter<>(options, veniceProperties, producerAdapter);
+      return batchingWriter;
+    }
+    return new VeniceWriter<>(options, veniceProperties, producerAdapter);
+  }
+
   public <K, V, U> ComplexVeniceWriter<K, V, U> createComplexVeniceWriter(VeniceWriterOptions options) {
     PubSubProducerAdapter producerAdapter = buildPubSubProducerAdapter(options);
     return new ComplexVeniceWriter<>(options, veniceProperties, producerAdapter);

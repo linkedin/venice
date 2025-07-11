@@ -521,6 +521,16 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
           Object key,
           Object value,
           int valueSchemaId,
+          long logicalTimestamp,
+          PubSubProducerCallback callback) {
+        return null;
+      }
+
+      @Override
+      public CompletableFuture<PubSubProduceResult> put(
+          Object key,
+          Object value,
+          int valueSchemaId,
           PubSubProducerCallback callback,
           PutMetadata putMetadata) {
         callback.onCompletion(null, new VeniceException("Fake exception"));
@@ -555,6 +565,30 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
           int derivedSchemaId,
           PubSubProducerCallback callback) {
         // no-op
+        return null;
+      }
+
+      @Override
+      public CompletableFuture<PubSubProduceResult> update(
+          Object key,
+          Object update,
+          int valueSchemaId,
+          int derivedSchemaId,
+          long logicalTimestamp,
+          PubSubProducerCallback callback) {
+        return null;
+      }
+
+      @Override
+      public CompletableFuture<PubSubProduceResult> delete(Object key, PubSubProducerCallback callback) {
+        return null;
+      }
+
+      @Override
+      public CompletableFuture<PubSubProduceResult> delete(
+          Object key,
+          long logicalTimestamp,
+          PubSubProducerCallback callback) {
         return null;
       }
 
@@ -633,6 +667,16 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
       }
 
       @Override
+      public CompletableFuture<PubSubProduceResult> put(
+          Object key,
+          Object value,
+          int valueSchemaId,
+          long logicalTimestamp,
+          PubSubProducerCallback callback) {
+        return null;
+      }
+
+      @Override
       public Future<PubSubProduceResult> update(
           Object key,
           Object update,
@@ -640,6 +684,30 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
           int derivedSchemaId,
           PubSubProducerCallback callback) {
         // no-op
+        return null;
+      }
+
+      @Override
+      public CompletableFuture<PubSubProduceResult> update(
+          Object key,
+          Object update,
+          int valueSchemaId,
+          int derivedSchemaId,
+          long logicalTimestamp,
+          PubSubProducerCallback callback) {
+        return null;
+      }
+
+      @Override
+      public CompletableFuture<PubSubProduceResult> delete(Object key, PubSubProducerCallback callback) {
+        return null;
+      }
+
+      @Override
+      public CompletableFuture<PubSubProduceResult> delete(
+          Object key,
+          long logicalTimestamp,
+          PubSubProducerCallback callback) {
         return null;
       }
 

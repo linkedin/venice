@@ -2307,6 +2307,16 @@ public class ConfigKeys {
   public static final String CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS =
       "client.producer.schema.refresh.interval.seconds";
 
+  /**
+   * The max interval for Venice writer batching feature.
+   */
+  public static final String WRITER_BATCHING_MAX_INTERVAL_MS = "writer.batching.max.interval.ms";
+
+  /**
+   * The max size of buffer in bytes for Venice writer batching feature.
+   */
+  public static final String WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES = "writer.batching.max.buffer.size.in.bytes";
+
   /*
    * The memory up-limit for the ingestion path while using RocksDB Plaintable format.
    * Currently, this option is only meaningful for DaVinci use cases.

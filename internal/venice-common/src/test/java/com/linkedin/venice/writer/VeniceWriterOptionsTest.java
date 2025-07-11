@@ -85,4 +85,13 @@ public class VeniceWriterOptionsTest {
     assertNotNull(options);
     assertEquals(options.getKeyPayloadSerializer(), keySer);
   }
+
+  @Test
+  public void testCreateBuilderFromWriterOptions() {
+    VeniceAvroKafkaSerializer keySer = new VeniceAvroKafkaSerializer("\"string\"");
+    VeniceWriterOptions options = new VeniceWriterOptions.Builder("store_v1").setKeyPayloadSerializer(keySer).build();
+    VeniceWriterOptions newOptions = new VeniceWriterOptions.Builder("store_v1", options).build();
+    assertNotNull(newOptions);
+    assertEquals(newOptions.getKeyPayloadSerializer(), keySer);
+  }
 }
