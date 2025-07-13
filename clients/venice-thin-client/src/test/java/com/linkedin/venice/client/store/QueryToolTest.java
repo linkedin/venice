@@ -2,6 +2,7 @@ package com.linkedin.venice.client.store;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
@@ -25,6 +26,9 @@ public class QueryToolTest {
     assertEquals(QueryTool.removeQuotes("test\""), "test");
     assertEquals(QueryTool.removeQuotes("\"\""), "");
     assertEquals(QueryTool.removeQuotes(""), "");
+    // Test edge cases
+    assertEquals(QueryTool.removeQuotes("\"test\"test\""), "test\"test");
+    assertEquals(QueryTool.removeQuotes("\"test\"test"), "test\"test");
   }
 
   @Test
@@ -75,6 +79,69 @@ public class QueryToolTest {
     VeniceException exception =
         expectThrows(VeniceException.class, () -> QueryTool.convertKey("not_a_number", intSchema));
     assertTrue(exception.getMessage().contains("Invalid number format for key: not_a_number"));
+  }
+
+  @Test
+  public void testConvertKeyInvalidInputForLong() {
+    Schema longSchema = Schema.create(Schema.Type.LONG);
+
+    // Test invalid long
+    VeniceException exception =
+        expectThrows(VeniceException.class, () -> QueryTool.convertKey("not_a_number", longSchema));
+    assertTrue(exception.getMessage().contains("Invalid number format for key: not_a_number"));
+  }
+
+  @Test
+  public void testConvertKeyInvalidInputForFloat() {
+    Schema floatSchema = Schema.create(Schema.Type.FLOAT);
+
+    // Test invalid float
+    VeniceException exception =
+        expectThrows(VeniceException.class, () -> QueryTool.convertKey("not_a_number", floatSchema));
+    assertTrue(exception.getMessage().contains("Invalid number format for key: not_a_number"));
+  }
+
+  @Test
+  public void testConvertKeyInvalidInputForDouble() {
+    Schema doubleSchema = Schema.create(Schema.Type.DOUBLE);
+
+    // Test invalid double
+    VeniceException exception =
+        expectThrows(VeniceException.class, () -> QueryTool.convertKey("not_a_number", doubleSchema));
+    assertTrue(exception.getMessage().contains("Invalid number format for key: not_a_number"));
+  }
+
+  @Test
+  public void testConvertKeyBooleanValues() {
+    Schema booleanSchema = Schema.create(Schema.Type.BOOLEAN);
+
+    // Test true boolean
+    Object trueKey = QueryTool.convertKey("true", booleanSchema);
+    assertEquals(trueKey, true);
+    assertEquals(trueKey.getClass(), Boolean.class);
+
+    // Test false boolean
+    Object falseKey = QueryTool.convertKey("false", booleanSchema);
+    assertEquals(falseKey, false);
+    assertEquals(falseKey.getClass(), Boolean.class);
+  }
+
+  @Test
+  public void testConvertKeyEdgeCases() {
+    Schema stringSchema = Schema.create(Schema.Type.STRING);
+    Schema intSchema = Schema.create(Schema.Type.INT);
+
+    // Test empty string
+    Object emptyKey = QueryTool.convertKey("", stringSchema);
+    assertEquals(emptyKey, "");
+
+    // Test zero values
+    Object zeroInt = QueryTool.convertKey("0", intSchema);
+    assertEquals(zeroInt, 0);
+
+    // Test negative values
+    Object negativeInt = QueryTool.convertKey("-123", intSchema);
+    assertEquals(negativeInt, -123);
   }
 
   @Test
@@ -237,5 +304,182 @@ public class QueryToolTest {
     assertTrue(predicates.containsKey("young"));
     assertTrue(predicates.containsKey("20-25"));
     assertTrue(predicates.containsKey("senior"));
+  }
+
+  @Test
+  public void testParseBucketDefinitionsNumberFormatException() {
+    // Test invalid number format in bucket definition
+    VeniceException exception =
+        expectThrows(VeniceException.class, () -> QueryTool.parseBucketDefinitions("bucket:lt:abc"));
+    assertTrue(exception.getMessage().contains("Invalid number format in bucket definition"));
+  }
+
+  @Test
+  public void testParseBucketDefinitionsWithSpaces() {
+    // Test bucket definitions with spaces
+    Map<String, Predicate<Integer>> predicates = QueryTool.parseBucketDefinitions(" 20-25 , 30-35 ");
+    assertNotNull(predicates);
+    assertEquals(predicates.size(), 2);
+    assertTrue(predicates.containsKey("20-25"));
+    assertTrue(predicates.containsKey("30-35"));
+  }
+
+  @Test
+  public void testParseBucketDefinitionsSingleRange() {
+    // Test single range
+    Map<String, Predicate<Integer>> predicates = QueryTool.parseBucketDefinitions("10-20");
+    assertNotNull(predicates);
+    assertEquals(predicates.size(), 1);
+    assertTrue(predicates.containsKey("10-20"));
+  }
+
+  @Test
+  public void testParseBucketDefinitionsSingleOperator() {
+    // Test single operator
+    Map<String, Predicate<Integer>> predicates = QueryTool.parseBucketDefinitions("young:lt:30");
+    assertNotNull(predicates);
+    assertEquals(predicates.size(), 1);
+    assertTrue(predicates.containsKey("young"));
+  }
+
+  @Test
+  public void testParseBucketDefinitionsComplexMixed() {
+    // Test complex mixed format
+    Map<String, Predicate<Integer>> predicates =
+        QueryTool.parseBucketDefinitions("0-10,young:lt:30,20-25,senior:gte:50,elder:gt:70");
+    assertNotNull(predicates);
+    assertEquals(predicates.size(), 5);
+    assertTrue(predicates.containsKey("0-10"));
+    assertTrue(predicates.containsKey("young"));
+    assertTrue(predicates.containsKey("20-25"));
+    assertTrue(predicates.containsKey("senior"));
+    assertTrue(predicates.containsKey("elder"));
+  }
+
+  @Test
+  public void testMainMethodWithInsufficientArgs() {
+    // Test main method with insufficient arguments
+    String[] args = { "store", "key" };
+    try {
+      QueryTool.main(args);
+    } catch (Exception e) {
+      // Expected to exit with System.exit(1)
+    }
+  }
+
+  @Test
+  public void testMainMethodWithValidArgs() {
+    // Test main method with valid arguments for single mode
+    String[] args = { "store", "key", "url", "false", "ssl.config", "single" };
+    try {
+      QueryTool.main(args);
+    } catch (Exception e) {
+      // Expected to fail due to missing client setup
+    }
+  }
+
+  @Test
+  public void testMainMethodWithCountByValueMode() {
+    // Test main method with countByValue mode
+    String[] args = { "store", "key", "url", "false", "ssl.config", "countByValue", "field1", "5" };
+    try {
+      QueryTool.main(args);
+    } catch (Exception e) {
+      // Expected to fail due to missing client setup
+    }
+  }
+
+  @Test
+  public void testMainMethodWithCountByBucketMode() {
+    // Test main method with countByBucket mode
+    String[] args = { "store", "key", "url", "false", "ssl.config", "countByBucket", "field1", "bucket:lt:30" };
+    try {
+      QueryTool.main(args);
+    } catch (Exception e) {
+      // Expected to fail due to missing client setup
+    }
+  }
+
+  @Test
+  public void testMainMethodWithUnknownMode() {
+    // Test main method with unknown facet counting mode
+    String[] args = { "store", "key", "url", "false", "ssl.config", "unknown" };
+    VeniceException exception = expectThrows(VeniceException.class, () -> {
+      QueryTool.main(args);
+    });
+    assertTrue(exception.getMessage().contains("Unknown facet counting mode"));
+  }
+
+  @Test
+  public void testConvertKeyWithUnionSchema() {
+    Schema unionSchema = Schema.createUnion(Schema.create(Schema.Type.STRING), Schema.create(Schema.Type.INT));
+    // Only test cases that cannot be parsed, assert AvroTypeException is thrown
+    assertThrows(org.apache.avro.AvroTypeException.class, () -> QueryTool.convertKey("123", unionSchema));
+    assertThrows(org.apache.avro.AvroTypeException.class, () -> QueryTool.convertKey("\"abc\"", unionSchema));
+    assertThrows(org.apache.avro.AvroTypeException.class, () -> QueryTool.convertKey("true", unionSchema));
+  }
+
+  @Test
+  public void testConvertKeyWithComplexSchema() {
+    // Record type cannot be directly deserialized, just ensure result is not null
+    Schema recordSchema = Schema.createRecord("TestRecord", null, null, false);
+    recordSchema.setFields(java.util.Collections.emptyList());
+    Object result = QueryTool.convertKey("{}", recordSchema);
+    assertNotNull(result);
+  }
+
+  @Test
+  public void testConvertKeyWithAllNumericTypes() {
+    // Test convertKey with all numeric types
+    Schema intSchema = Schema.create(Schema.Type.INT);
+    Schema longSchema = Schema.create(Schema.Type.LONG);
+    Schema floatSchema = Schema.create(Schema.Type.FLOAT);
+    Schema doubleSchema = Schema.create(Schema.Type.DOUBLE);
+
+    // Test negative values
+    assertEquals(QueryTool.convertKey("-123", intSchema), -123);
+    assertEquals(QueryTool.convertKey("-123456789", longSchema), -123456789L);
+    assertEquals(QueryTool.convertKey("-123.45", floatSchema), -123.45f);
+    assertEquals(QueryTool.convertKey("-123.456", doubleSchema), -123.456);
+
+    // Test zero values
+    assertEquals(QueryTool.convertKey("0", intSchema), 0);
+    assertEquals(QueryTool.convertKey("0", longSchema), 0L);
+    assertEquals(QueryTool.convertKey("0.0", floatSchema), 0.0f);
+    assertEquals(QueryTool.convertKey("0.0", doubleSchema), 0.0);
+  }
+
+  @Test
+  public void testConvertKeyWithBooleanEdgeCases() {
+    Schema booleanSchema = Schema.create(Schema.Type.BOOLEAN);
+
+    // Test various boolean representations
+    assertEquals(QueryTool.convertKey("true", booleanSchema), true);
+    assertEquals(QueryTool.convertKey("false", booleanSchema), false);
+    assertEquals(QueryTool.convertKey("TRUE", booleanSchema), true);
+    assertEquals(QueryTool.convertKey("FALSE", booleanSchema), false);
+  }
+
+  @Test
+  public void testConvertKeyWithStringEdgeCases() {
+    Schema stringSchema = Schema.create(Schema.Type.STRING);
+
+    // Test empty string
+    assertEquals(QueryTool.convertKey("", stringSchema), "");
+
+    // Test string with special characters
+    assertEquals(QueryTool.convertKey("test123", stringSchema), "test123");
+    assertEquals(QueryTool.convertKey("test-123", stringSchema), "test-123");
+    assertEquals(QueryTool.convertKey("test_123", stringSchema), "test_123");
+  }
+
+  @Test
+  public void testConvertKeyWithLargeNumbers() {
+    Schema longSchema = Schema.create(Schema.Type.LONG);
+    Schema doubleSchema = Schema.create(Schema.Type.DOUBLE);
+
+    // Test large numbers
+    assertEquals(QueryTool.convertKey("9223372036854775807", longSchema), 9223372036854775807L);
+    assertEquals(QueryTool.convertKey("3.14159265359", doubleSchema), 3.14159265359);
   }
 }

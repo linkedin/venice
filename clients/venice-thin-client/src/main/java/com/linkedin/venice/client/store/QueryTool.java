@@ -73,6 +73,7 @@ public class QueryTool {
     if ("single".equals(facetCountingMode)) {
       // Original single key query behavior
       Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, sslConfigFilePathArgs);
+      outputMap.entrySet().stream().forEach(System.out::println);
     } else if ("countByValue".equals(facetCountingMode)) {
       // Count by value functionality
       Map<String, String> outputMap = queryStoreWithCountByValue(
@@ -83,6 +84,7 @@ public class QueryTool {
           sslConfigFilePathArgs,
           countByValueFields,
           topK);
+      outputMap.entrySet().stream().forEach(System.out::println);
     } else if ("countByBucket".equals(facetCountingMode)) {
       // Count by bucket functionality
       Map<String, String> outputMap = queryStoreWithCountByBucket(
@@ -93,6 +95,7 @@ public class QueryTool {
           sslConfigFilePathArgs,
           countByBucketFields,
           bucketDefinitions);
+      outputMap.entrySet().stream().forEach(System.out::println);
     } else {
       throw new VeniceException("Unknown facet counting mode: " + facetCountingMode);
     }
