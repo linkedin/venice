@@ -45,28 +45,7 @@ public class QueryTool {
   private static final int BUCKET_DEFINITIONS = 7;
 
   public static void main(String[] args) throws Exception {
-    System.out.println("=== PURE CLIENT AGG LOGIC ===");
     if (args.length < REQUIRED_ARGS_COUNT) {
-      System.out.println(
-          "Usage: java -jar venice-thin-client-0.1.jar <store> <key_string> <url> <is_vson_store> <ssl_config_file_path> [facet_counting_mode] [count_by_value_fields] [count_by_bucket_fields] [top_k] [bucket_definitions]");
-      System.out.println();
-      System.out.println("Facet counting mode options:");
-      System.out.println("  - 'single': Query single key (default)");
-      System.out.println("  - 'countByValue': Count distinct values for specified fields");
-      System.out.println("  - 'countByBucket': Count records matching bucket predicates");
-      System.out.println();
-      System.out.println("Examples:");
-      System.out.println("  # Single key query (original behavior):");
-      System.out
-          .println("  java -jar venice-thin-client-0.1.jar store_name 'key1' https://router:port false ssl.config");
-      System.out.println();
-      System.out.println("  # Count by value (top 5 most common firstName values):");
-      System.out.println(
-          "  java -jar venice-thin-client-0.1.jar store_name 'key1,key2,key3' https://router:port false ssl.config countByValue 'firstName,lastName' 5");
-      System.out.println();
-      System.out.println("  # Count by bucket (age ranges):");
-      System.out.println(
-          "  java -jar venice-thin-client-0.1.jar store_name 'key1,key2,key3' https://router:port false ssl.config countByBucket 'age' 10 'young:lt:30,senior:gte:30'");
       System.exit(1);
     }
 
@@ -91,12 +70,9 @@ public class QueryTool {
       topK = Integer.parseInt(removeQuotes(args[TOP_K]));
     }
 
-    System.out.println();
-
     if ("single".equals(facetCountingMode)) {
       // Original single key query behavior
       Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, sslConfigFilePathArgs);
-      outputMap.entrySet().stream().forEach(System.out::println);
     } else if ("countByValue".equals(facetCountingMode)) {
       // Count by value functionality
       Map<String, String> outputMap = queryStoreWithCountByValue(
@@ -107,7 +83,6 @@ public class QueryTool {
           sslConfigFilePathArgs,
           countByValueFields,
           topK);
-      outputMap.entrySet().stream().forEach(System.out::println);
     } else if ("countByBucket".equals(facetCountingMode)) {
       // Count by bucket functionality
       Map<String, String> outputMap = queryStoreWithCountByBucket(
@@ -118,7 +93,6 @@ public class QueryTool {
           sslConfigFilePathArgs,
           countByBucketFields,
           bucketDefinitions);
-      outputMap.entrySet().stream().forEach(System.out::println);
     } else {
       throw new VeniceException("Unknown facet counting mode: " + facetCountingMode);
     }
@@ -179,7 +153,6 @@ public class QueryTool {
       } else {
         // Single key - original behavior
         Object key = convertKey(keyString, keySchema);
-        System.out.println("Key string parsed successfully. About to make the query.");
 
         Object value = client.get(key).get(15, TimeUnit.SECONDS);
 
@@ -223,7 +196,6 @@ public class QueryTool {
 
       // Parse keys
       Set<Object> keys = parseKeys(keyString, client);
-      System.out.println("Keys parsed successfully. About to make the countByValue query.");
 
       // Parse fields
       String[] fields = countByValueFields.split(",");
@@ -285,20 +257,12 @@ public class QueryTool {
 
       // Parse keys
       Set<Object> keys = parseKeys(keyString, client);
-      System.out.println("Keys parsed successfully. About to make the countByBucket query.");
 
       // Parse fields
       String[] fields = countByBucketFields.split(",");
 
       // Parse bucket definitions
       Map<String, Predicate<Integer>> bucketPredicates = parseBucketDefinitions(bucketDefinitions);
-
-      // Print bucket definitions in a nice way
-      System.out.println("Bucket Definitions:");
-      for (Map.Entry<String, Predicate<Integer>> entry: bucketPredicates.entrySet()) {
-        System.out.println("  - " + entry.getKey() + ": " + entry.getValue().toString());
-      }
-      System.out.println();
 
       // Create a pure client-side aggregation builder
       ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(store)
