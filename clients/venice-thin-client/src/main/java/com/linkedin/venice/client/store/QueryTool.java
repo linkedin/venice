@@ -45,9 +45,28 @@ public class QueryTool {
   private static final int BUCKET_DEFINITIONS = 7;
 
   public static void main(String[] args) throws Exception {
+    System.out.println("=== PURE CLIENT AGG LOGIC ===");
     if (args.length < REQUIRED_ARGS_COUNT) {
       System.out.println(
           "Usage: java -jar venice-thin-client-0.1.jar <store> <key_string> <url> <is_vson_store> <ssl_config_file_path> [facet_counting_mode] [count_by_value_fields] [count_by_bucket_fields] [top_k] [bucket_definitions]");
+      System.out.println();
+      System.out.println("Facet counting mode options:");
+      System.out.println("  - 'single': Query single key (default)");
+      System.out.println("  - 'countByValue': Count distinct values for specified fields");
+      System.out.println("  - 'countByBucket': Count records matching bucket predicates");
+      System.out.println();
+      System.out.println("Examples:");
+      System.out.println("  # Single key query (original behavior):");
+      System.out
+          .println("  java -jar venice-thin-client-0.1.jar store_name 'key1' https://router:port false ssl.config");
+      System.out.println();
+      System.out.println("  # Count by value (top 5 most common firstName values):");
+      System.out.println(
+          "  java -jar venice-thin-client-0.1.jar store_name 'key1,key2,key3' https://router:port false ssl.config countByValue 'firstName,lastName' 5");
+      System.out.println();
+      System.out.println("  # Count by bucket (age ranges):");
+      System.out.println(
+          "  java -jar venice-thin-client-0.1.jar store_name 'key1,key2,key3' https://router:port false ssl.config countByBucket 'age' 10 'young:lt:30,senior:gte:30'");
       System.exit(1);
     }
 
@@ -71,6 +90,8 @@ public class QueryTool {
     if ("countByValue".equals(facetCountingMode) && args.length > TOP_K) {
       topK = Integer.parseInt(removeQuotes(args[TOP_K]));
     }
+
+    System.out.println();
 
     if ("single".equals(facetCountingMode)) {
       // Original single key query behavior
@@ -158,6 +179,8 @@ public class QueryTool {
       } else {
         // Single key - original behavior
         Object key = convertKey(keyString, keySchema);
+        System.out.println("Key string parsed successfully. About to make the query.");
+
         Object value = client.get(key).get(15, TimeUnit.SECONDS);
 
         outputMap.put("key-class", key.getClass().getCanonicalName());
@@ -200,6 +223,7 @@ public class QueryTool {
 
       // Parse keys
       Set<Object> keys = parseKeys(keyString, client);
+      System.out.println("Keys parsed successfully. About to make the countByValue query.");
 
       // Parse fields
       String[] fields = countByValueFields.split(",");
@@ -261,12 +285,20 @@ public class QueryTool {
 
       // Parse keys
       Set<Object> keys = parseKeys(keyString, client);
+      System.out.println("Keys parsed successfully. About to make the countByBucket query.");
 
       // Parse fields
       String[] fields = countByBucketFields.split(",");
 
       // Parse bucket definitions
       Map<String, Predicate<Integer>> bucketPredicates = parseBucketDefinitions(bucketDefinitions);
+
+      // Print bucket definitions in a nice way
+      System.out.println("Bucket Definitions:");
+      for (Map.Entry<String, Predicate<Integer>> entry: bucketPredicates.entrySet()) {
+        System.out.println("  - " + entry.getKey() + ": " + entry.getValue().toString());
+      }
+      System.out.println();
 
       // Create a pure client-side aggregation builder
       ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(store)
@@ -296,7 +328,7 @@ public class QueryTool {
     }
   }
 
-  private static Set<Object> parseKeys(String keyString, AvroGenericStoreClient<Object, Object> client)
+  public static Set<Object> parseKeys(String keyString, AvroGenericStoreClient<Object, Object> client)
       throws Exception {
     Set<Object> keys = new HashSet<>();
     String[] keyStrings = keyString.split(",");
@@ -319,7 +351,7 @@ public class QueryTool {
     return keys;
   }
 
-  private static Map<String, Predicate<Integer>> parseBucketDefinitions(String bucketDefinitions) {
+  public static Map<String, Predicate<Integer>> parseBucketDefinitions(String bucketDefinitions) {
     Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
 
     if (bucketDefinitions == null || bucketDefinitions.isEmpty()) {
@@ -337,13 +369,17 @@ public class QueryTool {
           throw new VeniceException("Invalid range format: " + bucketDef + ". Expected format: min-max");
         }
 
-        int min = Integer.parseInt(range[0].trim());
-        int max = Integer.parseInt(range[1].trim());
+        try {
+          int min = Integer.parseInt(range[0].trim());
+          int max = Integer.parseInt(range[1].trim());
 
-        // Create a predicate for the range [min, max]
-        Predicate<Integer> predicate =
-            Predicate.and(IntPredicate.greaterOrEquals(min), IntPredicate.lowerOrEquals(max));
-        bucketPredicates.put(bucketDef, predicate);
+          // Create a predicate for the range [min, max]
+          Predicate<Integer> predicate =
+              Predicate.and(IntPredicate.greaterOrEquals(min), IntPredicate.lowerOrEquals(max));
+          bucketPredicates.put(bucketDef, predicate);
+        } catch (NumberFormatException e) {
+          throw new VeniceException("Invalid number format in range: " + bucketDef, e);
+        }
       } else {
         // Legacy operator format (e.g., "bucketName:operator:value")
         String[] parts = bucketDef.split(":");
@@ -355,30 +391,35 @@ public class QueryTool {
 
         String bucketName = parts[0];
         String operator = parts[1];
-        int value = Integer.parseInt(parts[2]);
 
-        Predicate<Integer> predicate = null;
-        switch (operator.toLowerCase()) {
-          case "lt":
-            predicate = IntPredicate.lowerThan(value);
-            break;
-          case "lte":
-            predicate = IntPredicate.lowerOrEquals(value);
-            break;
-          case "gt":
-            predicate = IntPredicate.greaterThan(value);
-            break;
-          case "gte":
-            predicate = IntPredicate.greaterOrEquals(value);
-            break;
-          case "eq":
-            predicate = IntPredicate.equalTo(value);
-            break;
-          default:
-            throw new VeniceException("Unknown operator: " + operator);
+        try {
+          int value = Integer.parseInt(parts[2]);
+
+          Predicate<Integer> predicate = null;
+          switch (operator.toLowerCase()) {
+            case "lt":
+              predicate = IntPredicate.lowerThan(value);
+              break;
+            case "lte":
+              predicate = IntPredicate.lowerOrEquals(value);
+              break;
+            case "gt":
+              predicate = IntPredicate.greaterThan(value);
+              break;
+            case "gte":
+              predicate = IntPredicate.greaterOrEquals(value);
+              break;
+            case "eq":
+              predicate = IntPredicate.equalTo(value);
+              break;
+            default:
+              throw new VeniceException("Unknown operator: " + operator);
+          }
+
+          bucketPredicates.put(bucketName, predicate);
+        } catch (NumberFormatException e) {
+          throw new VeniceException("Invalid number format in bucket definition: " + bucketDef, e);
         }
-
-        bucketPredicates.put(bucketName, predicate);
       }
     }
 
@@ -387,47 +428,48 @@ public class QueryTool {
 
   public static Object convertKey(String keyString, Schema keySchema) {
     Object key;
-    switch (keySchema.getType()) {
-      case INT:
-        key = Integer.parseInt(keyString);
-        break;
-      case LONG:
-        key = Long.parseLong(keyString);
-        break;
-      case FLOAT:
-        key = Float.parseFloat(keyString);
-        break;
-      case DOUBLE:
-        key = Double.parseDouble(keyString);
-        break;
-      case BOOLEAN:
-        key = Boolean.parseBoolean(keyString);
-        break;
-      case STRING:
-        key = keyString;
-        break;
-      default:
-        try {
-          key = new GenericDatumReader<>(keySchema, keySchema).read(
-              null,
-              AvroCompatibilityHelper.newJsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
-        } catch (IOException e) {
-          throw new VeniceException("Invalid input key:" + keyString, e);
-        }
-        break;
+    try {
+      switch (keySchema.getType()) {
+        case INT:
+          key = Integer.parseInt(keyString);
+          break;
+        case LONG:
+          key = Long.parseLong(keyString);
+          break;
+        case FLOAT:
+          key = Float.parseFloat(keyString);
+          break;
+        case DOUBLE:
+          key = Double.parseDouble(keyString);
+          break;
+        case BOOLEAN:
+          key = Boolean.parseBoolean(keyString);
+          break;
+        case STRING:
+          key = keyString;
+          break;
+        default:
+          try {
+            key = new GenericDatumReader<>(keySchema, keySchema).read(
+                null,
+                AvroCompatibilityHelper.newJsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
+          } catch (IOException e) {
+            throw new VeniceException("Invalid input key:" + keyString, e);
+          }
+          break;
+      }
+    } catch (NumberFormatException e) {
+      throw new VeniceException("Invalid number format for key: " + keyString, e);
     }
     return key;
   }
 
   public static String removeQuotes(String str) {
-    if (str == null) {
-      throw new NullPointerException();
-    }
     String result = str;
-    if (result.length() > 0 && result.startsWith("\"")) {
+    if (result.startsWith("\"")) {
       result = result.substring(1);
     }
-    if (result.length() > 0 && result.endsWith("\"")) {
+    if (str.endsWith("\"")) {
       result = result.substring(0, result.length() - 1);
     }
     return result;
