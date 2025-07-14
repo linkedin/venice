@@ -376,7 +376,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         supersetSchemaGenerator = Optional.of((SupersetSchemaGenerator) passedSupersetSchemaGenerator);
       }
       Map<String, D2Client> d2Clients = options.getD2Clients();
-      // LOGGER.info("D2 clients for child datacenters: {}, is parent: {}", d2Clients, options.isParent());
       VeniceControllerContext ctx = new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
           .setMetricsRepository(metricsRepository)
           .setServiceDiscoveryAnnouncers(d2ServerList)
