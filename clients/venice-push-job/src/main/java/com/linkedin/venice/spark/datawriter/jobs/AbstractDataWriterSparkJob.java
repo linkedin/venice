@@ -256,14 +256,18 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
         props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
     jobConf.set(ZSTD_DICTIONARY_CREATION_SUCCESS, pushJobSetting.isZstdDictCreationSuccess);
 
-    if (!pushJobSetting.isSortedIngestionEnabled) {
-      jobConf.set(GUID_GENERATOR_IMPLEMENTATION, DEFAULT_GUID_GENERATOR_IMPLEMENTATION);
-    } else {
+    if (pushJobSetting.isSortedIngestionEnabled) {
       // We generate a random UUID once, and the tasks of the compute job can use this to build the same producerGUID
       // deterministically.
       UUID producerGuid = UUID.randomUUID();
       jobConf.set(PUSH_JOB_GUID_MOST_SIGNIFICANT_BITS, producerGuid.getMostSignificantBits());
       jobConf.set(PUSH_JOB_GUID_LEAST_SIGNIFICANT_BITS, producerGuid.getLeastSignificantBits());
+    } else {
+      // Use unique GUID for every speculative producers when the config `isSortedIngestionEnabled` is false
+      // This prevents log compaction of control message which triggers the following during rebalance or store
+      // migration
+      // UNREGISTERED_PRODUCER data detected for producer
+      jobConf.set(GUID_GENERATOR_IMPLEMENTATION, DEFAULT_GUID_GENERATOR_IMPLEMENTATION);
     }
 
     if (pushJobSetting.materializedViewConfigFlatMap != null) {
