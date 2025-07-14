@@ -556,6 +556,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   public CompletableFuture<Void> internalSeekToTimestamps(Map<Integer, Long> timestamps, String topicSuffix) {
+    return internalSeekToTimestamps(timestamps, topicSuffix, LOGGER);
+  }
+
+  public CompletableFuture<Void> internalSeekToTimestamps(
+      Map<Integer, Long> timestamps,
+      String topicSuffix,
+      Logger logger) {
     // Get the latest change capture topic
     Store store = storeRepository.getStore(storeName);
     int currentVersion = store.getCurrentVersion();
@@ -567,12 +574,22 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       topicPartitionLongMap.put(topicPartition, timestampPair.getValue());
     }
     return internalSeek(timestamps.keySet(), topic, partition -> {
-      Long offset = pubSubConsumer.offsetForTime(partition, topicPartitionLongMap.get(partition));
-      // As the offset for this timestamp does not exist, we need to seek to the very end of the topic partition.
-      if (offset == null) {
-        offset = pubSubConsumer.endOffset(partition);
+      try {
+        Long offset = pubSubConsumer.offsetForTime(partition, topicPartitionLongMap.get(partition));
+        // As the offset for this timestamp does not exist, we need to seek to the very end of the topic partition.
+        if (offset == null) {
+          offset = pubSubConsumer.endOffset(partition);
+        }
+        pubSubConsumerSeek(partition, offset);
+      } catch (Exception e) {
+        logger.error(
+            "Encounter unexpected error trying to seek to timestamp for topic: {} partition: {} timestamp: {}",
+            topicName,
+            partition,
+            topicPartitionLongMap.get(partition),
+            e);
+        throw e;
       }
-      pubSubConsumerSeek(partition, offset);
     });
   }
 
