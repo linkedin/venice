@@ -22,6 +22,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Collections;
@@ -65,8 +66,8 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private Set<String> stalledVersionSwapSet = new HashSet<>();
   private Map<String, Integer> failedRollforwardRetryCountMap = new HashMap<>();
   private static final int MAX_ROLL_FORWARD_RETRY_LIMIT = 5;
-  private static final Set<VersionStatus> versionSwapCompletionStatuses = new HashSet<>();
-  private static final Set<VersionStatus> terminalPushVersionStatuses = new HashSet<>();
+  private static final Set<VersionStatus> versionSwapCompletionStatuses = Utils.setOf(ONLINE, PARTIALLY_ONLINE, ERROR);
+  private static final Set<VersionStatus> terminalPushVersionStatuses = Utils.setOf(ONLINE, KILLED);
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -75,13 +76,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     this.veniceParentHelixAdmin = admin;
     this.veniceControllerMultiClusterConfig = multiClusterConfig;
     this.deferredVersionSwapStats = deferredVersionSwapStats;
-
-    versionSwapCompletionStatuses.add(ONLINE);
-    versionSwapCompletionStatuses.add(PARTIALLY_ONLINE);
-    versionSwapCompletionStatuses.add(ERROR);
-
-    terminalPushVersionStatuses.add(ONLINE);
-    terminalPushVersionStatuses.add(KILLED);
   }
 
   @Override
