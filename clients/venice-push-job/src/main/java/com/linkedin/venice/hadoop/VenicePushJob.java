@@ -395,7 +395,7 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     pushJobSettingToReturn.isBatchWriteOptimizationForHybridStoreEnabled =
-        props.getBoolean(HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED, false);
+        props.getBoolean(HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED, true);
     pushJobSettingToReturn.isTargetedRegionPushEnabled = props.getBoolean(TARGETED_REGION_PUSH_ENABLED, false);
     pushJobSettingToReturn.isSystemSchemaReaderEnabled = props.getBoolean(SYSTEM_SCHEMA_READER_ENABLED, false);
     pushJobSettingToReturn.isTargetRegionPushWithDeferredSwapEnabled =
