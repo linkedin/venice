@@ -357,57 +357,44 @@ public class QueryToolTest {
   }
 
   @Test
-  public void testMainMethodWithInsufficientArgs() {
+  public void testMainMethodWithInsufficientArgs() throws Exception {
     // Test main method with insufficient arguments
     String[] args = { "store", "key" };
-    try {
-      QueryTool.main(args);
-    } catch (Exception e) {
-      // Expected to exit with System.exit(1)
-    }
+    int exitCode = QueryTool.run(args);
+    assertEquals(exitCode, 1);
   }
 
   @Test
-  public void testMainMethodWithValidArgs() {
+  public void testMainMethodWithValidArgs() throws Exception {
     // Test main method with valid arguments for single mode
     String[] args = { "store", "key", "url", "false", "ssl.config", "single" };
-    try {
-      QueryTool.main(args);
-    } catch (Exception e) {
-      // Expected to fail due to missing client setup
-    }
+    int exitCode = QueryTool.run(args);
+    // Expected to fail due to missing client setup, returns 1
+    assertEquals(exitCode, 1);
   }
 
   @Test
-  public void testMainMethodWithCountByValueMode() {
+  public void testMainMethodWithCountByValueMode() throws Exception {
     // Test main method with countByValue mode
     String[] args = { "store", "key", "url", "false", "ssl.config", "countByValue", "field1", "5" };
-    try {
-      QueryTool.main(args);
-    } catch (Exception e) {
-      // Expected to fail due to missing client setup
-    }
+    int exitCode = QueryTool.run(args);
+    assertEquals(exitCode, 1);
   }
 
   @Test
-  public void testMainMethodWithCountByBucketMode() {
+  public void testMainMethodWithCountByBucketMode() throws Exception {
     // Test main method with countByBucket mode
     String[] args = { "store", "key", "url", "false", "ssl.config", "countByBucket", "field1", "bucket:lt:30" };
-    try {
-      QueryTool.main(args);
-    } catch (Exception e) {
-      // Expected to fail due to missing client setup
-    }
+    int exitCode = QueryTool.run(args);
+    assertEquals(exitCode, 1);
   }
 
   @Test
-  public void testMainMethodWithUnknownMode() {
+  public void testMainMethodWithUnknownMode() throws Exception {
     // Test main method with unknown facet counting mode
     String[] args = { "store", "key", "url", "false", "ssl.config", "unknown" };
-    VeniceException exception = expectThrows(VeniceException.class, () -> {
-      QueryTool.main(args);
-    });
-    assertTrue(exception.getMessage().contains("Unknown facet counting mode"));
+    int exitCode = QueryTool.run(args);
+    assertEquals(exitCode, 1);
   }
 
   @Test
