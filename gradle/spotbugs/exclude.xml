@@ -416,7 +416,6 @@
       <Class name="com.linkedin.venice.controller.spark.VeniceSparkEmbeddedJettyServer"/>
       <Class name="com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer"/>
       <Class name="com.linkedin.venice.producer.online.ProducerTool"/>
-      <Class name="com.linkedin.venice.client.store.QueryTool"/>
     </Or>
   </Match>
   <Match>
