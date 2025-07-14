@@ -66,8 +66,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private Set<String> stalledVersionSwapSet = new HashSet<>();
   private Map<String, Integer> failedRollforwardRetryCountMap = new HashMap<>();
   private static final int MAX_ROLL_FORWARD_RETRY_LIMIT = 5;
-  private static final Set<VersionStatus> versionSwapCompletionStatuses = Utils.setOf(ONLINE, PARTIALLY_ONLINE, ERROR);
-  private static final Set<VersionStatus> terminalPushVersionStatuses = Utils.setOf(ONLINE, KILLED);
+  private static final Set<VersionStatus> VERSION_SWAP_COMPLETION_STATUSES =
+      Utils.setOf(ONLINE, PARTIALLY_ONLINE, ERROR);
+  private static final Set<VersionStatus> TERMINAL_PUSH_VERSION_STATUSES = Utils.setOf(ONLINE, KILLED);
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -312,7 +313,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           clusterName,
           storeName,
           targetVersion.getNumber(),
-          versionSwapCompletionStatuses);
+          VERSION_SWAP_COMPLETION_STATUSES);
       if (didPushCompleteInNonTargetRegions) {
         stalledVersionSwapSet.remove(storeName);
         deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
@@ -329,7 +330,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             clusterName,
             storeName,
             targetVersion.getNumber(),
-            terminalPushVersionStatuses);
+            TERMINAL_PUSH_VERSION_STATUSES);
         if (didPushCompleteInTargetRegions) {
           deferredVersionSwapStats.recordDeferredVersionSwapParentChildStatusMismatchSensor();
           String message =
@@ -355,7 +356,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             clusterName,
             storeName,
             targetVersion.getNumber(),
-            versionSwapCompletionStatuses);
+            VERSION_SWAP_COMPLETION_STATUSES);
 
         if (!didVersionSwapCompleteInNonTargetRegions) {
           deferredVersionSwapStats.recordDeferredVersionSwapParentChildStatusMismatchSensor();
