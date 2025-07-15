@@ -467,6 +467,6 @@ public class QueryToolTest {
 
     // Test large numbers
     assertEquals(QueryTool.convertKey("9223372036854775807", longSchema), 9223372036854775807L);
-    assertEquals(QueryTool.convertKey("3.14159265359", doubleSchema), 3.14159265359);
+    assertEquals(QueryTool.convertKey("3.141592653589793", doubleSchema), Math.PI);
   }
 }
