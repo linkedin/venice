@@ -12,8 +12,11 @@ public class MigrationRecord {
   private int attempts;
   private boolean abortOnFailure = true;
   private boolean isAborted = false;
+  private volatile boolean paused = false;
+  private volatile Step pauseAfter = Step.NONE; // Stop after this step
 
   public enum Step {
+    NONE(Integer.MAX_VALUE), // Sentinel value used to indicate that the migration pause step is not applicable.
     CHECK_DISK_SPACE(0), PRE_CHECK_AND_SUBMIT_MIGRATION_REQUEST(1), VERIFY_MIGRATION_STATUS(2),
     UPDATE_CLUSTER_DISCOVERY(3), VERIFY_READ_REDIRECTION(4), END_MIGRATION(5), MIGRATION_SUCCEED(6);
 
@@ -56,6 +59,8 @@ public class MigrationRecord {
     this.attempts = builder.attempts;
     this.isAborted = builder.isAborted;
     this.abortOnFailure = builder.abortOnFailure;
+    this.pauseAfter = builder.pauseAfter;
+    this.paused = builder.paused;
   }
 
   public String getStoreName() {
@@ -118,10 +123,26 @@ public class MigrationRecord {
     return abortOnFailure;
   }
 
+  public boolean isPaused() {
+    return paused;
+  }
+
+  public void setPaused(boolean p) {
+    this.paused = p;
+  }
+
+  public Step getPauseAfter() {
+    return pauseAfter;
+  }
+
+  public void setPauseAfter(Step pauseAfter) {
+    this.pauseAfter = pauseAfter;
+  }
+
   public String toString() {
     return String.format(
-        "MigrationRecord{storeName='%s', sourceCluster='%s', destinationCluster='%s', "
-            + "currentStep=%s(%d), storeMigrationStartTime=%s, attempts=%d, " + "isAborted=%b, abortOnFailure=%b}",
+        "MigrationRecord{storeName='%s', sourceCluster='%s', destinationCluster='%s', currentStep=%s(%d), "
+            + "storeMigrationStartTime=%s, attempts=%d, isAborted=%b, abortOnFailure=%b, pauseAfter=%s, paused=%b}",
         storeName,
         sourceCluster,
         destinationCluster,
@@ -130,7 +151,9 @@ public class MigrationRecord {
         storeMigrationStartTime,
         attempts,
         isAborted,
-        abortOnFailure);
+        abortOnFailure,
+        pauseAfter,
+        paused);
   }
 
   public static class Builder {
@@ -142,6 +165,8 @@ public class MigrationRecord {
     private int attempts = 0;
     private boolean isAborted = false;
     private boolean abortOnFailure = true;
+    private volatile boolean paused = false;
+    private volatile Step pauseAfter = Step.NONE;
 
     public Builder(String storeName, String sourceCluster, String destinationCluster) {
       this.storeName = storeName;
@@ -166,6 +191,11 @@ public class MigrationRecord {
 
     public Builder abortOnFailure(boolean abortOnFailure) {
       this.abortOnFailure = abortOnFailure;
+      return this;
+    }
+
+    public Builder pauseAfter(int pauseAfterStep) {
+      this.pauseAfter = Step.fromStepNumber(pauseAfterStep);
       return this;
     }
 
