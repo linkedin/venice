@@ -1389,8 +1389,18 @@ public class TestVeniceHelixAdmin {
     veniceHelixAdmin.autoMigrateStore(clusterName, destCluster, storeNameForMigration, currStep, Optional.empty());
 
     // Assert – scheduleMigration(...) must be invoked with the exact args
-    verify(storeMigrationManager)
-        .scheduleMigration(eq(storeNameForMigration), eq(clusterName), eq(destCluster), eq(0), eq(0), eq(false));
+    verify(storeMigrationManager).scheduleMigration(
+        eq(storeNameForMigration),
+        eq(clusterName),
+        eq(destCluster),
+        eq(0),
+        eq(0),
+        eq(false),
+        eq(veniceHelixAdmin.getParentControllerClient(clusterName)),
+        eq(veniceHelixAdmin.getParentControllerClient(destCluster)),
+        eq(veniceHelixAdmin.getControllerClientMap(clusterName)),
+        eq(veniceHelixAdmin.getControllerClientMap(destCluster)),
+        eq(Integer.MAX_VALUE));
 
     // Optional is empty → store migration unsupported
     doReturn(Optional.empty()).when(helixVeniceClusterResources).getMultiTaskSchedulerService();

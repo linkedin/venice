@@ -8,8 +8,11 @@ import static org.mockito.Mockito.same;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.HashMap;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.testng.annotations.BeforeMethod;
@@ -21,12 +24,24 @@ public class StoreMigrationTaskTest {
   private MigrationRecord mockRecord;
   @Mock
   private StoreMigrationManager mockManager;
+  @Mock
+  private ControllerClient mocksrcControllerClient;
+  @Mock
+  ControllerClient mockDestControllerClient;
+
   private StoreMigrationTask task;
 
   @BeforeMethod
   public void setUp() {
     MockitoAnnotations.openMocks(this);
-    task = new StoreMigrationTask(mockRecord, mockManager);
+    task = new StoreMigrationTask(
+        mockRecord,
+        mockManager,
+        mocksrcControllerClient,
+        mockDestControllerClient,
+        new HashMap<>(),
+        new HashMap<>(),
+        Arrays.asList("fabric1", "fabric2"));
   }
 
   @Test

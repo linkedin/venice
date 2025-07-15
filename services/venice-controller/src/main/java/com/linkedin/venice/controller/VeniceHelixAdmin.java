@@ -79,6 +79,7 @@ import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
@@ -449,6 +450,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   private final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap =
       new VeniceConcurrentHashMap<>();
+  private final Map<String, ControllerClient> clusterParentControllerClientMap = new VeniceConcurrentHashMap<>();
   private final Map<String, HelixLiveInstanceMonitor> liveInstanceMonitorMap = new HashMap<>();
 
   private final VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
@@ -9648,18 +9650,35 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         getHelixVeniceClusterResources(srcClusterName).getMultiTaskSchedulerService();
     if (multiTaskSchedulerService.isPresent()) {
       StoreMigrationManager storeMigrationManager = multiTaskSchedulerService.get().getStoreMigrationManager();
+      Map<String, ControllerClient> srcChildControllerClientMap = getControllerClientMap(srcClusterName);
+      Map<String, ControllerClient> destChildControllerClientMap = getControllerClientMap(destClusterName);
+
       storeMigrationManager.scheduleMigration(
           storeName,
           srcClusterName,
           destClusterName,
           currStep.orElse(0),
           0,
-          abortOnFailure.orElse(false));
+          abortOnFailure.orElse(false),
+          getParentControllerClient(srcClusterName),
+          getParentControllerClient(destClusterName),
+          srcChildControllerClientMap,
+          destChildControllerClientMap);
     } else {
       throw new VeniceException(
           "Store migration is not supported in this cluster: " + srcClusterName,
           ErrorType.INCORRECT_CONTROLLER);
     }
+  }
+
+  public ControllerClient getParentControllerClient(String clusterName) {
+    Objects.requireNonNull(clusterName, "clusterName cannot be null");
+    return clusterParentControllerClientMap.computeIfAbsent(clusterName, this::createControllerClient);
+  }
+
+  private ControllerClient createControllerClient(String clusterName) {
+    String leaderUrl = getLeaderController(clusterName).getUrl(false);
+    return ControllerClientFactory.getControllerClient(clusterName, leaderUrl, sslFactory);
   }
 
   public Optional<SSLFactory> getSslFactory() {
