@@ -1,13 +1,6 @@
 package com.linkedin.venice.router.stats;
 
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.HTTP_RESPONSE_STATUS_CODE_CATEGORY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_TYPE;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY;
-import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
+import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.*;
 import static com.linkedin.venice.utils.Utils.setOf;
 
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -47,6 +40,13 @@ public enum RouterMetricEntity implements ModuleMetricEntityInterface {
           HTTP_RESPONSE_STATUS_CODE,
           HTTP_RESPONSE_STATUS_CODE_CATEGORY,
           VENICE_RESPONSE_STATUS_CODE_CATEGORY)
+  ),
+  /**
+   * Size of request and response in bytes
+   */
+  CALL_SIZE(
+      MetricType.HISTOGRAM, MetricUnit.BYTES, "Size of request and responses",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)
   ),
   /**
    * Count of keys during response handling along with response codes
