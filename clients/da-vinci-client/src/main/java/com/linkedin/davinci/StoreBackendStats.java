@@ -28,6 +28,7 @@ public class StoreBackendStats extends AbstractVeniceStats {
     futureVersionSensor = registerSensor("future_version_number", new Gauge());
     currentVersionSensor = registerSensor("current_version_number", new Gauge());
     subscribeDurationSensor = registerSensor("subscribe_duration_ms", new Avg(), new Max());
+    // A single data point isn't reliable to query, so a Gauge is used instead.
     readyToServeDurationSensor = registerSensor("ready_to_serve_duration_ms", new Gauge());
 
     registerSensor(new AsyncGauge((ignored, ignored2) -> {
