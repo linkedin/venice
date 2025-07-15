@@ -17,15 +17,12 @@ import org.testng.annotations.Test;
 @Test
 public abstract class OpenTelemetryDataPointTestUtils {
   public static LongPointData getLongPointData(Collection<MetricData> metricsData, String metricName, String prefix) {
-    return metricsData.stream()
-        .filter(metricData -> metricData.getName().equals("venice." + prefix + "." + metricName))
-        .findFirst()
-        .orElse(null)
-        .getLongSumData()
-        .getPoints()
-        .stream()
-        .findFirst()
-        .orElse(null);
+    return metricsData.stream().filter(metricData -> {
+      System.out.println(
+          "HERE HERE HERE: metricName = " + metricData.getName() + ", metricName = " + "venice." + prefix + "."
+              + metricName);
+      return metricData.getName().equals("venice." + prefix + "." + metricName);
+    }).findFirst().orElse(null).getLongSumData().getPoints().stream().findFirst().orElse(null);
   }
 
   public static ExponentialHistogramPointData getExponentialHistogramPointData(

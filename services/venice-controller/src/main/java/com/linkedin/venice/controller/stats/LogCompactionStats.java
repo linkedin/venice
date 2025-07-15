@@ -39,6 +39,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
       VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
       emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
       if (emitOpenTelemetryMetrics) {
+        System.out.println("HERE HERE HERE otel metrics on");
         this.otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
         this.baseDimensionsMap = new HashMap<>();
         this.baseDimensionsMap.put(VENICE_CLUSTER_NAME, clusterName);

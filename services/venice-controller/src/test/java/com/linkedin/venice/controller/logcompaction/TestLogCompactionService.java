@@ -8,13 +8,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
@@ -45,16 +42,7 @@ public class TestLogCompactionService {
     this.mockAdmin = mock(Admin.class);
 
     // create LogCompactionService
-    this.logCompactionService = new LogCompactionService(
-        mockAdmin,
-        CLUSTER_VENICE_0,
-        mockClusterConfig,
-        new VeniceMetricsRepository(
-            new VeniceMetricsConfig.Builder().setServiceName(VeniceController.CONTROLLER_SERVICE_NAME)
-                .setMetricPrefix(VeniceController.CONTROLLER_SERVICE_METRIC_PREFIX)
-                .setEmitOtelMetrics(true)
-                .setMetricEntities(VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES)
-                .build()));
+    this.logCompactionService = new LogCompactionService(mockAdmin, CLUSTER_VENICE_0, mockClusterConfig);
   }
 
   @Test
