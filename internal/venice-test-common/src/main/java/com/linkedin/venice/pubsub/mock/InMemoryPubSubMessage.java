@@ -1,4 +1,4 @@
-package com.linkedin.venice.unit.kafka;
+package com.linkedin.venice.pubsub.mock;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
@@ -8,9 +8,9 @@ import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 /**
  * A single Kafka message, strongly typed for the types that Venice uses.
  *
- * @see InMemoryKafkaTopic
+ * @see InMemoryPubSubTopic
  */
-public class InMemoryKafkaMessage {
+public class InMemoryPubSubMessage {
   public final KafkaKey key;
   public final KafkaMessageEnvelope value;
   public final PubSubMessageHeaders headers;
@@ -20,7 +20,7 @@ public class InMemoryKafkaMessage {
    */
   private boolean putValueChanged = false;
 
-  public InMemoryKafkaMessage(KafkaKey key, KafkaMessageEnvelope value, PubSubMessageHeaders headers) {
+  public InMemoryPubSubMessage(KafkaKey key, KafkaMessageEnvelope value, PubSubMessageHeaders headers) {
     this.key = key;
     this.value = value;
     this.headers = headers;

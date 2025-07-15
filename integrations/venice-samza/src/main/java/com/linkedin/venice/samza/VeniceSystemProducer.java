@@ -193,7 +193,21 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   /**
-   * Construct a new instance of {@link VeniceSystemProducer}. Equivalent to {@link VeniceSystemProducer(veniceChildD2ZkHost, primaryControllerColoD2ZKHost, primaryControllerD2ServiceName, storeName, pushType, samzaJobId, runningFabric, verifyLatestProtocolPresent, factory, sslFactory, partitioners, SystemTime.INSTANCE)}
+   * Constructs a new instance of {@link VeniceSystemProducer}.
+   * <p>
+   * This constructor is equivalent to calling the full constructor with {@code SystemTime.INSTANCE} as the time provider.
+   *
+   * @param veniceChildD2ZkHost                 ZK host for the Venice child fabric.
+   * @param primaryControllerColoD2ZKHost       ZK host for the primary controller colo.
+   * @param primaryControllerD2ServiceName      D2 service name of the primary controller.
+   * @param storeName                           Name of the Venice store.
+   * @param pushType                            The push type (e.g., batch, stream).
+   * @param samzaJobId                          The Samza job ID.
+   * @param runningFabric                       The name of the current fabric.
+   * @param verifyLatestProtocolPresent         Whether to verify that the latest protocol is present.
+   * @param factory                             The system factory used to create producer components.
+   * @param sslFactory                          Optional SSL factory for secure communication.
+   * @param partitioners                        Optional partitioner class name(s) for custom partitioning.
    */
   public VeniceSystemProducer(
       String veniceChildD2ZkHost,

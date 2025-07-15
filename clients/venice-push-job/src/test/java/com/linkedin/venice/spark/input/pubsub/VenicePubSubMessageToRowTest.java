@@ -9,7 +9,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -48,10 +48,10 @@ public class VenicePubSubMessageToRowTest {
 
     // Mock the PubSubMessage
     @SuppressWarnings("unchecked")
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> mockMessage = mock(PubSubMessage.class);
+    DefaultPubSubMessage mockMessage = mock(DefaultPubSubMessage.class);
     when(mockMessage.getKey()).thenReturn(mockKey);
     when(mockMessage.getValue()).thenReturn(mockEnvelope);
-    when(mockMessage.getOffset()).thenReturn(mockPosition);
+    when(mockMessage.getPosition()).thenReturn(mockPosition);
 
     // Test parameters
     String region = "test-region";
