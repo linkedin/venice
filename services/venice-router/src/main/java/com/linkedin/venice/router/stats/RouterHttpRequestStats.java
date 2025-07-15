@@ -202,7 +202,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         otelRepository,
         this::registerSensorFinal,
         RouterTehutiMetricNameEnum.REQUEST_SIZE,
-        Arrays.asList(new Avg(), new Max(0)),
+        singletonList(new Avg()),
         baseDimensionsMap,
         MessageType.class);
 
