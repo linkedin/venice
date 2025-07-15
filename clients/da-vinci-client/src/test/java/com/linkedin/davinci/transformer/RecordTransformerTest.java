@@ -14,11 +14,11 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.StorageEngine;
@@ -221,7 +221,7 @@ public class RecordTransformerTest {
   }
 
   @Test
-  public void testBlockingRecordTransformer() {
+  public void testInternalRecordTransformer() {
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
@@ -236,34 +236,34 @@ public class RecordTransformerTest {
             dummyRecordTransformerConfig));
     assertEquals(clientRecordTransformer.getStoreVersion(), storeVersion);
 
-    BlockingDaVinciRecordTransformer<Integer, String, String> blockingRecordTransformer =
-        new BlockingDaVinciRecordTransformer<>(
+    InternalDaVinciRecordTransformer<Integer, String, String> internalRecordTransformer =
+        new InternalDaVinciRecordTransformer<>(
             clientRecordTransformer,
             keySchema,
             valueSchema,
             valueSchema,
             dummyRecordTransformerConfig);
-    blockingRecordTransformer.onStartVersionIngestion(true);
+    internalRecordTransformer.onStartVersionIngestion(true);
     verify(clientRecordTransformer).onStartVersionIngestion(true);
 
-    assertEquals(blockingRecordTransformer.getCountDownStartConsumptionLatchCount(), 1L);
-    assertTrue(blockingRecordTransformer.getStoreRecordsInDaVinci());
-    assertEquals(blockingRecordTransformer.getKeySchema().getType(), Schema.Type.INT);
-    assertEquals(blockingRecordTransformer.getOutputValueSchema().getType(), Schema.Type.STRING);
+    assertEquals(internalRecordTransformer.getCountDownStartConsumptionLatchCount(), 1L);
+    assertTrue(internalRecordTransformer.getStoreRecordsInDaVinci());
+    assertEquals(internalRecordTransformer.getKeySchema().getType(), Schema.Type.INT);
+    assertEquals(internalRecordTransformer.getOutputValueSchema().getType(), Schema.Type.STRING);
 
-    blockingRecordTransformer.countDownStartConsumptionLatch();
-    assertEquals(blockingRecordTransformer.getCountDownStartConsumptionLatchCount(), 0L);
+    internalRecordTransformer.countDownStartConsumptionLatch();
+    assertEquals(internalRecordTransformer.getCountDownStartConsumptionLatchCount(), 0L);
 
     DaVinciRecordTransformerResult<String> recordTransformerResult =
-        blockingRecordTransformer.internalTransformAndProcessPut(lazyKey, lazyValue, partitionId);
+        internalRecordTransformer.transformAndProcessPut(lazyKey, lazyValue, partitionId);
     verify(clientRecordTransformer).transform(lazyKey, lazyValue, partitionId);
     verify(clientRecordTransformer).processPut(eq(lazyKey), any(), eq(partitionId));
     assertEquals(recordTransformerResult.getValue(), value + "Transformed");
 
-    blockingRecordTransformer.processDelete(lazyKey, partitionId);
+    internalRecordTransformer.processDelete(lazyKey, partitionId);
     verify(clientRecordTransformer).processDelete(lazyKey, partitionId);
 
-    blockingRecordTransformer.onEndVersionIngestion(storeVersion);
+    internalRecordTransformer.onEndVersionIngestion(storeVersion);
     verify(clientRecordTransformer).onEndVersionIngestion(storeVersion);
 
     StorageEngine storageEngine = mock(StorageEngine.class);
@@ -271,12 +271,12 @@ public class RecordTransformerTest {
 
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
     when(storageEngine.getPartitionOffset(partitionId)).thenReturn(Optional.of(offsetRecord));
-    blockingRecordTransformer.internalOnRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
+    internalRecordTransformer.internalOnRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
     verify(clientRecordTransformer).onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
   }
 
   @Test
-  public void testBlockingRecordTransformerVersionSwap() {
+  public void testInternalRecordTransformerVersionSwap() {
     int currentVersion = 1;
     int futureVersion = 2;
 
@@ -287,15 +287,15 @@ public class RecordTransformerTest {
     BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer clientRecordTransformer =
         mock(
             BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer.class);
-    BlockingDaVinciRecordTransformer<Integer, String, String> blockingRecordTransformer =
-        new BlockingDaVinciRecordTransformer<>(
+    InternalDaVinciRecordTransformer<Integer, String, String> internalRecordTransformer =
+        new InternalDaVinciRecordTransformer<>(
             clientRecordTransformer,
             keySchema,
             valueSchema,
             valueSchema,
             dummyRecordTransformerConfig);
 
-    blockingRecordTransformer.onVersionSwap(currentVersion, futureVersion, partitionId);
+    internalRecordTransformer.onVersionSwap(currentVersion, futureVersion, partitionId);
     verify(clientRecordTransformer).onVersionSwap(currentVersion, futureVersion, partitionId);
   }
 
