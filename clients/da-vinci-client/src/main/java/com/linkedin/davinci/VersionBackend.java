@@ -418,10 +418,13 @@ public class VersionBackend {
                     ee);
               } else {
                 bootstrappingAwareSubscriptionFuture.complete(null);
+                Duration endDuration = Duration.between(startTime, Instant.now());
+                storeBackendStats.recordReadyToServeDuration(endDuration);
                 LOGGER.info(
-                    "Bootstrapping aware subscription to store: {}, version: {} is completed",
+                    "Bootstrapping aware subscription to store: {}, version: {} is completed after {}ms",
                     version.getStoreName(),
-                    version.getNumber());
+                    version.getNumber(),
+                    endDuration.toMillis());
               }
             });
       }

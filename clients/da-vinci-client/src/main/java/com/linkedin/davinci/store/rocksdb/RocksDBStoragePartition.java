@@ -201,7 +201,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
         .setFillCache(false)
         /*
          * Setting this to true, allows for iterator cleanup operations to be performed asynchronously leading to
-         * false iterator closing times.
+         * faster iterator closing times.
          */
         .setBackgroundPurgeOnIteratorCleanup(true);
 

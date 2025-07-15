@@ -19,6 +19,7 @@ public class StoreBackendStats extends AbstractVeniceStats {
   private final Sensor futureVersionSensor;
   private final Sensor currentVersionSensor;
   private final Sensor subscribeDurationSensor;
+  private final Sensor readyToServeDurationSensor;
   private final AtomicReference<Version> currentVersion = new AtomicReference();
 
   public StoreBackendStats(MetricsRepository metricsRepository, String storeName) {
@@ -27,6 +28,7 @@ public class StoreBackendStats extends AbstractVeniceStats {
     futureVersionSensor = registerSensor("future_version_number", new Gauge());
     currentVersionSensor = registerSensor("current_version_number", new Gauge());
     subscribeDurationSensor = registerSensor("subscribe_duration_ms", new Avg(), new Max());
+    readyToServeDurationSensor = registerSensor("ready_to_serve_duration_ms", new Gauge());
 
     registerSensor(new AsyncGauge((ignored, ignored2) -> {
       Version version = currentVersion.get();
@@ -59,5 +61,9 @@ public class StoreBackendStats extends AbstractVeniceStats {
       currentVersion.set(null);
       currentVersionSensor.record(Store.NON_EXISTING_VERSION);
     }
+  }
+
+  public void recordReadyToServeDuration(Duration duration) {
+    readyToServeDurationSensor.record(duration.toMillis());
   }
 }
