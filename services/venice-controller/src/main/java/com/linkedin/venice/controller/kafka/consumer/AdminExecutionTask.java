@@ -142,6 +142,9 @@ public class AdminExecutionTask implements Callable<Void> {
       // Retry of the admin operation is handled automatically by keeping the failed admin operation inside the queue.
       // The queue with the problematic operation will be delegated and retried by the worker thread in the next cycle.
       AdminOperationWrapper adminOperationWrapper = internalTopic.peek();
+      if (adminOperationWrapper != null) {
+        adminOperationWrapper.incrementRetryCount();
+      }
       String logMessage =
           "when processing admin message for store " + storeName + " with offset " + adminOperationWrapper.getOffset()
               + " and execution id " + adminOperationWrapper.getAdminOperation().executionId;
