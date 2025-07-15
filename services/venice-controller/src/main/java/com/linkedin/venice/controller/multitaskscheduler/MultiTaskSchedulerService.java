@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.multitaskscheduler;
 
 import com.linkedin.venice.service.AbstractVeniceService;
+import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -27,8 +28,10 @@ public class MultiTaskSchedulerService extends AbstractVeniceService {
    * @param threadPoolSize
    * @param maxRetryAttempts
    */
-  public MultiTaskSchedulerService(int threadPoolSize, int maxRetryAttempts) {
-    this.storeMigrationManager = StoreMigrationManager.createStoreMigrationManager(threadPoolSize, maxRetryAttempts);
+  public MultiTaskSchedulerService(int threadPoolSize, int maxRetryAttempts, List<String> fabricList) {
+    // TODO: add one extra configureation for delayInsecond for testing
+    this.storeMigrationManager =
+        StoreMigrationManager.createStoreMigrationManager(threadPoolSize, maxRetryAttempts, 1, fabricList);
   }
 
   @Override

@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.multitaskscheduler;
 
+import static java.util.Collections.emptyList;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
@@ -30,7 +31,7 @@ public class StoreMigrationManagerTest {
   @BeforeMethod
   public void setUp() {
     MockitoAnnotations.openMocks(this);
-    storeMigrationManager = new StoreMigrationManager(THREAD_POOL_SIZE, MAX_RETRY_ATTEMPTS) {
+    storeMigrationManager = new StoreMigrationManager(THREAD_POOL_SIZE, MAX_RETRY_ATTEMPTS, 1, emptyList()) {
       @Override
       protected ScheduledExecutorService createExecutorService(int threadPoolSize) {
         return mockExecutorService;
