@@ -176,4 +176,13 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
   default StorageEngineStats getStats() {
     return StorageEngineNoOpStats.SINGLETON;
   }
+
+  /**
+   * Check if there are any ongoing blob transfer partitions at SE level, and related add and remove methods.
+   */
+  boolean isAnyOngoingBlobTransferPartitions();
+
+  void markPartitionBlobTransferBootstrapStarted(int partitionId);
+
+  void markPartitionBlobTransferBootstrapCompleted(int partitionId);
 }

@@ -152,6 +152,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
           Arrays.toString(partitionFolderDir.list()));
     }
 
+    storageEngine.markPartitionBlobTransferBootstrapStarted(partitionId);
+
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
         .handle((inputStream, throwable) -> {
           updateBlobTransferResponseStats(throwable == null, storeName, versionNumber);
@@ -174,6 +176,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
                   Arrays.toString(partitionFolderDir.list()));
             }
           }
+
+          if (storageService.getStorageEngine(kafkaTopic) != null) {
+            storageService.getStorageEngine(kafkaTopic).markPartitionBlobTransferBootstrapCompleted(partitionId);
+          }
+
           return null;
         });
   }
