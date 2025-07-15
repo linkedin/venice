@@ -34,11 +34,11 @@ public class VeniceMetricsDimensionsTest {
         case VENICE_REQUEST_RETRY_TYPE:
           assertEquals(dimension.getDimensionName(format), "venice.request.retry_type");
           break;
-        case VENICE_MESSAGE_TYPE:
-          assertEquals(dimension.getDimensionName(format), "venice.message.type");
-          break;
         case VENICE_REQUEST_RETRY_ABORT_REASON:
           assertEquals(dimension.getDimensionName(format), "venice.request.retry_abort_reason");
+          break;
+        case VENICE_MESSAGE_TYPE:
+          assertEquals(dimension.getDimensionName(format), "venice.message.type");
           break;
         case REPUSH_TRIGGER_SOURCE:
           assertEquals(dimension.getDimensionName(format), "repush.trigger.source");

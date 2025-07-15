@@ -2,12 +2,12 @@ package com.linkedin.venice.controller.logcompaction;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
@@ -15,8 +15,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.stats.VeniceMetricsConfig;
-import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -24,34 +22,29 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestCompactionManager {
+public class CompactionManagerTest {
   private static final long TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD = 24; // 24 hours ago
   private static final String TEST_STORE_NAME_PREFIX = "test-store";
   private static final String TEST_CLUSTER_NAME = "test-cluster";
   private CompactionManager testCompactionManager;
   private RepushOrchestrator mockRepushOrchestrator;
+  private LogCompactionStats mockLogCompactionStats;
 
   @BeforeClass
   public void setUp() {
     mockRepushOrchestrator = mock(RepushOrchestrator.class);
+    mockLogCompactionStats = mock(LogCompactionStats.class);
+
     testCompactionManager = new CompactionManager(
         mockRepushOrchestrator,
         TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD),
-        Collections.singletonMap(
-            TEST_CLUSTER_NAME,
-            new LogCompactionStats(
-                new VeniceMetricsRepository(
-                    new VeniceMetricsConfig.Builder().setServiceName(VeniceController.CONTROLLER_SERVICE_NAME)
-                        .setMetricPrefix(VeniceController.CONTROLLER_SERVICE_METRIC_PREFIX)
-                        .setEmitOtelMetrics(true)
-                        .setMetricEntities(VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES)
-                        .build()),
-                TEST_CLUSTER_NAME)));
+        Collections.singletonMap(TEST_CLUSTER_NAME, mockLogCompactionStats));
   }
 
   /**
@@ -159,6 +152,20 @@ public class TestCompactionManager {
     // Test
     List<StoreInfo> compactionReadyStores =
         testCompactionManager.filterStoresForCompaction(storeInfoList, TEST_CLUSTER_NAME);
+
+    // Validate recordStoreNominatedForCompactionCount metric emission
+    verify(mockLogCompactionStats, Mockito.times(1)).recordStoreNominatedForCompactionCount(store1.getName());
+    verify(mockLogCompactionStats, Mockito.times(1)).recordStoreNominatedForCompactionCount(store2.getName());
+    verify(mockLogCompactionStats, Mockito.times(0)).recordStoreNominatedForCompactionCount(store3.getName());
+    verify(mockLogCompactionStats, Mockito.times(0)).recordStoreNominatedForCompactionCount(store4.getName());
+    verify(mockLogCompactionStats, Mockito.times(0)).recordStoreNominatedForCompactionCount(store5.getName());
+
+    // Validate setCompactionEligible metric emission
+    verify(mockLogCompactionStats, Mockito.times(1)).setCompactionEligible(store1.getName());
+    verify(mockLogCompactionStats, Mockito.times(1)).setCompactionEligible(store2.getName());
+    verify(mockLogCompactionStats, Mockito.times(0)).setCompactionEligible(store3.getName());
+    verify(mockLogCompactionStats, Mockito.times(0)).setCompactionEligible(store4.getName());
+    verify(mockLogCompactionStats, Mockito.times(0)).setCompactionEligible(store5.getName());
 
     // Test validation
     assertEquals(compactionReadyStores.size(), 2); // change if the number of eligible test stores in the list changes

@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
-import static com.linkedin.venice.controller.VeniceHelixAdmin.logCompactionStatsMap;
 import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 import static com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils.addUpdateSchemaForStore;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_CONTROLLED;
@@ -152,7 +151,6 @@ import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controller.util.ParentControllerConfigUpdateUtils;
@@ -554,13 +552,6 @@ public class VeniceParentHelixAdmin implements Admin {
                 updateStoreQueryParamsForHeartbeatSystemStore));
       } else {
         initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
-      }
-    }
-
-    // initialise logCompactionStatsMap
-    for (String clusterName: multiClusterConfigs.getClusters()) {
-      if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()) {
-        logCompactionStatsMap.putIfAbsent(clusterName, new LogCompactionStats(metricsRepository, clusterName));
       }
     }
   }
@@ -5748,7 +5739,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @VisibleForTesting
-  public VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
+  VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
     return multiClusterConfigs;
   }
 

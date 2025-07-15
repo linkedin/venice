@@ -50,11 +50,6 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
     this.logCompactionStats = new LogCompactionStats(metricsRepository, clusterName);
   }
 
-  /**
-   * Test case:
-     * Trigger source: manual
-     * Response: VeniceParentHelixAdmin#repushStore() receives successful RepushJobResponse
-   */
   @Test
   public void testEmitRepushStoreCallCountManualSuccessMetric() throws Exception {
     Attributes expectedAttributes = Attributes.builder()
@@ -73,14 +68,9 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         .recordRepushStoreCall(TEST_STORE_NAME, RepushStoreTriggerSource.MANUAL, VeniceResponseStatusCategory.SUCCESS);
 
     // test validation
-    validateMetricEmission(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricName(), 1, expectedAttributes);
+    validateLongPointFromDataFromSum(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricName(), 1, expectedAttributes);
   }
 
-  /**
-   * Test case:
-     * Trigger source: manual
-     * Response: VeniceParentHelixAdmin#repushStore() receives RepushJobResponse with error flag set to true
-   */
   @Test
   public void testEmitRepushStoreCallCountManualFailWithErrorResponseMetric() throws Exception {
     Attributes expectedAttributes = Attributes.builder()
@@ -99,19 +89,11 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         .recordRepushStoreCall(TEST_STORE_NAME, RepushStoreTriggerSource.MANUAL, VeniceResponseStatusCategory.FAIL);
 
     // test validation
-    validateMetricEmission(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricName(), 1, expectedAttributes);
+    validateLongPointFromDataFromSum(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricName(), 1, expectedAttributes);
   }
 
-  /**
-   * Test case:
-     * Trigger source: scheduled
-     * Response: VeniceParentHelixAdmin#repushStore() receives successful RepushJobResponse
-   *
-   * Note: Only the happy test case is implemented for scheduled repush because the behaviour in the other two cases
-   * (error and exception) are covered by the corresponding manual repush test cases.
-   */
   @Test
-  public void testEmitRepushStoreCallCountScheduledSuccessMetric() throws Exception {
+  public void testEmitRepushStoreCallCountScheduledSuccessMetric() {
     Attributes expectedAttributes = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
@@ -130,40 +112,45 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         VeniceResponseStatusCategory.SUCCESS);
 
     // test validation
-    validateMetricEmission(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricName(), 1, expectedAttributes);
+    validateLongPointFromDataFromSum(ControllerMetricEntity.REPUSH_CALL_COUNT.getMetricName(), 1, expectedAttributes);
   }
 
-  // TODO PRANAV
-  // @Test
-  // public void testEmitCompactionEnabled() throws Exception {
-  // Attributes expectedAttributes = Attributes.builder()
-  // .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-  // .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-  // .build();
-  //
-  // // Record metric
-  // this.logCompactionStats.setCompactionEligible(TEST_STORE_NAME);
-  //
-  // // test validation
-  // validateMetricEmission(ControllerMetricEntity.COMPACTION_ELIGIBLE_STATE.getMetricName(), 1, expectedAttributes);
-  // }
-  //
-  // @Test
-  // public void testEmitCompactionComplete() throws Exception {
-  // Attributes expectedAttributes = Attributes.builder()
-  // .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
-  // .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
-  // .build();
-  //
-  // // Record metric
-  // this.logCompactionStats.setCompactionComplete(TEST_STORE_NAME);
-  //
-  // // test validation
-  // validateMetricEmission(ControllerMetricEntity.COMPACTION_ELIGIBLE_STATE.getMetricName(), 1, expectedAttributes);
-  // }
+  @Test
+  public void testEmitCompactionEligible() {
+    Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
+        .build();
+
+    // Record metric
+    this.logCompactionStats.setCompactionEligible(TEST_STORE_NAME);
+
+    // test validation
+    validateDoublePointFromDataFromGauge(
+        ControllerMetricEntity.COMPACTION_ELIGIBLE_STATE.getMetricName(),
+        1,
+        expectedAttributes);
+  }
 
   @Test
-  public void testEmitStoreNominatedForCompaction() throws Exception {
+  public void testEmitCompactionComplete() {
+    Attributes expectedAttributes = Attributes.builder()
+        .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
+        .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
+        .build();
+
+    // Record metric
+    this.logCompactionStats.setCompactionComplete(TEST_STORE_NAME);
+
+    // test validation
+    validateDoublePointFromDataFromGauge(
+        ControllerMetricEntity.COMPACTION_ELIGIBLE_STATE.getMetricName(),
+        0,
+        expectedAttributes);
+  }
+
+  @Test
+  public void testEmitStoreNominatedForCompaction() {
     Attributes expectedAttributes = Attributes.builder()
         .put(VENICE_CLUSTER_NAME.getDimensionNameInDefaultFormat(), TEST_CLUSTER_NAME)
         .put(VENICE_STORE_NAME.getDimensionNameInDefaultFormat(), TEST_STORE_NAME)
@@ -173,14 +160,29 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
     this.logCompactionStats.recordStoreNominatedForCompactionCount(TEST_STORE_NAME);
 
     // test validation
-    validateMetricEmission(
+    validateLongPointFromDataFromSum(
         ControllerMetricEntity.STORE_NOMINATED_FOR_COMPACTION_COUNT.getMetricName(),
         1,
         expectedAttributes);
   }
 
-  private void validateMetricEmission(String metricName, int expectedMetricValue, Attributes expectedAttributes) {
-    OpenTelemetryDataPointTestUtils.validateLongPointData(
+  private void validateLongPointFromDataFromSum(
+      String metricName,
+      int expectedMetricValue,
+      Attributes expectedAttributes) {
+    OpenTelemetryDataPointTestUtils.validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        expectedMetricValue,
+        expectedAttributes,
+        metricName,
+        TEST_METRIC_PREFIX);
+  }
+
+  private void validateDoublePointFromDataFromGauge(
+      String metricName,
+      double expectedMetricValue,
+      Attributes expectedAttributes) {
+    OpenTelemetryDataPointTestUtils.validateDoublePointDataFromGauge(
         inMemoryMetricReader,
         expectedMetricValue,
         expectedAttributes,

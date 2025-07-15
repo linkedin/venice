@@ -5,7 +5,6 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
-import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
@@ -49,7 +48,6 @@ import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
 import java.io.IOException;
@@ -65,8 +63,6 @@ import org.apache.avro.Schema;
 
 
 public interface Admin extends AutoCloseable, Closeable {
-  Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
-
   // Wrapper to include both overall offline push status and other extra useful info
   class OfflinePushStatusInfo {
     private ExecutionStatus executionStatus;

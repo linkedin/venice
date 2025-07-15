@@ -465,7 +465,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final LogContext logContext;
 
   final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
-  static final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
+  final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
 
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -1351,6 +1351,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   static void emitPushJobStatusMetrics(
       Map<String, PushJobStatusStats> pushJobStatusStatsMap,
+      Map<String, LogCompactionStats> logCompactionStatsMap,
       PushJobStatusRecordKey pushJobDetailsKey,
       PushJobDetails pushJobDetailsValue,
       Set<PushJobCheckpoints> pushJobUserErrorCheckpoints) {
@@ -1473,7 +1474,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   void sendPushJobDetailsToLocalRT(PushJobStatusRecordKey key, PushJobDetails value) {
     // Emit push job status metrics
-    emitPushJobStatusMetrics(pushJobStatusStatsMap, key, value, pushJobUserErrorCheckpoints);
+    emitPushJobStatusMetrics(pushJobStatusStatsMap, logCompactionStatsMap, key, value, pushJobUserErrorCheckpoints);
     // Send push job details to the push job status system store
     if (getPushJobStatusStoreClusterName().isEmpty()) {
       throw new VeniceException(
@@ -8403,7 +8404,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @VisibleForTesting
-  public Map<String, LogCompactionStats> getLogCompactionStatsMap() {
+  Map<String, LogCompactionStats> getLogCompactionStatsMap() {
     return logCompactionStatsMap;
   }
 
@@ -9323,7 +9324,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @VisibleForTesting
-  public VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
+  VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
     return multiClusterConfigs;
   }
 

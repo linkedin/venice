@@ -9,7 +9,6 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
@@ -52,7 +51,6 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 public class AbstractTestVeniceParentHelixAdmin {
   static final int TIMEOUT_IN_MS = 60 * Time.MS_PER_SECOND;
   static int KAFKA_REPLICA_FACTOR = 3;
-  static final String PUSH_JOB_DETAILS_STORE_NAME = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
   static final int MAX_PARTITION_NUM = 1024;
   static final String TEST_SCHEMA =
       "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", " + "\"type\":\"int\"}]}";
@@ -223,21 +221,7 @@ public class AbstractTestVeniceParentHelixAdmin {
   /**
    * Expose the config object to configure specific config values for testing.
    */
-  public VeniceControllerClusterConfig getConfig() {
+  protected VeniceControllerClusterConfig getConfig() {
     return config;
-  }
-
-  /**
-   * Expose the parent controller admin object to configure specific behaviour for testing.
-   */
-  public VeniceParentHelixAdmin getParentAdmin() {
-    return parentAdmin;
-  }
-
-  /**
-   * Expose the child controller admin object to configure specific behaviour for testing.
-   */
-  public VeniceHelixAdmin getInternalAdmin() {
-    return internalAdmin;
   }
 }

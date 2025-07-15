@@ -13,7 +13,6 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.logging.log4j.LogManager;
@@ -31,7 +30,7 @@ public class CompactionManager {
 
   private final RepushOrchestrator repushOrchestrator;
   private final long timeSinceLastLogCompactionThresholdMs;
-  private Map<String, LogCompactionStats> statsMap = new HashMap<>();
+  private final Map<String, LogCompactionStats> statsMap;
 
   public CompactionManager(
       RepushOrchestrator repushOrchestrator,
@@ -168,10 +167,5 @@ public class CompactionManager {
       LOGGER.error("Failed to compact store: {}", repushJobRequest.getStoreName(), e);
       throw e;
     }
-  }
-
-  @VisibleForTesting
-  public RepushOrchestrator getRepushOrchestrator() {
-    return repushOrchestrator;
   }
 }

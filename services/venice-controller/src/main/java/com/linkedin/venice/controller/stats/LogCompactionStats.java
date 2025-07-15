@@ -12,8 +12,6 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
-import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.stats.Count;
 import java.util.Collections;
@@ -24,7 +22,6 @@ import java.util.Map;
 public class LogCompactionStats extends AbstractVeniceStats {
   private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricsRepository otelRepository;
-  private final Attributes baseAttributes;
   private final Map<VeniceMetricsDimensions, String> baseDimensionsMap;
 
   /** metrics */
@@ -39,22 +36,16 @@ public class LogCompactionStats extends AbstractVeniceStats {
       VeniceMetricsConfig veniceMetricsConfig = veniceMetricsRepository.getVeniceMetricsConfig();
       emitOpenTelemetryMetrics = veniceMetricsConfig.emitOtelMetrics();
       if (emitOpenTelemetryMetrics) {
-        System.out.println("HERE HERE HERE otel metrics on");
         this.otelRepository = veniceMetricsRepository.getOpenTelemetryMetricsRepository();
         this.baseDimensionsMap = new HashMap<>();
         this.baseDimensionsMap.put(VENICE_CLUSTER_NAME, clusterName);
-        AttributesBuilder baseAttributesBuilder = Attributes.builder();
-        baseAttributesBuilder.put(this.otelRepository.getDimensionName(VENICE_CLUSTER_NAME), clusterName);
-        this.baseAttributes = baseAttributesBuilder.build();
       } else {
         this.otelRepository = null;
-        this.baseAttributes = null;
         this.baseDimensionsMap = null;
       }
     } else {
       this.emitOpenTelemetryMetrics = false;
       this.otelRepository = null;
-      this.baseAttributes = null;
       this.baseDimensionsMap = null;
     }
 
@@ -89,39 +80,35 @@ public class LogCompactionStats extends AbstractVeniceStats {
       VeniceResponseStatusCategory executionStatus) {
     repushCallCountMetric.record(
         1,
-        ImmutableMap.<VeniceMetricsDimensions, String>builder()
-            .putAll(baseDimensionsMap)
-            .put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
+        getDimensionsBuilder().put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
             .put(VeniceMetricsDimensions.REPUSH_TRIGGER_SOURCE, triggerSource.getDimensionValue())
             .put(VeniceMetricsDimensions.VENICE_RESPONSE_STATUS_CODE_CATEGORY, executionStatus.getDimensionValue())
             .build());
   }
 
   public void setCompactionEligible(String storeName) {
-    compactionEligibleMetric.record(
-        1,
-        ImmutableMap.<VeniceMetricsDimensions, String>builder()
-            .putAll(baseDimensionsMap)
-            .put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
-            .build());
+    compactionEligibleMetric
+        .record(1, getDimensionsBuilder().put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName).build());
   }
 
   public void setCompactionComplete(String storeName) {
-    compactionEligibleMetric.record(
-        0,
-        ImmutableMap.<VeniceMetricsDimensions, String>builder()
-            .putAll(baseDimensionsMap)
-            .put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
-            .build());
+    compactionEligibleMetric
+        .record(0, getDimensionsBuilder().put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName).build());
   }
 
   public void recordStoreNominatedForCompactionCount(String storeName) {
-    storeNominatedForCompactionCountMetric.record(
-        1,
-        ImmutableMap.<VeniceMetricsDimensions, String>builder()
-            .putAll(baseDimensionsMap)
-            .put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName)
-            .build());
+    storeNominatedForCompactionCountMetric
+        .record(1, getDimensionsBuilder().put(VeniceMetricsDimensions.VENICE_STORE_NAME, storeName).build());
+  }
+
+  private ImmutableMap.Builder<VeniceMetricsDimensions, String> getDimensionsBuilder() {
+    ImmutableMap.Builder<VeniceMetricsDimensions, String> builder = ImmutableMap.builder();
+
+    if (baseDimensionsMap != null) {
+      builder.putAll(baseDimensionsMap);
+    }
+
+    return builder;
   }
 
   enum ControllerTehutiMetricNameEnum implements TehutiMetricNameEnum {

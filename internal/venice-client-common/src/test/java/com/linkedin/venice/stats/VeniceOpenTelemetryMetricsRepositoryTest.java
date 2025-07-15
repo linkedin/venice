@@ -122,11 +122,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
         new HashSet<>(singletonList(VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
     assertEquals(
         metricsRepository.getFullMetricName(metricEntity),
-        String.format(
-            "%s%s.%s",
-            VeniceOpenTelemetryMetricsRepository.DEFAULT_METRIC_PREFIX,
-            TEST_PREFIX,
-            testMetricName));
+        String.format("%s%s.%s", "venice.", TEST_PREFIX, testMetricName));
 
     String transformedName =
         transformMetricName("test.test_metric_name", VeniceOpenTelemetryMetricNamingFormat.PASCAL_CASE);
