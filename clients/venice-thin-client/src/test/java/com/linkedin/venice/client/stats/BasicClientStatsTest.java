@@ -207,6 +207,28 @@ public class BasicClientStatsTest {
         1);
   }
 
+  @Test
+  public void testEmitRequestSizeMetrics() {
+    InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+    ClientStats stats = createClientStats(inMemoryMetricReader, THIN_CLIENT);
+    int requestSize = 1000;
+    stats.recordRequestSize(requestSize);
+
+    Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+    Assert.assertTrue(metrics.get(".test_store--request_size.Max").value() == requestSize);
+
+    Attributes expectedAttr = getAttributes("test_store", REQUEST);
+    validateExponentialHistogramPointData(
+        inMemoryMetricReader,
+        requestSize,
+        requestSize,
+        1,
+        requestSize,
+        expectedAttr,
+        "call_size",
+        THIN_CLIENT.getMetricsPrefix());
+  }
+
   private BasicClientStats createStats(InMemoryMetricReader inMemoryMetricReader, ClientType clientType) {
     String storeName = "test_store";
     VeniceMetricsRepository metricsRepository =
