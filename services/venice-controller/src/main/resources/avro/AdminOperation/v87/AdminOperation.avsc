@@ -692,20 +692,20 @@
               "default": false
             },
             {
-              "name": "storeLifecycleHooksConfig",
-              "doc": "Config to specify the class name and params to be used for the store lifecycle hooks",
-              "type": [
-                "null",
-                {
-                  "name": "StoreLifecycleHooksConfig",
+              "name": "StoreLifecycleHooks",
+              "doc": "List of store lifecycle hooks",
+              "type": {
+                "type": "array",
+                "items": {
+                  "name": "StoreLifecycleHooksRecord",
                   "type": "record",
                   "fields": [
-                    {"name": "storeLifecycleHooksClass", "type": "string"},
-                    {"name": "storeLifecycleHooksParams", "type": {"type": "map", "values": "string"}}
+                    {"name": "storeLifecycleHooksClassName", "type": "string", "doc":  "FQCN of the hook implementation"},
+                    {"name": "storeLifecycleHooksParams", "type": {"type": "map", "values": "string"}, "doc":  "Bag of properties to pass into the hook implementation"}
                   ]
                 }
-              ],
-              "default": null
+              },
+              "default": []
             }
           ]
         },
