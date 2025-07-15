@@ -583,9 +583,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         pubSubConsumerSeek(partition, offset);
       } catch (Exception e) {
         logger.error(
-            "Encounter unexpected error trying to seek to timestamp for topic: {} partition: {} timestamp: {}",
-            topicName,
-            partition,
+            "Encounter unexpected error trying to seek to timestamp for topic partition: {}, timestamp: {}",
+            Utils.getReplicaId(partition),
             topicPartitionLongMap.get(partition),
             e);
         throw e;

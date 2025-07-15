@@ -960,14 +960,13 @@ public class VeniceChangelogConsumerImplTest {
       Assert.fail("Unexpected exception");
     }
     ArgumentCaptor<Object> logParams = ArgumentCaptor.forClass(Object.class);
-    verify(mockLogger).error(anyString(), logParams.capture(), logParams.capture(), logParams.capture(), any());
+    verify(mockLogger).error(anyString(), logParams.capture(), logParams.capture(), any());
     List<Object> params = logParams.getAllValues();
     // The params should be topic name, PubSubTopicPartition and the timestamp
-    Assert.assertEquals(params.size(), 3);
+    Assert.assertEquals(params.size(), 2);
     Assert.assertTrue(params.get(0) instanceof String);
-    Assert.assertTrue(params.get(1) instanceof PubSubTopicPartition);
-    Assert.assertTrue(params.get(2) instanceof Long);
-    Long timestamp = (Long) params.get(2);
+    Assert.assertTrue(params.get(1) instanceof Long);
+    Long timestamp = (Long) params.get(1);
     Assert.assertEquals(timestamp.longValue(), 1000L);
   }
 
