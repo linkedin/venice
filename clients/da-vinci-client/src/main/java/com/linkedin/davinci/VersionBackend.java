@@ -424,7 +424,7 @@ public class VersionBackend {
               } else {
                 bootstrappingAwareSubscriptionFuture.complete(null);
                 LOGGER.info(
-                    "Bootstrapping aware subscription to store: {}, version: {} is completed after",
+                    "Bootstrapping aware subscription to store: {}, version: {} is completed",
                     version.getStoreName(),
                     version.getNumber());
               }
