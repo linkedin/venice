@@ -106,7 +106,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   /** OTel metrics yet to be added */
   /** request size metrics */
   private final MetricEntityStateOneEnum<MessageType> requestSizeMetric;
-  private final Sensor requestSizeSensor;
   private final Sensor compressedResponseSizeSensor;
   private final Sensor decompressedResponseSizeSensor;
 
