@@ -68,6 +68,11 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
     this.recordTransformer.onEndVersionIngestion(currentVersion);
   }
 
+  @Override
+  public boolean useUniformInputValueSchema() {
+    return this.recordTransformer.useUniformInputValueSchema();
+  }
+
   /**
    * Lifecycle event triggered when a version swap is detected for partitionId
    *
