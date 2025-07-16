@@ -113,7 +113,7 @@ public class DaVinciRecordTransformerConfig {
   /**
    * @return {@link #startConsumptionLatchCount}
    */
-  public int getStartConsumptionLatchCount() {
+  synchronized public int getStartConsumptionLatchCount() {
     return startConsumptionLatchCount.get();
   }
 
