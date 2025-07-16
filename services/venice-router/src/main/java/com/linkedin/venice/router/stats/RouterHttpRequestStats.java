@@ -399,10 +399,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     routerResponseWaitingTimeSensor = registerSensor(
         "response_waiting_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_waiting_time")));
-    requestSizeSensor = registerSensor(
-        "request_size",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_size")),
-        new Avg());
+
     compressedResponseSizeSensor = registerSensor(
         "compressed_response_size",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("compressed_response_size")),
@@ -652,10 +649,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordResponseWaitingTime(double waitingTime) {
     routerResponseWaitingTimeSensor.record(waitingTime);
-  }
-
-  public void recordRequestSize(double requestSize) {
-    requestSizeSensor.record(requestSize);
   }
 
   public void recordCompressedResponseSize(double compressedResponseSize) {
