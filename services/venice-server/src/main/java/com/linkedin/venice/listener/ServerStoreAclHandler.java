@@ -159,6 +159,7 @@ public class ServerStoreAclHandler extends AbstractStoreAclHandler<QueryAction> 
     switch (queryAction) {
       case STORAGE:
       case COMPUTE:
+      case AGGREGATION:
         return Version.parseStoreFromKafkaTopicName(resourceName);
       case DICTIONARY:
         return resourceName;

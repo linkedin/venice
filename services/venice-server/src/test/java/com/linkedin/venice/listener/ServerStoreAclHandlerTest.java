@@ -324,6 +324,7 @@ public class ServerStoreAclHandlerTest {
           break;
         case STORAGE:
         case COMPUTE:
+        case AGGREGATION:
         case DICTIONARY:
           verify(spyMockAccessController).hasAccess(any(), eq(TEST_STORE_NAME), any());
           break;
@@ -341,6 +342,8 @@ public class ServerStoreAclHandlerTest {
         return "/" + QueryAction.HEALTH.toString().toLowerCase();
       case COMPUTE:
         return "/" + QueryAction.COMPUTE.toString().toLowerCase() + "/" + TEST_STORE_VERSION;
+      case AGGREGATION:
+        return "/" + QueryAction.AGGREGATION.toString().toLowerCase() + "/" + TEST_STORE_VERSION;
       case DICTIONARY:
         return "/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/" + TEST_STORE_NAME + "/1";
       case ADMIN:
