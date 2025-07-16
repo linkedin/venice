@@ -423,6 +423,10 @@ public class VersionBackend {
                     ee);
               } else {
                 bootstrappingAwareSubscriptionFuture.complete(null);
+                LOGGER.info(
+                    "Bootstrapping aware subscription to store: {}, version: {} is completed after",
+                    version.getStoreName(),
+                    version.getNumber());
               }
             });
       }
