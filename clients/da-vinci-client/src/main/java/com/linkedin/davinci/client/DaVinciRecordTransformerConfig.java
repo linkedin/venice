@@ -120,7 +120,7 @@ public class DaVinciRecordTransformerConfig {
   /**
    * @param startConsumptionLatchCount the count used for the latch to guarantee we finish scanning every RocksDB partition before starting remote consumption.
    */
-  public void setStartConsumptionLatchCount(int startConsumptionLatchCount) {
+  synchronized public void setStartConsumptionLatchCount(int startConsumptionLatchCount) {
     if (this.startConsumptionLatchCount.get() > 0) {
       throw new VeniceException("startConsumptionLatchCount should only be modified once");
     }
