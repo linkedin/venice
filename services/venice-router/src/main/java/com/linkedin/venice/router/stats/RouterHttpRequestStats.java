@@ -3,6 +3,7 @@ package com.linkedin.venice.router.stats;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.ABORTED_RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.ALLOWED_RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.CALL_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntity.CALL_SIZE;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.CALL_TIME;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.DISALLOWED_RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.KEY_COUNT;
@@ -11,6 +12,7 @@ import static com.linkedin.venice.router.stats.RouterMetricEntity.RETRY_DELAY;
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformHttpResponseStatusToHttpResponseStatusEnum;
+import static com.linkedin.venice.stats.dimensions.MessageType.REQUEST;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.DELAY_CONSTRAINT;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.MAX_RETRY_ROUTE_LIMIT;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.NO_AVAILABLE_REPLICA;
@@ -33,6 +35,7 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.RequestRetryAbortReason;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -101,6 +104,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor badRequestKeyCountSensor;
 
   /** OTel metrics yet to be added */
+  /** request size metrics */
+  private final MetricEntityStateOneEnum<MessageType> requestSizeMetric;
   private final Sensor requestSizeSensor;
   private final Sensor compressedResponseSizeSensor;
   private final Sensor decompressedResponseSizeSensor;
@@ -189,6 +194,15 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     keyNumSensor = RequestType.isSingleGet(requestType) ? null : registerSensor("key_num", new Avg(), new Max(0));
 
     badRequestKeyCountSensor = registerSensor("bad_request_key_count", new OccurrenceRate(), new Avg(), new Max());
+
+    requestSizeMetric = MetricEntityStateOneEnum.create(
+        CALL_SIZE.getMetricEntity(),
+        otelRepository,
+        this::registerSensorFinal,
+        RouterTehutiMetricNameEnum.REQUEST_SIZE,
+        singletonList(new Avg()),
+        baseDimensionsMap,
+        MessageType.class);
 
     healthyRequestMetric = MetricEntityStateThreeEnums.create(
         CALL_COUNT.getMetricEntity(),
@@ -484,6 +498,17 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     requestSensor.record(1);
     inFlightRequestSensor.record(currentInFlightRequest.incrementAndGet());
     totalInFlightRequestSensor.record();
+  }
+
+  public void recordRequestSize(double keySize, MessageType REQUEST) {
+    recordRequestSizeMetrics(keySize, REQUEST, requestSizeMetric);
+  }
+
+  private void recordRequestSizeMetrics(
+      double keySize,
+      MessageType messageType,
+      MetricEntityStateOneEnum<MessageType> requestSizeMetric) {
+    requestSizeMetric.record(keySize, messageType);
   }
 
   public void recordHealthyRequest(double latency, HttpResponseStatus responseStatus, int keyNum) {
@@ -783,6 +808,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     DISALLOWED_RETRY_REQUEST_COUNT,
     /** for {@link RouterMetricEntity#RETRY_DELAY} */
     RETRY_DELAY,
+    /** for {@link RouterMetricEntity#CALL_SIZE} */
+    REQUEST_SIZE,
     /** for {@link RouterMetricEntity#ABORTED_RETRY_COUNT} */
     DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST, SLOW_ROUTE_ABORTED_RETRY_REQUEST, RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST,
     NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST;
