@@ -34,5 +34,8 @@ public enum QueryAction {
 
   // HOST_HEARTBEAT_LAG is a GET request to /(optional) version topic filter/(optional) partition filter/(optional)
   // lagging replica filter from server admin tool.
-  HOST_HEARTBEAT_LAG
+  HOST_HEARTBEAT_LAG,
+
+  // AGGREGATION is a POST request to /aggregation/storename for compute aggregation operations
+  AGGREGATION
 }

@@ -1,0 +1,64 @@
+{
+  "type": "record",
+  "name": "ComputeAggregationRequest",
+  "namespace": "com.linkedin.venice.compute.protocol.request",
+  "doc": "Request for compute aggregation operations like countByValue",
+  "fields": [
+    {
+      "name": "aggregationType",
+      "type": {
+        "type": "enum",
+        "name": "AggregationType",
+        "symbols": ["COUNT_BY_VALUE", "COUNT_BY_BUCKET"]
+      },
+      "doc": "Type of aggregation to perform"
+    },
+    {
+      "name": "fieldNames",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "doc": "Names of fields to aggregate on"
+    },
+    {
+      "name": "topK",
+      "type": ["null", "int"],
+      "default": null,
+      "doc": "Top K values to return for countByValue aggregation"
+    },
+    {
+      "name": "bucketPredicates",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": {
+            "type": "record",
+            "name": "PredicateSpec",
+            "fields": [
+              {
+                "name": "predicateType",
+                "type": {
+                  "type": "enum",
+                  "name": "PredicateType",
+                  "symbols": ["INT_EQUALS", "INT_GREATER_THAN", "INT_LESS_THAN", "LONG_EQUALS", "LONG_GREATER_THAN", "LONG_LESS_THAN", "FLOAT_EQUALS", "FLOAT_GREATER_THAN", "FLOAT_LESS_THAN", "DOUBLE_EQUALS", "DOUBLE_GREATER_THAN", "DOUBLE_LESS_THAN", "STRING_EQUALS"]
+                }
+              },
+              {
+                "name": "parameters",
+                "type": {
+                  "type": "array",
+                  "items": "bytes"
+                },
+                "doc": "Serialized parameters for the predicate"
+              }
+            ]
+          }
+        }
+      ],
+      "default": null,
+      "doc": "Bucket predicates for countByBucket aggregation"
+    }
+  ]
+} 

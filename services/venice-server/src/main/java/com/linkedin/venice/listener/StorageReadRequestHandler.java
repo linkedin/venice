@@ -23,16 +23,20 @@ import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.ComputeUtils;
+import com.linkedin.venice.compute.protocol.request.ComputeAggregationRequest;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequest;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
+import com.linkedin.venice.compute.protocol.response.ComputeAggregationResponse;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
+import com.linkedin.venice.compute.protocol.response.FieldAggregationResult;
 import com.linkedin.venice.exceptions.OperationNotAllowedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.request.AdminRequest;
+import com.linkedin.venice.listener.request.ComputeAggregationRouterRequestWrapper;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
@@ -46,12 +50,14 @@ import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.request.StorePropertiesFetchRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.BinaryResponse;
+import com.linkedin.venice.listener.response.ComputeAggregationResponseWrapper;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.MultiKeyResponseWrapper;
 import com.linkedin.venice.listener.response.ParallelMultiKeyResponseWrapper;
 import com.linkedin.venice.listener.response.SingleGetResponseWrapper;
+import com.linkedin.venice.listener.response.stats.ComputeAggregationResponseStats;
 import com.linkedin.venice.listener.response.stats.ComputeResponseStatsWithSizeProfiling;
 import com.linkedin.venice.listener.response.stats.MultiGetResponseStatsWithSizeProfiling;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -139,6 +145,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   private final IntFunction<ComputeResponseWrapper> computeResponseProvider;
   private final Function<MultiGetRouterRequestWrapper, CompletableFuture<ReadResponse>> multiGetHandler;
   private final Function<ComputeRouterRequestWrapper, CompletableFuture<ReadResponse>> computeHandler;
+  private final Function<ComputeAggregationRouterRequestWrapper, CompletableFuture<ReadResponse>> aggregationHandler;
 
   private static class PerStoreVersionState {
     final StoreDeserializerCache<GenericRecord> storeDeserializerCache;
@@ -255,9 +262,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     if (serverConfig.isEnableParallelBatchGet()) {
       this.multiGetHandler = this::handleMultiGetRequestInParallel;
       this.computeHandler = this::handleComputeRequestInParallel;
+      this.aggregationHandler = this::handleAggregationRequestInParallel;
     } else {
       this.multiGetHandler = this::handleMultiGetRequest;
       this.computeHandler = this::handleComputeRequest;
+      this.aggregationHandler = this::handleAggregationRequest;
     }
     this.multiGetResponseProvider = multiGetResponseProvider;
     this.computeResponseProvider = computeResponseProvider;
@@ -296,6 +305,9 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           break;
         case COMPUTE:
           responseFuture = this.computeHandler.apply((ComputeRouterRequestWrapper) request);
+          break;
+        case COMPUTE_AGGREGATION:
+          responseFuture = this.aggregationHandler.apply((ComputeAggregationRouterRequestWrapper) request);
           break;
         default:
           throw new VeniceException("Unknown request type: " + request.getRequestType());
@@ -740,7 +752,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     ComputeResponseRecordV1 record;
     for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
       key = keys.get(subChunkCur);
-      response.getStats().addKeySize(key.getKeyBytes().remaining());
+      response.getStats().addValueSize(key.getKeyBytes().remaining());
       AvroRecordUtils.clearRecord(reusableResultRecord);
       reusableValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
           requestContext.storeVersion.storageEngine,
@@ -885,5 +897,159 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         heartbeatRequest.getTopic(),
         heartbeatRequest.getPartition(),
         heartbeatRequest.isFilterLagReplica());
+  }
+
+  private CompletableFuture<ReadResponse> handleAggregationRequest(ComputeAggregationRouterRequestWrapper request) {
+    if (!metadataRepository.isReadComputationEnabled(request.getStoreName())) {
+      CompletableFuture failFast = new CompletableFuture();
+      failFast.completeExceptionally(
+          new OperationNotAllowedException(
+              "Read compute is not enabled for the store. Please contact Venice team to enable the feature."));
+      return failFast;
+    }
+
+    final int queueLen = this.computeExecutor.getQueue().size();
+    final long preSubmissionTimeNs = System.nanoTime();
+    return CompletableFuture.supplyAsync(() -> {
+      if (request.shouldRequestBeTerminatedEarly()) {
+        throw new VeniceRequestEarlyTerminationException(request.getStoreName());
+      }
+
+      double submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
+
+      AggregationRequestContext aggregationRequestContext = new AggregationRequestContext(request, this);
+      int keyCount = request.getKeyCount();
+      ComputeAggregationResponseWrapper response =
+          new ComputeAggregationResponseWrapper(new ComputeAggregationResponseStats());
+
+      processAggregation(0, keyCount, request.getKeys(), aggregationRequestContext, response);
+
+      response.getStats().setStorageExecutionSubmissionWaitTime(submissionWaitTime);
+      response.getStats().setStorageExecutionQueueLen(queueLen);
+      return response;
+    }, computeExecutor);
+  }
+
+  private CompletableFuture<ReadResponse> handleAggregationRequestInParallel(
+      ComputeAggregationRouterRequestWrapper request) {
+    if (!metadataRepository.isReadComputationEnabled(request.getStoreName())) {
+      CompletableFuture failFast = new CompletableFuture();
+      failFast.completeExceptionally(
+          new OperationNotAllowedException(
+              "Read compute is not enabled for the store. Please contact Venice team to enable the feature."));
+      return failFast;
+    }
+
+    // For now, use the non-parallel version since parallel processing requires more complex type handling
+    return handleAggregationRequest(request);
+  }
+
+  private static class AggregationRequestContext extends RequestContext {
+    final SchemaEntry valueSchemaEntry;
+    final VeniceCompressor compressor;
+    final ComputeAggregationRequest aggregationRequest;
+
+    AggregationRequestContext(ComputeAggregationRouterRequestWrapper request, StorageReadRequestHandler handler) {
+      super(request, handler);
+      this.valueSchemaEntry = handler.getAggregationValueSchema(request);
+      this.compressor = handler.compressorFactory.getCompressor(
+          this.compressionStrategy,
+          request.getResourceName(),
+          handler.serverConfig.getZstdDictCompressionLevel());
+      this.aggregationRequest = request.getAggregationRequest();
+    }
+  }
+
+  private void processAggregation(
+      int startPos,
+      int endPos,
+      List<ComputeRouterRequestKeyV1> keys,
+      AggregationRequestContext requestContext,
+      ComputeAggregationResponseWrapper response) {
+
+    ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+    GenericRecord reusableValueRecord = reusableObjects.valueRecordMap
+        .computeIfAbsent(requestContext.valueSchemaEntry.getSchema(), GenericData.Record::new);
+
+    // Initialize aggregation results
+    Map<String, Map<Object, Integer>> fieldValueCounts = new HashMap<>();
+    for (CharSequence fieldName: requestContext.aggregationRequest.getFieldNames()) {
+      fieldValueCounts.put(fieldName.toString(), new HashMap<>());
+    }
+
+    int hits = 0;
+    ComputeRouterRequestKeyV1 key;
+    for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
+      key = keys.get(subChunkCur);
+      response.getStats().addValueSize(key.getKeyBytes().remaining());
+
+      reusableValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
+          requestContext.storeVersion.storageEngine,
+          key.getPartitionId(),
+          ByteUtils.extractByteArray(key.getKeyBytes()),
+          reusableObjects.byteBuffer,
+          reusableValueRecord,
+          reusableObjects.binaryDecoder,
+          requestContext.isChunked,
+          response.getStats(),
+          requestContext.valueSchemaEntry.getId(),
+          requestContext.storeVersion.storeDeserializerCache,
+          requestContext.compressor);
+
+      if (reusableValueRecord != null) {
+        // Process each field for countByValue aggregation
+        for (CharSequence fieldName: requestContext.aggregationRequest.getFieldNames()) {
+          String fieldNameStr = fieldName.toString();
+          Object fieldValue = reusableValueRecord.get(fieldNameStr);
+          if (fieldValue != null) {
+            Map<Object, Integer> valueCounts = fieldValueCounts.get(fieldNameStr);
+            valueCounts.merge(fieldValue, 1, Integer::sum);
+          }
+        }
+        hits++;
+      }
+    }
+
+    // Build the response
+    ComputeAggregationResponse aggregationResponse = response.getAggregationResponse();
+    // Convert from request AggregationType to response AggregationType
+    com.linkedin.venice.compute.protocol.response.AggregationType responseType;
+    switch (requestContext.aggregationRequest.getAggregationType()) {
+      case COUNT_BY_VALUE:
+        responseType = com.linkedin.venice.compute.protocol.response.AggregationType.COUNT_BY_VALUE;
+        break;
+      case COUNT_BY_BUCKET:
+        responseType = com.linkedin.venice.compute.protocol.response.AggregationType.COUNT_BY_BUCKET;
+        break;
+      default:
+        throw new VeniceException(
+            "Unsupported aggregation type: " + requestContext.aggregationRequest.getAggregationType());
+    }
+    aggregationResponse.setAggregationType(responseType);
+
+    Map<CharSequence, FieldAggregationResult> fieldResults = new HashMap<>();
+    for (Map.Entry<String, Map<Object, Integer>> entry: fieldValueCounts.entrySet()) {
+      String fieldName = entry.getKey();
+      Map<Object, Integer> valueCounts = entry.getValue();
+      Map<CharSequence, Integer> valueCountsCS = new HashMap<>();
+      for (Map.Entry<Object, Integer> vc: valueCounts.entrySet()) {
+        valueCountsCS.put(vc.getKey().toString(), vc.getValue());
+      }
+      FieldAggregationResult fieldResult = new FieldAggregationResult();
+      fieldResult.setValueToCount(valueCountsCS);
+      fieldResult.setBucketToCount(null); // Not used for countByValue
+      fieldResults.put(fieldName, fieldResult);
+    }
+    aggregationResponse.setFieldResults(fieldResults);
+
+    // Update stats
+    response.getStats().incrementCountByValueCount(hits);
+  }
+
+  private SchemaEntry getAggregationValueSchema(ComputeAggregationRouterRequestWrapper request) {
+    SchemaEntry superSetOrLatestValueSchema = schemaRepository.getSupersetOrLatestValueSchema(request.getStoreName());
+    return request.getValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID
+        ? schemaRepository.getValueSchema(request.getStoreName(), request.getValueSchemaId())
+        : superSetOrLatestValueSchema;
   }
 }
