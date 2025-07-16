@@ -8,6 +8,7 @@ import com.linkedin.davinci.stats.NativeMetadataRepositoryStats;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -486,7 +487,11 @@ public abstract class NativeMetadataRepository
     if (schemaData == null) {
       throw new VeniceNoStoreException(storeName);
     }
-    return schemaData.getValueSchema(id);
+    SchemaEntry schemaEntry = schemaData.getValueSchema(id);
+    if (schemaEntry == null) {
+      throw new InvalidVeniceSchemaException(storeName, Integer.toString(id));
+    }
+    return schemaEntry;
   }
 
   /**

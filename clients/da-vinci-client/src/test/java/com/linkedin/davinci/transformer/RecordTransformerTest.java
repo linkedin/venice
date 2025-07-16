@@ -34,6 +34,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import java.lang.reflect.Field;
 import java.util.Optional;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.Test;
 
 
@@ -352,5 +353,32 @@ public class RecordTransformerTest {
     TestSpecificValue transformedSpecificValue = transformerResult.getValue();
     assertEquals(transformedSpecificValue.firstName, firstName + id);
     assertEquals(transformedSpecificValue.lastName, lastName + id);
+  }
+
+  @Test
+  public void testBlockingRecordTransformerUsingUniformValueSchema() {
+    DaVinciRecordTransformerConfig dummyRecordTransformerConfig = new DaVinciRecordTransformerConfig.Builder()
+        .setRecordTransformerFunction(TestRecordTransformerUsingUniformInputValueSchema::new)
+        .setStoreRecordsInDaVinci(false)
+        .build();
+
+    DaVinciRecordTransformer<GenericRecord, GenericRecord, GenericRecord> recordTransformer =
+        new TestRecordTransformerUsingUniformInputValueSchema(
+            storeVersion,
+            keySchema,
+            valueSchema,
+            valueSchema,
+            dummyRecordTransformerConfig);
+
+    assertTrue(recordTransformer.useUniformInputValueSchema());
+
+    BlockingDaVinciRecordTransformer blockingDaVinciRecordTransformer = new BlockingDaVinciRecordTransformer(
+        recordTransformer,
+        keySchema,
+        valueSchema,
+        valueSchema,
+        dummyRecordTransformerConfig);
+
+    assertTrue(blockingDaVinciRecordTransformer.useUniformInputValueSchema());
   }
 }

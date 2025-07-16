@@ -483,6 +483,16 @@ public class IntegrationTestPushUtils {
       Object key,
       Object message,
       Long logicalTimeStamp) {
+    sendStreamingRecordWithoutFlush(producer, storeName, key, message, logicalTimeStamp);
+    producer.flush(storeName);
+  }
+
+  public static void sendStreamingRecordWithoutFlush(
+      SystemProducer producer,
+      String storeName,
+      Object key,
+      Object message,
+      Long logicalTimeStamp) {
     OutgoingMessageEnvelope envelope;
     if (logicalTimeStamp == null) {
       envelope = new OutgoingMessageEnvelope(new SystemStream("venice", storeName), key, message);
@@ -493,7 +503,14 @@ public class IntegrationTestPushUtils {
           new VeniceObjectWithTimestamp(message, logicalTimeStamp));
     }
     producer.send(storeName, envelope);
-    producer.flush(storeName);
+  }
+
+  public static void sendStreamingRecordWithoutFlush(
+      SystemProducer producer,
+      String storeName,
+      Object key,
+      Object message) {
+    sendStreamingRecordWithoutFlush(producer, storeName, key, message, null);
   }
 
   /**
