@@ -137,6 +137,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       case MULTI_GET_STREAMING:
       case COMPUTE:
       case COMPUTE_STREAMING:
+      case AGGREGATION:
         // Eventually, we'll want to add some extra cost beyond the lookup cost for compute operations.
         return request.getKeyCount();
       default:

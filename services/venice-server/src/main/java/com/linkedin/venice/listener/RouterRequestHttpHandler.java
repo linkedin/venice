@@ -158,6 +158,18 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           HeartbeatRequest heartbeatRequest = HeartbeatRequest.parseGetHttpRequest(uri.getPath(), requestParts);
           ctx.fireChannelRead(heartbeatRequest);
           break;
+        case AGGREGATION:
+          if (req.method().equals(HttpMethod.POST)) {
+            com.linkedin.venice.listener.request.AggregationRouterRequestWrapper aggregationRouterReq =
+                com.linkedin.venice.listener.request.AggregationRouterRequestWrapper
+                    .parseAggregationRequest(req, requestParts);
+            setupRequestTimeout(aggregationRouterReq);
+            statsHandler.setRequestInfo(aggregationRouterReq);
+            ctx.fireChannelRead(aggregationRouterReq);
+          } else {
+            throw new VeniceException("Only support POST method for " + QueryAction.AGGREGATION);
+          }
+          break;
         default:
           throw new VeniceException("Unrecognized query action");
       }

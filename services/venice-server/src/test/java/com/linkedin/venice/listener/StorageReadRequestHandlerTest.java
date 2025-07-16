@@ -5,6 +5,7 @@ import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.intThat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
@@ -901,5 +902,220 @@ public class StorageReadRequestHandlerTest {
     doReturn(1).when(schemaReader).getLatestValueSchemaId();
     doReturn(1).when(schemaReader).getValueSchemaId(valueSchema);
     return schemaReader;
+  }
+
+  @Test
+  public void testHandleAggregationRequest() throws Exception {
+    String keyString1 = "key1";
+    String keyString2 = "key2";
+    String keyString3 = "key3";
+
+    // Create test value records with jobType and location fields
+    String valueString1 = "{\"jobType\":\"full-time\",\"location\":\"remote\",\"salary\":100000}";
+    String valueString2 = "{\"jobType\":\"part-time\",\"location\":\"onsite\",\"salary\":50000}";
+    String valueString3 = "{\"jobType\":\"full-time\",\"location\":\"remote\",\"salary\":120000}";
+
+    int schemaId = 1;
+    int partition = 1;
+
+    // Mock schema repository
+    org.apache.avro.Schema valueSchema = org.apache.avro.Schema.parse(
+        "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"jobType\",\"type\":\"string\"},{\"name\":\"location\",\"type\":\"string\"},{\"name\":\"salary\",\"type\":\"int\"}]}");
+    com.linkedin.venice.schema.SchemaEntry schemaEntry = mock(com.linkedin.venice.schema.SchemaEntry.class);
+    doReturn(valueSchema).when(schemaEntry).getSchema();
+    doReturn(schemaEntry).when(schemaRepository).getValueSchema(anyString(), anyInt());
+
+    // Create Avro records and serialize them properly
+    org.apache.avro.generic.GenericRecord record1 = new org.apache.avro.generic.GenericData.Record(valueSchema);
+    record1.put("jobType", "full-time");
+    record1.put("location", "remote");
+    record1.put("salary", 100000);
+
+    org.apache.avro.generic.GenericRecord record2 = new org.apache.avro.generic.GenericData.Record(valueSchema);
+    record2.put("jobType", "part-time");
+    record2.put("location", "onsite");
+    record2.put("salary", 50000);
+
+    org.apache.avro.generic.GenericRecord record3 = new org.apache.avro.generic.GenericData.Record(valueSchema);
+    record3.put("jobType", "full-time");
+    record3.put("location", "remote");
+    record3.put("salary", 120000);
+
+    // Serialize records to Avro binary format
+    java.io.ByteArrayOutputStream baos1 = new java.io.ByteArrayOutputStream();
+    org.apache.avro.io.BinaryEncoder encoder1 = org.apache.avro.io.EncoderFactory.get().binaryEncoder(baos1, null);
+    org.apache.avro.generic.GenericDatumWriter<org.apache.avro.generic.GenericRecord> writer1 =
+        new org.apache.avro.generic.GenericDatumWriter<>(valueSchema);
+    writer1.write(record1, encoder1);
+    encoder1.flush();
+    byte[] valueBytes1 = ValueRecord.create(schemaId, baos1.toByteArray()).serialize();
+
+    java.io.ByteArrayOutputStream baos2 = new java.io.ByteArrayOutputStream();
+    org.apache.avro.io.BinaryEncoder encoder2 = org.apache.avro.io.EncoderFactory.get().binaryEncoder(baos2, null);
+    org.apache.avro.generic.GenericDatumWriter<org.apache.avro.generic.GenericRecord> writer2 =
+        new org.apache.avro.generic.GenericDatumWriter<>(valueSchema);
+    writer2.write(record2, encoder2);
+    encoder2.flush();
+    byte[] valueBytes2 = ValueRecord.create(schemaId, baos2.toByteArray()).serialize();
+
+    java.io.ByteArrayOutputStream baos3 = new java.io.ByteArrayOutputStream();
+    org.apache.avro.io.BinaryEncoder encoder3 = org.apache.avro.io.EncoderFactory.get().binaryEncoder(baos3, null);
+    org.apache.avro.generic.GenericDatumWriter<org.apache.avro.generic.GenericRecord> writer3 =
+        new org.apache.avro.generic.GenericDatumWriter<>(valueSchema);
+    writer3.write(record3, encoder3);
+    encoder3.flush();
+    byte[] valueBytes3 = ValueRecord.create(schemaId, baos3.toByteArray()).serialize();
+
+    doReturn(ByteBuffer.wrap(valueBytes1)).when(storageEngine).get(eq(partition), eq(keyString1.getBytes()), any());
+    doReturn(ByteBuffer.wrap(valueBytes2)).when(storageEngine).get(eq(partition), eq(keyString2.getBytes()), any());
+    doReturn(ByteBuffer.wrap(valueBytes3)).when(storageEngine).get(eq(partition), eq(keyString3.getBytes()), any());
+
+    // Create aggregation request
+    com.linkedin.venice.listener.request.AggregationRouterRequestWrapper request =
+        mock(com.linkedin.venice.listener.request.AggregationRouterRequestWrapper.class);
+    doReturn(RequestType.AGGREGATION).when(request).getRequestType();
+    doReturn(version.kafkaTopicName()).when(request).getResourceName();
+    doReturn(store.getName()).when(request).getStoreName();
+
+    // Mock keys
+    ComputeRouterRequestKeyV1 key1 =
+        new ComputeRouterRequestKeyV1(0, ByteBuffer.wrap(keyString1.getBytes()), partition);
+    ComputeRouterRequestKeyV1 key2 =
+        new ComputeRouterRequestKeyV1(1, ByteBuffer.wrap(keyString2.getBytes()), partition);
+    ComputeRouterRequestKeyV1 key3 =
+        new ComputeRouterRequestKeyV1(2, ByteBuffer.wrap(keyString3.getBytes()), partition);
+    doReturn(Arrays.asList(key1, key2, key3)).when(request).getKeys();
+    doReturn(3).when(request).getKeyCount();
+
+    // Mock countByValue fields
+    Map<String, Integer> countByValueFields = new HashMap<>();
+    countByValueFields.put("jobType", 5);
+    countByValueFields.put("location", 3);
+    doReturn(countByValueFields).when(request).getCountByValueFields();
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    Object response = argumentCaptor.getValue();
+
+    // Verify response is a ReadResponse containing aggregation results
+    assertTrue(response instanceof com.linkedin.venice.listener.response.AggregationReadResponseWrapper);
+    com.linkedin.venice.listener.response.AggregationReadResponseWrapper readResponse =
+        (com.linkedin.venice.listener.response.AggregationReadResponseWrapper) response;
+    String responseString = readResponse.getResponseBody().toString(StandardCharsets.UTF_8);
+
+    // Verify the response contains expected aggregation results
+    assertTrue(responseString.contains("jobType"));
+    assertTrue(responseString.contains("location"));
+    assertTrue(responseString.contains("full-time"));
+    assertTrue(responseString.contains("part-time"));
+    assertTrue(responseString.contains("remote"));
+    assertTrue(responseString.contains("onsite"));
+  }
+
+  @Test
+  public void testHandleAggregationRequestWithMissingKeys() throws Exception {
+    String keyString1 = "key1";
+    String keyString2 = "missing-key";
+
+    // Only one key exists in storage
+    String valueString1 = "{\"jobType\":\"full-time\",\"location\":\"remote\"}";
+    int schemaId = 1;
+    int partition = 1;
+
+    // Mock schema repository
+    org.apache.avro.Schema valueSchema = org.apache.avro.Schema.parse(
+        "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"jobType\",\"type\":\"string\"},{\"name\":\"location\",\"type\":\"string\"}]}");
+    com.linkedin.venice.schema.SchemaEntry schemaEntry = mock(com.linkedin.venice.schema.SchemaEntry.class);
+    doReturn(valueSchema).when(schemaEntry).getSchema();
+    doReturn(schemaEntry).when(schemaRepository).getValueSchema(anyString(), anyInt());
+
+    // Create Avro record and serialize it properly
+    org.apache.avro.generic.GenericRecord record1 = new org.apache.avro.generic.GenericData.Record(valueSchema);
+    record1.put("jobType", "full-time");
+    record1.put("location", "remote");
+
+    // Serialize record to Avro binary format
+    java.io.ByteArrayOutputStream baos1 = new java.io.ByteArrayOutputStream();
+    org.apache.avro.io.BinaryEncoder encoder1 = org.apache.avro.io.EncoderFactory.get().binaryEncoder(baos1, null);
+    org.apache.avro.generic.GenericDatumWriter<org.apache.avro.generic.GenericRecord> writer1 =
+        new org.apache.avro.generic.GenericDatumWriter<>(valueSchema);
+    writer1.write(record1, encoder1);
+    encoder1.flush();
+    byte[] valueBytes1 = ValueRecord.create(schemaId, baos1.toByteArray()).serialize();
+
+    doReturn(ByteBuffer.wrap(valueBytes1)).when(storageEngine).get(eq(partition), eq(keyString1.getBytes()), any());
+    doReturn(null).when(storageEngine).get(eq(partition), eq(keyString2.getBytes()), any());
+
+    // Create aggregation request
+    com.linkedin.venice.listener.request.AggregationRouterRequestWrapper request =
+        mock(com.linkedin.venice.listener.request.AggregationRouterRequestWrapper.class);
+    doReturn(RequestType.AGGREGATION).when(request).getRequestType();
+    doReturn(version.kafkaTopicName()).when(request).getResourceName();
+    doReturn(store.getName()).when(request).getStoreName();
+
+    ComputeRouterRequestKeyV1 key1 =
+        new ComputeRouterRequestKeyV1(0, ByteBuffer.wrap(keyString1.getBytes()), partition);
+    ComputeRouterRequestKeyV1 key2 =
+        new ComputeRouterRequestKeyV1(1, ByteBuffer.wrap(keyString2.getBytes()), partition);
+    doReturn(Arrays.asList(key1, key2)).when(request).getKeys();
+    doReturn(2).when(request).getKeyCount();
+
+    Map<String, Integer> countByValueFields = new HashMap<>();
+    countByValueFields.put("jobType", 5);
+    doReturn(countByValueFields).when(request).getCountByValueFields();
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    Object response = argumentCaptor.getValue();
+
+    // Verify response is a ReadResponse and contains results for existing key only
+    assertTrue(response instanceof com.linkedin.venice.listener.response.AggregationReadResponseWrapper);
+    com.linkedin.venice.listener.response.AggregationReadResponseWrapper readResponse =
+        (com.linkedin.venice.listener.response.AggregationReadResponseWrapper) response;
+    String responseString = readResponse.getResponseBody().toString(StandardCharsets.UTF_8);
+    assertTrue(responseString.contains("full-time"));
+    assertTrue(responseString.contains("jobType"));
+  }
+
+  @Test
+  public void testHandleAggregationRequestWithEmptyKeys() throws Exception {
+    // Create aggregation request with no keys
+    com.linkedin.venice.listener.request.AggregationRouterRequestWrapper request =
+        mock(com.linkedin.venice.listener.request.AggregationRouterRequestWrapper.class);
+    doReturn(RequestType.AGGREGATION).when(request).getRequestType();
+    doReturn(version.kafkaTopicName()).when(request).getResourceName();
+    doReturn(store.getName()).when(request).getStoreName();
+
+    doReturn(Collections.emptyList()).when(request).getKeys();
+    doReturn(0).when(request).getKeyCount();
+
+    Map<String, Integer> countByValueFields = new HashMap<>();
+    countByValueFields.put("jobType", 5);
+    doReturn(countByValueFields).when(request).getCountByValueFields();
+
+    // mock schemaRepository to prevent NPE
+    int schemaId = 1;
+    org.apache.avro.Schema valueSchema = org.apache.avro.Schema
+        .parse("{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"jobType\",\"type\":\"string\"}]}");
+    com.linkedin.venice.schema.SchemaEntry schemaEntry = mock(com.linkedin.venice.schema.SchemaEntry.class);
+    doReturn(valueSchema).when(schemaEntry).getSchema();
+    doReturn(schemaEntry).when(schemaRepository).getValueSchema(anyString(), eq(schemaId));
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    Object response = argumentCaptor.getValue();
+
+    // Verify response is a ReadResponse (empty aggregation result)
+    assertTrue(response instanceof com.linkedin.venice.listener.response.AggregationReadResponseWrapper);
+    com.linkedin.venice.listener.response.AggregationReadResponseWrapper readResponse =
+        (com.linkedin.venice.listener.response.AggregationReadResponseWrapper) response;
+    String responseString = readResponse.getResponseBody().toString(StandardCharsets.UTF_8);
+    assertTrue(responseString.contains("jobType"));
   }
 }

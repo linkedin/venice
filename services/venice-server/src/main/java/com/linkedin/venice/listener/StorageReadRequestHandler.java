@@ -297,6 +297,10 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         case COMPUTE:
           responseFuture = this.computeHandler.apply((ComputeRouterRequestWrapper) request);
           break;
+        case AGGREGATION:
+          responseFuture =
+              handleAggregationRequest((com.linkedin.venice.listener.request.AggregationRouterRequestWrapper) request);
+          break;
         default:
           throw new VeniceException("Unknown request type: " + request.getRequestType());
       }
@@ -674,6 +678,63 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         this.computeExecutor,
         requestContext,
         this::processCompute);
+  }
+
+  public CompletableFuture<ReadResponse> handleAggregationRequest(
+      com.linkedin.venice.listener.request.AggregationRouterRequestWrapper request) {
+    return CompletableFuture.supplyAsync(() -> {
+      String topic = request.getResourceName();
+      PerStoreVersionState storeVersion = getPerStoreVersionState(topic);
+      StorageEngine storageEngine = storeVersion.storageEngine;
+      StoreDeserializerCache<org.apache.avro.generic.GenericRecord> deserializerCache =
+          storeVersion.storeDeserializerCache;
+
+      Map<String, Integer> countByValueFields = request.getCountByValueFields();
+      List<com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1> keys = request.getKeys();
+      Map<String, Map<Object, Integer>> result = new HashMap<>();
+      for (String field: countByValueFields.keySet()) {
+        result.put(field, new HashMap<>());
+      }
+
+      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+      // Get compressor
+      com.linkedin.venice.compression.CompressionStrategy compressionStrategy =
+          com.linkedin.venice.utils.StoreVersionStateUtils
+              .getCompressionStrategy(storeVersion.storageEngine.getStoreVersionState());
+      com.linkedin.venice.compression.VeniceCompressor compressor =
+          compressorFactory.getCompressor(compressionStrategy, topic, serverConfig.getZstdDictCompressionLevel());
+      for (com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1 keyObj: keys) {
+        try {
+          GenericRecord valueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
+              storageEngine,
+              keyObj.getPartitionId(),
+              ByteUtils.extractByteArray(keyObj.getKeyBytes()),
+              reusableObjects.byteBuffer,
+              null,
+              reusableObjects.binaryDecoder,
+              false, // isChunked
+              com.linkedin.davinci.listener.response.NoOpReadResponseStats.SINGLETON, // stats
+              0, // schemaId
+              deserializerCache,
+              compressor); // compressor
+          if (valueRecord == null) {
+            continue;
+          }
+          for (String field: countByValueFields.keySet()) {
+            Object fieldValue = valueRecord.get(field);
+            if (fieldValue != null) {
+              Map<Object, Integer> fieldCountMap = result.get(field);
+              fieldCountMap.put(fieldValue, fieldCountMap.getOrDefault(fieldValue, 0) + 1);
+            }
+          }
+        } catch (Exception e) {
+          LOGGER.error("Exception thrown for {}", topic, e);
+          continue;
+        }
+      }
+      // Return aggregation result as string
+      return new com.linkedin.venice.listener.response.AggregationReadResponseWrapper(result.toString());
+    }, executor);
   }
 
   /**

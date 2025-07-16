@@ -217,6 +217,9 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         case COMPUTE:
           finalResponse = processComputeResponses(gatheredResponses, storeName, venicePath.getClientComputeHeader());
           break;
+        case AGGREGATION:
+          finalResponse = processAggregationResponses(gatheredResponses, storeName);
+          break;
         default:
           throw RouterExceptionAndTrackingUtils
               .newVeniceExceptionAndTracking(null, null, INTERNAL_SERVER_ERROR, "Unknown request type: " + requestType);
@@ -484,5 +487,87 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     multiGetResponse.headers().set(VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());
     multiGetResponse.headers().set(VENICE_REQUEST_RCU, totalRequestRcu);
     return multiGetResponse;
+  }
+
+  protected FullHttpResponse processAggregationResponses(List<FullHttpResponse> responses, String storeName) {
+    Map<String, Map<Object, Integer>> merged = new HashMap<>();
+    boolean hasSuccess = false;
+    boolean hasError = false;
+
+    for (FullHttpResponse response: responses) {
+      if (response.status() == OK) {
+        hasSuccess = true;
+        String body = response.content().toString(java.nio.charset.StandardCharsets.UTF_8);
+        try {
+          // Use simple JSON parsing to merge aggregation results
+          // Assume body is JSON format: {"field1":{"value1":2,"value2":1},"field2":{"value3":3}}
+          if (body.startsWith("{") && body.endsWith("}")) {
+            String inner = body.substring(1, body.length() - 1);
+            String[] fieldEntries = inner.split(",(?=\"[^\"]+\":\\{)");
+            for (String fieldEntry: fieldEntries) {
+              int colonIdx = fieldEntry.indexOf(':');
+              if (colonIdx < 0)
+                continue;
+              String field = fieldEntry.substring(0, colonIdx).trim().replace("\"", "");
+              String valueMapStr = fieldEntry.substring(colonIdx + 1).trim();
+              if (valueMapStr.startsWith("{") && valueMapStr.endsWith("}")) {
+                String valueInner = valueMapStr.substring(1, valueMapStr.length() - 1);
+                String[] valueEntries = valueInner.isEmpty() ? new String[0] : valueInner.split(",(?=\"[^\"]+\":\\d+)");
+                Map<Object, Integer> valueMap = merged.computeIfAbsent(field, k -> new HashMap<>());
+                for (String valueEntry: valueEntries) {
+                  int veqIdx = valueEntry.lastIndexOf(':');
+                  if (veqIdx < 0)
+                    continue;
+                  String value = valueEntry.substring(0, veqIdx).trim().replace("\"", "");
+                  int count = Integer.parseInt(valueEntry.substring(veqIdx + 1).trim());
+                  valueMap.put(value, valueMap.getOrDefault(value, 0) + count);
+                }
+              }
+            }
+          }
+        } catch (Exception e) {
+          // If parsing fails, log but continue processing other responses
+          LOGGER.warn("Failed to parse aggregation response: {}", body, e);
+        }
+      } else {
+        hasError = true;
+      }
+    }
+
+    // If there are successful responses, return merged result; otherwise return error
+    if (hasSuccess) {
+      // Build JSON format response
+      StringBuilder jsonBuilder = new StringBuilder("{");
+      boolean firstField = true;
+      for (Map.Entry<String, Map<Object, Integer>> fieldEntry: merged.entrySet()) {
+        if (!firstField) {
+          jsonBuilder.append(",");
+        }
+        firstField = false;
+        jsonBuilder.append("\"").append(fieldEntry.getKey()).append("\":{");
+        boolean firstValue = true;
+        for (Map.Entry<Object, Integer> valueEntry: fieldEntry.getValue().entrySet()) {
+          if (!firstValue) {
+            jsonBuilder.append(",");
+          }
+          firstValue = false;
+          jsonBuilder.append("\"").append(valueEntry.getKey()).append("\":").append(valueEntry.getValue());
+        }
+        jsonBuilder.append("}");
+      }
+      jsonBuilder.append("}");
+
+      String mergedJson = jsonBuilder.toString();
+      FullHttpResponse resp = new DefaultFullHttpResponse(
+          HttpVersion.HTTP_1_1,
+          OK,
+          Unpooled.copiedBuffer(mergedJson, java.nio.charset.StandardCharsets.UTF_8));
+      resp.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
+      resp.headers().set(HttpHeaderNames.CONTENT_LENGTH, resp.content().readableBytes());
+      return resp;
+    } else {
+      // All responses failed, return the first error response
+      return responses.get(0);
+    }
   }
 }

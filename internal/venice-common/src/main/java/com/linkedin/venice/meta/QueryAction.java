@@ -11,6 +11,9 @@ public enum QueryAction {
   // read-compute request from routers
   COMPUTE,
 
+  // AGGREGATION request from routers
+  AGGREGATION,
+
   // DICTIONARY is a GET request to storage/storename/version on the storage node to fetch compression dictionary for
   // that version
   DICTIONARY,
