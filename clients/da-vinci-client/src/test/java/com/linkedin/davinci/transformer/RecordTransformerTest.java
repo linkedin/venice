@@ -372,13 +372,13 @@ public class RecordTransformerTest {
 
     assertTrue(recordTransformer.useUniformInputValueSchema());
 
-    BlockingDaVinciRecordTransformer blockingDaVinciRecordTransformer = new BlockingDaVinciRecordTransformer(
+    InternalDaVinciRecordTransformer internalRecordTransformer = new InternalDaVinciRecordTransformer(
         recordTransformer,
         keySchema,
         valueSchema,
         valueSchema,
         dummyRecordTransformerConfig);
 
-    assertTrue(blockingDaVinciRecordTransformer.useUniformInputValueSchema());
+    assertTrue(internalRecordTransformer.useUniformInputValueSchema());
   }
 }
