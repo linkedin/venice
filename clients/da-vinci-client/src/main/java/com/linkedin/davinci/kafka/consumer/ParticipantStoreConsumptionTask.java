@@ -126,28 +126,29 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
               continue;
             }
 
-            if (value.messageType == ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
-              KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
-              long lag = this.time.getMilliseconds() - killPushJobMessage.getTimestamp();
-              LOGGER.info(
-                  "Terminating ingestion task for store-version: {} in cluster: {}. KILL signal timestamp: {}, message age: {}ms.",
-                  topic,
-                  clusterName,
-                  killPushJobMessage.getTimestamp(),
-                  lag);
-              if (storeIngestionService.killConsumptionTask(topic)) {
-                // emit metrics only when a confirmed kill is made
-                stats.recordKilledPushJobs();
-                stats.recordKillPushJobLatency(Long.max(0, lag));
-              } else {
-                LOGGER.warn(
-                    "Failed to kill Consumption for topic: {}, timestamp: {}",
-                    topic,
-                    killPushJobMessage.getTimestamp());
-              }
-            } else {
+            if (value.messageType != ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
               // Should never happen... so this is basically just defensive code.
               LOGGER.warn("Got an unexpected record from the Participant Store: {}", value);
+              continue;
+            }
+
+            KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
+            long lag = this.time.getMilliseconds() - killPushJobMessage.getTimestamp();
+            LOGGER.info(
+                "Terminating ingestion task for store-version: {} in cluster: {}. KILL signal timestamp: {}, message age: {}ms.",
+                topic,
+                clusterName,
+                killPushJobMessage.getTimestamp(),
+                lag);
+            if (storeIngestionService.killConsumptionTask(topic)) {
+              // emit metrics only when a confirmed kill is made
+              stats.recordKilledPushJobs();
+              stats.recordKillPushJobLatency(Long.max(0, lag));
+            } else {
+              LOGGER.warn(
+                  "Failed to kill Consumption for topic: {}, timestamp: {}",
+                  topic,
+                  killPushJobMessage.getTimestamp());
             }
           } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
