@@ -6,7 +6,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 
 public enum RequestType implements VeniceDimensionInterface {
   SINGLE_GET(""), MULTI_GET("multiget_"), MULTI_GET_STREAMING("multiget_streaming_"), COMPUTE("compute_"),
-  COMPUTE_STREAMING("compute_streaming_");
+  COMPUTE_STREAMING("compute_streaming_"), COMPUTE_AGGREGATION("compute_aggregation_");
 
   private final String metricPrefix;
 
@@ -37,7 +37,7 @@ public enum RequestType implements VeniceDimensionInterface {
   }
 
   public static boolean isCompute(RequestType requestType) {
-    return requestType == COMPUTE;
+    return requestType == COMPUTE || requestType == COMPUTE_AGGREGATION;
   }
 
   public static boolean isStreaming(RequestType requestType) {
