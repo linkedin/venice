@@ -178,14 +178,14 @@ public class DaVinciRecordTransformerUtility<K, O> {
 
           recordTransformer.processPut(lazyKey, lazyValue, partitionId);
         }
+      } finally {
+        // Re-open partition with defaults
+        storagePartitionConfig = new StoragePartitionConfig(storageEngine.getStoreVersionName(), partitionId);
+        storageEngine.adjustStoragePartition(
+            partitionId,
+            StoragePartitionAdjustmentTrigger.REOPEN_WITH_DEFAULTS,
+            storagePartitionConfig);
       }
-
-      // Re-open partition with defaults
-      storagePartitionConfig = new StoragePartitionConfig(storageEngine.getStoreVersionName(), partitionId);
-      storageEngine.adjustStoragePartition(
-          partitionId,
-          StoragePartitionAdjustmentTrigger.REOPEN_WITH_DEFAULTS,
-          storagePartitionConfig);
     }
   }
 }

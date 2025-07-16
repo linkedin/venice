@@ -80,7 +80,7 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
   /**
    * Using a wrapper around onRecovery because when calculating the class hash it grabs the name of the current class
    * that is invoking it. If we directly invoke onRecovery from this class, the class hash will be calculated based
-   * on the contents of BlockingDaVinciRecordTransformer, not the user's implementation of DVRT.
+   * on the contents of {@link InternalDaVinciRecordTransformer}, not the user's implementation of DVRT.
    * We also can't override onRecovery like the other methods because this method is final and the implementation
    * should never be overridden.
    */
