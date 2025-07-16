@@ -1112,8 +1112,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_LOAD_CONTROLLER_COMPUTE_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
     consumerPollTrackerStaleThresholdInSeconds = serverProperties
         .getLong(SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS, TimeUnit.MINUTES.toSeconds(15));
-    daVinciRecordTransformerOnRecoveryThreadPoolSize =
-        serverProperties.getInt(DAVINCI_RECORD_TRANSFORMER_ON_RECOVERY_THREAD_POOL_SIZE, 8);
+    daVinciRecordTransformerOnRecoveryThreadPoolSize = serverProperties
+        .getInt(DAVINCI_RECORD_TRANSFORMER_ON_RECOVERY_THREAD_POOL_SIZE, Runtime.getRuntime().availableProcessors());
     this.ingestionTaskReusableObjectsStrategy = IngestionTaskReusableObjects.Strategy.valueOf(
         serverProperties.getString(
             SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY,
