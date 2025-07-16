@@ -78,6 +78,7 @@ import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARENT_CONTROLLER_METADATA_SYSTEM_SCHEMA_STORE_VALUE;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 import static com.linkedin.venice.utils.RegionUtils.isRegionPartOfRegionsFilterList;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
@@ -420,6 +421,7 @@ public class VeniceParentHelixAdmin implements Admin {
         WriteComputeSchemaConverter.getInstance(), // TODO: make it an input param
         Optional.empty(),
         new PubSubTopicRepository(),
+        null, // TODO: how do these become not null?
         null,
         null);
   }
@@ -436,7 +438,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
       PubSubTopicRepository pubSubTopicRepository,
       DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore,
-      DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore) {
+      DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore,
+      DelegatingClusterLeaderInitializationRoutine initRoutineForParentMetadataStore) {
     Validate.notNull(lingeringStoreVersionChecker);
     Validate.notNull(writeComputeSchemaConverter);
     this.veniceHelixAdmin = veniceHelixAdmin;
@@ -542,7 +545,29 @@ public class VeniceParentHelixAdmin implements Admin {
                 BatchJobHeartbeatKey.getClassSchema(),
                 updateStoreQueryParamsForHeartbeatSystemStore));
       } else {
-        initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
+        initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed(); // disable
+      }
+    }
+
+    // TODO: add some logic that if the parent metadata store is not created yet, we will not read/write to it.
+    String parentMetaDataStoreClusterName = getMultiClusterConfigs().getParentControllerMetadataStoreClusterName(); // TODO:
+                                                                                                                    // change
+    boolean initializeParentMetaDataStore = !StringUtils.isEmpty(parentMetaDataStoreClusterName);
+    if (initRoutineForParentMetadataStore != null) {
+      if (initializeParentMetaDataStore) {
+        UpdateStoreQueryParams updateStoreQueryParamsForParentControllerMetadataStore =
+            new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
+        initRoutineForParentMetadataStore.setDelegate(
+            new SharedInternalRTStoreInitializationRoutine(
+                parentMetaDataStoreClusterName,
+                PARENT_CONTROLLER_METADATA_SYSTEM_SCHEMA_STORE_VALUE.getSystemStoreName(),
+                PARENT_CONTROLLER_METADATA_SYSTEM_SCHEMA_STORE_VALUE,
+                multiClusterConfigs,
+                this,
+                Schema.create(Schema.Type.STRING),
+                updateStoreQueryParamsForParentControllerMetadataStore));
+      } else {
+        initRoutineForParentMetadataStore.setAllowEmptyDelegateInitializationToSucceed();
       }
     }
   }
@@ -566,6 +591,8 @@ public class VeniceParentHelixAdmin implements Admin {
    * </ul>
    * @param clusterName Venice cluster name.
    */
+
+  // parent controller => admin topic exists or not
   @Override
   public synchronized void initStorageCluster(String clusterName) {
     /*
@@ -577,6 +604,7 @@ public class VeniceParentHelixAdmin implements Admin {
      */
 
     // Check whether the admin topic exists or not.
+    // eg. venice_admin_cluster_1
     PubSubTopic topicName = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
     TopicManager topicManager = getTopicManager();
     if (topicManager.containsTopicAndAllPartitionsAreOnline(topicName)) {
@@ -943,7 +971,7 @@ public class VeniceParentHelixAdmin implements Admin {
     storeCreation.valueSchema.definition = valueSchema;
 
     final AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.STORE_CREATION.getValue();
+    message.operationType = AdminMessageType.STORE_CREATION.getValue(); // one kind of operation: store creation
     message.payloadUnion = storeCreation;
     sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
   }
