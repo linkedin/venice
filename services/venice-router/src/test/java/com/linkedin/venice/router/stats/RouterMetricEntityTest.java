@@ -120,6 +120,18 @@ public class RouterMetricEntityTest {
                 VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
                 VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
                 VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON)));
+    expectedMetrics.put(
+        RouterMetricEntity.CALL_SIZE,
+        new MetricEntity(
+            "call_size",
+            MetricType.HISTOGRAM,
+            MetricUnit.NUMBER,
+            "Request size in bytes",
+            Utils.setOf(
+                VeniceMetricsDimensions.VENICE_STORE_NAME,
+                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
+                VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
+                VeniceMetricsDimensions.VENICE_MESSAGE_TYPE)));
 
     for (RouterMetricEntity metric: RouterMetricEntity.values()) {
       MetricEntity actual = metric.getMetricEntity();
