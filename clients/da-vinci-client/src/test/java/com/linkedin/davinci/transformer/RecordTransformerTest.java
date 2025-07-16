@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
@@ -227,6 +228,7 @@ public class RecordTransformerTest {
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
     dummyRecordTransformerConfig.setStartConsumptionLatchCount(1);
+    assertThrows(() -> dummyRecordTransformerConfig.setStartConsumptionLatchCount(2));
 
     DaVinciRecordTransformer<Integer, String, String> clientRecordTransformer = spy(
         new TestStringRecordTransformer(

@@ -493,7 +493,12 @@ public class DaVinciBackend implements Closeable {
             configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
 
-    if (configLoader.getCombinedProperties().getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)) {
+    /*
+     * If DaVinciRecordTransformer is enabled, we shouldn't subscribe to on disk partitions as there could be issues
+     * when we perform RocksDB scan.
+     */
+    if (configLoader.getCombinedProperties().getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)
+        && recordTransformerConfig != null) {
       // Subscribe all bootstrap version partitions.
       storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
         List<Integer> partitions = storeNameToPartitionListMap.get(storeName);

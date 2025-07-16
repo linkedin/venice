@@ -3,6 +3,7 @@ package com.linkedin.davinci.client;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 
@@ -20,7 +21,7 @@ public class DaVinciRecordTransformerConfig {
   private final boolean skipCompatibilityChecks;
   private final boolean useSpecificRecordKeyDeserializer;
   private final boolean useSpecificRecordValueDeserializer;
-  private int startConsumptionLatchCount;
+  private AtomicInteger startConsumptionLatchCount;
 
   public DaVinciRecordTransformerConfig(Builder builder) {
     this.recordTransformerFunction = Optional.ofNullable(builder.recordTransformerFunction)
@@ -43,7 +44,7 @@ public class DaVinciRecordTransformerConfig {
     this.skipCompatibilityChecks = builder.skipCompatibilityChecks;
 
     // Default = 0 to guard against NPE downstream, which shouldn't be possible.
-    this.startConsumptionLatchCount = 0;
+    this.startConsumptionLatchCount = new AtomicInteger(0);
   }
 
   /**
@@ -113,14 +114,17 @@ public class DaVinciRecordTransformerConfig {
    * @return {@link #startConsumptionLatchCount}
    */
   public int getStartConsumptionLatchCount() {
-    return startConsumptionLatchCount;
+    return startConsumptionLatchCount.get();
   }
 
   /**
    * @param startConsumptionLatchCount the count used for the latch to guarantee we finish scanning every RocksDB partition before starting remote consumption.
    */
   public void setStartConsumptionLatchCount(int startConsumptionLatchCount) {
-    this.startConsumptionLatchCount = startConsumptionLatchCount;
+    if (this.startConsumptionLatchCount.get() > 0) {
+      throw new VeniceException("startConsumptionLatchCount should only be modified once");
+    }
+    this.startConsumptionLatchCount.set(startConsumptionLatchCount);
   }
 
   public static class Builder {
