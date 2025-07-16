@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.AdminRequest;
+import com.linkedin.venice.listener.request.ComputeAggregationRouterRequestWrapper;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
@@ -109,6 +110,17 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
             ctx.fireChannelRead(computeRouterReq);
           } else {
             throw new VeniceException("Only support POST method for " + QueryAction.COMPUTE);
+          }
+          break;
+        case AGGREGATION: // aggregation request
+          if (req.method().equals(HttpMethod.POST)) {
+            ComputeAggregationRouterRequestWrapper aggregationRouterReq =
+                ComputeAggregationRouterRequestWrapper.parseAggregationRequest(req, requestParts);
+            setupRequestTimeout(aggregationRouterReq);
+            statsHandler.setRequestInfo(aggregationRouterReq);
+            ctx.fireChannelRead(aggregationRouterReq);
+          } else {
+            throw new VeniceException("Only support POST method for " + QueryAction.AGGREGATION);
           }
           break;
         case HEALTH:
