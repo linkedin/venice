@@ -20,6 +20,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -195,10 +196,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
             .setStatsPrefix(CLIENT_STATS_PREFIX);
         return this.clientConstructor.apply(newClientConfig);
       });
-      if (client == null) {
-        throw new NullPointerException("Got a null client out of the constructor function!");
-      }
-      return client;
+      return Objects.requireNonNull(client, "Got a null client out of the constructor function!");
     } catch (Exception e) {
       stats.recordFailedInitialization();
       LOGGER.error("Failed to get participant client for cluster: {}", clusterName, e);
