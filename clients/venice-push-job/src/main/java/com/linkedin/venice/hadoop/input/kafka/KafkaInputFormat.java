@@ -1,8 +1,9 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_MAPPER_COUNT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_MAPPER_MULTIPLICATION_FACTOR;
 
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
@@ -49,7 +50,9 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
    * BTW, this calculation is not accurate since it is purely based on offset, and the topic
    * being consumed could have log compaction enabled.
    */
-  public static final long DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = 5000000L;
+  public static final int DEFAULT_KAFKA_INPUT_MAPPER_MULTIPLICATION_FACTOR = 3;
+  public static final int DEFAULT_MAX_KIF_MAPPER_COUNT = 10_000;
+
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   protected Map<PubSubTopicPartition, Long> getLatestOffsets(JobConf config) {
@@ -86,21 +89,29 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
    */
   @Override
   public InputSplit[] getSplits(JobConf job, int numSplits) throws IOException {
-    long maxRecordsPerSplit =
-        job.getLong(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER);
-    if (maxRecordsPerSplit < 1L) {
+    long kifMapperMultiplicationFactor =
+        job.getLong(KAFKA_MAPPER_MULTIPLICATION_FACTOR, DEFAULT_KAFKA_INPUT_MAPPER_MULTIPLICATION_FACTOR);
+    if (kifMapperMultiplicationFactor < 1L) {
       throw new IllegalArgumentException(
-          "Invalid " + KAFKA_INPUT_MAX_RECORDS_PER_MAPPER + " value [" + maxRecordsPerSplit + "]");
+          "Invalid " + DEFAULT_KAFKA_INPUT_MAPPER_MULTIPLICATION_FACTOR + " value [" + kifMapperMultiplicationFactor
+              + "]");
     }
 
-    return getSplitsByRecordsPerSplit(job, maxRecordsPerSplit);
+    return getSplitsByRecordsPerSplit(job, kifMapperMultiplicationFactor);
   }
 
-  public InputSplit[] getSplitsByRecordsPerSplit(JobConf job, long maxRecordsPerSplit) {
+  public InputSplit[] getSplitsByRecordsPerSplit(JobConf job, long kifMapperMultiplicationFactor) {
     Map<PubSubTopicPartition, Long> latestOffsets = getLatestOffsets(job);
+    long totalEndOffset = latestOffsets.values().stream().mapToLong(Long::longValue).sum();
+    long maxMapperCount = job.getLong(KAFKA_INPUT_MAX_MAPPER_COUNT, DEFAULT_MAX_KIF_MAPPER_COUNT);
+    long mapperCount = latestOffsets.size() * kifMapperMultiplicationFactor;
+    if (mapperCount > maxMapperCount) {
+      mapperCount = maxMapperCount;
+    }
+    long maxRecordsPerSplit = totalEndOffset / mapperCount;
+
     List<InputSplit> splits = new LinkedList<>();
     latestOffsets.forEach((topicPartition, end) -> {
-
       /**
        * Chop up any excessively large partitions into multiple splits for more balanced map task durations. This will
        * also exclude any partitions with no records to read (where the start offset equals the end offset).
