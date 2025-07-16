@@ -397,12 +397,17 @@ public class VersionBackend {
     CompletableFuture<Void> bootstrappingAwareSubscriptionFuture = new CompletableFuture<>();
 
     CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).whenComplete((v, e) -> {
-      storeBackendStats.recordSubscribeDuration(Duration.between(startTime, Instant.now()));
+      Duration endDuration = Duration.between(startTime, Instant.now());
+      storeBackendStats.recordSubscribeDuration(endDuration);
       if (e != null) {
         bootstrappingAwareSubscriptionFuture.completeExceptionally(e);
         LOGGER.warn("Bootstrapping store: {}, version: {} failed", version.getStoreName(), version.getNumber(), e);
       } else {
-        LOGGER.info("Bootstrapping store: {}, version: {} is completed", version.getStoreName(), version.getNumber());
+        LOGGER.info(
+            "Bootstrapping store: {}, version: {} is completed after {}ms",
+            version.getStoreName(),
+            version.getNumber(),
+            endDuration.toMillis());
         /**
          * It is important to start polling the bootstrapping status after the version ingestion is completed to
          * make sure the bootstrapping status polling is valid (not doing polling without any past/active ingestion tasks).
@@ -418,13 +423,6 @@ public class VersionBackend {
                     ee);
               } else {
                 bootstrappingAwareSubscriptionFuture.complete(null);
-                Duration endDuration = Duration.between(startTime, Instant.now());
-                storeBackendStats.recordReadyToServeDuration(endDuration);
-                LOGGER.info(
-                    "Bootstrapping aware subscription to store: {}, version: {} is completed after {}ms",
-                    version.getStoreName(),
-                    version.getNumber(),
-                    endDuration.toMillis());
               }
             });
       }
