@@ -498,7 +498,7 @@ public class DaVinciBackend implements Closeable {
      * when we perform RocksDB scan.
      */
     if (configLoader.getCombinedProperties().getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)
-        && recordTransformerConfig != null) {
+        && recordTransformerConfig == null) {
       // Subscribe all bootstrap version partitions.
       storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
         List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
