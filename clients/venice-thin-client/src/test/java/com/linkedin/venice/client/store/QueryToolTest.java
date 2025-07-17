@@ -147,21 +147,21 @@ public class QueryToolTest {
   @Test
   public void testParseBucketDefinitions() {
     // Test range format
-    Map<String, Predicate<Integer>> rangePredicates = QueryTool.parseBucketDefinitions("20-25,30-35");
+    Map<String, Predicate<Long>> rangePredicates = QueryTool.parseBucketDefinitions("20-25,30-35");
     assertNotNull(rangePredicates);
     assertEquals(rangePredicates.size(), 2);
     assertTrue(rangePredicates.containsKey("20-25"));
     assertTrue(rangePredicates.containsKey("30-35"));
 
     // Test operator format
-    Map<String, Predicate<Integer>> operatorPredicates = QueryTool.parseBucketDefinitions("young:lt:30,senior:gte:30");
+    Map<String, Predicate<Long>> operatorPredicates = QueryTool.parseBucketDefinitions("young:lt:30,senior:gte:30");
     assertNotNull(operatorPredicates);
     assertEquals(operatorPredicates.size(), 2);
     assertTrue(operatorPredicates.containsKey("young"));
     assertTrue(operatorPredicates.containsKey("senior"));
 
     // Test mixed format
-    Map<String, Predicate<Integer>> mixedPredicates = QueryTool.parseBucketDefinitions("20-25,senior:gte:30");
+    Map<String, Predicate<Long>> mixedPredicates = QueryTool.parseBucketDefinitions("20-25,senior:gte:30");
     assertNotNull(mixedPredicates);
     assertEquals(mixedPredicates.size(), 2);
     assertTrue(mixedPredicates.containsKey("20-25"));
@@ -189,19 +189,19 @@ public class QueryToolTest {
   @Test
   public void testParseBucketDefinitionsEmpty() {
     // Test null input
-    Map<String, Predicate<Integer>> nullPredicates = QueryTool.parseBucketDefinitions(null);
+    Map<String, Predicate<Long>> nullPredicates = QueryTool.parseBucketDefinitions(null);
     assertNotNull(nullPredicates);
     assertEquals(nullPredicates.size(), 0);
 
     // Test empty string
-    Map<String, Predicate<Integer>> emptyPredicates = QueryTool.parseBucketDefinitions("");
+    Map<String, Predicate<Long>> emptyPredicates = QueryTool.parseBucketDefinitions("");
     assertNotNull(emptyPredicates);
     assertEquals(emptyPredicates.size(), 0);
   }
 
   @Test
   public void testParseBucketDefinitionsOperators() {
-    Map<String, Predicate<Integer>> predicates =
+    Map<String, Predicate<Long>> predicates =
         QueryTool.parseBucketDefinitions("lt:lt:10,lte:lte:20,gt:gt:30,gte:gte:40,eq:eq:50");
 
     assertNotNull(predicates);
@@ -251,13 +251,13 @@ public class QueryToolTest {
   @Test
   public void testParseBucketDefinitionsRangeFormat() {
     // Test simple range
-    Map<String, Predicate<Integer>> predicates = QueryTool.parseBucketDefinitions("10-20");
+    Map<String, Predicate<Long>> predicates = QueryTool.parseBucketDefinitions("10-20");
     assertNotNull(predicates);
     assertEquals(predicates.size(), 1);
     assertTrue(predicates.containsKey("10-20"));
 
     // Test multiple ranges
-    Map<String, Predicate<Integer>> multiPredicates = QueryTool.parseBucketDefinitions("0-10,20-30,40-50");
+    Map<String, Predicate<Long>> multiPredicates = QueryTool.parseBucketDefinitions("0-10,20-30,40-50");
     assertNotNull(multiPredicates);
     assertEquals(multiPredicates.size(), 3);
     assertTrue(multiPredicates.containsKey("0-10"));
@@ -280,7 +280,7 @@ public class QueryToolTest {
   @Test
   public void testParseBucketDefinitionsOperatorFormat() {
     // Test all operators
-    Map<String, Predicate<Integer>> predicates =
+    Map<String, Predicate<Long>> predicates =
         QueryTool.parseBucketDefinitions("less:lt:10,lessEqual:lte:20,greater:gt:30,greaterEqual:gte:40,equal:eq:50");
 
     assertNotNull(predicates);
@@ -295,8 +295,7 @@ public class QueryToolTest {
   @Test
   public void testParseBucketDefinitionsMixedFormat() {
     // Test mixing range and operator formats
-    Map<String, Predicate<Integer>> predicates =
-        QueryTool.parseBucketDefinitions("0-10,young:lt:30,20-25,senior:gte:50");
+    Map<String, Predicate<Long>> predicates = QueryTool.parseBucketDefinitions("0-10,young:lt:30,20-25,senior:gte:50");
 
     assertNotNull(predicates);
     assertEquals(predicates.size(), 4);
@@ -317,7 +316,7 @@ public class QueryToolTest {
   @Test
   public void testParseBucketDefinitionsWithSpaces() {
     // Test bucket definitions with spaces
-    Map<String, Predicate<Integer>> predicates = QueryTool.parseBucketDefinitions(" 20-25 , 30-35 ");
+    Map<String, Predicate<Long>> predicates = QueryTool.parseBucketDefinitions(" 20-25 , 30-35 ");
     assertNotNull(predicates);
     assertEquals(predicates.size(), 2);
     assertTrue(predicates.containsKey("20-25"));
@@ -327,7 +326,7 @@ public class QueryToolTest {
   @Test
   public void testParseBucketDefinitionsSingleRange() {
     // Test single range
-    Map<String, Predicate<Integer>> predicates = QueryTool.parseBucketDefinitions("10-20");
+    Map<String, Predicate<Long>> predicates = QueryTool.parseBucketDefinitions("10-20");
     assertNotNull(predicates);
     assertEquals(predicates.size(), 1);
     assertTrue(predicates.containsKey("10-20"));
@@ -336,7 +335,7 @@ public class QueryToolTest {
   @Test
   public void testParseBucketDefinitionsSingleOperator() {
     // Test single operator
-    Map<String, Predicate<Integer>> predicates = QueryTool.parseBucketDefinitions("young:lt:30");
+    Map<String, Predicate<Long>> predicates = QueryTool.parseBucketDefinitions("young:lt:30");
     assertNotNull(predicates);
     assertEquals(predicates.size(), 1);
     assertTrue(predicates.containsKey("young"));
@@ -345,7 +344,7 @@ public class QueryToolTest {
   @Test
   public void testParseBucketDefinitionsComplexMixed() {
     // Test complex mixed format
-    Map<String, Predicate<Integer>> predicates =
+    Map<String, Predicate<Long>> predicates =
         QueryTool.parseBucketDefinitions("0-10,young:lt:30,20-25,senior:gte:50,elder:gt:70");
     assertNotNull(predicates);
     assertEquals(predicates.size(), 5);
@@ -393,6 +392,7 @@ public class QueryToolTest {
   public void testMainMethodWithUnknownMode() throws Exception {
     // Test main method with unknown facet counting mode
     String[] args = { "store", "key", "url", "false", "ssl.config", "unknown" };
+    // Expect IllegalArgumentException to be thrown and caught, returning exit code 1
     int exitCode = QueryTool.run(args);
     assertEquals(exitCode, 1);
   }

@@ -4,7 +4,7 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.venice.client.store.predicate.IntPredicate;
+import com.linkedin.venice.client.store.predicate.LongPredicate;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
@@ -37,12 +37,38 @@ public class QueryTool {
   private static final int SSL_CONFIG_FILE_PATH = 4;
   private static final int REQUIRED_ARGS_COUNT = 5;
 
-  // New arguments for facet counting
-  private static final int FACET_COUNTING_MODE = 5;
-  private static final int COUNT_BY_VALUE_FIELDS = 6;
-  private static final int TOP_K = 7;
-  private static final int COUNT_BY_BUCKET_FIELDS = 6;
-  private static final int BUCKET_DEFINITIONS = 7;
+  // Facet counting arguments
+  private static final int FACET_COUNTING_MODE_ARG_INDEX = 5;
+  private static final int COUNT_BY_VALUE_FIELDS_ARG_INDEX = 6;
+  private static final int TOP_K_ARG_INDEX = 7;
+  private static final int COUNT_BY_BUCKET_FIELDS_ARG_INDEX = 6;
+  private static final int BUCKET_DEFINITIONS_ARG_INDEX = 7;
+
+  /**
+   * Enum for facet counting modes
+   */
+  public enum FacetCountingMode {
+    SINGLE("single"), COUNT_BY_VALUE("countByValue"), COUNT_BY_BUCKET("countByBucket");
+
+    private final String value;
+
+    FacetCountingMode(String value) {
+      this.value = value;
+    }
+
+    public String getValue() {
+      return value;
+    }
+
+    public static FacetCountingMode fromString(String text) {
+      for (FacetCountingMode mode: FacetCountingMode.values()) {
+        if (mode.value.equalsIgnoreCase(text)) {
+          return mode;
+        }
+      }
+      throw new IllegalArgumentException("Unknown facet counting mode: " + text);
+    }
+  }
 
   public static void main(String[] args) {
     int exitCode = 0;
@@ -71,45 +97,52 @@ public class QueryTool {
     Optional<String> sslConfigFilePathArgs =
         StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
 
-    // Parse facet counting parameters
-    String facetCountingMode = args.length > FACET_COUNTING_MODE ? removeQuotes(args[FACET_COUNTING_MODE]) : "single";
-    String countByValueFields = args.length > COUNT_BY_VALUE_FIELDS ? removeQuotes(args[COUNT_BY_VALUE_FIELDS]) : null;
-    String countByBucketFields =
-        args.length > COUNT_BY_BUCKET_FIELDS ? removeQuotes(args[COUNT_BY_BUCKET_FIELDS]) : null;
-    int topK = 10; // Default value
-    String bucketDefinitions = args.length > BUCKET_DEFINITIONS ? removeQuotes(args[BUCKET_DEFINITIONS]) : null;
-
-    // Parse topK only for countByValue mode
-    if ("countByValue".equals(facetCountingMode) && args.length > TOP_K) {
-      topK = Integer.parseInt(removeQuotes(args[TOP_K]));
-    }
-
     try {
-      if ("single".equals(facetCountingMode)) {
-        Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, sslConfigFilePathArgs);
-        outputMap.entrySet().stream().forEach(System.out::println);
-      } else if ("countByValue".equals(facetCountingMode)) {
-        Map<String, String> outputMap = queryStoreWithCountByValue(
-            store,
-            keyString,
-            url,
-            isVsonStore,
-            sslConfigFilePathArgs,
-            countByValueFields,
-            topK);
-        outputMap.entrySet().stream().forEach(System.out::println);
-      } else if ("countByBucket".equals(facetCountingMode)) {
-        Map<String, String> outputMap = queryStoreWithCountByBucket(
-            store,
-            keyString,
-            url,
-            isVsonStore,
-            sslConfigFilePathArgs,
-            countByBucketFields,
-            bucketDefinitions);
-        outputMap.entrySet().stream().forEach(System.out::println);
-      } else {
-        throw new VeniceException("Unknown facet counting mode: " + facetCountingMode);
+      // Parse facet counting parameters
+      FacetCountingMode facetCountingMode = args.length > FACET_COUNTING_MODE_ARG_INDEX
+          ? FacetCountingMode.fromString(removeQuotes(args[FACET_COUNTING_MODE_ARG_INDEX]))
+          : FacetCountingMode.SINGLE;
+      String countByValueFields =
+          args.length > COUNT_BY_VALUE_FIELDS_ARG_INDEX ? removeQuotes(args[COUNT_BY_VALUE_FIELDS_ARG_INDEX]) : null;
+      String countByBucketFields =
+          args.length > COUNT_BY_BUCKET_FIELDS_ARG_INDEX ? removeQuotes(args[COUNT_BY_BUCKET_FIELDS_ARG_INDEX]) : null;
+      int topK = 10; // Default value
+      String bucketDefinitions =
+          args.length > BUCKET_DEFINITIONS_ARG_INDEX ? removeQuotes(args[BUCKET_DEFINITIONS_ARG_INDEX]) : null;
+
+      // Parse topK only for countByValue mode
+      if (facetCountingMode == FacetCountingMode.COUNT_BY_VALUE && args.length > TOP_K_ARG_INDEX) {
+        topK = Integer.parseInt(removeQuotes(args[TOP_K_ARG_INDEX]));
+      }
+      switch (facetCountingMode) {
+        case SINGLE:
+          Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, sslConfigFilePathArgs);
+          outputMap.entrySet().stream().forEach(System.out::println);
+          break;
+        case COUNT_BY_VALUE:
+          Map<String, String> countByValueOutputMap = queryStoreWithCountByValue(
+              store,
+              keyString,
+              url,
+              isVsonStore,
+              sslConfigFilePathArgs,
+              countByValueFields,
+              topK);
+          countByValueOutputMap.entrySet().stream().forEach(System.out::println);
+          break;
+        case COUNT_BY_BUCKET:
+          Map<String, String> countByBucketOutputMap = queryStoreWithCountByBucket(
+              store,
+              keyString,
+              url,
+              isVsonStore,
+              sslConfigFilePathArgs,
+              countByBucketFields,
+              bucketDefinitions);
+          countByBucketOutputMap.entrySet().stream().forEach(System.out::println);
+          break;
+        default:
+          throw new VeniceException("Unknown facet counting mode: " + facetCountingMode);
       }
       return 0;
     } catch (Exception e) {
@@ -125,17 +158,8 @@ public class QueryTool {
       boolean isVsonStore,
       Optional<String> sslConfigFile) throws Exception {
 
-    SSLFactory factory = null;
-    if (sslConfigFile.isPresent()) {
-      Properties sslProperties = SslUtils.loadSSLConfig(sslConfigFile.get());
-      String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-      factory = SslUtils.getSSLFactory(sslProperties, sslFactoryClassName);
-    }
-
-    // Verify the ssl engine is set up correctly.
-    if (url.toLowerCase().trim().startsWith("https") && (factory == null || factory.getSSLContext() == null)) {
-      throw new VeniceException("ERROR: The SSL configuration is not valid to send a request to " + url);
-    }
+    SSLFactory factory = createSSLFactory(sslConfigFile);
+    validateSSLConfiguration(url, factory);
 
     Map<String, String> outputMap = new LinkedHashMap<>();
     try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
@@ -195,16 +219,8 @@ public class QueryTool {
       String countByValueFields,
       int topK) throws Exception {
 
-    SSLFactory factory = null;
-    if (sslConfigFile.isPresent()) {
-      Properties sslProperties = SslUtils.loadSSLConfig(sslConfigFile.get());
-      String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-      factory = SslUtils.getSSLFactory(sslProperties, sslFactoryClassName);
-    }
-
-    if (url.toLowerCase().trim().startsWith("https") && (factory == null || factory.getSSLContext() == null)) {
-      throw new VeniceException("ERROR: The SSL configuration is not valid to send a request to " + url);
-    }
+    SSLFactory factory = createSSLFactory(sslConfigFile);
+    validateSSLConfiguration(url, factory);
 
     Map<String, String> outputMap = new LinkedHashMap<>();
     try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
@@ -256,16 +272,8 @@ public class QueryTool {
       String countByBucketFields,
       String bucketDefinitions) throws Exception {
 
-    SSLFactory factory = null;
-    if (sslConfigFile.isPresent()) {
-      Properties sslProperties = SslUtils.loadSSLConfig(sslConfigFile.get());
-      String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-      factory = SslUtils.getSSLFactory(sslProperties, sslFactoryClassName);
-    }
-
-    if (url.toLowerCase().trim().startsWith("https") && (factory == null || factory.getSSLContext() == null)) {
-      throw new VeniceException("ERROR: The SSL configuration is not valid to send a request to " + url);
-    }
+    SSLFactory factory = createSSLFactory(sslConfigFile);
+    validateSSLConfiguration(url, factory);
 
     Map<String, String> outputMap = new LinkedHashMap<>();
     try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
@@ -281,7 +289,7 @@ public class QueryTool {
       String[] fields = countByBucketFields.split(",");
 
       // Parse bucket definitions
-      Map<String, Predicate<Integer>> bucketPredicates = parseBucketDefinitions(bucketDefinitions);
+      Map<String, Predicate<Long>> bucketPredicates = parseBucketDefinitions(bucketDefinitions);
 
       // Create a pure client-side aggregation builder
       ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(store)
@@ -334,8 +342,26 @@ public class QueryTool {
     return keys;
   }
 
-  public static Map<String, Predicate<Integer>> parseBucketDefinitions(String bucketDefinitions) {
-    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+  /**
+   * Parses bucket definitions string into a map of bucket names to predicates.
+   * 
+   * <p>Currently only supports LongPredicate for integer-based bucket definitions.
+   * Future versions may support additional predicate types.</p>
+   * 
+   * <p>Supported formats:</p>
+   * <ul>
+   *   <li>Range format: "min-max" (e.g., "20-25")</li>
+   *   <li>Operator format: "bucketName:operator:value" (e.g., "age:gte:18")</li>
+   * </ul>
+   * 
+   * <p>Supported operators: lt, lte, gt, gte, eq</p>
+   * 
+   * @param bucketDefinitions comma-separated bucket definitions
+   * @return map of bucket names to LongPredicate instances
+   * @throws VeniceException if bucket definition format is invalid
+   */
+  public static Map<String, Predicate<Long>> parseBucketDefinitions(String bucketDefinitions) {
+    Map<String, Predicate<Long>> bucketPredicates = new HashMap<>();
 
     if (bucketDefinitions == null || bucketDefinitions.isEmpty()) {
       return bucketPredicates;
@@ -353,12 +379,12 @@ public class QueryTool {
         }
 
         try {
-          int min = Integer.parseInt(range[0].trim());
-          int max = Integer.parseInt(range[1].trim());
+          long min = Long.parseLong(range[0].trim());
+          long max = Long.parseLong(range[1].trim());
 
           // Create a predicate for the range [min, max]
-          Predicate<Integer> predicate =
-              Predicate.and(IntPredicate.greaterOrEquals(min), IntPredicate.lowerOrEquals(max));
+          Predicate<Long> predicate =
+              Predicate.and(LongPredicate.greaterOrEquals(min), LongPredicate.lowerOrEquals(max));
           bucketPredicates.put(bucketDef, predicate);
         } catch (NumberFormatException e) {
           throw new VeniceException("Invalid number format in range: " + bucketDef, e);
@@ -376,24 +402,24 @@ public class QueryTool {
         String operator = parts[1];
 
         try {
-          int value = Integer.parseInt(parts[2]);
+          long value = Long.parseLong(parts[2]);
 
-          Predicate<Integer> predicate = null;
+          Predicate<Long> predicate = null;
           switch (operator.toLowerCase()) {
             case "lt":
-              predicate = IntPredicate.lowerThan(value);
+              predicate = LongPredicate.lowerThan(value);
               break;
             case "lte":
-              predicate = IntPredicate.lowerOrEquals(value);
+              predicate = LongPredicate.lowerOrEquals(value);
               break;
             case "gt":
-              predicate = IntPredicate.greaterThan(value);
+              predicate = LongPredicate.greaterThan(value);
               break;
             case "gte":
-              predicate = IntPredicate.greaterOrEquals(value);
+              predicate = LongPredicate.greaterOrEquals(value);
               break;
             case "eq":
-              predicate = IntPredicate.equalTo(value);
+              predicate = LongPredicate.equalTo(value);
               break;
             default:
               throw new VeniceException("Unknown operator: " + operator);
@@ -445,6 +471,27 @@ public class QueryTool {
       throw new VeniceException("Invalid number format for key: " + keyString, e);
     }
     return key;
+  }
+
+  /**
+   * Creates SSL factory from configuration file
+   */
+  private static SSLFactory createSSLFactory(Optional<String> sslConfigFile) throws Exception {
+    if (!sslConfigFile.isPresent()) {
+      return null;
+    }
+    Properties sslProperties = SslUtils.loadSSLConfig(sslConfigFile.get());
+    String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+    return SslUtils.getSSLFactory(sslProperties, sslFactoryClassName);
+  }
+
+  /**
+   * Validates SSL configuration for HTTPS URLs
+   */
+  private static void validateSSLConfiguration(String url, SSLFactory factory) {
+    if (url.toLowerCase().trim().startsWith("https") && (factory == null || factory.getSSLContext() == null)) {
+      throw new VeniceException("ERROR: The SSL configuration is not valid to send a request to " + url);
+    }
   }
 
   public static String removeQuotes(String str) {
