@@ -12,6 +12,7 @@ import static org.testng.AssertJUnit.fail;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -751,11 +752,34 @@ public class TestParentControllerWithMultiDataCenter {
       ControllerResponse updateResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
 
-      // Since the store is deleted in all children but still exists in parent, we expect an error
-      Assert.assertTrue(updateResponse.isError(), "Update should fail because store is deleted in children");
-      Assert.assertTrue(
-          updateResponse.getError().contains("failed to update store"),
-          "Error message should indicate update failure: " + updateResponse.getError());
+      // The update should succeed in the parent controller since the store still exists there
+      Assert.assertFalse(
+          updateResponse.isError(),
+          "Update in parent should succeed, but got error: " + updateResponse.getError());
+
+      // Check if the store in parent was updated successfully
+      StoreResponse parentStoreResponse = parentControllerClient.getStore(storeName);
+      Assert.assertFalse(parentStoreResponse.isError(), "Store should exist in parent controller");
+      StoreInfo storeInfo = parentStoreResponse.getStore();
+      Assert.assertFalse(storeInfo.isEnableStoreWrites(), "Store write should be disabled in parent");
+
+      // Verify that the admin consumption failed in child controllers by checking
+      // for admin consumption exceptions in child controller
+      for (int i = 0; i < childDatacenters.size(); i++) {
+        VeniceMultiClusterWrapper childDC = childDatacenters.get(i);
+        Admin childAdmin = childDC.getControllers().values().iterator().next().getVeniceAdmin();
+        AdminConsumerService adminConsumerService = childAdmin.getAdminConsumerService(clusterName);
+
+        // Wait for the admin message to be processed and check for exception
+        TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, false, true, () -> {
+          Exception lastException = adminConsumerService.getLastExceptionForStore(storeName);
+          Assert.assertNotNull(lastException, "Expected exception during admin consumption in child datacenter");
+          Assert.assertTrue(
+              lastException.getMessage().contains("does not exist"),
+              "Expected exception message to indicate store doesn't exist in child datacenter: "
+                  + lastException.getMessage());
+        });
+      }
     }
   }
 
