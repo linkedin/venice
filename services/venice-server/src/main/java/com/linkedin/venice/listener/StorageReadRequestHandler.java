@@ -732,8 +732,28 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           continue;
         }
       }
-      // Return aggregation result as string
-      return new com.linkedin.venice.listener.response.AggregationReadResponseWrapper(result.toString());
+      // Return aggregation result as JSON string instead of Map.toString()
+      StringBuilder jsonBuilder = new StringBuilder("{");
+      boolean firstField = true;
+      for (Map.Entry<String, Map<Object, Integer>> fieldEntry: result.entrySet()) {
+        if (!firstField) {
+          jsonBuilder.append(",");
+        }
+        firstField = false;
+        jsonBuilder.append("\"").append(fieldEntry.getKey()).append("\":{");
+        boolean firstValue = true;
+        for (Map.Entry<Object, Integer> valueEntry: fieldEntry.getValue().entrySet()) {
+          if (!firstValue) {
+            jsonBuilder.append(",");
+          }
+          firstValue = false;
+          jsonBuilder.append("\"").append(valueEntry.getKey()).append("\":").append(valueEntry.getValue());
+        }
+        jsonBuilder.append("}");
+      }
+      jsonBuilder.append("}");
+
+      return new com.linkedin.venice.listener.response.AggregationReadResponseWrapper(jsonBuilder.toString());
     }, executor);
   }
 

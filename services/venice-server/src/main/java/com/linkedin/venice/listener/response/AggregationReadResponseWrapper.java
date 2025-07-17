@@ -9,9 +9,11 @@ import java.nio.charset.StandardCharsets;
 
 public class AggregationReadResponseWrapper extends AbstractReadResponse {
   private final String result;
+  private final ReadResponseStatsRecorder statsRecorder;
 
   public AggregationReadResponseWrapper(String result) {
     this.result = result;
+    this.statsRecorder = new NoOpReadResponseStatsRecorder();
   }
 
   @Override
@@ -26,11 +28,28 @@ public class AggregationReadResponseWrapper extends AbstractReadResponse {
 
   @Override
   public ReadResponseStatsRecorder getStatsRecorder() {
-    return null;
+    return statsRecorder;
   }
 
   @Override
   public ReadResponseStats getStats() {
     return null;
+  }
+
+  private static class NoOpReadResponseStatsRecorder implements ReadResponseStatsRecorder {
+    @Override
+    public void recordMetrics(com.linkedin.venice.stats.ServerHttpRequestStats stats) {
+      // No-op implementation for aggregation responses
+    }
+
+    @Override
+    public void recordUnmergedMetrics(com.linkedin.venice.stats.ServerHttpRequestStats stats) {
+      // No-op implementation for aggregation responses
+    }
+
+    @Override
+    public void merge(ReadResponseStatsRecorder other) {
+      // No-op implementation for aggregation responses
+    }
   }
 }
