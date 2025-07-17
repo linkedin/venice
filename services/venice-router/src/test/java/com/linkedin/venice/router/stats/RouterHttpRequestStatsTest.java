@@ -17,7 +17,6 @@ import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
-import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import com.linkedin.venice.stats.metrics.MetricEntity;
 import com.linkedin.venice.stats.metrics.MetricType;
@@ -98,7 +97,7 @@ public class RouterHttpRequestStatsTest {
         metricsRepository.getMetric("." + storeName + "--" + HEALTHY_REQUEST.getMetricName() + ".Count").value(),
         1.0);
 
-    routerHttpRequestStats.recordRequestSize(512.0, MessageType.REQUEST);
+    routerHttpRequestStats.recordRequestSize(512.0);
     // Verify that the request size is recorded correctly
     assertEquals(
         metricsRepository.getMetric("." + storeName + "--" + REQUEST_SIZE.getMetricName() + ".Avg").value(),

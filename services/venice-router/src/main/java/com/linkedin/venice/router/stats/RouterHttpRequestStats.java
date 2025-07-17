@@ -12,7 +12,6 @@ import static com.linkedin.venice.router.stats.RouterMetricEntity.RETRY_DELAY;
 import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformHttpResponseStatusToHttpResponseStatusEnum;
-import static com.linkedin.venice.stats.dimensions.MessageType.REQUEST;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.DELAY_CONSTRAINT;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.MAX_RETRY_ROUTE_LIMIT;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.NO_AVAILABLE_REPLICA;
@@ -496,17 +495,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     totalInFlightRequestSensor.record();
   }
 
-  public void recordRequestSize(double keySize, MessageType REQUEST) {
-    recordRequestSizeMetrics(keySize, REQUEST, requestSizeMetric);
-  }
-
-  private void recordRequestSizeMetrics(
-      double keySize,
-      MessageType messageType,
-      MetricEntityStateOneEnum<MessageType> requestSizeMetric) {
-    requestSizeMetric.record(keySize, messageType);
-  }
-
   public void recordHealthyRequest(double latency, HttpResponseStatus responseStatus, int keyNum) {
     recordRequestMetrics(
         keyNum,
@@ -533,6 +521,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         VeniceResponseStatusCategory.FAIL,
         unhealthyRequestMetric,
         unhealthyLatencyMetric);
+  }
+
+  public void recordRequestSize(double requestSize) {
+    requestSizeMetric.record(requestSize, MessageType.REQUEST);
   }
 
   private void recordRequestMetrics(
