@@ -24,10 +24,10 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -150,6 +150,7 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CountDownLatch;
@@ -206,12 +207,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
-
-  /**
-   * Speed up DaVinci shutdown by closing partitions concurrently.
-   */
-  private static final ExecutorService SHUTDOWN_EXECUTOR_FOR_DVC =
-      Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2);
 
   /** storage destination for consumption */
   protected final StorageService storageService;
@@ -363,7 +358,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Schema recordTransformerInputValueSchema;
   private final RecordDeserializer recordTransformerKeyDeserializer;
   private final Map<Integer, Schema> schemaIdToSchemaMap;
-  private BlockingDaVinciRecordTransformer recordTransformer;
+  private InternalDaVinciRecordTransformer recordTransformer;
+  private ExecutorService recordTransformerOnRecoveryThreadPool;
+  private ConcurrentLinkedQueue<PubSubTopicPartition> recordTransformerPausedConsumptionQueue;
 
   protected final String localKafkaServer;
   protected final int localKafkaClusterId;
@@ -556,12 +553,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               outputValueSchema,
               recordTransformerConfig);
 
-      this.recordTransformer = new BlockingDaVinciRecordTransformer(
+      this.recordTransformer = new InternalDaVinciRecordTransformer(
           clientRecordTransformer,
           keySchema,
           this.recordTransformerInputValueSchema,
           outputValueSchema,
           recordTransformerConfig);
+      this.recordTransformerOnRecoveryThreadPool =
+          Executors.newFixedThreadPool(serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize());
+      this.recordTransformerPausedConsumptionQueue = new ConcurrentLinkedQueue<>();
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
       daVinciRecordTransformerStats = builder.getDaVinciRecordTransformerStats();
@@ -719,7 +719,27 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
         .incrementAndGet();
     pendingSubscriptionActionCount.incrementAndGet();
-    consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
+
+    if (recordTransformer != null) {
+      recordTransformerOnRecoveryThreadPool.submit(() -> {
+        try {
+          long startTime = System.nanoTime();
+          recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
+          LOGGER.info(
+              "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
+              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+              getReplicaId(topicPartition));
+
+          recordTransformer.countDownStartConsumptionLatch();
+          consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
+        } catch (Exception e) {
+          LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {}", getReplicaId(topicPartition), e);
+          setLastStoreIngestionException(e);
+        }
+      });
+    } else {
+      consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
+    }
   }
 
   public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
@@ -1644,9 +1664,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Running {}", ingestionTaskName);
       versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
-      Store store = null;
       while (isRunning()) {
-        store = storeRepository.getStoreOrThrow(storeName);
+        Store store = storeRepository.getStoreOrThrow(storeName);
         if (!skipAfterBatchPushUnsubEnabled) {
           refreshIngestionContextIfChanged(store);
           processConsumerActions(store);
@@ -1658,10 +1677,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           processConsumerActions(store);
           checkIngestionProgress(store);
         }
+        recordTransformerResumeConsumption();
+
         Thread.sleep(this.readCycleDelayMs);
       }
 
       List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(partitionConsumptionStateMap.size());
+
+      /**
+       * Speed up DaVinci shutdown by closing partitions concurrently.
+       */
+      ExecutorService shutdownExecutorForDvc =
+          isDaVinciClient ? Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2) : null;
+
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
       for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
         /**
@@ -1694,8 +1722,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
         };
 
-        if (isDaVinciClient) {
-          shutdownFutures.add(CompletableFuture.runAsync(shutdownRunnable, SHUTDOWN_EXECUTOR_FOR_DVC));
+        if (shutdownExecutorForDvc != null) {
+          shutdownFutures.add(CompletableFuture.runAsync(shutdownRunnable, shutdownExecutorForDvc));
         } else {
           /**
            * TODO: evaluate whether we need to apply concurrent shutdown in Venice Server or not.
@@ -2160,15 +2188,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Drain the buffered message by last subscription.
         storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
         subscribedCount++;
-
-        if (recordTransformer != null) {
-          long startTime = System.nanoTime();
-          recordTransformer.internalOnRecovery(storageEngine, partition, partitionStateSerializer, compressor);
-          LOGGER.info(
-              "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
-              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-              getReplicaId(topic, partition));
-        }
 
         // Get the last persisted Offset record from metadata service
         OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition);
@@ -3777,6 +3796,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // localKafkaServer doesn't have suffix but kafkaURL may have suffix,
     // and we don't want to pass the resolvedKafkaURL as it will be passed to data receiver for parsing cluster id
     aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startOffset);
+
+    // If the record transformer is enabled, consumption should be paused until RocksDB scan for all partitions
+    // has completed. Otherwise, there will be resource contention.
+    if (recordTransformer != null && recordTransformer.getCountDownStartConsumptionLatchCount() > 0) {
+      LOGGER.info("DaVinciRecordTransformer pausing consumption for: {}", getReplicaId(pubSubTopicPartition));
+      aggKafkaConsumerService.pauseConsumerFor(versionTopic, pubSubTopicPartition);
+      LOGGER.info("DaVinciRecordTransformer paused consumption for: {}", getReplicaId(pubSubTopicPartition));
+      recordTransformerPausedConsumptionQueue.add(pubSubTopicPartition);
+    }
   }
 
   public void consumerResetOffset(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
@@ -4625,6 +4653,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public boolean isTransientRecordBufferUsed(PartitionConsumptionState partitionConsumptionState) {
     return this.isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived();
+    // && !this.isDataRecovery; TODO: Decide if this extra condition is useful...
   }
 
   // Visible for unit test.
@@ -4847,5 +4876,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected boolean hasReplicas() {
     return activeReplicaCount.get() > 0;
+  }
+
+  /**
+   * Resumes consumption when RocksDB scan for the record transformer has completed for partitions that were paused
+   */
+  private void recordTransformerResumeConsumption() {
+    if (recordTransformer != null && recordTransformer.getCountDownStartConsumptionLatchCount() == 0) {
+      while (!recordTransformerPausedConsumptionQueue.isEmpty()) {
+        PubSubTopicPartition pubSubTopicPartition = recordTransformerPausedConsumptionQueue.poll();
+        LOGGER.info("DaVinciRecordTransformer resuming consumption for: {}", getReplicaId(pubSubTopicPartition));
+        aggKafkaConsumerService.resumeConsumerFor(versionTopic, pubSubTopicPartition);
+      }
+    }
+
   }
 }

@@ -60,6 +60,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   private Boolean isExperimentalClientEnabled = false;
   private int maxBufferSize = 1000;
+  private boolean useRequestBasedMetadataRepository = false;
 
   /**
    * Internal fields derived from the consumer properties.
@@ -274,6 +275,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  public boolean isUseRequestBasedMetadataRepository() {
+    return useRequestBasedMetadataRepository;
+  }
+
+  public ChangelogClientConfig setUseRequestBasedMetadataRepository(boolean useRequestBasedMetadataRepository) {
+    this.useRequestBasedMetadataRepository = useRequestBasedMetadataRepository;
+    return this;
+  }
+
   public boolean shouldSkipFailedToAssembleRecords() {
     return skipFailedToAssembleRecords;
   }
@@ -300,6 +310,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setMaxBufferSize(config.getMaxBufferSize())
         .setSeekThreadPoolSize(config.getSeekThreadPoolSize())
         .setShouldSkipFailedToAssembleRecords(config.shouldSkipFailedToAssembleRecords())
+        .setUseRequestBasedMetadataRepository(config.isUseRequestBasedMetadataRepository())
         .setInnerClientConfig(config.getInnerClientConfig());
     return newConfig;
   }

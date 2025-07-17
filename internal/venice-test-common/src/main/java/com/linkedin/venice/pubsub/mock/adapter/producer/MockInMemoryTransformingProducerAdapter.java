@@ -1,4 +1,4 @@
-package com.linkedin.venice.unit.kafka.producer;
+package com.linkedin.venice.pubsub.mock.adapter.producer;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
@@ -13,15 +13,17 @@ import java.util.concurrent.CompletableFuture;
 /**
  * This {@link PubSubProducerAdapter} implementation allows tests to perform
  * arbitrary transformations on the messages that are about to be written to
- * Kafka.
+ * PubSub.
  *
  * This can be used in unit tests to inject corrupt data.
  */
-public class TransformingProducerAdapter implements PubSubProducerAdapter {
+public class MockInMemoryTransformingProducerAdapter implements PubSubProducerAdapter {
   private final PubSubProducerAdapter baseProducer;
   private final SendMessageParametersTransformer transformer;
 
-  public TransformingProducerAdapter(PubSubProducerAdapter baseProducer, SendMessageParametersTransformer transformer) {
+  public MockInMemoryTransformingProducerAdapter(
+      PubSubProducerAdapter baseProducer,
+      SendMessageParametersTransformer transformer) {
     this.baseProducer = baseProducer;
     this.transformer = transformer;
   }

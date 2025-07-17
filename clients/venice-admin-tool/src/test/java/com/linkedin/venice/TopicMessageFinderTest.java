@@ -22,7 +22,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.unit.kafka.SimplePartitioner;
+import com.linkedin.venice.pubsub.mock.SimplePartitioner;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Optional;
