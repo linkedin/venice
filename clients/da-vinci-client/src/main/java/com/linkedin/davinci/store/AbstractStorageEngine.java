@@ -817,11 +817,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
           "Marked replica {} as blob transfer bootstrap completed, current transferring partitions: {}",
           Utils.getReplicaId(getStoreVersionName(), partitionId),
           inProgressBlobTransferPartitions);
-    } else {
-      LOGGER.info(
-          "Marked replica {} was not marked as blob transfer bootstrap started, current transferring partitions: {}",
-          Utils.getReplicaId(getStoreVersionName(), partitionId),
-          inProgressBlobTransferPartitions);
     }
   }
 }

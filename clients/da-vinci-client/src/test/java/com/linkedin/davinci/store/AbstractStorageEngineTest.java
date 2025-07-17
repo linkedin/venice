@@ -286,4 +286,21 @@ public abstract class AbstractStorageEngineTest<ASE extends AbstractStorageEngin
     Assert.assertTrue(StorageService.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID));
     Assert.assertFalse(StorageService.isMetadataPartition(AbstractStorageEngine.METADATA_PARTITION_ID + 1));
   }
+
+  @Test
+  public void testInProgressBlobTransferPartitionsModification() {
+    testStoreEngine.tryMarkPartitionBlobTransferStarted(0);
+    testStoreEngine.tryMarkPartitionBlobTransferStarted(1);
+    Assert.assertTrue(testStoreEngine.isAnyOngoingBlobTransferPartitions());
+
+    testStoreEngine.markPartitionBlobTransferBootstrapCompleted(1);
+    Assert.assertTrue(testStoreEngine.isAnyOngoingBlobTransferPartitions());
+    testStoreEngine.markPartitionBlobTransferBootstrapCompleted(0);
+    Assert.assertFalse(testStoreEngine.isAnyOngoingBlobTransferPartitions());
+
+    testStoreEngine.markStorageEngineDropping();
+    Assert.assertFalse(
+        testStoreEngine.isAnyOngoingBlobTransferPartitions(),
+        "Storage engine should not have any ongoing blob transfer partitions after marking it as dropping.");
+  }
 }
