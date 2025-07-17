@@ -4530,6 +4530,11 @@ public class VeniceParentHelixAdmin implements Admin {
     getVeniceHelixAdmin().setAdminConsumerService(clusterName, service);
   }
 
+  @Override
+  public AdminConsumerService getAdminConsumerService(String clusterName) {
+    return getVeniceHelixAdmin().getAdminConsumerService(clusterName);
+  }
+
   /**
    * @see Admin#skipAdminMessage(String, long, boolean)
    */
@@ -5969,7 +5974,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * Validates that a store has been completely deleted from all venice clusters cross-regionally
-   * 
+   *
    * @see Admin#validateStoreDeleted(String, String)
    */
   @Override
