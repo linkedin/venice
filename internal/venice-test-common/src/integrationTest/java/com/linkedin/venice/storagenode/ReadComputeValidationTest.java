@@ -720,7 +720,6 @@ public class ReadComputeValidationTest {
 
         Map<String, Integer> salaryBucketCounts = salaryAggResponse.getBucketNameToCount("salary");
         Assert.assertNotNull(salaryBucketCounts);
-        System.out.println("Salary bucket counts: " + salaryBucketCounts);
 
         // Salary (float) bucket counts
         // Data: 45000, 75000, 55000, 95000
@@ -755,7 +754,6 @@ public class ReadComputeValidationTest {
 
         Map<String, Integer> ageBucketCounts = ageAggResponse.getBucketNameToCount("age");
         Assert.assertNotNull(ageBucketCounts);
-        System.out.println("Age bucket counts: " + ageBucketCounts);
 
         // Age (int) bucket counts
         // Data: 25, 35, 28, 42
@@ -792,7 +790,6 @@ public class ReadComputeValidationTest {
 
         Map<String, Integer> scoreBucketCounts = scoreAggResponse.getBucketNameToCount("score");
         Assert.assertNotNull(scoreBucketCounts);
-        System.out.println("Score bucket counts: " + scoreBucketCounts);
 
         // Score (double) bucket counts
         // Data: 85.5, 92.0, 78.5, 88.0
@@ -839,7 +836,6 @@ public class ReadComputeValidationTest {
 
         Map<String, Integer> joinDateBucketCounts = joinDateAggResponse.getBucketNameToCount("joinDate");
         Assert.assertNotNull(joinDateBucketCounts);
-        System.out.println("Join date bucket counts: " + joinDateBucketCounts);
 
         // Join date (long) bucket counts
         // Data: 1609459200000L, 1640995200000L, 1672531200000L, 1704067200000L
@@ -881,7 +877,6 @@ public class ReadComputeValidationTest {
 
         Map<String, Integer> departmentBucketCounts = departmentAggResponse.getBucketNameToCount("department");
         Assert.assertNotNull(departmentBucketCounts);
-        System.out.println("Department bucket counts: " + departmentBucketCounts);
 
         // Expected counts: engineering=2 (Engineering appears twice), any_of_eng_sales=3 (Engineering twice + Sales
         // once)
@@ -904,7 +899,6 @@ public class ReadComputeValidationTest {
 
         Map<String, Integer> complexBucketCounts = complexAggResponse.getBucketNameToCount("age");
         Assert.assertNotNull(complexBucketCounts);
-        System.out.println("Complex bucket counts: " + complexBucketCounts);
 
         // Expected: and_combination=3 (25, 28, 35), or_combination=2 (25, 42)
         Assert.assertEquals(
@@ -1032,7 +1026,12 @@ public class ReadComputeValidationTest {
           Assert.fail("Should have thrown an exception for non-existent field");
         } catch (Exception e) {
           // Expected to throw an exception
-          System.out.println("Expected exception for non-existent field: " + e.getMessage());
+          Assert.assertTrue(
+              e instanceof VeniceClientException,
+              "Should throw VeniceClientException for non-existent field");
+          Assert.assertTrue(
+              e.getMessage().contains("nonExistentField") || e.getMessage().contains("field not found"),
+              "Exception message should mention the non-existent field");
         }
 
         // Test 2: Try to use a predicate type that doesn't match the field type
@@ -1047,7 +1046,10 @@ public class ReadComputeValidationTest {
           Assert.fail("Should have thrown an exception for type mismatch");
         } catch (Exception e) {
           // Expected to throw an exception
-          System.out.println("Expected exception for type mismatch: " + e.getMessage());
+          Assert.assertTrue(e instanceof VeniceClientException, "Should throw VeniceClientException for type mismatch");
+          Assert.assertTrue(
+              e.getMessage().contains("salary") || e.getMessage().contains("type"),
+              "Exception message should mention the field or type mismatch");
         }
 
         // Test 3: Try to use an unsupported predicate combination
@@ -1063,10 +1065,12 @@ public class ReadComputeValidationTest {
           computeStoreClient.computeAggregation().countGroupByBucket(unsupportedBuckets, "age").execute(keySet).get();
           // This might succeed or fail depending on implementation
           // We're testing that the system handles complex predicates gracefully
-          System.out.println("Complex predicate test completed");
+          // If it succeeds, that's fine - complex predicates are supported
         } catch (Exception e) {
-          // If it fails, that's also acceptable
-          System.out.println("Complex predicate failed as expected: " + e.getMessage());
+          // If it fails, that's also acceptable - complex predicates might not be supported
+          Assert.assertTrue(
+              e instanceof VeniceClientException || e instanceof RuntimeException,
+              "Should throw appropriate exception for unsupported complex predicate");
         }
 
         // Test 4: Try to use an empty bucket map
@@ -1077,7 +1081,13 @@ public class ReadComputeValidationTest {
           Assert.fail("Should have thrown an exception for empty buckets");
         } catch (Exception e) {
           // Expected to throw an exception
-          System.out.println("Expected exception for empty buckets: " + e.getMessage());
+          Assert.assertTrue(
+              e instanceof VeniceClientException || e instanceof IllegalArgumentException,
+              "Should throw appropriate exception for empty buckets");
+          Assert.assertTrue(
+              e.getMessage().contains("empty") || e.getMessage().contains("bucket")
+                  || e.getMessage().contains("invalid"),
+              "Exception message should mention empty buckets or invalid input");
         }
       });
     }
