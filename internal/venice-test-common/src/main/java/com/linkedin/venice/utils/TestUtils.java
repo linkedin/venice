@@ -768,29 +768,39 @@ public class TestUtils {
   }
 
   public static void preventSystemExit() {
-    System.setSecurityManager(new SecurityManager() {
-      @Override
-      public void checkPermission(Permission perm) {
-      }
-
-      @Override
-      public void checkPermission(Permission perm, Object context) {
-      }
-
-      @Override
-      public void checkExit(int status) {
-        if (status != 0) {
-          String message = "System exit requested with error " + status;
-          SecurityException e = new SecurityException(message);
-          LOGGER.info("checkExit called", e);
-          throw e;
+    try {
+      System.setSecurityManager(new SecurityManager() {
+        @Override
+        public void checkPermission(Permission perm) {
         }
-      }
-    });
+
+        @Override
+        public void checkPermission(Permission perm, Object context) {
+        }
+
+        @Override
+        public void checkExit(int status) {
+          if (status != 0) {
+            String message = "System exit requested with error " + status;
+            SecurityException e = new SecurityException(message);
+            LOGGER.info("checkExit called", e);
+            throw e;
+          }
+        }
+      });
+    } catch (UnsupportedOperationException e) {
+      // In Java 17+, System.setSecurityManager is deprecated and may throw UnsupportedOperationException
+      LOGGER.warn("System.setSecurityManager not supported in this JVM version: {}", e.getMessage());
+    }
   }
 
   public static void restoreSystemExit() {
-    System.setSecurityManager(null);
+    try {
+      System.setSecurityManager(null);
+    } catch (UnsupportedOperationException e) {
+      // In Java 17+, System.setSecurityManager is deprecated and may throw UnsupportedOperationException
+      LOGGER.warn("System.setSecurityManager(null) not supported in this JVM version: {}", e.getMessage());
+    }
   }
 
   public static void createAndVerifyStoreInAllRegions(
