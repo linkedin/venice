@@ -219,6 +219,7 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
@@ -8077,7 +8078,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void close() {
     long closeStartTime = System.currentTimeMillis();
-    ExecutorService ex = Executors.newSingleThreadExecutor();
+    ExecutorService ex = Executors.newSingleThreadExecutor(new DaemonThreadFactory("HelixManagerDisconnect"));
     try {
       // This disconnect sometimes hangs... hence why we treat it this way...
       Future helixManagerDisconnectFuture = ex.submit(this.helixManager::disconnect);
