@@ -693,6 +693,72 @@ public class TestParentControllerWithMultiDataCenter {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testUpdateStoreInParentAfterDeletingInChildren() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("storeDeletedInChildren");
+
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs)) {
+      // 1. Create a test store through parent controller
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+      // Wait for store creation to be reflected in all child controllers
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        for (int i = 0; i < childDatacenters.size(); i++) {
+          ControllerClient childClient =
+              new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+          StoreResponse storeResponse = childClient.getStore(storeName);
+          Assert.assertFalse(storeResponse.isError(), "Store should exist in child datacenter " + i);
+          childClient.close();
+        }
+      });
+
+      // 2. Delete the store in all child regions by sending requests directly to child controllers
+      for (int i = 0; i < childDatacenters.size(); i++) {
+        try (ControllerClient childClient =
+            new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString())) {
+          ControllerResponse deleteResponse = childClient.disableAndDeleteStore(storeName);
+          Assert.assertFalse(
+              deleteResponse.isError(),
+              "Failed to delete store in child datacenter " + i + ": " + deleteResponse.getError());
+        }
+      }
+
+      // Verify store is deleted in all child controllers
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        for (int i = 0; i < childDatacenters.size(); i++) {
+          ControllerClient childClient =
+              new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+          StoreResponse storeResponse = childClient.getStore(storeName);
+          Assert.assertTrue(
+              storeResponse.isError(),
+              "Store should not exist in child datacenter " + i + " after deletion");
+          Assert.assertTrue(
+              storeResponse.getError().contains("does not exist"),
+              "Error message should indicate store doesn't exist in child datacenter " + i);
+          childClient.close();
+        }
+      });
+
+      // 3. Send an updateStore command through parent controller to disable write on the store
+      UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams().setEnableWrites(false);
+      ControllerResponse updateResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+
+      // Since the store is deleted in all children but still exists in parent, we expect an error
+      Assert.assertTrue(updateResponse.isError(), "Update should fail because store is deleted in children");
+      Assert.assertTrue(
+          updateResponse.getError().contains("failed to update store"),
+          "Error message should indicate update failure: " + updateResponse.getError());
+    }
+  }
+
   private void emptyPushToStore(
       ControllerClient parentControllerClient,
       List<ControllerClient> childControllerClients,

@@ -75,6 +75,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     Exception exception;
   }
 
+  private static final int MAX_RETRIES_FOR_NONEXISTENT_STORE = 3;
+
   // A simplified version of ProducerTracker that only checks against previous message's producer info.
   private static class ProducerInfo {
     private GUID producerGUID;
@@ -168,6 +170,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    */
   private final ConcurrentHashMap<String, AdminErrorInfo> problematicStores;
   private final Queue<DefaultPubSubMessage> undelegatedRecords;
+
+  private final Map<String, Map<Long, Integer>> storeRetryCountMap;
 
   private final ExecutionIdAccessor executionIdAccessor;
   private ExecutorService executorService;
@@ -294,6 +298,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.stats.setAdminConsumptionFailedOffset(failingOffset);
     this.pubSubTopic = pubSubTopicRepository.getTopic(topic);
     this.regionName = regionName;
+    this.storeRetryCountMap = new ConcurrentHashMap<>();
 
     if (remoteConsumptionEnabled) {
       if (!remoteKafkaServerUrl.isPresent()) {
