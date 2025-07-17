@@ -503,10 +503,10 @@ public class StorageService extends AbstractVeniceService {
     Set<Integer> remainingPartitions = storageEngine.getPartitionIds();
     LOGGER.info("Dropped partition {} of {}, remaining partitions={}", partition, kafkaTopic, remainingPartitions);
 
+    // Check if blob transfer is enabled and if there are ongoing transfers
     if (storeConfig.isBlobTransferEnabled() && storageEngine.isAnyOngoingBlobTransferPartitions()) {
-      LOGGER.info(
-          "skip remove StorageEngine for replica {} as there is on-going blob transfer.",
-          Utils.getReplicaId(kafkaTopic, partition));
+      LOGGER.info("Skip removing StorageEngine for {} as there are ongoing blob transfers", kafkaTopic);
+      storageEngine.markStorageEngineDropping();
       return;
     }
 

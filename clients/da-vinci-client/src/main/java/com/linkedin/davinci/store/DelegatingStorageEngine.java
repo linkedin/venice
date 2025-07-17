@@ -222,13 +222,18 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   @Override
+  public void markStorageEngineDropping() {
+    this.delegate.markStorageEngineDropping();
+  }
+
+  @Override
   public boolean isAnyOngoingBlobTransferPartitions() {
     return this.delegate.isAnyOngoingBlobTransferPartitions();
   }
 
   @Override
-  public void markPartitionBlobTransferBootstrapStarted(int partitionId) {
-    this.delegate.markPartitionBlobTransferBootstrapStarted(partitionId);
+  public boolean tryMarkPartitionBlobTransferStarted(int partitionId) {
+    return this.delegate.tryMarkPartitionBlobTransferStarted(partitionId);
   }
 
   @Override

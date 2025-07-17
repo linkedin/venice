@@ -152,7 +152,12 @@ public class DefaultIngestionBackend implements IngestionBackend {
           Arrays.toString(partitionFolderDir.list()));
     }
 
-    storageEngine.markPartitionBlobTransferBootstrapStarted(partitionId);
+    if (!storageEngine.tryMarkPartitionBlobTransferStarted(partitionId)) {
+      LOGGER.info(
+          "Skipping blob transfer for replica {} - storage engine is marked for dropping",
+          Utils.getReplicaId(kafkaTopic, partitionId));
+      return CompletableFuture.completedFuture(null);
+    }
 
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
         .handle((inputStream, throwable) -> {
@@ -176,11 +181,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
                   Arrays.toString(partitionFolderDir.list()));
             }
           }
-
-          if (storageService.getStorageEngine(kafkaTopic) != null) {
-            storageService.getStorageEngine(kafkaTopic).markPartitionBlobTransferBootstrapCompleted(partitionId);
-          }
-
           return null;
         });
   }
