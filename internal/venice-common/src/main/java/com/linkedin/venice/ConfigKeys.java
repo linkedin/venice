@@ -1639,7 +1639,7 @@ public class ConfigKeys {
    * The name of the cluster that the internal store for storing controller parent metadata belongs to.
    */
   public static final String PARENT_CONTROLLER_METADATA_STORE_CLUSTER_NAME =
-      "controller.parent.metadata.store.cluster.name";
+      "parent.controller.metadata.store.cluster.name";
 
   /**
    * The most-significant-bits of the producer GUID used by {@code VenicePushJob} encoded as a {@code long}.

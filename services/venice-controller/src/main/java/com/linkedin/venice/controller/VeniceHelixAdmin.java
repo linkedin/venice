@@ -669,7 +669,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             this));
 
     if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
-      // Add routine to create zk shared metadata system store //TODO: future
+      // Add routine to create zk shared metadata system store
       initRoutines.add(
           new SystemSchemaInitializationRoutine(
               AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
