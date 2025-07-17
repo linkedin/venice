@@ -622,6 +622,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void setAdminConsumerService(String clusterName, AdminConsumerService service);
 
+  AdminConsumerService getAdminConsumerService(String clusterName);
+
   /**
    * The admin consumption task tries to deal with failures to process an admin message by retrying.  If there is a
    * message that cannot be processed for some reason, we will need to forcibly skip that message in order to unblock
