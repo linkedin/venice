@@ -16,11 +16,7 @@ import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -28,13 +24,11 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
-import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LogContext;
@@ -50,6 +44,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
@@ -86,22 +83,17 @@ class AbstractTestVeniceHelixAdmin {
   Map<String, MockTestStateModelFactory> stateModelFactoryByNodeID = new ConcurrentHashMap<>();
   HelixMessageChannelStats helixMessageChannelStats;
   VeniceControllerMultiClusterConfig multiClusterConfig;
+  TopicCleanupService topicCleanupService;
 
   final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
-  public void setupCluster(boolean createParticipantStore, MetricsRepository metricsRepository) throws Exception {
+  public void setupCluster(MetricsRepository metricsRepository) throws Exception {
     Utils.thisIsLocalhost();
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     clusterName = Utils.getUniqueString("test-cluster");
     Properties properties = getControllerProperties(clusterName);
-    if (createParticipantStore) {
-      properties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, true);
-    } else {
-      properties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
-      properties.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, true);
-    }
     properties.put(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, true);
     properties.put(CONTROLLER_INSTANCE_TAG_LIST, "GENERAL,TEST");
     properties.put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100);
@@ -117,7 +109,7 @@ class AbstractTestVeniceHelixAdmin {
         pubSubBrokerWrapper.getPubSubClientsFactory(),
         pubSubBrokerWrapper.getPubSubPositionTypeRegistry());
     veniceAdmin.initStorageCluster(clusterName);
-    TopicCleanupService topicCleanupService = new TopicCleanupService(
+    this.topicCleanupService = new TopicCleanupService(
         veniceAdmin,
         multiClusterConfig,
         pubSubTopicRepository,
@@ -127,22 +119,32 @@ class AbstractTestVeniceHelixAdmin {
     startParticipant();
     waitUntilIsLeader(veniceAdmin, clusterName, LEADER_CHANGE_TIMEOUT_MS);
 
-    if (createParticipantStore) {
-      // Wait for participant store to finish materializing
-      verifyParticipantMessageStoreSetup();
-    }
+    // Wait for participant store to finish materializing
+    IntegrationTestUtils
+        .verifyParticipantMessageStoreSetup(this.veniceAdmin, this.clusterName, this.pubSubTopicRepository);
   }
 
-  public void cleanupCluster() {
+  /** Subclasses decide whether to call this after class or after method */
+  protected void cleanUp() {
+    // Controller shutdown needs to complete within 5 minutes
+    ExecutorService ex = Executors.newSingleThreadExecutor();
+    Future clusterShutdownFuture = ex.submit(this::cleanUpCluster);
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.MINUTES, clusterShutdownFuture::isDone);
+    ex.shutdownNow();
+  }
+
+  private void cleanUpCluster() {
     stopAllParticipants();
     try {
       veniceAdmin.stop(clusterName);
-      veniceAdmin.close();
     } catch (Exception e) {
       LOGGER.warn(e);
+    } finally {
+      Utils.closeQuietlyWithErrorLogged(this.veniceAdmin);
     }
-    zkServerWrapper.close();
-    pubSubBrokerWrapper.close();
+    Utils.closeQuietlyWithErrorLogged(this.topicCleanupService);
+    Utils.closeQuietlyWithErrorLogged(this.zkServerWrapper);
+    Utils.closeQuietlyWithErrorLogged(this.pubSubBrokerWrapper);
   }
 
   void startParticipant() throws Exception {
@@ -262,22 +264,5 @@ class AbstractTestVeniceHelixAdmin {
       }
     }
     throw new VeniceException("no follower found for cluster: " + cluster);
-  }
-
-  /**
-   * Participant store should be set up by child controller.
-   */
-  private void verifyParticipantMessageStoreSetup() {
-    TopicManager topicManager = veniceAdmin.getTopicManager();
-    String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
-    PubSubTopic participantStoreRt = pubSubTopicRepository.getTopic(Utils.composeRealTimeTopic(participantStoreName));
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      Store store = veniceAdmin.getStore(clusterName, participantStoreName);
-      assertNotNull(store);
-      assertEquals(store.getVersions().size(), 1);
-    });
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      assertTrue(topicManager.containsTopic(participantStoreRt));
-    });
   }
 }
