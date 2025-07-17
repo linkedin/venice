@@ -17,16 +17,17 @@ import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.closeQuietlyWithErrorLogged;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
+import static com.linkedin.venice.utils.Utils.isFutureVersionReady;
 import static java.util.Comparator.comparingInt;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
-import com.linkedin.davinci.client.BlockingDaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -52,6 +53,7 @@ import com.linkedin.davinci.utils.InMemoryChunkAssembler;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.davinci.validation.PartitionTracker;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -148,6 +150,7 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CountDownLatch;
@@ -205,12 +208,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  /**
-   * Speed up DaVinci shutdown by closing partitions concurrently.
-   */
-  private static final ExecutorService SHUTDOWN_EXECUTOR_FOR_DVC =
-      Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2);
-
   /** storage destination for consumption */
   protected final StorageService storageService;
   protected final StorageEngine storageEngine;
@@ -241,6 +238,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final TopicManagerRepository topicManagerRepository;
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
+  private final AtomicInteger activeReplicaCount = new AtomicInteger(0);
   protected final AbstractStoreBufferService storeBufferService;
 
   /**
@@ -360,7 +358,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Schema recordTransformerInputValueSchema;
   private final RecordDeserializer recordTransformerKeyDeserializer;
   private final Map<Integer, Schema> schemaIdToSchemaMap;
-  private BlockingDaVinciRecordTransformer recordTransformer;
+  private InternalDaVinciRecordTransformer recordTransformer;
+  private ExecutorService recordTransformerOnRecoveryThreadPool;
+  private ConcurrentLinkedQueue<PubSubTopicPartition> recordTransformerPausedConsumptionQueue;
 
   protected final String localKafkaServer;
   protected final int localKafkaClusterId;
@@ -492,7 +492,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storageEngine = Objects.requireNonNull(refCountedStorageEngine.get());
 
     this.serverConfig = builder.getServerConfig();
-
     this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
 
     this.aggKafkaConsumerService = Objects.requireNonNull(builder.getAggKafkaConsumerService());
@@ -554,12 +553,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               outputValueSchema,
               recordTransformerConfig);
 
-      this.recordTransformer = new BlockingDaVinciRecordTransformer(
+      this.recordTransformer = new InternalDaVinciRecordTransformer(
           clientRecordTransformer,
           keySchema,
           this.recordTransformerInputValueSchema,
           outputValueSchema,
           recordTransformerConfig);
+      this.recordTransformerOnRecoveryThreadPool =
+          Executors.newFixedThreadPool(serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize());
+      this.recordTransformerPausedConsumptionQueue = new ConcurrentLinkedQueue<>();
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
       daVinciRecordTransformerStats = builder.getDaVinciRecordTransformerStats();
@@ -695,6 +697,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public synchronized void subscribePartition(PubSubTopicPartition topicPartition) {
+    activeReplicaCount.incrementAndGet();
+    LOGGER.info("Bootstrap replica: {}. Active replica count in SIT: {}", topicPartition, activeReplicaCount.get());
     subscribePartition(topicPartition, true);
   }
 
@@ -715,7 +719,27 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionToPendingConsumerActionCountMap.computeIfAbsent(partitionNumber, x -> new AtomicInteger(0))
         .incrementAndGet();
     pendingSubscriptionActionCount.incrementAndGet();
-    consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
+
+    if (recordTransformer != null) {
+      recordTransformerOnRecoveryThreadPool.submit(() -> {
+        try {
+          long startTime = System.nanoTime();
+          recordTransformer.internalOnRecovery(storageEngine, partitionNumber, partitionStateSerializer, compressor);
+          LOGGER.info(
+              "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
+              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
+              getReplicaId(topicPartition));
+
+          recordTransformer.countDownStartConsumptionLatch();
+          consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
+        } catch (Exception e) {
+          LOGGER.error("DaVinciRecordTransformer onRecovery failed for replica: {}", getReplicaId(topicPartition), e);
+          setLastStoreIngestionException(e);
+        }
+      });
+    } else {
+      consumerActionsQueue.add(new ConsumerAction(SUBSCRIBE, topicPartition, nextSeqNum(), isHelixTriggeredAction));
+    }
   }
 
   public synchronized CompletableFuture<Void> unSubscribePartition(PubSubTopicPartition topicPartition) {
@@ -744,7 +768,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This is always a Helix triggered action.
    */
   public CompletableFuture<Void> dropStoragePartitionGracefully(PubSubTopicPartition topicPartition) {
+    activeReplicaCount.decrementAndGet();
     int partitionId = topicPartition.getPartitionNumber();
+    LOGGER.info("Drop replica: {}. Active replica count in SIT: {}", topicPartition, activeReplicaCount.get());
     synchronized (this) {
       if (isRunning()) {
         LOGGER.info(
@@ -766,13 +792,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Drops a partition synchrnously. This is invoked when processing a DROP_PARTITION message.
+   * Drops a partition synchronously. This is invoked when processing a DROP_PARTITION message.
    */
   private void dropPartitionSynchronously(PubSubTopicPartition topicPartition) {
-    LOGGER.info("{} Dropping partition: {}", ingestionTaskName, topicPartition);
+    LOGGER.info("Dropping replica: {}", topicPartition);
     int partition = topicPartition.getPartitionNumber();
+    LOGGER.info("Removing storage utilization manager for replica: {}", topicPartition);
+    storageUtilizationManager.removePartition(partition);
     this.storageService.dropStorePartition(storeVersionConfig, partition, true);
-    LOGGER.info("{} Dropped partition: {}", ingestionTaskName, topicPartition);
+    LOGGER.info("Dropped replica: {}", topicPartition);
   }
 
   public boolean hasAnySubscription() {
@@ -1627,7 +1655,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @Override
   public void run() {
-    LogContext.setRegionLogContext(serverConfig.getRegionName());
+    LogContext.setStructuredLogContext(serverConfig.getLogContext());
     CountDownLatch shutdownLatch = gracefulShutdownLatch.get();
     boolean doFlush = true;
     try {
@@ -1636,9 +1664,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("Running {}", ingestionTaskName);
       versionedIngestionStats.resetIngestionTaskPushTimeoutGauge(storeName, versionNumber);
 
-      Store store = null;
       while (isRunning()) {
-        store = storeRepository.getStoreOrThrow(storeName);
+        Store store = storeRepository.getStoreOrThrow(storeName);
         if (!skipAfterBatchPushUnsubEnabled) {
           refreshIngestionContextIfChanged(store);
           processConsumerActions(store);
@@ -1650,10 +1677,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           processConsumerActions(store);
           checkIngestionProgress(store);
         }
+        recordTransformerResumeConsumption();
+
         Thread.sleep(this.readCycleDelayMs);
       }
 
       List<CompletableFuture<Void>> shutdownFutures = new ArrayList<>(partitionConsumptionStateMap.size());
+
+      /**
+       * Speed up DaVinci shutdown by closing partitions concurrently.
+       */
+      ExecutorService shutdownExecutorForDvc =
+          isDaVinciClient ? Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2) : null;
+
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
       for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
         /**
@@ -1686,8 +1722,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
         };
 
-        if (isDaVinciClient) {
-          shutdownFutures.add(CompletableFuture.runAsync(shutdownRunnable, SHUTDOWN_EXECUTOR_FOR_DVC));
+        if (shutdownExecutorForDvc != null) {
+          shutdownFutures.add(CompletableFuture.runAsync(shutdownRunnable, shutdownExecutorForDvc));
         } else {
           /**
            * TODO: evaluate whether we need to apply concurrent shutdown in Venice Server or not.
@@ -2153,15 +2189,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storeBufferService.drainBufferedRecordsFromTopicPartition(topicPartition);
         subscribedCount++;
 
-        if (recordTransformer != null) {
-          long startTime = System.nanoTime();
-          recordTransformer.internalOnRecovery(storageEngine, partition, partitionStateSerializer, compressor);
-          LOGGER.info(
-              "DaVinciRecordTransformer onRecovery took {} ms for replica: {}",
-              LatencyUtils.getElapsedTimeFromNSToMS(startTime),
-              getReplicaId(topic, partition));
-        }
-
         // Get the last persisted Offset record from metadata service
         OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topic, partition);
 
@@ -2173,7 +2200,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             hybridStoreConfig.isPresent());
         newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
 
-        if (isCurrentVersion.getAsBoolean()) {
+        boolean isFutureVersionReady = isFutureVersionReady(kafkaVersionTopic, storeRepository);
+        if (isCurrentVersion.getAsBoolean() || isFutureVersionReady) {
           // Latch creation is in StateModelIngestionProgressNotifier#startConsumption() from the Helix transition
           newPartitionConsumptionState.setLatchCreated();
         }
@@ -2253,7 +2281,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * two variables to avoid the race condition.
          */
         partitionConsumptionStateMap.remove(partition);
-        storageUtilizationManager.removePartition(partition);
+        if (consumerAction.isHelixTriggeredAction()) {
+          LOGGER.info(
+              "Removing tracking of replica: {} from storage utilization manager as this UNSUBSCRIBE is helix triggered action",
+              topicPartition);
+          storageUtilizationManager.removePartition(partition);
+        }
         getDataIntegrityValidator().clearPartition(partition);
         // Reset the error partition tracking
         PartitionExceptionInfo partitionExceptionInfo = partitionIngestionExceptionList.get(partition);
@@ -2606,7 +2639,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         errorMessage += ". Consumption will be halted.";
         ingestionNotificationDispatcher
             .reportError(Collections.singletonList(partitionConsumptionState), errorMessage, e);
-        unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, faultyPartition));
+        unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, faultyPartition), false);
       } else {
         LOGGER.warn(
             "{}. Consumption will continue because it is either a current version replica or EOP has already been received. {}",
@@ -3763,6 +3796,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // localKafkaServer doesn't have suffix but kafkaURL may have suffix,
     // and we don't want to pass the resolvedKafkaURL as it will be passed to data receiver for parsing cluster id
     aggKafkaConsumerService.subscribeConsumerFor(kafkaURL, this, partitionReplicaIngestionContext, startOffset);
+
+    // If the record transformer is enabled, consumption should be paused until RocksDB scan for all partitions
+    // has completed. Otherwise, there will be resource contention.
+    if (recordTransformer != null && recordTransformer.getCountDownStartConsumptionLatchCount() > 0) {
+      LOGGER.info("DaVinciRecordTransformer pausing consumption for: {}", getReplicaId(pubSubTopicPartition));
+      aggKafkaConsumerService.pauseConsumerFor(versionTopic, pubSubTopicPartition);
+      LOGGER.info("DaVinciRecordTransformer paused consumption for: {}", getReplicaId(pubSubTopicPartition));
+      recordTransformerPausedConsumptionQueue.add(pubSubTopicPartition);
+    }
   }
 
   public void consumerResetOffset(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
@@ -4382,7 +4424,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
               LOGGER.info(msg);
             }
-            unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, partition));
+            unSubscribePartition(new PubSubTopicPartitionImpl(versionTopic, partition), false);
           }
           partitionConsumptionState.recordReadyToServeInOffsetRecord();
         } else {
@@ -4611,6 +4653,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public boolean isTransientRecordBufferUsed(PartitionConsumptionState partitionConsumptionState) {
     return this.isWriteComputationEnabled && partitionConsumptionState.isEndOfPushReceived();
+    // && !this.isDataRecovery; TODO: Decide if this extra condition is useful...
   }
 
   // Visible for unit test.
@@ -4786,7 +4829,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionRole = versionRole;
   }
 
-  // For testing only
+  @VisibleForTesting
   Map<Integer, PartitionConsumptionState> getPartitionConsumptionStateMap() {
     return partitionConsumptionStateMap;
   }
@@ -4820,4 +4863,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return (isGlobalRtDivEnabled()) ? pcs.getLatestConsumedVtOffset() : pcs.getLatestProcessedLocalVersionTopicOffset();
   }
 
+  public StorageUtilizationManager getStorageUtilizationManager() {
+    return storageUtilizationManager;
+  }
+
+  /**
+   * Checks whether there are any replicas currently present on this host.
+   * <p>
+   * For batch-only stores, a replica might be removed from the PCS map but still physically
+   * present on the host. {@code activeReplicaCount} counter tracks the replica's lifecycle
+   * from the bootstrap stage through to the drop stage.
+   */
+  protected boolean hasReplicas() {
+    return activeReplicaCount.get() > 0;
+  }
+
+  /**
+   * Resumes consumption when RocksDB scan for the record transformer has completed for partitions that were paused
+   */
+  private void recordTransformerResumeConsumption() {
+    if (recordTransformer != null && recordTransformer.getCountDownStartConsumptionLatchCount() == 0) {
+      while (!recordTransformerPausedConsumptionQueue.isEmpty()) {
+        PubSubTopicPartition pubSubTopicPartition = recordTransformerPausedConsumptionQueue.poll();
+        LOGGER.info("DaVinciRecordTransformer resuming consumption for: {}", getReplicaId(pubSubTopicPartition));
+        aggKafkaConsumerService.resumeConsumerFor(versionTopic, pubSubTopicPartition);
+      }
+    }
+
+  }
 }

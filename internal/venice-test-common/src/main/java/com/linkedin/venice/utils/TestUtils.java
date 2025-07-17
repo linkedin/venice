@@ -18,6 +18,7 @@ import static org.testng.Assert.assertTrue;
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.kafka.consumer.AggKafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.StoreBufferService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskFactory;
@@ -825,6 +826,10 @@ public class TestUtils {
   }
 
   public static StoreIngestionTaskFactory.Builder getStoreIngestionTaskBuilder(String storeName) {
+    return getStoreIngestionTaskBuilder(storeName, false);
+  }
+
+  public static StoreIngestionTaskFactory.Builder getStoreIngestionTaskBuilder(String storeName, boolean isHybrid) {
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(false).when(mockVeniceServerConfig).isHybridQuotaEnabled();
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
@@ -859,8 +864,14 @@ public class TestUtils {
     doReturn(false).when(mockStore).isIncrementalPushEnabled();
 
     version.setHybridStoreConfig(null);
-    doReturn(null).when(mockStore).getHybridStoreConfig();
-    doReturn(false).when(mockStore).isHybrid();
+    if (isHybrid) {
+      HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+      doReturn(hybridStoreConfig).when(mockStore).getHybridStoreConfig();
+      doReturn(true).when(mockStore).isHybrid();
+    } else {
+      doReturn(null).when(mockStore).getHybridStoreConfig();
+      doReturn(false).when(mockStore).isHybrid();
+    }
 
     version.setBufferReplayEnabledForHybrid(true);
 
@@ -893,6 +904,7 @@ public class TestUtils {
         .setServerConfig(mock(VeniceServerConfig.class))
         .setServerConfig(mockVeniceServerConfig)
         .setPartitionStateSerializer(mock(InternalAvroSpecificSerializer.class))
+        .setReusableObjectsSupplier(IngestionTaskReusableObjects.Strategy.SINGLETON_THREAD_LOCAL.supplier())
         .setIsDaVinciClient(false);
   }
 

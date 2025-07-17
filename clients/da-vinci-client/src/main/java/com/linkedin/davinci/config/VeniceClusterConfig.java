@@ -329,7 +329,7 @@ public class VeniceClusterConfig {
     return kafkaFetchQuotaUnorderedRecordPerSecond;
   }
 
-  public String getRegionName() {
+  public final String getRegionName() {
     return regionName;
   }
 

@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
+import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 
@@ -21,6 +22,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Collections;
@@ -62,6 +64,11 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       Caffeine.newBuilder().expireAfterWrite(2, TimeUnit.HOURS).build();
   private Map<String, Integer> fetchNonTargetRegionStoreRetryCountMap = new HashMap<>();
   private Set<String> stalledVersionSwapSet = new HashSet<>();
+  private Map<String, Integer> failedRollforwardRetryCountMap = new HashMap<>();
+  private static final int MAX_ROLL_FORWARD_RETRY_LIMIT = 5;
+  private static final Set<VersionStatus> VERSION_SWAP_COMPLETION_STATUSES =
+      Utils.setOf(ONLINE, PARTIALLY_ONLINE, ERROR);
+  private static final Set<VersionStatus> TERMINAL_PUSH_VERSION_STATUSES = Utils.setOf(ONLINE, KILLED);
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -251,26 +258,28 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   }
 
   /**
-   * Checks if the version is online in all target regions
-   * @param targetRegions
+   * Checks if all the regions have a version status
+   * @param regions
    * @param clusterName
    * @param storeName
    * @param targetVersionNum
+   * @param versionStatus
    * @return
    */
-  private boolean isVersionOnlineInRegions(
-      Set<String> targetRegions,
+  private boolean doesRegionsHaveVersionStatus(
+      Set<String> regions,
       String clusterName,
       String storeName,
-      int targetVersionNum) {
-    for (String targetRegion: targetRegions) {
-      Version targetRegionVersion = getVersionFromStoreInRegion(clusterName, targetRegion, storeName, targetVersionNum);
+      int targetVersionNum,
+      Set<VersionStatus> versionStatus) {
+    for (String region: regions) {
+      Version regionVersion = getVersionFromStoreInRegion(clusterName, region, storeName, targetVersionNum);
 
-      if (targetRegionVersion == null) {
+      if (regionVersion == null) {
         return false;
       }
 
-      if (targetRegionVersion.getStatus() != ONLINE && targetRegionVersion.getStatus() != VersionStatus.KILLED) {
+      if (!versionStatus.contains(regionVersion.getStatus())) {
         return false;
       }
     }
@@ -297,24 +306,31 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
 
     // The version could've been manually rolled forward in non target regions. If that is the case, we should check if
-    // we emitted any stalled
-    // metric for it and remove it if so
+    // we emitted any stalled metric for it and remove it if so
     if (stalledVersionSwapSet.contains(storeName)) {
-      boolean didPushCompleteInNonTargetRegions =
-          isVersionOnlineInRegions(nonTargetRegions, clusterName, storeName, targetVersion.getNumber());
+      boolean didPushCompleteInNonTargetRegions = doesRegionsHaveVersionStatus(
+          nonTargetRegions,
+          clusterName,
+          storeName,
+          targetVersion.getNumber(),
+          VERSION_SWAP_COMPLETION_STATUSES);
       if (didPushCompleteInNonTargetRegions) {
         stalledVersionSwapSet.remove(storeName);
         deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
       }
     }
 
+    Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetRegionsString);
     switch (targetVersion.getStatus()) {
       case STARTED:
         // Because the parent status is updated when we poll for the job status, the parent status will not always be an
         // accurate representation of push status if vpj runs away
-        Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetRegionsString);
-        boolean didPushCompleteInTargetRegions =
-            isVersionOnlineInRegions(targetRegions, clusterName, storeName, targetVersion.getNumber());
+        boolean didPushCompleteInTargetRegions = doesRegionsHaveVersionStatus(
+            targetRegions,
+            clusterName,
+            storeName,
+            targetVersion.getNumber(),
+            TERMINAL_PUSH_VERSION_STATUSES);
         if (didPushCompleteInTargetRegions) {
           deferredVersionSwapStats.recordDeferredVersionSwapParentChildStatusMismatchSensor();
           String message =
@@ -323,10 +339,33 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           logMessageIfNotRedundant(message);
           return true;
         }
+
+        // TODO remove this when we start ramping as this is meant to be a temporary log to help with debugging
+        logMessageIfNotRedundant(
+            "Skipping version swap as push is still ongoing for store: " + storeName + " on version: "
+                + targetVersionNum);
         return false;
       case PUSHED:
       case KILLED:
+        logMessageIfNotRedundant("Entering version swap loop for: " + storeName + " on version: " + targetVersionNum);
         return true;
+      case ONLINE:
+        // This should not happen, but if it does, we should still perform a version swap and log a metric for it
+        boolean didVersionSwapCompleteInNonTargetRegions = doesRegionsHaveVersionStatus(
+            nonTargetRegions,
+            clusterName,
+            storeName,
+            targetVersion.getNumber(),
+            VERSION_SWAP_COMPLETION_STATUSES);
+
+        if (!didVersionSwapCompleteInNonTargetRegions) {
+          deferredVersionSwapStats.recordDeferredVersionSwapParentChildStatusMismatchSensor();
+          String message =
+              "Parent status is already ONLINE, but version swap has not happened in the non target regions. "
+                  + "Continuing with deferred swap for store: " + storeName + " for version: " + targetVersionNum;
+          logMessageIfNotRedundant(message);
+          return true;
+        }
     }
 
     return false;
@@ -379,6 +418,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       repository.updateStore(store);
       return false;
     } else if (numCompletedTargetRegions + numFailedTargetRegions != targetRegions.size()) {
+      // TODO remove after ramp as this is a temporary log to help with debugging
+      String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
+          + " as push is not complete yet in target regions. num completed target regions: " + numFailedTargetRegions;
+      logMessageIfNotRedundant(message);
       return false;
     }
 
@@ -453,6 +496,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
     Set<String> completedNonTargetRegions = new HashSet<>();
     Set<String> failedNonTargetRegions = new HashSet<>();
+    Map<String, String> nonTargetRegionToStatus = new HashMap<>();
     for (String nonTargetRegion: nonTargetRegions) {
       Version version = getVersionFromStoreInRegion(clusterName, nonTargetRegion, store.getName(), targetVersionNum);
 
@@ -485,11 +529,14 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       } else if (version.getStatus().equals(ERROR) || version.getStatus().equals(VersionStatus.KILLED)) {
         failedNonTargetRegions.add(nonTargetRegion);
       }
+
+      nonTargetRegionToStatus.put(nonTargetRegion, version.getStatus().toString());
     }
 
     if (failedNonTargetRegions.equals(nonTargetRegions)) {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
-          + "as push failed in all non target regions. Failed non target regions: " + failedNonTargetRegions;
+          + "as push failed in all non target regions. Failed non target regions: " + failedNonTargetRegions
+          + " non target regions: " + nonTargetRegionToStatus;
       logMessageIfNotRedundant(message);
       store.updateVersionStatus(targetVersionNum, PARTIALLY_ONLINE);
       repository.updateStore(store);
@@ -498,7 +545,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       String message = "Skipping version swap for store: " + store.getName() + " on version: " + targetVersionNum
           + "as push is not in terminal status in all non target regions. Completed non target regions: "
           + completedNonTargetRegions + ", failed non target regions: " + failedNonTargetRegions
-          + ", non target regions: " + nonTargetRegions;
+          + ", non target regions: " + nonTargetRegionToStatus;
       logMessageIfNotRedundant(message);
       return Collections.emptySet();
     }
@@ -529,6 +576,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
           for (Store parentStore: parentStores) {
             int targetVersionNum = parentStore.getLargestUsedVersionNumber();
+            if (targetVersionNum < 1) {
+              continue;
+            }
+
             Version targetVersion = parentStore.getVersion(targetVersionNum);
             if (targetVersion == null) {
               String message = "Parent version is null for store " + parentStore.getName() + " for target version "
@@ -615,15 +666,26 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
               rollForwardToTargetVersion(nonTargetRegionsCompleted, parentStore, targetVersion, cluster, repository);
             } catch (Exception e) {
               LOGGER.warn("Failed to roll forward for store: {} in version: {}", storeName, targetVersionNum, e);
-              deferredVersionSwapStats.recordDeferredVersionSwapFailedRollForwardSensor();
 
-              parentStore.updateVersionStatus(targetVersionNum, VersionStatus.PARTIALLY_ONLINE);
-              repository.updateStore(parentStore);
-              LOGGER.info(
-                  "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {} after failing to roll forward in non target regions: {}",
-                  targetVersionNum,
-                  storeName,
-                  nonTargetRegionsCompleted);
+              int attemptedRetries = failedRollforwardRetryCountMap.compute(kafkaTopicName, (k, v) -> {
+                if (v == null) {
+                  return 1;
+                }
+                return v + 1;
+              });
+
+              if (attemptedRetries == MAX_ROLL_FORWARD_RETRY_LIMIT) {
+                deferredVersionSwapStats.recordDeferredVersionSwapFailedRollForwardSensor();
+
+                parentStore.updateVersionStatus(targetVersionNum, VersionStatus.PARTIALLY_ONLINE);
+                repository.updateStore(parentStore);
+                failedRollforwardRetryCountMap.remove(kafkaTopicName);
+                LOGGER.info(
+                    "Updated parent version status to PARTIALLY_ONLINE for version: {} in store: {} after failing to roll forward in non target regions: {}",
+                    targetVersionNum,
+                    storeName,
+                    nonTargetRegionsCompleted);
+              }
             }
           }
         }

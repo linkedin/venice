@@ -22,6 +22,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -509,6 +510,36 @@ public class UtilsTest {
     assertEquals(e.getErrorType(), ErrorType.BAD_REQUEST);
   }
 
+  @DataProvider(name = "integerParsingData")
+  public Object[][] integerParsingData() {
+    return new Object[][] { { null, 10, 10, false }, // null -> default
+        { "", 20, 20, false }, // empty -> default
+        { "42", 0, 42, false }, // normal integer
+        { "-7", 1, -7, false }, // negative integer
+        { "notAnInt", 5, 0, true } // invalid -> exception
+    };
+  }
+
+  @Test(dataProvider = "integerParsingData")
+  public void testParseIntOrDefault(String value, int defaultValue, int expected, boolean expectException) {
+    final String fieldName = "testField";
+
+    if (expectException) {
+      try {
+        Utils.parseIntOrDefault(value, fieldName, defaultValue);
+        fail("VeniceHttpException expected for value: " + value);
+      } catch (VeniceHttpException ex) {
+        assertEquals(ex.getErrorType(), ErrorType.BAD_REQUEST);
+        assertEquals(ex.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST, "Invalid status code.");
+        assertTrue(ex.getMessage().contains(fieldName));
+        assertTrue(ex.getMessage().contains(value));
+      }
+    } else {
+      int actual = Utils.parseIntOrDefault(value, fieldName, defaultValue);
+      assertEquals(actual, expected, "Returned value did not match expectation for input '" + value + '\'');
+    }
+  }
+
   @Test
   public void testGetAllSchemasFromResources() {
 
@@ -551,5 +582,23 @@ public class UtilsTest {
         Utils.waitStoreVersionOrThrow(Version.composeKafkaTopic(storeName, 1), storeRepository);
     Assert.assertEquals(storeVersionInfo.getStore(), store);
     Assert.assertEquals(storeVersionInfo.getVersion(), version);
+  }
+
+  @Test
+  public void testIsFutureVersionReady() {
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    String storeName = "testIsFutureVersionReady";
+    String resource = "testIsFutureVersionReady_v1";
+
+    // Setup store and version
+    Store store = mock(Store.class);
+    Version version = mock(Version.class);
+    doReturn(version).when(store).getVersion(anyInt());
+    doReturn(store).when(storeRepository).getStoreOrThrow(storeName);
+    doReturn(0).when(store).getCurrentVersion();
+    doReturn(VersionStatus.PUSHED).when(version).getStatus();
+
+    boolean ready = Utils.isFutureVersionReady(resource, storeRepository);
+    Assert.assertTrue(ready);
   }
 }

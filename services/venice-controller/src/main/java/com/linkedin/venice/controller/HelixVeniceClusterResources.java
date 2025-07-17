@@ -5,6 +5,7 @@ import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.logcompaction.LogCompactionService;
+import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.controller.stats.ProtocolVersionAutoDetectionStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
@@ -83,6 +84,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final VeniceAdminStats veniceAdminStats;
   private final VeniceHelixAdmin admin;
+  private final Optional<MultiTaskSchedulerService> multiTaskSchedulerService;
 
   public HelixVeniceClusterResources(
       String clusterName,
@@ -107,6 +109,19 @@ public class HelixVeniceClusterResources implements VeniceResource {
     } else {
       metaStoreWriter = Optional.empty();
     }
+
+    /**
+     *  MultiTaskSchedulerService is only initialized parent cluster.
+     */
+    if (config.isParent() && config.isMultiTaskSchedulerServiceEnabled()) {
+      this.multiTaskSchedulerService = Optional.of(
+          new MultiTaskSchedulerService(
+              config.getStoreMigrationThreadPoolSize(),
+              config.getStoreMigrationMaxRetryAttempts()));
+    } else {
+      this.multiTaskSchedulerService = Optional.empty();
+    }
+
     /**
      * ClusterLockManager is created per cluster and shared between {@link VeniceHelixAdmin},
      * {@link com.linkedin.venice.pushmonitor.AbstractPushMonitor} and {@link HelixReadWriteStoreRepository}.
@@ -230,8 +245,10 @@ public class HelixVeniceClusterResources implements VeniceResource {
     }
 
     if (config.isParent() && config.isLogCompactionSchedulingEnabled()) {
+      LOGGER.info("[log-compaction] Log compaction service is enabled for cluster: {}", clusterName);
       this.logCompactionService = new LogCompactionService(admin, clusterName, config);
     } else {
+      LOGGER.info("[log-compaction] Log compaction service is disabled for cluster: {}", clusterName);
       this.logCompactionService = null;
     }
 
@@ -365,6 +382,32 @@ public class HelixVeniceClusterResources implements VeniceResource {
   }
 
   /**
+   * Cause {@link MultiTaskSchedulerService} service to begin executing.
+   */
+  public void startMultiTaskSchedulerService() {
+    if (multiTaskSchedulerService.isPresent()) {
+      try {
+        multiTaskSchedulerService.get().start();
+      } catch (Exception e) {
+        LOGGER.error("Error when starting multitask scheduler service for cluster: {}", clusterName);
+      }
+    }
+  }
+
+  /**
+   * Cause {@link MultiTaskSchedulerService} service to stop executing.
+   */
+  public void stopMultiTaskSchedulerService() {
+    if (multiTaskSchedulerService.isPresent()) {
+      try {
+        multiTaskSchedulerService.get().stop();
+      } catch (Exception e) {
+        LOGGER.error("Error when stopping multitask scheduler service for cluster: {}", clusterName, e);
+      }
+    }
+  }
+
+  /**
    * Cause {@link LeakedPushStatusCleanUpService} service to stop executing.
    */
   public void stopLeakedPushStatusCleanUpService() {
@@ -480,6 +523,10 @@ public class HelixVeniceClusterResources implements VeniceResource {
 
   public StoragePersonaRepository getStoragePersonaRepository() {
     return storagePersonaRepository;
+  }
+
+  public Optional<MultiTaskSchedulerService> getMultiTaskSchedulerService() {
+    return multiTaskSchedulerService;
   }
 
   /**

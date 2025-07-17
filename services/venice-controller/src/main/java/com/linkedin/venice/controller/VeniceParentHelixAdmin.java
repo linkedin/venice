@@ -169,6 +169,7 @@ import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.SchemaUsageResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
+import com.linkedin.venice.controllerapi.StoreDeletedValidationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
@@ -313,6 +314,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final StackTraceElement[] EMPTY_STACK_TRACE = new StackTraceElement[0];
 
   private static final long TOPIC_DELETION_DELAY_MS = 5 * Time.MS_PER_MINUTE;
+  public static final List<Class<? extends Throwable>> RETRY_FAILURE_TYPES = Collections.singletonList(Exception.class);
 
   final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -726,6 +728,24 @@ public class VeniceParentHelixAdmin implements Admin {
     message.payloadUnion = deleteValueSchemas;
 
     sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+  }
+
+  /**
+   * This method is used to auto-migrate a store from one cluster to another.
+   * @param srcClusterName
+   * @param destClusterName
+   * @param storeName
+   * @param currStep
+   * @param abortOnFailure
+   */
+  @Override
+  public void autoMigrateStore(
+      String srcClusterName,
+      String destClusterName,
+      String storeName,
+      Optional<Integer> currStep,
+      Optional<Boolean> abortOnFailure) {
+    veniceHelixAdmin.autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, abortOnFailure);
   }
 
   @Override
@@ -2165,36 +2185,28 @@ public class VeniceParentHelixAdmin implements Admin {
           "Sending roll forward command to future version {} for store {} to child controllers",
           futureVersionBeforeRollForward,
           storeName);
-      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+      Set<String> failedRegions = new HashSet<>();
+      Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+      for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
+        ControllerClient controllerClient = entry.getValue();
+        RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
+          failedRegions.remove(entry.getKey());
+          ControllerResponse response = controllerClient.rollForwardToFutureVersion(storeName, regionFilter);
+          if (response.isError()) {
+            LOGGER.info("Roll forward in region {} failed with error: {}", entry.getKey(), response.getError());
+            failedRegions.add(entry.getKey());
+            throw new VeniceException(
+                "Roll forward failed in the following regions: " + failedRegions
+                    + " Please try the roll forward action again");
+          }
+        }, 5, Duration.ofMillis(100), Duration.ofMillis(500), Duration.ofSeconds(10), RETRY_FAILURE_TYPES);
+      }
+
       String kafkaTopic = Version.composeKafkaTopic(storeName, futureVersionBeforeRollForward);
       LOGGER.info(
-          "Truncating topic {} after child controllers consumed the roll forward messages to not block new versions",
+          "Truncating topic {} after child controllers tried to roll forward to not block new versions",
           kafkaTopic);
       truncateKafkaTopic(kafkaTopic);
-
-      // check whether the roll forward is successful in all regions in regionFilter.
-      // Add retries to let the child controllers finish processing the roll forward command
-      Map<String, Integer> failedRegions = new HashMap<>();
-      int finalFutureVersionBeforeRollForward = futureVersionBeforeRollForward;
-      RetryUtils.executeWithMaxAttempt(() -> {
-        Map<String, Integer> currentVersionsAfterRollForward = getCurrentVersionsForMultiColos(clusterName, storeName);
-        failedRegions.clear();
-        currentVersionsAfterRollForward.forEach((region, currentVersion) -> {
-          if (isRegionPartOfRegionsFilterList(region, regionFilter)
-              && currentVersion < finalFutureVersionBeforeRollForward) {
-            failedRegions.put(region, currentVersion);
-          }
-        });
-        if (!failedRegions.isEmpty()) {
-          StringBuilder sb = new StringBuilder();
-          sb.append("Roll forward failed in regions: ");
-          for (Map.Entry<String, Integer> entry: failedRegions.entrySet()) {
-            sb.append(entry.getKey()).append(" with current version: ").append(entry.getValue()).append(",");
-          }
-          sb.append(". Roll forward will be retried until it is successful.");
-          throw new VeniceException(sb.toString());
-        }
-      }, 5, Duration.ofMillis(200), Arrays.asList(VeniceException.class));
 
       LOGGER.info(
           "Roll forward to future version {} is successful in all regions for store {}",
@@ -5969,4 +5981,51 @@ public class VeniceParentHelixAdmin implements Admin {
   public VeniceControllerClusterConfig getControllerConfig(String clusterName) {
     return multiClusterConfigs.getControllerConfig(clusterName);
   }
+
+  /**
+   * Validates that a store has been completely deleted from all venice clusters cross-regionally
+   * 
+   * @see Admin#validateStoreDeleted(String, String)
+   */
+  @Override
+  public StoreDeletedValidation validateStoreDeleted(String clusterName, String storeName) {
+    Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+
+    // Collect validation results from all child data centers
+    List<String> errors = new ArrayList<>(controllerClientMap.size());
+    List<String> notDeletedDetails = new ArrayList<>(controllerClientMap.size());
+
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      String regionName = entry.getKey();
+      ControllerClient controllerClient = entry.getValue();
+      try {
+        // Make the API call to the child controller
+        StoreDeletedValidationResponse response = controllerClient.validateStoreDeleted(storeName);
+        if (response.isError()) {
+          errors.add("Failed to validate store deletion in region " + regionName + ": " + response.getError());
+        } else {
+          if (!response.isStoreDeleted()) {
+            notDeletedDetails.add(regionName + ": " + response.getReason());
+          }
+        }
+      } catch (Exception e) {
+        errors.add("Exception while validating store deletion in region " + regionName + ": " + e.getMessage());
+      }
+    }
+
+    // If there were errors communicating with child controllers, throw exception
+    if (!errors.isEmpty()) {
+      throw new VeniceException(
+          "Failed to validate store deletion in some child data centers: " + String.join("; ", errors));
+    }
+
+    // Create result based on child validations
+    StoreDeletedValidation result = new StoreDeletedValidation(clusterName, storeName);
+    if (!notDeletedDetails.isEmpty()) {
+      result.setStoreNotDeleted(String.join("; ", notDeletedDetails));
+    }
+
+    return result;
+  }
+
 }

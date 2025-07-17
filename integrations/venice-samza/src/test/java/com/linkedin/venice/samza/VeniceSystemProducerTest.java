@@ -18,9 +18,6 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
-import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.LoadingCache;
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -33,6 +30,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import com.linkedin.venice.writer.update.UpdateBuilder;
@@ -157,7 +155,7 @@ public class VeniceSystemProducerTest {
     versionCreationResponse.setPartitions(2);
     versionCreationResponse.setKafkaTopic("test_store_v1");
 
-    VeniceWriter<byte[], byte[], byte[]> resultantVeniceWriter =
+    AbstractVeniceWriter<byte[], byte[], byte[]> resultantVeniceWriter =
         veniceSystemProducerSpy.getVeniceWriter(versionCreationResponse);
 
     Properties capturedProperties = propertiesArgumentCaptor.getValue();
@@ -311,24 +309,5 @@ public class VeniceSystemProducerTest {
     assertEquals(options.getProducerThreadCount(), 2);
     assertEquals(options.getProducerQueueSize(), 102400000);
     assertEquals(properties.getProperty(KAFKA_BUFFER_MEMORY), "10240");
-  }
-
-  @Test
-  public void testSchemaCache() {
-    final LoadingCache<Schema, String> canonicalSchemaStrCache =
-        Caffeine.newBuilder().maximumSize(3).build(AvroCompatibilityHelper::toParsingForm);
-
-    for (int i = 0; i < 100; ++i) {
-      Schema.Field field1 =
-          AvroCompatibilityHelper.createSchemaField("field1", Schema.create(Schema.Type.STRING), "doc", "default");
-      Schema schema = Schema.createRecord("test_record" + i, "doc", "namespace", false, Arrays.asList(field1));
-      canonicalSchemaStrCache.get(schema);
-    }
-
-    long cacheSize = canonicalSchemaStrCache.estimatedSize();
-    Assert.assertTrue(
-        canonicalSchemaStrCache.estimatedSize() < 10,
-        "The size of the cache shouldn't go beyond 10 when specifying the maximum size as 3 even with estimation, but got: "
-            + cacheSize);
   }
 }

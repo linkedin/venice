@@ -25,6 +25,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -293,6 +294,21 @@ public class Utils {
           e,
           ErrorType.BAD_REQUEST);
     }
+  }
+
+  /**
+   * Parses an integer from a string, ensuring that only null or valid integer values are accepted.
+   * Returns defaultValue if the value is null. Throws an exception if the value is invalid.
+   * @param value the string to parse
+   * @param fieldName the name of the field being validated
+   * @param defaultValue the default value to return if the input is null
+   * @return the parsed int value
+   */
+  public static int parseIntOrDefault(String value, String fieldName, int defaultValue) {
+    if (value == null || value.isEmpty()) {
+      return defaultValue;
+    }
+    return parseIntFromString(value, fieldName);
   }
 
   public static long parseLongFromString(String value, String fieldName) {
@@ -987,6 +1003,35 @@ public class Utils {
         return false;
       }
       return store.getCurrentVersion() < version;
+    } catch (VeniceException e) {
+      return false;
+    }
+  }
+
+  /**
+   * Checks if the future version is ready to serve. A future version is considered ready to serve if the version status
+   * is either PUSHED or ONLINE
+   * @param resourceName
+   * @param metadataRepo
+   * @return
+   */
+  public static boolean isFutureVersionReady(String resourceName, ReadOnlyStoreRepository metadataRepo) {
+    try {
+      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+      int versionNum = Version.parseVersionFromKafkaTopicName(resourceName);
+      Store store = metadataRepo.getStoreOrThrow(storeName);
+      if (store == null) {
+        LOGGER.warn("Store {} is not in store repository.", storeName);
+        return false;
+      }
+
+      Version futureVersion = store.getVersion(versionNum);
+      if (futureVersion == null) {
+        return false;
+      }
+
+      return store.getCurrentVersion() < versionNum && (futureVersion.getStatus().equals(VersionStatus.ONLINE)
+          || futureVersion.getStatus().equals(VersionStatus.PUSHED));
     } catch (VeniceException e) {
       return false;
     }

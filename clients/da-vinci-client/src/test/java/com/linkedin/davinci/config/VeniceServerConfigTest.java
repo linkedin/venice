@@ -178,14 +178,19 @@ public class VeniceServerConfigTest {
     assertEquals(config1.getIngestionMemoryLimit(), 20 * 1024 * 1024l);
   }
 
+  // TODO: Delete this test once we fully delete the HelixMessagingChannel.
   @Test
   public void testParticipantStoreConfigs() {
     Properties props = populatedBasicProperties();
     VeniceServerConfig config = new VeniceServerConfig(new VeniceProperties(props));
-    assertFalse(config.isParticipantMessageStoreEnabled());
+    assertTrue(config.isParticipantMessageStoreEnabled());
 
     props.put(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
     config = new VeniceServerConfig(new VeniceProperties(props));
     assertTrue(config.isParticipantMessageStoreEnabled());
+
+    props.put(PARTICIPANT_MESSAGE_STORE_ENABLED, "false");
+    config = new VeniceServerConfig(new VeniceProperties(props));
+    assertFalse(config.isParticipantMessageStoreEnabled());
   }
 }

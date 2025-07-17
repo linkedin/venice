@@ -22,6 +22,7 @@ import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
+import static com.linkedin.venice.ConfigKeys.DAVINCI_RECORD_TRANSFORMER_ON_RECOVERY_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_BYTES_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
@@ -122,6 +123,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICAT
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_MAX_IDLE_COUNT;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_MAX_POLL_RECORDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_LEADER_COMPLETE_STATE_CHECK_IN_FOLLOWER_VALID_INTERVAL_MS;
@@ -212,18 +214,21 @@ import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCount
 
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
+import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
 import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.throttle.VeniceRateLimiter;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -645,6 +650,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean isParticipantMessageStoreEnabled;
   private final long consumerPollTrackerStaleThresholdInSeconds;
+  private final int daVinciRecordTransformerOnRecoveryThreadPoolSize;
+  private final LogContext logContext;
+  private final IngestionTaskReusableObjects.Strategy ingestionTaskReusableObjectsStrategy;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -655,6 +663,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     super(serverProperties, kafkaClusterMap);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
     listenerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
+    logContext = new LogContext.Builder().setComponentName(VeniceComponent.SERVER.name())
+        .setRegionName(getRegionName())
+        .setInstanceName(Utils.getHelixNodeIdentifier(listenerHostname, listenerPort))
+        .build();
     isGrpcEnabled = serverProperties.getBoolean(ENABLE_GRPC_READ_SERVER, false);
     grpcPort = isGrpcEnabled ? serverProperties.getInt(GRPC_READ_SERVER_PORT) : -1;
 
@@ -1079,9 +1091,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     deleteUnassignedPartitionsOnStartup =
         serverProperties.getBoolean(SERVER_DELETE_UNASSIGNED_PARTITIONS_ON_STARTUP, false);
     aclInMemoryCacheTTLMs = serverProperties.getInt(ACL_IN_MEMORY_CACHE_TTL_MS, -1); // acl caching is disabled by
+                                                                                     // default
     aaWCIngestionStorageLookupThreadPoolSize =
         serverProperties.getInt(SERVER_AA_WC_INGESTION_STORAGE_LOOKUP_THREAD_POOL_SIZE, 4);
-    this.isParticipantMessageStoreEnabled = serverProperties.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
+    this.isParticipantMessageStoreEnabled = serverProperties.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, true);
     idleIngestionTaskCleanupIntervalInSeconds =
         serverProperties.getInt(SERVER_IDLE_INGESTION_TASK_CLEANUP_INTERVAL_IN_SECONDS, -1);
     useHeartbeatLagForReadyToServeCheckEnabled =
@@ -1100,6 +1113,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(SERVER_LOAD_CONTROLLER_COMPUTE_LATENCY_ACCEPT_THRESHOLD_IN_MS, 100);
     consumerPollTrackerStaleThresholdInSeconds = serverProperties
         .getLong(SERVER_CONSUMER_POLL_TRACKER_STALE_THRESHOLD_IN_SECONDS, TimeUnit.MINUTES.toSeconds(15));
+    daVinciRecordTransformerOnRecoveryThreadPoolSize = serverProperties
+        .getInt(DAVINCI_RECORD_TRANSFORMER_ON_RECOVERY_THREAD_POOL_SIZE, Runtime.getRuntime().availableProcessors());
+    this.ingestionTaskReusableObjectsStrategy = IngestionTaskReusableObjects.Strategy.valueOf(
+        serverProperties.getString(
+            SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY,
+            IngestionTaskReusableObjects.Strategy.THREAD_LOCAL_PER_INGESTION_TASK.name()));
   }
 
   List<Double> extractThrottleLimitFactorsFor(VeniceProperties serverProperties, String configKey) {
@@ -2040,5 +2059,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getConsumerPollTrackerStaleThresholdSeconds() {
     return consumerPollTrackerStaleThresholdInSeconds;
+  }
+
+  public int getDaVinciRecordTransformerOnRecoveryThreadPoolSize() {
+    return daVinciRecordTransformerOnRecoveryThreadPoolSize;
+  }
+
+  public LogContext getLogContext() {
+    return logContext;
+  }
+
+  public IngestionTaskReusableObjects.Strategy getIngestionTaskReusableObjectsStrategy() {
+    return this.ingestionTaskReusableObjectsStrategy;
   }
 }
