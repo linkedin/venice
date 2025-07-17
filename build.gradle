@@ -779,6 +779,7 @@ ext.createDiffFile = { ->
       // venice-router
       ':!services/venice-router/src/main/java/com/linkedin/venice/router/RouterServer.java',
       ':!services/venice-router/src/main/java/com/linkedin/venice/router/streaming/VeniceChunkedResponse.java',
+      ':!services/venice-router/src/main/java/com/linkedin/venice/router/streaming/VeniceChunkedWriteHandler.java',
       ':!services/venice-router/src/main/java/com/linkedin/venice/router/api/VeniceDispatcher.java',
 
       // venice-server
