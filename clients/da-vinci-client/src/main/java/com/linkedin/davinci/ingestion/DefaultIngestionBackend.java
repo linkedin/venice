@@ -152,7 +152,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
           Arrays.toString(partitionFolderDir.list()));
     }
 
-    if (!storageEngine.tryMarkPartitionBlobTransferStarted(partitionId)) {
+    if (storageService.getStorageEngine(kafkaTopic) == null
+        || !storageService.getStorageEngine(kafkaTopic).tryMarkPartitionBlobTransferStarted(partitionId)) {
       LOGGER.info(
           "Skipping blob transfer for replica {} - storage engine is marked for dropping",
           Utils.getReplicaId(kafkaTopic, partitionId));
