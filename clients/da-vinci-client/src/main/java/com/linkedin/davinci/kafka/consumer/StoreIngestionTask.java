@@ -170,6 +170,7 @@ import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.Schema;
+import org.apache.helix.HelixException;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -1468,13 +1469,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             subscribePartition(pubSubTopicPartition, false);
           }
         } else if (isCurrentVersion.getAsBoolean() && resetErrorReplicaEnabled && !isDaVinciClient) {
-          // marking its replica status ERROR which will later be reset by the controller
-          zkHelixAdmin.get()
-              .setPartitionsToError(
-                  serverConfig.getClusterName(),
-                  hostName,
-                  kafkaVersionTopic,
-                  Collections.singletonList(HelixUtils.getPartitionName(kafkaVersionTopic, exceptionPartition)));
+          try {
+            // marking its replica status ERROR which will later be reset by the controller
+            zkHelixAdmin.get()
+                .setPartitionsToError(
+                    serverConfig.getClusterName(),
+                    hostName,
+                    kafkaVersionTopic,
+                    Collections.singletonList(HelixUtils.getPartitionName(kafkaVersionTopic, exceptionPartition)));
+          } catch (HelixException helixException) {
+            LOGGER.error(
+                "Got exception while marking replica status to ERROR for: {}",
+                getReplicaId(kafkaVersionTopic, exceptionPartition),
+                helixException);
+          }
           LOGGER.error(
               "Marking current version replica status to ERROR for replica: {}",
               getReplicaId(kafkaVersionTopic, exceptionPartition),
@@ -1875,12 +1883,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Set the replica state to ERROR so that the controller can attempt to reset the partition.
     if (isCurrentVersion.getAsBoolean() && !isDaVinciClient && resetErrorReplicaEnabled
         && !(consumerEx instanceof VeniceTimeoutException)) {
-      zkHelixAdmin.get()
-          .setPartitionsToError(
-              serverConfig.getClusterName(),
-              hostName,
-              kafkaVersionTopic,
-              Collections.singletonList(HelixUtils.getPartitionName(kafkaVersionTopic, partitionId)));
+      try {
+        zkHelixAdmin.get()
+            .setPartitionsToError(
+                serverConfig.getClusterName(),
+                hostName,
+                kafkaVersionTopic,
+                Collections.singletonList(HelixUtils.getPartitionName(kafkaVersionTopic, partitionId)));
+      } catch (HelixException helixException) {
+        LOGGER.error(
+            "Got exception while marking replica status to ERROR for: {}",
+            getReplicaId(kafkaVersionTopic, partitionId),
+            helixException);
+      }
     }
   }
 
