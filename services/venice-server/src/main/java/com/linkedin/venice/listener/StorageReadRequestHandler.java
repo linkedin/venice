@@ -33,6 +33,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.request.AdminRequest;
+import com.linkedin.venice.listener.request.AggregationRouterRequestWrapper;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
@@ -45,6 +46,7 @@ import com.linkedin.venice.listener.request.MultiKeyRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.request.StorePropertiesFetchRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
+import com.linkedin.venice.listener.response.AggregationReadResponseWrapper;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
@@ -298,8 +300,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           responseFuture = this.computeHandler.apply((ComputeRouterRequestWrapper) request);
           break;
         case AGGREGATION:
-          responseFuture =
-              handleAggregationRequest((com.linkedin.venice.listener.request.AggregationRouterRequestWrapper) request);
+          responseFuture = handleAggregationRequest((AggregationRouterRequestWrapper) request);
           break;
         default:
           throw new VeniceException("Unknown request type: " + request.getRequestType());
@@ -680,8 +681,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         this::processCompute);
   }
 
-  public CompletableFuture<ReadResponse> handleAggregationRequest(
-      com.linkedin.venice.listener.request.AggregationRouterRequestWrapper request) {
+  public CompletableFuture<ReadResponse> handleAggregationRequest(AggregationRouterRequestWrapper request) {
     return CompletableFuture.supplyAsync(() -> {
       String topic = request.getResourceName();
       PerStoreVersionState storeVersion = getPerStoreVersionState(topic);
@@ -690,7 +690,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           storeVersion.storeDeserializerCache;
 
       Map<String, Integer> countByValueFields = request.getCountByValueFields();
-      List<com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1> keys = request.getKeys();
+      List<ComputeRouterRequestKeyV1> keys = request.getKeys();
       Map<String, Map<Object, Integer>> result = new HashMap<>();
       for (String field: countByValueFields.keySet()) {
         result.put(field, new HashMap<>());
@@ -698,12 +698,11 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
       // Get compressor
-      com.linkedin.venice.compression.CompressionStrategy compressionStrategy =
-          com.linkedin.venice.utils.StoreVersionStateUtils
-              .getCompressionStrategy(storeVersion.storageEngine.getStoreVersionState());
-      com.linkedin.venice.compression.VeniceCompressor compressor =
+      CompressionStrategy compressionStrategy =
+          StoreVersionStateUtils.getCompressionStrategy(storeVersion.storageEngine.getStoreVersionState());
+      VeniceCompressor compressor =
           compressorFactory.getCompressor(compressionStrategy, topic, serverConfig.getZstdDictCompressionLevel());
-      for (com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1 keyObj: keys) {
+      for (ComputeRouterRequestKeyV1 keyObj: keys) {
         try {
           GenericRecord valueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
               storageEngine,
@@ -753,7 +752,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
       }
       jsonBuilder.append("}");
 
-      return new com.linkedin.venice.listener.response.AggregationReadResponseWrapper(jsonBuilder.toString());
+      return new AggregationReadResponseWrapper(jsonBuilder.toString());
     }, executor);
   }
 

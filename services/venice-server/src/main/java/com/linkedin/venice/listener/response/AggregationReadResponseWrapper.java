@@ -2,6 +2,7 @@ package com.linkedin.venice.listener.response;
 
 import com.linkedin.davinci.listener.response.ReadResponseStats;
 import com.linkedin.venice.listener.response.stats.ReadResponseStatsRecorder;
+import com.linkedin.venice.stats.ServerHttpRequestStats;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import java.nio.charset.StandardCharsets;
@@ -38,12 +39,12 @@ public class AggregationReadResponseWrapper extends AbstractReadResponse {
 
   private static class NoOpReadResponseStatsRecorder implements ReadResponseStatsRecorder {
     @Override
-    public void recordMetrics(com.linkedin.venice.stats.ServerHttpRequestStats stats) {
+    public void recordMetrics(ServerHttpRequestStats stats) {
       // No-op implementation for aggregation responses
     }
 
     @Override
-    public void recordUnmergedMetrics(com.linkedin.venice.stats.ServerHttpRequestStats stats) {
+    public void recordUnmergedMetrics(ServerHttpRequestStats stats) {
       // No-op implementation for aggregation responses
     }
 

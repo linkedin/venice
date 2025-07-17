@@ -8,6 +8,7 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpRequest;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,7 +71,7 @@ public class AggregationRouterRequestWrapper extends MultiKeyRouterRequestWrappe
         int topK = decoder.readInt();
         countByValueFields.put(fieldName, topK);
       }
-    } catch (java.io.IOException e) {
+    } catch (IOException e) {
       throw new RuntimeException(e);
     }
     List<ComputeRouterRequestKeyV1> keys = DESERIALIZER.deserializeObjects(decoder);

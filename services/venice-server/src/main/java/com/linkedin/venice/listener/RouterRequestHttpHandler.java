@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.AdminRequest;
+import com.linkedin.venice.listener.request.AggregationRouterRequestWrapper;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
@@ -160,9 +161,8 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           break;
         case AGGREGATION:
           if (req.method().equals(HttpMethod.POST)) {
-            com.linkedin.venice.listener.request.AggregationRouterRequestWrapper aggregationRouterReq =
-                com.linkedin.venice.listener.request.AggregationRouterRequestWrapper
-                    .parseAggregationRequest(req, requestParts);
+            AggregationRouterRequestWrapper aggregationRouterReq =
+                AggregationRouterRequestWrapper.parseAggregationRequest(req, requestParts);
             setupRequestTimeout(aggregationRouterReq);
             statsHandler.setRequestInfo(aggregationRouterReq);
             ctx.fireChannelRead(aggregationRouterReq);
