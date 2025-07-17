@@ -13,19 +13,23 @@ import org.apache.avro.Schema;
 
 
 /**
- * This is an implementation of {@link DaVinciRecordTransformer} that implements blocking.
- * It ensures that no puts can proceed until onStartIngestionTask finishes.
+ * This is an implementation of {@link DaVinciRecordTransformer} that is used internally inside the
+ * {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask}.
  *
  * @param <K> type of the input key
  * @param <V> type of the input value
  * @param <O> type of the output value
  */
 @Experimental
-public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTransformer<K, V, O> {
+public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTransformer<K, V, O> {
   private final DaVinciRecordTransformer recordTransformer;
-  private final CountDownLatch startLatch = new CountDownLatch(1);
 
-  public BlockingDaVinciRecordTransformer(
+  /**
+   * Latch to ensure we complete local RocksDB scan before resuming remote consumption.
+   */
+  private final CountDownLatch startLatchConsumptionLatch;
+
+  public InternalDaVinciRecordTransformer(
       DaVinciRecordTransformer recordTransformer,
       Schema keySchema,
       Schema inputValueSchema,
@@ -33,6 +37,7 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       DaVinciRecordTransformerConfig recordTransformerConfig) {
     super(recordTransformer.getStoreVersion(), keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
     this.recordTransformer = recordTransformer;
+    this.startLatchConsumptionLatch = new CountDownLatch(recordTransformerConfig.getStartConsumptionLatchCount());
   }
 
   @Override
@@ -42,14 +47,7 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
 
   @Override
   public void processPut(Lazy<K> key, Lazy<O> value, int partitionId) {
-    try {
-      // Waiting for onStartIngestionTask to complete before proceeding
-      startLatch.await();
-      this.recordTransformer.processPut(key, value, partitionId);
-    } catch (InterruptedException e) {
-      // Restore the interrupt status
-      Thread.currentThread().interrupt();
-    }
+    this.recordTransformer.processPut(key, value, partitionId);
   }
 
   @Override
@@ -60,7 +58,6 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
   @Override
   public void onStartVersionIngestion(boolean isCurrentVersion) {
     this.recordTransformer.onStartVersionIngestion(isCurrentVersion);
-    startLatch.countDown();
   }
 
   @Override
@@ -85,19 +82,30 @@ public class BlockingDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
     }
   }
 
+  /**
+   * Using a wrapper around onRecovery because when calculating the class hash it grabs the name of the current class
+   * that is invoking it. If we directly invoke onRecovery from this class, the class hash will be calculated based
+   * on the contents of {@link InternalDaVinciRecordTransformer}, not the user's implementation of DVRT.
+   * We also can't override onRecovery like the other methods because this method is final and the implementation
+   * should never be overridden.
+   */
   public void internalOnRecovery(
       StorageEngine storageEngine,
       int partitionId,
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer,
       Lazy<VeniceCompressor> compressor) {
-    /*
-     * Using a wrapper around onRecovery because when calculating the class hash it grabs the name of the current class
-     * that is invoking it. If we directly invoke onRecovery from this class, the class hash will be calculated based
-     * on the contents of BlockingDaVinciRecordTransformer, not the user's implementation of DVRT.
-     * We also can't override onRecovery like the other methods because this method is final and the implementation
-     * should never be overridden.
-     */
     this.recordTransformer.onRecovery(storageEngine, partitionId, partitionStateSerializer, compressor);
+  }
+
+  public long getCountDownStartConsumptionLatchCount() {
+    return this.startLatchConsumptionLatch.getCount();
+  }
+
+  /**
+   * This method gets invoked when local RocksDB scan has completed for a partition.
+   */
+  public void countDownStartConsumptionLatch() {
+    this.startLatchConsumptionLatch.countDown();
   }
 
   @Override
