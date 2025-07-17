@@ -506,11 +506,13 @@ public class StorageService extends AbstractVeniceService {
     // Check if blob transfer is enabled and if there are ongoing transfers
     if (storeConfig.isBlobTransferEnabled() && storageEngine.isAnyOngoingBlobTransferPartitions()) {
       LOGGER.info("Skip removing StorageEngine for {} as there are ongoing blob transfers", kafkaTopic);
-      storageEngine.markStorageEngineDropping();
       return;
     }
 
     if (remainingPartitions.isEmpty() && removeEmptyStorageEngine) {
+      if (storeConfig.isBlobTransferEnabled()) {
+        storageEngine.markStorageEngineDropping();
+      }
       removeStorageEngine(kafkaTopic);
     }
   }

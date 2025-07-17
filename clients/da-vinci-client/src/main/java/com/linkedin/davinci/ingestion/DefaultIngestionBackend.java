@@ -116,6 +116,11 @@ public class DefaultIngestionBackend implements IngestionBackend {
       int partitionId,
       BlobTransferTableFormat tableFormat,
       long blobTransferDisabledOffsetLagThreshold) {
+    // Step 1: pre-check to exclude the cases:
+    // 1. blob transfer is not enabled, 2. the partition is not lagging, 3. the store engine is marked for dropping.
+    String storeName = store.getName();
+    String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
+
     if (!store.isBlobTransferEnabled() || blobTransferManager == null) {
       return CompletableFuture.completedFuture(null);
     }
@@ -126,12 +131,16 @@ public class DefaultIngestionBackend implements IngestionBackend {
       return CompletableFuture.completedFuture(null);
     }
 
-    String storeName = store.getName();
-
-    // After decide to bootstrap from blobs transfer, close the partition, clean up the offset and partition folder,
-    // but the metadata partition is not removed.
-    String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
     StorageEngine storageEngine = storageService.getStorageEngine(kafkaTopic);
+    if (storageEngine == null || !storageEngine.tryMarkPartitionBlobTransferStarted(partitionId)) {
+      LOGGER.info(
+          "Skipping blob transfer for replica {} - storage engine is marked for dropping",
+          Utils.getReplicaId(kafkaTopic, partitionId));
+      return CompletableFuture.completedFuture(null);
+    }
+
+    // Step 2: preparation before bootstrap from blob transfer
+    // close the partition, clean up the offset and partition folder, but the metadata partition is not removed.
     if (storageEngine != null && storageEngine.containsPartition(partitionId)) {
       storageEngine.dropPartition(partitionId, false);
       LOGGER.info(
@@ -152,14 +161,7 @@ public class DefaultIngestionBackend implements IngestionBackend {
           Arrays.toString(partitionFolderDir.list()));
     }
 
-    if (storageService.getStorageEngine(kafkaTopic) == null
-        || !storageService.getStorageEngine(kafkaTopic).tryMarkPartitionBlobTransferStarted(partitionId)) {
-      LOGGER.info(
-          "Skipping blob transfer for replica {} - storage engine is marked for dropping",
-          Utils.getReplicaId(kafkaTopic, partitionId));
-      return CompletableFuture.completedFuture(null);
-    }
-
+    // Step 3: start the bootstrap from blobs transfer
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
         .handle((inputStream, throwable) -> {
           updateBlobTransferResponseStats(throwable == null, storeName, versionNumber);
