@@ -33,6 +33,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.request.AdminRequest;
+import com.linkedin.venice.listener.request.AggregationRouterRequestWrapper;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
@@ -45,6 +46,7 @@ import com.linkedin.venice.listener.request.MultiKeyRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.request.StorePropertiesFetchRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
+import com.linkedin.venice.listener.response.AggregationReadResponseWrapper;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
@@ -296,6 +298,9 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           break;
         case COMPUTE:
           responseFuture = this.computeHandler.apply((ComputeRouterRequestWrapper) request);
+          break;
+        case AGGREGATION:
+          responseFuture = handleAggregationRequest((AggregationRouterRequestWrapper) request);
           break;
         default:
           throw new VeniceException("Unknown request type: " + request.getRequestType());
@@ -674,6 +679,81 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         this.computeExecutor,
         requestContext,
         this::processCompute);
+  }
+
+  public CompletableFuture<ReadResponse> handleAggregationRequest(AggregationRouterRequestWrapper request) {
+    return CompletableFuture.supplyAsync(() -> {
+      String topic = request.getResourceName();
+      PerStoreVersionState storeVersion = getPerStoreVersionState(topic);
+      StorageEngine storageEngine = storeVersion.storageEngine;
+      StoreDeserializerCache<org.apache.avro.generic.GenericRecord> deserializerCache =
+          storeVersion.storeDeserializerCache;
+
+      Map<String, Integer> countByValueFields = request.getCountByValueFields();
+      List<ComputeRouterRequestKeyV1> keys = request.getKeys();
+      Map<String, Map<Object, Integer>> result = new HashMap<>();
+      for (String field: countByValueFields.keySet()) {
+        result.put(field, new HashMap<>());
+      }
+
+      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+      // Get compressor
+      CompressionStrategy compressionStrategy =
+          StoreVersionStateUtils.getCompressionStrategy(storeVersion.storageEngine.getStoreVersionState());
+      VeniceCompressor compressor =
+          compressorFactory.getCompressor(compressionStrategy, topic, serverConfig.getZstdDictCompressionLevel());
+      for (ComputeRouterRequestKeyV1 keyObj: keys) {
+        try {
+          GenericRecord valueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
+              storageEngine,
+              keyObj.getPartitionId(),
+              ByteUtils.extractByteArray(keyObj.getKeyBytes()),
+              reusableObjects.byteBuffer,
+              null,
+              reusableObjects.binaryDecoder,
+              false, // isChunked
+              com.linkedin.davinci.listener.response.NoOpReadResponseStats.SINGLETON, // stats
+              0, // schemaId
+              deserializerCache,
+              compressor); // compressor
+          if (valueRecord == null) {
+            continue;
+          }
+          for (String field: countByValueFields.keySet()) {
+            Object fieldValue = valueRecord.get(field);
+            if (fieldValue != null) {
+              Map<Object, Integer> fieldCountMap = result.get(field);
+              fieldCountMap.put(fieldValue, fieldCountMap.getOrDefault(fieldValue, 0) + 1);
+            }
+          }
+        } catch (Exception e) {
+          LOGGER.error("Exception thrown for {}", topic, e);
+          continue;
+        }
+      }
+      // Return aggregation result as JSON string instead of Map.toString()
+      StringBuilder jsonBuilder = new StringBuilder("{");
+      boolean firstField = true;
+      for (Map.Entry<String, Map<Object, Integer>> fieldEntry: result.entrySet()) {
+        if (!firstField) {
+          jsonBuilder.append(",");
+        }
+        firstField = false;
+        jsonBuilder.append("\"").append(fieldEntry.getKey()).append("\":{");
+        boolean firstValue = true;
+        for (Map.Entry<Object, Integer> valueEntry: fieldEntry.getValue().entrySet()) {
+          if (!firstValue) {
+            jsonBuilder.append(",");
+          }
+          firstValue = false;
+          jsonBuilder.append("\"").append(valueEntry.getKey()).append("\":").append(valueEntry.getValue());
+        }
+        jsonBuilder.append("}");
+      }
+      jsonBuilder.append("}");
+
+      return new AggregationReadResponseWrapper(jsonBuilder.toString());
+    }, executor);
   }
 
   /**

@@ -78,24 +78,20 @@ public class ServerLoadControllerHandler extends SimpleChannelInboundHandler<Htt
       return;
     }
     double latencyThreshold = 0;
-    switch (requestType) {
-      case SINGLE_GET:
-        latencyThreshold = serverConfig.getLoadControllerSingleGetLatencyAcceptThresholdMs();
-        break;
-      case MULTI_GET:
-      case MULTI_GET_STREAMING:
-        latencyThreshold = serverConfig.getLoadControllerMultiGetLatencyAcceptThresholdMs();
-        break;
-      case COMPUTE:
-      case COMPUTE_STREAMING:
-        latencyThreshold = serverConfig.getLoadControllerComputeLatencyAcceptThresholdMs();
-        break;
+    if (requestType == RequestType.SINGLE_GET) {
+      latencyThreshold = serverConfig.getLoadControllerSingleGetLatencyAcceptThresholdMs();
+    } else if (requestType == RequestType.MULTI_GET || requestType == RequestType.MULTI_GET_STREAMING) {
+      latencyThreshold = serverConfig.getLoadControllerMultiGetLatencyAcceptThresholdMs();
+    } else if (requestType == RequestType.COMPUTE || requestType == RequestType.COMPUTE_STREAMING
+        || requestType == RequestType.AGGREGATION) {
+      latencyThreshold = serverConfig.getLoadControllerComputeLatencyAcceptThresholdMs();
+    } else {
+      latencyThreshold = serverConfig.getLoadControllerSingleGetLatencyAcceptThresholdMs();
     }
     if (latency <= latencyThreshold) {
       loadStats.recordAcceptedRequest();
       loadController.recordAccept();
     }
-
   }
 
   // For testing purpose

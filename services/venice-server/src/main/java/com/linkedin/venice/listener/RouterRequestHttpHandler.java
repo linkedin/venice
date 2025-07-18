@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.AdminRequest;
+import com.linkedin.venice.listener.request.AggregationRouterRequestWrapper;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
@@ -157,6 +158,17 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           statsHandler.setMetadataRequest(true);
           HeartbeatRequest heartbeatRequest = HeartbeatRequest.parseGetHttpRequest(uri.getPath(), requestParts);
           ctx.fireChannelRead(heartbeatRequest);
+          break;
+        case AGGREGATION:
+          if (req.method().equals(HttpMethod.POST)) {
+            AggregationRouterRequestWrapper aggregationRouterReq =
+                AggregationRouterRequestWrapper.parseAggregationRequest(req, requestParts);
+            setupRequestTimeout(aggregationRouterReq);
+            statsHandler.setRequestInfo(aggregationRouterReq);
+            ctx.fireChannelRead(aggregationRouterReq);
+          } else {
+            throw new VeniceException("Only support POST method for " + QueryAction.AGGREGATION);
+          }
           break;
         default:
           throw new VeniceException("Unrecognized query action");

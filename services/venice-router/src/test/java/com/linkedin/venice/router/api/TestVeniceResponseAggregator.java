@@ -353,4 +353,129 @@ public class TestVeniceResponseAggregator {
         routerResponse.headers().get(VENICE_COMPRESSION_STRATEGY),
         String.valueOf(CompressionStrategy.NO_OP.getValue()));
   }
+
+  @Test
+  public void testProcessAggregationResponses() {
+    String storeName = "test-store";
+
+    // Create mock responses from different partitions
+    String partition1Response =
+        "{\"jobType\":{\"full-time\":2,\"part-time\":1},\"location\":{\"remote\":2,\"onsite\":1}}";
+    String partition2Response =
+        "{\"jobType\":{\"full-time\":1,\"contract\":1},\"location\":{\"remote\":1,\"hybrid\":1}}";
+
+    FullHttpResponse response1 =
+        new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, Unpooled.wrappedBuffer(partition1Response.getBytes()));
+    response1.headers().add(HttpHeaderNames.CONTENT_TYPE, "application/json");
+
+    FullHttpResponse response2 =
+        new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, Unpooled.wrappedBuffer(partition2Response.getBytes()));
+    response2.headers().add(HttpHeaderNames.CONTENT_TYPE, "application/json");
+
+    List<FullHttpResponse> gatheredResponses = Arrays.asList(response1, response2);
+
+    RouterStats<AggRouterHttpRequestStats> routerStats = mock(RouterStats.class);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats, Optional.empty());
+
+    FullHttpResponse finalResponse = responseAggregator.processAggregationResponses(gatheredResponses, storeName);
+
+    Assert.assertEquals(finalResponse.status(), OK);
+    Assert.assertEquals(finalResponse.headers().get(HttpHeaderNames.CONTENT_TYPE), "application/json");
+
+    // Verify the merged aggregation results
+    String finalContent = finalResponse.content().toString(StandardCharsets.UTF_8);
+    Assert.assertTrue(finalContent.contains("jobType"));
+    Assert.assertTrue(finalContent.contains("location"));
+
+    // Check that counts are properly merged
+    // jobType: full-time should be 3 (2+1), part-time should be 1, contract should be 1
+    // location: remote should be 3 (2+1), onsite should be 1, hybrid should be 1
+    Assert.assertTrue(finalContent.contains("\"full-time\":3"));
+    Assert.assertTrue(finalContent.contains("\"part-time\":1"));
+    Assert.assertTrue(finalContent.contains("\"contract\":1"));
+    Assert.assertTrue(finalContent.contains("\"remote\":3"));
+    Assert.assertTrue(finalContent.contains("\"onsite\":1"));
+    Assert.assertTrue(finalContent.contains("\"hybrid\":1"));
+  }
+
+  @Test
+  public void testProcessAggregationResponsesWithError() {
+    String storeName = "test-store";
+
+    // One partition returns error
+    FullHttpResponse errorResponse = new DefaultFullHttpResponse(
+        HttpVersion.HTTP_1_1,
+        HttpResponseStatus.INTERNAL_SERVER_ERROR,
+        Unpooled.wrappedBuffer("Internal Server Error".getBytes()));
+
+    String successResponse = "{\"jobType\":{\"full-time\":2}}";
+    FullHttpResponse okResponse =
+        new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, Unpooled.wrappedBuffer(successResponse.getBytes()));
+    okResponse.headers().add(HttpHeaderNames.CONTENT_TYPE, "application/json");
+
+    List<FullHttpResponse> gatheredResponses = Arrays.asList(errorResponse, okResponse);
+
+    RouterStats<AggRouterHttpRequestStats> routerStats = mock(RouterStats.class);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats, Optional.empty());
+
+    FullHttpResponse finalResponse = responseAggregator.processAggregationResponses(gatheredResponses, storeName);
+
+    // Should still return OK if at least one partition succeeded
+    Assert.assertEquals(finalResponse.status(), OK);
+
+    // Should contain results from successful partition
+    String finalContent = finalResponse.content().toString(StandardCharsets.UTF_8);
+    Assert.assertTrue(finalContent.contains("jobType"));
+    Assert.assertTrue(finalContent.contains("full-time"));
+  }
+
+  @Test
+  public void testProcessAggregationResponsesWithAllErrors() {
+    String storeName = "test-store";
+
+    // All partitions return errors
+    FullHttpResponse errorResponse1 = new DefaultFullHttpResponse(
+        HttpVersion.HTTP_1_1,
+        HttpResponseStatus.INTERNAL_SERVER_ERROR,
+        Unpooled.wrappedBuffer("Internal Server Error".getBytes()));
+
+    FullHttpResponse errorResponse2 = new DefaultFullHttpResponse(
+        HttpVersion.HTTP_1_1,
+        HttpResponseStatus.NOT_FOUND,
+        Unpooled.wrappedBuffer("Not Found".getBytes()));
+
+    List<FullHttpResponse> gatheredResponses = Arrays.asList(errorResponse1, errorResponse2);
+
+    RouterStats<AggRouterHttpRequestStats> routerStats = mock(RouterStats.class);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats, Optional.empty());
+
+    FullHttpResponse finalResponse = responseAggregator.processAggregationResponses(gatheredResponses, storeName);
+
+    // Should return error status
+    Assert.assertEquals(finalResponse.status(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+  }
+
+  @Test
+  public void testProcessAggregationResponsesWithEmptyResults() {
+    String storeName = "test-store";
+
+    // Empty aggregation results
+    String emptyResponse = "{\"jobType\":{},\"location\":{}}";
+    FullHttpResponse response =
+        new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, Unpooled.wrappedBuffer(emptyResponse.getBytes()));
+    response.headers().add(HttpHeaderNames.CONTENT_TYPE, "application/json");
+
+    List<FullHttpResponse> gatheredResponses = Arrays.asList(response);
+
+    RouterStats<AggRouterHttpRequestStats> routerStats = mock(RouterStats.class);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats, Optional.empty());
+
+    FullHttpResponse finalResponse = responseAggregator.processAggregationResponses(gatheredResponses, storeName);
+
+    Assert.assertEquals(finalResponse.status(), OK);
+    String finalContent = finalResponse.content().toString(StandardCharsets.UTF_8);
+    Assert.assertTrue(finalContent.contains("jobType"));
+    Assert.assertTrue(finalContent.contains("location"));
+    Assert.assertTrue(finalContent.contains("{}"));
+  }
 }
