@@ -81,6 +81,16 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       K key,
       V value,
       int valueSchemaId,
+      long logicalTimestamp,
+      PubSubProducerCallback callback) {
+    return compositePut(key, value, logicalTimestamp, valueSchemaId, callback, null);
+  }
+
+  @Override
+  public CompletableFuture<PubSubProduceResult> put(
+      K key,
+      V value,
+      int valueSchemaId,
       PubSubProducerCallback callback,
       PutMetadata putMetadata) {
     return compositePut(key, value, APP_DEFAULT_LOGICAL_TS, valueSchemaId, callback, putMetadata);
@@ -122,6 +132,29 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
       int derivedSchemaId,
       PubSubProducerCallback callback) {
     throw new UnsupportedOperationException(this.getClass().getSimpleName() + " does not support update function");
+  }
+
+  @Override
+  public CompletableFuture<PubSubProduceResult> update(
+      K key,
+      U update,
+      int valueSchemaId,
+      int derivedSchemaId,
+      long logicalTimestamp,
+      PubSubProducerCallback callback) {
+    throw new UnsupportedOperationException(this.getClass().getSimpleName() + " does not support update function");
+  }
+
+  @Override
+  public CompletableFuture<PubSubProduceResult> delete(K key, PubSubProducerCallback callback) {
+    throw new UnsupportedOperationException(
+        this.getClass().getSimpleName() + " does not support delete function without delete metadata");
+  }
+
+  @Override
+  public CompletableFuture<PubSubProduceResult> delete(K key, long logicalTimestamp, PubSubProducerCallback callback) {
+    throw new UnsupportedOperationException(
+        this.getClass().getSimpleName() + " does not support delete function without delete metadata");
   }
 
   @Override

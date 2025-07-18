@@ -22,4 +22,9 @@ public class IntAnyOfPredicate implements IntPredicate {
     }
     return false;
   }
+
+  @Override
+  public String toString() {
+    return "IntAnyOfPredicate{expectedValues=" + java.util.Arrays.toString(expectedValues) + "}";
+  }
 }

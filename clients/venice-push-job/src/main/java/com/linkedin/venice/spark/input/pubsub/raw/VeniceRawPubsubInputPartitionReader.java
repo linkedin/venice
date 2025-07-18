@@ -1,12 +1,9 @@
 package com.linkedin.venice.spark.input.pubsub.raw;
 
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.spark.input.pubsub.OffsetProgressPercentCalculator;
@@ -47,8 +44,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   final VeniceRawPubsubStats readerStats = new VeniceRawPubsubStats();
   private final boolean filterControlMessages = true;
   private final PubSubConsumerAdapter pubSubConsumer;
-  private final ArrayDeque<PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition>> messageBuffer =
-      new ArrayDeque<>();
+  private final ArrayDeque<DefaultPubSubMessage> messageBuffer = new ArrayDeque<>();
   private final PubSubMessageConverter pubSubMessageConverter;
   private final PubSubTopicPartition targetPubSubTopicPartition;
   private final String topicName;
@@ -287,7 +283,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
     }
 
     // Iterate through messages in the buffer to find first non-control message or exhaust the buffer
-    PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> message;
+    DefaultPubSubMessage message;
     while (!this.messageBuffer.isEmpty()) {
       try {
         message = this.messageBuffer.pop();

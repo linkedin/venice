@@ -15,11 +15,16 @@ public class DoubleEqualsPredicate implements DoublePredicate {
     if (this.expectedValue == value) {
       return true;
     }
-    // Handle NaN cases
+    // Handle NaN case
     if (Double.isNaN(value)) {
       return Double.isNaN(expectedValue);
     }
     // Only check epsilon for finite numbers
     return Math.abs(value - expectedValue) <= epsilon;
+  }
+
+  @Override
+  public String toString() {
+    return "DoubleEqualsPredicate{expectedValue=" + expectedValue + ", epsilon=" + epsilon + "}";
   }
 }

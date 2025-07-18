@@ -8,6 +8,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.AGGREGATED_HEALTH_STATUS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_ADD_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ALLOW_LIST_REMOVE_NODE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.AUTO_MIGRATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CLEANUP_INSTANCE_CUSTOMIZED_STATES;
@@ -110,6 +111,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPLOAD_PUSH_JOB_STATUS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.VALIDATE_STORE_DELETED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -392,6 +394,10 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(
         UPDATE_STORE.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.updateStore(admin)));
+
+    httpService.post(
+        AUTO_MIGRATE_STORE.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.autoMigrateStore(admin)));
 
     httpService.get(
         STORE_MIGRATION_ALLOWED.getPath(),
@@ -701,6 +707,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(
         GET_INUSE_SCHEMA_IDS.getPath(),
         new VeniceParentControllerRegionStateHandler(admin, storesRoutes.getInUseSchemaIds(admin)));
+    httpService.get(
+        VALIDATE_STORE_DELETED.getPath(),
+        new VeniceParentControllerRegionStateHandler(admin, storesRoutes.validateStoreDeleted(admin)));
 
     httpService.post(
         CLEANUP_INSTANCE_CUSTOMIZED_STATES.getPath(),

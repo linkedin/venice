@@ -490,7 +490,19 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     if (isTotalStats()) {
       return (i1, i2) -> sitMap.values().stream().mapToLong(total).sum();
     }
-    return (i1, i2) -> individual.applyAsLong(sitMap.get(storeName));
+
+    return (i1, i2) -> {
+      StoreIngestionTask sit = sitMap.get(storeName);
+      if (sit == null) {
+        /**
+         * N.B.: For the metrics we currently support, 0 is a sensible fallback in cases where the SIT is not found,
+         *       but if new cases emerge where that would not be desirable, we could make this configurable so that
+         *       the caller can specify some {@link StatsErrorCode} instead...
+         */
+        return 0;
+      }
+      return individual.applyAsLong(sit);
+    };
   }
 
   private Measurable measurable(Map<String, StoreIngestionTask> m, String s, ToLongFunction<StoreIngestionTask> f) {

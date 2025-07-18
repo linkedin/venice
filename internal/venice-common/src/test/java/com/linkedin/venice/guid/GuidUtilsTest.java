@@ -149,4 +149,36 @@ public class GuidUtilsTest {
         guid1,
         "GUIDs generated with different job ids should be different when using DeterministicGuidGenerator!");
   }
+
+  @Test
+  public void testRandomGuidGenerator() {
+    // When no job ID and compute task id is provided, a default value will be used
+    Properties properties1 = new Properties();
+    VeniceProperties props1 = new VeniceProperties(properties1);
+    GUID guid1 = GuidUtils.getGUID(props1);
+    Assert.assertNotEquals(
+        guid1,
+        GuidUtils.getGUID(props1),
+        "Two different GUIDs generated with the same properties should be equal when using DeterministicGuidGenerator!");
+
+    // When a job id is provided but no compute task id is provided, a default compute task id will be used
+    Properties properties2 = new Properties();
+    VeniceProperties props2 = new VeniceProperties(properties2);
+    GUID guid2 = GuidUtils.getGUID(props2);
+    Assert.assertNotEquals(
+        guid2,
+        GuidUtils.getGUID(props2),
+        "Two different GUIDs generated with the same properties should be equal when using DeterministicGuidGenerator!");
+
+    // When job id and compute task id are provided, they will be used to generate the guid
+    Properties properties3 = new Properties();
+    VeniceProperties props3 = new VeniceProperties(properties3);
+    GUID guid3 = GuidUtils.getGUID(props3);
+    Assert.assertNotEquals(
+        guid3,
+        GuidUtils.getGUID(props3),
+        "Two different GUIDs generated with the same properties should be equal when using DeterministicGuidGenerator!");
+
+  }
+
 }

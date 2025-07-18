@@ -19,4 +19,9 @@ public class FloatLowerOrEqualsPredicate implements FloatPredicate {
   public boolean evaluate(float value) {
     return (threshold - value) > -epsilon;
   }
+
+  @Override
+  public String toString() {
+    return "FloatLowerOrEqualsPredicate{threshold=" + threshold + ", epsilon=" + epsilon + "}";
+  }
 }

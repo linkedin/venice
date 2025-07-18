@@ -296,6 +296,21 @@ public class Utils {
     }
   }
 
+  /**
+   * Parses an integer from a string, ensuring that only null or valid integer values are accepted.
+   * Returns defaultValue if the value is null. Throws an exception if the value is invalid.
+   * @param value the string to parse
+   * @param fieldName the name of the field being validated
+   * @param defaultValue the default value to return if the input is null
+   * @return the parsed int value
+   */
+  public static int parseIntOrDefault(String value, String fieldName, int defaultValue) {
+    if (value == null || value.isEmpty()) {
+      return defaultValue;
+    }
+    return parseIntFromString(value, fieldName);
+  }
+
   public static long parseLongFromString(String value, String fieldName) {
     try {
       return Long.parseLong(value);

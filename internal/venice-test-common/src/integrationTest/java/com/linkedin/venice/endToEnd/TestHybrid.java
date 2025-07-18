@@ -578,7 +578,9 @@ public class TestHybrid {
         /**
          * Use the same VeniceWriter to write END_OF_PUSH message, which will guarantee the message order in topic
          */
-        ((VeniceSystemProducer) veniceBatchProducer).getInternalProducer().broadcastEndOfPush(new HashMap<>());
+        VeniceWriter<byte[], byte[], byte[]> writer =
+            (VeniceWriter<byte[], byte[], byte[]>) ((VeniceSystemProducer) veniceBatchProducer).getInternalWriter();
+        writer.broadcastEndOfPush(new HashMap<>());
 
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
           Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));

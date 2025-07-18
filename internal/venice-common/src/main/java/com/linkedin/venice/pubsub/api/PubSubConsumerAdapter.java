@@ -1,6 +1,5 @@
 package com.linkedin.venice.pubsub.api;
 
-import com.linkedin.venice.annotation.UnderDevelopment;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -57,7 +56,6 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws IllegalArgumentException if lastReadPubSubPosition is null or of an unsupported type
    * @throws PubSubTopicDoesNotExistException if the specified topic does not exist
    */
-  @UnderDevelopment("This method is under development and may be subject to change.")
   void subscribe(@Nonnull PubSubTopicPartition pubSubTopicPartition, @Nonnull PubSubPosition lastReadPubSubPosition);
 
   /**
@@ -189,13 +187,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the offset.
    * @throws PubSubClientException If there is an error while attempting to fetch the offset.
    */
-  @UnderDevelopment("Under development and may change in the future.")
-  default PubSubPosition getPositionByTimestamp(
-      PubSubTopicPartition pubSubTopicPartition,
-      long timestamp,
-      Duration timeout) {
-    throw new UnsupportedOperationException("getPositionByTimestamp is not supported");
-  }
+  PubSubPosition getPositionByTimestamp(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout);
 
   /**
    * Retrieves the offset of the first message with a timestamp greater than or equal to the target
@@ -223,10 +215,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the offset.
    * @throws PubSubClientException If there is an error while attempting to fetch the offset.
    */
-  @UnderDevelopment("Under development and may change in the future.")
-  default PubSubPosition getPositionByTimestamp(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
-    throw new UnsupportedOperationException("getPositionByTimestamp is not supported");
-  }
+  PubSubPosition getPositionByTimestamp(PubSubTopicPartition pubSubTopicPartition, long timestamp);
 
   /**
    * Retrieves the beginning offset for the specified PubSub topic-partition.
@@ -240,10 +229,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    */
   Long beginningOffset(PubSubTopicPartition pubSubTopicPartition, Duration timeout);
 
-  @UnderDevelopment("This method is under development and may be subject to change.")
-  default PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
-    throw new UnsupportedOperationException("beginningPosition is not supported");
-  }
+  PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout);
 
   /**
    * Retrieves the end offsets for a collection of PubSub topic-partitions. The end offset represents
@@ -259,12 +245,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    */
   Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout);
 
-  @UnderDevelopment
-  default Map<PubSubTopicPartition, PubSubPosition> endPositions(
-      Collection<PubSubTopicPartition> partitions,
-      Duration timeout) {
-    throw new UnsupportedOperationException("endPositions is not supported");
-  }
+  Map<PubSubTopicPartition, PubSubPosition> endPositions(Collection<PubSubTopicPartition> partitions, Duration timeout);
 
   /**
    * Retrieves the end offset for the specified PubSub topic-partition. The end offset represents
@@ -278,10 +259,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    */
   Long endOffset(PubSubTopicPartition pubSubTopicPartition);
 
-  @UnderDevelopment
-  default PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition) {
-    throw new UnsupportedOperationException("endPosition is not supported");
-  }
+  PubSubPosition endPosition(PubSubTopicPartition pubSubTopicPartition);
 
   /**
    * Retrieves the list of partitions associated with a given Pub-Sub topic.

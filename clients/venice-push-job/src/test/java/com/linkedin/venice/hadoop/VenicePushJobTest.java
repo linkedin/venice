@@ -459,6 +459,7 @@ public class VenicePushJobTest {
 
   private ControllerClient getClient(Consumer<StoreInfo> storeInfo, boolean applyFirst) {
     ControllerClient client = mock(ControllerClient.class);
+    doReturn(TEST_CLUSTER).when(client).getClusterName();
     // mock discover cluster
     D2ServiceDiscoveryResponse clusterResponse = new D2ServiceDiscoveryResponse();
     clusterResponse.setCluster(TEST_CLUSTER);
@@ -929,26 +930,22 @@ public class VenicePushJobTest {
     }
   }
 
-  @Test(enabled = false) // Disable till hybrid stores are supported for target region push
-  public void testTargetedRegionPushPostValidationConsumptionForHybridStore() throws Exception {
+  @Test
+  public void testConfigValidateForHybridStore() throws Exception {
     Properties props = getVpjRequiredProperties();
     props.put(KEY_FIELD_PROP, "id");
     props.put(VALUE_FIELD_PROP, "name");
-    props.put(TARGETED_REGION_PUSH_ENABLED, true);
     ControllerClient client = getClient(storeInfo -> {
-      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null));
+      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(10, 10, 10, null));
     }, true);
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       skipVPJValidation(pushJob);
-
+      PushJobSetting setting = pushJob.getPushJobSetting();
       JobStatusQueryResponse response = mockJobStatusQuery();
       doReturn(response).when(client).queryOverallJobStatus(anyString(), any(), anyString(), anyBoolean());
-      // skip the mocking for repush
-      doCallRealMethod().doNothing().when(pushJob).run();
+      doCallRealMethod().when(pushJob).run();
+      setting.suppressEndOfPushMessage = true;
       pushJob.run();
-
-      // for hybrid store, the job is supposed to ran twice, one for targeted region push and another is for repush
-      verify(pushJob, times(2)).run();
     }
   }
 

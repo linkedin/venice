@@ -11,4 +11,9 @@ public class LongEqualsPredicate implements LongPredicate {
   public boolean evaluate(long value) {
     return value == expectedValue;
   }
+
+  @Override
+  public String toString() {
+    return "LongEqualsPredicate{expectedValue=" + expectedValue + "}";
+  }
 }

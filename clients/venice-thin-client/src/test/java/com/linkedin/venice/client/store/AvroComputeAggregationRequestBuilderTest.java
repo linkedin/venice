@@ -7,9 +7,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.predicate.IntPredicate;
+import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.schema.SchemaReader;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -301,5 +304,204 @@ public class AvroComputeAggregationRequestBuilderTest {
 
     assertNotNull(future);
     verify(delegate).execute(keys);
+  }
+
+  @Test(description = "Should accept valid bucket parameters and project fields")
+  public void testValidBucketParameters() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
+    bucketPredicates.put("senior", IntPredicate.greaterOrEquals(30));
+
+    builder.countGroupByBucket(bucketPredicates, AGE_FIELD);
+
+    verify(delegate).project(AGE_FIELD);
+  }
+
+  @Test(description = "Should accept multiple fields for bucket aggregation")
+  public void testMultipleFieldsForBucketAggregation() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("low", IntPredicate.lowerThan(50));
+    bucketPredicates.put("high", IntPredicate.greaterOrEquals(50));
+
+    builder.countGroupByBucket(bucketPredicates, AGE_FIELD, SALARY_FIELD);
+
+    verify(delegate).project(AGE_FIELD);
+    verify(delegate).project(SALARY_FIELD);
+  }
+
+  @Test(description = "Should reject invalid bucket predicates")
+  public void testInvalidBucketPredicates() {
+    // Test null bucket predicates
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(null, AGE_FIELD));
+
+    // Test empty bucket predicates
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(new HashMap<>(), AGE_FIELD));
+
+    // Test null predicates in bucket map
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", null);
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, AGE_FIELD));
+  }
+
+  @Test(description = "Should reject null and empty bucket names")
+  public void testInvalidBucketNames() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+
+    // Test null bucket names
+    bucketPredicates.put(null, IntPredicate.lowerThan(30));
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, AGE_FIELD));
+
+    // Test empty bucket names
+    bucketPredicates.clear();
+    bucketPredicates.put("", IntPredicate.lowerThan(30));
+    bucketPredicates.put("   ", IntPredicate.greaterOrEquals(30));
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, AGE_FIELD));
+  }
+
+  @Test(description = "Should reject null and empty field names for bucket aggregation")
+  public void testInvalidFieldNamesForBucketAggregation() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
+
+    // Test null field names
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, (String[]) null));
+
+    // Test empty field names
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, new String[0]));
+  }
+
+  @Test(description = "Should reject null and empty field in array for bucket aggregation")
+  public void testInvalidFieldInArrayForBucketAggregation() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
+
+    // Test null field in array
+    expectThrows(
+        VeniceClientException.class,
+        () -> builder.countGroupByBucket(bucketPredicates, new String[] { "validField", null }));
+
+    // Test empty field in array
+    expectThrows(
+        VeniceClientException.class,
+        () -> builder.countGroupByBucket(bucketPredicates, new String[] { "validField", "" }));
+  }
+
+  @Test(description = "Should reject non-existent field for bucket aggregation")
+  public void testNonExistentFieldForBucketAggregation() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
+
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, "nonExistentField"));
+  }
+
+  @Test(description = "Should reject invalid fields for bucket aggregation")
+  public void testInvalidFieldsForBucketAggregation() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
+
+    // Test single non-existent field
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, "nonExistentField"));
+
+    // Test mixed valid and invalid fields
+    expectThrows(
+        VeniceClientException.class,
+        () -> builder.countGroupByBucket(bucketPredicates, AGE_FIELD, "nonExistentField"));
+  }
+
+  @Test(description = "Should support chaining countGroupByValue and countGroupByBucket")
+  public void testChainingValueAndBucket() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
+
+    builder.countGroupByValue(5, JOB_TYPE_FIELD).countGroupByBucket(bucketPredicates, AGE_FIELD);
+
+    verify(delegate).project(JOB_TYPE_FIELD);
+    verify(delegate).project(AGE_FIELD);
+  }
+
+  @Test(description = "Should handle multiple countGroupByBucket calls")
+  public void testMultipleCountGroupByBucketCalls() {
+    Map<String, Predicate<Integer>> ageBuckets = new HashMap<>();
+    ageBuckets.put("young", IntPredicate.lowerThan(30));
+    ageBuckets.put("senior", IntPredicate.greaterOrEquals(30));
+
+    Map<String, Predicate<String>> jobBuckets = new HashMap<>();
+    jobBuckets.put("engineer", Predicate.equalTo("engineer"));
+    jobBuckets.put("manager", Predicate.equalTo("manager"));
+
+    // Test chaining different fields
+    builder.countGroupByBucket(ageBuckets, AGE_FIELD).countGroupByBucket(jobBuckets, JOB_TYPE_FIELD);
+    verify(delegate).project(AGE_FIELD);
+    verify(delegate).project(JOB_TYPE_FIELD);
+
+    // Test chaining same field
+    Map<String, Predicate<Integer>> buckets1 = new HashMap<>();
+    buckets1.put("young", IntPredicate.lowerThan(30));
+    Map<String, Predicate<Integer>> buckets2 = new HashMap<>();
+    buckets2.put("senior", IntPredicate.greaterOrEquals(30));
+
+    builder.countGroupByBucket(buckets1, AGE_FIELD).countGroupByBucket(buckets2, AGE_FIELD);
+    verify(delegate, times(3)).project(AGE_FIELD);
+  }
+
+  @Test(description = "Should handle edge cases for field names in bucket aggregation")
+  public void testEdgeCasesForFieldNamesInBucketAggregation() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
+
+    // Test whitespace field names
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, "   "));
+
+    // Test special characters in field names
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, "field@name"));
+
+    // Test very long field names
+    StringBuilder sb = new StringBuilder();
+    for (int i = 0; i < 1000; i++) {
+      sb.append("a");
+    }
+    String longFieldName = sb.toString();
+    expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, longFieldName));
+  }
+
+  @Test(description = "Should reject predicate type mismatch with field schema type")
+  public void testPredicateTypeMismatch() {
+    Map<String, Predicate<String>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("test", Predicate.equalTo("test"));
+
+    // Test using StringPredicate with INT field (AGE_FIELD is int type)
+    VeniceClientException ex =
+        expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, AGE_FIELD));
+
+    assertTrue(ex.getMessage().contains("Predicate type mismatch"));
+    assertTrue(ex.getMessage().contains("age"));
+    assertTrue(ex.getMessage().contains("INT"));
+    assertTrue(ex.getMessage().contains("EqualsPredicate"));
+  }
+
+  @Test(description = "Should reject IntPredicate with String field")
+  public void testIntPredicateWithStringField() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
+
+    // Test using IntPredicate with String field (JOB_TYPE_FIELD is string type)
+    VeniceClientException ex =
+        expectThrows(VeniceClientException.class, () -> builder.countGroupByBucket(bucketPredicates, JOB_TYPE_FIELD));
+
+    assertTrue(ex.getMessage().contains("Predicate type mismatch"));
+    assertTrue(ex.getMessage().contains("jobType"));
+    assertTrue(ex.getMessage().contains("STRING"));
+    assertTrue(ex.getMessage().contains("IntLowerThanPredicate"));
+  }
+
+  @Test(description = "Should accept correct predicate type with matching field schema")
+  public void testCorrectPredicateTypeWithMatchingField() {
+    Map<String, Predicate<Integer>> bucketPredicates = new HashMap<>();
+    bucketPredicates.put("young", IntPredicate.lowerThan(30));
+    bucketPredicates.put("senior", IntPredicate.greaterOrEquals(30));
+
+    // This should work because AGE_FIELD is int type and we're using IntPredicate
+    builder.countGroupByBucket(bucketPredicates, AGE_FIELD);
+    verify(delegate).project(AGE_FIELD);
   }
 }

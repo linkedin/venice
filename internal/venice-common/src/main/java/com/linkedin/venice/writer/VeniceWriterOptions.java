@@ -34,6 +34,9 @@ public class VeniceWriterOptions {
   private final int producerCount;
   private final int producerThreadCount;
   private final int producerQueueSize;
+  // Batching Venice Writer config
+  private final long batchIntervalInMs;
+  private final int maxBatchSizeInBytes;
 
   public String getBrokerAddress() {
     return brokerAddress;
@@ -95,6 +98,14 @@ public class VeniceWriterOptions {
     return producerQueueSize;
   }
 
+  public long getBatchIntervalInMs() {
+    return batchIntervalInMs;
+  }
+
+  public int getMaxBatchSizeInBytes() {
+    return maxBatchSizeInBytes;
+  }
+
   PubSubMessageSerializer getPubSubMessageSerializer() {
     return pubSubMessageSerializer;
   }
@@ -116,6 +127,8 @@ public class VeniceWriterOptions {
     producerThreadCount = builder.producerThreadCount;
     producerQueueSize = builder.producerQueueSize;
     pubSubMessageSerializer = builder.pubSubMessageSerializer;
+    batchIntervalInMs = builder.batchIntervalInMs;
+    maxBatchSizeInBytes = builder.maxBatchSizeInBytes;
   }
 
   @Override
@@ -173,6 +186,8 @@ public class VeniceWriterOptions {
     private int producerCount = 1;
     private int producerThreadCount = 1;
     private int producerQueueSize = 5 * 1024 * 1024; // 5MB by default
+    private long batchIntervalInMs = 0; // Not enabled by default
+    private int maxBatchSizeInBytes = 5 * 1024 * 1024; // 5MB batch size by default
 
     private void addDefaults() {
       if (keyPayloadSerializer == null) {
@@ -224,6 +239,31 @@ public class VeniceWriterOptions {
 
     public Builder(String topic) {
       this.topicName = Objects.requireNonNull(topic, "Topic name cannot be null for VeniceWriterOptions");
+    }
+
+    /**
+     * Create a new {@link Builder} instance from an existing {@link VeniceWriterOptions} instance.
+     * Having a dummy topic here is to avoid ambiguous constructor match for compiler.
+     */
+    public Builder(String topic, VeniceWriterOptions options) {
+      this.topicName = Objects.requireNonNull(topic, "Topic name cannot be null for VeniceWriterOptions");
+      this.keyPayloadSerializer = options.keyPayloadSerializer;
+      this.valuePayloadSerializer = options.valuePayloadSerializer;
+      this.writeComputePayloadSerializer = options.writeComputePayloadSerializer;
+      this.partitioner = options.partitioner;
+      this.time = options.time;
+      this.partitionCount = options.partitionCount;
+      this.chunkingEnabled = options.chunkingEnabled;
+      this.rmdChunkingEnabled = options.rmdChunkingEnabled;
+      this.maxRecordSizeBytes = options.maxRecordSizeBytes;
+      this.brokerAddress = options.brokerAddress;
+      this.producerCompressionEnabled = options.producerCompressionEnabled;
+      this.producerCount = options.producerCount;
+      this.producerThreadCount = options.producerThreadCount;
+      this.producerQueueSize = options.producerQueueSize;
+      this.pubSubMessageSerializer = options.pubSubMessageSerializer;
+      this.batchIntervalInMs = options.batchIntervalInMs;
+      this.maxBatchSizeInBytes = options.maxBatchSizeInBytes;
     }
 
     public Builder setKeyPayloadSerializer(VeniceKafkaSerializer keyPayloadSerializer) {
@@ -283,6 +323,16 @@ public class VeniceWriterOptions {
 
     public Builder setPubSubMessageSerializer(PubSubMessageSerializer pubSubMessageSerializer) {
       this.pubSubMessageSerializer = pubSubMessageSerializer;
+      return this;
+    }
+
+    public Builder setBatchIntervalInMs(long batchIntervalInMs) {
+      this.batchIntervalInMs = batchIntervalInMs;
+      return this;
+    }
+
+    public Builder setMaxBatchSizeInBytes(int maxBatchSizeInBytes) {
+      this.maxBatchSizeInBytes = maxBatchSizeInBytes;
       return this;
     }
   }

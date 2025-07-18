@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_ABORT_ON_FAILURE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_CURRENT_STEP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
@@ -60,11 +62,13 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.SET_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.VALIDATE_STORE_DELETED;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
+import com.linkedin.venice.controller.StoreDeletedValidation;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
@@ -88,6 +92,7 @@ import com.linkedin.venice.controllerapi.SchemaUsageResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonResponse;
+import com.linkedin.venice.controllerapi.StoreDeletedValidationResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -447,25 +452,28 @@ public class StoresRoutes extends AbstractRoute {
         // Store should belong to src cluster already
         if (!clusterDiscovered.equals(srcClusterName)) {
           veniceResponse.setError(
-              "Store " + storeName + " belongs to cluster " + clusterDiscovered
-                  + ", which is different from the given src cluster name " + srcClusterName);
+              String.format(
+                  "Store %s belongs to cluster %s, which is different from the given src cluster name %s",
+                  storeName,
+                  clusterDiscovered,
+                  srcClusterName));
           veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
           return;
         }
         // Store should not belong to dest cluster already
         if (clusterDiscovered.equals(destClusterName)) {
-          veniceResponse.setError("Store " + storeName + " already belongs to cluster " + destClusterName);
+          veniceResponse.setError(String.format("Store %s already belongs to cluster %s", storeName, destClusterName));
           veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
           return;
         }
         VeniceControllerClusterConfig destClusterConfig = admin.getControllerConfig(destClusterName);
         // Both source and destination clusters should either have RT versioning enabled or disabled
         if (destClusterConfig == null) {
-          LOGGER.warn("ClusterConfig for distination cluster {} not found.", destClusterName);
+          LOGGER.warn("ClusterConfig for destination cluster {} not found.", destClusterName);
         } else if (admin.getControllerConfig(srcClusterName).isRealTimeTopicVersioningEnabled() != destClusterConfig
             .isRealTimeTopicVersioningEnabled()) {
           veniceResponse
-              .setError("Source cluster and destination cluster both should have RT versioning enabled or disabled ");
+              .setError("Source cluster and destination cluster both should have RT versioning enabled or disabled.");
           veniceResponse.setErrorType(ErrorType.BAD_REQUEST);
           return;
         }
@@ -544,6 +552,73 @@ public class StoresRoutes extends AbstractRoute {
           veniceResponse.setCluster(clusterDiscovered);
         } catch (Throwable e) {
           veniceResponse.setError(e);
+        }
+      }
+    };
+  }
+
+  /**
+   * @see Admin#autoMigrateStore(String, String, String, int, boolean)
+   */
+  public Route autoMigrateStore(Admin admin) {
+    return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
+      @Override
+      public void internalHandle(Request request, StoreMigrationResponse storeMigrationResponse) {
+        try {
+          // Only allow allowlist users to run this command
+          if (!checkIsAllowListUser(request, storeMigrationResponse, () -> isAllowListUser(request))) {
+            return;
+          }
+          AdminSparkServer.validateParams(request, MIGRATE_STORE.getParams(), admin);
+          String srcClusterName = request.queryParams(CLUSTER);
+          String destClusterName = request.queryParams(CLUSTER_DEST);
+          String storeName = request.queryParams(STORE_NAME);
+
+          Optional<Integer> currStep =
+              Optional.ofNullable(request.queryParams(AUTO_STORE_MIGRATION_CURRENT_STEP)).map(Integer::parseInt);
+          Optional<Boolean> abortOnFailure =
+              Optional.ofNullable(request.queryParams(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE))
+                  .map(Boolean::parseBoolean);
+
+          storeMigrationResponse.setSrcClusterName(srcClusterName);
+          storeMigrationResponse.setCluster(destClusterName);
+          storeMigrationResponse.setName(storeName);
+
+          String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          // Store should not belong to dest cluster already
+          if (clusterDiscovered.equals(destClusterName)) {
+            storeMigrationResponse
+                .setError(String.format("Store %s already belongs to cluster %s.", storeName, destClusterName));
+            storeMigrationResponse.setErrorType(ErrorType.BAD_REQUEST);
+            return;
+          }
+          // The store should belong to the source cluster.
+          if (!clusterDiscovered.equals(srcClusterName)) {
+            storeMigrationResponse.setError(
+                String.format(
+                    "Store %s belongs to cluster %s, which is different from the given src cluster name %s.",
+                    storeName,
+                    clusterDiscovered,
+                    srcClusterName));
+            storeMigrationResponse.setErrorType(ErrorType.BAD_REQUEST);
+            return;
+          }
+
+          VeniceControllerClusterConfig destClusterConfig = admin.getControllerConfig(destClusterName);
+          // Both source and destination clusters should either have RT versioning enabled or disabled
+          if (destClusterConfig == null) {
+            LOGGER.warn("ClusterConfig for destination cluster {} not found.", destClusterName);
+          } else if (admin.getControllerConfig(srcClusterName).isRealTimeTopicVersioningEnabled() != destClusterConfig
+              .isRealTimeTopicVersioningEnabled()) {
+            storeMigrationResponse
+                .setError("Source cluster and destination cluster both should have RT versioning enabled or disabled.");
+            storeMigrationResponse.setErrorType(ErrorType.BAD_REQUEST);
+            return;
+          }
+          admin.autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, abortOnFailure);
+        } catch (Throwable e) {
+          // Catch all exceptions and set the error in the response
+          storeMigrationResponse.setError(e);
         }
       }
     };
@@ -1206,6 +1281,30 @@ public class StoresRoutes extends AbstractRoute {
         responseObject.setError(e);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  /**
+   * @see Admin#validateStoreDeleted(String, String)
+   */
+  public Route validateStoreDeleted(Admin admin) {
+    return new VeniceRouteHandler<StoreDeletedValidationResponse>(StoreDeletedValidationResponse.class) {
+      @Override
+      public void internalHandle(Request request, StoreDeletedValidationResponse veniceResponse) {
+        // Only allow allowlist users to run this command
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+          return;
+        }
+        AdminSparkServer.validateParams(request, VALIDATE_STORE_DELETED.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(STORE_NAME);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
+
+        StoreDeletedValidation result = admin.validateStoreDeleted(clusterName, storeName);
+        veniceResponse.setStoreDeleted(result.isDeleted());
+        veniceResponse.setReason(result.getError());
+      }
     };
   }
 }

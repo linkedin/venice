@@ -3,6 +3,8 @@ package com.linkedin.venice.controllerapi;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACCESS_PERMISSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ADMIN_OPERATION_PROTOCOL_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AMPLIFICATION_FACTOR;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_ABORT_ON_FAILURE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_CURRENT_STEP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_JOB_HEARTBEAT_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
@@ -277,6 +279,11 @@ public class ControllerClient implements Closeable {
   public SchemaUsageResponse getInUseSchemaIds(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.GET_INUSE_SCHEMA_IDS, params, SchemaUsageResponse.class);
+  }
+
+  public StoreDeletedValidationResponse validateStoreDeleted(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.VALIDATE_STORE_DELETED, params, StoreDeletedValidationResponse.class);
   }
 
   public ControllerResponse deleteValueSchemas(String storeName, List<String> schemaIds) {
@@ -611,6 +618,18 @@ public class ControllerClient implements Closeable {
   public TrackableControllerResponse deleteStore(String storeName, boolean isAbortMigrationCleanup) {
     QueryParams params = newParams().add(NAME, storeName).add(IS_ABORT_MIGRATION_CLEANUP, isAbortMigrationCleanup);
     return request(ControllerRoute.DELETE_STORE, params, TrackableControllerResponse.class);
+  }
+
+  public StoreMigrationResponse autoMigrateStore(
+      String storeName,
+      String destClusterName,
+      Optional<Integer> currStep,
+      Optional<Boolean> abortOnFailure) {
+    QueryParams params = newParams().add(NAME, storeName).add(CLUSTER_DEST, destClusterName);
+    currStep.ifPresent(cs -> params.add(AUTO_STORE_MIGRATION_CURRENT_STEP, cs));
+    abortOnFailure.ifPresent(aof -> params.add(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE, aof));
+    params.add(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE, abortOnFailure);
+    return request(ControllerRoute.AUTO_MIGRATE_STORE, params, StoreMigrationResponse.class);
   }
 
   public ControllerResponse wipeCluster(String fabric, Optional<String> storeName, Optional<Integer> versionNum) {
