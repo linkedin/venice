@@ -1,12 +1,15 @@
 package com.linkedin.venice.client.stats;
 
 import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_COUNT;
+import static com.linkedin.venice.stats.dimensions.MessageType.REQUEST;
+import static com.linkedin.venice.stats.dimensions.MessageType.RESPONSE;
 import static com.linkedin.venice.stats.dimensions.RequestRetryType.ERROR_RETRY;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.ClientType;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.metrics.MetricEntityStateOneEnum;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
@@ -18,6 +21,7 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 
@@ -37,8 +41,6 @@ public class ClientStats extends BasicClientStats {
   private final Sensor appTimedOutRequestSensor;
   private final Sensor appTimedOutRequestResultRatioSensor;
   private final Sensor clientFutureTimeoutSensor;
-  private final Sensor retryRequestKeyCountSensor;
-  private final Sensor retryRequestSuccessKeyCountSensor;
   private final Sensor retryKeySuccessRatioSensor;
   /**
    * Tracks the number of keys handled via MultiGet fallback mechanism for Client-Compute.
@@ -46,6 +48,8 @@ public class ClientStats extends BasicClientStats {
   private final Sensor multiGetFallbackSensor;
 
   private MetricEntityStateOneEnum<RequestRetryType> errorRetryRequest;
+  private MetricEntityStateOneEnum<MessageType> retryKeyCount;
+  private MetricEntityStateOneEnum<MessageType> retrySuccessKeyCount;
 
   public static ClientStats getClientStats(
       MetricsRepository metricsRepository,
@@ -126,10 +130,26 @@ public class ClientStats extends BasicClientStats {
     clientFutureTimeoutSensor = registerSensor("client_future_timeout", new Avg(), new Min(), new Max());
     /* Metrics relevant to track long tail retry efficacy for batch get*/
     Rate retryRequestKeyCount = new Rate();
-    retryRequestKeyCountSensor = registerSensor("retry_request_key_count", retryRequestKeyCount, new Avg(), new Max());
     Rate retryRequestSuccessKeyCount = new Rate();
-    retryRequestSuccessKeyCountSensor =
-        registerSensor("retry_request_success_key_count", retryRequestSuccessKeyCount, new Avg(), new Max());
+
+    retryKeyCount = MetricEntityStateOneEnum.create(
+        ClientMetricEntity.RETRY_KEY_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        ClientTehutiMetricName.RETRY_REQUEST_KEY_COUNT,
+        Arrays.asList(retryRequestKeyCount, new Avg(), new Max()),
+        baseDimensionsMap,
+        MessageType.class);
+
+    retrySuccessKeyCount = MetricEntityStateOneEnum.create(
+        ClientMetricEntity.RETRY_KEY_COUNT.getMetricEntity(),
+        otelRepository,
+        this::registerSensor,
+        ClientTehutiMetricName.RETRY_REQUEST_SUCCESS_KEY_COUNT,
+        Arrays.asList(retryRequestSuccessKeyCount, new Avg(), new Max()),
+        baseDimensionsMap,
+        MessageType.class);
+
     retryKeySuccessRatioSensor = registerSensor(
         new TehutiUtils.SimpleRatioStat(
             retryRequestSuccessKeyCount,
@@ -201,11 +221,11 @@ public class ClientStats extends BasicClientStats {
   }
 
   public void recordRetryRequestKeyCount(int numberOfKeysSentInRetryRequest) {
-    retryRequestKeyCountSensor.record(numberOfKeysSentInRetryRequest);
+    retryKeyCount.record(numberOfKeysSentInRetryRequest, REQUEST);
   }
 
   public void recordRetryRequestSuccessKeyCount(int numberOfKeysCompletedInRetryRequest) {
-    retryRequestSuccessKeyCountSensor.record(numberOfKeysCompletedInRetryRequest);
+    retrySuccessKeyCount.record(numberOfKeysCompletedInRetryRequest, RESPONSE);
   }
 
   public void recordMultiGetFallback(int keyCount) {
@@ -216,7 +236,7 @@ public class ClientStats extends BasicClientStats {
    * Metric names for tehuti metrics used in this class.
    */
   public enum ClientTehutiMetricName implements TehutiMetricNameEnum {
-    REQUEST_RETRY_COUNT;
+    REQUEST_RETRY_COUNT, RETRY_REQUEST_KEY_COUNT, RETRY_REQUEST_SUCCESS_KEY_COUNT;
 
     private final String metricName;
 
