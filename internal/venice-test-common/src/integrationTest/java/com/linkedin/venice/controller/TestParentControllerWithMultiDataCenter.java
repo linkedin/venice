@@ -45,12 +45,16 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -73,6 +77,8 @@ public class TestParentControllerWithMultiDataCenter {
   private static final String BASIC_USER_SCHEMA_STRING_WITH_DEFAULT = "{" + "  \"namespace\" : \"example.avro\",  "
       + "  \"type\": \"record\",   " + "  \"name\": \"User\",     " + "  \"fields\": [           "
       + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}  " + "  ] " + " } ";
+
+  private static final Logger LOGGER = LogManager.getLogger(TestParentControllerWithMultiDataCenter.class);
 
   @BeforeClass
   public void setUp() {
@@ -747,6 +753,19 @@ public class TestParentControllerWithMultiDataCenter {
         }
       });
 
+      // Record the last successful execution ID for each child datacenter before the update
+      Map<Integer, Long> lastSuccessfulExecutionIds = new HashMap<>();
+      for (int i = 0; i < childDatacenters.size(); i++) {
+        VeniceMultiClusterWrapper childDC = childDatacenters.get(i);
+        Admin childAdmin = childDC.getControllers().values().iterator().next().getVeniceAdmin();
+        AdminConsumerService adminConsumerService = childAdmin.getAdminConsumerService(clusterName);
+        Long executionId = adminConsumerService.getLastSucceededExecutionId(storeName);
+        lastSuccessfulExecutionIds.put(i, executionId);
+        LOGGER.info(
+            "Child datacenter " + i + " has execution ID " + executionId + " for store " + storeName
+                + " before update");
+      }
+
       // 3. Send an updateStore command through parent controller to disable write on the store
       UpdateStoreQueryParams updateStoreParams = new UpdateStoreQueryParams().setEnableWrites(false);
       ControllerResponse updateResponse =
@@ -763,21 +782,37 @@ public class TestParentControllerWithMultiDataCenter {
       StoreInfo storeInfo = parentStoreResponse.getStore();
       Assert.assertFalse(storeInfo.isEnableStoreWrites(), "Store write should be disabled in parent");
 
-      // Verify that the admin consumption failed in child controllers by checking
-      // for admin consumption exceptions in child controller
+      // Verify that initially the admin consumption might fail in child controllers due to store not existing,
+      // but after MAX_RETRIES_FOR_NONEXISTENT_STORE retries, the error should be tolerated
       for (int i = 0; i < childDatacenters.size(); i++) {
-        VeniceMultiClusterWrapper childDC = childDatacenters.get(i);
+        int datacenterId = i;
+        VeniceMultiClusterWrapper childDC = childDatacenters.get(datacenterId);
         Admin childAdmin = childDC.getControllers().values().iterator().next().getVeniceAdmin();
         AdminConsumerService adminConsumerService = childAdmin.getAdminConsumerService(clusterName);
 
-        // Wait for the admin message to be processed and check for exception
-        TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, false, true, () -> {
+        // After MAX_RETRIES_FOR_NONEXISTENT_STORE retries, there should be no exception anymore
+        // as the message should be skipped
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
           Exception lastException = adminConsumerService.getLastExceptionForStore(storeName);
-          Assert.assertNotNull(lastException, "Expected exception during admin consumption in child datacenter");
-          Assert.assertTrue(
-              lastException.getMessage().contains("does not exist"),
-              "Expected exception message to indicate store doesn't exist in child datacenter: "
-                  + lastException.getMessage());
+          Assert.assertNull(
+              lastException,
+              "Exception should be null after max retries in child datacenter " + datacenterId);
+
+          // Verify execution ID hasn't changed
+          Long currentExecutionId = adminConsumerService.getLastSucceededExecutionId(storeName);
+          Long previousExecutionId = lastSuccessfulExecutionIds.get(datacenterId);
+
+          LOGGER.info(
+              "Child datacenter " + datacenterId + " has execution ID " + currentExecutionId + " for store " + storeName
+                  + " after update (previous: " + previousExecutionId + ")");
+
+          // The execution ID should be the same as before or both null since we're skipping the message
+          if (previousExecutionId != null) {
+            Assert.assertEquals(
+                currentExecutionId,
+                previousExecutionId,
+                "Execution ID should not change after skipping the admin message in child datacenter " + datacenterId);
+          }
         });
       }
     }

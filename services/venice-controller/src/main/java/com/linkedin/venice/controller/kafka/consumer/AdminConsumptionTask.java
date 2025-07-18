@@ -1013,7 +1013,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return lastPersistedExecutionId;
   }
 
-  Long getLastSucceededExecutionId(String storeName) {
+  public Long getLastSucceededExecutionId(String storeName) {
     if (lastSucceededExecutionIdMap != null) {
       return lastSucceededExecutionIdMap.get(storeName);
     } else {
