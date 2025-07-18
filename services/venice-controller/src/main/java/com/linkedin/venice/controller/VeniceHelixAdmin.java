@@ -8039,6 +8039,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   // public for testing purpose
+  @Override
   public AdminConsumerService getAdminConsumerService(String clusterName) {
     return adminConsumerServices.get(clusterName);
   }
