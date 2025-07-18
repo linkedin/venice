@@ -44,6 +44,7 @@ import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.VeniceComponent;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -74,6 +75,7 @@ import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.AddVersionLatencyStats;
 import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -206,6 +208,7 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
@@ -466,6 +469,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final LogContext logContext;
 
   final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
+  final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
 
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -633,23 +637,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     dataRecoveryManager =
         new DataRecoveryManager(this, icProvider, pubSubTopicRepository, participantStoreClientsManager);
 
-    if (multiClusterConfigs.isLogCompactionEnabled()) {
-      // TODO LC: extends interchangeable with implements?
-      Class<? extends RepushOrchestrator> repushOrchestratorClass =
-          ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
-      try {
-        RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
-            repushOrchestratorClass,
-            new Class[] { VeniceProperties.class },
-            new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
-        compactionManager =
-            new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
-      } catch (Exception e) {
-        LOGGER.error("Failed to enable " + LogCompactionService.class.getSimpleName(), e);
-        throw new VeniceException(e);
-      }
-    }
-
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
     initRoutines.add(
         new SystemSchemaInitializationRoutine(
@@ -750,6 +737,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         helixAdminClient);
 
     for (String clusterName: multiClusterConfigs.getClusters()) {
+      if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()) {
+        logCompactionStatsMap.putIfAbsent(clusterName, new LogCompactionStats(metricsRepository, clusterName));
+      }
+
       if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
         continue;
       }
@@ -787,6 +778,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       });
     }
+
+    if (multiClusterConfigs.isLogCompactionEnabled()) {
+      Class<? extends RepushOrchestrator> repushOrchestratorClass =
+          ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
+      try {
+        RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
+            repushOrchestratorClass,
+            new Class[] { VeniceProperties.class },
+            new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
+        this.compactionManager = new CompactionManager(
+            repushOrchestrator,
+            multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS(),
+            logCompactionStatsMap);
+      } catch (Exception e) {
+        LOGGER.error(
+            "[log-compaction] Failed to enable repush for log compaction " + CompactionManager.class.getSimpleName(),
+            e);
+        throw new VeniceException(e);
+      }
+    }
+
     emptyPushZSTDDictionary =
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
 
@@ -1343,6 +1355,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   static void emitPushJobStatusMetrics(
       Map<String, PushJobStatusStats> pushJobStatusStatsMap,
+      Map<String, LogCompactionStats> logCompactionStatsMap,
       PushJobStatusRecordKey pushJobDetailsKey,
       PushJobDetails pushJobDetailsValue,
       Set<PushJobCheckpoints> pushJobUserErrorCheckpoints) {
@@ -1351,6 +1364,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
     try {
+      // Push job status detail metrics
       PushJobDetailsStatus overallStatus =
           PushJobDetailsStatus.valueOf(overallStatuses.get(overallStatuses.size() - 1).getStatus());
       if (PushJobDetailsStatus.isTerminal(overallStatus.getValue())) {
@@ -1362,8 +1376,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           isIncrementalPush = Boolean.parseBoolean(pushJobDetailsValue.getPushJobConfigs().get(incPushKey).toString());
         }
         StringBuilder logMessage = new StringBuilder();
+        CharSequence storeName = pushJobDetailsKey.getStoreName();
         logMessage.append("Push job status for store name: ")
-            .append(pushJobDetailsKey.getStoreName())
+            .append(storeName)
             .append(", version: ")
             .append(pushJobDetailsKey.getVersionNumber())
             .append(", cluster: ")
@@ -1392,6 +1407,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             pushJobStatusStats.recordIncrementalPushSuccessSensor();
           } else {
             pushJobStatusStats.recordBatchPushSuccessSensor();
+          }
+
+          // Scheduled log compaction metric
+          if (Version.isPushIdRePush(pushJobDetailsValue.getPushId().toString())) {
+            logCompactionStatsMap.get(cluster).setCompactionComplete(storeName.toString());
           }
         }
         // Append job duration in minutes to log message
@@ -1458,7 +1478,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   void sendPushJobDetailsToLocalRT(PushJobStatusRecordKey key, PushJobDetails value) {
     // Emit push job status metrics
-    emitPushJobStatusMetrics(pushJobStatusStatsMap, key, value, pushJobUserErrorCheckpoints);
+    emitPushJobStatusMetrics(pushJobStatusStatsMap, logCompactionStatsMap, key, value, pushJobUserErrorCheckpoints);
     // Send push job details to the push job status system store
     if (getPushJobStatusStoreClusterName().isEmpty()) {
       throw new VeniceException(
@@ -8388,7 +8408,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public List<StoreInfo> getStoresForCompaction(String clusterName) {
     Assert.isTrue(
         multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled(),
-        "Log compaction is not enabled for this cluster!");
+        "[log-compaction] Log compaction is not enabled for this cluster!");
     try {
       Map<String, ControllerClient> childControllers = getControllerClientMap(clusterName);
       return compactionManager.getStoresForCompaction(clusterName, childControllers);
@@ -8408,14 +8428,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception {
     Assert.isTrue(
-        multiClusterConfigs.getControllerConfig(repushJobRequest.getClusterName()).isLogCompactionEnabled(),
+        getMultiClusterConfigs().getControllerConfig(repushJobRequest.getClusterName()).isLogCompactionEnabled(),
         "[log-compaction] Log compaction is not enabled for this cluster!");
     try {
-      return compactionManager.repushStore(repushJobRequest);
+      RepushJobResponse response = getCompactionManager().repushStore(repushJobRequest);
+      getLogCompactionStatsMap().get(repushJobRequest.getClusterName())
+          .recordRepushStoreCall(
+              repushJobRequest.getStoreName(),
+              repushJobRequest.getTriggerSource(),
+              response.isError() ? VeniceResponseStatusCategory.FAIL : VeniceResponseStatusCategory.SUCCESS);
+      return response;
     } catch (Exception e) {
       LOGGER.error("[log-compaction] Error while triggering repush for store: {}", repushJobRequest.getStoreName(), e);
+      getLogCompactionStatsMap().get(repushJobRequest.getClusterName())
+          .recordRepushStoreCall(
+              repushJobRequest.getStoreName(),
+              repushJobRequest.getTriggerSource(),
+              VeniceResponseStatusCategory.FAIL);
       throw e; // this method is the first common point for scheduled & adhoc log compaction, each has different error
     }
+  }
+
+  @VisibleForTesting
+  Map<String, LogCompactionStats> getLogCompactionStatsMap() {
+    return logCompactionStatsMap;
   }
 
   // for testing
@@ -9359,7 +9395,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return multiClusterConfigs.getControllerConfig(clusterName).isClusterWipeAllowed();
   }
 
-  // Visible for testing
+  @VisibleForTesting
   VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
     return multiClusterConfigs;
   }

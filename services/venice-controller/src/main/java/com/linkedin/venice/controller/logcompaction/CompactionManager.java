@@ -4,6 +4,7 @@ import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
@@ -14,7 +15,6 @@ import com.linkedin.venice.meta.VersionStatus;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -30,10 +30,15 @@ public class CompactionManager {
 
   private final RepushOrchestrator repushOrchestrator;
   private final long timeSinceLastLogCompactionThresholdMs;
+  private final Map<String, LogCompactionStats> statsMap;
 
-  public CompactionManager(RepushOrchestrator repushOrchestrator, long timeSinceLastLogCompactionThresholdMs) {
+  public CompactionManager(
+      RepushOrchestrator repushOrchestrator,
+      long timeSinceLastLogCompactionThresholdMs,
+      Map<String, LogCompactionStats> statsMap) {
     this.repushOrchestrator = repushOrchestrator;
     this.timeSinceLastLogCompactionThresholdMs = timeSinceLastLogCompactionThresholdMs;
+    this.statsMap = statsMap;
   }
 
   /**
@@ -56,13 +61,22 @@ public class CompactionManager {
     }
 
     // filter for stores ready for log compaction
-    return filterStoresForCompaction(storeInfoList);
+    return filterStoresForCompaction(storeInfoList, clusterName);
   }
 
   // public for testing
   @VisibleForTesting
-  List<StoreInfo> filterStoresForCompaction(List<StoreInfo> storeInfoList) {
-    return storeInfoList.stream().filter(this::isCompactionReady).collect(Collectors.toList());
+  List<StoreInfo> filterStoresForCompaction(List<StoreInfo> storeInfoList, String clusterName) {
+    List<StoreInfo> storesReadyForCompaction = new ArrayList<>();
+    for (StoreInfo storeInfo: storeInfoList) {
+      if (isCompactionReady(storeInfo)) {
+        storesReadyForCompaction.add(storeInfo);
+        LogCompactionStats stats = statsMap.get(clusterName);
+        stats.recordStoreNominatedForCompactionCount(storeInfo.getName());
+        stats.setCompactionEligible(storeInfo.getName());
+      }
+    }
+    return storesReadyForCompaction;
   }
 
   /**
@@ -74,7 +88,6 @@ public class CompactionManager {
   //
   public boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
-
     return isHybridStore && isLastCompactionTimeOlderThanThreshold(timeSinceLastLogCompactionThresholdMs, storeInfo)
         && storeInfo.isActiveActiveReplicationEnabled() && !VeniceSystemStoreUtils.isSystemStore(storeInfo.getName());
   }
@@ -148,7 +161,7 @@ public class CompactionManager {
           "Repush job triggered for store: {} | exec id: {} | trigger source: {}",
           response.getName(),
           response.getExecutionId(),
-          repushJobRequest.getTriggerSource());
+          repushJobRequest.getTriggerSource().toString());
       return response;
     } catch (Exception e) {
       LOGGER.error("Failed to compact store: {}", repushJobRequest.getStoreName(), e);

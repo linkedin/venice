@@ -21,7 +21,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class TestLogCompactionService {
+public class LogCompactionServiceTest {
   private Admin mockAdmin;
   private LogCompactionService logCompactionService;
 

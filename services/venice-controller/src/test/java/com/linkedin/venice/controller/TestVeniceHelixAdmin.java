@@ -32,12 +32,16 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controller.logcompaction.CompactionManager;
 import com.linkedin.venice.controller.multitaskscheduler.MultiTaskSchedulerService;
 import com.linkedin.venice.controller.multitaskscheduler.StoreMigrationManager;
+import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
@@ -60,6 +64,8 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.RegionUtils;
@@ -81,6 +87,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import org.testng.TestException;
 import org.testng.annotations.Test;
 
 
@@ -1267,6 +1274,57 @@ public class TestVeniceHelixAdmin {
             "Actual message: " + e.getMessage());
       }
     }
+  }
+
+  @Test(dataProvider = "Three-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRepushStore(boolean manualRepush, boolean responseFailure, boolean responseException)
+      throws Exception {
+    VeniceHelixAdmin mockVeniceHelixAdmin = mock(VeniceHelixAdmin.class);
+    when(mockVeniceHelixAdmin.repushStore(any())).thenCallRealMethod();
+
+    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
+    when(mockClusterConfig.isLogCompactionEnabled()).thenReturn(true);
+
+    VeniceControllerMultiClusterConfig mockMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
+    when(mockMultiClusterConfig.getControllerConfig(clusterName)).thenReturn(mockClusterConfig);
+    when(mockVeniceHelixAdmin.getMultiClusterConfigs()).thenReturn(mockMultiClusterConfig);
+
+    RepushJobRequest mockRequest = mock(RepushJobRequest.class);
+    when(mockRequest.getClusterName()).thenReturn(clusterName);
+    when(mockRequest.getStoreName()).thenReturn(storeName);
+    RepushStoreTriggerSource repushStoreTriggerSource =
+        manualRepush ? RepushStoreTriggerSource.MANUAL : RepushStoreTriggerSource.SCHEDULED;
+    when(mockRequest.getTriggerSource()).thenReturn(repushStoreTriggerSource);
+
+    RepushJobResponse mockRepushJobResponse = mock(RepushJobResponse.class);
+    when(mockRepushJobResponse.isError()).thenReturn(responseFailure);
+
+    CompactionManager mockCompactionManager = mock(CompactionManager.class);
+    if (!responseException) {
+      when(mockCompactionManager.repushStore(mockRequest)).thenReturn(mockRepushJobResponse);
+    } else {
+      when(mockCompactionManager.repushStore(mockRequest)).thenThrow(new TestException("Error repushing store"));
+    }
+    when(mockVeniceHelixAdmin.getCompactionManager()).thenReturn(mockCompactionManager);
+
+    Map<String, LogCompactionStats> logCompactionStatsMap = new HashMap<>();
+    LogCompactionStats mockLogCompactionStats = mock(LogCompactionStats.class);
+    logCompactionStatsMap.put(clusterName, mockLogCompactionStats);
+    when(mockVeniceHelixAdmin.getLogCompactionStatsMap()).thenReturn(logCompactionStatsMap);
+
+    // Call repushStore
+    try {
+      mockVeniceHelixAdmin.repushStore(mockRequest);
+    } catch (TestException e) {
+      assertTrue(responseException);
+    }
+
+    // Verify metrics are emitted
+    VeniceResponseStatusCategory expectedResponseCategory = (responseFailure || responseException)
+        ? VeniceResponseStatusCategory.FAIL
+        : VeniceResponseStatusCategory.SUCCESS;
+    verify(mockLogCompactionStats, Mockito.times(1))
+        .recordRepushStoreCall(storeName, repushStoreTriggerSource, expectedResponseCategory);
   }
 
   @Test
