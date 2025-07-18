@@ -24,7 +24,6 @@ import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
-import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARENT_CONTROLLER_METADATA_SYSTEM_SCHEMA_STORE_VALUE;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARTICIPANT_MESSAGE_SYSTEM_STORE_VALUE;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.utils.AvroSchemaUtils.isValidAvroSchema;
@@ -707,20 +706,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               multiClusterConfigs,
               this,
               ParticipantMessageKey.getClassSchema()));
-    }
-
-    // For each parent helix admin, add a PerClusterInternalRTStoreInitializationRoutine for the creation of the parent
-    // controller metadata system store.
-    if (isParent()) {
-      LOGGER
-          .info("Adding a PerClusterInternalRTStoreInitializationRoutine for Parent Controller Metadata System Store");
-      initRoutines.add(
-          new PerClusterInternalRTStoreInitializationRoutine(
-              PARENT_CONTROLLER_METADATA_SYSTEM_SCHEMA_STORE_VALUE,
-              VeniceSystemStoreUtils::getParentControllerMetadataStoreNameForCluster,
-              multiClusterConfigs,
-              this,
-              Schema.create(Schema.Type.STRING)));
     }
 
     for (String clusterName: multiClusterConfigs.getClusters()) {
