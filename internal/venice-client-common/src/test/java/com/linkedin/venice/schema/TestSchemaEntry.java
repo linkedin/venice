@@ -1,6 +1,10 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
+import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import org.apache.avro.Schema;
 import org.apache.avro.SchemaParseException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -151,6 +155,54 @@ public class TestSchemaEntry {
     SchemaEntry entry1 = new SchemaEntry(1, schemaStr1);
     SchemaEntry entry2 = new SchemaEntry(2, schemaStr2);
     Assert.assertFalse(entry1.isNewSchemaCompatible(entry2, DirectionalSchemaCompatibilityType.FULL));
+  }
+
+  @Test
+  public void testFullCompatibilityWithEnumEvolution() {
+    // Initial schema has an enum field with a default
+    Schema schema1 = AvroCompatibilityHelper.parse(
+        "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+            + "           \"fields\" : [\n" + "               {\n" + "                 \"name\": \"Suit\", \n"
+            + "                 \"type\": {\n"
+            + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"],\n"
+            + "                        \"default\": \"SPADES\"\n" + "                } \n" + "              }\n"
+            + "           ]\n" + "        }");
+
+    // New schema removes some symbols from enum field that has a default
+    Schema schema2 = AvroCompatibilityHelper.parse(
+        "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+            + "           \"fields\" : [\n" + "               {\n" + "                 \"name\": \"Suit\", \n"
+            + "                 \"type\": {\n"
+            + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"CLUBS\"],\n"
+            + "                        \"default\": \"SPADES\"\n" + "                } \n" + "              }\n"
+            + "           ]\n" + "        }");
+
+    // New schema adds previously unknown symbols to enum field that has a default
+    Schema schema3 = AvroCompatibilityHelper.parse(
+        "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+            + "           \"fields\" : [\n" + "               {\n" + "                 \"name\": \"Suit\", \n"
+            + "                 \"type\": {\n"
+            + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\", \"UNKNOWN\"],\n"
+            + "                        \"default\": \"SPADES\"\n" + "                } \n" + "              }\n"
+            + "           ]\n" + "        }");
+
+    SchemaEntry entry1 = new SchemaEntry(1, schema1);
+    SchemaEntry entry2 = new SchemaEntry(2, schema2);
+    SchemaEntry entry3 = new SchemaEntry(3, schema3);
+
+    AvroVersion currentAvroVersion = AvroCompatibilityHelperCommon.getRuntimeAvroVersion();
+    boolean enumEvolutionSupported = currentAvroVersion.laterThan(AvroVersion.AVRO_1_8);
+
+    Assert.assertEquals(
+        entry1.isNewSchemaCompatible(entry2, DirectionalSchemaCompatibilityType.FULL),
+        enumEvolutionSupported);
+
+    Assert.assertEquals(
+        entry1.isNewSchemaCompatible(entry3, DirectionalSchemaCompatibilityType.FULL),
+        enumEvolutionSupported);
+    Assert.assertEquals(
+        entry2.isNewSchemaCompatible(entry3, DirectionalSchemaCompatibilityType.FULL),
+        enumEvolutionSupported);
   }
 
   @Test
