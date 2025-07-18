@@ -762,19 +762,22 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   }
 
   /**
-   * Similar with partitionList, we use a set to record the ongoing blob transfer partitions.
-   * Those partitions have ongoing transfer files, but not added into partitionList yet.
-   * @return true if there is at least one partition with ongoing blob transfer bootstrap, false if it is empty.
+   * Mark the storage engine for dropping.
+   * @return true if the storage engine was successfully marked for dropping, false if there are ongoing blob transfers
    */
   @Override
-  public synchronized boolean isAnyOngoingBlobTransferPartitions() {
-    return !inProgressBlobTransferPartitions.isEmpty();
-  }
+  public synchronized boolean tryMarkStorageEngineForDropping() {
+    if (!inProgressBlobTransferPartitions.isEmpty()) {
+      LOGGER.info(
+          "Cannot mark storage engine {} for dropping - ongoing blob transfers: {}",
+          getStoreVersionName(),
+          inProgressBlobTransferPartitions);
+      return false;
+    }
 
-  @Override
-  public synchronized void markStorageEngineDropping() {
     markedForDrop = true;
     LOGGER.info("Storage engine {} marked for dropping", getStoreVersionName());
+    return true;
   }
 
   /**

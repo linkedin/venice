@@ -180,13 +180,11 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
   /**
    * Mark the storage engine as start dropping.
    */
-  void markStorageEngineDropping();
+  boolean tryMarkStorageEngineForDropping();
 
   /**
    * Check if there are any ongoing blob transfer partitions at SE level, and related add and remove methods.
    */
-  boolean isAnyOngoingBlobTransferPartitions();
-
   boolean tryMarkPartitionBlobTransferStarted(int partitionId);
 
   void markPartitionBlobTransferBootstrapCompleted(int partitionId);
