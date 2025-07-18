@@ -57,6 +57,7 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
+import io.tehuti.metrics.stats.SampledStat;
 import io.tehuti.metrics.stats.Total;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -102,9 +103,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor keyNumSensor;
   private final Sensor badRequestKeyCountSensor;
 
-  /** OTel metrics yet to be added */
   /** request size metrics */
   private final MetricEntityStateOneEnum<MessageType> requestSizeMetric;
+
+  /** OTel metrics yet to be added */
   private final Sensor compressedResponseSizeSensor;
   private final Sensor decompressedResponseSizeSensor;
 
@@ -182,6 +184,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     Rate requestRate = new OccurrenceRate();
     Rate healthyRequestRate = new OccurrenceRate();
     Rate tardyRequestRate = new OccurrenceRate();
+    SampledStat requestSize = new Avg();
+
     requestSensor = registerSensor("request", new Count(), requestRate);
 
     healthyRequestRateSensor =
@@ -198,7 +202,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         otelRepository,
         this::registerSensorFinal,
         RouterTehutiMetricNameEnum.REQUEST_SIZE,
-        singletonList(new Avg()),
+        Arrays.asList(new Avg(), requestSize),
         baseDimensionsMap,
         MessageType.class);
 
