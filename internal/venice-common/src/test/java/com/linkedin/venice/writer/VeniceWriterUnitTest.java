@@ -47,6 +47,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
@@ -65,6 +66,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -754,5 +756,35 @@ public class VeniceWriterUnitTest {
       }
       clearInvocations(mockedProducer); // important for the non-chunked messages don't appear in the next iteration
     }
+  }
+
+  @Test
+  public void testSetMessageCallback() {
+    VeniceWriter writer = mock(VeniceWriter.class);
+    doCallRealMethod().when(writer).setInternalCallback(any(), any());
+    PubSubProducerCallback messageCallback = mock(PubSubProducerCallback.class);
+    PubSubProducerCallback inputCallback1 = null;
+    CompletableFutureCallback inputCallback2 = new CompletableFutureCallback(new CompletableFuture<>());
+    CompletableFutureCallback mainCallback = new CompletableFutureCallback(new CompletableFuture<>());
+    CompletableFutureCallback dependentCallback1 = new CompletableFutureCallback(new CompletableFuture<>());
+    PubSubProducerCallback dependentCallback2 = mock(PubSubProducerCallback.class);
+    List<PubSubProducerCallback> dependentCallbackList = new ArrayList<>();
+    dependentCallbackList.add(dependentCallback1);
+    dependentCallbackList.add(dependentCallback2);
+    PubSubProducerCallback inputCallback3 = new ChainedPubSubCallback(mainCallback, dependentCallbackList);
+
+    PubSubProducerCallback resultCallback;
+    // Case 1: Null input
+    resultCallback = writer.setInternalCallback(inputCallback1, messageCallback);
+    Assert.assertEquals(resultCallback, messageCallback);
+    // Case 2: CompletableCallback input
+    resultCallback = writer.setInternalCallback(inputCallback2, messageCallback);
+    Assert.assertEquals(resultCallback, inputCallback2);
+    Assert.assertEquals(inputCallback2.getCallback(), messageCallback);
+    // Case 3: ChainedCallback input
+    resultCallback = writer.setInternalCallback(inputCallback3, messageCallback);
+    Assert.assertEquals(resultCallback, inputCallback3);
+    Assert.assertEquals(mainCallback.getCallback(), messageCallback);
+    Assert.assertEquals(dependentCallback1.getCallback(), messageCallback);
   }
 }

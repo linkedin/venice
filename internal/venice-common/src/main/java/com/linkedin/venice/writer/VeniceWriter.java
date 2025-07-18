@@ -1491,15 +1491,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         }
         segment.addToCheckSum(key, kafkaValue);
       }
-      PubSubProducerCallback messageCallback = callback;
-      if (callback == null) {
-        messageCallback = new SendMessageErrorLoggerCallback(kafkaValue, logger);
-      } else if (callback instanceof CompletableFutureCallback) {
-        CompletableFutureCallback completableFutureCallBack = (CompletableFutureCallback) callback;
-        if (completableFutureCallBack.getCallback() == null) {
-          completableFutureCallBack.setCallback(new SendMessageErrorLoggerCallback(kafkaValue, logger));
-        }
-      }
+
+      PubSubProducerCallback internalCallback = new SendMessageErrorLoggerCallback(kafkaValue, logger);
+      PubSubProducerCallback outputCallback = setInternalCallback(callback, internalCallback);
       try {
         return producerAdapter.sendMessage(
             topicName,
@@ -1507,7 +1501,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             key,
             kafkaValue,
             getHeaders(kafkaValue.getProducerMetadata(), viewPartitionHeader),
-            messageCallback);
+            outputCallback);
       } catch (Exception e) {
         if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicAuthorizationException.class)) {
           throw new VeniceResourceAccessException(
@@ -1518,6 +1512,23 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         }
       }
     }
+  }
+
+  PubSubProducerCallback setInternalCallback(
+      PubSubProducerCallback inputCallback,
+      PubSubProducerCallback internalCallback) {
+    PubSubProducerCallback outputCallback = inputCallback;
+    if (inputCallback == null) {
+      outputCallback = internalCallback;
+    } else if (inputCallback instanceof CompletableFutureCallback) {
+      CompletableFutureCallback completableFutureCallBack = (CompletableFutureCallback) inputCallback;
+      if (completableFutureCallBack.getCallback() == null) {
+        completableFutureCallBack.setCallback(internalCallback);
+      }
+    } else if (inputCallback instanceof ChainedPubSubCallback) {
+      ((ChainedPubSubCallback) inputCallback).maybeSetInternalCallback(internalCallback);
+    }
+    return outputCallback;
   }
 
   /**
