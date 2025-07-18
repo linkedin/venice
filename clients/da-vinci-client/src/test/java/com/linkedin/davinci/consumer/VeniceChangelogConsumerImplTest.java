@@ -12,6 +12,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -91,6 +92,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -98,6 +100,8 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
+import org.apache.logging.log4j.Logger;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -925,6 +929,45 @@ public class VeniceChangelogConsumerImplTest {
     verify(consumerStats).emitChunkedRecordCountMetrics(FAIL);
     verify(consumerStats).emitPollCountMetrics(FAIL);
     verify(consumerStats, never()).emitRecordsConsumedCountMetrics(anyInt());
+  }
+
+  @Test
+  public void testSeekToTimestampWithErrorLogging() throws ExecutionException, InterruptedException, TimeoutException {
+    Map<Integer, Long> partitionTimestampMap = new HashMap<>();
+    partitionTimestampMap.put(0, 1000L);
+    // Verify null response for offsetForTime
+    PubSubConsumerAdapter nullResponsePubSubConsumer = mock(PubSubConsumerAdapter.class);
+    doReturn(null).when(nullResponsePubSubConsumer).offsetForTime(any(), anyLong());
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
+        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, nullResponsePubSubConsumer);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    veniceChangelogConsumer.internalSeekToTimestamps(partitionTimestampMap, "").get(10, TimeUnit.SECONDS);
+    verify(nullResponsePubSubConsumer, times(1)).endOffset(any());
+    verify(nullResponsePubSubConsumer, times(1)).subscribe(any(), anyLong());
+    // Verify failed seek logging
+    Logger mockLogger = mock(Logger.class);
+    PubSubConsumerAdapter mockErrorPubSubConsumer = mock(PubSubConsumerAdapter.class);
+    doThrow(new NullPointerException("mock NPE")).when(mockErrorPubSubConsumer).offsetForTime(any(), anyLong());
+    veniceChangelogConsumer = new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockErrorPubSubConsumer);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    CompletableFuture<Void> seekFuture =
+        veniceChangelogConsumer.internalSeekToTimestamps(partitionTimestampMap, "", mockLogger);
+    try {
+      seekFuture.get(10, TimeUnit.SECONDS);
+    } catch (ExecutionException e) {
+      Assert.assertTrue(e.getCause() instanceof NullPointerException);
+    } catch (Exception e) {
+      Assert.fail("Unexpected exception");
+    }
+    ArgumentCaptor<Object> logParams = ArgumentCaptor.forClass(Object.class);
+    verify(mockLogger).error(anyString(), logParams.capture(), logParams.capture(), any());
+    List<Object> params = logParams.getAllValues();
+    // The params should be topic name, PubSubTopicPartition and the timestamp
+    Assert.assertEquals(params.size(), 2);
+    Assert.assertTrue(params.get(0) instanceof String);
+    Assert.assertTrue(params.get(1) instanceof Long);
+    Long timestamp = (Long) params.get(1);
+    Assert.assertEquals(timestamp.longValue(), 1000L);
   }
 
   private void prepareChangeCaptureRecordsToBePolled(

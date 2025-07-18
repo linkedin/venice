@@ -22,4 +22,9 @@ public class FloatEqualsPredicate implements FloatPredicate {
     // Only check epsilon for finite numbers
     return Math.abs(value - expectedValue) <= epsilon;
   }
+
+  @Override
+  public String toString() {
+    return "FloatEqualsPredicate{expectedValue=" + expectedValue + ", epsilon=" + epsilon + "}";
+  }
 }

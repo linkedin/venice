@@ -195,7 +195,6 @@ public class PartialUpdateTest {
         Boolean.toString(isHeartbeatReadyToServeCheckEnabled()));
     Properties controllerProps = new Properties();
     controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, true);
-    controllerProps.put(ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED, false);
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
             .numberOfClusters(NUMBER_OF_CLUSTERS)

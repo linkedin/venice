@@ -261,6 +261,7 @@ public class VeniceControllerStateModel extends StateModel {
     clusterResources.startLeakedPushStatusCleanUpService();
     clusterResources.startProtocolVersionAutoDetectionService();
     clusterResources.startLogCompactionService();
+    clusterResources.startMultiTaskSchedulerService();
   }
 
   /**
@@ -372,6 +373,7 @@ public class VeniceControllerStateModel extends StateModel {
   /** synchronized because concurrent calls could cause a NPE */
   private synchronized void clearResources() {
     if (clusterResources != null) {
+      clusterResources.stopMultiTaskSchedulerService();
       clusterResources.stopLogCompactionService();
       clusterResources.stopProtocolVersionAutoDetectionService();
       /**

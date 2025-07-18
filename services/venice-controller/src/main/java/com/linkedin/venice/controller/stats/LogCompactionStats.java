@@ -13,7 +13,8 @@ import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.stats.metrics.MetricEntityStateGeneric;
 import com.linkedin.venice.stats.metrics.TehutiMetricNameEnum;
 import io.tehuti.metrics.MetricsRepository;
-import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.Gauge;
+import io.tehuti.metrics.stats.OccurrenceRate;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -54,7 +55,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.REPUSH_CALL_COUNT,
-        Collections.singletonList(new Count()),
+        Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap);
 
     compactionEligibleMetric = MetricEntityStateGeneric.create(
@@ -62,7 +63,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.COMPACTION_ELIGIBLE_STATE,
-        Collections.singletonList(new Count()),
+        Collections.singletonList(new Gauge()),
         baseDimensionsMap);
 
     storeNominatedForCompactionCountMetric = MetricEntityStateGeneric.create(
@@ -70,7 +71,7 @@ public class LogCompactionStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         ControllerTehutiMetricNameEnum.STORE_NOMINATED_FOR_COMPACTION_COUNT,
-        Collections.singletonList(new Count()),
+        Collections.singletonList(new OccurrenceRate()),
         baseDimensionsMap);
   }
 

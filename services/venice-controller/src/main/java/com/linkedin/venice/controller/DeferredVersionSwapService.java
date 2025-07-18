@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
+import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 
@@ -21,6 +22,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.RegionUtils;
+import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Collections;
@@ -64,6 +66,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   private Set<String> stalledVersionSwapSet = new HashSet<>();
   private Map<String, Integer> failedRollforwardRetryCountMap = new HashMap<>();
   private static final int MAX_ROLL_FORWARD_RETRY_LIMIT = 5;
+  private static final Set<VersionStatus> VERSION_SWAP_COMPLETION_STATUSES =
+      Utils.setOf(ONLINE, PARTIALLY_ONLINE, ERROR);
+  private static final Set<VersionStatus> TERMINAL_PUSH_VERSION_STATUSES = Utils.setOf(ONLINE, KILLED);
 
   public DeferredVersionSwapService(
       VeniceParentHelixAdmin admin,
@@ -253,26 +258,28 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
   }
 
   /**
-   * Checks if the version is online in all target regions
-   * @param targetRegions
+   * Checks if all the regions have a version status
+   * @param regions
    * @param clusterName
    * @param storeName
    * @param targetVersionNum
+   * @param versionStatus
    * @return
    */
-  private boolean isVersionOnlineInRegions(
-      Set<String> targetRegions,
+  private boolean doesRegionsHaveVersionStatus(
+      Set<String> regions,
       String clusterName,
       String storeName,
-      int targetVersionNum) {
-    for (String targetRegion: targetRegions) {
-      Version targetRegionVersion = getVersionFromStoreInRegion(clusterName, targetRegion, storeName, targetVersionNum);
+      int targetVersionNum,
+      Set<VersionStatus> versionStatus) {
+    for (String region: regions) {
+      Version regionVersion = getVersionFromStoreInRegion(clusterName, region, storeName, targetVersionNum);
 
-      if (targetRegionVersion == null) {
+      if (regionVersion == null) {
         return false;
       }
 
-      if (targetRegionVersion.getStatus() != ONLINE && targetRegionVersion.getStatus() != VersionStatus.KILLED) {
+      if (!versionStatus.contains(regionVersion.getStatus())) {
         return false;
       }
     }
@@ -299,24 +306,31 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     }
 
     // The version could've been manually rolled forward in non target regions. If that is the case, we should check if
-    // we emitted any stalled
-    // metric for it and remove it if so
+    // we emitted any stalled metric for it and remove it if so
     if (stalledVersionSwapSet.contains(storeName)) {
-      boolean didPushCompleteInNonTargetRegions =
-          isVersionOnlineInRegions(nonTargetRegions, clusterName, storeName, targetVersion.getNumber());
+      boolean didPushCompleteInNonTargetRegions = doesRegionsHaveVersionStatus(
+          nonTargetRegions,
+          clusterName,
+          storeName,
+          targetVersion.getNumber(),
+          VERSION_SWAP_COMPLETION_STATUSES);
       if (didPushCompleteInNonTargetRegions) {
         stalledVersionSwapSet.remove(storeName);
         deferredVersionSwapStats.recordDeferredVersionSwapStalledVersionSwapSensor(stalledVersionSwapSet.size());
       }
     }
 
+    Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetRegionsString);
     switch (targetVersion.getStatus()) {
       case STARTED:
         // Because the parent status is updated when we poll for the job status, the parent status will not always be an
         // accurate representation of push status if vpj runs away
-        Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetRegionsString);
-        boolean didPushCompleteInTargetRegions =
-            isVersionOnlineInRegions(targetRegions, clusterName, storeName, targetVersion.getNumber());
+        boolean didPushCompleteInTargetRegions = doesRegionsHaveVersionStatus(
+            targetRegions,
+            clusterName,
+            storeName,
+            targetVersion.getNumber(),
+            TERMINAL_PUSH_VERSION_STATUSES);
         if (didPushCompleteInTargetRegions) {
           deferredVersionSwapStats.recordDeferredVersionSwapParentChildStatusMismatchSensor();
           String message =
@@ -335,6 +349,23 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       case KILLED:
         logMessageIfNotRedundant("Entering version swap loop for: " + storeName + " on version: " + targetVersionNum);
         return true;
+      case ONLINE:
+        // This should not happen, but if it does, we should still perform a version swap and log a metric for it
+        boolean didVersionSwapCompleteInNonTargetRegions = doesRegionsHaveVersionStatus(
+            nonTargetRegions,
+            clusterName,
+            storeName,
+            targetVersion.getNumber(),
+            VERSION_SWAP_COMPLETION_STATUSES);
+
+        if (!didVersionSwapCompleteInNonTargetRegions) {
+          deferredVersionSwapStats.recordDeferredVersionSwapParentChildStatusMismatchSensor();
+          String message =
+              "Parent status is already ONLINE, but version swap has not happened in the non target regions. "
+                  + "Continuing with deferred swap for store: " + storeName + " for version: " + targetVersionNum;
+          logMessageIfNotRedundant(message);
+          return true;
+        }
     }
 
     return false;
@@ -545,6 +576,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
           for (Store parentStore: parentStores) {
             int targetVersionNum = parentStore.getLargestUsedVersionNumber();
+            if (targetVersionNum < 1) {
+              continue;
+            }
+
             Version targetVersion = parentStore.getVersion(targetVersionNum);
             if (targetVersion == null) {
               String message = "Parent version is null for store " + parentStore.getName() + " for target version "

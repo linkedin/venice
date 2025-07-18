@@ -454,7 +454,7 @@ public class RocksDBSstFileWriter {
       for (LiveFileMetaData file: oldIngestedSSTFiles) {
         if (Arrays.equals(file.columnFamilyName(), columnFamilyHandle.getName())) {
           count++;
-          rocksDB.deleteFile(file.fileName());
+          rocksDB.deprecated_deleteFile(file.fileName());
         }
       }
       LOGGER.info(
