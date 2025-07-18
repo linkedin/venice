@@ -11,7 +11,6 @@ public class AdminOperationWrapper {
   private final long delegateTimestamp;
 
   private Long startProcessingTimestamp = null;
-  private int retryCount = 0; // Track how many times this message has been retried
 
   /**
    * Constructor for the wrapper of an {@link AdminOperation}, the wrapper includes additional information about the
@@ -61,13 +60,5 @@ public class AdminOperationWrapper {
 
   public void setStartProcessingTimestamp(long startProcessingTimestamp) {
     this.startProcessingTimestamp = startProcessingTimestamp;
-  }
-
-  public int getRetryCount() {
-    return retryCount;
-  }
-
-  public void incrementRetryCount() {
-    retryCount++;
   }
 }
