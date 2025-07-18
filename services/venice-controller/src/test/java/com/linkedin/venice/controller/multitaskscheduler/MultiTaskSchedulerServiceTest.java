@@ -22,7 +22,7 @@ public class MultiTaskSchedulerServiceTest {
   @BeforeTest
   public void setUp() throws Exception {
     MockitoAnnotations.openMocks(this);
-    service = new MultiTaskSchedulerService(4, 3);
+    service = new MultiTaskSchedulerService(4, 3, null);
     // Inject the mock StoreMigrationManager into the service
     // Use AccessController.doPrivileged block to set the field accessible
     AccessController.doPrivileged((PrivilegedAction<Void>) () -> {

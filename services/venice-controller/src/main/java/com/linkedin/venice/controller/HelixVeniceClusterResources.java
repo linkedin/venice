@@ -114,10 +114,12 @@ public class HelixVeniceClusterResources implements VeniceResource {
      *  MultiTaskSchedulerService is only initialized parent cluster.
      */
     if (config.isParent() && config.isMultiTaskSchedulerServiceEnabled()) {
+
       this.multiTaskSchedulerService = Optional.of(
           new MultiTaskSchedulerService(
               config.getStoreMigrationThreadPoolSize(),
-              config.getStoreMigrationMaxRetryAttempts()));
+              config.getStoreMigrationMaxRetryAttempts(),
+              config.getStoreMigrationFabricList()));
     } else {
       this.multiTaskSchedulerService = Optional.empty();
     }
