@@ -78,9 +78,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -108,16 +105,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
-    setupCluster(true, metricsRepository);
+    setupCluster(metricsRepository);
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    // Controller shutdown needs to complete within 5 minutes
-    ExecutorService ex = Executors.newSingleThreadExecutor();
-    Future clusterShutdownFuture = ex.submit(this::cleanupCluster);
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.MINUTES, clusterShutdownFuture::isDone);
-    ex.shutdownNow();
+    super.cleanUp();
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)

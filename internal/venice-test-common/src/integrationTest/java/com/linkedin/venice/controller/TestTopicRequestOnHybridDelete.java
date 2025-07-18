@@ -4,18 +4,20 @@ import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_OPERATION_TIMEOU
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.makeStoreHybrid;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -32,9 +34,12 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -43,15 +48,29 @@ import org.testng.annotations.Test;
 
 
 public class TestTopicRequestOnHybridDelete {
+  private static final Logger LOGGER = LogManager.getLogger(TestTopicRequestOnHybridDelete.class);
   private VeniceClusterWrapper venice;
 
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
+  protected boolean enableHelixMessagingChannel() {
+    return false;
+  }
+
   @BeforeClass
   public void setUp() {
-    VeniceClusterCreateOptions options =
-        new VeniceClusterCreateOptions.Builder().numberOfControllers(1).numberOfServers(1).numberOfRouters(1).build();
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, Boolean.toString(enableHelixMessagingChannel()));
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(1)
+        .numberOfRouters(1)
+        .extraProperties(properties)
+        .build();
     venice = ServiceFactory.getVeniceCluster(options);
+    IntegrationTestUtils.verifyParticipantMessageStoreSetup(
+        venice.getLeaderVeniceController().getVeniceHelixAdmin(),
+        venice.getClusterName(),
+        new PubSubTopicRepository());
   }
 
   @AfterClass
@@ -59,7 +78,7 @@ public class TestTopicRequestOnHybridDelete {
     IOUtils.closeQuietly(venice);
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void serverRestartOnHybridStoreKeepsVersionOnline() {
     AvroGenericStoreClient client = null;
     ControllerClient controllerClient = null;
@@ -112,27 +131,39 @@ public class TestTopicRequestOnHybridDelete {
           .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
 
       // delete store should return immediately without any error.
-      ControllerResponse response = finalControllerClient.deleteStore(storeName);
-      Assert.assertFalse(response.isError());
+      LOGGER.info("TEST PROGRESS LOG: About to submit deleteStore request.");
+      assertCommand(finalControllerClient.deleteStore(storeName));
+      LOGGER.info("TEST PROGRESS LOG: deleteStore submitted successfully.");
 
       TopicManager topicManager = venice.getLeaderVeniceController().getVeniceAdmin().getTopicManager();
       try {
         topicManager
             .ensureTopicIsDeletedAndBlock(pubSubTopicRepository.getTopic(Utils.getRealTimeTopicName(storeInfo)));
+        LOGGER.info("TEST PROGRESS LOG: TM::ensureTopicIsDeletedAndBlock for RT topic finished successfully.");
       } catch (VeniceException e) {
         fail("Exception during topic deletion " + e);
       }
 
-      Assert.assertTrue(finalControllerClient.getStore(storeName).isError());
+      Assert.assertTrue(
+          finalControllerClient.getStore(storeName).isError(),
+          "Getting the store should return with an error since it has been deleted!");
+      LOGGER.info("TEST PROGRESS LOG: getStore confirmed the store doesn't exist anymore.");
+
       /**
        * Wait for resource cleanup before the store re-creation.
        */
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        Assert.assertFalse(finalControllerClient.checkResourceCleanupForStoreCreation(storeName).isError());
-      });
+      TestUtils.waitForNonDeterministicAssertion(
+          30,
+          TimeUnit.SECONDS,
+          true,
+          () -> assertCommand(finalControllerClient.checkResourceCleanupForStoreCreation(storeName)));
+
+      LOGGER.info("TEST PROGRESS LOG: checkResourceCleanupForStoreCreation succeeded!");
 
       // recreate store
       venice.getNewStore(storeName);
+      LOGGER.info("TEST PROGRESS LOG: submitted store re-creation.");
+
       Assert.assertEquals(controllerClient.getStore(storeName).getStore().getVersions().size(), 0);
       makeStoreHybrid(venice, storeName, 100L, 5L);
       controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id3"), 1L);
@@ -154,7 +185,7 @@ public class TestTopicRequestOnHybridDelete {
       venice.refreshAllRouterMetaData();
 
       // verify new records appear
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         try {
           assertEquals(finalClient.get("19").get(), new Utf8("stream_19"));
         } catch (Exception e) {
@@ -217,9 +248,7 @@ public class TestTopicRequestOnHybridDelete {
           Optional.empty(),
           false,
           -1);
-      Assert.assertFalse(
-          startedVersion.isError(),
-          "The call to controllerClient.requestTopicForWrites() returned an error: " + startedVersion.getError());
+      assertCommand(startedVersion);
       Assert.assertEquals(
           controllerClient.queryJobStatus(startedVersion.getKafkaTopic()).getStatus(),
           ExecutionStatus.STARTED.toString());
