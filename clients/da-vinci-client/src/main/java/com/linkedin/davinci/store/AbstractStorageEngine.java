@@ -14,6 +14,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -23,6 +24,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -61,6 +63,13 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   private final String storeVersionName;
   private final SparseConcurrentList<Partition> partitionList = new SparseConcurrentList<>();
+
+  // Use a set to tracking the ongoing blob transfer partitions in store engine level, but not add into partitionList
+  // yet.
+  private final Set<Integer> inProgressBlobTransferPartitions = ConcurrentHashMap.newKeySet();
+  // Flag to indicate if storage engine is marked for dropping
+  private volatile boolean markedForDrop = false;
+
   private Partition metadataPartition;
   private final AtomicReference<StoreVersionState> versionStateCache = new AtomicReference<>();
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
@@ -216,7 +225,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
 
     Partition partition = createStoragePartition(storagePartitionConfig);
+
     this.partitionList.set(partitionId, partition);
+
+    markPartitionBlobTransferBootstrapCompleted(partitionId);
+
     if (this.rwLockForStoragePartitionAdjustmentList.get(partitionId) == null) {
       /**
        * It is intentional to keep the read-write lock even the partition gets moved to other places
@@ -365,6 +378,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
         storeVersionName,
         LatencyUtils.getElapsedTimeFromMsToMs(startTime));
     partitionList.clear();
+    inProgressBlobTransferPartitions.clear();
     closeMetadataPartition();
   }
 
@@ -745,5 +759,67 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   @Override
   public AbstractStorageIterator getIterator(int partitionId) {
     throw new UnsupportedOperationException("Method not supported for storage engine");
+  }
+
+  /**
+   * Mark the storage engine for dropping.
+   * @return true if the storage engine was successfully marked for dropping, false if there are ongoing blob transfers
+   */
+  @Override
+  public synchronized boolean tryMarkStorageEngineForDropping() {
+    if (!inProgressBlobTransferPartitions.isEmpty()) {
+      LOGGER.info(
+          "Cannot mark storage engine {} for dropping - ongoing blob transfers: {}",
+          getStoreVersionName(),
+          inProgressBlobTransferPartitions);
+      return false;
+    }
+
+    markedForDrop = true;
+    LOGGER.info("Storage engine {} marked for dropping", getStoreVersionName());
+    return true;
+  }
+
+  /**
+   * Mark a partition as transfer started to prevent storage engine cleanup
+   *
+   * @param partitionId The partition ID that started blob transfer bootstrap
+   * @return true if the partition was successfully marked for blob transfer bootstrap, false if the storage engine is already marked for dropping
+   */
+  @Override
+  public synchronized boolean tryMarkPartitionBlobTransferStarted(int partitionId) {
+    if (markedForDrop) {
+      LOGGER.info(
+          "Cannot start blob transfer for replica {} - storage engine {} is marked for dropping",
+          Utils.getReplicaId(getStoreVersionName(), partitionId),
+          getStoreVersionName());
+      return false;
+    }
+    if (inProgressBlobTransferPartitions.add(partitionId)) {
+      LOGGER.info(
+          "Marked replica {} as blob transfer bootstrap started, current transferring partitions: {}",
+          Utils.getReplicaId(getStoreVersionName(), partitionId),
+          inProgressBlobTransferPartitions);
+    } else {
+      LOGGER.warn(
+          "Replica {} was already marked as blob transfer bootstrap started, current transferring partitions: {}",
+          Utils.getReplicaId(getStoreVersionName(), partitionId),
+          inProgressBlobTransferPartitions);
+    }
+    return true;
+  }
+
+  /**
+   * Mark a partition as completed blob transfer bootstrap (either success or failure)
+   * @param partitionId The partition ID that completed blob transfer bootstrap
+   */
+  @Override
+  public void markPartitionBlobTransferBootstrapCompleted(int partitionId) {
+    if (inProgressBlobTransferPartitions.remove(partitionId)) {
+      LOGGER.info(
+          "Marked replica {} as blob transfer bootstrap completed, current transferring partitions: {}",
+          Utils.getReplicaId(getStoreVersionName(), partitionId),
+          inProgressBlobTransferPartitions);
+    }
   }
 }

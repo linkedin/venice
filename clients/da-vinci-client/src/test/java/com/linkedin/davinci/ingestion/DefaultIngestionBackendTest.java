@@ -90,6 +90,8 @@ public class DefaultIngestionBackendTest {
     when(metadataRepo.waitVersion(anyString(), anyInt(), any(Duration.class))).thenReturn(storeAndVersion);
     when(storageMetadataService.getStoreVersionState(STORE_VERSION)).thenReturn(storeVersionState);
     when(storageService.openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any())).thenReturn(storageEngine);
+    when(storageService.getStorageEngine(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER)))
+        .thenReturn(storageEngine);
 
     when(offsetRecord.getOffsetLag()).thenReturn(0L);
     when(offsetRecord.getLocalVersionTopicOffset()).thenReturn(-1L);
@@ -110,6 +112,8 @@ public class DefaultIngestionBackendTest {
   // verify that blobTransferManager was called given it is blob enabled
   @Test
   public void testStartConsumptionWithBlobTransfer() {
+    when(storageEngine.tryMarkPartitionBlobTransferStarted(PARTITION)).thenReturn(true);
+
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(store.isHybrid()).thenReturn(true);
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
@@ -128,6 +132,8 @@ public class DefaultIngestionBackendTest {
 
   @Test
   public void testStartConsumptionWithBlobTransferWhenNoPeerFound() {
+    when(storageEngine.tryMarkPartitionBlobTransferStarted(PARTITION)).thenReturn(true);
+
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(store.isHybrid()).thenReturn(false);
     CompletableFuture<InputStream> errorFuture = new CompletableFuture<>();
@@ -146,6 +152,8 @@ public class DefaultIngestionBackendTest {
 
   @Test
   public void testNotStartBootstrapFromBlobTransferWhenNotLagging() {
+    when(storageEngine.tryMarkPartitionBlobTransferStarted(PARTITION)).thenReturn(true);
+
     long laggingThreshold = 1000L;
     when(offsetRecord.getOffsetLag()).thenReturn(-10L);
     when(offsetRecord.getLocalVersionTopicOffset()).thenReturn(10L);
@@ -173,7 +181,7 @@ public class DefaultIngestionBackendTest {
   public void testStartConsumptionWithClosePartition() {
     StorageEngine storageEngine = Mockito.mock(StorageEngine.class);
     when(storageEngine.containsPartition(PARTITION)).thenReturn(true);
-    doNothing().when(storageEngine).dropPartition(PARTITION, false);
+    when(storageEngine.tryMarkPartitionBlobTransferStarted(PARTITION)).thenReturn(true);
 
     String kafkaTopic = Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER);
     when(store.isBlobTransferEnabled()).thenReturn(true);
@@ -203,5 +211,28 @@ public class DefaultIngestionBackendTest {
 
     doReturn(false).when(mockIngestionService).hasCurrentVersionBootstrapping();
     assertFalse(ingestionBackend.hasCurrentVersionBootstrapping());
+  }
+
+  @Test
+  public void testSkipBlobTransferIfStorageEngineIsDropping() {
+    // remove storage engine, so it will mark drop status.
+    storageService.removeStorageEngine(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER));
+
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(store.isHybrid()).thenReturn(true);
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
+        .thenReturn(CompletableFuture.completedFuture(null));
+    when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
+    RocksDBServerConfig rocksDBServerConfig = Mockito.mock(RocksDBServerConfig.class);
+    when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
+    when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION);
+
+    verify(blobTransferManager, never())
+        .get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
+    verify(aggVersionedBlobTransferStats, never()).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats, never())
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(true));
   }
 }

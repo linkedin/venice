@@ -222,6 +222,21 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   @Override
+  public boolean tryMarkStorageEngineForDropping() {
+    return this.delegate.tryMarkStorageEngineForDropping();
+  }
+
+  @Override
+  public boolean tryMarkPartitionBlobTransferStarted(int partitionId) {
+    return this.delegate.tryMarkPartitionBlobTransferStarted(partitionId);
+  }
+
+  @Override
+  public void markPartitionBlobTransferBootstrapCompleted(int partitionId) {
+    this.delegate.markPartitionBlobTransferBootstrapCompleted(partitionId);
+  }
+
+  @Override
   public P getPartitionOrThrow(int partitionId) {
     return this.delegate.getPartitionOrThrow(partitionId);
   }

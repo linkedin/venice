@@ -483,6 +483,7 @@ public class StorageService extends AbstractVeniceService {
   /**
    * Drops the partition of the specified store version in the storage service.
    *
+   * If there is ongoing blob transferring partitions, don't remove the storage engine as dropping entire store folder may affect the ongoing transferring files.
    * @param storeConfig              config of the store version.
    * @param partition                partition ID to be dropped.
    * @param removeEmptyStorageEngine Whether to delete the storage engine when there is no remaining data partition.
@@ -503,6 +504,12 @@ public class StorageService extends AbstractVeniceService {
     LOGGER.info("Dropped partition {} of {}, remaining partitions={}", partition, kafkaTopic, remainingPartitions);
 
     if (remainingPartitions.isEmpty() && removeEmptyStorageEngine) {
+      if (storeConfig.isBlobTransferEnabled()) {
+        if (!storageEngine.tryMarkStorageEngineForDropping()) {
+          LOGGER.info("Skip removing StorageEngine for {} as blob transfer started during drop", kafkaTopic);
+          return;
+        }
+      }
       removeStorageEngine(kafkaTopic);
     }
   }

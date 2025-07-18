@@ -176,4 +176,16 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
   default StorageEngineStats getStats() {
     return StorageEngineNoOpStats.SINGLETON;
   }
+
+  /**
+   * Mark the storage engine as start dropping.
+   */
+  boolean tryMarkStorageEngineForDropping();
+
+  /**
+   * Check if there are any ongoing blob transfer partitions at SE level, and related add and remove methods.
+   */
+  boolean tryMarkPartitionBlobTransferStarted(int partitionId);
+
+  void markPartitionBlobTransferBootstrapCompleted(int partitionId);
 }
