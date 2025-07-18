@@ -763,7 +763,6 @@ public class VeniceWriterUnitTest {
     VeniceWriter writer = mock(VeniceWriter.class);
     doCallRealMethod().when(writer).setInternalCallback(any(), any());
     PubSubProducerCallback messageCallback = mock(PubSubProducerCallback.class);
-    PubSubProducerCallback inputCallback1 = null;
     CompletableFutureCallback inputCallback2 = new CompletableFutureCallback(new CompletableFuture<>());
     CompletableFutureCallback mainCallback = new CompletableFutureCallback(new CompletableFuture<>());
     CompletableFutureCallback dependentCallback1 = new CompletableFutureCallback(new CompletableFuture<>());
@@ -775,7 +774,7 @@ public class VeniceWriterUnitTest {
 
     PubSubProducerCallback resultCallback;
     // Case 1: Null input
-    resultCallback = writer.setInternalCallback(inputCallback1, messageCallback);
+    resultCallback = writer.setInternalCallback(null, messageCallback);
     Assert.assertEquals(resultCallback, messageCallback);
     // Case 2: CompletableCallback input
     resultCallback = writer.setInternalCallback(inputCallback2, messageCallback);
