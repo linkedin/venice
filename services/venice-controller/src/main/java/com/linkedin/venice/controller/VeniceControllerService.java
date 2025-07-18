@@ -73,6 +73,8 @@ public class VeniceControllerService extends AbstractVeniceService {
         new DelegatingClusterLeaderInitializationRoutine();
     DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore =
         new DelegatingClusterLeaderInitializationRoutine();
+    DelegatingClusterLeaderInitializationRoutine initRoutineForParentControllerMetadataSystemStore =
+        new DelegatingClusterLeaderInitializationRoutine();
 
     /**
      * In child controller, we do not set these system stores up explicitly. The parent controller creates and
@@ -82,6 +84,10 @@ public class VeniceControllerService extends AbstractVeniceService {
     if (!multiClusterConfigs.isParent()) {
       initRoutineForPushJobDetailsSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
+    }
+
+    if (multiClusterConfigs.isParent()) {
+      initRoutineForParentControllerMetadataSystemStore.setAllowEmptyDelegateInitializationToSucceed();
     }
 
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(
@@ -110,7 +116,8 @@ public class VeniceControllerService extends AbstractVeniceService {
           externalSupersetSchemaGenerator,
           pubSubTopicRepository,
           initRoutineForPushJobDetailsSystemStore,
-          initRoutineForHeartbeatSystemStore);
+          initRoutineForHeartbeatSystemStore,
+          initRoutineForParentControllerMetadataSystemStore);
       LOGGER.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;

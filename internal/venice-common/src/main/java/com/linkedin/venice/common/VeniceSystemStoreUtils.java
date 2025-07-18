@@ -12,6 +12,11 @@ public class VeniceSystemStoreUtils {
       String.format(Store.SYSTEM_STORE_FORMAT, "davinci_push_status_store");
   public static final String META_STORE_STR = String.format(Store.SYSTEM_STORE_FORMAT, "meta_store");
 
+  public static final String PARENT_CONTROLLER_METADATA_STORE = "parent_controller_metadata_store";
+
+  private static final String PARENT_CONTROLLER_METADATA_STORE_NAME_FORMAT =
+      String.format(Store.SYSTEM_STORE_FORMAT, PARENT_CONTROLLER_METADATA_STORE + "_cluster_%s");
+
   private static final String PARTICIPANT_STORE_PREFIX = String.format(Store.SYSTEM_STORE_FORMAT, PARTICIPANT_STORE);
   private static final String PARTICIPANT_STORE_FORMAT = PARTICIPANT_STORE_PREFIX + "_cluster_%s";
   private static final String PUSH_JOB_DETAILS_STORE_NAME =
@@ -38,6 +43,10 @@ public class VeniceSystemStoreUtils {
 
   public static String getPushJobDetailsStoreName() {
     return PUSH_JOB_DETAILS_STORE_NAME;
+  }
+
+  public static String getParentControllerMetadataStoreNameForCluster(String clusterName) {
+    return String.format(PARENT_CONTROLLER_METADATA_STORE_NAME_FORMAT, clusterName);
   }
 
   public static boolean isSystemStore(String storeName) {
