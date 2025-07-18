@@ -113,8 +113,8 @@ public class BatchingVeniceWriterTest {
     CompletableFutureCallback callback2 = new CompletableFutureCallback(completableFuture2);
     CompletableFutureCallback callback3 = new CompletableFutureCallback(completableFuture3);
     CompletableFutureCallback callback4 = new CompletableFutureCallback(completableFuture4);
-    callback1.setCallback(mock(PubSubProducerCallback.class));
-    callback4.setCallback(mock(PubSubProducerCallback.class));
+    callback1.setInternalCallback(mock(PubSubProducerCallback.class));
+    callback4.setInternalCallback(mock(PubSubProducerCallback.class));
 
     // Create different objects for each message to make sure buffer index map is working properly for byte array.
     String key = "a";

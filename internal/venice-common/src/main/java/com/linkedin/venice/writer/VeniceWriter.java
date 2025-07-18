@@ -1520,13 +1520,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     PubSubProducerCallback outputCallback = inputCallback;
     if (inputCallback == null) {
       outputCallback = internalCallback;
-    } else if (inputCallback instanceof CompletableFutureCallback) {
-      CompletableFutureCallback completableFutureCallBack = (CompletableFutureCallback) inputCallback;
-      if (completableFutureCallBack.getCallback() == null) {
-        completableFutureCallBack.setCallback(internalCallback);
-      }
-    } else if (inputCallback instanceof ChainedPubSubCallback) {
-      ((ChainedPubSubCallback) inputCallback).maybeSetInternalCallback(internalCallback);
+    } else {
+      inputCallback.setInternalCallback(internalCallback);
     }
     return outputCallback;
   }

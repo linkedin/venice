@@ -8,7 +8,12 @@ public interface PubSubProducerCallback {
   /**
    * exception will be null if request was completed without an error.
    */
-
   void onCompletion(PubSubProduceResult produceResult, Exception exception);
 
+  /**
+   * Add internal callback into the current callback. Default behavior is doing nothing.
+   */
+  default void setInternalCallback(PubSubProducerCallback internalCallback) {
+
+  }
 }

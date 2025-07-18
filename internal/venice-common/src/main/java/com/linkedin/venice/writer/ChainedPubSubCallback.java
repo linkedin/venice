@@ -31,17 +31,13 @@ public class ChainedPubSubCallback implements PubSubProducerCallback {
   }
 
   /**
-   * Insert an internal {@link PubSubProducerCallback} when the main callback and the dependent callbacks are the type
-   * of {@link CompletableFutureCallback}
+   * Insert an internal {@link PubSubProducerCallback} to main callback and the dependent callbacks.
    */
-  public void maybeSetInternalCallback(PubSubProducerCallback internalCallback) {
-    if (callback instanceof CompletableFutureCallback) {
-      ((CompletableFutureCallback) callback).setCallback(internalCallback);
-    }
+  @Override
+  public void setInternalCallback(PubSubProducerCallback internalCallback) {
+    callback.setInternalCallback(internalCallback);
     for (PubSubProducerCallback dependentCallback: dependentCallbackList) {
-      if (dependentCallback instanceof CompletableFutureCallback) {
-        ((CompletableFutureCallback) dependentCallback).setCallback(internalCallback);
-      }
+      dependentCallback.setInternalCallback(internalCallback);
     }
   }
 
