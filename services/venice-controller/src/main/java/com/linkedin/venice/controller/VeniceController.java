@@ -41,6 +41,7 @@ import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -522,12 +523,13 @@ public class VeniceController {
       LOGGER.error(errorMessage, e);
       Utils.exit(errorMessage + e.getMessage());
     }
-    // TODO: if this is not a test or prototype, we should create D2Client with formal configs.
     D2Client d2Client = D2ClientFactory.getD2Client(zkAddress, Optional.empty());
+    String regionName = RegionUtils.getLocalRegionName(controllerProps, false);
+    Map<String, D2Client> d2Clients = Collections.singletonMap(regionName, d2Client);
     VeniceController controller = new VeniceController(
         new VeniceControllerContext.Builder().setPropertiesList(Collections.singletonList(controllerProps))
             .setServiceDiscoveryAnnouncers(new ArrayList<>())
-            .setD2Client(d2Client)
+            .setD2Clients(d2Clients)
             .build());
     controller.start();
     addShutdownHook(controller, zkAddress);

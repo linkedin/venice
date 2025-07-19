@@ -90,12 +90,24 @@ public class ControllerClientBackedSystemSchemaInitializer implements Closeable 
     if (controllerClient == null) {
       if (!controllerUrl.isEmpty()) {
         controllerClient = ControllerClient.constructClusterControllerClient(clusterName, controllerUrl, sslFactory);
-      } else if (!controllerD2ServiceName.isEmpty() && d2Client.isPresent()) {
-        controllerClient = new D2ControllerClient(
-            controllerD2ServiceName,
-            clusterName,
-            d2Client.get(),
-            enforceSslOnly ? sslFactory : Optional.empty());
+      } else if (!controllerD2ServiceName.isEmpty()) {
+        if (d2Client.isPresent()) {
+          controllerClient = new D2ControllerClient(
+              controllerD2ServiceName,
+              clusterName,
+              d2Client.get(),
+              enforceSslOnly ? sslFactory : Optional.empty());
+        } else if (!d2ZkHost.isEmpty()) {
+          // TODO: removing this once we verified passing D2Client without issue.
+          controllerClient = new D2ControllerClient(
+              controllerD2ServiceName,
+              clusterName,
+              d2ZkHost,
+              enforceSslOnly ? sslFactory : Optional.empty());
+        } else {
+          throw new VeniceException(
+              "System schema initialization is enabled but neither controller url nor d2 config is provided.");
+        }
       } else {
         throw new VeniceException(
             "System schema initialization is enabled but neither controller url nor d2 config is provided.");

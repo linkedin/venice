@@ -57,6 +57,24 @@ public class ControllerClientBackedSystemSchemaInitializerTest {
         true,
         Optional.empty(),
         "",
+        "a",
+        Optional.empty(),
+        "",
+        false)) {
+      initializer.execute();
+      Assert.fail("Exception should be thrown when neither controller url nor d2 config is provided");
+    } catch (VeniceException e) {
+      // expected
+    }
+
+    try (ControllerClientBackedSystemSchemaInitializer initializer = new ControllerClientBackedSystemSchemaInitializer(
+        AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+        "testCluster",
+        null,
+        null,
+        true,
+        Optional.empty(),
+        "",
         "",
         d2Client,
         "",
