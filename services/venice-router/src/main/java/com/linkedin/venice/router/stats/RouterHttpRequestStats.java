@@ -3,6 +3,7 @@ package com.linkedin.venice.router.stats;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.ABORTED_RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.ALLOWED_RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.CALL_COUNT;
+import static com.linkedin.venice.router.stats.RouterMetricEntity.CALL_SIZE;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.CALL_TIME;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.DISALLOWED_RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.KEY_COUNT;
@@ -33,6 +34,7 @@ import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory;
 import com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum;
+import com.linkedin.venice.stats.dimensions.MessageType;
 import com.linkedin.venice.stats.dimensions.RequestRetryAbortReason;
 import com.linkedin.venice.stats.dimensions.RequestRetryType;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -55,6 +57,7 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
+import io.tehuti.metrics.stats.SampledStat;
 import io.tehuti.metrics.stats.Total;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -100,8 +103,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor keyNumSensor;
   private final Sensor badRequestKeyCountSensor;
 
+  /** request size metrics */
+  private final MetricEntityStateOneEnum<MessageType> requestSizeMetric;
+
   /** OTel metrics yet to be added */
-  private final Sensor requestSizeSensor;
   private final Sensor compressedResponseSizeSensor;
   private final Sensor decompressedResponseSizeSensor;
 
@@ -179,6 +184,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     Rate requestRate = new OccurrenceRate();
     Rate healthyRequestRate = new OccurrenceRate();
     Rate tardyRequestRate = new OccurrenceRate();
+    SampledStat requestSize = new Avg();
+
     requestSensor = registerSensor("request", new Count(), requestRate);
 
     healthyRequestRateSensor =
@@ -189,6 +196,15 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     keyNumSensor = RequestType.isSingleGet(requestType) ? null : registerSensor("key_num", new Avg(), new Max(0));
 
     badRequestKeyCountSensor = registerSensor("bad_request_key_count", new OccurrenceRate(), new Avg(), new Max());
+
+    requestSizeMetric = MetricEntityStateOneEnum.create(
+        CALL_SIZE.getMetricEntity(),
+        otelRepository,
+        this::registerSensorFinal,
+        RouterTehutiMetricNameEnum.REQUEST_SIZE,
+        Arrays.asList(new Avg(), requestSize),
+        baseDimensionsMap,
+        MessageType.class);
 
     healthyRequestMetric = MetricEntityStateThreeEnums.create(
         CALL_COUNT.getMetricEntity(),
@@ -386,10 +402,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     routerResponseWaitingTimeSensor = registerSensor(
         "response_waiting_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_waiting_time")));
-    requestSizeSensor = registerSensor(
-        "request_size",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_size")),
-        new Avg());
+
     compressedResponseSizeSensor = registerSensor(
         "compressed_response_size",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("compressed_response_size")),
@@ -514,6 +527,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         unhealthyLatencyMetric);
   }
 
+  public void recordRequestSize(double requestSize) {
+    requestSizeMetric.record(requestSize, MessageType.REQUEST);
+  }
+
   private void recordRequestMetrics(
       int keyNum,
       double latency,
@@ -628,10 +645,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordResponseWaitingTime(double waitingTime) {
     routerResponseWaitingTimeSensor.record(waitingTime);
-  }
-
-  public void recordRequestSize(double requestSize) {
-    requestSizeSensor.record(requestSize);
   }
 
   public void recordCompressedResponseSize(double compressedResponseSize) {
@@ -783,6 +796,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     DISALLOWED_RETRY_REQUEST_COUNT,
     /** for {@link RouterMetricEntity#RETRY_DELAY} */
     RETRY_DELAY,
+    /** for {@link RouterMetricEntity#CALL_SIZE} */
+    REQUEST_SIZE,
     /** for {@link RouterMetricEntity#ABORTED_RETRY_COUNT} */
     DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST, SLOW_ROUTE_ABORTED_RETRY_REQUEST, RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST,
     NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST;
