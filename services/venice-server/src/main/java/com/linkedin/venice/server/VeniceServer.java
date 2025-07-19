@@ -37,6 +37,7 @@ import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -817,8 +818,11 @@ public class VeniceServer {
   }
 
   public static void run(VeniceConfigLoader veniceConfigService, boolean joinThread) throws Exception {
+    String localZkAddress = veniceConfigService.getVeniceServerConfig().getLocalD2ZkHost();
+    // TODO: if this is not a test or prototype, we should create D2Client with formal configs.
+    D2Client d2Client = D2ClientFactory.getD2Client(localZkAddress, Optional.empty());
     VeniceServerContext serverContext =
-        new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService).build();
+        new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService).setD2Client(d2Client).build();
     final VeniceServer server = new VeniceServer(serverContext);
     if (!server.isStarted()) {
       server.start();
