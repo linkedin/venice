@@ -453,6 +453,9 @@ public class TestMaterializedViewEndToEnd {
         .setControllerD2ServiceName(D2_SERVICE_NAME)
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setLocalD2ZkHosts(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress())
+        .setD2Client(
+            IntegrationTestPushUtils
+                .getD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress()))
         .setVersionSwapDetectionIntervalTimeInSeconds(3L)
         .setControllerRequestRetryCount(3)
         .setBootstrapFileSystemPath(getTempDataDirectory().getAbsolutePath());

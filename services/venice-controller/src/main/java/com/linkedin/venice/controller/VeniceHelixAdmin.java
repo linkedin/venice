@@ -406,6 +406,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final MetaStoreWriter metaStoreWriter;
   private final MetaStoreReader metaStoreReader;
   private final D2Client d2Client;
+  private final Map<String, D2Client> d2Clients;
   private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
   private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
   private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH = "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH;
@@ -467,6 +468,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
 
+  // Test only.
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
@@ -478,7 +480,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         multiClusterConfigs,
         metricsRepository,
         false,
-        d2Client,
+        Collections.singletonMap(multiClusterConfigs.getRegionName(), d2Client),
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
@@ -493,7 +495,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
       boolean sslEnabled,
-      @Nonnull D2Client d2Client,
+      Map<String, D2Client> d2Clients,
       Optional<SSLConfig> sslConfig,
       Optional<DynamicAccessController> accessController,
       Optional<ICProvider> icProvider,
@@ -501,7 +503,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubClientsFactory pubSubClientsFactory,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines) {
-    Validate.notNull(d2Client);
+    Validate.notNull(d2Clients);
+    Validate.notEmpty(d2Clients);
     this.multiClusterConfigs = multiClusterConfigs;
     this.logContext = multiClusterConfigs.getLogContext();
     VeniceControllerClusterConfig commonConfig = multiClusterConfigs.getCommonConfig();
@@ -518,7 +521,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.defaultMaxRecordSizeBytes = multiClusterConfigs.getDefaultMaxRecordSizeBytes();
 
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
-    this.d2Client = d2Client;
+
+    LOGGER.info(
+        "D2 client map: {}, getRegionName: {}, {}",
+        d2Clients,
+        multiClusterConfigs.getParentFabrics(),
+        getRegionName());
+    this.d2Client = d2Clients.get(getRegionName());
+    Validate.notNull(this.d2Client);
+    this.d2Clients = d2Clients;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.sslEnabled = sslEnabled;
 
@@ -1926,6 +1937,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                       clusterName,
                       entry.getValue(),
                       sslFactory)));
+
+      // Respect d2Clients from controller constructor
+      if (d2Clients != null) {
+        controllerConfig.getChildDataCenterControllerD2Map()
+            .entrySet()
+            .forEach(
+                entry -> controllerClients.put(
+                    entry.getKey(),
+                    new D2ControllerClient(
+                        controllerConfig.getD2ServiceName(),
+                        clusterName,
+                        d2Clients.get(entry.getKey()),
+                        sslFactory)));
+      }
 
       return controllerClients;
     });
@@ -9402,5 +9427,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   // visible for testing
   RealTimeTopicSwitcher getRealTimeTopicSwitcher() {
     return realTimeTopicSwitcher;
+  }
+
+  Map<String, D2Client> getD2Clients() {
+    return d2Clients;
   }
 }

@@ -1,6 +1,7 @@
 package com.linkedin.venice.server;
 
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferManagerBuilder;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
@@ -36,6 +37,7 @@ import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -129,6 +131,8 @@ public class VeniceServer {
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   private Lazy<ZKHelixAdmin> zkHelixAdmin;
 
+  private final Optional<D2Client> d2Client;
+
   /**
    * @deprecated Use {@link VeniceServer#VeniceServer(VeniceServerContext)} instead.
    *
@@ -194,6 +198,7 @@ public class VeniceServer {
     this.routerAccessController = Optional.ofNullable(ctx.getRouterAccessController());
     this.storeAccessController = Optional.ofNullable(ctx.getStoreAccessController());
     this.clientConfigForConsumer = Optional.ofNullable(ctx.getClientConfigForConsumer());
+    this.d2Client = Optional.ofNullable(ctx.getD2Client());
   }
 
   /**
@@ -233,6 +238,7 @@ public class VeniceServer {
               sslFactory,
               localControllerUrl,
               d2ServiceName,
+              d2Client,
               d2ZkHost,
               false);
       ControllerClientBackedSystemSchemaInitializer kmeSchemaInitializer =
@@ -245,6 +251,7 @@ public class VeniceServer {
               sslFactory,
               localControllerUrl,
               d2ServiceName,
+              d2Client,
               d2ZkHost,
               false);
       metaSystemStoreSchemaInitializer.execute();
@@ -411,7 +418,8 @@ public class VeniceServer {
         sslFactory,
         heartbeatMonitoringService,
         zkHelixAdmin,
-        adaptiveThrottlerSignalService);
+        adaptiveThrottlerSignalService,
+        d2Client);
 
     this.diskHealthCheckService = new DiskHealthCheckService(
         serverConfig.isDiskHealthCheckServiceEnabled(),
@@ -810,8 +818,11 @@ public class VeniceServer {
   }
 
   public static void run(VeniceConfigLoader veniceConfigService, boolean joinThread) throws Exception {
+    String localZkAddress = veniceConfigService.getVeniceServerConfig().getLocalD2ZkHost();
+    // TODO: if this is not a test or prototype, we should create D2Client with formal configs.
+    D2Client d2Client = D2ClientFactory.getD2Client(localZkAddress, Optional.empty());
     VeniceServerContext serverContext =
-        new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService).build();
+        new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService).setD2Client(d2Client).build();
     final VeniceServer server = new VeniceServer(serverContext);
     if (!server.isStarted()) {
       server.start();

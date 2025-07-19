@@ -270,7 +270,8 @@ public class DaVinciBackend implements Closeable {
           // TODO: It would be good to monitor heartbeats like this from davinci, but needs some work
           null,
           null,
-          null);
+          null,
+          Optional.ofNullable(clientConfig.getD2Client())); // Use the D2 client from the client config.
 
       String pid = Utils.getPid();
       String instanceSuffix =

@@ -72,6 +72,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.datarecovery.DataRecoveryClient;
 import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
 import com.linkedin.venice.datarecovery.MonitorCommand;
@@ -2201,10 +2202,15 @@ public class AdminTool {
                 (key, value) -> controllerClientMap.put(key, new ControllerClient(clusterName, value, sslFactory)));
       }
       if (response.getChildDataCenterControllerD2Map() != null) {
+        // TODO: D2Client
         response.getChildDataCenterControllerD2Map()
             .forEach(
-                (key, value) -> controllerClientMap
-                    .put(key, new D2ControllerClient(response.getD2ServiceName(), clusterName, value, sslFactory)));
+                (key, value) -> controllerClientMap.put(
+                    key,
+                    new D2ControllerClient(
+                        response.getD2ServiceName(),
+                        clusterName,
+                        D2ClientFactory.getD2Client(value, sslFactory))));
       }
       return controllerClientMap;
     });
