@@ -180,11 +180,20 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
     // Try server-side aggregation first if only countByValue operations (no buckets)
     if (fieldBucketMap.isEmpty() && !fieldTopKMap.isEmpty() && canUseServerSideAggregation()) {
       try {
-        return executeServerSideAggregation(keys);
+        return executeServerSideAggregation(keys).exceptionally(ex -> {
+          // If server-side aggregation fails, fall back to client-side
+          // This could happen if server doesn't support the feature yet
+          // TODO: Add proper logging once logger is available
+          try {
+            return delegate.execute(keys)
+                .thenApply(result -> new AvroComputeAggregationResponse<>(result, fieldTopKMap, fieldBucketMap))
+                .get();
+          } catch (Exception fallbackEx) {
+            throw new RuntimeException("Both server-side and client-side aggregation failed", fallbackEx);
+          }
+        });
       } catch (Exception e) {
-        // If server-side aggregation fails, fall back to client-side
-        // This could happen if server doesn't support the feature yet
-        // Log the fallback but don't fail the request
+        // If there's a synchronous exception during setup, fall back to client-side
         // TODO: Add proper logging once logger is available
       }
     }

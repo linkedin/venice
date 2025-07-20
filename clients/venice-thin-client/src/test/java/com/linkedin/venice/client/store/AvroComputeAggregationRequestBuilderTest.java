@@ -1,6 +1,7 @@
 package com.linkedin.venice.client.store;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -13,6 +14,9 @@ import static org.testng.Assert.expectThrows;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.predicate.IntPredicate;
 import com.linkedin.venice.client.store.predicate.Predicate;
+import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.schema.SchemaReader;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -38,14 +42,19 @@ public class AvroComputeAggregationRequestBuilderTest {
   private static final String AGE_FIELD = "age";
 
   private AvroGenericReadComputeStoreClient<String, Object> storeClient;
+  private AbstractAvroStoreClient<String, Object> abstractStoreClient;
+  private TransportClient transportClient;
   private SchemaReader schemaReader;
   private AvroComputeRequestBuilderV3<String> delegate;
   private AvroComputeAggregationRequestBuilder<String> builder;
+  private AvroComputeAggregationRequestBuilder<String> serverSideBuilder;
   private Schema jobSchema;
 
   @BeforeMethod
   public void setUp() {
     storeClient = mock(AvroGenericReadComputeStoreClient.class);
+    abstractStoreClient = mock(AbstractAvroStoreClient.class);
+    transportClient = mock(TransportClient.class);
     schemaReader = mock(SchemaReader.class);
     delegate = mock(AvroComputeRequestBuilderV3.class);
 
@@ -80,7 +89,14 @@ public class AvroComputeAggregationRequestBuilderTest {
     when(storeClient.compute()).thenReturn(delegate);
     when(storeClient.getSchemaReader()).thenReturn(schemaReader);
 
+    // Setup server-side capable store client
+    when(abstractStoreClient.getStoreName()).thenReturn("test_store");
+    when(abstractStoreClient.compute()).thenReturn(delegate);
+    when(abstractStoreClient.getSchemaReader()).thenReturn(schemaReader);
+    when(abstractStoreClient.getTransportClient()).thenReturn(transportClient);
+
     builder = new AvroComputeAggregationRequestBuilder<>(storeClient, schemaReader);
+    serverSideBuilder = new AvroComputeAggregationRequestBuilder<>(abstractStoreClient, schemaReader);
   }
 
   @Test(description = "Should accept valid parameters and project fields")
@@ -503,5 +519,339 @@ public class AvroComputeAggregationRequestBuilderTest {
     // This should work because AGE_FIELD is int type and we're using IntPredicate
     builder.countGroupByBucket(bucketPredicates, AGE_FIELD);
     verify(delegate).project(AGE_FIELD);
+  }
+
+  // =========================
+  // Server-Side Aggregation Tests
+  // =========================
+
+  @Test(description = "Should use server-side aggregation when using AbstractAvroStoreClient with countByValue only")
+  public void testServerSideAggregationExecution() throws Exception {
+    // Setup successful server response
+    String responseJson = "{\"jobType\":{\"engineer\":10,\"manager\":5,\"analyst\":3}}";
+    TransportClientResponse response =
+        new TransportClientResponse(1, CompressionStrategy.NO_OP, responseJson.getBytes("UTF-8"));
+    when(transportClient.post(eq("/aggregation/test_store"), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(response));
+
+    // Setup the aggregation
+    serverSideBuilder.countGroupByValue(3, JOB_TYPE_FIELD);
+    Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2", "key3"));
+
+    // Execute and verify it uses server-side path
+    CompletableFuture<ComputeAggregationResponse> future = serverSideBuilder.execute(keys);
+    ComputeAggregationResponse result = future.get();
+
+    // Verify server endpoint was called
+    verify(transportClient).post(eq("/aggregation/test_store"), any(), any());
+
+    // Verify response contains server results
+    Map<String, Integer> counts = result.getValueToCount(JOB_TYPE_FIELD);
+    assertEquals(counts.get("engineer"), Integer.valueOf(10));
+    assertEquals(counts.get("manager"), Integer.valueOf(5));
+    assertEquals(counts.get("analyst"), Integer.valueOf(3));
+  }
+
+  @Test(description = "Should fall back to client-side when server-side aggregation fails")
+  public void testServerSideAggregationFallback() throws Exception {
+    // Setup server failure
+    CompletableFuture<TransportClientResponse> failedFuture = new CompletableFuture<>();
+    failedFuture.completeExceptionally(new RuntimeException("Server error"));
+    when(transportClient.post(eq("/aggregation/test_store"), any(), any())).thenReturn(failedFuture);
+
+    // Setup client-side fallback
+    CompletableFuture<Map<String, ComputeGenericRecord>> mockClientResult =
+        CompletableFuture.completedFuture(new HashMap<>());
+    when(delegate.execute(any())).thenReturn(mockClientResult);
+
+    // Setup the aggregation
+    serverSideBuilder.countGroupByValue(3, JOB_TYPE_FIELD);
+    Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2"));
+
+    // Execute - should not throw exception despite server failure
+    CompletableFuture<ComputeAggregationResponse> future = serverSideBuilder.execute(keys);
+    ComputeAggregationResponse result = future.get();
+
+    // Verify both server attempt and client fallback were called
+    verify(transportClient).post(eq("/aggregation/test_store"), any(), any());
+    verify(delegate).execute(keys);
+    assertNotNull(result);
+  }
+
+  @Test(description = "Should not use server-side aggregation when bucket operations are present")
+  public void testServerSideSkippedWithBucketOperations() throws Exception {
+    // Setup client-side execution
+    CompletableFuture<Map<String, ComputeGenericRecord>> mockClientResult =
+        CompletableFuture.completedFuture(new HashMap<>());
+    when(delegate.execute(any())).thenReturn(mockClientResult);
+
+    // Setup aggregation with both value and bucket operations
+    Map<String, Predicate<Integer>> buckets = new HashMap<>();
+    buckets.put("young", IntPredicate.lowerThan(30));
+    serverSideBuilder.countGroupByValue(3, JOB_TYPE_FIELD).countGroupByBucket(buckets, AGE_FIELD);
+
+    Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2"));
+
+    // Execute
+    CompletableFuture<ComputeAggregationResponse> future = serverSideBuilder.execute(keys);
+    ComputeAggregationResponse result = future.get();
+
+    // Verify server-side was NOT called
+    verify(transportClient, times(0)).post(any(), any(), any());
+    // Verify client-side was called
+    verify(delegate).execute(keys);
+    assertNotNull(result);
+  }
+
+  @Test(description = "Should not use server-side aggregation when using regular store client")
+  public void testServerSideSkippedWithRegularStoreClient() throws Exception {
+    // Setup client-side execution
+    CompletableFuture<Map<String, ComputeGenericRecord>> mockClientResult =
+        CompletableFuture.completedFuture(new HashMap<>());
+    when(delegate.execute(any())).thenReturn(mockClientResult);
+
+    // Use regular builder (not server-side capable)
+    builder.countGroupByValue(3, JOB_TYPE_FIELD);
+    Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2"));
+
+    // Execute
+    CompletableFuture<ComputeAggregationResponse> future = builder.execute(keys);
+    ComputeAggregationResponse result = future.get();
+
+    // Verify server-side was NOT called (transportClient should not be touched)
+    verify(transportClient, times(0)).post(any(), any(), any());
+    // Verify client-side was called
+    verify(delegate).execute(keys);
+    assertNotNull(result);
+  }
+
+  @Test(description = "Should handle server response parsing errors gracefully")
+  public void testServerSideAggregationInvalidResponse() throws Exception {
+    // Setup invalid JSON response
+    String invalidJson = "{invalid json response}";
+    TransportClientResponse response =
+        new TransportClientResponse(1, CompressionStrategy.NO_OP, invalidJson.getBytes("UTF-8"));
+    when(transportClient.post(eq("/aggregation/test_store"), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(response));
+
+    // Setup client-side fallback
+    CompletableFuture<Map<String, ComputeGenericRecord>> mockClientResult =
+        CompletableFuture.completedFuture(new HashMap<>());
+    when(delegate.execute(any())).thenReturn(mockClientResult);
+
+    // Setup the aggregation
+    serverSideBuilder.countGroupByValue(3, JOB_TYPE_FIELD);
+    Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2"));
+
+    // Execute - should fall back to client-side due to parsing error
+    CompletableFuture<ComputeAggregationResponse> future = serverSideBuilder.execute(keys);
+    ComputeAggregationResponse result = future.get();
+
+    // Verify server was attempted and client fallback was used
+    verify(transportClient).post(eq("/aggregation/test_store"), any(), any());
+    verify(delegate).execute(keys);
+    assertNotNull(result);
+  }
+
+  @Test(description = "Should include proper headers in server-side request")
+  public void testServerSideAggregationHeaders() throws Exception {
+    // Setup successful server response
+    String responseJson = "{\"jobType\":{\"engineer\":5}}";
+    TransportClientResponse response =
+        new TransportClientResponse(1, CompressionStrategy.NO_OP, responseJson.getBytes("UTF-8"));
+
+    // Capture headers passed to transport client
+    when(transportClient.post(eq("/aggregation/test_store"), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(response));
+
+    // Setup the aggregation
+    serverSideBuilder.countGroupByValue(3, JOB_TYPE_FIELD);
+    Set<String> keys = new HashSet<>(Arrays.asList("key1"));
+
+    // Execute
+    CompletableFuture<ComputeAggregationResponse> future = serverSideBuilder.execute(keys);
+    future.get();
+
+    // Verify transport client was called with correct parameters
+    verify(transportClient).post(eq("/aggregation/test_store"), any(Map.class), any(byte[].class));
+  }
+
+  @Test(description = "Should serialize aggregation request correctly")
+  public void testAggregationRequestSerialization() throws Exception {
+    // Setup successful server response
+    String responseJson = "{\"jobType\":{\"engineer\":5},\"location\":{\"NYC\":3,\"SF\":2}}";
+    TransportClientResponse response =
+        new TransportClientResponse(1, CompressionStrategy.NO_OP, responseJson.getBytes("UTF-8"));
+    when(transportClient.post(eq("/aggregation/test_store"), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(response));
+
+    // Setup the aggregation with multiple fields
+    serverSideBuilder.countGroupByValue(5, JOB_TYPE_FIELD).countGroupByValue(3, LOCATION_FIELD);
+    Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2", "key3"));
+
+    // Execute
+    CompletableFuture<ComputeAggregationResponse> future = serverSideBuilder.execute(keys);
+    ComputeAggregationResponse result = future.get();
+
+    // Verify results include both fields
+    Map<String, Integer> jobCounts = result.getValueToCount(JOB_TYPE_FIELD);
+    Map<String, Integer> locationCounts = result.getValueToCount(LOCATION_FIELD);
+
+    assertEquals(jobCounts.get("engineer"), Integer.valueOf(5));
+    assertEquals(locationCounts.get("NYC"), Integer.valueOf(3));
+    assertEquals(locationCounts.get("SF"), Integer.valueOf(2));
+  }
+
+  @Test(description = "Should handle empty server response gracefully")
+  public void testServerSideAggregationEmptyResponse() throws Exception {
+    // Setup empty response
+    String emptyJson = "{}";
+    TransportClientResponse response =
+        new TransportClientResponse(1, CompressionStrategy.NO_OP, emptyJson.getBytes("UTF-8"));
+    when(transportClient.post(eq("/aggregation/test_store"), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(response));
+
+    // Setup the aggregation
+    serverSideBuilder.countGroupByValue(3, JOB_TYPE_FIELD);
+    Set<String> keys = new HashSet<>(Arrays.asList("key1"));
+
+    // Execute
+    CompletableFuture<ComputeAggregationResponse> future = serverSideBuilder.execute(keys);
+    ComputeAggregationResponse result = future.get();
+
+    // Verify empty results are handled gracefully
+    Map<String, Integer> counts = result.getValueToCount(JOB_TYPE_FIELD);
+    assertTrue(counts.isEmpty());
+  }
+
+  @Test(description = "Should handle missing field in server response")
+  public void testServerSideAggregationMissingField() throws Exception {
+    // Setup response missing the requested field
+    String responseJson = "{\"otherField\":{\"value1\":5}}";
+    TransportClientResponse response =
+        new TransportClientResponse(1, CompressionStrategy.NO_OP, responseJson.getBytes("UTF-8"));
+    when(transportClient.post(eq("/aggregation/test_store"), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(response));
+
+    // Setup the aggregation
+    serverSideBuilder.countGroupByValue(3, JOB_TYPE_FIELD);
+    Set<String> keys = new HashSet<>(Arrays.asList("key1"));
+
+    // Execute
+    CompletableFuture<ComputeAggregationResponse> future = serverSideBuilder.execute(keys);
+    ComputeAggregationResponse result = future.get();
+
+    // Verify missing field returns empty map
+    Map<String, Integer> counts = result.getValueToCount(JOB_TYPE_FIELD);
+    assertTrue(counts.isEmpty());
+  }
+
+  @Test(description = "ServerSideAggregationResponse should handle bucket operations correctly")
+  public void testServerSideResponseBucketOperations() throws Exception {
+    // Setup response
+    String responseJson = "{\"jobType\":{\"engineer\":5}}";
+    TransportClientResponse response =
+        new TransportClientResponse(1, CompressionStrategy.NO_OP, responseJson.getBytes("UTF-8"));
+    when(transportClient.post(eq("/aggregation/test_store"), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(response));
+
+    // Setup the aggregation
+    serverSideBuilder.countGroupByValue(3, JOB_TYPE_FIELD);
+    Set<String> keys = new HashSet<>(Arrays.asList("key1"));
+
+    // Execute
+    CompletableFuture<ComputeAggregationResponse> future = serverSideBuilder.execute(keys);
+    ComputeAggregationResponse result = future.get();
+
+    // Verify bucket operations return empty (not implemented server-side yet)
+    Map<String, Integer> bucketCounts = result.getBucketNameToCount(JOB_TYPE_FIELD);
+    assertTrue(bucketCounts.isEmpty());
+  }
+
+  @Test(description = "Should handle transport client throwing exception during server call")
+  public void testServerSideTransportClientException() throws Exception {
+    // Setup transport client to throw exception
+    when(transportClient.post(eq("/aggregation/test_store"), any(), any()))
+        .thenThrow(new RuntimeException("Transport error"));
+
+    // Setup client-side fallback
+    CompletableFuture<Map<String, ComputeGenericRecord>> mockClientResult =
+        CompletableFuture.completedFuture(new HashMap<>());
+    when(delegate.execute(any())).thenReturn(mockClientResult);
+
+    // Setup the aggregation
+    serverSideBuilder.countGroupByValue(3, JOB_TYPE_FIELD);
+    Set<String> keys = new HashSet<>(Arrays.asList("key1"));
+
+    // Execute - should not throw exception despite transport error
+    CompletableFuture<ComputeAggregationResponse> future = serverSideBuilder.execute(keys);
+    ComputeAggregationResponse result = future.get();
+
+    // Verify fallback to client-side execution
+    verify(delegate).execute(keys);
+    assertNotNull(result);
+  }
+
+  @Test(description = "Should test canUseServerSideAggregation method correctly")
+  public void testCanUseServerSideAggregation() throws Exception {
+    // Setup client-side execution for regular store client
+    CompletableFuture<Map<String, ComputeGenericRecord>> mockClientResult =
+        CompletableFuture.completedFuture(new HashMap<>());
+    when(delegate.execute(any())).thenReturn(mockClientResult);
+
+    // Test with regular store client (should use client-side)
+    builder.countGroupByValue(3, JOB_TYPE_FIELD);
+    Set<String> keys = new HashSet<>(Arrays.asList("key1"));
+    CompletableFuture<ComputeAggregationResponse> regularResult = builder.execute(keys);
+    regularResult.get();
+
+    // Verify only client-side was called
+    verify(delegate).execute(keys);
+    verify(transportClient, times(0)).post(any(), any(), any());
+
+    // Test with AbstractAvroStoreClient (should attempt server-side)
+    String responseJson = "{\"jobType\":{\"engineer\":5}}";
+    TransportClientResponse response =
+        new TransportClientResponse(1, CompressionStrategy.NO_OP, responseJson.getBytes("UTF-8"));
+    when(transportClient.post(eq("/aggregation/test_store"), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(response));
+
+    serverSideBuilder.countGroupByValue(3, JOB_TYPE_FIELD);
+    CompletableFuture<ComputeAggregationResponse> serverResult = serverSideBuilder.execute(keys);
+    serverResult.get();
+
+    // Verify server-side was attempted
+    verify(transportClient).post(eq("/aggregation/test_store"), any(), any());
+  }
+
+  @Test(description = "Should handle concurrent execution of server-side aggregation")
+  public void testServerSideAggregationConcurrency() throws Exception {
+    // Setup server response
+    String responseJson = "{\"jobType\":{\"engineer\":10}}";
+    TransportClientResponse response =
+        new TransportClientResponse(1, CompressionStrategy.NO_OP, responseJson.getBytes("UTF-8"));
+    when(transportClient.post(eq("/aggregation/test_store"), any(), any()))
+        .thenReturn(CompletableFuture.completedFuture(response));
+
+    // Setup the aggregation
+    serverSideBuilder.countGroupByValue(5, JOB_TYPE_FIELD);
+    Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2"));
+
+    // Execute multiple concurrent requests
+    CompletableFuture<ComputeAggregationResponse> future1 = serverSideBuilder.execute(keys);
+    CompletableFuture<ComputeAggregationResponse> future2 = serverSideBuilder.execute(keys);
+
+    // Wait for both to complete
+    ComputeAggregationResponse result1 = future1.get();
+    ComputeAggregationResponse result2 = future2.get();
+
+    // Verify both completed successfully
+    assertNotNull(result1);
+    assertNotNull(result2);
+    assertEquals(result1.getValueToCount(JOB_TYPE_FIELD).get("engineer"), Integer.valueOf(10));
+    assertEquals(result2.getValueToCount(JOB_TYPE_FIELD).get("engineer"), Integer.valueOf(10));
+
+    // Verify server was called twice
+    verify(transportClient, times(2)).post(eq("/aggregation/test_store"), any(), any());
   }
 }

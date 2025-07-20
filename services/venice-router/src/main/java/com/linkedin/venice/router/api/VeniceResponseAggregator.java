@@ -505,13 +505,11 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         hasSuccess = true;
         String body = response.content().toString(java.nio.charset.StandardCharsets.UTF_8);
         try {
-          // Use Jackson to parse JSON response
           ObjectMapper mapper = new ObjectMapper();
           Map<String, Map<String, Integer>> responseData =
               mapper.readValue(body, new TypeReference<Map<String, Map<String, Integer>>>() {
               });
 
-          // Merge results from this response into the aggregated results
           for (Map.Entry<String, Map<String, Integer>> fieldEntry: responseData.entrySet()) {
             String fieldName = fieldEntry.getKey();
             Map<Object, Integer> mergedFieldCounts = merged.computeIfAbsent(fieldName, k -> new HashMap<>());
@@ -523,7 +521,6 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
             }
           }
         } catch (Exception e) {
-          // If parsing fails, log but continue processing other responses
           LOGGER.warn("Failed to parse aggregation response: {}", body, e);
         }
       } else {
@@ -533,11 +530,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
 
     // If there are successful responses, return merged result; otherwise return error
     if (hasSuccess) {
-      // Since we don't have topK info at router level, we'll just merge all results
-      // The storage nodes have already applied topK, so we're merging their top results
-      // TODO: Consider passing topK info in response headers or request context
-
-      // Sort the merged results by count
+      // Sort merged results by count and serialize to JSON
       Map<String, Map<Object, Integer>> sortedMerged = new HashMap<>();
       for (Map.Entry<String, Map<Object, Integer>> fieldEntry: merged.entrySet()) {
         Map<Object, Integer> sortedValues = fieldEntry.getValue()
@@ -550,7 +543,6 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         sortedMerged.put(fieldEntry.getKey(), sortedValues);
       }
 
-      // Build JSON format response using Jackson
       String mergedJson;
       try {
         ObjectMapper mapper = new ObjectMapper();
