@@ -790,12 +790,7 @@ public class TestUtils {
   }
 
   public static void restoreSystemExit() {
-    try {
-      System.setSecurityManager(null);
-    } catch (UnsupportedOperationException e) {
-      // In Java 17+, System.setSecurityManager is deprecated and may throw UnsupportedOperationException
-      LOGGER.warn("System.setSecurityManager(null) not supported in this JVM version: {}", e.getMessage());
-    }
+    System.setSecurityManager(null);
   }
 
   public static void createAndVerifyStoreInAllRegions(
