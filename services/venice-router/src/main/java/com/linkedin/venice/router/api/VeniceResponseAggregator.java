@@ -15,6 +15,8 @@ import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.alpini.base.misc.HeaderNames;
 import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.netty4.misc.BasicHttpRequest;
@@ -218,7 +220,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
           finalResponse = processComputeResponses(gatheredResponses, storeName, venicePath.getClientComputeHeader());
           break;
         case AGGREGATION:
-          finalResponse = processAggregationResponses(gatheredResponses, storeName);
+          finalResponse = processAggregationResponses(gatheredResponses, storeName, venicePath);
           break;
         default:
           throw RouterExceptionAndTrackingUtils
@@ -319,6 +321,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         return requestLatencyMs < multiGetTardyThresholdInMs;
       case COMPUTE_STREAMING:
       case COMPUTE:
+      case AGGREGATION:
         return requestLatencyMs < computeTardyThresholdInMs;
       default:
         throw new VeniceException("Unknown request type: " + requestType);
@@ -489,7 +492,10 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     return multiGetResponse;
   }
 
-  protected FullHttpResponse processAggregationResponses(List<FullHttpResponse> responses, String storeName) {
+  protected FullHttpResponse processAggregationResponses(
+      List<FullHttpResponse> responses,
+      String storeName,
+      VenicePath venicePath) {
     Map<String, Map<Object, Integer>> merged = new HashMap<>();
     boolean hasSuccess = false;
     boolean hasError = false;
@@ -499,30 +505,21 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         hasSuccess = true;
         String body = response.content().toString(java.nio.charset.StandardCharsets.UTF_8);
         try {
-          // Use simple JSON parsing to merge aggregation results
-          // Assume body is JSON format: {"field1":{"value1":2,"value2":1},"field2":{"value3":3}}
-          if (body.startsWith("{") && body.endsWith("}")) {
-            String inner = body.substring(1, body.length() - 1);
-            String[] fieldEntries = inner.split(",(?=\"[^\"]+\":\\{)");
-            for (String fieldEntry: fieldEntries) {
-              int colonIdx = fieldEntry.indexOf(':');
-              if (colonIdx < 0)
-                continue;
-              String field = fieldEntry.substring(0, colonIdx).trim().replace("\"", "");
-              String valueMapStr = fieldEntry.substring(colonIdx + 1).trim();
-              if (valueMapStr.startsWith("{") && valueMapStr.endsWith("}")) {
-                String valueInner = valueMapStr.substring(1, valueMapStr.length() - 1);
-                String[] valueEntries = valueInner.isEmpty() ? new String[0] : valueInner.split(",(?=\"[^\"]+\":\\d+)");
-                Map<Object, Integer> valueMap = merged.computeIfAbsent(field, k -> new HashMap<>());
-                for (String valueEntry: valueEntries) {
-                  int veqIdx = valueEntry.lastIndexOf(':');
-                  if (veqIdx < 0)
-                    continue;
-                  String value = valueEntry.substring(0, veqIdx).trim().replace("\"", "");
-                  int count = Integer.parseInt(valueEntry.substring(veqIdx + 1).trim());
-                  valueMap.put(value, valueMap.getOrDefault(value, 0) + count);
-                }
-              }
+          // Use Jackson to parse JSON response
+          ObjectMapper mapper = new ObjectMapper();
+          Map<String, Map<String, Integer>> responseData =
+              mapper.readValue(body, new TypeReference<Map<String, Map<String, Integer>>>() {
+              });
+
+          // Merge results from this response into the aggregated results
+          for (Map.Entry<String, Map<String, Integer>> fieldEntry: responseData.entrySet()) {
+            String fieldName = fieldEntry.getKey();
+            Map<Object, Integer> mergedFieldCounts = merged.computeIfAbsent(fieldName, k -> new HashMap<>());
+
+            for (Map.Entry<String, Integer> valueEntry: fieldEntry.getValue().entrySet()) {
+              String value = valueEntry.getKey();
+              Integer count = valueEntry.getValue();
+              mergedFieldCounts.put(value, mergedFieldCounts.getOrDefault(value, 0) + count);
             }
           }
         } catch (Exception e) {
@@ -536,28 +533,32 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
 
     // If there are successful responses, return merged result; otherwise return error
     if (hasSuccess) {
-      // Build JSON format response
-      StringBuilder jsonBuilder = new StringBuilder("{");
-      boolean firstField = true;
-      for (Map.Entry<String, Map<Object, Integer>> fieldEntry: merged.entrySet()) {
-        if (!firstField) {
-          jsonBuilder.append(",");
-        }
-        firstField = false;
-        jsonBuilder.append("\"").append(fieldEntry.getKey()).append("\":{");
-        boolean firstValue = true;
-        for (Map.Entry<Object, Integer> valueEntry: fieldEntry.getValue().entrySet()) {
-          if (!firstValue) {
-            jsonBuilder.append(",");
-          }
-          firstValue = false;
-          jsonBuilder.append("\"").append(valueEntry.getKey()).append("\":").append(valueEntry.getValue());
-        }
-        jsonBuilder.append("}");
-      }
-      jsonBuilder.append("}");
+      // Since we don't have topK info at router level, we'll just merge all results
+      // The storage nodes have already applied topK, so we're merging their top results
+      // TODO: Consider passing topK info in response headers or request context
 
-      String mergedJson = jsonBuilder.toString();
+      // Sort the merged results by count
+      Map<String, Map<Object, Integer>> sortedMerged = new HashMap<>();
+      for (Map.Entry<String, Map<Object, Integer>> fieldEntry: merged.entrySet()) {
+        Map<Object, Integer> sortedValues = fieldEntry.getValue()
+            .entrySet()
+            .stream()
+            .sorted(Map.Entry.<Object, Integer>comparingByValue().reversed())
+            .collect(
+                java.util.stream.Collectors
+                    .toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, java.util.LinkedHashMap::new));
+        sortedMerged.put(fieldEntry.getKey(), sortedValues);
+      }
+
+      // Build JSON format response using Jackson
+      String mergedJson;
+      try {
+        ObjectMapper mapper = new ObjectMapper();
+        mergedJson = mapper.writeValueAsString(sortedMerged);
+      } catch (Exception e) {
+        LOGGER.error("Failed to serialize merged aggregation result", e);
+        mergedJson = "{}";
+      }
       FullHttpResponse resp = new DefaultFullHttpResponse(
           HttpVersion.HTTP_1_1,
           OK,

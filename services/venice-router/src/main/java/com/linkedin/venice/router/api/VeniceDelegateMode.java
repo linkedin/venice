@@ -190,6 +190,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       case MULTI_GET_STREAMING:
       case COMPUTE:
       case COMPUTE_STREAMING:
+      case AGGREGATION:
         scatterMode = scatterGatherModeForMultiKeyRequest;
         break;
       case SINGLE_GET:

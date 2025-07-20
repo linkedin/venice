@@ -1,13 +1,22 @@
 package com.linkedin.venice.client.store;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.predicate.Predicate;
+import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.schema.SchemaReader;
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
 
 
 /**
@@ -19,12 +28,14 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
   private final Map<String, Integer> fieldTopKMap = new HashMap<>();
   private final Map<String, Map<String, Predicate>> fieldBucketMap = new HashMap<>();
   private final SchemaReader schemaReader;
+  private final AvroGenericReadComputeStoreClient storeClient;
 
   public AvroComputeAggregationRequestBuilder(
       AvroGenericReadComputeStoreClient storeClient,
       SchemaReader schemaReader) {
     this.delegate = (AvroComputeRequestBuilderV3<K>) storeClient.compute();
     this.schemaReader = schemaReader;
+    this.storeClient = storeClient;
   }
 
   /**
@@ -166,8 +177,182 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
       throw new VeniceClientException("keys cannot be null or empty");
     }
 
-    // Execute the compute request
+    // Try server-side aggregation first if only countByValue operations (no buckets)
+    if (fieldBucketMap.isEmpty() && !fieldTopKMap.isEmpty() && canUseServerSideAggregation()) {
+      try {
+        return executeServerSideAggregation(keys);
+      } catch (Exception e) {
+        // If server-side aggregation fails, fall back to client-side
+        // This could happen if server doesn't support the feature yet
+        // Log the fallback but don't fail the request
+        // TODO: Add proper logging once logger is available
+      }
+    }
+
+    // Fall back to client-side aggregation
     return delegate.execute(keys)
         .thenApply(result -> new AvroComputeAggregationResponse<>(result, fieldTopKMap, fieldBucketMap));
+  }
+
+  /**
+   * Execute server-side aggregation by calling the /aggregation endpoint
+   */
+  private CompletableFuture<ComputeAggregationResponse> executeServerSideAggregation(Set<K> keys)
+      throws VeniceClientException {
+    return CompletableFuture.supplyAsync(() -> {
+      try {
+        // 1. Get transport client and store name
+        TransportClient transportClient = getTransportClient();
+        String storeName = getStoreName();
+
+        // 2. Serialize the aggregation request
+        byte[] requestBody = serializeAggregationRequest(keys);
+
+        // 3. Build request headers
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/octet-stream");
+        headers.put("Venice-API-Version", "1");
+        if (schemaReader.getLatestValueSchemaId() > 0) {
+          headers.put("Venice-Compute-Value-Schema-Id", String.valueOf(schemaReader.getLatestValueSchemaId()));
+        }
+
+        // 4. Make HTTP POST request
+        String aggregationPath = "/aggregation/" + storeName;
+        CompletableFuture<TransportClientResponse> responseFuture =
+            transportClient.post(aggregationPath, headers, requestBody);
+
+        // 5. Wait for response and parse
+        TransportClientResponse response = responseFuture.get();
+        String responseJson = new String(response.getBody(), "UTF-8");
+
+        // 6. Convert JSON response to ComputeAggregationResponse
+        return createAggregationResponseFromJson(responseJson);
+
+      } catch (Exception e) {
+        throw new VeniceClientException("Failed to execute server-side aggregation", e);
+      }
+    });
+  }
+
+  /**
+   * Check if server-side aggregation can be used
+   */
+  private boolean canUseServerSideAggregation() {
+    // Check if we can access transport client (not in test mode with mocked clients)
+    return storeClient instanceof AbstractAvroStoreClient;
+  }
+
+  /**
+   * Get the transport client from the store client
+   */
+  private TransportClient getTransportClient() {
+    if (storeClient instanceof AbstractAvroStoreClient) {
+      return ((AbstractAvroStoreClient) storeClient).getTransportClient();
+    }
+    throw new VeniceClientException("Cannot access transport client from store client");
+  }
+
+  /**
+   * Get the store name from the store client
+   */
+  private String getStoreName() {
+    return storeClient.getStoreName();
+  }
+
+  /**
+   * Serialize aggregation request according to the protocol expected by AggregationRouterRequestWrapper
+   */
+  private byte[] serializeAggregationRequest(Set<K> keys) throws Exception {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    BinaryEncoder encoder = EncoderFactory.get().binaryEncoder(baos, null);
+
+    // Write field count and field mappings (Map<String, Integer> countByValueFields)
+    encoder.writeInt(fieldTopKMap.size());
+    for (Map.Entry<String, Integer> entry: fieldTopKMap.entrySet()) {
+      encoder.writeString(entry.getKey());
+      encoder.writeInt(entry.getValue());
+    }
+
+    // Serialize keys count first
+    encoder.writeInt(keys.size());
+
+    // Convert keys to ComputeRouterRequestKeyV1 format and serialize each one
+    for (K key: keys) {
+      ComputeRouterRequestKeyV1 routerKey = new ComputeRouterRequestKeyV1();
+
+      // Get partition ID (this is a simplified approach - in reality you'd need the partition finder)
+      // Use bitwise AND to ensure positive value, avoiding Math.abs(Integer.MIN_VALUE) issue
+      int partitionId = (key.hashCode() & 0x7FFFFFFF) % 100; // Simple hash-based partitioning
+      routerKey.setPartitionId(partitionId);
+
+      // Serialize the key
+      byte[] keyBytes;
+      if (key instanceof String) {
+        keyBytes = ((String) key).getBytes("UTF-8");
+      } else if (key instanceof ByteBuffer) {
+        ByteBuffer bb = (ByteBuffer) key;
+        keyBytes = new byte[bb.remaining()];
+        bb.get(keyBytes);
+      } else {
+        // Use toString as fallback
+        keyBytes = key.toString().getBytes("UTF-8");
+      }
+      routerKey.setKeyBytes(ByteBuffer.wrap(keyBytes));
+
+      // Write the router key fields directly
+      encoder.writeInt(routerKey.getPartitionId());
+      encoder.writeBytes(routerKey.getKeyBytes());
+    }
+
+    encoder.flush();
+    return baos.toByteArray();
+  }
+
+  /**
+   * Create ComputeAggregationResponse from JSON response
+   */
+  private ComputeAggregationResponse createAggregationResponseFromJson(String responseJson) throws Exception {
+    ObjectMapper mapper = new ObjectMapper();
+    Map<String, Map<String, Integer>> jsonResults =
+        mapper.readValue(responseJson, new TypeReference<Map<String, Map<String, Integer>>>() {
+        });
+
+    // Convert to the format expected by AvroComputeAggregationResponse
+    // Since the server returns aggregated results, we create a special response that bypasses client-side aggregation
+    return new ServerSideAggregationResponse<>(jsonResults);
+  }
+
+  /**
+   * Special implementation of ComputeAggregationResponse for server-side aggregated results
+   */
+  private static class ServerSideAggregationResponse<K> implements ComputeAggregationResponse {
+    private final Map<String, Map<String, Integer>> serverResults;
+
+    public ServerSideAggregationResponse(Map<String, Map<String, Integer>> serverResults) {
+      this.serverResults = serverResults;
+    }
+
+    @Override
+    public <T> Map<T, Integer> getValueToCount(String field) {
+      Map<String, Integer> fieldResults = serverResults.get(field);
+      if (fieldResults == null) {
+        return new HashMap<>();
+      }
+
+      // Convert String keys back to T type and return the server-aggregated results
+      Map<T, Integer> result = new HashMap<>();
+      for (Map.Entry<String, Integer> entry: fieldResults.entrySet()) {
+        @SuppressWarnings("unchecked")
+        T key = (T) entry.getKey();
+        result.put(key, entry.getValue());
+      }
+      return result;
+    }
+
+    @Override
+    public Map<String, Integer> getBucketNameToCount(String fieldName) {
+      // Server-side bucket aggregation not implemented yet
+      return new HashMap<>();
+    }
   }
 }

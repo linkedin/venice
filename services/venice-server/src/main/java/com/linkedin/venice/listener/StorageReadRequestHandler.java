@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -727,32 +728,41 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
             }
           }
         } catch (Exception e) {
-          LOGGER.error("Exception thrown for {}", topic, e);
+          LOGGER
+              .error("Exception thrown while processing key for aggregation in topic {}: {}", topic, e.getMessage(), e);
+          // Continue processing other keys even if one fails
           continue;
         }
       }
-      // Return aggregation result as JSON string instead of Map.toString()
-      StringBuilder jsonBuilder = new StringBuilder("{");
-      boolean firstField = true;
+      // Apply TopK limitation and sort by count
+      Map<String, Map<Object, Integer>> sortedResult = new HashMap<>();
       for (Map.Entry<String, Map<Object, Integer>> fieldEntry: result.entrySet()) {
-        if (!firstField) {
-          jsonBuilder.append(",");
-        }
-        firstField = false;
-        jsonBuilder.append("\"").append(fieldEntry.getKey()).append("\":{");
-        boolean firstValue = true;
-        for (Map.Entry<Object, Integer> valueEntry: fieldEntry.getValue().entrySet()) {
-          if (!firstValue) {
-            jsonBuilder.append(",");
-          }
-          firstValue = false;
-          jsonBuilder.append("\"").append(valueEntry.getKey()).append("\":").append(valueEntry.getValue());
-        }
-        jsonBuilder.append("}");
-      }
-      jsonBuilder.append("}");
+        String fieldName = fieldEntry.getKey();
+        Map<Object, Integer> valueCounts = fieldEntry.getValue();
+        Integer topK = countByValueFields.get(fieldName);
 
-      return new AggregationReadResponseWrapper(jsonBuilder.toString());
+        // Sort by count descending and limit to topK
+        Map<Object, Integer> topKValues = valueCounts.entrySet()
+            .stream()
+            .sorted(Map.Entry.<Object, Integer>comparingByValue().reversed())
+            .limit(topK != null && topK > 0 ? topK : Integer.MAX_VALUE)
+            .collect(
+                java.util.stream.Collectors
+                    .toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, java.util.LinkedHashMap::new));
+
+        sortedResult.put(fieldName, topKValues);
+      }
+
+      // Return aggregation result as JSON string using Jackson
+      try {
+        ObjectMapper mapper = new ObjectMapper();
+        String jsonResult = mapper.writeValueAsString(sortedResult);
+        return new AggregationReadResponseWrapper(jsonResult);
+      } catch (Exception e) {
+        LOGGER.error("Failed to serialize aggregation result", e);
+        // Fallback to empty result on serialization error
+        return new AggregationReadResponseWrapper("{}");
+      }
     }, executor);
   }
 

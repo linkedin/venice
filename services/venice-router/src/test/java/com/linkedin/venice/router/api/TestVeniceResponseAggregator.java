@@ -377,7 +377,7 @@ public class TestVeniceResponseAggregator {
     RouterStats<AggRouterHttpRequestStats> routerStats = mock(RouterStats.class);
     VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats, Optional.empty());
 
-    FullHttpResponse finalResponse = responseAggregator.processAggregationResponses(gatheredResponses, storeName);
+    FullHttpResponse finalResponse = responseAggregator.processAggregationResponses(gatheredResponses, storeName, null);
 
     Assert.assertEquals(finalResponse.status(), OK);
     Assert.assertEquals(finalResponse.headers().get(HttpHeaderNames.CONTENT_TYPE), "application/json");
@@ -418,7 +418,7 @@ public class TestVeniceResponseAggregator {
     RouterStats<AggRouterHttpRequestStats> routerStats = mock(RouterStats.class);
     VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats, Optional.empty());
 
-    FullHttpResponse finalResponse = responseAggregator.processAggregationResponses(gatheredResponses, storeName);
+    FullHttpResponse finalResponse = responseAggregator.processAggregationResponses(gatheredResponses, storeName, null);
 
     // Should still return OK if at least one partition succeeded
     Assert.assertEquals(finalResponse.status(), OK);
@@ -449,7 +449,7 @@ public class TestVeniceResponseAggregator {
     RouterStats<AggRouterHttpRequestStats> routerStats = mock(RouterStats.class);
     VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats, Optional.empty());
 
-    FullHttpResponse finalResponse = responseAggregator.processAggregationResponses(gatheredResponses, storeName);
+    FullHttpResponse finalResponse = responseAggregator.processAggregationResponses(gatheredResponses, storeName, null);
 
     // Should return error status
     Assert.assertEquals(finalResponse.status(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
@@ -470,7 +470,7 @@ public class TestVeniceResponseAggregator {
     RouterStats<AggRouterHttpRequestStats> routerStats = mock(RouterStats.class);
     VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(routerStats, Optional.empty());
 
-    FullHttpResponse finalResponse = responseAggregator.processAggregationResponses(gatheredResponses, storeName);
+    FullHttpResponse finalResponse = responseAggregator.processAggregationResponses(gatheredResponses, storeName, null);
 
     Assert.assertEquals(finalResponse.status(), OK);
     String finalContent = finalResponse.content().toString(StandardCharsets.UTF_8);
