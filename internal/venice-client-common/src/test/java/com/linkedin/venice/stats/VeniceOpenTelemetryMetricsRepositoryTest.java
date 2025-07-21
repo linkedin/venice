@@ -21,6 +21,7 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.metrics.DoubleGauge;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
@@ -37,6 +38,7 @@ import org.testng.annotations.Test;
 
 public class VeniceOpenTelemetryMetricsRepositoryTest {
   private VeniceOpenTelemetryMetricsRepository metricsRepository;
+  private static final String TEST_PREFIX = "test_prefix";
 
   private VeniceMetricsConfig mockMetricsConfig;
 
@@ -45,7 +47,7 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     mockMetricsConfig = Mockito.mock(VeniceMetricsConfig.class);
     when(mockMetricsConfig.emitOtelMetrics()).thenReturn(true);
     when(mockMetricsConfig.getMetricNamingFormat()).thenReturn(SNAKE_CASE);
-    when(mockMetricsConfig.getMetricPrefix()).thenReturn("test_prefix");
+    when(mockMetricsConfig.getMetricPrefix()).thenReturn(TEST_PREFIX);
     when(mockMetricsConfig.getServiceName()).thenReturn("test_service");
     when(mockMetricsConfig.exportOtelMetricsToEndpoint()).thenReturn(true);
     when(mockMetricsConfig.getOtelEndpoint()).thenReturn("http://localhost:4318");
@@ -111,7 +113,16 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
   @Test
   public void testTransformMetricName() {
     when(mockMetricsConfig.getMetricNamingFormat()).thenReturn(SNAKE_CASE);
-    assertEquals(metricsRepository.getFullMetricName("prefix", "metric_name"), "prefix.metric_name");
+    String testMetricName = "test_metric_name";
+    MetricEntity metricEntity = new MetricEntity(
+        testMetricName,
+        MetricType.COUNTER,
+        MetricUnit.NUMBER,
+        "Test metric",
+        new HashSet<>(singletonList(VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
+    assertEquals(
+        metricsRepository.getFullMetricName(metricEntity),
+        String.format("%s%s.%s", "venice.", TEST_PREFIX, testMetricName));
 
     String transformedName =
         transformMetricName("test.test_metric_name", VeniceOpenTelemetryMetricNamingFormat.PASCAL_CASE);
@@ -167,6 +178,12 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           assertTrue(
               instrument instanceof LongCounter,
               "Instrument should be a LongCounter for metric type: " + metricType);
+          metricEntityState.recordOtelMetric(value, attributes);
+          break;
+        case GAUGE:
+          assertTrue(
+              instrument instanceof DoubleGauge,
+              "Instrument should be a DoubleGauge for metric type: " + metricType);
           metricEntityState.recordOtelMetric(value, attributes);
           break;
         default:

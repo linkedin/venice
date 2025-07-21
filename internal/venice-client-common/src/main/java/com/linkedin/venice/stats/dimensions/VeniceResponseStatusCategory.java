@@ -9,7 +9,7 @@ package com.linkedin.venice.stats.dimensions;
 public enum VeniceResponseStatusCategory implements VeniceDimensionInterface {
   SUCCESS, FAIL;
 
-  private final String category;;
+  private final String category;
 
   VeniceResponseStatusCategory() {
     this.category = name().toLowerCase();
