@@ -1641,6 +1641,8 @@ public class ConfigKeys {
   public static final String PARENT_CONTROLLER_METADATA_STORE_CLUSTER_NAME =
       "parent.controller.metadata.store.cluster.name";
 
+  public static final String PARENT_CONTROLLER_METADATA_STORE_ENABLED = "parent.controller.metadata.store.enabled";
+
   /**
    * The most-significant-bits of the producer GUID used by {@code VenicePushJob} encoded as a {@code long}.
    */

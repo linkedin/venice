@@ -159,6 +159,7 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_METADATA_STORE_CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_METADATA_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
@@ -302,6 +303,7 @@ public class VeniceControllerClusterConfig {
   private final int parentControllerMaxErroredTopicNumToKeep;
   private final String pushJobStatusStoreClusterName;
   private final String parentControllerMetadataStoreClusterName;
+  private final boolean parentControllerMetadataStoreEnabled;
   private final boolean participantMessageStoreEnabled;
   private final String systemSchemaClusterName;
   private final boolean adminHelixMessagingChannelEnabled;
@@ -916,6 +918,7 @@ public class VeniceControllerClusterConfig {
     this.pushJobStatusStoreClusterName = props.getString(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, "");
 
     this.parentControllerMetadataStoreClusterName = props.getString(PARENT_CONTROLLER_METADATA_STORE_CLUSTER_NAME, "");
+    this.parentControllerMetadataStoreEnabled = props.getBoolean(PARENT_CONTROLLER_METADATA_STORE_ENABLED, false);
     this.participantMessageStoreEnabled = props.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
     this.adminHelixMessagingChannelEnabled = props.getBoolean(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, true);
     if (!adminHelixMessagingChannelEnabled && !participantMessageStoreEnabled) {
