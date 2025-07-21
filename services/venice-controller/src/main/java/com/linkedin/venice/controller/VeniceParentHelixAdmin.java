@@ -426,10 +426,10 @@ public class VeniceParentHelixAdmin implements Admin {
         accessController,
         authorizerService,
         lingeringStoreVersionChecker,
-        WriteComputeSchemaConverter.getInstance(), // TODO: make it an input param
+        WriteComputeSchemaConverter.getInstance(),
         Optional.empty(),
         new PubSubTopicRepository(),
-        null, // TODO: how do these become not null?
+        null,
         null,
         null,
         metricsRepository);
@@ -448,7 +448,7 @@ public class VeniceParentHelixAdmin implements Admin {
       PubSubTopicRepository pubSubTopicRepository,
       DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore,
       DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore,
-      DelegatingClusterLeaderInitializationRoutine initRoutineForParentMetadataStore,) {
+      DelegatingClusterLeaderInitializationRoutine initRoutineForParentMetadataStore,
       MetricsRepository metricsRepository) {
 
     Validate.notNull(lingeringStoreVersionChecker);
