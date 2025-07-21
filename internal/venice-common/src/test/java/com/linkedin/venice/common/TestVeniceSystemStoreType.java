@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.meta.Store;
@@ -132,5 +133,38 @@ public class TestVeniceSystemStoreType {
     Assert.assertNotNull(
         VeniceSystemStoreType.getSystemStoreType(VeniceSystemStoreType.META_STORE.getPrefix() + "-extra"),
         "Should detect system store when prefix is followed by extra characters");
+  }
+
+  @Test
+  public void testUserSystemStores() {
+    List<VeniceSystemStoreType> userSystemStores = VeniceSystemStoreType.USER_SYSTEM_STORES;
+
+    // Verify that the list contains expected user system stores
+    assertTrue(
+        userSystemStores.contains(VeniceSystemStoreType.META_STORE),
+        "User system stores should include META_STORE");
+    assertTrue(
+        userSystemStores.contains(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE),
+        "User system stores should include DAVINCI_PUSH_STATUS_STORE");
+
+    // Verify that BATCH_JOB_HEARTBEAT_STORE is excluded
+    assertFalse(
+        userSystemStores.contains(VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE),
+        "User system stores should NOT include BATCH_JOB_HEARTBEAT_STORE");
+
+    // Verify the size (should be total enum values minus 1 for BATCH_JOB_HEARTBEAT_STORE)
+    assertEquals(
+        userSystemStores.size(),
+        VeniceSystemStoreType.values().length - 1,
+        "User system stores should contain all system store types except BATCH_JOB_HEARTBEAT_STORE");
+
+    // Verify the returned list is immutable
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> userSystemStores.add(VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE));
+
+    // Verify that the field returns the same cached instance (no defensive copies)
+    List<VeniceSystemStoreType> userSystemStores2 = VeniceSystemStoreType.USER_SYSTEM_STORES;
+    assertTrue(userSystemStores == userSystemStores2, "USER_SYSTEM_STORES should return the same cached instance");
   }
 }

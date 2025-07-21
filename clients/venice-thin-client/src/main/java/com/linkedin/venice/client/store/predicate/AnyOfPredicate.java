@@ -25,4 +25,9 @@ public class AnyOfPredicate<T> implements Predicate<T> {
     }
     return false;
   }
+
+  @Override
+  public String toString() {
+    return "AnyOfPredicate{expectedValues=" + java.util.Arrays.toString(expectedValues) + "}";
+  }
 }

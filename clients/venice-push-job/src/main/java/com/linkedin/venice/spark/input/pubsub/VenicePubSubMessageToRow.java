@@ -5,8 +5,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import java.nio.ByteBuffer;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
@@ -25,7 +24,7 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
    * Static factory method to maintain backward compatibility.
    */
   public static InternalRow convertPubSubMessageToRow(
-      @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage,
+      @NotNull DefaultPubSubMessage pubSubMessage,
       String region,
       int partitionNumber) {
     return new VenicePubSubMessageToRow().convert(pubSubMessage, region, partitionNumber);
@@ -57,17 +56,14 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
    *         See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
    */
   @Override
-  public InternalRow convert(
-      @NotNull PubSubMessage<KafkaKey, KafkaMessageEnvelope, PubSubPosition> pubSubMessage,
-      String region,
-      int partitionNumber) {
+  public InternalRow convert(@NotNull DefaultPubSubMessage pubSubMessage, String region, int partitionNumber) {
 
     KafkaKey pubSubMessageKey = pubSubMessage.getKey();
     KafkaMessageEnvelope pubSubMessageValue = pubSubMessage.getValue();
     MessageType pubSubMessageType = MessageType.valueOf(pubSubMessageValue);
 
     // Spark row setup :
-    long offset = pubSubMessage.getOffset().getNumericOffset();
+    long offset = pubSubMessage.getPosition().getNumericOffset();
     ByteBuffer key = ByteBuffer.wrap(pubSubMessageKey.getKey(), 0, pubSubMessageKey.getKeyLength());
     ByteBuffer value;
     int messageType;

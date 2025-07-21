@@ -248,7 +248,8 @@ public class ControllerApiConstants {
 
   public static final String STORAGE_NODE_READ_QUOTA_ENABLED = "storage_node_read_quota_enabled";
 
-  public static final String COMPACTION_ENABLED = "enable_compaction";
+  public static final String COMPACTION_ENABLED = "compaction_enabled";
+  public static final String COMPACTION_THRESHOLD_MILLISECONDS = "compaction_threshold_milliseconds";
   public static final String MIN_COMPACTION_LAG_SECONDS = "min_compaction_lag_seconds";
   public static final String MAX_COMPACTION_LAG_SECONDS = "max_compaction_lag_seconds";
 

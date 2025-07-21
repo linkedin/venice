@@ -2,6 +2,7 @@ package com.linkedin.davinci.consumer;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -32,6 +33,7 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -247,6 +249,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     properties.put(
         CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS,
         String.valueOf(changelogClientConfig.getVersionSwapDetectionIntervalTimeInSeconds()));
+    properties.put(
+        CLIENT_USE_REQUEST_BASED_METADATA_REPOSITORY,
+        String.valueOf(changelogClientConfig.isUseRequestBasedMetadataRepository()));
     NativeMetadataRepository repository = NativeMetadataRepository
         .getInstance(changelogClientConfig.getInnerClientConfig(), new VeniceProperties(properties), null);
     repository.start();
@@ -551,6 +556,13 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   public CompletableFuture<Void> internalSeekToTimestamps(Map<Integer, Long> timestamps, String topicSuffix) {
+    return internalSeekToTimestamps(timestamps, topicSuffix, LOGGER);
+  }
+
+  public CompletableFuture<Void> internalSeekToTimestamps(
+      Map<Integer, Long> timestamps,
+      String topicSuffix,
+      Logger logger) {
     // Get the latest change capture topic
     Store store = storeRepository.getStore(storeName);
     int currentVersion = store.getCurrentVersion();
@@ -562,12 +574,21 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       topicPartitionLongMap.put(topicPartition, timestampPair.getValue());
     }
     return internalSeek(timestamps.keySet(), topic, partition -> {
-      Long offset = pubSubConsumer.offsetForTime(partition, topicPartitionLongMap.get(partition));
-      // As the offset for this timestamp does not exist, we need to seek to the very end of the topic partition.
-      if (offset == null) {
-        offset = pubSubConsumer.endOffset(partition);
+      try {
+        Long offset = pubSubConsumer.offsetForTime(partition, topicPartitionLongMap.get(partition));
+        // As the offset for this timestamp does not exist, we need to seek to the very end of the topic partition.
+        if (offset == null) {
+          offset = pubSubConsumer.endOffset(partition);
+        }
+        pubSubConsumerSeek(partition, offset);
+      } catch (Exception e) {
+        logger.error(
+            "Encounter unexpected error trying to seek to timestamp for topic partition: {}, timestamp: {}",
+            Utils.getReplicaId(partition),
+            topicPartitionLongMap.get(partition),
+            e);
+        throw e;
       }
-      pubSubConsumerSeek(partition, offset);
     });
   }
 
@@ -953,7 +974,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       }
       if (deserializer == null) {
         // This is not before image view consumer, and we need to set the proper deserializer
-        deserializer = storeDeserializerCache.getDeserializer(readerSchemaId, readerSchemaId);
+        try {
+          deserializer = storeDeserializerCache.getDeserializer(readerSchemaId, readerSchemaId);
+        } catch (InvalidVeniceSchemaException invalidSchemaException) {
+          // It's possible that a new schema was just added and our async metadata is outdated
+          LOGGER.info("{}. Refreshing the local metadata cache to try again", invalidSchemaException.getMessage());
+          storeRepository.refreshOneStore(storeName);
+          deserializer = storeDeserializerCache.getDeserializer(readerSchemaId, readerSchemaId);
+        }
       }
       try {
         assembledObject = deserializer.deserialize(compressor.decompress(assembledRecord.value()));

@@ -4,6 +4,7 @@ import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
@@ -14,7 +15,6 @@ import com.linkedin.venice.meta.VersionStatus;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -29,11 +29,16 @@ public class CompactionManager {
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class + " [log-compaction]");
 
   private final RepushOrchestrator repushOrchestrator;
-  private final long timeSinceLastLogCompactionThresholdMs;
+  private final long logCompactionThresholdMs;
+  private final Map<String, LogCompactionStats> statsMap;
 
-  public CompactionManager(RepushOrchestrator repushOrchestrator, long timeSinceLastLogCompactionThresholdMs) {
+  public CompactionManager(
+      RepushOrchestrator repushOrchestrator,
+      long logCompactionThresholdMs,
+      Map<String, LogCompactionStats> statsMap) {
     this.repushOrchestrator = repushOrchestrator;
-    this.timeSinceLastLogCompactionThresholdMs = timeSinceLastLogCompactionThresholdMs;
+    this.logCompactionThresholdMs = logCompactionThresholdMs;
+    this.statsMap = statsMap;
   }
 
   /**
@@ -56,13 +61,22 @@ public class CompactionManager {
     }
 
     // filter for stores ready for log compaction
-    return filterStoresForCompaction(storeInfoList);
+    return filterStoresForCompaction(storeInfoList, clusterName);
   }
 
   // public for testing
   @VisibleForTesting
-  List<StoreInfo> filterStoresForCompaction(List<StoreInfo> storeInfoList) {
-    return storeInfoList.stream().filter(this::isCompactionReady).collect(Collectors.toList());
+  List<StoreInfo> filterStoresForCompaction(List<StoreInfo> storeInfoList, String clusterName) {
+    List<StoreInfo> storesReadyForCompaction = new ArrayList<>();
+    for (StoreInfo storeInfo: storeInfoList) {
+      if (isCompactionReady(storeInfo)) {
+        storesReadyForCompaction.add(storeInfo);
+        LogCompactionStats stats = statsMap.get(clusterName);
+        stats.recordStoreNominatedForCompactionCount(storeInfo.getName());
+        stats.setCompactionEligible(storeInfo.getName());
+      }
+    }
+    return storesReadyForCompaction;
   }
 
   /**
@@ -74,19 +88,47 @@ public class CompactionManager {
   //
   public boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
-
-    return isHybridStore && isLastCompactionTimeOlderThanThreshold(timeSinceLastLogCompactionThresholdMs, storeInfo)
+    return isHybridStore && isLastCompactionTimeOlderThanThreshold(getLogCompactionThresholdMs(storeInfo), storeInfo)
         && storeInfo.isActiveActiveReplicationEnabled() && !VeniceSystemStoreUtils.isSystemStore(storeInfo.getName())
         && storeInfo.isCompactionEnabled();
   }
 
   /**
+   * This function triggers a repush job to perform log compaction on the topic of a store.
+   * <p>
+   * - intermediary between {@link com.linkedin.venice.controller.VeniceHelixAdmin#repushStore} and
+   * {@link RepushOrchestrator#repush} - a wrapper around repush() - handles repush job status/response
+   *
+   * @param repushJobRequest
+   */
+  public RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception {
+    try {
+      RepushJobResponse response = repushOrchestrator.repush(repushJobRequest);
+
+      if (response == null) {
+        String nullResponseMessage = "Repush job response is null for repush request: " + repushJobRequest.toString();
+        LOGGER.error(nullResponseMessage);
+        throw new VeniceException(nullResponseMessage);
+      }
+      LOGGER.info(
+          "Repush job triggered for store: {} | exec id: {} | trigger source: {}",
+          response.getName(),
+          response.getExecutionId(),
+          repushJobRequest.getTriggerSource().toString());
+      return response;
+    } catch (Exception e) {
+      LOGGER.error("Failed to compact store: {}", repushJobRequest.getStoreName(), e);
+      throw e;
+    }
+  }
+
+  /**
    * This function checks if the last compaction time is older than the threshold.
-   * @param compactionThresholdMs, the number of hours that the last compaction time should be older than
+   * @param thresholdMs, the number of milliseconds that the last compaction time should be older than
    * @param storeInfo, the store to check the last compaction time for
    * @return true if the last compaction time is older than the threshold, false otherwise
    */
-  private boolean isLastCompactionTimeOlderThanThreshold(long compactionThresholdMs, StoreInfo storeInfo) {
+  private boolean isLastCompactionTimeOlderThanThreshold(long thresholdMs, StoreInfo storeInfo) {
     /**
      *  Reason for getting the largest version:
      *  The largest version may be larger than the current version if there is an ongoing push.
@@ -95,7 +137,7 @@ public class CompactionManager {
      */
     Version mostRecentPushedVersion = getLargestNonFailedVersion(storeInfo);
     if (mostRecentPushedVersion == null) {
-      LOGGER.warn("Store {} has never had an active version", storeInfo.getName());
+      LOGGER.warn("Store {} has never had an active version, skipping compaction nomination", storeInfo.getName());
       return false;
     }
 
@@ -103,7 +145,7 @@ public class CompactionManager {
     long currentTime = System.currentTimeMillis();
     long timeSinceLastCompactionMs = currentTime - lastCompactionTime;
 
-    return timeSinceLastCompactionMs >= compactionThresholdMs;
+    return timeSinceLastCompactionMs >= thresholdMs;
   }
 
   /**
@@ -129,31 +171,13 @@ public class CompactionManager {
   }
 
   /**
-   * This function triggers a repush job to perform log compaction on the topic of a store.
-   * <p>
-   * - intermediary between {@link com.linkedin.venice.controller.VeniceHelixAdmin#repushStore} and
-   * {@link RepushOrchestrator#repush} - a wrapper around repush() - handles repush job status/response
-   *
-   * @param repushJobRequest
-   */
-  public RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception {
-    try {
-      RepushJobResponse response = repushOrchestrator.repush(repushJobRequest);
-
-      if (response == null) {
-        String nullResponseMessage = "Repush job response is null for repush request: " + repushJobRequest.toString();
-        LOGGER.error(nullResponseMessage);
-        throw new VeniceException(nullResponseMessage);
-      }
-      LOGGER.info(
-          "Repush job triggered for store: {} | exec id: {} | trigger source: {}",
-          response.getName(),
-          response.getExecutionId(),
-          repushJobRequest.getTriggerSource());
-      return response;
-    } catch (Exception e) {
-      LOGGER.error("Failed to compact store: {}", repushJobRequest.getStoreName(), e);
-      throw e;
-    }
+  * This function will get the log compaction threshold from the store config.
+  * If default `-1`, use cluster config
+  *
+  * @param storeInfo
+  * @return
+  * */
+  private long getLogCompactionThresholdMs(StoreInfo storeInfo) {
+    return storeInfo.getCompactionThreshold() > -1 ? storeInfo.getCompactionThreshold() : logCompactionThresholdMs;
   }
 }

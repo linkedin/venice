@@ -702,7 +702,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         APP_DEFAULT_LOGICAL_TS);
   }
 
-  private CompletableFuture<PubSubProduceResult> delete(
+  CompletableFuture<PubSubProduceResult> delete(
       K key,
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper,
@@ -871,11 +871,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param valueSchemaId - value schema id for the given value
    * @param logicalTs - A timestamp field to indicate when this record was produced from apps view.
    * @param callback - Callback function invoked by Kafka producer after sending the message
-   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * @return a java.util.concurrent.Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  public Future<PubSubProduceResult> put(
+  public CompletableFuture<PubSubProduceResult> put(
       K key,
       V value,
       int valueSchemaId,
@@ -900,26 +900,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerCallback callback,
       LeaderMetadataWrapper leaderMetadataWrapper) {
     return put(key, value, valueSchemaId, callback, leaderMetadataWrapper, APP_DEFAULT_LOGICAL_TS, null);
-  }
-
-  public Future<PubSubProduceResult> put(
-      K key,
-      V value,
-      int valueSchemaId,
-      PubSubProducerCallback callback,
-      LeaderMetadataWrapper leaderMetadataWrapper,
-      ChunkedValueManifest oldValueManifest,
-      ChunkedValueManifest oldRmdManifest) {
-    return put(
-        key,
-        value,
-        valueSchemaId,
-        callback,
-        leaderMetadataWrapper,
-        APP_DEFAULT_LOGICAL_TS,
-        null,
-        oldValueManifest,
-        oldRmdManifest);
   }
 
   public CompletableFuture<PubSubProduceResult> put(
@@ -1168,7 +1148,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return update(key, update, valueSchemaId, derivedSchemaId, callback, APP_DEFAULT_LOGICAL_TS);
   }
 
-  public Future<PubSubProduceResult> update(
+  @Override
+  public CompletableFuture<PubSubProduceResult> update(
+      K key,
+      U update,
+      int valueSchemaId,
+      int derivedSchemaId,
+      long logicalTimestamp,
+      PubSubProducerCallback callback) {
+    return update(key, update, valueSchemaId, derivedSchemaId, callback, logicalTimestamp);
+  }
+
+  public CompletableFuture<PubSubProduceResult> update(
       K key,
       U update,
       int valueSchemaId,
@@ -1500,15 +1491,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         }
         segment.addToCheckSum(key, kafkaValue);
       }
-      PubSubProducerCallback messageCallback = callback;
-      if (callback == null) {
-        messageCallback = new SendMessageErrorLoggerCallback(kafkaValue, logger);
-      } else if (callback instanceof CompletableFutureCallback) {
-        CompletableFutureCallback completableFutureCallBack = (CompletableFutureCallback) callback;
-        if (completableFutureCallBack.getCallback() == null) {
-          completableFutureCallBack.setCallback(new SendMessageErrorLoggerCallback(kafkaValue, logger));
-        }
-      }
+
+      PubSubProducerCallback internalCallback = new SendMessageErrorLoggerCallback(kafkaValue, logger);
+      PubSubProducerCallback outputCallback = setInternalCallback(callback, internalCallback);
       try {
         return producerAdapter.sendMessage(
             topicName,
@@ -1516,7 +1501,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             key,
             kafkaValue,
             getHeaders(kafkaValue.getProducerMetadata(), viewPartitionHeader),
-            messageCallback);
+            outputCallback);
       } catch (Exception e) {
         if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicAuthorizationException.class)) {
           throw new VeniceResourceAccessException(
@@ -1527,6 +1512,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         }
       }
     }
+  }
+
+  PubSubProducerCallback setInternalCallback(
+      PubSubProducerCallback inputCallback,
+      PubSubProducerCallback internalCallback) {
+    PubSubProducerCallback outputCallback = inputCallback;
+    if (inputCallback == null) {
+      outputCallback = internalCallback;
+    } else {
+      inputCallback.setInternalCallback(internalCallback);
+    }
+    return outputCallback;
   }
 
   /**

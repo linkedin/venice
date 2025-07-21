@@ -13,6 +13,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.BUFFER_RE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DECOMPRESSION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_THRESHOLD_MILLISECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_REPLICATION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_DAVINCI_PUSH_STATUS_STORE;
@@ -153,6 +154,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setTargetRegionSwapWaitTime(srcStore.getTargetRegionSwapWaitTime())
             .setGlobalRtDivEnabled(srcStore.isGlobalRtDivEnabled())
             .setCompactionEnabled(srcStore.isCompactionEnabled())
+            .setCompactionThresholdMilliseconds(srcStore.getCompactionThreshold())
             .setMaxCompactionLagSeconds(srcStore.getMaxCompactionLagSeconds())
             .setMinCompactionLagSeconds(srcStore.getMinCompactionLagSeconds())
             .setNearlineProducerCountPerWriter(srcStore.getNearlineProducerCountPerWriter())
@@ -717,6 +719,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getCompactionEnabled() {
     return getBoolean(COMPACTION_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setCompactionThresholdMilliseconds(long compactionThresholdMilliseconds) {
+    return putLong(COMPACTION_THRESHOLD_MILLISECONDS, compactionThresholdMilliseconds);
+  }
+
+  public Optional<Long> getCompactionThresholdMilliseconds() {
+    return getLong(COMPACTION_THRESHOLD_MILLISECONDS);
   }
 
   public UpdateStoreQueryParams setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {

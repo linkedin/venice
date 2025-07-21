@@ -67,7 +67,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
-import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -354,7 +354,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       }
 
       D2Client d2Client = D2TestUtils.getAndStartD2Client(options.getZkAddress());
-      MetricsRepository metricsRepository = TehutiUtils.getMetricsRepository(D2_SERVICE_NAME);
+      MetricsRepository metricsRepository = VeniceMetricsRepository.getVeniceMetricsRepository(
+          D2_SERVICE_NAME,
+          VeniceController.CONTROLLER_SERVICE_METRIC_PREFIX,
+          VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES,
+          propertiesList.get(0).getAsMap() // TODO repush otel: not sure if properties is accessed this way
+      );
 
       Optional<ClientConfig> consumerClientConfig = Optional.empty();
       Object clientConfig = options.getExtraProperties().get(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER);

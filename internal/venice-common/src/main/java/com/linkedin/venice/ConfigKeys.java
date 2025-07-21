@@ -442,8 +442,7 @@ public class ConfigKeys {
   /**
    * Time since last log compaction before a store is considered for log compaction
    */
-  public static final String TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS =
-      "log.compaction.time.since.last.compaction.threshold.ms";
+  public static final String LOG_COMPACTION_THRESHOLD_MS = "log.compaction.threshold.ms";
 
   /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
@@ -1653,11 +1652,6 @@ public class ConfigKeys {
   public static final String CONTROLLER_EARLY_DELETE_BACKUP_ENABLED = "controller.early.delete.backup.enabled";
 
   /**
-   * Flag to indicate which push monitor controller will pick up for an upcoming push
-   */
-  public static final String PUSH_MONITOR_TYPE = "push.monitor.type";
-
-  /**
    * Flag to enable the participant message store setup and write operations to the store.
    */
   public static final String PARTICIPANT_MESSAGE_STORE_ENABLED = "participant.message.store.enabled";
@@ -1679,6 +1673,7 @@ public class ConfigKeys {
    * Flag to enable the controller to send kill push job helix messages to the storage node upon consuming kill push job
    * admin messages.
    */
+  @Deprecated
   public static final String ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED = "admin.helix.messaging.channel.enabled";
 
   /**
@@ -2307,6 +2302,16 @@ public class ConfigKeys {
   public static final String CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS =
       "client.producer.schema.refresh.interval.seconds";
 
+  /**
+   * The max interval for Venice writer batching feature.
+   */
+  public static final String WRITER_BATCHING_MAX_INTERVAL_MS = "writer.batching.max.interval.ms";
+
+  /**
+   * The max size of buffer in bytes for Venice writer batching feature.
+   */
+  public static final String WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES = "writer.batching.max.buffer.size.in.bytes";
+
   /*
    * The memory up-limit for the ingestion path while using RocksDB Plaintable format.
    * Currently, this option is only meaningful for DaVinci use cases.
@@ -2779,6 +2784,12 @@ public class ConfigKeys {
       "server.use.heartbeat.lag.for.ready.to.serve.check.enabled";
 
   /**
+   * The amount of threads to perform recovery in the DaVinciRecordTransformer, such as scanning local RocksDB.
+   */
+  public static final String DAVINCI_RECORD_TRANSFORMER_ON_RECOVERY_THREAD_POOL_SIZE =
+      "davinci.record.transformer.on.recovery.thread.pool.size";
+
+  /**
    * If enabled, the parent-controller's multitask scheduler service would be enabled
    */
   public static final String MULTITASK_SCHEDULER_SERVICE_ENABLED = "multitask.scheduler.service.enabled";
@@ -2798,5 +2809,4 @@ public class ConfigKeys {
    */
   public static final String SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY =
       "server.ingestion.task.reusable.objects.strategy";
-
 }

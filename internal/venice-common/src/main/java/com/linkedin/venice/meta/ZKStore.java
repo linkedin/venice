@@ -224,6 +224,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setViewConfigs(store.getViewConfigs());
     setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
     setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
+    setCompactionEnabled(store.isCompactionEnabled());
+    setCompactionThresholdMilliseconds(store.getCompactionThresholdMilliseconds());
     setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
@@ -877,6 +879,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public boolean isCompactionEnabled() {
     return this.storeProperties.compactionEnabled;
+  }
+
+  @Override
+  public void setCompactionThresholdMilliseconds(long compactionThresholdMilliseconds) {
+    this.storeProperties.compactionThresholdMilliseconds = compactionThresholdMilliseconds;
+  }
+
+  @Override
+  public long getCompactionThresholdMilliseconds() {
+    return this.storeProperties.compactionThresholdMilliseconds;
   }
 
   @Override

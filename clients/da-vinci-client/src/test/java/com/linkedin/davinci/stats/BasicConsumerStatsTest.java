@@ -22,7 +22,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.FAIL;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointDataFromCounter;
 import static org.testng.Assert.assertEquals;
 import static org.testng.AssertJUnit.assertTrue;
 
@@ -173,7 +173,12 @@ public class BasicConsumerStatsTest {
       double expectedValue,
       VeniceResponseStatusCategory responseStatusCategory) {
     Attributes expectedAttributes = getExpectedAttributes(storeName, responseStatusCategory);
-    validateLongPointData(inMemoryMetricReader, (long) expectedValue, expectedAttributes, metricName, otelMetricPrefix);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        (long) expectedValue,
+        expectedAttributes,
+        metricName,
+        otelMetricPrefix);
   }
 
   private Attributes getExpectedBaseAttributes(String storeName) {

@@ -974,6 +974,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     // storeProperties.setApplyTargetVersionFilterForIncPush(isApplyTargetVersionFilterForIncPush());
     storeProperties.setCompactionEnabled(isCompactionEnabled());
+    storeProperties.setCompactionThresholdMilliseconds(getCompactionThresholdMilliseconds());
     storeProperties.setMinCompactionLagSeconds(getMinCompactionLagSeconds());
     storeProperties.setMaxCompactionLagSeconds(getMaxCompactionLagSeconds());
     storeProperties.setMaxRecordSizeBytes(getMaxRecordSizeBytes());
@@ -1500,6 +1501,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setCompactionEnabled(boolean compactionEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public long getCompactionThresholdMilliseconds() {
+    return this.delegate.getCompactionThresholdMilliseconds();
+  }
+
+  @Override
+  public void setCompactionThresholdMilliseconds(long compactionThreshold) {
     throw new UnsupportedOperationException();
   }
 

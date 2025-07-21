@@ -444,6 +444,7 @@ public class TestMaterializedViewEndToEnd {
     IntegrationTestPushUtils.runVPJ(props);
     // Start a CC consumer in remote region to make sure it can consume all the records properly.
     Properties consumerProperties = new Properties();
+    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
     consumerProperties.put(
         KAFKA_BOOTSTRAP_SERVERS,
         multiRegionMultiClusterWrapper.getChildRegions().get(1).getPubSubBrokerWrapper().getAddress());

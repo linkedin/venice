@@ -72,6 +72,7 @@ public class StoreInfo {
     storeInfo.setViewConfigs(store.getViewConfigs());
     storeInfo.setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
     storeInfo.setCompactionEnabled(store.isCompactionEnabled());
+    storeInfo.setCompactionThreshold(store.getCompactionThresholdMilliseconds());
     storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     storeInfo.setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     storeInfo.setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
@@ -336,6 +337,8 @@ public class StoreInfo {
   private boolean isStoreDead;
 
   private boolean compactionEnabled;
+
+  private long compactionThreshold;
 
   private long minCompactionLagSeconds;
 
@@ -811,6 +814,14 @@ public class StoreInfo {
 
   public void setCompactionEnabled(boolean compactionEnabled) {
     this.compactionEnabled = compactionEnabled;
+  }
+
+  public long getCompactionThreshold() {
+    return this.compactionThreshold;
+  }
+
+  public void setCompactionThreshold(long compactionThreshold) {
+    this.compactionThreshold = compactionThreshold;
   }
 
   public long getMinCompactionLagSeconds() {

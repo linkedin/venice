@@ -931,13 +931,14 @@ public class VeniceParentHelixAdminTest {
   }
 
   private void testUpdateConfigs(ControllerClient parentControllerClient, ControllerClient childControllerClient) {
-    testUpdateCompactionEnabled(parentControllerClient, childControllerClient);
     testUpdateCompactionLag(parentControllerClient, childControllerClient);
     testUpdateMaxRecordSize(parentControllerClient, childControllerClient);
     testUpdateBlobTransfer(parentControllerClient, childControllerClient);
     testUpdateNearlineProducerConfig(parentControllerClient, childControllerClient);
     testUpdateTargetSwapRegion(parentControllerClient, childControllerClient);
     testUpdateGlobalRtDivEnabled(parentControllerClient, childControllerClient);
+    testUpdateCompactionEnabled(parentControllerClient, childControllerClient);
+    testUpdateCompactionThreshold(parentControllerClient, childControllerClient);
   }
 
   /**
@@ -988,17 +989,6 @@ public class VeniceParentHelixAdminTest {
       Assert.assertEquals(response.getStore().getTargetRegionSwap(), region);
       Assert.assertEquals(response.getStore().getTargetRegionSwapWaitTime(), waitTime);
       Assert.assertEquals(response.getStore().getIsDavinciHeartbeatReported(), isDavinci);
-    };
-    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
-  }
-
-  private void testUpdateCompactionEnabled(ControllerClient parentClient, ControllerClient childClient) {
-    final boolean expectedCompactionEnabled = false;
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
-      params.setCompactionEnabled(expectedCompactionEnabled);
-    };
-    Consumer<StoreResponse> responseConsumer = response -> {
-      Assert.assertEquals(response.getStore().isCompactionEnabled(), expectedCompactionEnabled);
     };
     testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
   }
@@ -1061,6 +1051,28 @@ public class VeniceParentHelixAdminTest {
         childClient,
         params -> params.setGlobalRtDivEnabled(true),
         response -> Assert.assertTrue(response.getStore().isGlobalRtDivEnabled()));
+  }
+
+  private void testUpdateCompactionEnabled(ControllerClient parentClient, ControllerClient childClient) {
+    final boolean expectedCompactionEnabled = false;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setCompactionEnabled(expectedCompactionEnabled);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert.assertEquals(response.getStore().isCompactionEnabled(), expectedCompactionEnabled);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+  }
+
+  private void testUpdateCompactionThreshold(ControllerClient parentClient, ControllerClient childClient) {
+    final long expectedCompactionThreshold = 1000;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setCompactionThresholdMilliseconds(expectedCompactionThreshold);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert.assertEquals(response.getStore().getCompactionThreshold(), expectedCompactionThreshold);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
   }
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {
