@@ -33,4 +33,10 @@ public class FloatAnyOfPredicate implements FloatPredicate {
     }
     return false;
   }
+
+  @Override
+  public String toString() {
+    return "FloatAnyOfPredicate{expectedValues=" + java.util.Arrays.toString(expectedValues) + ", epsilon=" + epsilon
+        + "}";
+  }
 }

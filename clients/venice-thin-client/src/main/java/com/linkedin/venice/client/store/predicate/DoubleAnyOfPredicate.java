@@ -33,4 +33,10 @@ public class DoubleAnyOfPredicate implements DoublePredicate {
     }
     return false;
   }
+
+  @Override
+  public String toString() {
+    return "DoubleAnyOfPredicate{expectedValues=" + java.util.Arrays.toString(expectedValues) + ", epsilon=" + epsilon
+        + "}";
+  }
 }

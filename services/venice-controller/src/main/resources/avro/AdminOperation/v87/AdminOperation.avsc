@@ -626,6 +626,12 @@
               "default": true
             },
             {
+              "name": "compactionThresholdMilliseconds",
+              "doc": "Store-level compaction threshold in milliseconds",
+              "type": "long",
+              "default": -1
+            },
+            {
               "name": "minCompactionLagSeconds",
               "doc": "Store-level version topic min compaction lag",
               "type": "long",

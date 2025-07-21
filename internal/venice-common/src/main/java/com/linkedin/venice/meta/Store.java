@@ -304,6 +304,10 @@ public interface Store {
 
   void setCompactionEnabled(boolean compactionEnabled);
 
+  long getCompactionThresholdMilliseconds();
+
+  void setCompactionThresholdMilliseconds(long compactionThreshold);
+
   long getMinCompactionLagSeconds();
 
   void setMinCompactionLagSeconds(long minCompactionLagSeconds);

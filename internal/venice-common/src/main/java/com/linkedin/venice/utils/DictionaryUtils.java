@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.nio.ByteBuffer;
@@ -66,7 +67,7 @@ public class DictionaryUtils {
     LOGGER.info("Consuming from topic: {} till StartOfPush", topicName);
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
-    pubSubConsumer.subscribe(pubSubTopicPartition, 0);
+    pubSubConsumer.subscribe(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST);
     try {
       boolean startOfPushReceived = false;
       ByteBuffer compressionDictionary = null;

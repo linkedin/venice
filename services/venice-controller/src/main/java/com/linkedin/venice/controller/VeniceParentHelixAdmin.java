@@ -15,6 +15,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DECOMPRESSION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_THRESHOLD_MILLISECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_REPLICATION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_DAVINCI_PUSH_STATUS_STORE;
@@ -92,6 +94,7 @@ import com.linkedin.venice.ConfigConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.authorization.AceEntry;
 import com.linkedin.venice.authorization.AclBinding;
 import com.linkedin.venice.authorization.AuthorizerService;
@@ -168,6 +171,7 @@ import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.SchemaUsageResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
+import com.linkedin.venice.controllerapi.StoreDeletedValidationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
@@ -260,6 +264,7 @@ import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
@@ -380,8 +385,9 @@ public class VeniceParentHelixAdmin implements Admin {
   // Visible for testing
   public VeniceParentHelixAdmin(
       VeniceHelixAdmin veniceHelixAdmin,
-      VeniceControllerMultiClusterConfig multiClusterConfigs) {
-    this(veniceHelixAdmin, multiClusterConfigs, false, Optional.empty(), Optional.empty());
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository) {
+    this(veniceHelixAdmin, multiClusterConfigs, false, Optional.empty(), Optional.empty(), metricsRepository);
   }
 
   // Visible for testing
@@ -390,7 +396,8 @@ public class VeniceParentHelixAdmin implements Admin {
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       boolean sslEnabled,
       Optional<SSLConfig> sslConfig,
-      Optional<AuthorizerService> authorizerService) {
+      Optional<AuthorizerService> authorizerService,
+      MetricsRepository metricsRepository) {
     this(
         veniceHelixAdmin,
         multiClusterConfigs,
@@ -398,7 +405,8 @@ public class VeniceParentHelixAdmin implements Admin {
         sslConfig,
         Optional.empty(),
         authorizerService,
-        new DefaultLingeringStoreVersionChecker());
+        new DefaultLingeringStoreVersionChecker(),
+        metricsRepository);
   }
 
   // Visible for testing
@@ -409,7 +417,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<SSLConfig> sslConfig,
       Optional<DynamicAccessController> accessController,
       Optional<AuthorizerService> authorizerService,
-      LingeringStoreVersionChecker lingeringStoreVersionChecker) {
+      LingeringStoreVersionChecker lingeringStoreVersionChecker,
+      MetricsRepository metricsRepository) {
     this(
         veniceHelixAdmin,
         multiClusterConfigs,
@@ -422,7 +431,8 @@ public class VeniceParentHelixAdmin implements Admin {
         Optional.empty(),
         new PubSubTopicRepository(),
         null,
-        null);
+        null,
+        metricsRepository);
   }
 
   public VeniceParentHelixAdmin(
@@ -437,7 +447,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
       PubSubTopicRepository pubSubTopicRepository,
       DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore,
-      DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore) {
+      DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore,
+      MetricsRepository metricsRepository) {
     Validate.notNull(lingeringStoreVersionChecker);
     Validate.notNull(writeComputeSchemaConverter);
     this.veniceHelixAdmin = veniceHelixAdmin;
@@ -2441,6 +2452,8 @@ public class VeniceParentHelixAdmin implements Admin {
        */
       Optional<Boolean> replicateAll = params.getReplicateAllConfigs();
       Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
+      Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
+      Optional<Long> compactionThreshold = params.getCompactionThresholdMilliseconds();
       Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
       Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
       Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -2823,6 +2836,7 @@ public class VeniceParentHelixAdmin implements Admin {
           }
         }
       }
+
       setStore.latestSuperSetValueSchemaId =
           latestSupersetSchemaId.map(addToUpdatedConfigList(updatedConfigsList, LATEST_SUPERSET_SCHEMA_ID))
               .orElseGet(currStore::getLatestSuperSetValueSchemaId);
@@ -2832,6 +2846,11 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.unusedSchemaDeletionEnabled =
           unusedSchemaDeletionEnabled.map(addToUpdatedConfigList(updatedConfigsList, UNUSED_SCHEMA_DELETION_ENABLED))
               .orElseGet(currStore::isUnusedSchemaDeletionEnabled);
+      setStore.compactionEnabled = compactionEnabled.map(addToUpdatedConfigList(updatedConfigsList, COMPACTION_ENABLED))
+          .orElseGet(currStore::isCompactionEnabled);
+      setStore.compactionThresholdMilliseconds =
+          compactionThreshold.map(addToUpdatedConfigList(updatedConfigsList, COMPACTION_THRESHOLD_MILLISECONDS))
+              .orElseGet(currStore::getCompactionThresholdMilliseconds);
       setStore.minCompactionLagSeconds =
           minCompactionLagSeconds.map(addToUpdatedConfigList(updatedConfigsList, MIN_COMPACTION_LAG_SECONDS))
               .orElseGet(currStore::getMinCompactionLagSeconds);
@@ -5225,10 +5244,14 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public List<StoreInfo> getStoresForCompaction(String clusterName) {
-    throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
+    return veniceHelixAdmin.getStoresForCompaction(clusterName);
   }
 
   /**
+   * This is the entry/exit common point for manual and scheduled repush codepaths.
+   * This being the common point allows streamlined logging for the repushStore endpoint.
+   *
+   * This function triggers repush store downstream.
    * see {@link Admin#repushStore}
    */
   @Override
@@ -5744,6 +5767,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return lingeringStoreVersionChecker;
   }
 
+  @VisibleForTesting
   VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
     return multiClusterConfigs;
   }
@@ -5952,4 +5976,51 @@ public class VeniceParentHelixAdmin implements Admin {
   public VeniceControllerClusterConfig getControllerConfig(String clusterName) {
     return multiClusterConfigs.getControllerConfig(clusterName);
   }
+
+  /**
+   * Validates that a store has been completely deleted from all venice clusters cross-regionally
+   *
+   * @see Admin#validateStoreDeleted(String, String)
+   */
+  @Override
+  public StoreDeletedValidation validateStoreDeleted(String clusterName, String storeName) {
+    Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+
+    // Collect validation results from all child data centers
+    List<String> errors = new ArrayList<>(controllerClientMap.size());
+    List<String> notDeletedDetails = new ArrayList<>(controllerClientMap.size());
+
+    for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
+      String regionName = entry.getKey();
+      ControllerClient controllerClient = entry.getValue();
+      try {
+        // Make the API call to the child controller
+        StoreDeletedValidationResponse response = controllerClient.validateStoreDeleted(storeName);
+        if (response.isError()) {
+          errors.add("Failed to validate store deletion in region " + regionName + ": " + response.getError());
+        } else {
+          if (!response.isStoreDeleted()) {
+            notDeletedDetails.add(regionName + ": " + response.getReason());
+          }
+        }
+      } catch (Exception e) {
+        errors.add("Exception while validating store deletion in region " + regionName + ": " + e.getMessage());
+      }
+    }
+
+    // If there were errors communicating with child controllers, throw exception
+    if (!errors.isEmpty()) {
+      throw new VeniceException(
+          "Failed to validate store deletion in some child data centers: " + String.join("; ", errors));
+    }
+
+    // Create result based on child validations
+    StoreDeletedValidation result = new StoreDeletedValidation(clusterName, storeName);
+    if (!notDeletedDetails.isEmpty()) {
+      result.setStoreNotDeleted(String.join("; ", notDeletedDetails));
+    }
+
+    return result;
+  }
+
 }

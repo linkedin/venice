@@ -323,7 +323,8 @@ public enum ControllerRoute {
   DELETE_UNUSED_VALUE_SCHEMAS(
       "/delete_unused_value_schemas", HttpMethod.POST, Arrays.asList(CLUSTER, NAME),
       ControllerApiConstants.VALUE_SCHEMA_IDS
-  ), GET_INUSE_SCHEMA_IDS("/get_inuse_schema_ids", HttpMethod.GET, Arrays.asList(CLUSTER, NAME));
+  ), GET_INUSE_SCHEMA_IDS("/get_inuse_schema_ids", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
+  VALIDATE_STORE_DELETED("/validate_store_deleted", HttpMethod.GET, Arrays.asList(CLUSTER, NAME));
 
   private final String path;
   private final HttpMethod httpMethod;

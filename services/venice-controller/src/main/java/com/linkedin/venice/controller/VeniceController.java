@@ -18,6 +18,7 @@ import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentControll
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
+import com.linkedin.venice.controller.stats.ControllerMetricEntity;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
@@ -35,6 +36,8 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.AsyncRetryingServiceDiscoveryAnnouncer;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -46,6 +49,7 @@ import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
 import io.grpc.ServerInterceptor;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -60,7 +64,10 @@ import org.apache.logging.log4j.Logger;
 public class VeniceController {
   private static final Logger LOGGER = LogManager.getLogger(VeniceController.class);
   private static final String CONTROLLER_GRPC_SERVER_THREAD_NAME = "ControllerGrpcServer";
-  static final String CONTROLLER_SERVICE_NAME = "venice-controller";
+  public static final String CONTROLLER_SERVICE_NAME = "venice-controller";
+  public static final String CONTROLLER_SERVICE_METRIC_PREFIX = "controller";
+  public static final Collection<MetricEntity> CONTROLLER_SERVICE_METRIC_ENTITIES =
+      ModuleMetricEntityInterface.getUniqueMetricEntities(ControllerMetricEntity.class);
 
   // services
   private final VeniceControllerService controllerService;

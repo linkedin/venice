@@ -259,6 +259,9 @@ public enum Arg {
   ENABLE_DISABLED_REPLICA("enable-disabled-replicas", "edr", true, "Reenable disabled replicas"),
   NON_INTERACTIVE("non-interactive", "nita", false, "non-interactive mode"),
   ENABLE_COMPACTION("enable-compaction", "ec", true, "Enable compaction"),
+  COMPACTION_THRESHOLD_MILLISECONDS(
+      "compaction-threshold-milliseconds", "ctms", true, "Set compaction threshold in milliseconds"
+  ),
   MIN_COMPACTION_LAG_SECONDS(
       "min-compaction-lag-seconds", "mcls", true, "Min compaction lag seconds for version topic of hybrid stores"
   ),

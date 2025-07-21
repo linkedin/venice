@@ -17,7 +17,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointDataFromCounter;
 import static org.apache.http.HttpStatus.SC_OK;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -247,7 +247,7 @@ public class BasicClientStatsTest {
     Collection<MetricData> metricsData = inMemoryMetricReader.collectAllMetrics();
     assertEquals(metricsData.size(), 2, "There should be two metrics recorded: call_time and call_count");
 
-    validateLongPointData(inMemoryMetricReader, 1, expectedAttributes, "call_count", otelPrefix);
+    validateLongPointDataFromCounter(inMemoryMetricReader, 1, expectedAttributes, "call_count", otelPrefix);
 
     validateExponentialHistogramPointData(
         inMemoryMetricReader,
@@ -285,7 +285,12 @@ public class BasicClientStatsTest {
         expectedDataSize,
         String.format("There should be %d metrics recorded", expectedDataSize));
 
-    validateLongPointData(inMemoryMetricReader, expectedValue, expectedAttributes, expectedMetricName, otelPrefix);
+    validateLongPointDataFromCounter(
+        inMemoryMetricReader,
+        expectedValue,
+        expectedAttributes,
+        expectedMetricName,
+        otelPrefix);
   }
 
   @Test

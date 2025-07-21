@@ -7,6 +7,7 @@ import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
 import com.linkedin.venice.utils.LogContext;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -109,19 +110,18 @@ public class LogCompactionService extends AbstractVeniceService {
       for (StoreInfo storeInfo: admin.getStoresForCompaction(clusterName)) {
         try {
           RepushJobResponse response = admin
-              .repushStore(new RepushJobRequest(clusterName, storeInfo.getName(), RepushJobRequest.SCHEDULED_TRIGGER));
+              .repushStore(new RepushJobRequest(clusterName, storeInfo.getName(), RepushStoreTriggerSource.SCHEDULED));
           LOGGER.info(
-              "Log compaction triggered for cluster: {} store: {} | execution ID: {}",
-              clusterName,
+              "Succeeded to trigger log compaction for store: {} in cluster: {} | execution ID: {}",
               response.getName(),
+              clusterName,
               response.getExecutionId());
         } catch (Exception e) {
           LOGGER.error(
-              "Error checking if store is ready for log compaction for cluster: {} store: {}",
-              clusterName,
+              "Failed to trigger log compaction for store: {} in cluster: {}",
               storeInfo.getName(),
+              clusterName,
               e);
-          // TODO LC: add metrics for log compaction failures
         }
       }
     }

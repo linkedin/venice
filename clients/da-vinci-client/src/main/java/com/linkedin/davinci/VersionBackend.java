@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
+import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.notifier.DaVinciPushStatusUpdateTask;
@@ -71,6 +72,7 @@ public class VersionBackend {
       new VeniceConcurrentHashMap<>();
   private final Map<Integer, Boolean> partitionToBatchReportEOIPEnabled = new VeniceConcurrentHashMap<>();
   private final boolean batchReportEOIPStatusEnabled;
+  private final DaVinciRecordTransformerConfig recordTransformerConfig;
 
   /*
    * if daVinciPushStatusStoreEnabled, VersionBackend will schedule a periodic job sending heartbeats
@@ -126,6 +128,8 @@ public class VersionBackend {
     } else {
       this.daVinciPushStatusUpdateTask = null;
     }
+
+    this.recordTransformerConfig = backend.getRecordTransformerConfig();
   }
 
   synchronized void close() {
@@ -361,7 +365,10 @@ public class VersionBackend {
     Instant startTime = Instant.now();
     List<Integer> partitionList = getPartitions(partitions);
     LOGGER.info("Subscribing to partitions {} of {}", partitionList, this);
-    List<CompletableFuture<Void>> futures = new ArrayList<>(partitionList.size());
+    int partitionCount = partitionList.size();
+    List<Integer> partitionsToStartConsumption = new ArrayList<>(partitionCount);
+    List<CompletableFuture<Void>> futures = new ArrayList<>(partitionCount);
+
     for (int partition: partitionList) {
       StorageEngine engine = storageEngine.get();
       if (partitionFutures.containsKey(partition)) {
@@ -371,23 +378,36 @@ public class VersionBackend {
         partitionFutures.computeIfAbsent(partition, k -> CompletableFuture.completedFuture(null));
       } else {
         partitionFutures.computeIfAbsent(partition, k -> new CompletableFuture<>());
-        // AtomicReference of storage engine will be updated internally.
-        backend.getIngestionBackend().startConsumption(config, partition);
-        tryStartHeartbeat();
+        partitionsToStartConsumption.add(partition);
       }
       partitionToBatchReportEOIPEnabled.put(partition, batchReportEOIPStatusEnabled);
       futures.add(partitionFutures.get(partition));
     }
 
+    if (recordTransformerConfig != null && recordTransformerConfig.getStartConsumptionLatchCount() == 0) {
+      recordTransformerConfig.setStartConsumptionLatchCount(partitionsToStartConsumption.size());
+    }
+
+    for (int partition: partitionsToStartConsumption) {
+      // AtomicReference of storage engine will be updated internally.
+      backend.getIngestionBackend().startConsumption(config, partition);
+      tryStartHeartbeat();
+    }
+
     CompletableFuture<Void> bootstrappingAwareSubscriptionFuture = new CompletableFuture<>();
 
     CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).whenComplete((v, e) -> {
-      storeBackendStats.recordSubscribeDuration(Duration.between(startTime, Instant.now()));
+      Duration endDuration = Duration.between(startTime, Instant.now());
+      storeBackendStats.recordSubscribeDuration(endDuration);
       if (e != null) {
         bootstrappingAwareSubscriptionFuture.completeExceptionally(e);
         LOGGER.warn("Bootstrapping store: {}, version: {} failed", version.getStoreName(), version.getNumber(), e);
       } else {
-        LOGGER.info("Bootstrapping store: {}, version: {} is completed", version.getStoreName(), version.getNumber());
+        LOGGER.info(
+            "Bootstrapping store: {}, version: {} is completed after {}ms",
+            version.getStoreName(),
+            version.getNumber(),
+            endDuration.toMillis());
         /**
          * It is important to start polling the bootstrapping status after the version ingestion is completed to
          * make sure the bootstrapping status polling is valid (not doing polling without any past/active ingestion tasks).

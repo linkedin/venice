@@ -83,6 +83,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    * to avoid data loss during recovery.
    */
   protected final WriteOptions writeOptions;
+  protected final ReadOptions iteratorReadOptions;
   private final String fullPathForTempSSTFileDir;
   private final String fullPathForPartitionDBSnapshot;
 
@@ -186,6 +187,23 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     // restart,
     // if WAL is disabled then all ingestion progress made would be lost in case of non-graceful shutdown of server.
     this.writeOptions = new WriteOptions().setDisableWAL(this.partitionId != METADATA_PARTITION_ID);
+
+    this.iteratorReadOptions = new ReadOptions().setReadaheadSize(rocksDBServerConfig.getIteratorReadAheadSizeInBytes())
+        /*
+         * Setting this to false prevents data blocks accessed during iteration from being pinned in memory,
+         * allowing them to be evicted from the block cache and saving memory.
+         */
+        .setPinData(false)
+        /*
+         * Setting this to false disables caching of blocks loaded by the iterator in the block cache,
+         * reducing memory usage and eliminating the eviction costs in the LRU block cache.
+         */
+        .setFillCache(false)
+        /*
+         * Setting this to true, allows for iterator cleanup operations to be performed asynchronously leading to
+         * faster iterator closing times.
+         */
+        .setBackgroundPurgeOnIteratorCleanup(true);
 
     // For multiple column family enable atomic flush
     if (columnFamilyNameList.size() > 1 && rocksDBServerConfig.isAtomicFlushEnabled()) {
@@ -717,7 +735,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     try {
       makeSureRocksDBIsStillOpen();
 
-      try (ReadOptions readOptions = getReadOptionsForIteration(keyPrefix);
+      try (ReadOptions readOptions = getReadOptionsForPrefixIteration(keyPrefix);
           RocksIterator iterator = rocksDB.newIterator(readOptions)) {
         if (keyPrefix == null) {
           iterator.seekToFirst();
@@ -742,7 +760,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return rocksDBSstFileWriter.validateBatchIngestion();
   }
 
-  private ReadOptions getReadOptionsForIteration(byte[] keyPrefix) {
+  private ReadOptions getReadOptionsForPrefixIteration(byte[] keyPrefix) {
     if (keyPrefix == null) {
       return new ReadOptions();
     } else {
@@ -1043,7 +1061,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public AbstractStorageIterator getIterator() {
-    return new RocksDBStorageIterator(rocksDB.newIterator());
+    return new RocksDBStorageIterator(rocksDB.newIterator(iteratorReadOptions));
   }
 
   /**

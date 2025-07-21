@@ -519,7 +519,7 @@ public class TestPartitionTracker {
     }
 
     DefaultPubSubMessage lastMessage = messageBatch1.get(messageBatch1.size() - 1);
-    offset = lastMessage.getOffset().getNumericOffset() + 1;
+    offset = lastMessage.getPosition().getNumericOffset() + 1;
 
     if (checkSumType == NONE) {
       this.partitionTracker.validateMessage(type, lastMessage, true, Lazy.FALSE);
