@@ -200,7 +200,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
         new StoragePartitionConfig(storeConfig.getStoreVersionName(), partitionId);
     storagePartitionConfig.setBlobTransferInProgress(true);
     storagePartitionConfig.setReadOnly(true);
-    storagePartitionConfig.setWriteOnlyConfig(false);
 
     // due to we use storage service to open the store and partition here,
     // it can prevent the race condition between dropping entire store (SE) and receiving transfer file for new

@@ -123,8 +123,15 @@ public class StoragePartitionConfig {
 
   @Override
   public String toString() {
-    return "Replica: " + Utils.getReplicaId(storeName, partitionId) + ", deferred-write: " + deferredWrite
-        + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig + ", read-write leader for default CF: "
-        + readWriteLeaderForDefaultCF + ", read-write leader for RMD CF: " + readWriteLeaderForRMDCF;
+    String toStringResult =
+        "Replica: " + Utils.getReplicaId(storeName, partitionId) + ", deferred-write: " + deferredWrite
+            + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig + ", read-write leader for default CF: "
+            + readWriteLeaderForDefaultCF + ", read-write leader for RMD CF: " + readWriteLeaderForRMDCF;
+
+    if (blobTransferInProgress) {
+      toStringResult += ", blob transfer in progress: true.";
+    }
+
+    return toStringResult;
   }
 }

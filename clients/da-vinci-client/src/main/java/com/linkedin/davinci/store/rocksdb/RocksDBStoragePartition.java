@@ -1037,6 +1037,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       }
     }
 
+    if (blobTransferInProgress != partitionConfig.isBlobTransferInProgress()) {
+      return false;
+    }
+
     if (options.tableFormatConfig() instanceof BlockBasedTableConfig
         && deferredWrite != partitionConfig.isDeferredWrite()) {
       return false;
