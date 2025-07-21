@@ -92,6 +92,7 @@ import com.linkedin.venice.ConfigConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.authorization.AceEntry;
 import com.linkedin.venice.authorization.AclBinding;
 import com.linkedin.venice.authorization.AuthorizerService;
@@ -261,6 +262,7 @@ import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
@@ -381,8 +383,9 @@ public class VeniceParentHelixAdmin implements Admin {
   // Visible for testing
   public VeniceParentHelixAdmin(
       VeniceHelixAdmin veniceHelixAdmin,
-      VeniceControllerMultiClusterConfig multiClusterConfigs) {
-    this(veniceHelixAdmin, multiClusterConfigs, false, Optional.empty(), Optional.empty());
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      MetricsRepository metricsRepository) {
+    this(veniceHelixAdmin, multiClusterConfigs, false, Optional.empty(), Optional.empty(), metricsRepository);
   }
 
   // Visible for testing
@@ -391,7 +394,8 @@ public class VeniceParentHelixAdmin implements Admin {
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       boolean sslEnabled,
       Optional<SSLConfig> sslConfig,
-      Optional<AuthorizerService> authorizerService) {
+      Optional<AuthorizerService> authorizerService,
+      MetricsRepository metricsRepository) {
     this(
         veniceHelixAdmin,
         multiClusterConfigs,
@@ -399,7 +403,8 @@ public class VeniceParentHelixAdmin implements Admin {
         sslConfig,
         Optional.empty(),
         authorizerService,
-        new DefaultLingeringStoreVersionChecker());
+        new DefaultLingeringStoreVersionChecker(),
+        metricsRepository);
   }
 
   // Visible for testing
@@ -410,7 +415,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<SSLConfig> sslConfig,
       Optional<DynamicAccessController> accessController,
       Optional<AuthorizerService> authorizerService,
-      LingeringStoreVersionChecker lingeringStoreVersionChecker) {
+      LingeringStoreVersionChecker lingeringStoreVersionChecker,
+      MetricsRepository metricsRepository) {
     this(
         veniceHelixAdmin,
         multiClusterConfigs,
@@ -423,7 +429,8 @@ public class VeniceParentHelixAdmin implements Admin {
         Optional.empty(),
         new PubSubTopicRepository(),
         null,
-        null);
+        null,
+        metricsRepository);
   }
 
   public VeniceParentHelixAdmin(
@@ -438,7 +445,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
       PubSubTopicRepository pubSubTopicRepository,
       DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore,
-      DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore) {
+      DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore,
+      MetricsRepository metricsRepository) {
     Validate.notNull(lingeringStoreVersionChecker);
     Validate.notNull(writeComputeSchemaConverter);
     this.veniceHelixAdmin = veniceHelixAdmin;
@@ -5226,10 +5234,14 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public List<StoreInfo> getStoresForCompaction(String clusterName) {
-    throw new UnsupportedOperationException("This function is implemented in VeniceHelixAdmin.");
+    return veniceHelixAdmin.getStoresForCompaction(clusterName);
   }
 
   /**
+   * This is the entry/exit common point for manual and scheduled repush codepaths.
+   * This being the common point allows streamlined logging for the repushStore endpoint.
+   *
+   * This function triggers repush store downstream.
    * see {@link Admin#repushStore}
    */
   @Override
@@ -5745,6 +5757,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return lingeringStoreVersionChecker;
   }
 
+  @VisibleForTesting
   VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
     return multiClusterConfigs;
   }
