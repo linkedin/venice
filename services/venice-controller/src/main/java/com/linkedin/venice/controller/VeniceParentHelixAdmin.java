@@ -997,7 +997,7 @@ public class VeniceParentHelixAdmin implements Admin {
     storeCreation.valueSchema.definition = valueSchema;
 
     final AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.STORE_CREATION.getValue(); // one kind of operation: store creation
+    message.operationType = AdminMessageType.STORE_CREATION.getValue();
     message.payloadUnion = storeCreation;
     sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
   }
