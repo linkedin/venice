@@ -26,7 +26,7 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-import com.linkedin.venice.systemstore.schemas.ParentControllerMetadata;
+import com.linkedin.venice.systemstore.schemas.ParentControllerMetadataValue;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import java.nio.ByteBuffer;
@@ -153,7 +153,7 @@ public enum AvroProtocolDefinition {
   /*
     Value Schema for Parent Controller Metadata system store
   */
-  PARENT_CONTROLLER_METADATA_SYSTEM_SCHEMA_STORE_VALUE(1, 1, ParentControllerMetadata.class),
+  PARENT_CONTROLLER_METADATA_SYSTEM_SCHEMA_STORE_VALUE(1, ParentControllerMetadataValue.class),
 
   /**
    * Key schema for push status system store.

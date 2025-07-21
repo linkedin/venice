@@ -547,13 +547,11 @@ public class VeniceParentHelixAdmin implements Admin {
                 BatchJobHeartbeatKey.getClassSchema(),
                 updateStoreQueryParamsForHeartbeatSystemStore));
       } else {
-        initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed(); // disable
+        initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       }
     }
 
-    // TODO: add some logic that if the parent metadata store is not created yet, we will not read/write to it.
-    String parentMetaDataStoreClusterName = getMultiClusterConfigs().getParentControllerMetadataStoreClusterName(); // TODO:
-                                                                                                                    // change
+    String parentMetaDataStoreClusterName = getMultiClusterConfigs().getParentControllerMetadataStoreClusterName();
     boolean initializeParentMetaDataStore = !StringUtils.isEmpty(parentMetaDataStoreClusterName);
     if (initRoutineForParentMetadataStore != null) {
       if (initializeParentMetaDataStore) {
@@ -594,7 +592,6 @@ public class VeniceParentHelixAdmin implements Admin {
    * @param clusterName Venice cluster name.
    */
 
-  // parent controller => admin topic exists or not
   @Override
   public synchronized void initStorageCluster(String clusterName) {
     /*

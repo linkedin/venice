@@ -1,5 +1,5 @@
 {
-  "name": "ParentControllerMetadata",
+  "name": "ParentControllerMetadataValue",
   "namespace": "com.linkedin.venice.systemstore.schemas",
   "type": "record",
   "fields": [
