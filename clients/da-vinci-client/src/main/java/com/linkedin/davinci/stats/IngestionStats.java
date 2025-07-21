@@ -48,6 +48,8 @@ public class IngestionStats {
       "consumed_record_end_to_end_processing_latency";
   protected static final String UPDATE_IGNORED_DCR = "update_ignored_dcr";
   protected static final String TOTAL_DCR = "total_dcr";
+  protected static final String TOTAL_DUPLICATE_KEY_UPDATE = "total_duplicate_key_update_count";
+
   protected static final String TIMESTAMP_REGRESSION_DCR_ERROR = "timestamp_regression_dcr_error";
   protected static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
   protected static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
@@ -105,6 +107,9 @@ public class IngestionStats {
   private final LongAdderRateGauge offsetRegressionDCRErrorSensor = new LongAdderRateGauge();
   private final LongAdderRateGauge tombstoneCreationDCRSensor = new LongAdderRateGauge();
 
+  private final Count totalDuplicateKeyUpdateCount = new Count();
+  private final Sensor totalDuplicateKeyUpdateCountSensor;
+
   /** Record a version-level offset rewind events for VTs across all stores. */
   private final Count versionTopicEndOffsetRewindCount = new Count();
   private final Sensor versionTopicEndOffsetRewindSensor;
@@ -161,6 +166,8 @@ public class IngestionStats {
 
     versionTopicEndOffsetRewindSensor = localMetricRepository.sensor(VERSION_TOPIC_END_OFFSET_REWIND_COUNT);
     versionTopicEndOffsetRewindSensor.add(VERSION_TOPIC_END_OFFSET_REWIND_COUNT, versionTopicEndOffsetRewindCount);
+    totalDuplicateKeyUpdateCountSensor = localMetricRepository.sensor(TOTAL_DUPLICATE_KEY_UPDATE);
+    totalDuplicateKeyUpdateCountSensor.add(TOTAL_DUPLICATE_KEY_UPDATE, totalDuplicateKeyUpdateCount);
 
     producerSourceBrokerLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, "producer_to_source_broker_latency");
@@ -447,6 +454,10 @@ public class IngestionStats {
     totalConflictResolutionCountSensor.record();
   }
 
+  public void recordTotalDuplicateKeyUpdate() {
+    totalDuplicateKeyUpdateCountSensor.record();
+  }
+
   public void recordTimestampRegressionDCRError() {
     timestampRegressionDCRErrorSensor.record();
   }
@@ -493,6 +504,10 @@ public class IngestionStats {
 
   public double getTotalDCRRate() {
     return totalConflictResolutionCountSensor.getRate();
+  }
+
+  public double getTotalDuplicateKeyUpdateCount() {
+    return totalDuplicateKeyUpdateCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public double getTombstoneCreationDCRRate() {

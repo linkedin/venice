@@ -592,6 +592,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               null,
               (schemaId) -> storeDeserializerCache.getDeserializer(schemaId, schemaId)));
     } else {
+      if (rmdWithValueSchemaID != null) {
+        aggVersionedIngestionStats.recordTotalDuplicateKeyUpdate(storeName, versionNumber);
+      }
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
 
       final ByteBuffer updatedValueBytes = maybeCompressData(
