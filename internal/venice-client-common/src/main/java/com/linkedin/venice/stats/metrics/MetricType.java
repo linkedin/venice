@@ -26,5 +26,11 @@ public enum MetricType {
   /**
    * For Counter: A simple counter that can be added to.
    */
-  COUNTER;
+  COUNTER,
+
+  /**
+   * For Gauge: Emits the absolute value of the metric value.
+   * In order to use asynchronous double gauge, refer {@link io.opentelemetry.api.metrics.ObservableDoubleGauge} instead
+   */
+  GAUGE;
 }

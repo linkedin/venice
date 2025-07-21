@@ -117,7 +117,8 @@ public class VeniceControllerService extends AbstractVeniceService {
           pubSubTopicRepository,
           initRoutineForPushJobDetailsSystemStore,
           initRoutineForHeartbeatSystemStore,
-          initRoutineForParentControllerMetadataSystemStore);
+          initRoutineForParentControllerMetadataSystemStore,);
+          metricsRepository);
       LOGGER.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;
