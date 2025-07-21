@@ -54,13 +54,24 @@ public class RouterMetricEntityTest {
         new MetricEntity(
             "call_size",
             MetricType.HISTOGRAM,
-            MetricUnit.NUMBER,
+            MetricUnit.BYTES,
             "Size of request and response in bytes",
             Utils.setOf(
                 VeniceMetricsDimensions.VENICE_STORE_NAME,
                 VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
                 VeniceMetricsDimensions.VENICE_REQUEST_METHOD,
                 VeniceMetricsDimensions.VENICE_MESSAGE_TYPE)));
+    expectedMetrics.put(
+        RouterMetricEntity.KEY_SIZE,
+        new MetricEntity(
+            "key_size",
+            MetricType.HISTOGRAM,
+            MetricUnit.BYTES,
+            "Size of keys in bytes during response handling",
+            Utils.setOf(
+                VeniceMetricsDimensions.VENICE_STORE_NAME,
+                VeniceMetricsDimensions.VENICE_CLUSTER_NAME,
+                VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
     expectedMetrics.put(
         RouterMetricEntity.KEY_COUNT,
         new MetricEntity(

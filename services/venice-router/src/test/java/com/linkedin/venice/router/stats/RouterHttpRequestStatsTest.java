@@ -1,7 +1,6 @@
 package com.linkedin.venice.router.stats;
 
-import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.HEALTHY_REQUEST;
-import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.REQUEST_SIZE;
+import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.*;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.PASCAL_CASE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
@@ -102,5 +101,17 @@ public class RouterHttpRequestStatsTest {
     assertEquals(
         metricsRepository.getMetric("." + storeName + "--" + REQUEST_SIZE.getMetricName() + ".Avg").value(),
         512.0);
+
+    // Verify that the response size is recorded
+    routerHttpRequestStats.recordResponseSize(1024.0);
+    assertEquals(
+        metricsRepository.getMetric("." + storeName + "--" + RESPONSE_SIZE.getMetricName() + ".Avg").value(),
+        1024.0);
+
+    // Verify key size is recorded
+    routerHttpRequestStats.recordKeySizeInByte((long) 256.0);
+    assertEquals(
+        metricsRepository.getMetric("." + storeName + "--" + KEY_SIZE.getMetricName() + ".Avg").value(),
+        256.0);
   }
 }

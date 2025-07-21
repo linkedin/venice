@@ -53,8 +53,15 @@ public enum RouterMetricEntity implements ModuleMetricEntityInterface {
    * Size of request and response in bytes
    */
   CALL_SIZE(
-      MetricType.HISTOGRAM, MetricUnit.NUMBER, "Size of request and response in bytes",
+      MetricType.HISTOGRAM, MetricUnit.BYTES, "Size of request and response in bytes",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)
+  ),
+  /**
+   * Key Size: Size of keys in bytes during response handling
+   */
+  KEY_SIZE(
+      MetricType.HISTOGRAM, MetricUnit.BYTES, "Size of keys in bytes during response handling",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   ),
   /**
    * Count of keys during response handling along with response codes
