@@ -135,9 +135,9 @@ public class DefaultIngestionBackendTest {
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
         .thenReturn(errorFuture);
 
-    CompletableFuture<Void> future =
-        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, 100L)
-            .toCompletableFuture();
+    CompletableFuture<Void> future = ingestionBackend
+        .bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, 100L, storeConfig, null)
+        .toCompletableFuture();
     assertTrue(future.isDone());
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)
@@ -158,9 +158,9 @@ public class DefaultIngestionBackendTest {
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
         .thenReturn(future);
 
-    CompletableFuture<Void> result =
-        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, laggingThreshold)
-            .toCompletableFuture();
+    CompletableFuture<Void> result = ingestionBackend
+        .bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, laggingThreshold, storeConfig, null)
+        .toCompletableFuture();
     assertTrue(result.isDone());
     verify(blobTransferManager, never())
         .get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
