@@ -107,9 +107,19 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   /**
-   * Bootstrap from the blobs from another source (like another peer). If it fails (due to the 30-minute timeout or
+   * Bootstrap from the blobs from another source (like another peer). If it fails (due to the timeout or
    * any exceptions), it deletes the partially downloaded blobs, and eventually falls back to bootstrapping from Kafka.
    * Blob transfer should be enabled to boostrap from blobs.
+   *
+   * If the blob transfer fails during transferring:
+   * The folder will be cleaned up in NettyP2PBlobTransferManager#handlePeerFetchException.
+   * When falling back to Kafka ingestion, it will bootstrap from the beginning.
+   *
+   * If the blob transfer succeeds:
+   * When falling back to Kafka ingestion, it will resume from the last offset instead of starting from the beginning.
+   *
+   * Regardless of whether the blob transfer succeeds or fails,
+   * this method always returns a completed future, All exceptions are handled either by cleaning up the folder or dropping the partition.
    */
   CompletionStage<Void> bootstrapFromBlobs(
       Store store,
