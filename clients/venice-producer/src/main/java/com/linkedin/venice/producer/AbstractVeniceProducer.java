@@ -7,10 +7,15 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
+import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaReader;
@@ -79,6 +84,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
   protected void configure(
       String storeName,
+      ClientConfig storeClientConfig,
       VeniceProperties producerConfigs,
       MetricsRepository metricsRepository,
       SchemaReader schemaReader,
@@ -106,10 +112,12 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
     this.keySerializer = getSerializer(schemaReader.getKeySchema());
 
     VersionCreationResponse versionCreationResponse = requestTopic();
-    this.veniceWriter = getVeniceWriter(versionCreationResponse);
+    this.veniceWriter = getVeniceWriter(storeClientConfig, versionCreationResponse);
   }
 
-  private VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse versionCreationResponse) {
+  private VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
+      ClientConfig storeClientConfig,
+      VersionCreationResponse versionCreationResponse) {
     Properties writerProps = producerConfigs.getPropertiesCopy();
 
     if (versionCreationResponse.isEnableSSL()) {
@@ -121,10 +129,11 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       writerProps.put(PUBSUB_BROKER_ADDRESS, versionCreationResponse.getKafkaBootstrapServers());
     }
 
-    return getVeniceWriter(versionCreationResponse, writerProps);
+    return getVeniceWriter(storeClientConfig, versionCreationResponse, writerProps);
   }
 
   private VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
+      ClientConfig storeClientConfig,
       VersionCreationResponse versionCreationResponse,
       Properties veniceWriterProperties) {
     Integer partitionCount = versionCreationResponse.getPartitions();
@@ -134,6 +143,7 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
         versionCreationResponse.getPartitionerClass(),
         new VeniceProperties(partitionerProperties));
     return constructVeniceWriter(
+        storeClientConfig,
         veniceWriterProperties,
         new VeniceWriterOptions.Builder(versionCreationResponse.getKafkaTopic()).setPartitioner(venicePartitioner)
             .setPartitionCount(partitionCount)
@@ -143,9 +153,18 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
 
   // Visible for testing
   protected VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(
+      ClientConfig storeClientConfig,
       Properties properties,
       VeniceWriterOptions writerOptions) {
-    return new VeniceWriterFactory(properties).createVeniceWriter(writerOptions);
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+    PubSubProducerAdapterFactory<PubSubProducerAdapter> producerAdapterFactory =
+        PubSubClientsFactory.createProducerFactory(veniceProperties);
+    MetricsRepository metricsRepository = storeClientConfig.getMetricsRepository();
+    PubSubPositionTypeRegistry pubSubPositionTypeRegistry =
+        PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties);
+
+    return new VeniceWriterFactory(properties, producerAdapterFactory, metricsRepository, pubSubPositionTypeRegistry)
+        .createVeniceWriter(writerOptions);
   }
 
   protected RecordSerializer<Object> getSerializer(Schema schema) {
