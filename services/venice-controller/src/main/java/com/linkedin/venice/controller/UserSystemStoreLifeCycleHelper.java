@@ -2,10 +2,12 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.common.VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE;
 import static com.linkedin.venice.common.VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
+import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -75,7 +77,45 @@ public class UserSystemStoreLifeCycleHelper {
     return createdSystemStoreTypes;
   }
 
-  public static Version materializeSystemStore(
+  /**
+   * Empty push to system store. It is used by {@link com.linkedin.venice.controller.systemstore.SystemStoreRepairTask},
+   * It will first align the largest used version among all regions and then perform an empty push.
+   */
+  public static Version emptyPushSystemStore(
+      VeniceParentHelixAdmin parentAdmin,
+      String clusterName,
+      String systemStoreName,
+      String pushJobId) {
+    Version version;
+    final int systemStoreLargestUsedVersionNumber = parentAdmin.getLargestUsedVersion(clusterName, systemStoreName);
+    LOGGER.info(
+        "Get largest used version: {} for system store: {} in cluster: {}",
+        systemStoreLargestUsedVersionNumber,
+        systemStoreName,
+        clusterName);
+    if (systemStoreLargestUsedVersionNumber != Store.NON_EXISTING_VERSION) {
+      parentAdmin.updateStore(
+          clusterName,
+          systemStoreName,
+          new UpdateStoreQueryParams().setLargestUsedVersionNumber(systemStoreLargestUsedVersionNumber));
+    }
+    int partitionCount = parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName);
+    int replicationFactor = parentAdmin.getReplicationFactor(clusterName, systemStoreName);
+    // Use the same endpoint as empty push so that all the actions are shared.
+    version = parentAdmin
+        .incrementVersionIdempotent(clusterName, systemStoreName, pushJobId, partitionCount, replicationFactor);
+    parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
+    return version;
+  }
+
+  /**
+   *  This method diverges from centralized version creation logic and should be deprecated after system store auto-repair
+   *  service is ramped. Also, repair mechanism of the auto-materialization of system store should also be deprecated and
+   *  replaced by centralized {@link com.linkedin.venice.controller.systemstore.SystemStoreRepairTask}, as the existing
+   *  repair mechanism will create divergence for largest used version number between parent region and different child
+   *  regions and create maintenance burden.
+   */
+  private static void materializeSystemStore(
       VeniceParentHelixAdmin parentAdmin,
       String clusterName,
       String systemStoreName,
@@ -90,19 +130,30 @@ public class UserSystemStoreLifeCycleHelper {
         systemStoreLargestUsedVersionNumber,
         systemStoreName,
         clusterName);
-    if (systemStoreLargestUsedVersionNumber != Store.NON_EXISTING_VERSION) {
-      parentAdmin.setStoreLargestUsedVersion(clusterName, systemStoreName, systemStoreLargestUsedVersionNumber);
-      LOGGER.info(
-          "Set largest used version: {} for system store: {} in cluster: {} in all regions",
-          systemStoreLargestUsedVersionNumber,
+    if (systemStoreLargestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
+      version = parentAdmin
+          .incrementVersionIdempotent(clusterName, systemStoreName, pushJobId, partitionCount, replicationFactor);
+    } else {
+      version = parentAdmin.addVersionAndTopicOnly(
+          clusterName,
           systemStoreName,
-          clusterName);
+          pushJobId,
+          systemStoreLargestUsedVersionNumber + 1,
+          partitionCount,
+          replicationFactor,
+          Version.PushType.BATCH,
+          false,
+          false,
+          null,
+          Optional.empty(),
+          -1,
+          Optional.empty(),
+          false,
+          null,
+          -1,
+          DEFAULT_RT_VERSION_NUMBER);
     }
-    // Use the same endpoint as empty push so that all the actions are shared.
-    version = parentAdmin
-        .incrementVersionIdempotent(clusterName, systemStoreName, pushJobId, partitionCount, replicationFactor);
     parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
-    return version;
   }
 
   public void maybeCreateSystemStoreWildcardAcl(String storeName) {
