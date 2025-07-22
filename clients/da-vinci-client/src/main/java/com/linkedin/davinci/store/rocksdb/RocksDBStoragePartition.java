@@ -366,7 +366,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   protected void makeSureRocksDBIsStillOpen() {
-    if (isClosed) {
+    if (rocksDB == null || isClosed) {
       throw new VeniceException(
           "RocksDB has been closed for replica: " + replicaId + ", partition id: " + partitionId
               + ", any further operation is disallowed");
