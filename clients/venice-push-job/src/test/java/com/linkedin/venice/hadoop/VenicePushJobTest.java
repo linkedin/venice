@@ -2,6 +2,7 @@ package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJob.getExecutionStatusFromControllerResponse;
+import static com.linkedin.venice.meta.Version.VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
@@ -1276,6 +1277,42 @@ public class VenicePushJobTest {
     try (VenicePushJob pushJob = getSpyVenicePushJob(props, client)) {
       pushJob.run();
     }
+  }
+
+  @Test
+  public void testValidateRegularPushWithTTLRepush() {
+    ControllerClient mockControllerClient = mock(ControllerClient.class);
+    StoreResponse mockStoreResponse = mock(StoreResponse.class);
+    doReturn(mockStoreResponse).when(mockControllerClient).getStore(anyString());
+    doReturn(false).when(mockStoreResponse).isError();
+    StoreInfo mockStoreInfo = mock(StoreInfo.class);
+    doReturn(mockStoreInfo).when(mockStoreResponse).getStore();
+    Version mockVersion = mock(Version.class);
+    doReturn(VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX + "test-push-id").when(mockVersion).getPushJobId();
+    doReturn(Collections.singletonList(mockVersion)).when(mockStoreInfo).getVersions();
+    // Re-push, incremental and empty pushes should be allowed
+    Properties props = getVpjRequiredProperties();
+    VenicePushJob venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    PushJobSetting pushJobSetting = venicePushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = true;
+    pushJobSetting.isIncrementalPush = true;
+    venicePushJob.validateRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    pushJobSetting = venicePushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = true;
+    pushJobSetting.isSourceKafka = true;
+    venicePushJob.validateRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    pushJobSetting = venicePushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = false;
+    venicePushJob.validateRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    // Regular batch push should be rejected
+    final VenicePushJob failPushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    pushJobSetting = failPushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = true;
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> failPushJob.validateRegularPushWithTTLRepush(mockControllerClient, failPushJob.getPushJobSetting()));
   }
 
   private SchemaResponse getKeySchemaResponse() {

@@ -166,5 +166,6 @@ public class PushJobSetting implements Serializable {
 
   public boolean isBatchWriteOptimizationForHybridStoreEnabled;
   public boolean isSortedIngestionEnabled;
+  public boolean allowRegularPushWithTTLRepush;
 
 }
