@@ -342,4 +342,5 @@ public final class VenicePushJobConstants {
   public static final String DATA_WRITER_COMPUTE_JOB_CLASS = "data.writer.compute.job.class";
 
   public static final String PUSH_TO_SEPARATE_REALTIME_TOPIC = "push.to.separate.realtime.topic";
+  public static final String ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH = "allow.regular.push.with.ttl.repush";
 }
