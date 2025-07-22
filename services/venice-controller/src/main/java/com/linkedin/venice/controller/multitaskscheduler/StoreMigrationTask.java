@@ -113,18 +113,21 @@ class StoreMigrationTask implements Runnable {
       return;
     }
     LOGGER.info("Submit migration request of store {}...", record.getStoreName());
-    // Implement pre-check and submission logic
-    StoreMigrationResponse storeMigrationResponse =
-        srcControllerClient.migrateStore(record.getStoreName(), record.getDestinationCluster());
-    if (storeMigrationResponse.isError()) {
-      LOGGER.error(
-          "Store migration failed for store: {} on step {} with error: {}",
-          record.getStoreName(),
-          record.getCurrentStepEnum(),
-          storeMigrationResponse.getError());
-      throw new VeniceException(
-          "Store migration failed for store: " + record.getStoreName() + " with error: "
-              + storeMigrationResponse.getError());
+    // Implement pre-check
+    StoreInfo srcStoreInfo = srcControllerClient.getStore(record.getStoreName()).getStore();
+    if (!srcStoreInfo.isMigrating()) {
+      StoreMigrationResponse storeMigrationResponse =
+          srcControllerClient.migrateStore(record.getStoreName(), record.getDestinationCluster());
+      if (storeMigrationResponse.isError()) {
+        LOGGER.error(
+            "Store migration failed for store: {} on step {} with error: {}",
+            record.getStoreName(),
+            record.getCurrentStepEnum(),
+            storeMigrationResponse.getError());
+        throw new VeniceException(
+            "Store migration failed on submitting migrateStore request for store:" + record.getStoreName() + " on step "
+                + record.getCurrentStepEnum() + " with error: " + storeMigrationResponse.getError());
+      }
     }
     record.setCurrentStep(Step.VERIFY_MIGRATION_STATUS);
     record.resetAttempts();
@@ -370,7 +373,7 @@ class StoreMigrationTask implements Runnable {
           record.getDestinationCluster());
       throw new VeniceException(
           "Store " + record.getStoreName() + " is not discoverable in the destination cluster:"
-              + record.getDestinationCluster() + " on step " + record.getCurrentStep());
+              + record.getDestinationCluster() + " on step " + record.getCurrentStepEnum());
     }
     // Verify that original store is deleted in the source cluster
     StoreResponse srcStoreResponse = srcControllerClient.getStore(record.getStoreName());
@@ -383,7 +386,7 @@ class StoreMigrationTask implements Runnable {
           srcStoreResponse.getError());
       throw new VeniceException(
           "Failed to check store " + record.getStoreName() + " existence in original cluster "
-              + record.getSourceCluster() + " on step " + record.getCurrentStep() + " due to error: "
+              + record.getSourceCluster() + " on step " + record.getCurrentStepEnum() + " due to error: "
               + srcStoreResponse.getError());
     }
 
@@ -399,7 +402,7 @@ class StoreMigrationTask implements Runnable {
             record.getSourceCluster());
         throw new VeniceException(
             "Store " + record.getStoreName() + " is not in migrating state in source cluster "
-                + record.getSourceCluster() + " on step " + record.getCurrentStep()
+                + record.getSourceCluster() + " on step " + record.getCurrentStepEnum()
                 + ". Should not delete store. Please verify store existence later");
       }
       TrackableControllerResponse deleteResponse = srcControllerClient.deleteStore(record.getStoreName(), true);
@@ -411,7 +414,7 @@ class StoreMigrationTask implements Runnable {
             deleteResponse.getError());
         throw new VeniceException(
             "Failed to delete store " + record.getStoreName() + " in the original cluster " + record.getSourceCluster()
-                + " on step " + record.getCurrentStep() + " due to error: " + deleteResponse.getError());
+                + " on step " + record.getCurrentStepEnum() + " due to error: " + deleteResponse.getError());
       }
     }
     // Verify that original store is deleted in all child fabrics
@@ -438,7 +441,7 @@ class StoreMigrationTask implements Runnable {
             childSrcStoreResponse.getError());
         throw new VeniceException(
             "Failed to check store " + record.getStoreName() + " existence in original cluster "
-                + record.getSourceCluster() + " in fabric " + entry.getKey() + " on step " + record.getCurrentStep()
+                + record.getSourceCluster() + " in fabric " + entry.getKey() + " on step " + record.getCurrentStepEnum()
                 + " due to error: " + childSrcStoreResponse.getError());
       }
       if (childSrcStoreResponse.getErrorType() != ErrorType.STORE_NOT_FOUND) {
@@ -449,7 +452,7 @@ class StoreMigrationTask implements Runnable {
             entry.getKey());
         throw new VeniceException(
             "Store " + record.getStoreName() + " still exists in source cluster " + record.getSourceCluster()
-                + " in fabric " + entry.getKey() + " on step " + record.getCurrentStep()
+                + " in fabric " + entry.getKey() + " on step " + record.getCurrentStepEnum()
                 + " after migration. StoreResponse on fabric  " + entry.getKey() + " of source cluster is "
                 + childSrcStoreResponse + " . Please try again later.");
       }
@@ -471,7 +474,7 @@ class StoreMigrationTask implements Runnable {
           resetMigrationFlagResponse.getError());
       throw new VeniceException(
           "Failed to reset migration flags for store " + record.getStoreName() + " in destination cluster "
-              + record.getDestinationCluster() + " on step " + record.getCurrentStep() + " due to error: "
+              + record.getDestinationCluster() + " on step " + record.getCurrentStepEnum() + " due to error: "
               + resetMigrationFlagResponse.getError());
     }
     record.setCurrentStep(Step.MIGRATION_SUCCEED); // Mark as store migration succeeded
@@ -499,7 +502,8 @@ class StoreMigrationTask implements Runnable {
               record.getSourceCluster());
           throw new VeniceException(
               "Store " + record.getStoreName() + " is not in migration state in source cluster "
-                  + record.getSourceCluster() + " on step " + record.getCurrentStep() + ". Cannot abort migration.");
+                  + record.getSourceCluster() + " on step " + record.getCurrentStepEnum()
+                  + ". Cannot abort migration.");
         } else {
           // If the store is not a migration duplicate store, we cannot delete it
           LOGGER.error(
@@ -527,7 +531,7 @@ class StoreMigrationTask implements Runnable {
               abortMigrationResponse.getError());
           throw new VeniceException(
               "Failed to abort migration for store " + record.getStoreName() + " in destination cluster "
-                  + record.getDestinationCluster() + " on step " + record.getCurrentStep() + " due to error: "
+                  + record.getDestinationCluster() + " on step " + record.getCurrentStepEnum() + " due to error: "
                   + abortMigrationResponse.getError());
         } else {
           LOGGER.info(
@@ -566,7 +570,7 @@ class StoreMigrationTask implements Runnable {
                 deleteResponse.getError());
             throw new VeniceException(
                 "Failed to delete store " + record.getStoreName() + " in the destination cluster "
-                    + record.getDestinationCluster() + " on step " + record.getCurrentStep() + " due to error: "
+                    + record.getDestinationCluster() + " on step " + record.getCurrentStepEnum() + " due to error: "
                     + deleteResponse.getError());
           }
         } else {
