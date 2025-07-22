@@ -7,6 +7,7 @@ import static org.testng.Assert.assertTrue;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.util.ArrayList;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.testng.annotations.BeforeTest;
@@ -22,7 +23,7 @@ public class MultiTaskSchedulerServiceTest {
   @BeforeTest
   public void setUp() throws Exception {
     MockitoAnnotations.openMocks(this);
-    service = new MultiTaskSchedulerService(4, 3, null);
+    service = new MultiTaskSchedulerService(4, 3, 1, new ArrayList<>());
     // Inject the mock StoreMigrationManager into the service
     // Use AccessController.doPrivileged block to set the field accessible
     AccessController.doPrivileged((PrivilegedAction<Void>) () -> {

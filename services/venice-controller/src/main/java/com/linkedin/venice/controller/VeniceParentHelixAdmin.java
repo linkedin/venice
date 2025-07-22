@@ -724,8 +724,10 @@ public class VeniceParentHelixAdmin implements Admin {
       String destClusterName,
       String storeName,
       Optional<Integer> currStep,
+      Optional<Integer> pauseAfterStep,
       Optional<Boolean> abortOnFailure) {
-    veniceHelixAdmin.autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, abortOnFailure);
+    veniceHelixAdmin
+        .autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, pauseAfterStep, abortOnFailure);
   }
 
   @Override
@@ -5969,7 +5971,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * Validates that a store has been completely deleted from all venice clusters cross-regionally
-   * 
+   *
    * @see Admin#validateStoreDeleted(String, String)
    */
   @Override

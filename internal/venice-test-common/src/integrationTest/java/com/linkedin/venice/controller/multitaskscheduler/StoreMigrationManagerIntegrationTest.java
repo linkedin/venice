@@ -60,6 +60,7 @@ public class StoreMigrationManagerIntegrationTest {
   private static final long TIMEOUT = 10 * Time.MS_PER_SECOND;
   private static final int TEST_TIMEOUT = 180 * Time.MS_PER_SECOND;
   private static final int RECORD_COUNT = 20;
+  private static final int DELAY_IN_SECONDS = 2;
 
   private VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper;
   private VeniceMultiClusterWrapper multiClusterWrapper;
@@ -98,12 +99,13 @@ public class StoreMigrationManagerIntegrationTest {
     twoLayerMultiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(optionsBuilder.build());
     this.fabricList = twoLayerMultiRegionMultiClusterWrapper.getChildRegionNames();
+
     multiClusterWrapper = twoLayerMultiRegionMultiClusterWrapper.getChildRegions().get(0);
     clusterNames = multiClusterWrapper.getClusterNames();
 
     parentControllerUrl = twoLayerMultiRegionMultiClusterWrapper.getControllerConnectString();
     childControllerUrl0 = multiClusterWrapper.getControllerConnectString();
-    storeMigrationManager = StoreMigrationManager.createStoreMigrationManager(2, 3, 1, fabricList);
+    storeMigrationManager = StoreMigrationManager.createStoreMigrationManager(2, 5, DELAY_IN_SECONDS, fabricList);
   }
 
   @AfterMethod
@@ -144,13 +146,12 @@ public class StoreMigrationManagerIntegrationTest {
         sourceCluster,
         destCluster,
         initialStep,
-        1,
+        pauseAfterStep,
         true,
         srcParentControllerClient,
         destParentControllerClient,
         veniceHelixAdmin.getControllerClientMap(sourceCluster),
-        veniceHelixAdmin.getControllerClientMap(destCluster),
-        4);
+        veniceHelixAdmin.getControllerClientMap(destCluster));
     MigrationRecord migrationRecord = storeMigrationManager.getMigrationRecord(storeName);
 
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
@@ -182,12 +183,12 @@ public class StoreMigrationManagerIntegrationTest {
     final Version destVersionConfig = destCurrentVersion.get();
     Assert.assertEquals(destVersionConfig, expectedVersion);
 
-    storeMigrationManager.resumeMigration(storeName, MigrationRecord.Step.END_MIGRATION);
+    storeMigrationManager.resumeMigration(storeName, MigrationRecord.Step.END_MIGRATION.getStepNumber());
     // Allow time for the sequentially scheduled tasks to execute
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       assertEquals(
           migrationRecord.getCurrentStep(),
-          6,
+          MigrationRecord.Step.MIGRATION_SUCCEED.getStepNumber(),
           "Migration record should be updated to 6 as marked as completed.");
     });
     assertNull(

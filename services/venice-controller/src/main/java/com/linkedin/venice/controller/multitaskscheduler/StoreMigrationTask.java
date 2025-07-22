@@ -1,8 +1,9 @@
 package com.linkedin.venice.controller.multitaskscheduler;
 
 import static com.linkedin.venice.controller.multitaskscheduler.MigrationRecord.Step;
+import static com.linkedin.venice.controller.multitaskscheduler.StoreMigrationUtils.applyPauseIfNeeded;
+import static com.linkedin.venice.controller.multitaskscheduler.StoreMigrationUtils.isClonedStoreOnline;
 
-import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -13,14 +14,11 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -42,6 +40,7 @@ class StoreMigrationTask implements Runnable {
       MigrationRecord record,
       StoreMigrationManager manager,
       ControllerClient srcControllerClient,
+      ControllerClient destControllerClient,
       Map<String, ControllerClient> srcChildControllerClientMap,
       Map<String, ControllerClient> destChildControllerClientMap,
       List<String> fabricList) {
@@ -93,7 +92,7 @@ class StoreMigrationTask implements Runnable {
       LOGGER.error("Error occurred during migration for store: {}", record.getStoreName(), e);
       if (record.getAttempts() < manager.getMaxRetryAttempts()) {
         record.incrementAttempts();
-        manager.scheduleNextStep(this, 60); // Reschedule for 1 minute later
+        manager.scheduleNextStep(this, this.manager.delayInSeconds); // Reschedule for 1 minute later
       } else {
         handleMigrationFailure();
       }
@@ -113,6 +112,7 @@ class StoreMigrationTask implements Runnable {
       manager.migrationTasks.put(record.getStoreName(), this);
       return;
     }
+    LOGGER.info("Submit migration request of store {}...", record.getStoreName());
     // Implement pre-check and submission logic
     StoreMigrationResponse storeMigrationResponse =
         srcControllerClient.migrateStore(record.getStoreName(), record.getDestinationCluster());
@@ -137,6 +137,7 @@ class StoreMigrationTask implements Runnable {
       manager.migrationTasks.put(record.getStoreName(), this);
       return;
     }
+    LOGGER.info("Verifying migration status for migration of store {}...", record.getStoreName());
     if (Instant.ofEpochMilli(-1).equals(record.getStoreMigrationStartTime())) {
       // If the migration start time is not set yet, set it to the current time
       record.setStoreMigrationStartTime(Instant.now());
@@ -155,7 +156,7 @@ class StoreMigrationTask implements Runnable {
 
     if (response.getChildDataCenterControllerUrlMap() == null && response.getChildDataCenterControllerD2Map() == null) {
       // This is a controller in single datacenter setup
-      LOGGER.warn("WARN: fabric option is ignored on child controller.");
+      LOGGER.warn("Fabric option is ignored on child controller for store migration record : {}", record);
       if (isClonedStoreOnline(srcControllerClient, destControllerClient, record)) {
         statusVerified = true;
         LOGGER.info(
@@ -221,7 +222,7 @@ class StoreMigrationTask implements Runnable {
       manager.migrationTasks.put(record.getStoreName(), this);
       return;
     }
-
+    LOGGER.info("Updating cluster discovery for migration of store {}...", record.getStoreName());
     boolean updateSuccessful = false; // Placeholder for actual update result
     if (!statusVerified) {
       rescheduleStatusVerification();
@@ -270,13 +271,14 @@ class StoreMigrationTask implements Runnable {
                 srcChildController.completeMigration(record.getStoreName(), record.getDestinationCluster());
             if (storeMigrationResponse.isError()) {
               LOGGER.error(
-                  "Store migration failed for store: {} on step {} with error: {}",
+                  "Store migration failed for store: {} on complete migration step {} with error: {} on fabric: {}",
                   record.getStoreName(),
                   record.getCurrentStepEnum(),
-                  storeMigrationResponse.getError());
+                  storeMigrationResponse.getError(),
+                  fabric);
               throw new VeniceException(
-                  "Store migration failed for store: " + record.getStoreName() + " with error: "
-                      + storeMigrationResponse.getError());
+                  "Store migration failed on complete migration for store: " + record.getStoreName() + " on fabric: "
+                      + fabric + " with error: " + storeMigrationResponse.getError());
             }
           }
         }
@@ -335,6 +337,7 @@ class StoreMigrationTask implements Runnable {
       manager.migrationTasks.put(record.getStoreName(), this);
       return;
     }
+    LOGGER.info("Verifying read redirection for migration of store {}...", record.getStoreName());
     // Implement read redirection verification
     boolean verified = false; // Placeholder for actual verification result
 
@@ -358,6 +361,7 @@ class StoreMigrationTask implements Runnable {
       manager.migrationTasks.put(record.getStoreName(), this);
       return;
     }
+    LOGGER.info("Ending migration for store {}...", record.getStoreName());
     String clusterDiscovered = destControllerClient.discoverCluster(record.getStoreName()).getCluster();
     if (!clusterDiscovered.equals(record.getDestinationCluster())) {
       LOGGER.error(
@@ -377,6 +381,10 @@ class StoreMigrationTask implements Runnable {
           record.getSourceCluster(),
           record.getCurrentStep(),
           srcStoreResponse.getError());
+      throw new VeniceException(
+          "Failed to check store " + record.getStoreName() + " existence in original cluster "
+              + record.getSourceCluster() + " on step " + record.getCurrentStep() + " due to error: "
+              + srcStoreResponse.getError());
     }
 
     if (srcStoreResponse.getErrorType() != ErrorType.STORE_NOT_FOUND) {
@@ -384,7 +392,17 @@ class StoreMigrationTask implements Runnable {
       srcControllerClient.updateStore(
           record.getStoreName(),
           new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
-      TrackableControllerResponse deleteResponse = srcControllerClient.deleteStore(record.getStoreName());
+      if (!srcStoreResponse.getStore().isMigrating()) {
+        LOGGER.error(
+            "Store {} is not in migrating state in source cluster {}. Should not delete store.",
+            record.getStoreName(),
+            record.getSourceCluster());
+        throw new VeniceException(
+            "Store " + record.getStoreName() + " is not in migrating state in source cluster "
+                + record.getSourceCluster() + " on step " + record.getCurrentStep()
+                + ". Should not delete store. Please verify store existence later");
+      }
+      TrackableControllerResponse deleteResponse = srcControllerClient.deleteStore(record.getStoreName(), true);
       if (deleteResponse.isError()) {
         LOGGER.error(
             "Failed to delete store {} in the original cluster {} due to error: {}",
@@ -400,13 +418,15 @@ class StoreMigrationTask implements Runnable {
     ChildAwareResponse response = srcControllerClient.listChildControllers(record.getSourceCluster());
     if (response.isError()) {
       LOGGER.error(
-          "Error while listing child controllers for source cluster: {}. Error: {}",
+          "Error while listing child controllers for source cluster: {}. Error: {} for store MigrationRecord: {}.",
           record.getSourceCluster(),
-          response.getError());
+          response.getError(),
+          record);
       throw new VeniceException(
           "Error while listing child controllers for source cluster: " + record.getSourceCluster() + ". Error: "
               + response.getError());
     }
+    // Verify that the store is deleted in all child fabrics
     for (Map.Entry<String, ControllerClient> entry: srcChildControllerClientMap.entrySet()) {
       StoreResponse childSrcStoreResponse = entry.getValue().getStore(record.getStoreName());
       if (childSrcStoreResponse.isError() && childSrcStoreResponse.getErrorType() != ErrorType.STORE_NOT_FOUND) {
@@ -430,7 +450,8 @@ class StoreMigrationTask implements Runnable {
         throw new VeniceException(
             "Store " + record.getStoreName() + " still exists in source cluster " + record.getSourceCluster()
                 + " in fabric " + entry.getKey() + " on step " + record.getCurrentStep()
-                + " after migration. Please try again later.");
+                + " after migration. StoreResponse on fabric  " + entry.getKey() + " of source cluster is "
+                + childSrcStoreResponse + " . Please try again later.");
       }
     }
 
@@ -565,67 +586,6 @@ class StoreMigrationTask implements Runnable {
     manager.cleanupMigrationRecord(record.getStoreName());
   }
 
-  protected static boolean isClonedStoreOnline(
-      ControllerClient srcControllerClient,
-      ControllerClient destControllerClient,
-      MigrationRecord record) {
-    String storeName = record.getStoreName();
-    StoreResponse storeResponse = srcControllerClient.getStore(storeName);
-    StoreInfo srcStoreInfo = storeResponse.getStore();
-    if (srcStoreInfo == null) {
-      throw new VeniceException("Store " + storeName + " does not exist in the original cluster!");
-    }
-
-    StoreInfo destStoreInfo = destControllerClient.getStore(storeName).getStore();
-    if (destStoreInfo == null) {
-      LOGGER.info(
-          "WARN: Cloned store : {} has not been created in the destination cluster : {}!",
-          storeName,
-          record.getDestinationCluster());
-      return false;
-    }
-    List<Version> srcVersions = srcStoreInfo.getVersions();
-    List<Version> destVersions = destStoreInfo.getVersions();
-
-    OptionalInt srcLatestOnlineVersionNum = getLatestOnlineVersionNum(srcVersions);
-    OptionalInt destLatestOnlineVersionNum = getLatestOnlineVersionNum(destVersions);
-
-    if (!isUpToDate(srcLatestOnlineVersionNum, destLatestOnlineVersionNum)) {
-      LOGGER.info(
-          "Store {} is not ready in the destination cluster: {}, Online version in dest cluster: {} and "
-              + " Online version in src Cluster: {}",
-          storeName,
-          record.getDestinationCluster(),
-          destLatestOnlineVersionNum,
-          srcLatestOnlineVersionNum);
-      return false;
-    } else {
-      LOGGER.info(
-          "Store {} is ready in the destination cluster: {}, Online version in dest cluster: {} and "
-              + " Online version in src Cluster: {}",
-          storeName,
-          record.getDestinationCluster(),
-          destLatestOnlineVersionNum,
-          srcLatestOnlineVersionNum);
-    }
-
-    /**
-     * The following logic is to check whether the corresponding meta system store and DaVinci push status system store is fully migrated or not.
-     */
-    return checkSystemStore(
-        srcStoreInfo.isStoreMetaSystemStoreEnabled(),
-        VeniceSystemStoreType.META_STORE,
-        storeName,
-        srcControllerClient,
-        destControllerClient)
-        && checkSystemStore(
-            srcStoreInfo.isDaVinciPushStatusStoreEnabled(),
-            VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE,
-            storeName,
-            srcControllerClient,
-            destControllerClient);
-  }
-
   private void rescheduleStatusVerification() {
     LOGGER.warn(
         "Store {} is not verified replicated in destination cluster {}. Skipping cluster discovery update and rescheduling verification.",
@@ -634,100 +594,4 @@ class StoreMigrationTask implements Runnable {
     record.setCurrentStep(Step.VERIFY_MIGRATION_STATUS);
     manager.scheduleNextStep(this, this.manager.delayInSeconds); // Reschedule for 1 minute later
   }
-
-  private static OptionalInt getLatestOnlineVersionNum(List<Version> versions) {
-    if (versions == null) { // (optional) null-safety
-      return OptionalInt.empty();
-    }
-
-    return versions.stream()
-        .filter(v -> v.getStatus() == VersionStatus.ONLINE)
-        .mapToInt(Version::getNumber) // primitive stream → no boxing
-        .max(); // O(n), single pass
-  }
-
-  private static boolean isUpToDate(OptionalInt srcVersion, OptionalInt destVersion) {
-    int NO_VERSION = Integer.MIN_VALUE;
-    int src = srcVersion.orElse(NO_VERSION);
-    int dest = destVersion.orElse(NO_VERSION);
-    return dest >= src;
-  }
-
-  /**
-   * Check if the system store is ready in the destination cluster.
-   *
-   * @param enabled          Whether the feature flag for the system store is enabled on the source store.
-   * @param type             The type of the system store to check (e.g., META_STORE, DAVINCI_PUSH_STATUS_STORE).
-   * @param primaryStoreName  The name of the primary store for which the system store is being checked.
-   * @param srcClient        The controller client for the source cluster.
-   * @param destClient       The controller client for the destination cluster.
-   * @return                 True if the system store is ready, false otherwise.
-   */
-  private static boolean checkSystemStore(
-      boolean enabled, // feature flag on the source store
-      VeniceSystemStoreType type, // META_STORE, DAVINCI_PUSH_STATUS_STORE, …
-      String primaryStoreName,
-      ControllerClient srcClient,
-      ControllerClient destClient) {
-
-    if (!enabled) { // not enabled → trivially “ready”
-      return true;
-    }
-
-    String systemStoreName = type.getSystemStoreName(primaryStoreName);
-
-    StoreInfo srcSystemStore = srcClient.getStore(systemStoreName).getStore();
-    StoreInfo destSystemStore = destClient.getStore(systemStoreName).getStore();
-
-    OptionalInt srcLatest = getLatestOnlineVersionNum(srcSystemStore.getVersions());
-    OptionalInt destLatest = getLatestOnlineVersionNum(destSystemStore.getVersions());
-
-    boolean upToDate = isUpToDate(srcLatest, destLatest);
-    if (!upToDate) {
-      LOGGER.info(
-          "{} is not ready. Online version in dest cluster: {}. Online version in src cluster: {}",
-          systemStoreName,
-          destLatest,
-          srcLatest);
-    }
-    return upToDate;
-  }
-
-  /**
-   * Checks whether this migration run has to be paused / resumed.
-   *
-   * @param record  current migration record
-   * @return        true  -> record is (now) paused, caller should abort further work
-   *                false -> record is not paused
-   */
-  private static boolean applyPauseIfNeeded(MigrationRecord record) {
-    Step pauseAfter = record.getPauseAfter();
-    if (pauseAfter == Step.NONE) { // No pausing configured
-      return false;
-    }
-
-    Step current = record.getCurrentStepEnum();
-    boolean shouldBePaused = current.compareTo(pauseAfter) > 0; // past the limit
-    boolean isPaused = record.isPaused();
-
-    // transition to “paused” state
-    if (shouldBePaused && !isPaused) {
-      LOGGER.info(
-          "Migration for store {} is set to pause after step {}, paused at step {} for further execution",
-          record.getStoreName(),
-          pauseAfter,
-          current);
-      record.setPaused(true);
-      return true;
-    }
-
-    // transition to “resumed” state
-    if (shouldBePaused && isPaused) {
-      LOGGER.info("Migration for store {} is resumed from step {}.", record.getStoreName(), current);
-      record.setPaused(false);
-      record.setPauseAfter(Step.NONE);// reset pauseAfter
-    }
-    return record.isPaused(); // unchanged state
-  }
-
 }
