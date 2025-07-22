@@ -648,6 +648,7 @@ public class TestChangelogConsumer {
         5,
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 4));
+
     // Validate repush from version 4
     clusterWrapper.refreshAllRouterMetaData();
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
@@ -1112,7 +1113,7 @@ public class TestChangelogConsumer {
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
+        IntegrationTestPushUtils.pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       String key = pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, pubSubMessage);
@@ -1124,7 +1125,7 @@ public class TestChangelogConsumer {
       List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
       BootstrappingVeniceChangelogConsumer veniceChangelogConsumer) {
     Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
-        pollAllMessagesForBootstrappingVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
+        IntegrationTestPushUtils.pollAllMessagesForBootstrappingVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       String key = pubSubMessage.getKey() == null ? null : pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, pubSubMessage);
@@ -1137,7 +1138,7 @@ public class TestChangelogConsumer {
       List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
       VeniceChangelogConsumer veniceChangelogConsumer) {
     Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
-        pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
+        IntegrationTestPushUtils.pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       String key = pubSubMessage.getKey() == null ? null : pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, pubSubMessage);
@@ -1149,7 +1150,7 @@ public class TestChangelogConsumer {
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
+        IntegrationTestPushUtils.pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       String key = pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, pubSubMessage);
@@ -1161,7 +1162,7 @@ public class TestChangelogConsumer {
       VeniceChangelogConsumer veniceChangelogConsumer) {
     int polledMessagesNum = 0;
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
+        IntegrationTestPushUtils.pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       Utf8 afterImageEvent = pubSubMessage.getValue().getCurrentValue();
       String key = pubSubMessage.getKey().toString();
@@ -1169,35 +1170,6 @@ public class TestChangelogConsumer {
       polledMessagesNum++;
     }
     return polledMessagesNum;
-  }
-
-  private Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pollAllMessagesForBootstrappingVeniceChangelogConsumer(
-      BootstrappingVeniceChangelogConsumer<Utf8, TestChangelogValue> viewTopicConsumer,
-      int timeoutMs) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubAllMessages =
-        new ArrayList<>();
-    Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages;
-
-    do {
-      pubSubMessages = viewTopicConsumer.poll(timeoutMs);
-      pubSubAllMessages.addAll(pubSubMessages);
-    } while (!pubSubMessages.isEmpty());
-
-    return pubSubAllMessages;
-  }
-
-  private Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pollAllMessagesForVeniceChangelogConsumer(
-      VeniceChangelogConsumer<Utf8, Utf8> viewTopicConsumer,
-      int timeoutMs) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubAllMessages = new ArrayList<>();
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages;
-
-    do {
-      pubSubMessages = viewTopicConsumer.poll(timeoutMs);
-      pubSubAllMessages.addAll(pubSubMessages);
-    } while (!pubSubMessages.isEmpty());
-
-    return pubSubAllMessages;
   }
 
 }

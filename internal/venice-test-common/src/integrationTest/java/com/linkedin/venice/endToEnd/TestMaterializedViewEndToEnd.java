@@ -69,7 +69,6 @@ import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -467,26 +466,13 @@ public class TestMaterializedViewEndToEnd {
     // Verify we can get the records
     Map<String, Utf8> polledChangeEvents = new HashMap<>();
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        pollAllMessagesFor(viewTopicConsumer, 1000);
+        IntegrationTestPushUtils.pollAllMessagesForVeniceChangelogConsumer(viewTopicConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       Utf8 afterImageEvent = pubSubMessage.getValue().getCurrentValue();
       String key = pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, afterImageEvent);
     }
     Assert.assertEquals(polledChangeEvents.size(), numberOfRecords);
-  }
-
-  private Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pollAllMessagesFor(
-      VeniceChangelogConsumer<Utf8, Utf8> viewTopicConsumer,
-      int timeoutMs) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubAllMessages = new ArrayList<>();
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages;
-    do {
-      pubSubMessages = viewTopicConsumer.poll(timeoutMs);
-      pubSubAllMessages.addAll(pubSubMessages);
-    } while (!pubSubMessages.isEmpty());
-
-    return pubSubAllMessages;
   }
 
   /**
