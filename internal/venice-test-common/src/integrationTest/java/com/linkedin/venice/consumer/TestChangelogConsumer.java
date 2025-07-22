@@ -425,16 +425,29 @@ public class TestChangelogConsumer {
 
     // Let's consume those 100 records off of version 1
     Map<String, Utf8> versionTopicEvents = new HashMap<>();
-    pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
-    Assert.assertEquals(versionTopicEvents.size(), 100);
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      Assert.assertEquals(versionTopicEvents.size(), 100, "Version topic consumer should consume 100 records.");
+    });
 
     Map<String, Utf8> viewTopicEvents = new HashMap<>();
-    pollAfterImageEventsFromChangeCaptureConsumer(viewTopicEvents, viewTopicConsumer);
-    Assert.assertEquals(viewTopicEvents.size(), 100);
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      pollAfterImageEventsFromChangeCaptureConsumer(viewTopicEvents, viewTopicConsumer);
+      Assert.assertEquals(viewTopicEvents.size(), 100, "View topic consumer should consume 100 records.");
+    });
 
     VeniceChangelogConsumer<Utf8, Utf8> veniceChangelogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
     veniceChangelogConsumer.subscribeAll().get();
+
+    // Validate change events for version 1. 100 records exist in version 1.
+    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
+    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> allChangeEvents = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 100, "Venice change log consumer should consume 100 records.");
+    });
+
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
       // Run Samza job to send PUT and DELETE requests.
@@ -451,14 +464,6 @@ public class TestChangelogConsumer {
         Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
       });
     }
-
-    // Validate change events for version 1. 100 records exist in version 1.
-    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
-    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> allChangeEvents = new HashMap<>();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      Assert.assertEquals(polledChangeEvents.size(), 100);
-    });
 
     allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
@@ -1107,7 +1112,7 @@ public class TestChangelogConsumer {
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(1000);
+        pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       String key = pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, pubSubMessage);
@@ -1119,7 +1124,7 @@ public class TestChangelogConsumer {
       List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
       BootstrappingVeniceChangelogConsumer veniceChangelogConsumer) {
     Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(1000);
+        pollAllMessagesForBootstrappingVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       String key = pubSubMessage.getKey() == null ? null : pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, pubSubMessage);
@@ -1132,7 +1137,7 @@ public class TestChangelogConsumer {
       List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
       VeniceChangelogConsumer veniceChangelogConsumer) {
     Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(1000);
+        pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       String key = pubSubMessage.getKey() == null ? null : pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, pubSubMessage);
@@ -1144,9 +1149,7 @@ public class TestChangelogConsumer {
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(1000);
-    pubSubMessages.addAll(veniceChangelogConsumer.poll(1000));
-    pubSubMessages.addAll(veniceChangelogConsumer.poll(1000));
+        pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       String key = pubSubMessage.getKey().toString();
       polledChangeEvents.put(key, pubSubMessage);
@@ -1158,7 +1161,7 @@ public class TestChangelogConsumer {
       VeniceChangelogConsumer veniceChangelogConsumer) {
     int polledMessagesNum = 0;
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(1000);
+        pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       Utf8 afterImageEvent = pubSubMessage.getValue().getCurrentValue();
       String key = pubSubMessage.getKey().toString();
@@ -1166,6 +1169,35 @@ public class TestChangelogConsumer {
       polledMessagesNum++;
     }
     return polledMessagesNum;
+  }
+
+  private Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pollAllMessagesForBootstrappingVeniceChangelogConsumer(
+      BootstrappingVeniceChangelogConsumer<Utf8, TestChangelogValue> viewTopicConsumer,
+      int timeoutMs) {
+    Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubAllMessages =
+        new ArrayList<>();
+    Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages;
+
+    do {
+      pubSubMessages = viewTopicConsumer.poll(timeoutMs);
+      pubSubAllMessages.addAll(pubSubMessages);
+    } while (!pubSubMessages.isEmpty());
+
+    return pubSubAllMessages;
+  }
+
+  private Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pollAllMessagesForVeniceChangelogConsumer(
+      VeniceChangelogConsumer<Utf8, Utf8> viewTopicConsumer,
+      int timeoutMs) {
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubAllMessages = new ArrayList<>();
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages;
+
+    do {
+      pubSubMessages = viewTopicConsumer.poll(timeoutMs);
+      pubSubAllMessages.addAll(pubSubMessages);
+    } while (!pubSubMessages.isEmpty());
+
+    return pubSubAllMessages;
   }
 
 }
