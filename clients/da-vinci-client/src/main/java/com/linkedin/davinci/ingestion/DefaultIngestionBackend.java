@@ -195,10 +195,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
       int partitionId,
       VeniceStoreVersionConfig storeConfig,
       Supplier<StoreVersionState> svsSupplier) {
-    // Prepare configs
+    // Prepare configs with blob transfer in-progress flag.
     StoragePartitionConfig storagePartitionConfig =
-        new StoragePartitionConfig(storeConfig.getStoreVersionName(), partitionId);
-    storagePartitionConfig.setBlobTransferInProgress(true);
+        new StoragePartitionConfig(storeConfig.getStoreVersionName(), partitionId, true);
     storagePartitionConfig.setReadOnly(true);
 
     // due to we use storage service to open the store and partition here,

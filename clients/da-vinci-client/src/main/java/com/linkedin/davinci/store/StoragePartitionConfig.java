@@ -19,9 +19,13 @@ public class StoragePartitionConfig {
   private boolean writeOnlyConfig;
   private boolean readWriteLeaderForDefaultCF;
   private boolean readWriteLeaderForRMDCF;
-  private boolean blobTransferInProgress;
+  private final boolean blobTransferInProgress;
 
   public StoragePartitionConfig(String storeName, int partitionId) {
+    this(storeName, partitionId, false);
+  }
+
+  public StoragePartitionConfig(String storeName, int partitionId, boolean isBlobTransferInProgress) {
     this.storeName = storeName;
     this.partitionId = partitionId;
     this.deferredWrite = false;
@@ -29,7 +33,7 @@ public class StoragePartitionConfig {
     this.writeOnlyConfig = true;
     this.readWriteLeaderForDefaultCF = false;
     this.readWriteLeaderForRMDCF = false;
-    this.blobTransferInProgress = false;
+    this.blobTransferInProgress = isBlobTransferInProgress;
   }
 
   public String getStoreName() {
@@ -42,10 +46,6 @@ public class StoragePartitionConfig {
 
   public boolean isBlobTransferInProgress() {
     return blobTransferInProgress;
-  }
-
-  public void setBlobTransferInProgress(boolean blobTransferInProgress) {
-    this.blobTransferInProgress = blobTransferInProgress;
   }
 
   public void setDeferredWrite(boolean deferredWrite) {
