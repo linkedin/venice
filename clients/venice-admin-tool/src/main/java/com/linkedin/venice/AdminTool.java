@@ -2505,7 +2505,7 @@ public class AdminTool {
     assertStoreNotMigrating(srcControllerClient, storeName);
 
     StoreMigrationResponse storeMigrationResponse =
-        srcControllerClient.autoMigrateStore(storeName, destClusterName, currStep, abortOnFailure);
+        srcControllerClient.autoMigrateStore(storeName, destClusterName, currStep, Optional.empty(), abortOnFailure);
     printObject(storeMigrationResponse);
 
     if (storeMigrationResponse.isError()) {

@@ -184,6 +184,7 @@ public interface Admin extends AutoCloseable, Closeable {
       String destClusterName,
       String storeName,
       Optional<Integer> currStep,
+      Optional<Integer> pauseAfterStep,
       Optional<Boolean> abortOnFailure);
 
   /**

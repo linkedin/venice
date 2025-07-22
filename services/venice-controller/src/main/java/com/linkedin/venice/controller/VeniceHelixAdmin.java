@@ -377,6 +377,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final long PUSH_STATUS_STORE_WRITER_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
   private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
       AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
+  private volatile static String SELF_URL;
 
   static final int VERSION_ID_UNSET = -1;
 
@@ -9644,6 +9645,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String destClusterName,
       String storeName,
       Optional<Integer> currStep,
+      Optional<Integer> pauseAfterStep,
       Optional<Boolean> abortOnFailure) {
     checkControllerLeadershipFor(srcClusterName);
     Optional<MultiTaskSchedulerService> multiTaskSchedulerService =
@@ -9658,10 +9660,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           srcClusterName,
           destClusterName,
           currStep.orElse(0),
-          0,
+          pauseAfterStep.orElse(Integer.MAX_VALUE),
           abortOnFailure.orElse(false),
-          getParentControllerClient(srcClusterName),
-          getParentControllerClient(destClusterName),
+          getParentControllerClient(srcClusterName, srcClusterName),
+          getParentControllerClient(destClusterName, srcClusterName),
           srcChildControllerClientMap,
           destChildControllerClientMap);
     } else {
@@ -9671,14 +9673,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  public ControllerClient getParentControllerClient(String clusterName) {
+  // Auto-store migration is a long-running job; always use the service’s self URL when constructing a client to ensure
+  // that the host is discoverable and treated as the parent host
+  public ControllerClient getParentControllerClient(String clusterName, String sourceCluster) {
     Objects.requireNonNull(clusterName, "clusterName cannot be null");
-    return clusterParentControllerClientMap.computeIfAbsent(clusterName, this::createControllerClient);
+    return clusterParentControllerClientMap
+        .computeIfAbsent(clusterName, key -> createControllerClientWithCurrentURL(key, sourceCluster));
   }
 
-  private ControllerClient createControllerClient(String clusterName) {
-    String leaderUrl = getLeaderController(clusterName).getUrl(false);
-    return ControllerClientFactory.getControllerClient(clusterName, leaderUrl, sslFactory);
+  private synchronized String getCurrentUrl(String sourceCluster) {
+    if (SELF_URL == null) {
+      SELF_URL = getLeaderController(sourceCluster).getUrl(false);
+    }
+    return SELF_URL;
+  }
+
+  private ControllerClient createControllerClientWithCurrentURL(String clusterName, String sourceCluster) {
+    String url = getCurrentUrl(sourceCluster);
+    return ControllerClientFactory.getControllerClient(clusterName, url, sslFactory);
   }
 
   public Optional<SSLFactory> getSslFactory() {

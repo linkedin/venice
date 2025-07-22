@@ -139,10 +139,14 @@ public class MigrationRecord {
     this.pauseAfter = pauseAfter;
   }
 
+  public void setPauseAfter(int pauseAfterStep) {
+    this.pauseAfter = Step.fromStepNumber(pauseAfterStep);
+  }
+
   public String toString() {
     return String.format(
         "MigrationRecord{storeName='%s', sourceCluster='%s', destinationCluster='%s', currentStep=%s(%d), "
-            + "storeMigrationStartTime=%s, attempts=%d, isAborted=%b, abortOnFailure=%b, pauseAfter=%s, paused=%b}",
+            + "storeMigrationStartTime=%s, attempts=%d, isAborted=%b, abortOnFailure=%b, pauseAfterStep=%s, paused=%b}",
         storeName,
         sourceCluster,
         destinationCluster,

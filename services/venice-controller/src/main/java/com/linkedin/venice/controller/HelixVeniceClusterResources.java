@@ -123,6 +123,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
           new MultiTaskSchedulerService(
               config.getStoreMigrationThreadPoolSize(),
               config.getStoreMigrationMaxRetryAttempts(),
+              config.getStoreMigrationTaskIntervalInSeconds(),
               config.getStoreMigrationFabricList()));
     } else {
       this.multiTaskSchedulerService = Optional.empty();

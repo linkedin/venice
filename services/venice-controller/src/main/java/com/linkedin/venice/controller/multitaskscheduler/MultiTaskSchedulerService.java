@@ -27,11 +27,16 @@ public class MultiTaskSchedulerService extends AbstractVeniceService {
    * Constructor to initialize the TaskSchedulerService with the task manager with pre-configured threadPoolSize and maxRetryAttempts.
    * @param threadPoolSize
    * @param maxRetryAttempts
+   * @param taskIntervalInSecond
+   * @param childFabricList
    */
-  public MultiTaskSchedulerService(int threadPoolSize, int maxRetryAttempts, List<String> fabricList) {
-    // TODO: add one extra configureation for delayInsecond for testing
-    this.storeMigrationManager =
-        StoreMigrationManager.createStoreMigrationManager(threadPoolSize, maxRetryAttempts, 1, fabricList);
+  public MultiTaskSchedulerService(
+      int threadPoolSize,
+      int maxRetryAttempts,
+      int taskIntervalInSecond,
+      List<String> childFabricList) {
+    this.storeMigrationManager = StoreMigrationManager
+        .createStoreMigrationManager(threadPoolSize, maxRetryAttempts, taskIntervalInSecond, childFabricList);
   }
 
   @Override

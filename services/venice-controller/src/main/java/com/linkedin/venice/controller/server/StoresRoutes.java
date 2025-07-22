@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.server;
 import static com.linkedin.venice.controller.server.VeniceRouteHandler.ACL_CHECK_FAILURE_WARN_MESSAGE_PREFIX;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_ABORT_ON_FAILURE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_CURRENT_STEP;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER_DEST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
@@ -578,6 +579,8 @@ public class StoresRoutes extends AbstractRoute {
 
           Optional<Integer> currStep =
               Optional.ofNullable(request.queryParams(AUTO_STORE_MIGRATION_CURRENT_STEP)).map(Integer::parseInt);
+          Optional<Integer> pauseAfterStep =
+              Optional.ofNullable(request.queryParams(AUTO_STORE_MIGRATION_PAUSE_AFTER_STEP)).map(Integer::parseInt);
           Optional<Boolean> abortOnFailure =
               Optional.ofNullable(request.queryParams(AUTO_STORE_MIGRATION_ABORT_ON_FAILURE))
                   .map(Boolean::parseBoolean);
@@ -617,7 +620,7 @@ public class StoresRoutes extends AbstractRoute {
             storeMigrationResponse.setErrorType(ErrorType.BAD_REQUEST);
             return;
           }
-          admin.autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, abortOnFailure);
+          admin.autoMigrateStore(srcClusterName, destClusterName, storeName, currStep, pauseAfterStep, abortOnFailure);
         } catch (Throwable e) {
           // Catch all exceptions and set the error in the response
           storeMigrationResponse.setError(e);
