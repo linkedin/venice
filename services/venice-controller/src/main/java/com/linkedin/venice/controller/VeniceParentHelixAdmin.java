@@ -1198,7 +1198,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * store version in Parent Controller doesn't maintain actual version status, and only for tracking
    * the store version creation history.
    */
-  void cleanupHistoricalVersions(String clusterName, String storeName) {
+  public void cleanupHistoricalVersions(String clusterName, String storeName) {
     HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
     try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
       ReadWriteStoreRepository storeRepo = resources.getStoreMetadataRepository();

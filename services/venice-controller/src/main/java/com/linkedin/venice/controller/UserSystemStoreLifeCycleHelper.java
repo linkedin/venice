@@ -2,7 +2,6 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.common.VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE;
 import static com.linkedin.venice.common.VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE;
-import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.authorization.Resource;
@@ -91,29 +90,17 @@ public class UserSystemStoreLifeCycleHelper {
         systemStoreLargestUsedVersionNumber,
         systemStoreName,
         clusterName);
-    if (systemStoreLargestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
-      version = parentAdmin
-          .incrementVersionIdempotent(clusterName, systemStoreName, pushJobId, partitionCount, replicationFactor);
-    } else {
-      version = parentAdmin.addVersionAndTopicOnly(
-          clusterName,
+    if (systemStoreLargestUsedVersionNumber != Store.NON_EXISTING_VERSION) {
+      parentAdmin.setStoreLargestUsedVersion(clusterName, systemStoreName, systemStoreLargestUsedVersionNumber);
+      LOGGER.info(
+          "Set largest used version: {} for system store: {} in cluster: {} in all regions",
+          systemStoreLargestUsedVersionNumber,
           systemStoreName,
-          pushJobId,
-          systemStoreLargestUsedVersionNumber + 1,
-          partitionCount,
-          replicationFactor,
-          Version.PushType.BATCH,
-          false,
-          false,
-          null,
-          Optional.empty(),
-          -1,
-          Optional.empty(),
-          false,
-          null,
-          -1,
-          DEFAULT_RT_VERSION_NUMBER);
+          clusterName);
     }
+    // Use the same endpoint as empty push so that all the actions are shared.
+    version = parentAdmin
+        .incrementVersionIdempotent(clusterName, systemStoreName, pushJobId, partitionCount, replicationFactor);
     parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
     return version;
   }

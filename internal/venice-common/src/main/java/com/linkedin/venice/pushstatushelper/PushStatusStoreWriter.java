@@ -17,6 +17,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Future;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -96,8 +97,13 @@ public class PushStatusStoreWriter implements AutoCloseable {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getHeartbeatKey(instanceName);
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
     updateBuilder.setNewFieldValue("reportTimestamp", heartbeat);
-    LOGGER.info("Sending heartbeat of {}", instanceName);
-    writer.update(pushStatusKey, updateBuilder.build(), valueSchemaId, derivedSchemaId, null);
+    LOGGER.info(
+        "Sending heartbeat: {} with instance name: {} for push status store of: {}",
+        heartbeat,
+        instanceName,
+        storeName);
+    GenericRecord value = updateBuilder.build();
+    writer.update(pushStatusKey, value, valueSchemaId, derivedSchemaId, null);
   }
 
   public void writePushStatus(
