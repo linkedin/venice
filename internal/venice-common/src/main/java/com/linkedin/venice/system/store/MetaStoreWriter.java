@@ -174,6 +174,7 @@ public class MetaStoreWriter implements Closeable {
   }
 
   public void writeHeartbeat(String storeName, long heartbeatTimestamp) {
+    LOGGER.info("Sending heartbeat: {} for meta store of: {}", heartbeatTimestamp, storeName);
     write(
         storeName,
         MetaStoreDataType.HEARTBEAT,
@@ -273,6 +274,7 @@ public class MetaStoreWriter implements Closeable {
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
     StoreMetaValue value = valueSupplier.get();
     value.timestamp = timestamp;
+    LOGGER.info("DEBUGGING META WRITE: {} {}", key, value);
     writeMessageWithRetry(
         metaStoreName,
         vw -> vw.put(key, value, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get()));
