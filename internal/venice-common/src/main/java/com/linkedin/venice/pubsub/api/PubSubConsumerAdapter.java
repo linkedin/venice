@@ -8,6 +8,7 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
 import java.io.Closeable;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
@@ -269,4 +270,47 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    *         or {@code null} if the topic does not exist.
    */
   List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic pubSubTopic);
+
+  /**
+   * Compares two PubSub positions within the specified topic partition.
+   *
+   * @param partition The topic partition where the comparison is being performed.
+   * @param position1 The first PubSub position.
+   * @param position2 The second PubSub position.
+   * @return A negative value if {@code position1} is behind {@code position2}, zero if equal,
+   *         or a positive value if {@code position1} is ahead of {@code position2}.
+   */
+  long comparePositions(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2);
+
+  /**
+   * Computes the absolute difference between two PubSub positions within the specified topic partition.
+   *
+   * @param partition The topic partition for which the difference is calculated.
+   * @param position1 The first PubSub position.
+   * @param position2 The second PubSub position.
+   * @return The absolute number of messages (or offset units) between {@code position1} and {@code position2}.
+   */
+  long positionDifference(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2);
+
+  /**
+   * Decodes the given type-encoded byte array into a {@link PubSubPosition} for the specified topic partition.
+   *
+   * @param partition The topic partition this position belongs to.
+   * @param data The byte array containing the encoded position.
+   * @return The decoded {@link PubSubPosition}.
+   * @throws IllegalArgumentException if the data cannot be decoded into a valid {@link PubSubPosition}.
+   */
+  default PubSubPosition decodePosition(PubSubTopicPartition partition, byte[] data) {
+    return decodePosition(partition, ByteBuffer.wrap(data));
+  }
+
+  /**
+   * Decodes the given type-encoded {@link ByteBuffer} into a {@link PubSubPosition} for the specified topic partition.
+   *
+   * @param partition The topic partition this position belongs to.
+   * @param buffer The {@link ByteBuffer} containing the encoded position.
+   * @return The decoded {@link PubSubPosition}.
+   * @throws IllegalArgumentException if the buffer cannot be decoded into a valid {@link PubSubPosition}.
+   */
+  PubSubPosition decodePosition(PubSubTopicPartition partition, ByteBuffer buffer);
 }
