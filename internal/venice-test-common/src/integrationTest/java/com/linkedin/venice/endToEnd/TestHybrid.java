@@ -1017,7 +1017,7 @@ public class TestHybrid {
 
       try (VeniceProducer veniceOnlineProducer = OnlineProducerFactory.createProducer(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()),
-          VeniceProperties.empty(),
+          new VeniceProperties(cluster.getPubSubClientProperties()),
           null)) {
         for (int i = keyCount; i < keyCount * 2; i++) {
           veniceOnlineProducer.asyncPut(i, i * 2).get();

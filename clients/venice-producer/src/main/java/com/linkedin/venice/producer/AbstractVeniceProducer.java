@@ -11,11 +11,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.pubsub.PubSubClientsFactory;
-import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
-import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
-import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaReader;
@@ -156,15 +152,8 @@ public abstract class AbstractVeniceProducer<K, V> implements VeniceProducer<K, 
       ClientConfig storeClientConfig,
       Properties properties,
       VeniceWriterOptions writerOptions) {
-    VeniceProperties veniceProperties = new VeniceProperties(properties);
-    PubSubProducerAdapterFactory<PubSubProducerAdapter> producerAdapterFactory =
-        PubSubClientsFactory.createProducerFactory(veniceProperties);
     MetricsRepository metricsRepository = storeClientConfig.getMetricsRepository();
-    PubSubPositionTypeRegistry pubSubPositionTypeRegistry =
-        PubSubPositionTypeRegistry.fromPropertiesOrDefault(veniceProperties);
-
-    return new VeniceWriterFactory(properties, producerAdapterFactory, metricsRepository, pubSubPositionTypeRegistry)
-        .createVeniceWriter(writerOptions);
+    return new VeniceWriterFactory(properties, null, metricsRepository, null).createVeniceWriter(writerOptions);
   }
 
   protected RecordSerializer<Object> getSerializer(Schema schema) {
