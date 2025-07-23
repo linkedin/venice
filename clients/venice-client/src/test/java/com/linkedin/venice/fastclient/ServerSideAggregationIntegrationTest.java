@@ -18,6 +18,7 @@ import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
+import com.linkedin.venice.protocols.ValueCount;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.serializer.RecordSerializer;
 import java.util.Arrays;
@@ -65,12 +66,15 @@ public class ServerSideAggregationIntegrationTest {
     when(mockMetadata.getReplicas(anyInt(), eq(1))).thenReturn(Arrays.asList("server1:8080", "server2:8080"));
 
     // Setup gRPC transport to return successful response from each partition call
+    ValueCount fieldCounts = ValueCount.newBuilder()
+        .putValueToCounts("value1", 5)
+        .putValueToCounts("value2", 3)
+        .putValueToCounts("value3", 1)
+        .build();
+
     CountByValueResponse mockResponse = CountByValueResponse.newBuilder()
-        .putValueCounts("value1", 5L)
-        .putValueCounts("value2", 3L)
-        .putValueCounts("value3", 1L)
+        .putFieldToValueCounts("testField", fieldCounts)
         .setErrorCode(VeniceReadResponseStatus.OK)
-        .setResponseRCU(1) // Each partition call returns 1 RCU
         .build();
 
     when(mockGrpcTransportClient.countByValue(anyString(), any(CountByValueRequest.class)))
@@ -88,11 +92,20 @@ public class ServerSideAggregationIntegrationTest {
     // the total RCU will be the number of partition calls made
     assertTrue(response.getKeysProcessed() >= 1);
 
-    Map<String, Long> valueCounts = response.getValueCounts();
+    Map<String, Integer> valueCounts = response.getValueCounts();
     // Values will be aggregated from multiple partition calls
     assertTrue(valueCounts.containsKey("value1"));
     assertTrue(valueCounts.containsKey("value2"));
     assertTrue(valueCounts.containsKey("value3"));
+
+    // Test multi-field response
+    Map<String, Map<String, Integer>> fieldCounts = response.getFieldToValueCounts();
+    assertNotNull(fieldCounts);
+    assertTrue(fieldCounts.containsKey("testField"));
+    Map<String, Integer> testFieldCounts = fieldCounts.get("testField");
+    assertEquals(testFieldCounts.get("value1"), Integer.valueOf(5));
+    assertEquals(testFieldCounts.get("value2"), Integer.valueOf(3));
+    assertEquals(testFieldCounts.get("value3"), Integer.valueOf(1));
   }
 
   @Test
@@ -119,6 +132,54 @@ public class ServerSideAggregationIntegrationTest {
     } catch (VeniceClientException e) {
       assertTrue(e.getMessage().contains("Must call countByValue() before execute()"));
     }
+  }
+
+  @Test
+  public void testMultiFieldCountByValue() throws Exception {
+    // Setup test data
+    Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2"));
+
+    // Setup metadata
+    when(mockMetadata.getReplicas(anyInt(), eq(1))).thenReturn(Arrays.asList("server1:8080"));
+
+    // Setup gRPC transport to return successful response with multiple fields
+    ValueCount field1Counts = ValueCount.newBuilder().putValueToCounts("red", 10).putValueToCounts("blue", 5).build();
+
+    ValueCount field2Counts = ValueCount.newBuilder().putValueToCounts("large", 8).putValueToCounts("small", 7).build();
+
+    CountByValueResponse mockResponse = CountByValueResponse.newBuilder()
+        .putFieldToValueCounts("color", field1Counts)
+        .putFieldToValueCounts("size", field2Counts)
+        .setErrorCode(VeniceReadResponseStatus.OK)
+        .build();
+
+    when(mockGrpcTransportClient.countByValue(anyString(), any(CountByValueRequest.class)))
+        .thenReturn(CompletableFuture.completedFuture(mockResponse));
+
+    // Execute the aggregation with multiple fields
+    builder.countByValue(Arrays.asList("color", "size"), 5);
+    CompletableFuture<AggregationResponse> future = builder.execute(keys);
+
+    // Verify the result
+    AggregationResponse response = future.get();
+    assertNotNull(response);
+    assertFalse(response.hasError());
+
+    Map<String, Map<String, Integer>> fieldCounts = response.getFieldToValueCounts();
+    assertNotNull(fieldCounts);
+    assertEquals(fieldCounts.size(), 2);
+
+    // Verify color field counts
+    assertTrue(fieldCounts.containsKey("color"));
+    Map<String, Integer> colorCounts = fieldCounts.get("color");
+    assertEquals(colorCounts.get("red"), Integer.valueOf(10));
+    assertEquals(colorCounts.get("blue"), Integer.valueOf(5));
+
+    // Verify size field counts
+    assertTrue(fieldCounts.containsKey("size"));
+    Map<String, Integer> sizeCounts = fieldCounts.get("size");
+    assertEquals(sizeCounts.get("large"), Integer.valueOf(8));
+    assertEquals(sizeCounts.get("small"), Integer.valueOf(7));
   }
 
   @Test
