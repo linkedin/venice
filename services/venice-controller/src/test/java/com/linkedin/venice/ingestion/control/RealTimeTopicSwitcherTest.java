@@ -24,6 +24,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
+import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -216,8 +217,8 @@ public class RealTimeTopicSwitcherTest {
     Store mockStore = mock(Store.class);
     HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
 
-    doReturn(true).when(mockStore).isHybrid();
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
+    doReturn(true).when(mockStore).isHybrid();
     Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
     doReturn(version).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
@@ -225,13 +226,15 @@ public class RealTimeTopicSwitcherTest {
     doReturn(false).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
 
-    leaderStorageNodeReplicator.ensurePreconditions(srcTopic, destTopic, mockStore, Optional.of(mockHybridConfig));
+    leaderStorageNodeReplicator.ensurePreconditions(srcTopic, destTopic, mockStore);
+
+    long retentionTime = StoreUtils.getExpectedRetentionTimeInMs(mockStore, mockStore.getHybridStoreConfig());
 
     verify(mockTopicManager).createTopic(
         eq(srcTopic),
         anyInt(),
         eq(KAFKA_RF_FOR_RT_TOPICS),
-        anyLong(),
+        eq(retentionTime),
         eq(false),
         eq(Optional.of(KAFKA_MIN_ISR_FOR_RT_TOPICS)),
         eq(false));
