@@ -639,82 +639,58 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
    */
   @Override
   public long comparePositions(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
-    if (position1 == null || position2 == null) {
-      throw new IllegalArgumentException("Positions cannot be null");
-    }
-
-    // Handle symbolic positions
-    if (position1 == PubSubSymbolicPosition.EARLIEST) {
-      return (position2 == PubSubSymbolicPosition.EARLIEST) ? 0 : -1;
-    }
-    if (position2 == PubSubSymbolicPosition.EARLIEST) {
-      return 1;
-    }
-
-    if (position1 == PubSubSymbolicPosition.LATEST) {
-      return (position2 == PubSubSymbolicPosition.LATEST) ? 0 : 1;
-    }
-    if (position2 == PubSubSymbolicPosition.LATEST) {
-      return -1;
-    }
-
-    // Handle concrete position types
-    if (position1 instanceof ApacheKafkaOffsetPosition && position2 instanceof ApacheKafkaOffsetPosition) {
-      long offset1 = ((ApacheKafkaOffsetPosition) position1).getOffset();
-      long offset2 = ((ApacheKafkaOffsetPosition) position2).getOffset();
-      return Long.compare(offset1, offset2);
-    }
-
-    throw new IllegalArgumentException(
-        "Unsupported PubSubPosition types: " + position1.getClass().getName() + " vs " + position2.getClass().getName());
+    return positionDifference(partition, position1, position2);
   }
 
-  /**
-   * Computes the absolute difference between two {@link PubSubPosition} instances for a given
-   * {@link PubSubTopicPartition}. The result represents how far apart the positions are in terms of offset units.
-   * <p>
-   * Special cases:
-   * <ul>
-   *   <li>If one position is {@link PubSubSymbolicPosition#EARLIEST} and the other is {@link PubSubSymbolicPosition#LATEST},
-   *       the result is {@link Long#MAX_VALUE}.</li>
-   *   <li>If both positions are symbolic and equal, the result is {@code 0}.</li>
-   *   <li>Any other symbolic combination results in {@link Long#MAX_VALUE} as a conservative estimate.</li>
-   * </ul>
-   * If both positions are concrete (e.g., {@link ApacheKafkaOffsetPosition}), their offset difference is computed.
-   *
-   * @param partition the topic partition context (currently unused but required by the interface)
-   * @param position1 the first position (must not be null)
-   * @param position2 the second position (must not be null)
-   * @return the absolute difference in offset units, or {@link Long#MAX_VALUE} for symbolic edge cases
-   * @throws IllegalArgumentException if positions are null or unsupported
-   */
   @Override
-  public long positionDifference(
-      PubSubTopicPartition partition,
-      PubSubPosition position1,
-      PubSubPosition position2
-  ) {
+  public long positionDifference(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
     if (position1 == null || position2 == null) {
       throw new IllegalArgumentException("Positions cannot be null");
     }
 
-    if (position1 == position2) {
+    PubSubPosition resolved1 = resolveSymbolicPosition(partition, position1);
+    PubSubPosition resolved2 = resolveSymbolicPosition(partition, position2);
+
+    // Case 1: Both resolved to concrete Kafka offset positions
+    if (resolved1 instanceof ApacheKafkaOffsetPosition && resolved2 instanceof ApacheKafkaOffsetPosition) {
+      long offset1 = ((ApacheKafkaOffsetPosition) resolved1).getOffset();
+      long offset2 = ((ApacheKafkaOffsetPosition) resolved2).getOffset();
+      return offset1 - offset2;
+    }
+
+    // Case 2: Both failed to resolve and are still symbolic
+    if (resolved1 == resolved2
+        && (resolved1 == PubSubSymbolicPosition.EARLIEST || resolved1 == PubSubSymbolicPosition.LATEST)) {
       return 0L;
     }
 
-    if ((position1 == PubSubSymbolicPosition.EARLIEST && position2 == PubSubSymbolicPosition.LATEST) ||
-        (position1 == PubSubSymbolicPosition.LATEST && position2 == PubSubSymbolicPosition.EARLIEST)) {
-      return Long.MAX_VALUE;
+    // Case 3: One of the positions is EARLIEST
+    if (resolved1 == PubSubSymbolicPosition.EARLIEST && resolved2 instanceof ApacheKafkaOffsetPosition) {
+      return -((ApacheKafkaOffsetPosition) resolved2).getOffset();
+    }
+    if (resolved2 == PubSubSymbolicPosition.EARLIEST && resolved1 instanceof ApacheKafkaOffsetPosition) {
+      return ((ApacheKafkaOffsetPosition) resolved1).getOffset();
     }
 
-    if (position1 instanceof ApacheKafkaOffsetPosition && position2 instanceof ApacheKafkaOffsetPosition) {
-      long offset1 = ((ApacheKafkaOffsetPosition) position1).getOffset();
-      long offset2 = ((ApacheKafkaOffsetPosition) position2).getOffset();
-      return Math.abs(offset1 - offset2);
+    // Case 4: One of the positions is LATEST (treated as Long.MAX_VALUE)
+    if (resolved1 == PubSubSymbolicPosition.LATEST && resolved2 instanceof ApacheKafkaOffsetPosition) {
+      return Long.MAX_VALUE - ((ApacheKafkaOffsetPosition) resolved2).getOffset();
+    }
+    if (resolved2 == PubSubSymbolicPosition.LATEST && resolved1 instanceof ApacheKafkaOffsetPosition) {
+      return ((ApacheKafkaOffsetPosition) resolved1).getOffset() - Long.MAX_VALUE;
     }
 
-    // Any other symbolic mix or unsupported type: treat as maximum difference
-    return Long.MAX_VALUE;
+    throw new IllegalArgumentException(
+        "Unsupported position types: " + resolved1.getClass().getName() + " vs " + resolved2.getClass().getName());
+  }
+
+  private PubSubPosition resolveSymbolicPosition(PubSubTopicPartition partition, PubSubPosition position) {
+    if (position == PubSubSymbolicPosition.EARLIEST) {
+      return beginningPosition(partition, config.getDefaultApiTimeout());
+    } else if (position == PubSubSymbolicPosition.LATEST) {
+      return endPosition(partition);
+    }
+    return position;
   }
 
   @Override
@@ -722,9 +698,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     try {
       return new ApacheKafkaOffsetPosition(buffer);
     } catch (IOException e) {
-      throw new VeniceException(
-          "Failed to decode position for partition: " + partition + " from buffer: " + buffer,
-          e);
+      throw new VeniceException("Failed to decode position for partition: " + partition + " from buffer: " + buffer, e);
     }
   }
 

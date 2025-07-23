@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.mock.adapter.consumer;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
@@ -13,6 +14,7 @@ import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.pubsub.mock.adapter.admin.MockInMemoryAdminAdapter;
 import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.PollStrategy;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
@@ -246,6 +248,75 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
       return adminAdapter.partitionsFor(topic);
     } else {
       throw new UnsupportedOperationException("In-memory admin adapter is not set");
+    }
+  }
+
+  @Override
+  public long comparePositions(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    return positionDifference(partition, position1, position2);
+  }
+
+  @Override
+  public long positionDifference(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    if (position1 == null || position2 == null) {
+      throw new IllegalArgumentException("Positions cannot be null");
+    }
+
+    PubSubPosition resolved1 = resolveSymbolicPosition(partition, position1);
+    PubSubPosition resolved2 = resolveSymbolicPosition(partition, position2);
+
+    // Case 1: Both resolved to concrete InMemoryPubSubPosition
+    if (resolved1 instanceof InMemoryPubSubPosition && resolved2 instanceof InMemoryPubSubPosition) {
+      long offset1 = ((InMemoryPubSubPosition) resolved1).getInternalOffset();
+      long offset2 = ((InMemoryPubSubPosition) resolved2).getInternalOffset();
+      return offset1 - offset2;
+    }
+
+    // Case 2: Both unresolved symbolic positions and equal
+    if (resolved1 == resolved2
+        && (resolved1 == PubSubSymbolicPosition.EARLIEST || resolved1 == PubSubSymbolicPosition.LATEST)) {
+      return 0L;
+    }
+
+    // Case 3: One is EARLIEST, one is concrete
+    if (resolved1 == PubSubSymbolicPosition.EARLIEST && resolved2 instanceof InMemoryPubSubPosition) {
+      return -((InMemoryPubSubPosition) resolved2).getInternalOffset();
+    }
+    if (resolved2 == PubSubSymbolicPosition.EARLIEST && resolved1 instanceof InMemoryPubSubPosition) {
+      return ((InMemoryPubSubPosition) resolved1).getInternalOffset();
+    }
+
+    // Case 4: One is LATEST, one is concrete
+    if (resolved1 == PubSubSymbolicPosition.LATEST && resolved2 instanceof InMemoryPubSubPosition) {
+      return Long.MAX_VALUE - ((InMemoryPubSubPosition) resolved2).getInternalOffset();
+    }
+    if (resolved2 == PubSubSymbolicPosition.LATEST && resolved1 instanceof InMemoryPubSubPosition) {
+      return ((InMemoryPubSubPosition) resolved1).getInternalOffset() - Long.MAX_VALUE;
+    }
+
+    throw new IllegalArgumentException(
+        "Unsupported position types: " + resolved1.getClass().getName() + " vs " + resolved2.getClass().getName());
+  }
+
+  private PubSubPosition resolveSymbolicPosition(PubSubTopicPartition partition, PubSubPosition position) {
+    if (position == PubSubSymbolicPosition.EARLIEST) {
+      return beginningPosition(partition, Duration.ofMillis(60000));
+    } else if (position == PubSubSymbolicPosition.LATEST) {
+      return endPosition(partition);
+    }
+    return position;
+  }
+
+  @Override
+  public PubSubPosition decodePosition(PubSubTopicPartition partition, ByteBuffer buffer) {
+    try {
+      if (buffer.remaining() < Long.BYTES) {
+        throw new VeniceException("Buffer too short to decode InMemoryPubSubPosition: " + buffer);
+      }
+      long offset = buffer.getLong();
+      return InMemoryPubSubPosition.of(offset);
+    } catch (Exception e) {
+      throw new VeniceException("Failed to decode InMemoryPubSubPosition from buffer: " + buffer, e);
     }
   }
 
