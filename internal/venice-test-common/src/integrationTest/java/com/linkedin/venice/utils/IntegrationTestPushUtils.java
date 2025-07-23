@@ -28,10 +28,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_P
 import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumer;
-import com.linkedin.davinci.consumer.ChangeEvent;
-import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
-import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.kafka.consumer.ConsumerPoolType;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.TopicPartitionIngestionInfo;
@@ -43,7 +39,6 @@ import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest;
-import com.linkedin.venice.endToEnd.TestChangelogValue;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
@@ -58,7 +53,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManagerContext;
@@ -68,9 +62,7 @@ import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -79,7 +71,6 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.config.MapConfig;
@@ -625,34 +616,4 @@ public class IntegrationTestPushUtils {
       Assert.assertEquals(replicaPerRegionCount, expectedReplicaNumPerRegion);
     }
   }
-
-  public static Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pollAllMessagesForBootstrappingVeniceChangelogConsumer(
-      BootstrappingVeniceChangelogConsumer<Utf8, TestChangelogValue> viewTopicConsumer,
-      int timeoutMs) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubAllMessages =
-        new ArrayList<>();
-    Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages;
-
-    do {
-      pubSubMessages = viewTopicConsumer.poll(timeoutMs);
-      pubSubAllMessages.addAll(pubSubMessages);
-    } while (!pubSubMessages.isEmpty());
-
-    return pubSubAllMessages;
-  }
-
-  public static Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pollAllMessagesForVeniceChangelogConsumer(
-      VeniceChangelogConsumer<Utf8, Utf8> viewTopicConsumer,
-      int timeoutMs) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubAllMessages = new ArrayList<>();
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages;
-
-    do {
-      pubSubMessages = viewTopicConsumer.poll(timeoutMs);
-      pubSubAllMessages.addAll(pubSubMessages);
-    } while (!pubSubMessages.isEmpty());
-
-    return pubSubAllMessages;
-  }
-
 }

@@ -38,6 +38,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -466,7 +467,7 @@ public class TestMaterializedViewEndToEnd {
     // Verify we can get the records
     Map<String, Utf8> polledChangeEvents = new HashMap<>();
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        IntegrationTestPushUtils.pollAllMessagesForVeniceChangelogConsumer(viewTopicConsumer, 1000);
+        IntegrationTestUtils.pollAllMessagesForVeniceChangelogConsumer(viewTopicConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       Utf8 afterImageEvent = pubSubMessage.getValue().getCurrentValue();
       String key = pubSubMessage.getKey().toString();

@@ -52,6 +52,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.endToEnd.TestChangelogValue;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -84,7 +85,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -256,7 +256,7 @@ public class TestChangelogConsumer {
 
     Map<String, Utf8> versionTopicEvents = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       Assert.assertEquals(versionTopicEvents.size(), 100);
     });
 
@@ -285,7 +285,7 @@ public class TestChangelogConsumer {
 
       // poll data from version topic
       TestUtils.waitForNonDeterministicAssertion(100, TimeUnit.SECONDS, true, () -> {
-        pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+        IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
         Assert.assertEquals(versionTopicEvents.size(), 21);
       });
       versionTopicEvents.clear();
@@ -426,13 +426,13 @@ public class TestChangelogConsumer {
     // Let's consume those 100 records off of version 1
     Map<String, Utf8> versionTopicEvents = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       Assert.assertEquals(versionTopicEvents.size(), 100, "Version topic consumer should consume 100 records.");
     });
 
     Map<String, Utf8> viewTopicEvents = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(viewTopicEvents, viewTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(viewTopicEvents, viewTopicConsumer);
       Assert.assertEquals(viewTopicEvents.size(), 100, "View topic consumer should consume 100 records.");
     });
 
@@ -444,7 +444,7 @@ public class TestChangelogConsumer {
     Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
     Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> allChangeEvents = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 100, "Venice change log consumer should consume 100 records.");
     });
 
@@ -470,7 +470,7 @@ public class TestChangelogConsumer {
 
     // 21 changes in nearline. 10 puts, 10 deletes, and 1 record with a producer timestamp
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       // 21 events for nearline events
       Assert.assertEquals(polledChangeEvents.size(), 21);
       for (int i = 100; i < 110; i++) {
@@ -495,12 +495,12 @@ public class TestChangelogConsumer {
 
     versionTopicEvents.clear();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       Assert.assertEquals(versionTopicEvents.size(), 21);
     });
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 21);
     });
 
@@ -557,15 +557,15 @@ public class TestChangelogConsumer {
 
     // we shouldn't pull anything on this version if filtering is working correctly
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       Assert.assertEquals(versionTopicEvents.size(), 0);
     });
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       // poll a few times in a row to make sure version jump happens
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
 
@@ -607,15 +607,15 @@ public class TestChangelogConsumer {
 
     // We should only poll 1 record as we produced 1 that would have been applied in LWW
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       Assert.assertEquals(versionTopicEvents.size(), 1);
     });
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       // poll a few times in a row to make sure version jump happens
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 1);
     });
 
@@ -630,7 +630,7 @@ public class TestChangelogConsumer {
     veniceChangelogConsumer.pause();
     polledChangeEvents.clear();
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
     veniceChangelogConsumer.resume();
@@ -681,7 +681,7 @@ public class TestChangelogConsumer {
 
     polledChangeEvents.clear();
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer2(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 20);
     });
 
@@ -705,9 +705,9 @@ public class TestChangelogConsumer {
     polledChangeEvents.clear();
     // Poll Change events again, verify we get everything
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       // Repush with TTL will include delete events in the topic
       Assert.assertEquals(polledChangeEvents.size(), 7);
     });
@@ -718,20 +718,20 @@ public class TestChangelogConsumer {
     // Should be nothing on the tail
     veniceChangelogConsumer.seekToTail().join();
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
 
     // This should get everything submitted to the CC topic on this version (version 4 doesn't have anything)
     veniceChangelogConsumer.seekToTimestamp(timestamp);
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
 
     versionTopicEvents.clear();
     TestUtils.waitForNonDeterministicAssertion(1000, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       // At this point, the consumer should have auto tracked to version 4, and since we didn't apply any nearline
       // writes to version 4, there should be no events to consume at this point
       Assert.assertEquals(versionTopicEvents.size(), 0);
@@ -740,7 +740,7 @@ public class TestChangelogConsumer {
     // The repush should result in nothing getting placed on the RT, so this seek should put us at the tail of events
     versionTopicConsumer.seekToEndOfPush().get();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       // Again, no events to consume here.
       Assert.assertEquals(versionTopicEvents.size(), 0);
     });
@@ -749,7 +749,7 @@ public class TestChangelogConsumer {
     // it
     versionTopicConsumer.seekToBeginningOfPush().get();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       Assert.assertEquals(versionTopicEvents.size(), 30);
     });
 
@@ -837,7 +837,7 @@ public class TestChangelogConsumer {
     List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsList =
         new ArrayList<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromSpecificBootstrappingChangeCaptureConsumer(
+      IntegrationTestUtils.pollChangeEventsFromSpecificBootstrappingChangeCaptureConsumer(
           polledChangeEventsMap,
           polledChangeEventsList,
           specificChangelogConsumer);
@@ -868,7 +868,7 @@ public class TestChangelogConsumer {
     }
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromSpecificBootstrappingChangeCaptureConsumer(
+      IntegrationTestUtils.pollChangeEventsFromSpecificBootstrappingChangeCaptureConsumer(
           polledChangeEventsMap,
           polledChangeEventsList,
           specificChangelogConsumer);
@@ -955,7 +955,7 @@ public class TestChangelogConsumer {
     List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsList =
         new ArrayList<>();
     TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromSpecificChangeCaptureConsumer(
+      IntegrationTestUtils.pollChangeEventsFromSpecificChangeCaptureConsumer(
           polledChangeEventsMap,
           polledChangeEventsList,
           specificChangelogConsumer);
@@ -988,7 +988,7 @@ public class TestChangelogConsumer {
     }
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromSpecificChangeCaptureConsumer(
+      IntegrationTestUtils.pollChangeEventsFromSpecificChangeCaptureConsumer(
           polledChangeEventsMap,
           polledChangeEventsList,
           specificChangelogConsumer);
@@ -1057,7 +1057,7 @@ public class TestChangelogConsumer {
     changeLogConsumer.subscribeAll().get();
     Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsMap = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEventsMap, changeLogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEventsMap, changeLogConsumer);
       Assert.assertEquals(polledChangeEventsMap.size(), 100);
       Assert.assertTrue(changeLogConsumer.isCaughtUp());
     });
@@ -1076,7 +1076,7 @@ public class TestChangelogConsumer {
       sendStreamingRecord(veniceProducer, storeName, Integer.toString(10000), genericRecord, null);
     }
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEventsMap, changeLogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEventsMap, changeLogConsumer);
       Assert.assertEquals(polledChangeEventsMap.size(), 101);
     });
     Assert.assertNotNull(polledChangeEventsMap.get(Integer.toString(10000)));
@@ -1108,68 +1108,4 @@ public class TestChangelogConsumer {
           mockedTime == null ? null : mockedTime.getMilliseconds());
     }
   }
-
-  private void pollChangeEventsFromChangeCaptureConsumer(
-      Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
-      VeniceChangelogConsumer veniceChangelogConsumer) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        IntegrationTestPushUtils.pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
-    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      String key = pubSubMessage.getKey().toString();
-      polledChangeEvents.put(key, pubSubMessage);
-    }
-  }
-
-  private void pollChangeEventsFromSpecificBootstrappingChangeCaptureConsumer(
-      Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEvents,
-      List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
-      BootstrappingVeniceChangelogConsumer veniceChangelogConsumer) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
-        IntegrationTestPushUtils.pollAllMessagesForBootstrappingVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
-    for (PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      String key = pubSubMessage.getKey() == null ? null : pubSubMessage.getKey().toString();
-      polledChangeEvents.put(key, pubSubMessage);
-    }
-    polledMessageList.addAll(pubSubMessages);
-  }
-
-  private void pollChangeEventsFromSpecificChangeCaptureConsumer(
-      Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEvents,
-      List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
-      VeniceChangelogConsumer veniceChangelogConsumer) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
-        IntegrationTestPushUtils.pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
-    for (PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      String key = pubSubMessage.getKey() == null ? null : pubSubMessage.getKey().toString();
-      polledChangeEvents.put(key, pubSubMessage);
-    }
-    polledMessageList.addAll(pubSubMessages);
-  }
-
-  private void pollChangeEventsFromChangeCaptureConsumer2(
-      Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
-      VeniceChangelogConsumer veniceChangelogConsumer) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        IntegrationTestPushUtils.pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
-    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      String key = pubSubMessage.getKey().toString();
-      polledChangeEvents.put(key, pubSubMessage);
-    }
-  }
-
-  private int pollAfterImageEventsFromChangeCaptureConsumer(
-      Map<String, Utf8> polledChangeEvents,
-      VeniceChangelogConsumer veniceChangelogConsumer) {
-    int polledMessagesNum = 0;
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        IntegrationTestPushUtils.pollAllMessagesForVeniceChangelogConsumer(veniceChangelogConsumer, 1000);
-    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      Utf8 afterImageEvent = pubSubMessage.getValue().getCurrentValue();
-      String key = pubSubMessage.getKey().toString();
-      polledChangeEvents.put(key, afterImageEvent);
-      polledMessagesNum++;
-    }
-    return polledMessagesNum;
-  }
-
 }
