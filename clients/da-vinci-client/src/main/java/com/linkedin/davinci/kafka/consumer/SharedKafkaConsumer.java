@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitio
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
@@ -407,5 +408,26 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
     throw new UnsupportedOperationException("partitionsFor is not supported in SharedKafkaConsumer");
+  }
+
+  @Override
+  public synchronized long comparePositions(
+      PubSubTopicPartition partition,
+      PubSubPosition position1,
+      PubSubPosition position2) {
+    return delegate.comparePositions(partition, position1, position2);
+  }
+
+  @Override
+  public synchronized long positionDifference(
+      PubSubTopicPartition partition,
+      PubSubPosition position1,
+      PubSubPosition position2) {
+    return delegate.positionDifference(partition, position1, position2);
+  }
+
+  @Override
+  public synchronized PubSubPosition decodePosition(PubSubTopicPartition partition, ByteBuffer buffer) {
+    return delegate.decodePosition(partition, buffer);
   }
 }

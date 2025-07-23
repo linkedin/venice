@@ -283,12 +283,26 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
   long comparePositions(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2);
 
   /**
-   * Computes the absolute difference between two PubSub positions within the specified topic partition.
+   * Computes the relative difference between two {@link PubSubPosition} instances for a given
+   * {@link PubSubTopicPartition}, as {@code position1 - position2}.
+   * <p>
+   * Implementations must resolve symbolic positions such as {@link PubSubSymbolicPosition#EARLIEST}
+   * and {@link PubSubSymbolicPosition#LATEST} to concrete positions based on the partition's
+   * start and end positions. This ensures that symbolic references can be treated consistently
+   * during subtraction.
+   *
+   * <p>For example:
+   * <ul>
+   *   <li>If both positions are concrete, the result is the logical offset difference between them.</li>
+   *   <li>If {@code position1} is symbolic (e.g., EARLIEST), it must be resolved to the concrete beginning position.</li>
+   *   <li>If {@code position2} is symbolic (e.g., LATEST), it must be resolved to the concrete end position.</li>
+   * </ul>
    *
    * @param partition The topic partition for which the difference is calculated.
-   * @param position1 The first PubSub position.
-   * @param position2 The second PubSub position.
-   * @return The absolute number of messages (or offset units) between {@code position1} and {@code position2}.
+   * @param position1 The first PubSub position (minuend).
+   * @param position2 The second PubSub position (subtrahend).
+   * @return The signed offset difference between {@code position1} and {@code position2}.
+   * @throws IllegalArgumentException if either position is {@code null}, or if symbolic positions cannot be resolved.
    */
   long positionDifference(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2);
 
@@ -305,7 +319,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
   }
 
   /**
-   * Decodes the given type-encoded {@link ByteBuffer} into a {@link PubSubPosition} for the specified topic partition.
+   * Decodes the given {@link ByteBuffer} into a {@link PubSubPosition} for the specified topic partition.
    *
    * @param partition The topic partition this position belongs to.
    * @param buffer The {@link ByteBuffer} containing the encoded position.
