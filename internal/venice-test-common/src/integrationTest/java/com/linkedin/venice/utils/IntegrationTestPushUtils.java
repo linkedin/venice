@@ -616,5 +616,4 @@ public class IntegrationTestPushUtils {
       Assert.assertEquals(replicaPerRegionCount, expectedReplicaNumPerRegion);
     }
   }
-
 }
