@@ -99,10 +99,10 @@ public class ServerSideAggregationIntegrationTest {
     assertTrue(valueCounts.containsKey("value3"));
 
     // Test multi-field response
-    Map<String, Map<String, Integer>> fieldCounts = response.getFieldToValueCounts();
-    assertNotNull(fieldCounts);
-    assertTrue(fieldCounts.containsKey("testField"));
-    Map<String, Integer> testFieldCounts = fieldCounts.get("testField");
+    Map<String, Map<String, Integer>> fieldToValueCounts = response.getFieldToValueCounts();
+    assertNotNull(fieldToValueCounts);
+    assertTrue(fieldToValueCounts.containsKey("testField"));
+    Map<String, Integer> testFieldCounts = fieldToValueCounts.get("testField");
     assertEquals(testFieldCounts.get("value1"), Integer.valueOf(5));
     assertEquals(testFieldCounts.get("value2"), Integer.valueOf(3));
     assertEquals(testFieldCounts.get("value3"), Integer.valueOf(1));
@@ -255,11 +255,12 @@ public class ServerSideAggregationIntegrationTest {
     when(mockMetadata.getReplicas(0, 1)).thenReturn(Arrays.asList("server1:8080"));
 
     // Setup gRPC transport to return aggregated response from server
+    ValueCount fieldCounts =
+        ValueCount.newBuilder().putValueToCounts("electronics", 12).putValueToCounts("books", 4).build();
+
     CountByValueResponse mockResponse = CountByValueResponse.newBuilder()
-        .putValueCounts("electronics", 12L)
-        .putValueCounts("books", 4L)
+        .putFieldToValueCounts("category", fieldCounts)
         .setErrorCode(VeniceReadResponseStatus.OK)
-        .setResponseRCU(4) // Total keys processed
         .build();
 
     when(mockGrpcTransportClient.countByValue(anyString(), any(CountByValueRequest.class)))
@@ -277,10 +278,10 @@ public class ServerSideAggregationIntegrationTest {
     assertNotNull(response);
     assertFalse(response.hasError());
 
-    Map<String, Long> valueCounts = response.getValueCounts();
+    Map<String, Integer> valueCounts = response.getValueCounts();
     assertEquals(valueCounts.size(), 2);
-    assertEquals(valueCounts.get("electronics"), Long.valueOf(12L));
-    assertEquals(valueCounts.get("books"), Long.valueOf(4L));
+    assertEquals(valueCounts.get("electronics"), Integer.valueOf(12));
+    assertEquals(valueCounts.get("books"), Integer.valueOf(4));
   }
 
   @Test
@@ -290,10 +291,11 @@ public class ServerSideAggregationIntegrationTest {
     // Setup metadata to return any replica
     when(mockMetadata.getReplicas(0, 1)).thenReturn(Arrays.asList("server1:8080"));
 
+    ValueCount singleFieldCounts = ValueCount.newBuilder().putValueToCounts("test", 2).build();
+
     CountByValueResponse mockResponse = CountByValueResponse.newBuilder()
-        .putValueCounts("test", 2L)
+        .putFieldToValueCounts("field", singleFieldCounts)
         .setErrorCode(VeniceReadResponseStatus.OK)
-        .setResponseRCU(2)
         .build();
 
     when(mockGrpcTransportClient.countByValue(anyString(), any(CountByValueRequest.class)))
@@ -308,6 +310,6 @@ public class ServerSideAggregationIntegrationTest {
     AggregationResponse response = future.get();
     assertNotNull(response);
     assertFalse(response.hasError());
-    assertEquals(response.getValueCounts().get("test"), Long.valueOf(2L));
+    assertEquals(response.getValueCounts().get("test"), Integer.valueOf(2));
   }
 }
