@@ -48,13 +48,11 @@ import org.testng.annotations.Test;
 public class SystemStoreMultiColoTest {
   private static final int TEST_TIMEOUT_MS = 90_000;
   private static final int NUMBER_OF_SERVERS = 2;
-  private static final int PARTITION_COUNT = 2;
   private static final int REPLICATION_FACTOR = 2;
   private VeniceClusterWrapper cluster;
   private ControllerClient parentControllerClient;
   private D2Client d2Client;
   private PushStatusStoreReader reader;
-  private String storeName;
   private VeniceControllerWrapper parentController;
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 1;
