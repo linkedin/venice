@@ -27,6 +27,7 @@ import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.GzipCompressor;
@@ -691,17 +692,24 @@ public class TestUtils {
     return participant;
   }
 
-  public static OffsetRecord getOffsetRecord(long currentOffset) {
-    return getOffsetRecord(currentOffset, Optional.empty());
+  public static OffsetRecord getOffsetRecord(long currentOffset, ByteBuffer currentPubSubPositionBytes) {
+    return getOffsetRecord(currentOffset, currentPubSubPositionBytes, Optional.empty());
   }
 
-  public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete) {
-    return getOffsetRecord(currentOffset, complete ? Optional.of(1000L) : Optional.of(0L));
+  public static OffsetRecord getOffsetRecord(
+      long currentOffset,
+      ByteBuffer currentPubSubPositionBytes,
+      boolean complete) {
+    return getOffsetRecord(currentOffset, currentPubSubPositionBytes, complete ? Optional.of(1000L) : Optional.of(0L));
   }
 
-  public static OffsetRecord getOffsetRecord(long currentOffset, Optional<Long> endOfPushOffset) {
+  @VisibleForTesting
+  public static OffsetRecord getOffsetRecord(
+      long currentOffset,
+      ByteBuffer pubSubPositionBytes,
+      Optional<Long> endOfPushOffset) {
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
-    offsetRecord.setCheckpointLocalVersionTopicOffset(currentOffset);
+    offsetRecord.setCheckpointLocalVersionTopicOffset(currentOffset, pubSubPositionBytes);
     if (endOfPushOffset.isPresent()) {
       offsetRecord.endOfPushReceived(endOfPushOffset.get());
     }
