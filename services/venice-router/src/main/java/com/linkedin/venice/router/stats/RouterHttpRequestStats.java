@@ -473,32 +473,56 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
     if (isKeyValueProfilingEnabled) {
       if (storeName.equals(STORE_NAME_FOR_TOTAL_STAT)) {
-        /** Record only tehuti metrics when storeName is total stats.*/
+        // Record only Tehuti metrics when storeName is total stats.
         keySizeMetric = MetricEntityStateBase.create(
             KEY_SIZE.getMetricEntity(),
-            null,
+            null, // no OTEL repository/metrics
             this::registerSensorFinal,
             RouterTehutiMetricNameEnum.KEY_SIZE,
             Arrays.asList(new Avg(), keySize),
             baseDimensionsMap,
             baseAttributes);
+
+        // Record only Tehuti for response size metrics too
+        responseSizeMetric = MetricEntityStateOneEnum.create(
+            CALL_SIZE.getMetricEntity(),
+            null, // no OTEL repository/metrics
+            this::registerSensorFinal,
+            RouterTehutiMetricNameEnum.RESPONSE_SIZE,
+            Arrays.asList(new Avg(), responseSize),
+            baseDimensionsMap,
+            MessageType.class);
       } else {
-        /** Record only OTel metrics when storeName is not total stats. */
+        // Record only OTel metrics when storeName is not total stats.
         keySizeMetric =
             MetricEntityStateBase.create(KEY_SIZE.getMetricEntity(), otelRepository, baseDimensionsMap, baseAttributes);
+
+        // You can record both Tehuti and OTel for response size, or only OTel if that's required.
+        responseSizeMetric = MetricEntityStateOneEnum.create(
+            CALL_SIZE.getMetricEntity(),
+            otelRepository,
+            this::registerSensorFinal,
+            // Pass null Tehuti metric name if you want OTel only,
+            // or keep both if you want dual record:
+            RouterTehutiMetricNameEnum.RESPONSE_SIZE,
+            Arrays.asList(new Avg(), responseSize),
+            baseDimensionsMap,
+            MessageType.class);
       }
     } else {
-      /** If key profiling is not enabled, we do not record key size metrics. */
+      // If key size/key profiling is not enabled, do not record key size metrics.
       keySizeMetric = null;
+
+      // Still record OTel response size for all cases.
+      responseSizeMetric = MetricEntityStateOneEnum.create(
+          CALL_SIZE.getMetricEntity(),
+          otelRepository,
+          this::registerSensorFinal,
+          RouterTehutiMetricNameEnum.RESPONSE_SIZE,
+          Arrays.asList(new Avg(), responseSize),
+          baseDimensionsMap,
+          MessageType.class);
     }
-    responseSizeMetric = MetricEntityStateOneEnum.create(
-        CALL_SIZE.getMetricEntity(),
-        otelRepository,
-        this::registerSensorFinal,
-        RouterTehutiMetricNameEnum.RESPONSE_SIZE,
-        Arrays.asList(new Avg(), responseSize),
-        baseDimensionsMap,
-        MessageType.class);
 
     currentInFlightRequest = new AtomicInteger();
 
