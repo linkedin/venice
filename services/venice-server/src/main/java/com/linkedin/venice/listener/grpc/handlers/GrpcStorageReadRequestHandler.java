@@ -74,6 +74,12 @@ public class GrpcStorageReadRequestHandler extends VeniceServerGrpcHandler {
       }
 
       ctx.setReadResponse(response);
+    } else if (!ctx.hasError() && response == null) {
+      // Handle null response case
+      ctx.setError();
+      ctx.getVeniceServerResponseBuilder()
+          .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
+          .setErrorMessage("Storage returned null response");
     }
 
     invokeNextHandler(ctx);

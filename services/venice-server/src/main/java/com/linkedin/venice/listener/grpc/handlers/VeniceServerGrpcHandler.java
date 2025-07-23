@@ -32,8 +32,22 @@ public abstract class VeniceServerGrpcHandler {
 
   public void writeResponse(GrpcRequestContext ctx) {
     StreamObserver<VeniceServerResponse> responseObserver = ctx.getResponseObserver();
-    VeniceServerResponse response = ctx.getVeniceServerResponseBuilder().build();
+    VeniceServerResponse.Builder responseBuilder = ctx.getVeniceServerResponseBuilder();
 
+    // Ensure response has a valid error code
+    if (responseBuilder.getErrorCode() == 0) {
+      // Set default error code based on whether there's an error
+      if (ctx.hasError()) {
+        responseBuilder.setErrorCode(com.linkedin.venice.response.VeniceReadResponseStatus.INTERNAL_ERROR);
+        if (responseBuilder.getErrorMessage().isEmpty()) {
+          responseBuilder.setErrorMessage("Undefined error code");
+        }
+      } else {
+        responseBuilder.setErrorCode(com.linkedin.venice.response.VeniceReadResponseStatus.OK);
+      }
+    }
+
+    VeniceServerResponse response = responseBuilder.build();
     responseObserver.onNext(response);
     responseObserver.onCompleted();
   }
