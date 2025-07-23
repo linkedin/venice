@@ -10,8 +10,16 @@ public interface AggregationResponse {
   /**
    * Get the aggregated value counts for countByValue operations.
    * @return A map where keys are field values and values are counts
+   * @deprecated Use getFieldToValueCounts() for multi-field support
    */
-  Map<String, Long> getValueCounts();
+  @Deprecated
+  Map<String, Integer> getValueCounts();
+
+  /**
+   * Get the aggregated value counts for multiple fields in countByValue operations.
+   * @return A map where keys are field names and values are maps of field values to counts
+   */
+  Map<String, Map<String, Integer>> getFieldToValueCounts();
 
   /**
    * Get the total number of keys processed.

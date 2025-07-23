@@ -22,7 +22,7 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
   private final GrpcTransportClient grpcTransportClient;
   private final RecordSerializer<K> keySerializer;
 
-  private String fieldName;
+  private List<String> fieldNames = new ArrayList<>();
   private int topK;
 
   public ServerSideAggregationRequestBuilderImpl(
@@ -42,7 +42,27 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
     if (topK <= 0) {
       throw new VeniceClientException("TopK must be positive");
     }
-    this.fieldName = fieldName;
+    this.fieldNames.clear();
+    this.fieldNames.add(fieldName);
+    this.topK = topK;
+    return this;
+  }
+
+  @Override
+  public ServerSideAggregationRequestBuilder<K> countByValue(List<String> fieldNames, int topK) {
+    if (fieldNames == null || fieldNames.isEmpty()) {
+      throw new VeniceClientException("Field names cannot be null or empty");
+    }
+    for (String fieldName: fieldNames) {
+      if (fieldName == null || fieldName.isEmpty()) {
+        throw new VeniceClientException("Field name cannot be null or empty");
+      }
+    }
+    if (topK <= 0) {
+      throw new VeniceClientException("TopK must be positive");
+    }
+    this.fieldNames.clear();
+    this.fieldNames.addAll(fieldNames);
     this.topK = topK;
     return this;
   }
@@ -53,7 +73,7 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
       throw new VeniceClientException("Keys cannot be null or empty");
     }
 
-    if (fieldName == null) {
+    if (fieldNames.isEmpty()) {
       throw new VeniceClientException("Must call countByValue() before execute()");
     }
 
@@ -70,7 +90,7 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
     CountByValueRequest request = CountByValueRequest.newBuilder()
         .setResourceName(resourceName)
         .addAllKeys(serializedKeys)
-        .setFieldName(fieldName)
+        .addAllFieldNames(fieldNames)
         .setTopK(topK)
         .build();
 
@@ -87,10 +107,11 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
       if (response.getErrorCode() == VeniceReadResponseStatus.OK) {
         return new AggregationResponseImpl(response);
       } else {
+        String errorMessage = response.getErrorMessage();
         String errorMsg = String.format(
             "Server-side aggregation failed with error code %d: %s",
             response.getErrorCode(),
-            response.hasErrorMessage() ? response.getErrorMessage() : "Unknown error");
+            errorMessage.isEmpty() ? "Unknown error" : errorMessage);
         throw new VeniceClientException(errorMsg);
       }
     });

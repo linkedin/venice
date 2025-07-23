@@ -144,14 +144,14 @@ public class VeniceServerGrpcRequestProcessor {
   public CountByValueResponse processCountByValue(CountByValueRequest request) {
     try {
       String resourceName = request.getResourceName();
-      String fieldName = request.getFieldName();
-      int topK = request.hasTopK() ? request.getTopK() : 10;
+      List<String> fieldNames = request.getFieldNamesList();
+      int topK = request.getTopK() > 0 ? request.getTopK() : 10;
 
       // Validate inputs
-      if (fieldName == null || fieldName.isEmpty()) {
+      if (fieldNames == null || fieldNames.isEmpty()) {
         return CountByValueResponse.newBuilder()
             .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
-            .setErrorMessage("Field name cannot be null or empty")
+            .setErrorMessage("Field names cannot be null or empty")
             .build();
       }
 
@@ -212,13 +212,15 @@ public class VeniceServerGrpcRequestProcessor {
 
       Schema valueSchema = valueSchemaEntry.getSchema();
 
-      // Validate that the field exists in the schema
-      Schema.Field field = valueSchema.getField(fieldName);
-      if (field == null) {
-        return CountByValueResponse.newBuilder()
-            .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
-            .setErrorMessage("Field '" + fieldName + "' not found in schema for store: " + storeName)
-            .build();
+      // Validate that all fields exist in the schema
+      for (String fieldName: fieldNames) {
+        Schema.Field field = valueSchema.getField(fieldName);
+        if (field == null) {
+          return CountByValueResponse.newBuilder()
+              .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
+              .setErrorMessage("Field '" + fieldName + "' not found in schema for store: " + storeName)
+              .build();
+        }
       }
 
       // Get store version state for compression info
@@ -269,15 +271,19 @@ public class VeniceServerGrpcRequestProcessor {
           }
 
           // Step 2: Process each partition in parallel on server-side
-          List<CompletableFuture<Map<String, Long>>> partitionFutures = new ArrayList<>();
+          List<CompletableFuture<Map<String, Map<String, Integer>>>> partitionFutures = new ArrayList<>();
 
           for (Map.Entry<Integer, List<byte[]>> entry: partitionToKeys.entrySet()) {
             int partitionId = entry.getKey();
             List<byte[]> partitionKeys = entry.getValue();
 
             // Process this partition asynchronously
-            CompletableFuture<Map<String, Long>> partitionFuture = CompletableFuture.supplyAsync(() -> {
-              Map<String, Long> partitionCounts = new HashMap<>();
+            CompletableFuture<Map<String, Map<String, Integer>>> partitionFuture = CompletableFuture.supplyAsync(() -> {
+              Map<String, Map<String, Integer>> partitionCounts = new HashMap<>();
+              // Initialize field counts
+              for (String fieldName: fieldNames) {
+                partitionCounts.put(fieldName, new HashMap<>());
+              }
 
               for (byte[] keyBytes: partitionKeys) {
                 try {
@@ -299,11 +305,16 @@ public class VeniceServerGrpcRequestProcessor {
 
                     GenericRecord record = deserializer.deserialize(decompressedBuffer);
 
-                    // Extract field value
-                    Object fieldValue = record.get(fieldName);
-                    if (fieldValue != null) {
-                      String fieldValueStr = fieldValue.toString();
-                      partitionCounts.merge(fieldValueStr, 1L, Long::sum);
+                    // Extract field values for all requested fields
+                    for (String fieldName: fieldNames) {
+                      Object fieldValue = record.get(fieldName);
+                      if (fieldValue != null) {
+                        String fieldValueStr = fieldValue.toString();
+                        Map<String, Integer> fieldCounts = partitionCounts.get(fieldName);
+                        if (fieldCounts != null) {
+                          fieldCounts.merge(fieldValueStr, 1, Integer::sum);
+                        }
+                      }
                     }
                   }
                 } catch (Exception e) {
@@ -321,15 +332,27 @@ public class VeniceServerGrpcRequestProcessor {
           CompletableFuture<Void> allPartitions =
               CompletableFuture.allOf(partitionFutures.toArray(new CompletableFuture[0]));
 
-          Map<String, Long> globalCounts = allPartitions.thenApply(v -> {
-            Map<String, Long> aggregatedCounts = new HashMap<>();
+          Map<String, Map<String, Integer>> globalCounts = allPartitions.thenApply(v -> {
+            Map<String, Map<String, Integer>> aggregatedCounts = new HashMap<>();
+            // Initialize field counts
+            for (String fieldName: fieldNames) {
+              aggregatedCounts.put(fieldName, new HashMap<>());
+            }
 
-            for (CompletableFuture<Map<String, Long>> partitionFuture: partitionFutures) {
+            for (CompletableFuture<Map<String, Map<String, Integer>>> partitionFuture: partitionFutures) {
               try {
-                Map<String, Long> partitionCounts = partitionFuture.get();
+                Map<String, Map<String, Integer>> partitionCounts = partitionFuture.get();
                 // Merge partition counts into global counts
-                for (Map.Entry<String, Long> countEntry: partitionCounts.entrySet()) {
-                  aggregatedCounts.merge(countEntry.getKey(), countEntry.getValue(), Long::sum);
+                for (String fieldName: fieldNames) {
+                  Map<String, Integer> fieldCounts = partitionCounts.get(fieldName);
+                  if (fieldCounts != null) {
+                    Map<String, Integer> globalFieldCounts = aggregatedCounts.get(fieldName);
+                    if (globalFieldCounts != null) {
+                      for (Map.Entry<String, Integer> countEntry: fieldCounts.entrySet()) {
+                        globalFieldCounts.merge(countEntry.getKey(), countEntry.getValue(), Integer::sum);
+                      }
+                    }
+                  }
                 }
               } catch (Exception e) {
                 LOGGER.error("Failed to get partition result", e);
@@ -339,41 +362,47 @@ public class VeniceServerGrpcRequestProcessor {
             return aggregatedCounts;
           }).get(); // Wait for completion
 
-          // Step 4: Server-side topK calculation
-          Map<String, Long> topKCounts = globalCounts.entrySet()
-              .stream()
-              .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
-              .limit(topK)
-              .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new // Preserve
-                                                                                                                   // order
-          ));
+          // Step 4: Server-side topK calculation for each field
+          CountByValueResponse.Builder responseBuilder = CountByValueResponse.newBuilder();
+          for (String fieldName: fieldNames) {
+            Map<String, Integer> fieldCounts = globalCounts.get(fieldName);
+            if (fieldCounts != null) {
+              Map<String, Integer> topKCounts = fieldCounts.entrySet()
+                  .stream()
+                  .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                  .limit(topK)
+                  .collect(
+                      Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new));
 
-          return CountByValueResponse.newBuilder()
-              .putAllValueCounts(topKCounts)
-              .setErrorCode(VeniceReadResponseStatus.OK)
-              .setResponseRCU(request.getKeysCount()) // Total keys processed
-              .build();
+              responseBuilder.putFieldToValueCounts(
+                  fieldName,
+                  com.linkedin.venice.protocols.ValueCount.newBuilder().putAllValueToCounts(topKCounts).build());
+            } else {
+              // If no counts for this field, add an empty result
+              responseBuilder
+                  .putFieldToValueCounts(fieldName, com.linkedin.venice.protocols.ValueCount.newBuilder().build());
+            }
+          }
+
+          return responseBuilder.setErrorCode(VeniceReadResponseStatus.OK).build();
 
         } catch (VeniceException e) {
           LOGGER.error("Venice error processing countByValue request for store: " + storeName, e);
           return CountByValueResponse.newBuilder()
               .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
               .setErrorMessage("Venice error: " + e.getMessage())
-              .setResponseRCU(request.getKeysCount())
               .build();
         } catch (IllegalArgumentException e) {
           LOGGER.warn("Invalid argument in countByValue request for store: " + storeName, e);
           return CountByValueResponse.newBuilder()
               .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
               .setErrorMessage("Invalid argument: " + e.getMessage())
-              .setResponseRCU(request.getKeysCount())
               .build();
         } catch (Exception e) {
           LOGGER.error("Unexpected error processing countByValue request for store: " + storeName, e);
           return CountByValueResponse.newBuilder()
               .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
               .setErrorMessage("Internal server error: " + e.getClass().getSimpleName())
-              .setResponseRCU(request.getKeysCount())
               .build();
         }
       }, executor);
