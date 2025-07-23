@@ -48,7 +48,7 @@ public class IngestionStats {
       "consumed_record_end_to_end_processing_latency";
   protected static final String UPDATE_IGNORED_DCR = "update_ignored_dcr";
   protected static final String TOTAL_DCR = "total_dcr";
-  protected static final String TOTAL_DUPLICATE_KEY_UPDATE = "total_duplicate_key_update_count";
+  protected static final String TOTAL_DUPLICATE_KEY_UPDATE_COUNT = "total_duplicate_key_update_count";
 
   protected static final String TIMESTAMP_REGRESSION_DCR_ERROR = "timestamp_regression_dcr_error";
   protected static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
@@ -166,8 +166,8 @@ public class IngestionStats {
 
     versionTopicEndOffsetRewindSensor = localMetricRepository.sensor(VERSION_TOPIC_END_OFFSET_REWIND_COUNT);
     versionTopicEndOffsetRewindSensor.add(VERSION_TOPIC_END_OFFSET_REWIND_COUNT, versionTopicEndOffsetRewindCount);
-    totalDuplicateKeyUpdateCountSensor = localMetricRepository.sensor(TOTAL_DUPLICATE_KEY_UPDATE);
-    totalDuplicateKeyUpdateCountSensor.add(TOTAL_DUPLICATE_KEY_UPDATE, totalDuplicateKeyUpdateCount);
+    totalDuplicateKeyUpdateCountSensor = localMetricRepository.sensor(TOTAL_DUPLICATE_KEY_UPDATE_COUNT);
+    totalDuplicateKeyUpdateCountSensor.add(TOTAL_DUPLICATE_KEY_UPDATE_COUNT, totalDuplicateKeyUpdateCount);
 
     producerSourceBrokerLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, "producer_to_source_broker_latency");
