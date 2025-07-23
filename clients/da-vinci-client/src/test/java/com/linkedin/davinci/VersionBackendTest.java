@@ -186,7 +186,7 @@ public class VersionBackendTest {
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build());
 
-    when(mockDaVinciBackend.getRecordTransformerConfig()).thenReturn(recordTransformerConfig);
+    when(mockDaVinciBackend.getRecordTransformerConfig(storeName)).thenReturn(recordTransformerConfig);
 
     VersionBackend versionBackend = new VersionBackend(mockDaVinciBackend, version, mockStoreBackendStats);
 

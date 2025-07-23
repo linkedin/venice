@@ -73,7 +73,7 @@ public class AvroGenericDaVinciClientTest {
     AvroGenericDaVinciClient<Integer, String> dvcClient =
         spy(new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig, backendConfig, Optional.empty()));
     doReturn(false).when(dvcClient).isReady();
-    doNothing().when(dvcClient).initBackend(any(), any(), any(), any(), any(), any());
+    doNothing().when(dvcClient).initBackend(any(), any(), any(), any(), any());
 
     D2ServiceDiscoveryResponse mockDiscoveryResponse = mock(D2ServiceDiscoveryResponse.class);
     when(mockDiscoveryResponse.getCluster()).thenReturn("test_cluster");

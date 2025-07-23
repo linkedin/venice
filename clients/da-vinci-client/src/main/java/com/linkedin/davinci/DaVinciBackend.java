@@ -116,25 +116,16 @@ public class DaVinciBackend implements Closeable {
   private BlobTransferManager<Void> blobTransferManager;
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   private final boolean writeBatchingPushStatus;
-  private final DaVinciRecordTransformerConfig recordTransformerConfig;
 
   public DaVinciBackend(
       ClientConfig clientConfig,
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
-      Optional<ObjectCacheConfig> cacheConfig,
-      DaVinciRecordTransformerConfig recordTransformerConfig) {
+      Optional<ObjectCacheConfig> cacheConfig) {
     LOGGER.info("Creating Da Vinci backend with managed clients: {}", managedClients);
     try {
       VeniceServerConfig backendConfig = configLoader.getVeniceServerConfig();
-
-      this.recordTransformerConfig = recordTransformerConfig;
-      if (backendConfig.isDatabaseChecksumVerificationEnabled() && recordTransformerConfig != null) {
-        // The checksum verification will fail because DVRT transforms the values
-        throw new VeniceException("DaVinciRecordTransformer cannot be used with database checksum verification.");
-      }
-
       useDaVinciSpecificExecutionStatusForError = backendConfig.useDaVinciSpecificExecutionStatusForError();
       writeBatchingPushStatus = backendConfig.getDaVinciPushStatusCheckIntervalInMs() >= 0;
       this.configLoader = configLoader;
@@ -261,7 +252,6 @@ public class DaVinciBackend implements Closeable {
           false,
           compressorFactory,
           cacheBackend,
-          recordTransformerConfig,
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
           null,
@@ -493,21 +483,22 @@ public class DaVinciBackend implements Closeable {
             configLoader.getVeniceServerConfig());
     ingestionBackend.addIngestionNotifier(ingestionListener);
 
-    /*
-     * If DaVinciRecordTransformer is enabled, we shouldn't subscribe to on disk partitions as there could be issues
-     * when we perform RocksDB scan.
-     */
-    if (configLoader.getCombinedProperties().getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)
-        && recordTransformerConfig == null) {
+    if (configLoader.getCombinedProperties().getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)) {
       // Subscribe all bootstrap version partitions.
       storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
-        List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
-        String versionTopic = version.kafkaTopicName();
-        LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
-        StorageEngine storageEngine = getStorageService().getStorageEngine(versionTopic);
-        aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
-        StoreBackend storeBackend = getStoreOrThrow(storeName);
-        storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
+        /*
+         * If DaVinciRecordTransformer is enabled, we shouldn't subscribe to on disk partitions as there could be issues
+         * when we perform RocksDB scan.
+         */
+        if (ingestionService.getRecordTransformerConfig(storeName) == null) {
+          List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
+          String versionTopic = version.kafkaTopicName();
+          LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
+          StorageEngine storageEngine = getStorageService().getStorageEngine(versionTopic);
+          aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
+          StoreBackend storeBackend = getStoreOrThrow(storeName);
+          storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
+        }
       });
     }
   }
@@ -896,7 +887,13 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
-  public DaVinciRecordTransformerConfig getRecordTransformerConfig() {
-    return recordTransformerConfig;
+  public void registerRecordTransformerConfig(
+      String storeName,
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
+    ingestionService.registerRecordTransformerConfig(storeName, recordTransformerConfig);
+  }
+
+  public DaVinciRecordTransformerConfig getRecordTransformerConfig(String storeName) {
+    return ingestionService.getRecordTransformerConfig(storeName);
   }
 }

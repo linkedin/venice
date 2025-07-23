@@ -129,7 +129,7 @@ public class VersionBackend {
       this.daVinciPushStatusUpdateTask = null;
     }
 
-    this.recordTransformerConfig = backend.getRecordTransformerConfig();
+    this.recordTransformerConfig = backend.getRecordTransformerConfig(version.getStoreName());
   }
 
   synchronized void close() {

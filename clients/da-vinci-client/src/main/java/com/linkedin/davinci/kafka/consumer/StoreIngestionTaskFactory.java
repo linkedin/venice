@@ -228,15 +228,6 @@ public class StoreIngestionTaskFactory {
       return set(() -> this.topicManagerRepository = topicManagerRepository);
     }
 
-    public AggVersionedDaVinciRecordTransformerStats getDaVinciRecordTransformerStats() {
-      return daVinciRecordTransformerStats;
-    }
-
-    public Builder setDaVinciRecordTransformerStats(
-        AggVersionedDaVinciRecordTransformerStats daVinciRecordTransformerStats) {
-      return set(() -> this.daVinciRecordTransformerStats = daVinciRecordTransformerStats);
-    }
-
     public AggHostLevelIngestionStats getIngestionStats() {
       return ingestionStats;
     }

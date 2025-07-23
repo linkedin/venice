@@ -565,7 +565,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       this.recordTransformerPausedConsumptionQueue = new ConcurrentLinkedQueue<>();
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
-      daVinciRecordTransformerStats = builder.getDaVinciRecordTransformerStats();
+      daVinciRecordTransformerStats = recordTransformerConfig.getRecordTransformerStats();
 
       // onStartVersionIngestion called here instead of run() because this needs to finish running
       // before bootstrapping starts

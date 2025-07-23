@@ -1158,7 +1158,6 @@ public abstract class StoreIngestionTaskTest {
         .setHostLevelIngestionStats(mockAggStoreIngestionStats)
         .setVersionedDIVStats(mockVersionedDIVStats)
         .setVersionedIngestionStats(mockVersionedStorageIngestionStats)
-        .setDaVinciRecordTransformerStats(mockDaVinciRecordTransformerStats)
         .setStoreBufferService(storeBufferService)
         .setServerConfig(veniceServerConfig)
         .setDiskUsage(diskUsage)
@@ -5054,6 +5053,7 @@ public abstract class StoreIngestionTaskTest {
             .setOutputValueClass(String.class)
             .setOutputValueSchema(Schema.create(Schema.Type.STRING))
             .build();
+    recordTransformerConfig.setRecordTransformerStats(mockDaVinciRecordTransformerStats);
     config.setRecordTransformerConfig(recordTransformerConfig);
 
     runTest(config);
@@ -5128,6 +5128,7 @@ public abstract class StoreIngestionTaskTest {
     DaVinciRecordTransformerConfig recordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
+    recordTransformerConfig.setRecordTransformerStats(mockDaVinciRecordTransformerStats);
     config.setRecordTransformerConfig(recordTransformerConfig);
 
     runTest(config);
@@ -5201,6 +5202,7 @@ public abstract class StoreIngestionTaskTest {
     DaVinciRecordTransformerConfig recordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
+    recordTransformerConfig.setRecordTransformerStats(mockDaVinciRecordTransformerStats);
     config.setRecordTransformerConfig(recordTransformerConfig);
     runTest(config);
   }

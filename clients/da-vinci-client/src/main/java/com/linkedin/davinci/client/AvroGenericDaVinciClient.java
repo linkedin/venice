@@ -734,20 +734,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
-      Optional<ObjectCacheConfig> cacheConfig,
-      DaVinciRecordTransformerConfig recordTransformerConfig) {
+      Optional<ObjectCacheConfig> cacheConfig) {
     synchronized (AvroGenericDaVinciClient.class) {
       if (daVinciBackend == null) {
         logger
             .info("Da Vinci Backend does not exist, creating a new backend for client: " + clientConfig.getStoreName());
         daVinciBackend = new ReferenceCounted<>(
-            new DaVinciBackend(
-                clientConfig,
-                configLoader,
-                managedClients,
-                icProvider,
-                cacheConfig,
-                recordTransformerConfig),
+            new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig),
             backend -> {
               // Ensure that existing backend is fully closed before a new one can be created.
               synchronized (AvroGenericDaVinciClient.class) {
@@ -784,8 +777,15 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
     logger.info("Starting client, storeName={}", getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
+
+    if (configLoader.getVeniceServerConfig().isDatabaseChecksumVerificationEnabled()
+        && recordTransformerConfig != null) {
+      // The checksum verification will fail because DVRT transforms the values
+      throw new VeniceException("DaVinciRecordTransformer cannot be used with database checksum verification.");
+    }
+
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
-    initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig, recordTransformerConfig);
+    initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);
 
     try {
       getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());
@@ -837,6 +837,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       } else {
         this.storeDeserializerCache = (AvroStoreDeserializerCache<V>) this.genericRecordStoreDeserializerCache;
         this.readerSchemaId = DO_NOT_USE_READER_SCHEMA_ID;
+      }
+
+      if (daVinciConfig.isRecordTransformerEnabled()) {
+        daVinciBackend.get().registerRecordTransformerConfig(getStoreName(), recordTransformerConfig);
       }
 
       ready.set(true);
