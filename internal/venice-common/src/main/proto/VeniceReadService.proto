@@ -6,6 +6,7 @@ option java_multiple_files = true;
 service VeniceReadService {
   rpc get (VeniceClientRequest) returns (VeniceServerResponse) {}
   rpc batchGet(VeniceClientRequest) returns (VeniceServerResponse) {}
+  rpc countByValue(CountByValueRequest) returns (CountByValueResponse) {}
 }
 
 message VeniceClientRequest {
@@ -29,4 +30,18 @@ message VeniceServerResponse {
 
   uint32 errorCode = 6;
   string errorMessage = 7;
+}
+
+message CountByValueRequest {
+  string resourceName = 1;
+  repeated bytes keys = 2;
+  string fieldName = 3;
+  optional int32 topK = 4;
+}
+
+message CountByValueResponse {
+  map<string, int64> valueCounts = 1;
+  uint32 errorCode = 2;
+  optional string errorMessage = 3;
+  uint32 responseRCU = 4;
 }

@@ -264,7 +264,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   }
 
   public VeniceServerGrpcRequestProcessor initGrpcRequestProcessor() {
-    VeniceServerGrpcRequestProcessor grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor();
+    VeniceServerGrpcRequestProcessor grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor(requestHandler);
 
     StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats, null);
     GrpcStatsHandler grpcStatsHandler = new GrpcStatsHandler(statsHandler);

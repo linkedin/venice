@@ -1,0 +1,30 @@
+package com.linkedin.venice.fastclient;
+
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+
+
+/**
+ * Builder for server-side aggregation requests in venice-client.
+ * This builder only supports server-side execution via gRPC.
+ */
+public interface ServerSideAggregationRequestBuilder<K> {
+  /**
+   * Count and group by field values, returning the top K most frequent values.
+   * 
+   * @param fieldName The field to count values for
+   * @param topK The maximum number of top values to return
+   * @return This builder for chaining
+   */
+  ServerSideAggregationRequestBuilder<K> countByValue(String fieldName, int topK);
+
+  /**
+   * Execute the aggregation request on the server side using gRPC.
+   * 
+   * @param keys The set of keys to aggregate over
+   * @return A future containing the aggregation response
+   * @throws VeniceClientException if the request fails
+   */
+  CompletableFuture<AggregationResponse> execute(Set<K> keys) throws VeniceClientException;
+}
