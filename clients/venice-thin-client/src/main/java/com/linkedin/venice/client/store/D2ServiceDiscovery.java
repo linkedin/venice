@@ -47,7 +47,7 @@ public class D2ServiceDiscovery {
   }
 
   public D2ServiceDiscoveryResponse find(D2TransportClient client, String storeName, boolean retryOnFailure) {
-    int maxAttempts = retryOnFailure ? 10 : 1;
+    int maxAttempts = retryOnFailure ? 20 : 1; // Increased retry attempts from 10 to 20
     String requestPath = TYPE_D2_SERVICE_DISCOVERY + "/" + storeName;
     // TODO: remove this once sufficient time has passed. Left in to make clients work with legacy controllers
     Map<String, String> requestHeaders = Collections.singletonMap(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED, "true");
@@ -57,7 +57,7 @@ public class D2ServiceDiscovery {
         if (attempt > 0) {
           time.sleep(100);
         }
-        TransportClientResponse response = client.get(requestPath, requestHeaders).get(1, TimeUnit.SECONDS);
+        TransportClientResponse response = client.get(requestPath, requestHeaders).get(5, TimeUnit.SECONDS);
 
         if (response == null) {
           /**

@@ -321,6 +321,15 @@ public class GrpcTransportClient extends InternalTransportClient {
       String errorMessage = response.getErrorMessage();
       Exception exception;
 
+      // Handle status code 0 (undefined/not set) as internal error
+      if (statusCode == 0) {
+        LOGGER.warn("Received undefined status code 0 from server, treating as internal error");
+        statusCode = VeniceReadResponseStatus.INTERNAL_ERROR;
+        if (errorMessage == null || errorMessage.isEmpty()) {
+          errorMessage = "Server returned undefined status code";
+        }
+      }
+
       switch (statusCode) {
         case VeniceReadResponseStatus.BAD_REQUEST:
           exception = new VeniceClientHttpException(errorMessage, statusCode);
@@ -330,6 +339,10 @@ public class GrpcTransportClient extends InternalTransportClient {
           break;
         case VeniceReadResponseStatus.KEY_NOT_FOUND:
           exception = null;
+          break;
+        case VeniceReadResponseStatus.INTERNAL_ERROR:
+          exception = new VeniceClientException(
+              String.format("Server internal error: %s", errorMessage != null ? errorMessage : "Unknown error"));
           break;
         default:
           exception = new VeniceClientException(

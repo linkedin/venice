@@ -2,6 +2,13 @@ package com.linkedin.venice.fastclient.grpc;
 
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.GRPC_SERVER_WORKER_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_LIMIT;
+import static com.linkedin.venice.ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK;
+import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION;
+import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE;
+import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_THREADS;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 
@@ -69,6 +76,15 @@ public class VeniceGrpcEndToEndTest {
     props.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
     props.put(GRPC_SERVER_WORKER_THREAD_COUNT, Integer.toString(Runtime.getRuntime().availableProcessors() * 2));
 
+    // Add D2 service discovery related configuration
+    props.put(ROUTER_RESOLVE_THREADS, 5);
+    props.put(ROUTER_CONNECTION_LIMIT, 200);
+    props.put(ROUTER_HTTP_CLIENT_POOL_SIZE, 2);
+    props.put(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 2);
+    props.put(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK, 1);
+    props.put(ROUTER_MAX_OUTGOING_CONNECTION, 10);
+    props.put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 1);
+
     cluster = ServiceFactory.getVeniceCluster(
         new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
             .partitionSize(1000)
@@ -82,7 +98,22 @@ public class VeniceGrpcEndToEndTest {
             .build());
 
     nettyToGrpcPortMap = cluster.getNettyServerToGrpcAddress();
+
+    // Verify gRPC port mapping configuration
+    if (nettyToGrpcPortMap.isEmpty()) {
+      throw new RuntimeException("gRPC port mapping is empty. Please check if gRPC is properly enabled.");
+    }
+
+    LOGGER.info("gRPC port mapping: {}", nettyToGrpcPortMap);
+
     storeName = writeData(Utils.getUniqueString("testStore"));
+
+    // Wait for cluster to fully start
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Assert.assertTrue(cluster.getVeniceControllers().size() > 0, "Controller should be started");
+      Assert.assertTrue(cluster.getVeniceServers().size() > 0, "Server should be started");
+      Assert.assertTrue(cluster.getVeniceRouters().size() > 0, "Router should be started");
+    });
   }
 
   @AfterClass
@@ -185,6 +216,9 @@ public class VeniceGrpcEndToEndTest {
 
     D2Client d2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
 
+    // Verify gRPC port mapping
+    LOGGER.info("Using gRPC port mapping: {}", nettyToGrpcPortMap);
+
     GrpcClientConfig grpcClientConfig =
         new GrpcClientConfig.Builder().setSSLFactory(SslUtils.getVeniceLocalSslFactory())
             .setR2Client(grpcR2ClientPassthrough)
@@ -205,6 +239,17 @@ public class VeniceGrpcEndToEndTest {
 
     AvroGenericStoreClient<String, GenericRecord> grpcFastClient =
         getGenericFastClient(grpcClientConfigBuilder, new MetricsRepository(), d2Client);
+
+    // Wait for client initialization to complete
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      try {
+        // Try a simple get operation to verify client is working properly
+        grpcFastClient.get("1").get();
+      } catch (Exception e) {
+        LOGGER.warn("gRPC client not ready yet: {}", e.getMessage());
+        throw new AssertionError("gRPC client not ready");
+      }
+    });
 
     Set<Set<String>> keySets = getKeySets();
 
@@ -243,6 +288,9 @@ public class VeniceGrpcEndToEndTest {
 
     D2Client d2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
 
+    // Verify gRPC port mapping
+    LOGGER.info("Using gRPC port mapping: {}", nettyToGrpcPortMap);
+
     GrpcClientConfig grpcClientConfig =
         new GrpcClientConfig.Builder().setSSLFactory(SslUtils.getVeniceLocalSslFactory())
             .setR2Client(r2Client)
@@ -263,6 +311,17 @@ public class VeniceGrpcEndToEndTest {
 
     AvroGenericStoreClient<String, GenericRecord> grpcFastClient =
         getGenericFastClient(grpcClientConfigBuilder, new MetricsRepository(), d2Client);
+
+    // Wait for client initialization to complete
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      try {
+        // Try a simple get operation to verify client is working properly
+        grpcFastClient.get("1").get();
+      } catch (Exception e) {
+        LOGGER.warn("gRPC client not ready yet: {}", e.getMessage());
+        throw new AssertionError("gRPC client not ready");
+      }
+    });
 
     for (int key = 1; key < recordCnt; key++) {
       String grpcClientRecord = ((Utf8) grpcFastClient.get(Integer.toString(key)).get()).toString();
@@ -285,6 +344,9 @@ public class VeniceGrpcEndToEndTest {
     D2Client grpcD2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
     D2Client fastD2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
 
+    // Verify gRPC port mapping
+    LOGGER.info("Using gRPC port mapping: {}", nettyToGrpcPortMap);
+
     GrpcClientConfig grpcClientConfig =
         new GrpcClientConfig.Builder().setSSLFactory(SslUtils.getVeniceLocalSslFactory())
             .setR2Client(grpcR2Client)
@@ -304,6 +366,17 @@ public class VeniceGrpcEndToEndTest {
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), fastD2Client);
     AvroGenericStoreClient<String, GenericRecord> grpcFastClient =
         getGenericFastClient(grpcClientConfigBuilder, new MetricsRepository(), grpcD2Client);
+
+    // Wait for client initialization to complete
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      try {
+        // Try a simple get operation to verify client is working properly
+        grpcFastClient.get("1").get();
+      } catch (Exception e) {
+        LOGGER.warn("gRPC client not ready yet: {}", e.getMessage());
+        throw new AssertionError("gRPC client not ready");
+      }
+    });
 
     Set<Set<String>> keySets = getKeySets();
     for (Set<String> keySet: keySets) {
