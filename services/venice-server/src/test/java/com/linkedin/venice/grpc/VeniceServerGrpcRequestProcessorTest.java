@@ -98,7 +98,7 @@ public class VeniceServerGrpcRequestProcessorTest {
     // Simple test - just verify it doesn't crash
     CountByValueRequest request = CountByValueRequest.newBuilder()
         .setResourceName("test_store_v1")
-        .setFieldName("category")
+        .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
         .build();
@@ -109,10 +109,9 @@ public class VeniceServerGrpcRequestProcessorTest {
   }
 
   @Test
-  public void testEmptyFieldName() {
+  public void testEmptyFieldNames() {
     CountByValueRequest request = CountByValueRequest.newBuilder()
         .setResourceName("test_store_v1")
-        .setFieldName("")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
         .build();
@@ -120,14 +119,14 @@ public class VeniceServerGrpcRequestProcessorTest {
     CountByValueResponse response = processor.processCountByValue(request);
 
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
-    assertTrue(response.getErrorMessage().contains("Field name cannot be null or empty"));
+    assertTrue(response.getErrorMessage().contains("Field names cannot be null or empty"));
   }
 
   @Test
   public void testInvalidTopK() {
     CountByValueRequest request = CountByValueRequest.newBuilder()
         .setResourceName("test_store_v1")
-        .setFieldName("category")
+        .addFieldNames("category")
         .setTopK(0)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
         .build();
@@ -142,7 +141,7 @@ public class VeniceServerGrpcRequestProcessorTest {
   public void testInvalidResourceName() {
     CountByValueRequest request = CountByValueRequest.newBuilder()
         .setResourceName("invalid_format")
-        .setFieldName("category")
+        .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
         .build();
