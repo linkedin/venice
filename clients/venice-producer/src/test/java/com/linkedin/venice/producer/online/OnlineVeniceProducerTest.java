@@ -1065,6 +1065,7 @@ public class OnlineVeniceProducerTest {
 
     @Override
     protected VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(
+        ClientConfig storeClientConfig,
         Properties properties,
         VeniceWriterOptions writerOptions) {
       if (mockVeniceWriter == null) {

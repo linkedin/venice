@@ -87,7 +87,7 @@ public class OnlineVeniceProducer<K, V> extends AbstractVeniceProducer<K, V> {
       this.storeClient = (InternalAvroStoreClient<K, V>) tempStoreClient;
       this.schemaReader = ClientFactory.getSchemaReader(clientConfigForSchemaReader, icProvider);
       try (SchemaReader kmeSchemaReader = ClientFactory.getSchemaReader(kmeClientConfig, icProvider)) {
-        configure(storeName, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader);
+        configure(storeName, storeClientConfig, producerConfigs, metricsRepository, schemaReader, kmeSchemaReader);
       }
     } catch (Throwable e) {
       // When using D2TransportClient, the threads that D2 creates are non-daemon threads which hold up graceful

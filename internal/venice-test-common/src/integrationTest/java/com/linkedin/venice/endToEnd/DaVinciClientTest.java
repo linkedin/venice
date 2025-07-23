@@ -213,11 +213,14 @@ public class DaVinciClientTest {
     String s2 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    Properties pubsubClientProperties = new Properties();
+    pubsubClientProperties.putAll(cluster.getPubSubClientProperties());
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(pubsubClientProperties)
         .build();
 
     int totalIterations = 10;
@@ -283,6 +286,9 @@ public class DaVinciClientTest {
     String storeName2 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String storeName3 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    Properties pubsubClientProperties = new Properties();
+    pubsubClientProperties.putAll(cluster.getPubSubClientProperties());
+
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
@@ -291,6 +297,7 @@ public class DaVinciClientTest {
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
+        .put(pubsubClientProperties)
         .build();
 
     MetricsRepository metricsRepository = new VeniceMetricsRepository(
@@ -417,6 +424,8 @@ public class DaVinciClientTest {
     String incrementalPushVersion = System.currentTimeMillis() + "_test_1";
     runIncrementalPush(storeName, incrementalPushVersion, 100);
 
+    Properties pubsubClientProperties = new Properties();
+    pubsubClientProperties.putAll(cluster.getPubSubClientProperties());
     // Build the da-vinci client
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
@@ -425,6 +434,7 @@ public class DaVinciClientTest {
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
+        .put(pubsubClientProperties)
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -497,12 +507,15 @@ public class DaVinciClientTest {
     cluster.createMetaSystemStore(storeName);
 
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    Properties pubsubClientProperties = new Properties();
+    pubsubClientProperties.putAll(cluster.getPubSubClientProperties());
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         // TODO: Looks like cache = null does not work with fast meta store repository refresh interval
         // .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(pubsubClientProperties)
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -752,11 +765,14 @@ public class DaVinciClientTest {
                 Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(dataPartition)));
     setupHybridStore(storeName, paramsConsumer);
 
+    Properties pubsubClientProperties = new Properties();
+    pubsubClientProperties.putAll(cluster.getPubSubClientProperties());
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(pubsubClientProperties)
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -818,11 +834,14 @@ public class DaVinciClientTest {
                 Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition)));
     setupHybridStore(storeName, paramsConsumer);
 
+    Properties pubsubClientProperties = new Properties();
+    pubsubClientProperties.putAll(cluster.getPubSubClientProperties());
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(pubsubClientProperties)
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -1047,6 +1066,8 @@ public class DaVinciClientTest {
   public void testBootstrapSubscription(DaVinciConfig daVinciConfig) throws Exception {
     String storeName1 = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    Properties pubsubClientProperties = new Properties();
+    pubsubClientProperties.putAll(cluster.getPubSubClientProperties());
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
@@ -1056,6 +1077,7 @@ public class DaVinciClientTest {
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
+        .put(pubsubClientProperties)
         .build();
 
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -1240,12 +1262,15 @@ public class DaVinciClientTest {
         .build();
     D2ClientUtils.startClient(d2Client);
     MetricsRepository metricsRepository = new MetricsRepository();
+    Properties pubsubClientProperties = new Properties();
+    pubsubClientProperties.putAll(cluster.getPubSubClientProperties());
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
         .put(D2_ZK_HOSTS_ADDRESS, zkHosts)
+        .put(pubsubClientProperties)
         .build();
 
     // Re-open the same store's database to verify RocksDB metadata partition's lock has been released.
@@ -1407,11 +1432,14 @@ public class DaVinciClientTest {
     // Setup store and create version 1
     String storeName = createStoreWithMetaSystemStoreAndPushStatusSystemStore(KEY_COUNT);
     String baseDataPath = Utils.getTempDataDirectory().getAbsolutePath();
+    Properties pubsubClientProperties = new Properties();
+    pubsubClientProperties.putAll(cluster.getPubSubClientProperties());
     VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
         .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, 1000)
+        .put(pubsubClientProperties)
         .build();
 
     // Create dvc client and subscribe
