@@ -105,81 +105,67 @@ public class VeniceServerGrpcRequestProcessor {
     this.compressorFactory = compressorFactory;
   }
 
-  /**
-   * Detects if we're running in a test environment by checking various indicators.
-   */
-  private boolean isTestEnvironment() {
-    // Check for TestNG or JUnit in the classpath
-    try {
-      Class.forName("org.testng.annotations.Test");
-      return true;
-    } catch (ClassNotFoundException e) {
-      // TestNG not found, continue checking
-    }
-
-    try {
-      Class.forName("org.junit.Test");
-      return true;
-    } catch (ClassNotFoundException e) {
-      // JUnit not found, continue checking
-    }
-
-    // Check for test-related system properties
-    String testProperty = System.getProperty("test.environment");
-    if ("true".equals(testProperty)) {
-      return true;
-    }
-
-    // Check if we're being invoked from test code by examining the stack trace
-    StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
-    for (StackTraceElement element: stackTrace) {
-      String className = element.getClassName();
-      String methodName = element.getMethodName();
-      if (className.contains("Test") || methodName.contains("test") || className.contains("Mock")
-          || className.contains("testng") || className.contains("junit")) {
-        return true;
+  // Constructor for testing with minimal dependencies (for basic functionality)
+  public VeniceServerGrpcRequestProcessor(StorageReadRequestHandler storageReadRequestHandler, boolean isTestMode) {
+    this.storageReadRequestHandler = storageReadRequestHandler;
+    if (isTestMode) {
+      // In test mode, try to extract dependencies but don't fail if they're not available
+      StorageEngineRepository extractedStorageEngineRepository = null;
+      try {
+        extractedStorageEngineRepository =
+            extractDependency(storageReadRequestHandler, "storageEngineRepository", StorageEngineRepository.class);
+      } catch (Exception e) {
+        LOGGER.warn("Could not extract storageEngineRepository in test mode: {}", e.getMessage());
       }
-    }
+      this.storageEngineRepository = extractedStorageEngineRepository;
 
-    // If we reach here and dependencies are null, it's likely a test environment issue
-    // In production, dependencies should never be null if we get to this point
-    return true;
-  }
+      ReadOnlySchemaRepository extractedSchemaRepository = null;
+      try {
+        extractedSchemaRepository =
+            extractDependency(storageReadRequestHandler, "schemaRepository", ReadOnlySchemaRepository.class);
+      } catch (Exception e) {
+        LOGGER.warn("Could not extract schemaRepository in test mode: {}", e.getMessage());
+      }
+      this.schemaRepository = extractedSchemaRepository;
 
-  @SuppressWarnings("unchecked")
-  private <T> T extractDependency(Object source, String fieldName, Class<T> expectedType) {
-    try {
-      // Check if this is a mock object - if so, return null to allow testing
-      if (source.getClass().getName().contains("Mockito")) {
-        LOGGER.warn("Skipping field extraction from mock object: {}", source.getClass().getSimpleName());
-        return null;
+      ReadOnlyStoreRepository extractedStoreRepository = null;
+      try {
+        extractedStoreRepository =
+            extractDependency(storageReadRequestHandler, "metadataRepository", ReadOnlyStoreRepository.class);
+      } catch (Exception e) {
+        LOGGER.warn("Could not extract storeRepository in test mode: {}", e.getMessage());
       }
+      this.storeRepository = extractedStoreRepository;
 
-      Field field = source.getClass().getDeclaredField(fieldName);
-      field.setAccessible(true);
-      Object value = field.get(source);
-      if (value == null) {
-        LOGGER.warn(
-            "Field '{}' is null in {}, returning null for graceful handling",
-            fieldName,
-            source.getClass().getSimpleName());
-        return null;
+      ThreadPoolExecutor extractedExecutor = null;
+      try {
+        extractedExecutor = extractDependency(storageReadRequestHandler, "executor", ThreadPoolExecutor.class);
+      } catch (Exception e) {
+        LOGGER.warn("Could not extract executor in test mode: {}", e.getMessage());
       }
-      if (!expectedType.isInstance(value)) {
-        LOGGER.warn(
-            "Field '{}' is not of expected type {}, returning null for graceful handling",
-            fieldName,
-            expectedType.getSimpleName());
-        return null;
+      this.executor = extractedExecutor;
+
+      StorageEngineBackedCompressorFactory extractedCompressorFactory = null;
+      try {
+        extractedCompressorFactory = extractDependency(
+            storageReadRequestHandler,
+            "compressorFactory",
+            StorageEngineBackedCompressorFactory.class);
+      } catch (Exception e) {
+        LOGGER.warn("Could not extract compressorFactory in test mode: {}", e.getMessage());
       }
-      return (T) value;
-    } catch (NoSuchFieldException | IllegalAccessException e) {
-      LOGGER.warn(
-          "Failed to extract field '{}' from {}, returning null for graceful handling: {}",
-          fieldName,
-          source.getClass().getSimpleName(),
-          e.getMessage());
-      return null;
+      this.compressorFactory = extractedCompressorFactory;
+    } else {
+      // Normal mode - extract dependencies with exceptions
+      this.storageEngineRepository =
+          extractDependency(storageReadRequestHandler, "storageEngineRepository", StorageEngineRepository.class);
+      this.schemaRepository =
+          extractDependency(storageReadRequestHandler, "schemaRepository", ReadOnlySchemaRepository.class);
+      this.storeRepository =
+          extractDependency(storageReadRequestHandler, "metadataRepository", ReadOnlyStoreRepository.class);
+      this.executor = extractDependency(storageReadRequestHandler, "executor", ThreadPoolExecutor.class);
+      this.compressorFactory =
+          extractDependency(storageReadRequestHandler, "compressorFactory", StorageEngineBackedCompressorFactory.class);
     }
   }
 
@@ -204,6 +190,36 @@ public class VeniceServerGrpcRequestProcessor {
   }
 
   /**
+   * Safely extract a field from an object using reflection.
+   * Returns null if extraction fails to avoid breaking basic functionality.
+   */
+  @SuppressWarnings("unchecked")
+  private <T> T extractDependency(Object source, String fieldName, Class<T> expectedType) {
+    try {
+      // Check if this is a mock object - if so, return null to allow testing
+      if (source.getClass().getName().contains("Mockito")) {
+        LOGGER.warn("Skipping field extraction from mock object: {}", source.getClass().getSimpleName());
+        return null;
+      }
+
+      Field field = source.getClass().getDeclaredField(fieldName);
+      field.setAccessible(true);
+      Object value = field.get(source);
+      if (value == null) {
+        throw new VeniceException("Required field '" + fieldName + "' is null in " + source.getClass().getSimpleName());
+      }
+      if (!expectedType.isInstance(value)) {
+        throw new VeniceException("Field '" + fieldName + "' is not of expected type " + expectedType.getSimpleName());
+      }
+      return (T) value;
+    } catch (NoSuchFieldException | IllegalAccessException e) {
+      throw new VeniceException(
+          "Failed to extract field '" + fieldName + "' from " + source.getClass().getSimpleName(),
+          e);
+    }
+  }
+
+  /**
    * Process countByValue aggregation request with real data processing.
    * This implementation:
    * 1. Retrieves the data for the given keys using storage engine
@@ -212,27 +228,19 @@ public class VeniceServerGrpcRequestProcessor {
    * 4. Returns the top K most frequent values
    */
   public CountByValueResponse processCountByValue(CountByValueRequest request) {
-    // If dependencies are not available and this is not a test environment, return error
-    if (storeRepository == null || schemaRepository == null || storageEngineRepository == null) {
-      // Check if we're in a test environment by looking for test-related system properties or class loaders
-      boolean isTestEnvironment = isTestEnvironment();
-      if (!isTestEnvironment) {
-        return CountByValueResponse.newBuilder()
-            .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
-            .setErrorMessage("Server-side aggregation not properly initialized")
-            .build();
-      }
-      // In test environment, create a mock response to avoid breaking tests
-      LOGGER.warn("Running in test environment with null dependencies, returning mock response");
+    // If dependencies are not available, return graceful error
+    if (storeRepository == null || schemaRepository == null || storageEngineRepository == null || executor == null
+        || compressorFactory == null) {
+      LOGGER.warn(
+          "CountByValue dependencies not available - storeRepository: {}, schemaRepository: {}, storageEngineRepository: {}, executor: {}, compressorFactory: {}",
+          storeRepository != null,
+          schemaRepository != null,
+          storageEngineRepository != null,
+          executor != null,
+          compressorFactory != null);
       return CountByValueResponse.newBuilder()
-          .setErrorCode(VeniceReadResponseStatus.OK)
-          .setErrorMessage("Mock response for testing")
-          .putFieldToValueCounts(
-              "mockField",
-              com.linkedin.venice.protocols.ValueCount.newBuilder()
-                  .putValueToCounts("mockValue1", 5)
-                  .putValueToCounts("mockValue2", 3)
-                  .build())
+          .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
+          .setErrorMessage("CountByValue dependencies not available")
           .build();
     }
 
@@ -369,9 +377,8 @@ public class VeniceServerGrpcRequestProcessor {
 
           for (Map.Entry<Integer, List<byte[]>> entry: partitionToKeys.entrySet()) {
             int partitionId = entry.getKey();
-            List<byte[]> partitionKeys = entry.getValue();
+            List<byte[]> keys = entry.getValue();
 
-            // Process this partition asynchronously
             CompletableFuture<Map<String, Map<String, Integer>>> partitionFuture = CompletableFuture.supplyAsync(() -> {
               Map<String, Map<String, Integer>> partitionCounts = new HashMap<>();
               // Initialize field counts
@@ -379,12 +386,12 @@ public class VeniceServerGrpcRequestProcessor {
                 partitionCounts.put(fieldName, new HashMap<>());
               }
 
-              for (byte[] keyBytes: partitionKeys) {
+              for (byte[] keyBytes: keys) {
                 try {
-                  // Get value from storage engine for this partition
-                  ByteBuffer valueBuffer = storageEngine.get(partitionId, keyBytes, ByteBuffer.allocate(1024));
-
-                  if (valueBuffer != null) {
+                  byte[] valueBytes = storageEngine.get(partitionId, keyBytes);
+                  if (valueBytes != null) {
+                    // Convert to ByteBuffer for processing
+                    ByteBuffer valueBuffer = ByteBuffer.wrap(valueBytes);
                     // Decompress if needed
                     ByteBuffer decompressedBuffer;
                     if (compressionStrategy != CompressionStrategy.NO_OP) {

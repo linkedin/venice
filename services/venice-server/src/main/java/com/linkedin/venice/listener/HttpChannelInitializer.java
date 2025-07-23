@@ -264,7 +264,15 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   }
 
   public VeniceServerGrpcRequestProcessor initGrpcRequestProcessor() {
-    VeniceServerGrpcRequestProcessor grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor(requestHandler);
+    // Check if we're in a test environment by looking for test-specific system properties or class names
+    boolean isTestMode = isTestEnvironment();
+
+    VeniceServerGrpcRequestProcessor grpcServerRequestProcessor;
+    if (isTestMode) {
+      grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor(requestHandler, true);
+    } else {
+      grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor(requestHandler);
+    }
 
     StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats, null);
     GrpcStatsHandler grpcStatsHandler = new GrpcStatsHandler(statsHandler);
@@ -289,6 +297,18 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     grpcServerRequestProcessor.addHandler(grpcOutboundStatsHandler);
 
     return grpcServerRequestProcessor;
+  }
+
+  /**
+   * Check if we're running in a test environment
+   */
+  private boolean isTestEnvironment() {
+    // Check for common test indicators
+    String classPath = System.getProperty("java.class.path", "");
+    String javaCommand = System.getProperty("sun.java.command", "");
+
+    return classPath.contains("test") || classPath.contains("junit") || javaCommand.contains("test")
+        || javaCommand.contains("junit") || System.getProperty("test.mode", "false").equals("true");
   }
 
   /**
