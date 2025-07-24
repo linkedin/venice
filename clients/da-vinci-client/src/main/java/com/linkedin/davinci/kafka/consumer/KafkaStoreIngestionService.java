@@ -1431,7 +1431,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return topicNameToIngestionTaskMap;
   }
 
-  public void registerRecordTransformerConfig(
+  synchronized public void registerRecordTransformerConfig(
       String storeName,
       DaVinciRecordTransformerConfig recordTransformerConfig) {
     if (recordTransformerStats == null) {

@@ -779,7 +779,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     VeniceConfigLoader configLoader = buildVeniceConfig();
 
     if (configLoader.getVeniceServerConfig().isDatabaseChecksumVerificationEnabled()
-        && recordTransformerConfig != null) {
+        && daVinciConfig.isRecordTransformerEnabled()) {
       // The checksum verification will fail because DVRT transforms the values
       throw new VeniceException("DaVinciRecordTransformer cannot be used with database checksum verification.");
     }
