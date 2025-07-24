@@ -30,8 +30,14 @@ public class SchemaUtils {
    * @return Annotated value schema.
    */
   public static Schema annotateValueSchema(Schema schema) {
-    // Create duplicate schema here in order not to create any side effect during annotation.
-    Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
+    /**
+     * We have seen some value schemas that are not strictly valid Avro schemas, but they are already in
+     * production use. For example, some have a double type field whose default value set to
+     * "0" instead of "0.0", or union whose default value does not match the 1st branch in the union.
+     * See {@link SchemaParseConfiguration} for more details.
+     * Using loose validation here to allow the schema to be parsed even if it has some minor issues.
+     */
+    Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(schema.toString());
     if (replicatedSchema.getType().equals(RECORD)) {
       for (Schema.Field field: replicatedSchema.getFields()) {
         if (field.schema().isUnion()) {
