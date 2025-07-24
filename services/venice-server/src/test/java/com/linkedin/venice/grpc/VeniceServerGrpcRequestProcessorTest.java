@@ -259,4 +259,87 @@ public class VeniceServerGrpcRequestProcessorTest {
     assertNotNull(response);
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
   }
+
+  @Test
+  public void testInvalidVersionNumber() {
+    CountByValueRequest request = CountByValueRequest.newBuilder()
+        .setResourceName("test_store_vabc")
+        .addFieldNames("category")
+        .setTopK(5)
+        .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .build();
+
+    CountByValueResponse response = processor.processCountByValue(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
+    assertTrue(response.getErrorMessage().contains("Invalid version number"));
+  }
+
+  @Test
+  public void testStoreVersionNotExist() {
+    when(mockStore.containsVersion(999)).thenReturn(false);
+
+    CountByValueRequest request = CountByValueRequest.newBuilder()
+        .setResourceName("test_store_v999")
+        .addFieldNames("category")
+        .setTopK(5)
+        .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .build();
+
+    CountByValueResponse response = processor.processCountByValue(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
+    assertTrue(response.getErrorMessage().contains("Store version 999 does not exist"));
+  }
+
+  @Test
+  public void testNoValueSchema() {
+    when(mockSchemaRepository.getSupersetOrLatestValueSchema("test_store")).thenReturn(null);
+
+    CountByValueRequest request = CountByValueRequest.newBuilder()
+        .setResourceName("test_store_v1")
+        .addFieldNames("category")
+        .setTopK(5)
+        .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .build();
+
+    CountByValueResponse response = processor.processCountByValue(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
+    assertTrue(response.getErrorMessage().contains("No value schema found"));
+  }
+
+  @Test
+  public void testStoreVersionStateNotAvailable() {
+    when(mockStorageEngine.getStoreVersionState()).thenReturn(null);
+
+    CountByValueRequest request = CountByValueRequest.newBuilder()
+        .setResourceName("test_store_v1")
+        .addFieldNames("category")
+        .setTopK(5)
+        .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .build();
+
+    CountByValueResponse response = processor.processCountByValue(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.INTERNAL_ERROR);
+    assertTrue(response.getErrorMessage().contains("Store version state not available"));
+  }
+
+  @Test
+  public void testGetVersionFailure() {
+    when(mockStore.getVersion(1)).thenReturn(null);
+
+    CountByValueRequest request = CountByValueRequest.newBuilder()
+        .setResourceName("test_store_v1")
+        .addFieldNames("category")
+        .setTopK(5)
+        .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .build();
+
+    CountByValueResponse response = processor.processCountByValue(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
+    assertTrue(response.getErrorMessage().contains("Store version 1 does not exist"));
+  }
 }
