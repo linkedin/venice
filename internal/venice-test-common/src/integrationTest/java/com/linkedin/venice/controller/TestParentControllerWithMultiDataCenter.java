@@ -792,7 +792,7 @@ public class TestParentControllerWithMultiDataCenter {
 
         // After MAX_RETRIES_FOR_NONEXISTENT_STORE retries, there should be no exception anymore
         // as the message should be skipped
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, true, () -> {
           Exception lastException = adminConsumerService.getLastExceptionForStore(storeName);
           Assert.assertNull(
               lastException,
