@@ -101,7 +101,10 @@ public class VeniceControllerService extends AbstractVeniceService {
         pubSubTopicRepository,
         pubSubClientsFactory,
         pubSubPositionTypeRegistry,
-        Arrays.asList(initRoutineForPushJobDetailsSystemStore, initRoutineForHeartbeatSystemStore));
+        Arrays.asList(
+            initRoutineForPushJobDetailsSystemStore,
+            initRoutineForHeartbeatSystemStore,
+            initRoutineForParentControllerMetadataSystemStore));
 
     if (multiClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(
