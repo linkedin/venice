@@ -67,6 +67,10 @@ public class VeniceChunkedWriteHandler extends NettyChunkedWriteHandler {
         return;
       }
     }
+    // check for closed channel
+    if (!ctx.channel().isActive() || !ctx.channel().isWritable()) {
+      return;
+    }
     try {
       // pass the write to the downstream handlers.
       super.write(ctx, msg, promise);
