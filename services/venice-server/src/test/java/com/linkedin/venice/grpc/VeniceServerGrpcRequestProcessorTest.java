@@ -1,5 +1,7 @@
 package com.linkedin.venice.grpc;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -83,6 +85,13 @@ public class VeniceServerGrpcRequestProcessorTest {
     when(mockStoreRepository.getStoreOrThrow("test_store")).thenReturn(mockStore);
     when(mockSchemaRepository.getSupersetOrLatestValueSchema("test_store")).thenReturn(mockSchemaEntry);
     when(mockStorageEngineRepository.getLocalStorageEngine("test_store_v1")).thenReturn(mockStorageEngine);
+
+    // Setup executor to run tasks immediately (synchronously)
+    doAnswer(invocation -> {
+      Runnable task = invocation.getArgument(0);
+      task.run(); // Execute immediately on the same thread
+      return null;
+    }).when(mockExecutor).execute(any(Runnable.class));
 
     // Create processor with constructor that accepts dependencies directly
     processor = new VeniceServerGrpcRequestProcessor(

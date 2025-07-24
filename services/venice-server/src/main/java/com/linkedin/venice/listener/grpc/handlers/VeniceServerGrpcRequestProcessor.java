@@ -247,7 +247,6 @@ public class VeniceServerGrpcRequestProcessor {
     try {
       String resourceName = request.getResourceName();
       List<String> fieldNames = request.getFieldNamesList();
-      int topK = request.getTopK() > 0 ? request.getTopK() : 10;
 
       // Validate inputs
       if (fieldNames == null || fieldNames.isEmpty()) {
@@ -257,12 +256,14 @@ public class VeniceServerGrpcRequestProcessor {
             .build();
       }
 
-      if (topK <= 0) {
+      if (request.getTopK() <= 0) {
         return CountByValueResponse.newBuilder()
             .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
             .setErrorMessage("TopK must be positive")
             .build();
       }
+
+      int topK = request.getTopK() > 0 ? request.getTopK() : 10;
 
       // Parse store name and version from resource name (format: storeName_v{version})
       String[] parts = resourceName.split("_v");
