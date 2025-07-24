@@ -800,7 +800,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
         this.compactionManager = new CompactionManager(
             repushOrchestrator,
-            multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS(),
+            multiClusterConfigs.getLogCompactionThresholdMS(),
             logCompactionStatsMap);
       } catch (Exception e) {
         LOGGER.error(
@@ -5475,6 +5475,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Map<String, String>> storeViews = params.getStoreViews();
     Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
+    Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
+    Optional<Long> compactionThreshold = params.getCompactionThresholdMilliseconds();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -5739,12 +5741,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         setLatestSupersetSchemaId(clusterName, storeName, latestSupersetSchemaId.get());
       }
 
+      if (compactionEnabled.isPresent()) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+          store.setCompactionEnabled(compactionEnabled.get());
+          return store;
+        });
+      }
+
+      if (compactionThreshold.isPresent()) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+          store.setCompactionThresholdMilliseconds(compactionThreshold.get());
+          return store;
+        });
+      }
+
       if (minCompactionLagSeconds.isPresent()) {
         storeMetadataUpdate(clusterName, storeName, store -> {
           store.setMinCompactionLagSeconds(minCompactionLagSeconds.get());
           return store;
         });
       }
+
       if (maxCompactionLagSeconds.isPresent()) {
         storeMetadataUpdate(clusterName, storeName, store -> {
           store.setMaxCompactionLagSeconds(maxCompactionLagSeconds.get());

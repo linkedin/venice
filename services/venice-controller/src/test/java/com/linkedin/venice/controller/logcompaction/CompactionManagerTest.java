@@ -23,13 +23,12 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.mockito.Mockito;
-import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
 public class CompactionManagerTest {
-  private static final long TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD = 24; // 24 hours ago
+  private static final long COMPACTION_THRESHOLD = 24; // 24 hours ago
   private static final String TEST_STORE_NAME_PREFIX = "test-store";
   private static final String TEST_CLUSTER_NAME = "test-cluster";
   private CompactionManager testCompactionManager;
@@ -43,21 +42,10 @@ public class CompactionManagerTest {
 
     testCompactionManager = new CompactionManager(
         mockRepushOrchestrator,
-        TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD),
+        TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD),
         Collections.singletonMap(TEST_CLUSTER_NAME, mockLogCompactionStats));
   }
 
-  /**
-   * Expected result
-     * store1 (eligible): isHybrid = true, lastCompactionTime >= threshold, AA store
-     * store2 (eligible): isHybrid = true, lastCompactionTime >= threshold, AA store
-     * store3 (ineligible): isHybrid = false (ineligiblity reason), lastCompactionTime <= threshold, AA store
-     * store4 (ineligible): isHybrid = true, lastCompactionTime >= threshold, AA store, Note: has 2 versions;
-      * ongoing push version: lastCompactionTime <= threshold (ineligiblity reason)
-      * current version: lastCompactionTime >= threshold
-     * store5 (ineligible): isHybrid = false, lastCompactionTime <= threshold, non-AA store (ineligiblity reason)
-   *
-   */
   @Test
   public void testFilterStoresForCompaction() {
     ArrayList<StoreInfo> storeInfoList = new ArrayList<>();
@@ -71,6 +59,9 @@ public class CompactionManagerTest {
     Version version4 = mock(Version.class);
     Version ongoingPushVersion = mock(Version.class);
     Version version5 = mock(Version.class);
+    Version version6 = mock(Version.class);
+    Version version7 = mock(Version.class);
+    Version version8 = mock(Version.class);
 
     // set version number for Version mocks
     when(version1.getNumber()).thenReturn(currentVersionNumber);
@@ -79,26 +70,47 @@ public class CompactionManagerTest {
     when(version4.getNumber()).thenReturn(currentVersionNumber);
     when(ongoingPushVersion.getNumber()).thenReturn(ongoingPushVersionNumber);
     when(version5.getNumber()).thenReturn(currentVersionNumber);
+    when(version6.getNumber()).thenReturn(currentVersionNumber);
+    when(version7.getNumber()).thenReturn(currentVersionNumber);
+    when(version8.getNumber()).thenReturn(currentVersionNumber);
 
     // set createTime for Version mocks
-    long version1CreationTime =
-        System.currentTimeMillis() - TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD + 1);
-    when(version1.getCreatedTime()).thenReturn(version1CreationTime); // 25hrs ago
-    when(version2.getCreatedTime()).thenReturn(
-        System.currentTimeMillis() - TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD * 2)); // 48hrs
-                                                                                                                   // ago
-    when(version3.getCreatedTime()).thenReturn(
-        System.currentTimeMillis() - TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD - 1)); // 23hrs
-                                                                                                                   // ago
-    when(version4.getCreatedTime()).thenReturn(
-        System.currentTimeMillis() - TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD * 2)); // 48hrs
-                                                                                                                   // ago
-    when(ongoingPushVersion.getCreatedTime()).thenReturn(
-        System.currentTimeMillis() - TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD - 1)); // 23hrs
 
-    when(version5.getCreatedTime()).thenReturn(
-        System.currentTimeMillis() - TimeUnit.HOURS.toMillis(TEST_HOURS_SINCE_LAST_LOG_COMPACTION_THRESHOLD - 1)); // 23hrs
-                                                                                                                   // ago
+    // 25 hours
+    when(version1.getCreatedTime())
+        .thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD + 1));
+
+    // 48 hours
+    when(version2.getCreatedTime())
+        .thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD * 2));
+
+    // 23 hours
+    when(version3.getCreatedTime())
+        .thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD - 1));
+
+    // 48 hours
+    when(version4.getCreatedTime())
+        .thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD * 2));
+
+    // 23 hours
+    when(ongoingPushVersion.getCreatedTime())
+        .thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD - 1));
+
+    // 23 hours
+    when(version5.getCreatedTime())
+        .thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD - 1));
+
+    // 25 hours
+    when(version6.getCreatedTime())
+        .thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD + 1));
+
+    // 25 hours
+    when(version7.getCreatedTime())
+        .thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD + 1));
+
+    // 25 hours
+    when(version8.getCreatedTime())
+        .thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD + 1));
 
     // Mock StoreInfo instances
     StoreInfo store1 = new StoreInfo();
@@ -106,6 +118,9 @@ public class CompactionManagerTest {
     StoreInfo store3 = new StoreInfo();
     StoreInfo store4 = new StoreInfo();
     StoreInfo store5 = new StoreInfo();
+    StoreInfo store6 = new StoreInfo();
+    StoreInfo store7 = new StoreInfo();
+    StoreInfo store8 = new StoreInfo();
 
     // Set store names
     store1.setName(TEST_STORE_NAME_PREFIX + "1");
@@ -113,6 +128,9 @@ public class CompactionManagerTest {
     store3.setName(TEST_STORE_NAME_PREFIX + "3");
     store4.setName(TEST_STORE_NAME_PREFIX + "4");
     store5.setName(TEST_STORE_NAME_PREFIX + "5");
+    store6.setName(TEST_STORE_NAME_PREFIX + "6");
+    store7.setName(TEST_STORE_NAME_PREFIX + "7");
+    store8.setName(TEST_STORE_NAME_PREFIX + "8");
 
     // Return Version mocks when getVersion() is called
     store1.setVersions(Collections.singletonList(version1));
@@ -120,12 +138,18 @@ public class CompactionManagerTest {
     store3.setVersions(Collections.singletonList(version3));
     store4.setVersions(Arrays.asList(version4, ongoingPushVersion));
     store5.setVersions(Collections.singletonList(version5));
+    store6.setVersions(Collections.singletonList(version6));
+    store7.setVersions(Collections.singletonList(version7));
+    store8.setVersions(Collections.singletonList(version8));
 
     // Mock HybridStoreConfig for the first two StoreInfo instances
     store1.setHybridStoreConfig(mock(HybridStoreConfig.class));
     store2.setHybridStoreConfig(mock(HybridStoreConfig.class));
     store4.setHybridStoreConfig(mock(HybridStoreConfig.class));
     store5.setHybridStoreConfig(mock(HybridStoreConfig.class));
+    store6.setHybridStoreConfig(mock(HybridStoreConfig.class));
+    store7.setHybridStoreConfig(mock(HybridStoreConfig.class));
+    store8.setHybridStoreConfig(mock(HybridStoreConfig.class));
 
     // Set isActiveActiveReplicationEnabled for the first two StoreInfo instances
     store1.setActiveActiveReplicationEnabled(true);
@@ -133,6 +157,29 @@ public class CompactionManagerTest {
     store3.setActiveActiveReplicationEnabled(true);
     store4.setActiveActiveReplicationEnabled(true);
     store5.setActiveActiveReplicationEnabled(false);
+    store6.setActiveActiveReplicationEnabled(true);
+    store7.setActiveActiveReplicationEnabled(true);
+    store8.setActiveActiveReplicationEnabled(true);
+
+    // Set compaction enabled for all but store6
+    store1.setCompactionEnabled(true);
+    store2.setCompactionEnabled(true);
+    store3.setCompactionEnabled(true);
+    store4.setCompactionEnabled(true);
+    store5.setCompactionEnabled(true);
+    store6.setCompactionEnabled(false);
+    store7.setCompactionEnabled(true);
+    store8.setCompactionEnabled(true);
+
+    // Set store-level compaction threshold
+    store1.setCompactionThreshold(-1);
+    store2.setCompactionThreshold(-1);
+    store3.setCompactionThreshold(-1);
+    store4.setCompactionThreshold(-1);
+    store5.setCompactionThreshold(-1);
+    store6.setCompactionThreshold(-1);
+    store7.setCompactionThreshold(TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD) * 2);
+    store8.setCompactionThreshold(TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD) / 2);
 
     // Add StoreInfo instances to the list
     storeInfoList.add(store1);
@@ -140,14 +187,19 @@ public class CompactionManagerTest {
     storeInfoList.add(store3);
     storeInfoList.add(store4);
     storeInfoList.add(store5);
+    storeInfoList.add(store6);
+    storeInfoList.add(store7);
+    storeInfoList.add(store8);
 
     // Verify stores compaction-ready status
-    Assert.assertTrue(testCompactionManager.isCompactionReady(store1)); // compacted more than threshold time (>24hrs)
-    Assert.assertTrue(testCompactionManager.isCompactionReady(store2)); // compacted more than threshold time (>24hrs)
-    Assert.assertFalse(testCompactionManager.isCompactionReady(store3)); // compacted within threshold time (<24hrs)
-    Assert.assertFalse(testCompactionManager.isCompactionReady(store4)); // ongoing push version within threshold time
-                                                                         // (<24hrs)
-    Assert.assertFalse(testCompactionManager.isCompactionReady(store5)); // non-AA store
+    assertTrue(testCompactionManager.isCompactionReady(store1)); // compacted more than threshold (>24hrs)
+    assertTrue(testCompactionManager.isCompactionReady(store2)); // compacted more than threshold (>24hrs)
+    assertFalse(testCompactionManager.isCompactionReady(store3)); // compacted within threshold (<24hrs)
+    assertFalse(testCompactionManager.isCompactionReady(store4)); // ongoing push version threshold (<24hrs)
+    assertFalse(testCompactionManager.isCompactionReady(store5)); // non-AA store
+    assertFalse(testCompactionManager.isCompactionReady(store6)); // Store level compaction disabled
+    assertFalse(testCompactionManager.isCompactionReady(store7)); // Store level threshold not reached
+    assertTrue(testCompactionManager.isCompactionReady(store8)); // Store level threshold reached
 
     // Test
     List<StoreInfo> compactionReadyStores =
@@ -159,6 +211,9 @@ public class CompactionManagerTest {
     verify(mockLogCompactionStats, Mockito.times(0)).recordStoreNominatedForCompactionCount(store3.getName());
     verify(mockLogCompactionStats, Mockito.times(0)).recordStoreNominatedForCompactionCount(store4.getName());
     verify(mockLogCompactionStats, Mockito.times(0)).recordStoreNominatedForCompactionCount(store5.getName());
+    verify(mockLogCompactionStats, Mockito.times(0)).recordStoreNominatedForCompactionCount(store6.getName());
+    verify(mockLogCompactionStats, Mockito.times(0)).recordStoreNominatedForCompactionCount(store7.getName());
+    verify(mockLogCompactionStats, Mockito.times(1)).recordStoreNominatedForCompactionCount(store8.getName());
 
     // Validate setCompactionEligible metric emission
     verify(mockLogCompactionStats, Mockito.times(1)).setCompactionEligible(store1.getName());
@@ -166,14 +221,20 @@ public class CompactionManagerTest {
     verify(mockLogCompactionStats, Mockito.times(0)).setCompactionEligible(store3.getName());
     verify(mockLogCompactionStats, Mockito.times(0)).setCompactionEligible(store4.getName());
     verify(mockLogCompactionStats, Mockito.times(0)).setCompactionEligible(store5.getName());
+    verify(mockLogCompactionStats, Mockito.times(0)).setCompactionEligible(store6.getName());
+    verify(mockLogCompactionStats, Mockito.times(0)).setCompactionEligible(store7.getName());
+    verify(mockLogCompactionStats, Mockito.times(1)).setCompactionEligible(store8.getName());
 
     // Test validation
-    assertEquals(compactionReadyStores.size(), 2); // change if the number of eligible test stores in the list changes
+    assertEquals(compactionReadyStores.size(), 3);
     assertTrue(compactionReadyStores.contains(store1));
     assertTrue(compactionReadyStores.contains(store2));
     assertFalse(compactionReadyStores.contains(store3));
     assertFalse(compactionReadyStores.contains(store4));
     assertFalse(compactionReadyStores.contains(store5));
+    assertFalse(compactionReadyStores.contains(store6));
+    assertFalse(compactionReadyStores.contains(store7));
+    assertTrue(compactionReadyStores.contains(store8));
   }
 
   @Test(expectedExceptions = VeniceException.class)
