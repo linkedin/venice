@@ -1027,10 +1027,9 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test(timeOut = TIMEOUT)
-  public void testRetryLimitForNoStoreException() throws InterruptedException, ExecutionException, IOException {
+  public void testRetryLimitForNoStoreException() throws InterruptedException, IOException {
     // Use a store name that doesn't exist to trigger VeniceNoStoreException
     String nonExistentStoreName = Utils.getUniqueString("non_existent_store");
-    String storeTopicName = nonExistentStoreName + "_v1";
 
     // Create a delete-store operation for a store that doesn't exist
     veniceWriter.put(
