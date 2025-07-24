@@ -52,6 +52,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
@@ -65,6 +66,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
@@ -1025,6 +1027,46 @@ public class AdminConsumptionTaskTest {
   }
 
   @Test(timeOut = TIMEOUT)
+  public void testRetryLimitForNoStoreException() throws InterruptedException, ExecutionException, IOException {
+    // Use a store name that doesn't exist to trigger VeniceNoStoreException
+    String nonExistentStoreName = Utils.getUniqueString("non_existent_store");
+    String storeTopicName = nonExistentStoreName + "_v1";
+
+    // Create a delete-store operation for a store that doesn't exist
+    veniceWriter.put(
+        emptyKeyBytes,
+        getDeleteStoreMessage(clusterName, nonExistentStoreName, 1),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    // Simulate the store not existing by throwing VeniceNoStoreException
+    doThrow(new VeniceNoStoreException(nonExistentStoreName, clusterName)).when(admin)
+        .deleteStore(eq(clusterName), eq(nonExistentStoreName), anyInt(), anyBoolean());
+
+    // Create a stats mock to verify calls
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+
+    // Create task with mocked AdminConsumptionStats and default retry limit
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, stats, 10000);
+    executor.submit(task);
+
+    // Wait for the retry mechanism to process the message the maximum number of times
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      verify(admin, times(3)).deleteStore(eq(clusterName), eq(nonExistentStoreName), anyInt(), anyBoolean());
+    });
+
+    // Wait for the message to be processed and moved past (skipped after max retries)
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(getLastOffset(clusterName), 1L);
+      // After max retries, the exception should be cleared from problematic stores
+      Assert.assertNull(task.getLastExceptionForStore(nonExistentStoreName));
+    });
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test(timeOut = TIMEOUT)
   public void testStoreIsolation() throws Exception {
     String storeName1 = "test_store1";
     String storeName2 = "test_store2";
@@ -1592,6 +1634,21 @@ public class AdminConsumptionTaskTest {
     adminMessage.executionId = executionId;
     return adminOperationSerializer
         .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+  }
+
+  private byte[] getDeleteStoreMessage(String clusterName, String storeName, long executionId) {
+    AdminOperation adminOperation = new AdminOperation();
+    adminOperation.operationType = AdminMessageType.DELETE_STORE.getValue();
+
+    DeleteStore deleteStore = (DeleteStore) AdminMessageType.DELETE_STORE.getNewInstance();
+    deleteStore.clusterName = clusterName;
+    deleteStore.storeName = storeName;
+
+    adminOperation.payloadUnion = deleteStore;
+    adminOperation.executionId = executionId;
+
+    return adminOperationSerializer
+        .serialize(adminOperation, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
 
   private byte[] getAddVersionMessage(
