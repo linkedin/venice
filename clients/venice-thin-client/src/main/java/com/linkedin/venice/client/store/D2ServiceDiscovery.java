@@ -57,7 +57,7 @@ public class D2ServiceDiscovery {
         if (attempt > 0) {
           time.sleep(100);
         }
-        TransportClientResponse response = client.get(requestPath, requestHeaders).get(1, TimeUnit.SECONDS);
+        TransportClientResponse response = client.get(requestPath, requestHeaders).get(3, TimeUnit.SECONDS);
 
         if (response == null) {
           /**
