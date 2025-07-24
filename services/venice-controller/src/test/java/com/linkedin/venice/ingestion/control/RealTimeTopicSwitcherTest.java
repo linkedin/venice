@@ -216,13 +216,19 @@ public class RealTimeTopicSwitcherTest {
     PubSubTopic destTopic = pubSubTopicRepository.getTopic("testTopic_v1");
     Store mockStore = mock(Store.class);
     HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
-
-    doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
-    doReturn(true).when(mockStore).isHybrid();
-    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
-    doReturn(version).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
     doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
+    doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
+    doReturn(true).when(mockStore).isHybrid();
+
+    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
+    // Mock version-level hybrid store config with a different rewind time
+    HybridStoreConfig mockVersionLevelHybridConfig = mock(HybridStoreConfig.class);
+    doReturn(7200L).when(mockVersionLevelHybridConfig).getRewindTimeInSeconds();
+    doReturn(REWIND_FROM_EOP).when(mockVersionLevelHybridConfig).getBufferReplayPolicy();
+    version.setHybridStoreConfig(mockVersionLevelHybridConfig);
+    doReturn(version).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
+
     doReturn(false).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
 
