@@ -376,6 +376,6 @@ public class SystemStoreRepairTask implements Runnable {
 
   Version getNewSystemStoreVersion(String clusterName, String systemStoreName, String pushJobId) {
     return UserSystemStoreLifeCycleHelper
-        .emptyPushSystemStore(getParentAdmin(), clusterName, systemStoreName, pushJobId);
+        .materializeSystemStore(getParentAdmin(), clusterName, systemStoreName, pushJobId);
   }
 }
