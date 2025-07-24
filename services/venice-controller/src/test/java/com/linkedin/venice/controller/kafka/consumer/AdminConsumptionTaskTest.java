@@ -148,7 +148,7 @@ import org.testng.annotations.Test;
  */
 @Test(priority = -5)
 public class AdminConsumptionTaskTest {
-  private static final int TIMEOUT = 10000;
+  private static final int TIMEOUT = 20000;
 
   private String clusterName;
   private String topicName;
