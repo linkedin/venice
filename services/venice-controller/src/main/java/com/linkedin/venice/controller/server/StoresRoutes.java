@@ -1276,7 +1276,6 @@ public class StoresRoutes extends AbstractRoute {
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         responseObject.setHeartbeatTimestamp(admin.getHeartbeatFromSystemStore(clusterName, storeName));
-        responseObject.setHeartbeatTimestamp(0);
       } catch (Throwable e) {
         responseObject.setError(e);
       }

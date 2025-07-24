@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -13,12 +14,13 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
-import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -31,26 +33,26 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class PushStatusStoreMultiColoTest {
+public class SystemStoreMultiColoTest {
   private static final int TEST_TIMEOUT_MS = 90_000;
   private static final int NUMBER_OF_SERVERS = 2;
-  private static final int PARTITION_COUNT = 2;
   private static final int REPLICATION_FACTOR = 2;
   private VeniceClusterWrapper cluster;
   private ControllerClient parentControllerClient;
   private D2Client d2Client;
   private PushStatusStoreReader reader;
-  private String storeName;
   private VeniceControllerWrapper parentController;
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 1;
@@ -110,31 +112,44 @@ public class PushStatusStoreMultiColoTest {
     Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
-  public void setUpStore() {
-    storeName = Utils.getUniqueString("store");
-    String owner = "test";
-    // set up push status store.
-    TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, owner, DEFAULT_KEY_SCHEMA, "\"string\""));
-    TestUtils.assertCommand(
-        parentControllerClient.updateStore(
-            storeName,
-            new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-                .setPartitionCount(PARTITION_COUNT)
-                .setActiveActiveReplicationEnabled(true)
-                .setIncrementalPushEnabled(true)));
-    String daVinciPushStatusSystemStoreName =
-        VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
-    VersionCreationResponse versionCreationResponseForDaVinciPushStatusSystemStore = parentControllerClient
-        .emptyPush(daVinciPushStatusSystemStoreName, "test_da_vinci_push_status_system_store_push_1", 10000);
-    assertFalse(
-        versionCreationResponseForDaVinciPushStatusSystemStore.isError(),
-        "New version creation for Da Vinci push status system store: " + daVinciPushStatusSystemStoreName
-            + " should success, but got error: " + versionCreationResponseForDaVinciPushStatusSystemStore.getError());
-    TestUtils.waitForNonDeterministicPushCompletion(
-        versionCreationResponseForDaVinciPushStatusSystemStore.getKafkaTopic(),
-        parentControllerClient,
-        30,
-        TimeUnit.SECONDS);
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testSystemStoreHeartbeat() {
+    String userStoreName = Utils.getUniqueString("new-user-store");
+    NewStoreResponse newStoreResponse = parentControllerClient
+        .createNewStore(userStoreName, "venice-test", DEFAULT_KEY_SCHEMA, STRING_SCHEMA.toString());
+    assertFalse(newStoreResponse.isError(), "Unexpected new store creation failure");
+    String clusterName = "venice-cluster0";
+    IntegrationTestPushUtils
+        .makeSureUserSystemStoreIsOnline(multiRegionMultiClusterWrapper, clusterName, userStoreName);
+    long currentTs = System.currentTimeMillis();
+    for (VeniceMultiClusterWrapper datacenter: childDatacenters) {
+      String childControllerUrl = datacenter.getRandomController().getControllerUrl();
+      try (ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl)) {
+        ControllerResponse response = childControllerClient
+            .sendHeartbeatToSystemStore(VeniceSystemStoreUtils.getMetaStoreName(userStoreName), currentTs);
+        Assert.assertFalse(response.isError());
+        response = childControllerClient
+            .sendHeartbeatToSystemStore(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(userStoreName), currentTs);
+        Assert.assertFalse(response.isError());
+      }
+    }
+
+    for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+      String childControllerUrl = childDatacenter.getRandomController().getControllerUrl();
+      try (ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl)) {
+        TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
+          SystemStoreHeartbeatResponse response =
+              childControllerClient.getHeartbeatFromSystemStore(VeniceSystemStoreUtils.getMetaStoreName(userStoreName));
+          Assert.assertFalse(response.isError());
+          Assert.assertEquals(response.getHeartbeatTimestamp(), currentTs);
+          response = childControllerClient
+              .getHeartbeatFromSystemStore(VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(userStoreName));
+          Assert.assertFalse(response.isError());
+          Assert.assertEquals(response.getHeartbeatTimestamp(), currentTs);
+        });
+      }
+    }
+
   }
 
   @Test(timeOut = TEST_TIMEOUT_MS)

@@ -64,8 +64,10 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.RegionUtils;
@@ -1366,5 +1368,32 @@ public class TestVeniceHelixAdmin {
             .autoMigrateStore(clusterName, destCluster, storeNameForMigration, currStep, Optional.empty()));
 
     assertTrue(exp.getMessage().contains("Store migration is not supported in this cluster: " + clusterName));
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  void testSendHeartbeatToPushStatusStore(boolean isParent) {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    PushStatusStoreWriter mockPushWriter = mock(PushStatusStoreWriter.class);
+    MetaStoreWriter mockMetaWriter = mock(MetaStoreWriter.class);
+
+    doReturn(isParent).when(admin).isParent();
+    doReturn(mockPushWriter).when(admin).getPushStatusStoreWriter();
+    doReturn(mockMetaWriter).when(admin).getMetaStoreWriter();
+    doCallRealMethod().when(admin).sendHeartbeatToSystemStore(anyString(), anyString(), anyLong());
+    String userStore = "test-store";
+    long timestamp = 12345L;
+
+    admin.sendHeartbeatToSystemStore(
+        "clusterA",
+        VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(userStore),
+        timestamp);
+    admin.sendHeartbeatToSystemStore("clusterA", VeniceSystemStoreUtils.getMetaStoreName(userStore), timestamp);
+    if (isParent) {
+      verify(mockMetaWriter, never()).writeHeartbeat(anyString(), anyLong());
+      verify(mockPushWriter, never()).writeHeartbeat(anyString(), anyLong());
+    } else {
+      verify(mockPushWriter).writeHeartbeat(eq(userStore), eq(timestamp));
+      verify(mockMetaWriter).writeHeartbeat(eq(userStore), eq(timestamp));
+    }
   }
 }
