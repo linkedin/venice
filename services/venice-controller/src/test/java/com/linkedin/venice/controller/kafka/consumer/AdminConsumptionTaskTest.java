@@ -1026,7 +1026,7 @@ public class AdminConsumptionTaskTest {
         ));
   }
 
-  @Test(timeOut = TIMEOUT)
+  @Test(timeOut = TIMEOUT * 2)
   public void testRetryLimitForNoStoreException() throws InterruptedException, IOException {
     // Use a store name that doesn't exist to trigger VeniceNoStoreException
     String nonExistentStoreName = Utils.getUniqueString("non_existent_store");
@@ -1049,12 +1049,13 @@ public class AdminConsumptionTaskTest {
     executor.submit(task);
 
     // Wait for the retry mechanism to process the message the maximum number of times
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      verify(admin, times(3)).deleteStore(eq(clusterName), eq(nonExistentStoreName), anyInt(), anyBoolean());
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 2, TimeUnit.MILLISECONDS, () -> {
+      verify(admin, times(AdminConsumptionTask.MAX_RETRIES_FOR_NONEXISTENT_STORE))
+          .deleteStore(eq(clusterName), eq(nonExistentStoreName), anyInt(), anyBoolean());
     });
 
     // Wait for the message to be processed and moved past (skipped after max retries)
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 2, TimeUnit.MILLISECONDS, () -> {
       Assert.assertEquals(getLastOffset(clusterName), 1L);
       // After max retries, the exception should be cleared from problematic stores
       Assert.assertNull(task.getLastExceptionForStore(nonExistentStoreName));

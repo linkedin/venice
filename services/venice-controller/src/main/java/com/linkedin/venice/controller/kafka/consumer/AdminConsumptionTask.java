@@ -76,7 +76,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     Exception exception;
   }
 
-  private static final int MAX_RETRIES_FOR_NONEXISTENT_STORE = 10;
+  public static final int MAX_RETRIES_FOR_NONEXISTENT_STORE = 10;
 
   // A simplified version of ProducerTracker that only checks against previous message's producer info.
   private static class ProducerInfo {
