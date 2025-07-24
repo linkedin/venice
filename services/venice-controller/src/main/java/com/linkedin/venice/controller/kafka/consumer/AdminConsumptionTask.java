@@ -588,10 +588,15 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               Map<Long, Integer> retryCountMap =
                   storeRetryCountMap.computeIfAbsent(storeName, s -> new ConcurrentHashMap<>());
               AdminOperationWrapper nextOp = storeQueue != null ? storeQueue.peek() : null;
+              AdminMessageType messageType = AdminMessageType.valueOf(nextOp.getAdminOperation());
+              // Only allow auto skipping when store not exist for update-store and delete-store admin messages.
+              boolean allowAutoSkip =
+                  messageType == AdminMessageType.UPDATE_STORE || messageType == AdminMessageType.DELETE_STORE;
+
               long offset = nextOp != null ? nextOp.getOffset() : UNASSIGNED_VALUE;
               int currentRetryCount = retryCountMap.getOrDefault(offset, 0);
 
-              if (currentRetryCount >= MAX_RETRIES_FOR_NONEXISTENT_STORE) {
+              if (currentRetryCount >= MAX_RETRIES_FOR_NONEXISTENT_STORE && allowAutoSkip) {
                 // We've reached the maximum retry limit for this store/message, so remove it from the queue
                 if (storeQueue != null && !storeQueue.isEmpty()) {
                   AdminOperationWrapper removedOp = storeQueue.remove();
