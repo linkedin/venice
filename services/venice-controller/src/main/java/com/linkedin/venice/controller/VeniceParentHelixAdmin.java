@@ -1682,7 +1682,6 @@ public class VeniceParentHelixAdmin implements Admin {
           repushSourceVersion,
           store.getLargestUsedRTVersionNumber());
     }
-    cleanupHistoricalVersions(clusterName, storeName);
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
       if (pushType.isBatch()) {
         getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
@@ -1779,6 +1778,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       getSystemStoreLifeCycleHelper().maybeCreateSystemStoreWildcardAcl(storeName);
     }
+    cleanupHistoricalVersions(clusterName, storeName);
     return newVersion;
   }
 
@@ -5969,7 +5969,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * Validates that a store has been completely deleted from all venice clusters cross-regionally
-   * 
+   *
    * @see Admin#validateStoreDeleted(String, String)
    */
   @Override
