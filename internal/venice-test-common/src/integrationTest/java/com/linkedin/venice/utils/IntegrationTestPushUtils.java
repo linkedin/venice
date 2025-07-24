@@ -620,6 +620,7 @@ public class IntegrationTestPushUtils {
       Assert.assertEquals(replicaPerRegionCount, expectedReplicaNumPerRegion);
     }
   }
+
   public static void makeSureUserSystemStoreIsOnline(
       VeniceTwoLayerMultiRegionMultiClusterWrapper clusterWrapper,
       String clusterName,
