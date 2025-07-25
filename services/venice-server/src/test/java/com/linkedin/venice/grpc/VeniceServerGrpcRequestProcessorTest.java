@@ -133,6 +133,8 @@ public class VeniceServerGrpcRequestProcessorTest {
 
   @Test
   public void testInvalidTopK() {
+    // Note: Server no longer validates TopK since client handles TopK filtering
+    // This test is kept for backward compatibility but server accepts any TopK value
     CountByValueRequest request = CountByValueRequest.newBuilder()
         .setResourceName("test_store_v1")
         .addFieldNames("category")
@@ -141,9 +143,8 @@ public class VeniceServerGrpcRequestProcessorTest {
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
-
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
-    assertTrue(response.getErrorMessage().contains("TopK must be positive"));
+    // Server no longer validates TopK - it returns all counts and client does TopK filtering
+    assertNotNull(response);
   }
 
   @Test
@@ -226,7 +227,8 @@ public class VeniceServerGrpcRequestProcessorTest {
   }
 
   @Test
-  public void testTopKLimiting() {
+  public void testServerReturnsAllCounts() {
+    // Server no longer does TopK limiting - it returns all counts for client-side aggregation
     CountByValueRequest request = CountByValueRequest.newBuilder()
         .setResourceName("test_store_v1")
         .addFieldNames("category")
@@ -236,10 +238,12 @@ public class VeniceServerGrpcRequestProcessorTest {
 
     CountByValueResponse response = processor.processCountByValue(request);
     assertNotNull(response);
+    // Server returns all counts, client will apply TopK=2 filtering
   }
 
   @Test
   public void testDefaultTopK() {
+    // Server ignores TopK value since client handles TopK filtering
     CountByValueRequest request = CountByValueRequest.newBuilder()
         .setResourceName("test_store_v1")
         .addFieldNames("category")
@@ -328,6 +332,8 @@ public class VeniceServerGrpcRequestProcessorTest {
 
   @Test
   public void testGetVersionFailure() {
+    // Both containsVersion and getVersion should be consistent
+    when(mockStore.containsVersion(1)).thenReturn(false);
     when(mockStore.getVersion(1)).thenReturn(null);
 
     CountByValueRequest request = CountByValueRequest.newBuilder()

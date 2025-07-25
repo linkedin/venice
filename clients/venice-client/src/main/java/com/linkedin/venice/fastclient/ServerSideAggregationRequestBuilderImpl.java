@@ -5,17 +5,23 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
 import com.linkedin.venice.protocols.CountByValueRequest;
+import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.serializer.RecordSerializer;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 
 /**
  * Implementation of ServerSideAggregationRequestBuilder that uses gRPC
- * to perform server-side aggregations.
+ * with client-side partitioning (similar to batchGet).
+ * Each partition server processes only its local data, and client aggregates results.
  */
 public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAggregationRequestBuilder<K> {
   private final StoreMetadata metadata;
@@ -77,43 +83,139 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
       throw new VeniceClientException("Must call countByValue() before execute()");
     }
 
-    // Serialize keys
-    List<ByteString> serializedKeys = new ArrayList<>(keys.size());
-    for (K key: keys) {
-      byte[] keyBytes = keySerializer.serialize(key);
-      serializedKeys.add(ByteString.copyFrom(keyBytes));
-    }
-
-    // Build the gRPC request with ALL keys (no client-side partitioning)
     int currentVersion = metadata.getCurrentStoreVersion();
     String resourceName = metadata.getStoreName() + "_v" + currentVersion;
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName(resourceName)
-        .addAllKeys(serializedKeys)
-        .addAllFieldNames(fieldNames)
-        .setTopK(topK)
-        .build();
 
-    // Send single request to any available server - server handles partition routing and aggregation
-    List<String> replicas = metadata.getReplicas(0, currentVersion); // Get any replica
-    if (replicas.isEmpty()) {
-      throw new VeniceClientException("No available replicas found for store: " + metadata.getStoreName());
+    // Step 1: Partition keys by their target partitions (client-side partitioning)
+    Map<Integer, List<K>> partitionToKeysMap = partitionKeys(keys, currentVersion);
+
+    // Step 2: Send requests to each partition server in parallel
+    List<CompletableFuture<CountByValueResponse>> partitionFutures = new ArrayList<>();
+
+    for (Map.Entry<Integer, List<K>> entry: partitionToKeysMap.entrySet()) {
+      int partitionId = entry.getKey();
+      List<K> partitionKeys = entry.getValue();
+
+      // Get server address for this partition
+      List<String> replicas = metadata.getReplicas(currentVersion, partitionId);
+      if (replicas.isEmpty()) {
+        throw new VeniceClientException(
+            "No available replicas found for partition " + partitionId + " in store: " + metadata.getStoreName());
+      }
+
+      String serverAddress = replicas.get(0); // Use first available replica
+
+      // Serialize keys for this partition
+      List<ByteString> serializedKeys = partitionKeys.stream()
+          .map(key -> ByteString.copyFrom(keySerializer.serialize(key)))
+          .collect(Collectors.toList());
+
+      // Build request for this partition (no topK - server returns all counts)
+      CountByValueRequest request = CountByValueRequest.newBuilder()
+          .setResourceName(resourceName)
+          .addAllKeys(serializedKeys)
+          .addAllFieldNames(fieldNames)
+          .setTopK(Integer.MAX_VALUE) // Request all counts from each partition
+          .build();
+
+      // Send request to partition server
+      CompletableFuture<CountByValueResponse> future =
+          grpcTransportClient.countByValue(serverAddress, request).thenApply(response -> {
+            if (response.getErrorCode() != VeniceReadResponseStatus.OK) {
+              String errorMessage = response.getErrorMessage();
+              throw new VeniceClientException(
+                  String.format(
+                      "Partition %d aggregation failed with error code %d: %s",
+                      partitionId,
+                      response.getErrorCode(),
+                      errorMessage.isEmpty() ? "Unknown error" : errorMessage));
+            }
+            return response;
+          });
+
+      partitionFutures.add(future);
     }
 
-    String serverAddress = replicas.get(0); // Use first available server
+    // Step 3: Aggregate results from all partitions and compute TopK on client side
+    return CompletableFuture.allOf(partitionFutures.toArray(new CompletableFuture[0]))
+        .thenApply(v -> aggregatePartitionResults(partitionFutures));
+  }
 
-    // Send single request to server - server does ALL the work
-    return grpcTransportClient.countByValue(serverAddress, request).thenApply(response -> {
-      if (response.getErrorCode() == VeniceReadResponseStatus.OK) {
-        return new AggregationResponseImpl(response);
-      } else {
-        String errorMessage = response.getErrorMessage();
-        String errorMsg = String.format(
-            "Server-side aggregation failed with error code %d: %s",
-            response.getErrorCode(),
-            errorMessage.isEmpty() ? "Unknown error" : errorMessage);
-        throw new VeniceClientException(errorMsg);
+  /**
+   * Partition keys by their target partitions using the store's partitioner.
+   */
+  private Map<Integer, List<K>> partitionKeys(Set<K> keys, int version) {
+    Map<Integer, List<K>> partitionToKeysMap = new HashMap<>();
+
+    for (K key: keys) {
+      byte[] keyBytes = keySerializer.serialize(key);
+      int partitionId = metadata.getPartitionId(version, keyBytes);
+      partitionToKeysMap.computeIfAbsent(partitionId, k -> new ArrayList<>()).add(key);
+    }
+
+    return partitionToKeysMap;
+  }
+
+  /**
+   * Aggregate results from all partition servers and compute TopK on client side.
+   */
+  private AggregationResponse aggregatePartitionResults(List<CompletableFuture<CountByValueResponse>> futures) {
+    try {
+      // Initialize global counts for each field
+      Map<String, Map<String, Integer>> globalFieldCounts = new HashMap<>();
+      for (String fieldName: fieldNames) {
+        globalFieldCounts.put(fieldName, new HashMap<>());
       }
-    });
+
+      // Merge counts from all partitions
+      for (CompletableFuture<CountByValueResponse> future: futures) {
+        CountByValueResponse partitionResponse = future.get();
+
+        for (Map.Entry<String, com.linkedin.venice.protocols.ValueCount> entry: partitionResponse
+            .getFieldToValueCountsMap()
+            .entrySet()) {
+          String fieldName = entry.getKey();
+          Map<String, Integer> partitionFieldCounts = entry.getValue().getValueToCountsMap();
+
+          Map<String, Integer> globalFieldCount = globalFieldCounts.get(fieldName);
+          if (globalFieldCount != null) {
+            // Merge partition counts into global counts
+            for (Map.Entry<String, Integer> countEntry: partitionFieldCounts.entrySet()) {
+              globalFieldCount.merge(countEntry.getKey(), countEntry.getValue(), Integer::sum);
+            }
+          }
+        }
+      }
+
+      // Compute TopK for each field on client side
+      com.linkedin.venice.protocols.CountByValueResponse.Builder responseBuilder =
+          com.linkedin.venice.protocols.CountByValueResponse.newBuilder();
+
+      for (String fieldName: fieldNames) {
+        Map<String, Integer> fieldCounts = globalFieldCounts.get(fieldName);
+        if (fieldCounts != null) {
+          // Sort by count descending and take topK
+          Map<String, Integer> topKCounts = fieldCounts.entrySet()
+              .stream()
+              .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+              .limit(topK)
+              .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new));
+
+          responseBuilder.putFieldToValueCounts(
+              fieldName,
+              com.linkedin.venice.protocols.ValueCount.newBuilder().putAllValueToCounts(topKCounts).build());
+        } else {
+          // Add empty result for this field
+          responseBuilder
+              .putFieldToValueCounts(fieldName, com.linkedin.venice.protocols.ValueCount.newBuilder().build());
+        }
+      }
+
+      responseBuilder.setErrorCode(VeniceReadResponseStatus.OK);
+      return new AggregationResponseImpl(responseBuilder.build());
+
+    } catch (Exception e) {
+      throw new VeniceClientException("Failed to aggregate partition results", e);
+    }
   }
 }

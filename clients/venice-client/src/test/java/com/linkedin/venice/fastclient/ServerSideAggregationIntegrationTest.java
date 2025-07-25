@@ -1,8 +1,6 @@
 package com.linkedin.venice.fastclient;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -62,23 +60,34 @@ public class ServerSideAggregationIntegrationTest {
     // Setup test data
     Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2", "key3"));
 
-    // Setup metadata to return replicas for all partitions (0-3)
-    when(mockMetadata.getReplicas(anyInt(), eq(1))).thenReturn(Arrays.asList("server1:8080", "server2:8080"));
+    // Setup metadata for client-side partitioning
+    when(mockMetadata.getPartitionId(eq(1), any(byte[].class))).thenReturn(0, 1, 0); // key1->partition0,
+                                                                                     // key2->partition1,
+                                                                                     // key3->partition0
+    when(mockMetadata.getReplicas(1, 0)).thenReturn(Arrays.asList("server1:8080"));
+    when(mockMetadata.getReplicas(1, 1)).thenReturn(Arrays.asList("server2:8080"));
 
-    // Setup gRPC transport to return successful response from each partition call
-    ValueCount fieldCounts = ValueCount.newBuilder()
-        .putValueToCounts("value1", 5)
-        .putValueToCounts("value2", 3)
-        .putValueToCounts("value3", 1)
-        .build();
+    // Setup gRPC transport to return different responses from each partition
+    ValueCount partition0FieldCounts =
+        ValueCount.newBuilder().putValueToCounts("value1", 3).putValueToCounts("value2", 2).build();
 
-    CountByValueResponse mockResponse = CountByValueResponse.newBuilder()
-        .putFieldToValueCounts("testField", fieldCounts)
+    ValueCount partition1FieldCounts =
+        ValueCount.newBuilder().putValueToCounts("value1", 2).putValueToCounts("value3", 1).build();
+
+    CountByValueResponse partition0Response = CountByValueResponse.newBuilder()
+        .putFieldToValueCounts("testField", partition0FieldCounts)
         .setErrorCode(VeniceReadResponseStatus.OK)
         .build();
 
-    when(mockGrpcTransportClient.countByValue(anyString(), any(CountByValueRequest.class)))
-        .thenReturn(CompletableFuture.completedFuture(mockResponse));
+    CountByValueResponse partition1Response = CountByValueResponse.newBuilder()
+        .putFieldToValueCounts("testField", partition1FieldCounts)
+        .setErrorCode(VeniceReadResponseStatus.OK)
+        .build();
+
+    when(mockGrpcTransportClient.countByValue(eq("server1:8080"), any(CountByValueRequest.class)))
+        .thenReturn(CompletableFuture.completedFuture(partition0Response));
+    when(mockGrpcTransportClient.countByValue(eq("server2:8080"), any(CountByValueRequest.class)))
+        .thenReturn(CompletableFuture.completedFuture(partition1Response));
 
     // Execute the aggregation
     builder.countByValue("testField", 10);
@@ -88,15 +97,15 @@ public class ServerSideAggregationIntegrationTest {
     AggregationResponse response = future.get();
     assertNotNull(response);
     assertFalse(response.hasError());
-    // Since each partition returns 1 RCU and keys might be distributed across partitions,
-    // the total RCU will be the number of partition calls made
-    assertTrue(response.getKeysProcessed() >= 1);
 
     Map<String, Integer> valueCounts = response.getValueCounts();
-    // Values will be aggregated from multiple partition calls
+    // Client aggregates results from both partitions
     assertTrue(valueCounts.containsKey("value1"));
     assertTrue(valueCounts.containsKey("value2"));
     assertTrue(valueCounts.containsKey("value3"));
+    assertEquals(valueCounts.get("value1"), Integer.valueOf(5)); // 3+2 from both partitions
+    assertEquals(valueCounts.get("value2"), Integer.valueOf(2)); // only from partition0
+    assertEquals(valueCounts.get("value3"), Integer.valueOf(1)); // only from partition1
 
     // Test multi-field response
     Map<String, Map<String, Integer>> fieldToValueCounts = response.getFieldToValueCounts();
@@ -104,7 +113,7 @@ public class ServerSideAggregationIntegrationTest {
     assertTrue(fieldToValueCounts.containsKey("testField"));
     Map<String, Integer> testFieldCounts = fieldToValueCounts.get("testField");
     assertEquals(testFieldCounts.get("value1"), Integer.valueOf(5));
-    assertEquals(testFieldCounts.get("value2"), Integer.valueOf(3));
+    assertEquals(testFieldCounts.get("value2"), Integer.valueOf(2));
     assertEquals(testFieldCounts.get("value3"), Integer.valueOf(1));
   }
 
@@ -139,22 +148,38 @@ public class ServerSideAggregationIntegrationTest {
     // Setup test data
     Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2"));
 
-    // Setup metadata
-    when(mockMetadata.getReplicas(anyInt(), eq(1))).thenReturn(Arrays.asList("server1:8080"));
+    // Setup metadata for client-side partitioning
+    when(mockMetadata.getPartitionId(eq(1), any(byte[].class))).thenReturn(0, 1); // key1->partition0, key2->partition1
+    when(mockMetadata.getReplicas(1, 0)).thenReturn(Arrays.asList("server1:8080"));
+    when(mockMetadata.getReplicas(1, 1)).thenReturn(Arrays.asList("server2:8080"));
 
-    // Setup gRPC transport to return successful response with multiple fields
-    ValueCount field1Counts = ValueCount.newBuilder().putValueToCounts("red", 10).putValueToCounts("blue", 5).build();
+    // Setup gRPC transport to return responses from different partitions
+    ValueCount partition0Field1Counts =
+        ValueCount.newBuilder().putValueToCounts("red", 6).putValueToCounts("blue", 3).build();
+    ValueCount partition0Field2Counts =
+        ValueCount.newBuilder().putValueToCounts("large", 4).putValueToCounts("small", 3).build();
 
-    ValueCount field2Counts = ValueCount.newBuilder().putValueToCounts("large", 8).putValueToCounts("small", 7).build();
+    ValueCount partition1Field1Counts =
+        ValueCount.newBuilder().putValueToCounts("red", 4).putValueToCounts("blue", 2).build();
+    ValueCount partition1Field2Counts =
+        ValueCount.newBuilder().putValueToCounts("large", 4).putValueToCounts("small", 4).build();
 
-    CountByValueResponse mockResponse = CountByValueResponse.newBuilder()
-        .putFieldToValueCounts("color", field1Counts)
-        .putFieldToValueCounts("size", field2Counts)
+    CountByValueResponse partition0Response = CountByValueResponse.newBuilder()
+        .putFieldToValueCounts("color", partition0Field1Counts)
+        .putFieldToValueCounts("size", partition0Field2Counts)
         .setErrorCode(VeniceReadResponseStatus.OK)
         .build();
 
-    when(mockGrpcTransportClient.countByValue(anyString(), any(CountByValueRequest.class)))
-        .thenReturn(CompletableFuture.completedFuture(mockResponse));
+    CountByValueResponse partition1Response = CountByValueResponse.newBuilder()
+        .putFieldToValueCounts("color", partition1Field1Counts)
+        .putFieldToValueCounts("size", partition1Field2Counts)
+        .setErrorCode(VeniceReadResponseStatus.OK)
+        .build();
+
+    when(mockGrpcTransportClient.countByValue(eq("server1:8080"), any(CountByValueRequest.class)))
+        .thenReturn(CompletableFuture.completedFuture(partition0Response));
+    when(mockGrpcTransportClient.countByValue(eq("server2:8080"), any(CountByValueRequest.class)))
+        .thenReturn(CompletableFuture.completedFuture(partition1Response));
 
     // Execute the aggregation with multiple fields
     builder.countByValue(Arrays.asList("color", "size"), 5);
@@ -169,17 +194,17 @@ public class ServerSideAggregationIntegrationTest {
     assertNotNull(fieldCounts);
     assertEquals(fieldCounts.size(), 2);
 
-    // Verify color field counts
+    // Verify color field counts (aggregated from both partitions)
     assertTrue(fieldCounts.containsKey("color"));
     Map<String, Integer> colorCounts = fieldCounts.get("color");
-    assertEquals(colorCounts.get("red"), Integer.valueOf(10));
-    assertEquals(colorCounts.get("blue"), Integer.valueOf(5));
+    assertEquals(colorCounts.get("red"), Integer.valueOf(10)); // 6+4
+    assertEquals(colorCounts.get("blue"), Integer.valueOf(5)); // 3+2
 
-    // Verify size field counts
+    // Verify size field counts (aggregated from both partitions)
     assertTrue(fieldCounts.containsKey("size"));
     Map<String, Integer> sizeCounts = fieldCounts.get("size");
-    assertEquals(sizeCounts.get("large"), Integer.valueOf(8));
-    assertEquals(sizeCounts.get("small"), Integer.valueOf(7));
+    assertEquals(sizeCounts.get("large"), Integer.valueOf(8)); // 4+4
+    assertEquals(sizeCounts.get("small"), Integer.valueOf(7)); // 3+4
   }
 
   @Test
@@ -203,8 +228,10 @@ public class ServerSideAggregationIntegrationTest {
   public void testNoAvailableReplicas() {
     Set<String> keys = new HashSet<>(Arrays.asList("key1"));
 
-    // Setup metadata to return no replicas
-    when(mockMetadata.getReplicas(0, 1)).thenReturn(Arrays.asList());
+    // Setup metadata for client-side partitioning
+    when(mockMetadata.getPartitionId(eq(1), any(byte[].class))).thenReturn(0);
+    // Setup metadata to return no replicas for partition 0
+    when(mockMetadata.getReplicas(1, 0)).thenReturn(Arrays.asList());
 
     builder.countByValue("testField", 10);
 
@@ -220,8 +247,9 @@ public class ServerSideAggregationIntegrationTest {
   public void testServerError() throws Exception {
     Set<String> keys = new HashSet<>(Arrays.asList("key1"));
 
-    // Setup metadata to return replicas for any partition
-    when(mockMetadata.getReplicas(anyInt(), eq(1))).thenReturn(Arrays.asList("server1:8080"));
+    // Setup metadata for client-side partitioning
+    when(mockMetadata.getPartitionId(eq(1), any(byte[].class))).thenReturn(0);
+    when(mockMetadata.getReplicas(1, 0)).thenReturn(Arrays.asList("server1:8080"));
 
     // Setup gRPC transport to return error response
     CountByValueResponse errorResponse = CountByValueResponse.newBuilder()
@@ -229,7 +257,7 @@ public class ServerSideAggregationIntegrationTest {
         .setErrorMessage("Server error")
         .build();
 
-    when(mockGrpcTransportClient.countByValue(anyString(), any(CountByValueRequest.class)))
+    when(mockGrpcTransportClient.countByValue(eq("server1:8080"), any(CountByValueRequest.class)))
         .thenReturn(CompletableFuture.completedFuture(errorResponse));
 
     builder.countByValue("testField", 10);
@@ -242,54 +270,71 @@ public class ServerSideAggregationIntegrationTest {
       // The exception might be wrapped in ExecutionException
       Throwable cause = e.getCause() != null ? e.getCause() : e;
       assertTrue(cause instanceof VeniceClientException);
-      assertTrue(cause.getMessage().contains("Server-side aggregation failed"));
+      assertTrue(cause.getMessage().contains("Partition 0 aggregation failed"));
     }
   }
 
   @Test
-  public void testServerSideAggregation() throws Exception {
+  public void testClientSidePartitioning() throws Exception {
     // Setup test data with multiple keys
     Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2", "key3", "key4"));
 
-    // Setup metadata to return any replica (client sends to any server)
-    when(mockMetadata.getReplicas(0, 1)).thenReturn(Arrays.asList("server1:8080"));
+    // Setup metadata for client-side partitioning - keys distributed across 2 partitions
+    when(mockMetadata.getPartitionId(eq(1), any(byte[].class))).thenReturn(0, 1, 0, 1); // key1->partition0,
+                                                                                        // key2->partition1,
+                                                                                        // key3->partition0,
+                                                                                        // key4->partition1
+    when(mockMetadata.getReplicas(1, 0)).thenReturn(Arrays.asList("server1:8080"));
+    when(mockMetadata.getReplicas(1, 1)).thenReturn(Arrays.asList("server2:8080"));
 
-    // Setup gRPC transport to return aggregated response from server
-    ValueCount fieldCounts =
-        ValueCount.newBuilder().putValueToCounts("electronics", 12).putValueToCounts("books", 4).build();
+    // Setup gRPC transport to return responses from different partitions
+    ValueCount partition0FieldCounts =
+        ValueCount.newBuilder().putValueToCounts("electronics", 8).putValueToCounts("books", 2).build();
 
-    CountByValueResponse mockResponse = CountByValueResponse.newBuilder()
-        .putFieldToValueCounts("category", fieldCounts)
+    ValueCount partition1FieldCounts =
+        ValueCount.newBuilder().putValueToCounts("electronics", 4).putValueToCounts("books", 2).build();
+
+    CountByValueResponse partition0Response = CountByValueResponse.newBuilder()
+        .putFieldToValueCounts("category", partition0FieldCounts)
         .setErrorCode(VeniceReadResponseStatus.OK)
         .build();
 
-    when(mockGrpcTransportClient.countByValue(anyString(), any(CountByValueRequest.class)))
-        .thenReturn(CompletableFuture.completedFuture(mockResponse));
+    CountByValueResponse partition1Response = CountByValueResponse.newBuilder()
+        .putFieldToValueCounts("category", partition1FieldCounts)
+        .setErrorCode(VeniceReadResponseStatus.OK)
+        .build();
+
+    when(mockGrpcTransportClient.countByValue(eq("server1:8080"), any(CountByValueRequest.class)))
+        .thenReturn(CompletableFuture.completedFuture(partition0Response));
+    when(mockGrpcTransportClient.countByValue(eq("server2:8080"), any(CountByValueRequest.class)))
+        .thenReturn(CompletableFuture.completedFuture(partition1Response));
 
     // Execute the aggregation
     builder.countByValue("category", 5);
     CompletableFuture<AggregationResponse> future = builder.execute(keys);
 
-    // Verify that the client made only ONE call to the server (server handles all partitions)
-    verify(mockGrpcTransportClient, times(1)).countByValue(anyString(), any(CountByValueRequest.class));
+    // Verify that the client made TWO calls (one to each partition server)
+    verify(mockGrpcTransportClient, times(1)).countByValue(eq("server1:8080"), any(CountByValueRequest.class));
+    verify(mockGrpcTransportClient, times(1)).countByValue(eq("server2:8080"), any(CountByValueRequest.class));
 
-    // Verify the response contains the server-aggregated results
+    // Verify the response contains the client-aggregated results
     AggregationResponse response = future.get();
     assertNotNull(response);
     assertFalse(response.hasError());
 
     Map<String, Integer> valueCounts = response.getValueCounts();
     assertEquals(valueCounts.size(), 2);
-    assertEquals(valueCounts.get("electronics"), Integer.valueOf(12));
-    assertEquals(valueCounts.get("books"), Integer.valueOf(4));
+    assertEquals(valueCounts.get("electronics"), Integer.valueOf(12)); // 8+4 from both partitions
+    assertEquals(valueCounts.get("books"), Integer.valueOf(4)); // 2+2 from both partitions
   }
 
   @Test
-  public void testSingleKeyAggregation() throws Exception {
+  public void testSinglePartitionAggregation() throws Exception {
     Set<String> keys = new HashSet<>(Arrays.asList("key1", "key2"));
 
-    // Setup metadata to return any replica
-    when(mockMetadata.getReplicas(0, 1)).thenReturn(Arrays.asList("server1:8080"));
+    // Setup metadata so both keys go to the same partition
+    when(mockMetadata.getPartitionId(eq(1), any(byte[].class))).thenReturn(0, 0); // both keys go to partition 0
+    when(mockMetadata.getReplicas(1, 0)).thenReturn(Arrays.asList("server1:8080"));
 
     ValueCount singleFieldCounts = ValueCount.newBuilder().putValueToCounts("test", 2).build();
 
@@ -298,14 +343,14 @@ public class ServerSideAggregationIntegrationTest {
         .setErrorCode(VeniceReadResponseStatus.OK)
         .build();
 
-    when(mockGrpcTransportClient.countByValue(anyString(), any(CountByValueRequest.class)))
+    when(mockGrpcTransportClient.countByValue(eq("server1:8080"), any(CountByValueRequest.class)))
         .thenReturn(CompletableFuture.completedFuture(mockResponse));
 
     builder.countByValue("field", 10);
     CompletableFuture<AggregationResponse> future = builder.execute(keys);
 
-    // Verify single call to server
-    verify(mockGrpcTransportClient, times(1)).countByValue(anyString(), any(CountByValueRequest.class));
+    // Verify single call to server (since all keys are in same partition)
+    verify(mockGrpcTransportClient, times(1)).countByValue(eq("server1:8080"), any(CountByValueRequest.class));
 
     AggregationResponse response = future.get();
     assertNotNull(response);
