@@ -1448,7 +1448,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @VisibleForTesting
-  public AggVersionedDaVinciRecordTransformerStats getRecordTransformerStats() {
+  synchronized public AggVersionedDaVinciRecordTransformerStats getRecordTransformerStats() {
     return recordTransformerStats;
   }
 }
