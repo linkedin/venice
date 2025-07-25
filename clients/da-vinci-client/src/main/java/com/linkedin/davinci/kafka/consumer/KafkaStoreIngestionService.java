@@ -1446,4 +1446,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public DaVinciRecordTransformerConfig getRecordTransformerConfig(String storeName) {
     return storeNameToRecordTransformerConfig.get(storeName);
   }
+
+  @VisibleForTesting
+  public AggVersionedDaVinciRecordTransformerStats getRecordTransformerStats() {
+    return recordTransformerStats;
+  }
 }
