@@ -41,7 +41,7 @@ public class BatchingVeniceWriterTest {
     int protocolId = 200;
     long logicalTimestamp = 10000L;
 
-    ProducerBufferRecord<byte[], byte[]> putRecord = new ProducerBufferRecord<>(
+    ProducerBufferRecord putRecord = new ProducerBufferRecord(
         MessageType.PUT,
         keyBytes,
         valueBytes,
@@ -53,7 +53,7 @@ public class BatchingVeniceWriterTest {
     writer.sendRecord(putRecord);
     verify(internalWriter, times(1)).put(eq(keyBytes), eq(valueBytes), eq(valueSchemaId), eq(logicalTimestamp), any());
 
-    ProducerBufferRecord<byte[], byte[]> deleteRecord = new ProducerBufferRecord<>(
+    ProducerBufferRecord deleteRecord = new ProducerBufferRecord(
         MessageType.DELETE,
         keyBytes,
         null,
@@ -65,7 +65,7 @@ public class BatchingVeniceWriterTest {
     writer.sendRecord(deleteRecord);
     verify(internalWriter, times(1)).delete(eq(keyBytes), eq(logicalTimestamp), any());
 
-    ProducerBufferRecord<byte[], byte[]> updateRecord = new ProducerBufferRecord<>(
+    ProducerBufferRecord updateRecord = new ProducerBufferRecord(
         MessageType.UPDATE,
         keyBytes,
         null,
@@ -87,8 +87,8 @@ public class BatchingVeniceWriterTest {
     VeniceKafkaSerializer keySerializer = new StringSerializer();
     doReturn(keySerializer).when(writer).getKeySerializer();
     doReturn("abc").when(writer).getTopicName();
-    List<ProducerBufferRecord<byte[], byte[]>> bufferRecordList = new ArrayList<>();
-    Map<ByteBuffer, ProducerBufferRecord<byte[], byte[]>> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+    List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
+    Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
     doReturn(bufferRecordIndex).when(writer).getBufferRecordIndex();
     doReturn(bufferRecordList).when(writer).getBufferRecordList();
     doCallRealMethod().when(writer).addRecordToBuffer(any(), any(), any(), any(), anyInt(), anyInt(), any(), anyLong());
@@ -134,24 +134,24 @@ public class BatchingVeniceWriterTest {
     writer.put(key, valueBytes4, valueSchemaId, callback4);
     Assert.assertEquals(bufferRecordList.size(), 4);
     Assert.assertFalse(bufferRecordIndex.isEmpty());
-    Assert.assertNull(bufferRecordList.get(0).getValue());
+    Assert.assertNull(bufferRecordList.get(0).getSerializedValue());
     Assert.assertTrue(bufferRecordList.get(0).shouldSkipProduce());
     Assert.assertEquals(bufferRecordList.get(0).getLogicalTimestamp(), VeniceWriter.APP_DEFAULT_LOGICAL_TS);
 
-    Assert.assertEquals(bufferRecordList.get(1).getUpdate(), valueBytes2);
+    Assert.assertEquals(bufferRecordList.get(1).getSerializedUpdate(), valueBytes2);
     Assert.assertFalse(bufferRecordList.get(1).shouldSkipProduce());
     Assert.assertEquals(bufferRecordList.get(1).getLogicalTimestamp(), VeniceWriter.APP_DEFAULT_LOGICAL_TS);
 
-    Assert.assertEquals(bufferRecordList.get(2).getValue(), valueBytes3);
+    Assert.assertEquals(bufferRecordList.get(2).getSerializedValue(), valueBytes3);
     Assert.assertFalse(bufferRecordList.get(2).shouldSkipProduce());
     Assert.assertEquals(bufferRecordList.get(2).getLogicalTimestamp(), logicalTimestamp);
 
-    Assert.assertEquals(bufferRecordList.get(3).getValue(), valueBytes4);
+    Assert.assertEquals(bufferRecordList.get(3).getSerializedValue(), valueBytes4);
     Assert.assertFalse(bufferRecordList.get(3).shouldSkipProduce());
     Assert.assertEquals(bufferRecordList.get(3).getLogicalTimestamp(), VeniceWriter.APP_DEFAULT_LOGICAL_TS);
 
     // Index should only contain 1 mapping.
-    Assert.assertEquals(bufferRecordIndex.get(ByteBuffer.wrap(serializedKey)).getValue(), valueBytes4);
+    Assert.assertEquals(bufferRecordIndex.get(ByteBuffer.wrap(serializedKey)).getSerializedValue(), valueBytes4);
 
     // Perform produce operation
     writer.checkAndMaybeProduceBatchRecord();

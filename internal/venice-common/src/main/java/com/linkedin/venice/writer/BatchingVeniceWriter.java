@@ -54,10 +54,12 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   private final int maxBatchSizeInBytes;
   private final ReentrantLock lock = new ReentrantLock();
   private final ExecutorService checkServiceExecutor = Executors.newSingleThreadExecutor();
-  private final List<ProducerBufferRecord<V, U>> bufferRecordList = new ArrayList<>();
-  private final Map<ByteBuffer, ProducerBufferRecord<V, U>> bufferRecordIndex = new VeniceConcurrentHashMap<>();
-  private final VeniceWriter<byte[], V, U> veniceWriter;
+  private final List<ProducerBufferRecord> bufferRecordList = new ArrayList<>();
+  private final Map<ByteBuffer, ProducerBufferRecord> bufferRecordIndex = new VeniceConcurrentHashMap<>();
+  private final VeniceWriter<byte[], byte[], byte[]> veniceWriter;
   private final VeniceKafkaSerializer keySerializer;
+  private final VeniceKafkaSerializer valueSerializer;
+  private final VeniceKafkaSerializer updateSerializer;
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
   private final SchemaFetcherBackedStoreSchemaCache storeSchemaCache;
   private volatile long lastBatchProduceMs;
@@ -71,6 +73,8 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
     this.batchIntervalInMs = params.getBatchIntervalInMs();
     this.maxBatchSizeInBytes = params.getMaxBatchSizeInBytes();
     this.keySerializer = params.getKeyPayloadSerializer();
+    this.valueSerializer = params.getValuePayloadSerializer();
+    this.updateSerializer = params.getWriteComputePayloadSerializer();
     this.storeSchemaCache = new SchemaFetcherBackedStoreSchemaCache(params.getStoreSchemaFetcher());
     /**
      * We introduce an internal Venice writer with byte[] as the key type for any input key type. This is to make sure
@@ -81,6 +85,8 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
      */
     VeniceWriterOptions internalWriterParams =
         new VeniceWriterOptions.Builder(params.getTopicName(), params).setKeyPayloadSerializer(new DefaultSerializer())
+            .setValuePayloadSerializer(new DefaultSerializer())
+            .setWriteComputePayloadSerializer(new DefaultSerializer())
             .build();
     this.veniceWriter = new VeniceWriter<>(internalWriterParams, props, producerAdapter);
 
@@ -239,10 +245,9 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       if (System.currentTimeMillis() == lastBatchProduceMs) {
         Utils.sleep(1);
       }
-      for (ProducerBufferRecord<V, U> record: getBufferRecordList()) {
+      for (ProducerBufferRecord record: getBufferRecordList()) {
         if (record.shouldSkipProduce()) {
-          ProducerBufferRecord<V, U> latestRecord =
-              getBufferRecordIndex().get(ByteBuffer.wrap(record.getSerializedKey()));
+          ProducerBufferRecord latestRecord = getBufferRecordIndex().get(ByteBuffer.wrap(record.getSerializedKey()));
           if (latestRecord != null) {
             latestRecord.addDependentCallback(record.getCallback());
           }
@@ -278,6 +283,8 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       storeSchemaCache.maybeUpdateSupersetSchema(schemaId);
     }
     byte[] serializedKey = getKeySerializer().serialize(getTopicName(), key);
+    byte[] serializedValue = value == null ? null : getValueSerializer().serialize(getTopicName(), value);
+    byte[] serializedUpdate = update == null ? null : getUpdateSerializer().serialize(getTopicName(), update);
     CompletableFuture<PubSubProduceResult> produceResultFuture;
     getLock().lock();
     try {
@@ -285,29 +292,29 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
        * For logical timestamp record, timestamp compaction is not supported
        * For UPDATE, it is not supported in the current scope, support will be added in the future iteration.
        */
-      ProducerBufferRecord<V, U> record;
+      ProducerBufferRecord record;
       if (messageType.equals(MessageType.UPDATE) || logicalTimestamp > 0) {
-        record = new ProducerBufferRecord<>(
+        record = new ProducerBufferRecord(
             messageType,
             serializedKey,
-            value,
-            update,
+            serializedValue,
+            serializedUpdate,
             schemaId,
             protocolId,
             callback,
             logicalTimestamp);
         produceResultFuture = new CompletableFuture<>();
       } else {
-        record = new ProducerBufferRecord<>(
+        record = new ProducerBufferRecord(
             messageType,
             serializedKey,
-            value,
-            update,
+            serializedValue,
+            serializedUpdate,
             schemaId,
             protocolId,
             callback,
             logicalTimestamp);
-        ProducerBufferRecord<V, U> prevRecord = getBufferRecordIndex().put(ByteBuffer.wrap(serializedKey), record);
+        ProducerBufferRecord prevRecord = getBufferRecordIndex().put(ByteBuffer.wrap(serializedKey), record);
         if (prevRecord != null) {
           prevRecord.setSkipProduce(true);
           // Try to reuse the same produce future.
@@ -329,7 +336,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
     return produceResultFuture;
   }
 
-  void sendRecord(ProducerBufferRecord<V, U> record) {
+  void sendRecord(ProducerBufferRecord record) {
     MessageType messageType = record.getMessageType();
     PubSubProducerCallback finalCallback = record.getCallback();
     if (!record.getDependentCallbackList().isEmpty()) {
@@ -340,7 +347,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       case PUT:
         produceFuture = getVeniceWriter().put(
             record.getSerializedKey(),
-            record.getValue(),
+            record.getSerializedValue(),
             record.getSchemaId(),
             record.getLogicalTimestamp(),
             finalCallback);
@@ -348,7 +355,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       case UPDATE:
         produceFuture = getVeniceWriter().update(
             record.getSerializedKey(),
-            record.getUpdate(),
+            record.getSerializedUpdate(),
             record.getSchemaId(),
             record.getProtocolId(),
             finalCallback,
@@ -381,11 +388,11 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
     }
   }
 
-  List<ProducerBufferRecord<V, U>> getBufferRecordList() {
+  List<ProducerBufferRecord> getBufferRecordList() {
     return bufferRecordList;
   }
 
-  Map<ByteBuffer, ProducerBufferRecord<V, U>> getBufferRecordIndex() {
+  Map<ByteBuffer, ProducerBufferRecord> getBufferRecordIndex() {
     return bufferRecordIndex;
   }
 
@@ -405,7 +412,15 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
     return keySerializer;
   }
 
-  VeniceWriter<byte[], V, U> getVeniceWriter() {
+  VeniceKafkaSerializer getValueSerializer() {
+    return valueSerializer;
+  }
+
+  VeniceKafkaSerializer getUpdateSerializer() {
+    return updateSerializer;
+  }
+
+  VeniceWriter<byte[], byte[], byte[]> getVeniceWriter() {
     return veniceWriter;
   }
 }
