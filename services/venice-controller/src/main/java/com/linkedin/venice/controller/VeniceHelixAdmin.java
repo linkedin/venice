@@ -3002,18 +3002,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
             }
             long createBatchTopicStartTime = System.currentTimeMillis();
-            topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
             if (!isParent()) {
-            topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
-            createBatchTopics(
-                version,
-                pushType,
-                getTopicManager(),
-                numberOfPartitions,
-                clusterConfig,
-                useFastKafkaOperationTimeout);
-            addVersionLatencyStats
-                .recordBatchTopicCreationLatency(LatencyUtils.getElapsedTimeFromMsToMs(createBatchTopicStartTime));
+              topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
+              createBatchTopics(
+                  version,
+                  pushType,
+                  getTopicManager(),
+                  numberOfPartitions,
+                  clusterConfig,
+                  useFastKafkaOperationTimeout);
+              addVersionLatencyStats
+                  .recordBatchTopicCreationLatency(LatencyUtils.getElapsedTimeFromMsToMs(createBatchTopicStartTime));
             }
             String sourceKafkaBootstrapServers = null;
 
@@ -3116,7 +3115,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               constructViewResources(veniceViewProperties, store, version, compressionDictionary);
             }
 
-            if (sendStartOfPush) {
+            if (sendStartOfPush && !isParent()) {
               long sendStartOfPushTimestamp = System.currentTimeMillis();
               ByteBuffer compressionDictionaryBuffer = null;
               if (compressionDictionary != null) {

@@ -114,7 +114,7 @@ public class UserSystemStoreLifeCycleHelper {
           -1,
           DEFAULT_RT_VERSION_NUMBER);
     }
-    parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
+    // parentAdmin.writeEndOfPush(clusterName, systemStoreName, version.getNumber(), true);
     return version;
   }
 
