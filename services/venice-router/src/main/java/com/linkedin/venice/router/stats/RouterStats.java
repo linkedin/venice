@@ -1,5 +1,6 @@
 package com.linkedin.venice.router.stats;
 
+import static com.linkedin.venice.read.RequestType.AGGREGATION;
 import static com.linkedin.venice.read.RequestType.COMPUTE;
 import static com.linkedin.venice.read.RequestType.COMPUTE_STREAMING;
 import static com.linkedin.venice.read.RequestType.MULTI_GET;
@@ -17,6 +18,7 @@ public class RouterStats<STAT_TYPE> {
   private final STAT_TYPE statsForCompute;
   private final STAT_TYPE statsForMultiGetStreaming;
   private final STAT_TYPE statsForComputeStreaming;
+  private final STAT_TYPE statsForAggregation;
 
   public RouterStats(Function<RequestType, STAT_TYPE> supplier) {
     this.statsForSingleGet = supplier.apply(SINGLE_GET);
@@ -24,6 +26,7 @@ public class RouterStats<STAT_TYPE> {
     this.statsForCompute = supplier.apply(COMPUTE);
     this.statsForMultiGetStreaming = supplier.apply(MULTI_GET_STREAMING);
     this.statsForComputeStreaming = supplier.apply(COMPUTE_STREAMING);
+    this.statsForAggregation = supplier.apply(AGGREGATION);
   }
 
   public STAT_TYPE getStatsByType(RequestType requestType) {
@@ -38,6 +41,8 @@ public class RouterStats<STAT_TYPE> {
         return statsForMultiGetStreaming;
       case COMPUTE_STREAMING:
         return statsForComputeStreaming;
+      case AGGREGATION:
+        return statsForAggregation;
       default:
         throw new VeniceException("Unknown request type: " + requestType);
     }

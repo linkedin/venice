@@ -5,6 +5,7 @@ import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.SERVICE_UNAVAILABLE;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.intThat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
@@ -55,6 +56,7 @@ import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.listener.grpc.handlers.GrpcStorageReadRequestHandler;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler;
 import com.linkedin.venice.listener.request.AdminRequest;
+import com.linkedin.venice.listener.request.AggregationRouterRequestWrapper;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
@@ -64,6 +66,7 @@ import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.AbstractReadResponse;
+import com.linkedin.venice.listener.response.AggregationReadResponseWrapper;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
@@ -120,6 +123,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -140,7 +144,10 @@ import java.util.function.IntFunction;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.EncoderFactory;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LoggerContext;
@@ -901,5 +908,210 @@ public class StorageReadRequestHandlerTest {
     doReturn(1).when(schemaReader).getLatestValueSchemaId();
     doReturn(1).when(schemaReader).getValueSchemaId(valueSchema);
     return schemaReader;
+  }
+
+  @Test
+  public void testHandleAggregationRequest() throws Exception {
+    String keyString1 = "key1";
+    String keyString2 = "key2";
+    String keyString3 = "key3";
+
+    // Create test value records with jobType and location fields
+    String valueString1 = "{\"jobType\":\"full-time\",\"location\":\"remote\",\"salary\":100000}";
+    String valueString2 = "{\"jobType\":\"part-time\",\"location\":\"onsite\",\"salary\":50000}";
+    String valueString3 = "{\"jobType\":\"full-time\",\"location\":\"remote\",\"salary\":120000}";
+
+    int schemaId = 1;
+    int partition = 1;
+
+    // Mock schema repository
+    Schema valueSchema = Schema.parse(
+        "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"jobType\",\"type\":\"string\"},{\"name\":\"location\",\"type\":\"string\"},{\"name\":\"salary\",\"type\":\"int\"}]}");
+    SchemaEntry schemaEntry = mock(SchemaEntry.class);
+    doReturn(valueSchema).when(schemaEntry).getSchema();
+    doReturn(schemaEntry).when(schemaRepository).getValueSchema(anyString(), anyInt());
+
+    // Create Avro records and serialize them properly
+    GenericRecord record1 = new GenericData.Record(valueSchema);
+    record1.put("jobType", "full-time");
+    record1.put("location", "remote");
+    record1.put("salary", 100000);
+
+    GenericRecord record2 = new GenericData.Record(valueSchema);
+    record2.put("jobType", "part-time");
+    record2.put("location", "onsite");
+    record2.put("salary", 50000);
+
+    GenericRecord record3 = new GenericData.Record(valueSchema);
+    record3.put("jobType", "full-time");
+    record3.put("location", "remote");
+    record3.put("salary", 120000);
+
+    // Serialize records to Avro binary format
+    ByteArrayOutputStream baos1 = new ByteArrayOutputStream();
+    BinaryEncoder encoder1 = EncoderFactory.get().binaryEncoder(baos1, null);
+    GenericDatumWriter<GenericRecord> writer1 = new GenericDatumWriter<>(valueSchema);
+    writer1.write(record1, encoder1);
+    encoder1.flush();
+    byte[] valueBytes1 = ValueRecord.create(schemaId, baos1.toByteArray()).serialize();
+
+    ByteArrayOutputStream baos2 = new ByteArrayOutputStream();
+    BinaryEncoder encoder2 = EncoderFactory.get().binaryEncoder(baos2, null);
+    GenericDatumWriter<GenericRecord> writer2 = new GenericDatumWriter<>(valueSchema);
+    writer2.write(record2, encoder2);
+    encoder2.flush();
+    byte[] valueBytes2 = ValueRecord.create(schemaId, baos2.toByteArray()).serialize();
+
+    ByteArrayOutputStream baos3 = new ByteArrayOutputStream();
+    BinaryEncoder encoder3 = EncoderFactory.get().binaryEncoder(baos3, null);
+    GenericDatumWriter<GenericRecord> writer3 = new GenericDatumWriter<>(valueSchema);
+    writer3.write(record3, encoder3);
+    encoder3.flush();
+    byte[] valueBytes3 = ValueRecord.create(schemaId, baos3.toByteArray()).serialize();
+
+    doReturn(ByteBuffer.wrap(valueBytes1)).when(storageEngine).get(eq(partition), eq(keyString1.getBytes()), any());
+    doReturn(ByteBuffer.wrap(valueBytes2)).when(storageEngine).get(eq(partition), eq(keyString2.getBytes()), any());
+    doReturn(ByteBuffer.wrap(valueBytes3)).when(storageEngine).get(eq(partition), eq(keyString3.getBytes()), any());
+
+    // Create aggregation request
+    AggregationRouterRequestWrapper request = mock(AggregationRouterRequestWrapper.class);
+    doReturn(RequestType.AGGREGATION).when(request).getRequestType();
+    doReturn(version.kafkaTopicName()).when(request).getResourceName();
+    doReturn(store.getName()).when(request).getStoreName();
+
+    // Mock keys
+    ComputeRouterRequestKeyV1 key1 =
+        new ComputeRouterRequestKeyV1(0, ByteBuffer.wrap(keyString1.getBytes()), partition);
+    ComputeRouterRequestKeyV1 key2 =
+        new ComputeRouterRequestKeyV1(1, ByteBuffer.wrap(keyString2.getBytes()), partition);
+    ComputeRouterRequestKeyV1 key3 =
+        new ComputeRouterRequestKeyV1(2, ByteBuffer.wrap(keyString3.getBytes()), partition);
+    doReturn(Arrays.asList(key1, key2, key3)).when(request).getKeys();
+    doReturn(3).when(request).getKeyCount();
+
+    // Mock countByValue fields
+    Map<String, Integer> countByValueFields = new HashMap<>();
+    countByValueFields.put("jobType", 5);
+    countByValueFields.put("location", 3);
+    doReturn(countByValueFields).when(request).getCountByValueFields();
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    Object response = argumentCaptor.getValue();
+
+    // Verify response is a ReadResponse containing aggregation results
+    assertTrue(response instanceof AggregationReadResponseWrapper);
+    AggregationReadResponseWrapper readResponse = (AggregationReadResponseWrapper) response;
+    String responseString = readResponse.getResponseBody().toString(StandardCharsets.UTF_8);
+
+    // Verify the response contains expected aggregation results
+    assertTrue(responseString.contains("jobType"));
+    assertTrue(responseString.contains("location"));
+    assertTrue(responseString.contains("full-time"));
+    assertTrue(responseString.contains("part-time"));
+    assertTrue(responseString.contains("remote"));
+    assertTrue(responseString.contains("onsite"));
+  }
+
+  @Test
+  public void testHandleAggregationRequestWithMissingKeys() throws Exception {
+    String keyString1 = "key1";
+    String keyString2 = "missing-key";
+
+    // Only one key exists in storage
+    String valueString1 = "{\"jobType\":\"full-time\",\"location\":\"remote\"}";
+    int schemaId = 1;
+    int partition = 1;
+
+    // Mock schema repository
+    Schema valueSchema = Schema.parse(
+        "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"jobType\",\"type\":\"string\"},{\"name\":\"location\",\"type\":\"string\"}]}");
+    SchemaEntry schemaEntry = mock(SchemaEntry.class);
+    doReturn(valueSchema).when(schemaEntry).getSchema();
+    doReturn(schemaEntry).when(schemaRepository).getValueSchema(anyString(), anyInt());
+
+    // Create Avro record and serialize it properly
+    GenericRecord record1 = new GenericData.Record(valueSchema);
+    record1.put("jobType", "full-time");
+    record1.put("location", "remote");
+
+    // Serialize record to Avro binary format
+    ByteArrayOutputStream baos1 = new ByteArrayOutputStream();
+    BinaryEncoder encoder1 = EncoderFactory.get().binaryEncoder(baos1, null);
+    GenericDatumWriter<GenericRecord> writer1 = new GenericDatumWriter<>(valueSchema);
+    writer1.write(record1, encoder1);
+    encoder1.flush();
+    byte[] valueBytes1 = ValueRecord.create(schemaId, baos1.toByteArray()).serialize();
+
+    doReturn(ByteBuffer.wrap(valueBytes1)).when(storageEngine).get(eq(partition), eq(keyString1.getBytes()), any());
+    doReturn(null).when(storageEngine).get(eq(partition), eq(keyString2.getBytes()), any());
+
+    // Create aggregation request
+    AggregationRouterRequestWrapper request = mock(AggregationRouterRequestWrapper.class);
+    doReturn(RequestType.AGGREGATION).when(request).getRequestType();
+    doReturn(version.kafkaTopicName()).when(request).getResourceName();
+    doReturn(store.getName()).when(request).getStoreName();
+
+    ComputeRouterRequestKeyV1 key1 =
+        new ComputeRouterRequestKeyV1(0, ByteBuffer.wrap(keyString1.getBytes()), partition);
+    ComputeRouterRequestKeyV1 key2 =
+        new ComputeRouterRequestKeyV1(1, ByteBuffer.wrap(keyString2.getBytes()), partition);
+    doReturn(Arrays.asList(key1, key2)).when(request).getKeys();
+    doReturn(2).when(request).getKeyCount();
+
+    Map<String, Integer> countByValueFields = new HashMap<>();
+    countByValueFields.put("jobType", 5);
+    doReturn(countByValueFields).when(request).getCountByValueFields();
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    Object response = argumentCaptor.getValue();
+
+    // Verify response is a ReadResponse and contains results for existing key only
+    assertTrue(response instanceof AggregationReadResponseWrapper);
+    AggregationReadResponseWrapper readResponse = (AggregationReadResponseWrapper) response;
+    String responseString = readResponse.getResponseBody().toString(StandardCharsets.UTF_8);
+    assertTrue(responseString.contains("full-time"));
+    assertTrue(responseString.contains("jobType"));
+  }
+
+  @Test
+  public void testHandleAggregationRequestWithEmptyKeys() throws Exception {
+    // Create aggregation request with no keys
+    AggregationRouterRequestWrapper request = mock(AggregationRouterRequestWrapper.class);
+    doReturn(RequestType.AGGREGATION).when(request).getRequestType();
+    doReturn(version.kafkaTopicName()).when(request).getResourceName();
+    doReturn(store.getName()).when(request).getStoreName();
+
+    doReturn(Collections.emptyList()).when(request).getKeys();
+    doReturn(0).when(request).getKeyCount();
+
+    Map<String, Integer> countByValueFields = new HashMap<>();
+    countByValueFields.put("jobType", 5);
+    doReturn(countByValueFields).when(request).getCountByValueFields();
+
+    // mock schemaRepository to prevent NPE
+    int schemaId = 1;
+    Schema valueSchema = Schema
+        .parse("{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":[{\"name\":\"jobType\",\"type\":\"string\"}]}");
+    SchemaEntry schemaEntry = mock(SchemaEntry.class);
+    doReturn(valueSchema).when(schemaEntry).getSchema();
+    doReturn(schemaEntry).when(schemaRepository).getValueSchema(anyString(), eq(schemaId));
+
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    Object response = argumentCaptor.getValue();
+
+    // Verify response is a ReadResponse (empty aggregation result)
+    assertTrue(response instanceof AggregationReadResponseWrapper);
+    AggregationReadResponseWrapper readResponse = (AggregationReadResponseWrapper) response;
+    String responseString = readResponse.getResponseBody().toString(StandardCharsets.UTF_8);
+    assertTrue(responseString.contains("jobType"));
   }
 }

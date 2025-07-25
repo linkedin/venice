@@ -15,6 +15,8 @@ import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpResponseStatus.TOO_MANY_REQUESTS;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.alpini.base.misc.HeaderNames;
 import com.linkedin.alpini.base.misc.Metrics;
 import com.linkedin.alpini.netty4.misc.BasicHttpRequest;
@@ -217,6 +219,9 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         case COMPUTE:
           finalResponse = processComputeResponses(gatheredResponses, storeName, venicePath.getClientComputeHeader());
           break;
+        case AGGREGATION:
+          finalResponse = processAggregationResponses(gatheredResponses, storeName, venicePath);
+          break;
         default:
           throw RouterExceptionAndTrackingUtils
               .newVeniceExceptionAndTracking(null, null, INTERNAL_SERVER_ERROR, "Unknown request type: " + requestType);
@@ -316,6 +321,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         return requestLatencyMs < multiGetTardyThresholdInMs;
       case COMPUTE_STREAMING:
       case COMPUTE:
+      case AGGREGATION:
         return requestLatencyMs < computeTardyThresholdInMs;
       default:
         throw new VeniceException("Unknown request type: " + requestType);
@@ -484,5 +490,77 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     multiGetResponse.headers().set(VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());
     multiGetResponse.headers().set(VENICE_REQUEST_RCU, totalRequestRcu);
     return multiGetResponse;
+  }
+
+  protected FullHttpResponse processAggregationResponses(
+      List<FullHttpResponse> responses,
+      String storeName,
+      VenicePath venicePath) {
+    Map<String, Map<Object, Integer>> merged = new HashMap<>();
+    boolean hasSuccess = false;
+    boolean hasError = false;
+
+    for (FullHttpResponse response: responses) {
+      if (response.status() == OK) {
+        hasSuccess = true;
+        String body = response.content().toString(java.nio.charset.StandardCharsets.UTF_8);
+        try {
+          ObjectMapper mapper = new ObjectMapper();
+          Map<String, Map<String, Integer>> responseData =
+              mapper.readValue(body, new TypeReference<Map<String, Map<String, Integer>>>() {
+              });
+
+          for (Map.Entry<String, Map<String, Integer>> fieldEntry: responseData.entrySet()) {
+            String fieldName = fieldEntry.getKey();
+            Map<Object, Integer> mergedFieldCounts = merged.computeIfAbsent(fieldName, k -> new HashMap<>());
+
+            for (Map.Entry<String, Integer> valueEntry: fieldEntry.getValue().entrySet()) {
+              String value = valueEntry.getKey();
+              Integer count = valueEntry.getValue();
+              mergedFieldCounts.put(value, mergedFieldCounts.getOrDefault(value, 0) + count);
+            }
+          }
+        } catch (Exception e) {
+          LOGGER.warn("Failed to parse aggregation response: {}", body, e);
+        }
+      } else {
+        hasError = true;
+      }
+    }
+
+    // If there are successful responses, return merged result; otherwise return error
+    if (hasSuccess) {
+      // Sort merged results by count and serialize to JSON
+      Map<String, Map<Object, Integer>> sortedMerged = new HashMap<>();
+      for (Map.Entry<String, Map<Object, Integer>> fieldEntry: merged.entrySet()) {
+        Map<Object, Integer> sortedValues = fieldEntry.getValue()
+            .entrySet()
+            .stream()
+            .sorted(Map.Entry.<Object, Integer>comparingByValue().reversed())
+            .collect(
+                java.util.stream.Collectors
+                    .toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, java.util.LinkedHashMap::new));
+        sortedMerged.put(fieldEntry.getKey(), sortedValues);
+      }
+
+      String mergedJson;
+      try {
+        ObjectMapper mapper = new ObjectMapper();
+        mergedJson = mapper.writeValueAsString(sortedMerged);
+      } catch (Exception e) {
+        LOGGER.error("Failed to serialize merged aggregation result", e);
+        mergedJson = "{}";
+      }
+      FullHttpResponse resp = new DefaultFullHttpResponse(
+          HttpVersion.HTTP_1_1,
+          OK,
+          Unpooled.copiedBuffer(mergedJson, java.nio.charset.StandardCharsets.UTF_8));
+      resp.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
+      resp.headers().set(HttpHeaderNames.CONTENT_LENGTH, resp.content().readableBytes());
+      return resp;
+    } else {
+      // All responses failed, return the first error response
+      return responses.get(0);
+    }
   }
 }

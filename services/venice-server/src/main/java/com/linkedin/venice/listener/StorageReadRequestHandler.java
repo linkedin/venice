@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -33,6 +34,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.request.AdminRequest;
+import com.linkedin.venice.listener.request.AggregationRouterRequestWrapper;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
@@ -45,6 +47,7 @@ import com.linkedin.venice.listener.request.MultiKeyRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.request.StorePropertiesFetchRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
+import com.linkedin.venice.listener.response.AggregationReadResponseWrapper;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
@@ -296,6 +299,9 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           break;
         case COMPUTE:
           responseFuture = this.computeHandler.apply((ComputeRouterRequestWrapper) request);
+          break;
+        case AGGREGATION:
+          responseFuture = handleAggregationRequest((AggregationRouterRequestWrapper) request);
           break;
         default:
           throw new VeniceException("Unknown request type: " + request.getRequestType());
@@ -674,6 +680,90 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         this.computeExecutor,
         requestContext,
         this::processCompute);
+  }
+
+  public CompletableFuture<ReadResponse> handleAggregationRequest(AggregationRouterRequestWrapper request) {
+    return CompletableFuture.supplyAsync(() -> {
+      String topic = request.getResourceName();
+      PerStoreVersionState storeVersion = getPerStoreVersionState(topic);
+      StorageEngine storageEngine = storeVersion.storageEngine;
+      StoreDeserializerCache<org.apache.avro.generic.GenericRecord> deserializerCache =
+          storeVersion.storeDeserializerCache;
+
+      Map<String, Integer> countByValueFields = request.getCountByValueFields();
+      List<ComputeRouterRequestKeyV1> keys = request.getKeys();
+      Map<String, Map<Object, Integer>> result = new HashMap<>();
+      for (String field: countByValueFields.keySet()) {
+        result.put(field, new HashMap<>());
+      }
+
+      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+      // Get compressor
+      CompressionStrategy compressionStrategy =
+          StoreVersionStateUtils.getCompressionStrategy(storeVersion.storageEngine.getStoreVersionState());
+      VeniceCompressor compressor =
+          compressorFactory.getCompressor(compressionStrategy, topic, serverConfig.getZstdDictCompressionLevel());
+      for (ComputeRouterRequestKeyV1 keyObj: keys) {
+        try {
+          GenericRecord valueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
+              storageEngine,
+              keyObj.getPartitionId(),
+              ByteUtils.extractByteArray(keyObj.getKeyBytes()),
+              reusableObjects.byteBuffer,
+              null,
+              reusableObjects.binaryDecoder,
+              false, // isChunked
+              com.linkedin.davinci.listener.response.NoOpReadResponseStats.SINGLETON, // stats
+              0, // schemaId
+              deserializerCache,
+              compressor); // compressor
+          if (valueRecord == null) {
+            continue;
+          }
+          for (String field: countByValueFields.keySet()) {
+            Object fieldValue = valueRecord.get(field);
+            if (fieldValue != null) {
+              Map<Object, Integer> fieldCountMap = result.get(field);
+              fieldCountMap.put(fieldValue, fieldCountMap.getOrDefault(fieldValue, 0) + 1);
+            }
+          }
+        } catch (Exception e) {
+          LOGGER
+              .error("Exception thrown while processing key for aggregation in topic {}: {}", topic, e.getMessage(), e);
+          // Continue processing other keys even if one fails
+          continue;
+        }
+      }
+      // Apply TopK limitation and sort by count
+      Map<String, Map<Object, Integer>> sortedResult = new HashMap<>();
+      for (Map.Entry<String, Map<Object, Integer>> fieldEntry: result.entrySet()) {
+        String fieldName = fieldEntry.getKey();
+        Map<Object, Integer> valueCounts = fieldEntry.getValue();
+        Integer topK = countByValueFields.get(fieldName);
+
+        // Sort by count descending and limit to topK
+        Map<Object, Integer> topKValues = valueCounts.entrySet()
+            .stream()
+            .sorted(Map.Entry.<Object, Integer>comparingByValue().reversed())
+            .limit(topK != null && topK > 0 ? topK : Integer.MAX_VALUE)
+            .collect(
+                java.util.stream.Collectors
+                    .toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, java.util.LinkedHashMap::new));
+
+        sortedResult.put(fieldName, topKValues);
+      }
+
+      // Return aggregation result as JSON string using Jackson
+      try {
+        ObjectMapper mapper = new ObjectMapper();
+        String jsonResult = mapper.writeValueAsString(sortedResult);
+        return new AggregationReadResponseWrapper(jsonResult);
+      } catch (Exception e) {
+        LOGGER.error("Failed to serialize aggregation result", e);
+        // Fallback to empty result on serialization error
+        return new AggregationReadResponseWrapper("{}");
+      }
+    }, executor);
   }
 
   /**

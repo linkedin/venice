@@ -23,6 +23,7 @@ public class RequestTypeTest extends VeniceDimensionInterfaceTest<RequestType> {
         .put(RequestType.MULTI_GET_STREAMING, "multi_get_streaming")
         .put(RequestType.COMPUTE, "compute")
         .put(RequestType.COMPUTE_STREAMING, "compute_streaming")
+        .put(RequestType.AGGREGATION, "aggregation")
         .build();
   }
 }

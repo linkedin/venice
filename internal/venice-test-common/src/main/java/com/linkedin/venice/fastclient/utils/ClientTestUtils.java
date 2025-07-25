@@ -78,6 +78,7 @@ public class ClientTestUtils {
       case MULTI_GET_STREAMING:
       case COMPUTE_STREAMING:
       case SINGLE_GET:
+      case AGGREGATION:
         metricPrefix += "--" + requestType.getMetricPrefix();
         break;
       default:
