@@ -59,6 +59,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   private final VeniceWriter<byte[], V, U> veniceWriter;
   private final VeniceKafkaSerializer keySerializer;
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
+  private final SchemaFetcherBackedStoreSchemaCache storeSchemaCache;
   private volatile long lastBatchProduceMs;
   private int bufferSizeInBytes;
 
@@ -70,6 +71,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
     this.batchIntervalInMs = params.getBatchIntervalInMs();
     this.maxBatchSizeInBytes = params.getMaxBatchSizeInBytes();
     this.keySerializer = params.getKeyPayloadSerializer();
+    this.storeSchemaCache = new SchemaFetcherBackedStoreSchemaCache(params.getStoreSchemaFetcher());
     /**
      * We introduce an internal Venice writer with byte[] as the key type for any input key type. This is to make sure
      * internal buffer is indexed correctly when input key type is byte[]. For internal buffer index map, if key type is
@@ -272,6 +274,9 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       PubSubProducerCallback callback,
       long logicalTimestamp) {
     maybeStartCheckExecutor();
+    if (schemaId > 0) {
+      storeSchemaCache.maybeUpdateSupersetSchema(schemaId);
+    }
     byte[] serializedKey = getKeySerializer().serialize(getTopicName(), key);
     CompletableFuture<PubSubProduceResult> produceResultFuture;
     getLock().lock();

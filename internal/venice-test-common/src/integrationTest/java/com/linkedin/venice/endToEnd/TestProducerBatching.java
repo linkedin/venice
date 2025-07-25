@@ -228,6 +228,125 @@ public class TestProducerBatching {
     }
   }
 
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testPutOnlyWithBatchingEnabled() {
+    final String storeName = Utils.getUniqueString("store");
+    String parentControllerUrl = parentController.getControllerUrl();
+    VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/PersonV1.avsc"));
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient
+              .createNewStore(storeName, "test_owner", STRING_SCHEMA.toString(), valueSchema.toString()));
+
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setActiveActiveReplicationEnabled(true)
+              .setPartitionCount(1)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      veniceClusterWrapper.waitVersion(storeName, 1);
+    }
+    SystemProducer veniceProducer = null;
+    VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    Pair<String, String> additionalConfig = new Pair<>(ConfigKeys.WRITER_BATCHING_MAX_INTERVAL_MS, "10");
+    Pair<String, String> additionalConfig2 = new Pair<>(ConfigKeys.WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES, "1024000");
+    veniceProducer = IntegrationTestPushUtils
+        .getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM, additionalConfig, additionalConfig2);
+
+    String key = "key";
+    // Message 1: Will be compacted by Message 2
+    GenericRecord value = new GenericData.Record(valueSchema);
+    value.put("name", "val");
+    value.put("age", 99);
+    sendStreamingRecordWithoutFlush(veniceProducer, storeName, key, value);
+
+    // Message 2: Should be produced.
+    value = new GenericData.Record(valueSchema);
+    value.put("name", "val");
+    value.put("age", 100);
+    sendStreamingRecordWithoutFlush(veniceProducer, storeName, key, value);
+
+    // Message 3: Should be produced (logical TS)
+    value = new GenericData.Record(valueSchema);
+    value.put("name", "val");
+    value.put("age", 101);
+    sendStreamingRecordWithoutFlush(veniceProducer, storeName, key, value, 100L);
+
+    String key2 = "key2";
+    // Message 4: Will be compacted by Message 5
+    value = new GenericData.Record(valueSchema);
+    value.put("name", "DEN");
+    value.put("age", 2023);
+    sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
+
+    // Message 5: Should be produced.
+    value = new GenericData.Record(valueSchema);
+    value.put("name", "CLE");
+    value.put("age", 2024);
+    sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
+
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        try {
+          GenericRecord retrievedValue = readValue(storeReader, key);
+          assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
+          assertEquals(retrievedValue.get("name").toString(), "val");
+          assertEquals(retrievedValue.get("age"), 100);
+
+          retrievedValue = readValue(storeReader, key2);
+          assertNotNull(retrievedValue, "Key " + key2 + " should not be missing!");
+          assertEquals(retrievedValue.get("name").toString(), "CLE");
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+    } finally {
+      veniceProducer.stop();
+    }
+
+    // Consume all the RT messages and validated how many data records were produced.
+    PubSubBrokerWrapper pubSubBrokerWrapper =
+        childDatacenters.get(0).getClusters().get(CLUSTER_NAME).getPubSubBrokerWrapper();
+    Properties properties = new Properties();
+    properties.setProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
+    try (PubSubConsumerAdapter pubSubConsumer = pubSubBrokerWrapper.getPubSubClientsFactory()
+        .getConsumerAdapterFactory()
+        .create(
+            new PubSubConsumerAdapterContext.Builder().setVeniceProperties(new VeniceProperties(properties))
+                .setPubSubMessageDeserializer(PubSubMessageDeserializer.createDefaultDeserializer())
+                .setPubSubPositionTypeRegistry(pubSubBrokerWrapper.getPubSubPositionTypeRegistry())
+                .setConsumerName("testConsumer")
+                .build())) {
+
+      pubSubConsumer.subscribe(
+          new PubSubTopicPartitionImpl(PUB_SUB_TOPIC_REPOSITORY.getTopic(Utils.composeRealTimeTopic(storeName, 1)), 0),
+          0);
+      Map<PubSubTopicPartition, List<DefaultPubSubMessage>> messages = pubSubConsumer.poll(1000 * Time.MS_PER_SECOND);
+      int messageCount = 0;
+      for (Map.Entry<PubSubTopicPartition, List<DefaultPubSubMessage>> entry: messages.entrySet()) {
+        List<DefaultPubSubMessage> pubSubMessages = entry.getValue();
+        for (DefaultPubSubMessage message: pubSubMessages) {
+          if (!message.getKey().isControlMessage()) {
+            messageCount += 1;
+          }
+        }
+      }
+      Assert.assertEquals(messageCount, 3);
+    }
+  }
+
   private GenericRecord readValue(AvroGenericStoreClient<Object, Object> storeReader, String key)
       throws ExecutionException, InterruptedException {
     return (GenericRecord) storeReader.get(key).get();
