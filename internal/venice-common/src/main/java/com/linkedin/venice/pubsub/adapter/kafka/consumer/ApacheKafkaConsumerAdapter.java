@@ -60,7 +60,8 @@ import org.apache.logging.log4j.Logger;
 @NotThreadsafe
 public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaConsumerAdapter.class);
-
+  private static final ApacheKafkaOffsetPosition LOWEST_OFFSET_POSITION =
+      new ApacheKafkaOffsetPosition(OffsetRecord.LOWEST_OFFSET);
   private final Consumer<byte[], byte[]> kafkaConsumer;
   private final TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker;
   private final Map<TopicPartition, PubSubTopicPartition> assignments = new HashMap<>();
@@ -651,20 +652,20 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     PubSubPosition resolved1 = resolveSymbolicPosition(partition, position1);
     PubSubPosition resolved2 = resolveSymbolicPosition(partition, position2);
 
-    // Case 1: Both resolved to concrete Kafka offset positions
+    // Case 1: Both resolved to concrete ApacheKafkaOffsetPosition
     if (resolved1 instanceof ApacheKafkaOffsetPosition && resolved2 instanceof ApacheKafkaOffsetPosition) {
       long offset1 = ((ApacheKafkaOffsetPosition) resolved1).getOffset();
       long offset2 = ((ApacheKafkaOffsetPosition) resolved2).getOffset();
-      return offset1 - offset2;
+      return (offset1 - offset2);
     }
 
-    // Case 2: Both failed to resolve and are still symbolic
+    // Case 2: Both unresolved symbolic positions and equal
     if (resolved1 == resolved2
         && (resolved1 == PubSubSymbolicPosition.EARLIEST || resolved1 == PubSubSymbolicPosition.LATEST)) {
       return 0L;
     }
 
-    // Case 3: One of the positions is EARLIEST
+    // Case 3: One is EARLIEST, one is concrete
     if (resolved1 == PubSubSymbolicPosition.EARLIEST && resolved2 instanceof ApacheKafkaOffsetPosition) {
       return -((ApacheKafkaOffsetPosition) resolved2).getOffset();
     }
@@ -672,7 +673,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       return ((ApacheKafkaOffsetPosition) resolved1).getOffset();
     }
 
-    // Case 4: One of the positions is LATEST (treated as Long.MAX_VALUE)
+    // Case 4: One is LATEST, one is concrete
     if (resolved1 == PubSubSymbolicPosition.LATEST && resolved2 instanceof ApacheKafkaOffsetPosition) {
       return Long.MAX_VALUE - ((ApacheKafkaOffsetPosition) resolved2).getOffset();
     }
@@ -686,7 +687,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
 
   private PubSubPosition resolveSymbolicPosition(PubSubTopicPartition partition, PubSubPosition position) {
     if (position == PubSubSymbolicPosition.EARLIEST) {
-      return beginningPosition(partition, config.getDefaultApiTimeout());
+      return beginningPosition(partition);
     } else if (position == PubSubSymbolicPosition.LATEST) {
       return endPosition(partition);
     }

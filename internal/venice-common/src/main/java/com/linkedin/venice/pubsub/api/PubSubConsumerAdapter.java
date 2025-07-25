@@ -1,5 +1,7 @@
 package com.linkedin.venice.pubsub.api;
 
+import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_DEFAULT_VALUE;
+
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -231,6 +233,12 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
   Long beginningOffset(PubSubTopicPartition pubSubTopicPartition, Duration timeout);
 
   PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout);
+
+  default PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition) {
+    return beginningPosition(
+        pubSubTopicPartition,
+        Duration.ofMillis(PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_DEFAULT_VALUE));
+  }
 
   /**
    * Retrieves the end offsets for a collection of PubSub topic-partitions. The end offset represents

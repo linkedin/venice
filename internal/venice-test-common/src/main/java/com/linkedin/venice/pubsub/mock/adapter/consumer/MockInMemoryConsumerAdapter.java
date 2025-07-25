@@ -205,7 +205,7 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
 
   @Override
   public synchronized PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
-    return PubSubSymbolicPosition.EARLIEST;
+    return InMemoryPubSubPosition.of(0);
   }
 
   @Override
@@ -265,7 +265,7 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
     PubSubPosition resolved1 = resolveSymbolicPosition(partition, position1);
     PubSubPosition resolved2 = resolveSymbolicPosition(partition, position2);
 
-    // Case 1: Both resolved to concrete InMemoryPubSubPosition
+    // Case 1: Both resolved to concrete ApacheKafkaOffsetPosition
     if (resolved1 instanceof InMemoryPubSubPosition && resolved2 instanceof InMemoryPubSubPosition) {
       long offset1 = ((InMemoryPubSubPosition) resolved1).getInternalOffset();
       long offset2 = ((InMemoryPubSubPosition) resolved2).getInternalOffset();
@@ -300,7 +300,7 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
 
   private PubSubPosition resolveSymbolicPosition(PubSubTopicPartition partition, PubSubPosition position) {
     if (position == PubSubSymbolicPosition.EARLIEST) {
-      return beginningPosition(partition, Duration.ofMillis(60000));
+      return beginningPosition(partition);
     } else if (position == PubSubSymbolicPosition.LATEST) {
       return endPosition(partition);
     }
