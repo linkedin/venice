@@ -26,13 +26,10 @@ import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
-import com.linkedin.venice.serializer.RecordDeserializer;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -51,8 +48,6 @@ public class VeniceServerGrpcRequestProcessorTest {
   private SchemaEntry mockSchemaEntry;
   private StoreVersionState mockStoreVersionState;
   private VeniceCompressor mockCompressor;
-  private RecordDeserializer<GenericRecord> mockDeserializer;
-  private AvroStoreDeserializerCache mockDeserializerCache;
   private VeniceServerGrpcRequestProcessor processor;
 
   @BeforeMethod
@@ -68,8 +63,6 @@ public class VeniceServerGrpcRequestProcessorTest {
     mockSchemaEntry = mock(SchemaEntry.class);
     mockStoreVersionState = mock(StoreVersionState.class);
     mockCompressor = mock(VeniceCompressor.class);
-    mockDeserializer = mock(RecordDeserializer.class);
-    mockDeserializerCache = mock(AvroStoreDeserializerCache.class);
 
     // Setup schema
     String schemaStr =
