@@ -14,8 +14,6 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
@@ -27,14 +25,11 @@ import com.linkedin.venice.utils.StoreVersionStateUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+import java.util.Set;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
@@ -229,15 +224,9 @@ public class VeniceServerGrpcRequestProcessor {
    */
   public CountByValueResponse processCountByValue(CountByValueRequest request) {
     // If dependencies are not available, return graceful error
-    if (storeRepository == null || schemaRepository == null || storageEngineRepository == null || executor == null
+    if (storeRepository == null || schemaRepository == null || storageEngineRepository == null
         || compressorFactory == null) {
-      LOGGER.warn(
-          "CountByValue dependencies not available - storeRepository: {}, schemaRepository: {}, storageEngineRepository: {}, executor: {}, compressorFactory: {}",
-          storeRepository != null,
-          schemaRepository != null,
-          storageEngineRepository != null,
-          executor != null,
-          compressorFactory != null);
+      LOGGER.warn("CountByValue dependencies not available");
       return CountByValueResponse.newBuilder()
           .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
           .setErrorMessage("CountByValue dependencies not available")
@@ -255,15 +244,6 @@ public class VeniceServerGrpcRequestProcessor {
             .setErrorMessage("Field names cannot be null or empty")
             .build();
       }
-
-      if (request.getTopK() <= 0) {
-        return CountByValueResponse.newBuilder()
-            .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
-            .setErrorMessage("TopK must be positive")
-            .build();
-      }
-
-      int topK = request.getTopK() > 0 ? request.getTopK() : 10;
 
       // Parse store name and version from resource name (format: storeName_v{version})
       String[] parts = resourceName.split("_v");
@@ -338,179 +318,93 @@ public class VeniceServerGrpcRequestProcessor {
       CompressionStrategy compressionStrategy = StoreVersionStateUtils.getCompressionStrategy(storeVersionState);
       VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy);
 
-      // Get partition count for this store version
-      int storePartitionCount = 4; // Default fallback
-      try {
-        Version storeVersion = store.getVersion(version);
-        if (storeVersion == null) {
-          return CountByValueResponse.newBuilder()
-              .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
-              .setErrorMessage("Store version " + version + " does not exist")
-              .build();
-        }
-        storePartitionCount = storeVersion.getPartitionCount();
-      } catch (Exception e) {
-        LOGGER.warn("Failed to get partition count for store {}, version {}, using default", storeName, version, e);
-      }
-
-      final int partitionCount = storePartitionCount;
-      // Use default partitioner for now - in production, this should be configurable
-      final VenicePartitioner partitioner = new DefaultVenicePartitioner();
-
       // Get deserializer cache for this store
       AvroStoreDeserializerCache<GenericRecord> deserializerCache = storeDeserializerCacheMap
           .computeIfAbsent(storeName, k -> new AvroStoreDeserializerCache<>(schemaRepository, storeName, true));
 
-      // SERVER-SIDE AGGREGATION:
-      // Group keys by partition, then process each partition, and aggregate results on server
-      CompletableFuture<CountByValueResponse> future = CompletableFuture.supplyAsync(() -> {
-        try {
-          // Step 1: Route keys to partitions (server-side routing)
-          Map<Integer, List<byte[]>> partitionToKeys = new HashMap<>();
-          for (int i = 0; i < request.getKeysCount(); i++) {
-            byte[] keyBytes = request.getKeys(i).toByteArray();
-            int partitionId = partitioner.getPartitionId(keyBytes, partitionCount);
-            partitionToKeys.computeIfAbsent(partitionId, k -> new ArrayList<>()).add(keyBytes);
-          }
+      // SIMPLIFIED PROCESSING: Each server processes only the keys sent by client (already partitioned)
+      try {
+        // Initialize field counts
+        Map<String, Map<String, Integer>> fieldCounts = new HashMap<>();
+        for (String fieldName: fieldNames) {
+          fieldCounts.put(fieldName, new HashMap<>());
+        }
 
-          // Step 2: Process each partition in parallel on server-side
-          List<CompletableFuture<Map<String, Map<String, Integer>>>> partitionFutures = new ArrayList<>();
+        // Get all partition IDs available on this server
+        Set<Integer> availablePartitions = storageEngine.getPersistedPartitionIds();
 
-          for (Map.Entry<Integer, List<byte[]>> entry: partitionToKeys.entrySet()) {
-            int partitionId = entry.getKey();
-            List<byte[]> keys = entry.getValue();
+        // Process all keys sent by client (client has already partitioned them for this server)
+        for (int i = 0; i < request.getKeysCount(); i++) {
+          byte[] keyBytes = request.getKeys(i).toByteArray();
 
-            CompletableFuture<Map<String, Map<String, Integer>>> partitionFuture = CompletableFuture.supplyAsync(() -> {
-              Map<String, Map<String, Integer>> partitionCounts = new HashMap<>();
-              // Initialize field counts
-              for (String fieldName: fieldNames) {
-                partitionCounts.put(fieldName, new HashMap<>());
-              }
-
-              for (byte[] keyBytes: keys) {
-                try {
-                  byte[] valueBytes = storageEngine.get(partitionId, keyBytes);
-                  if (valueBytes != null) {
-                    // Convert to ByteBuffer for processing
-                    ByteBuffer valueBuffer = ByteBuffer.wrap(valueBytes);
-                    // Decompress if needed
-                    ByteBuffer decompressedBuffer;
-                    if (compressionStrategy != CompressionStrategy.NO_OP) {
-                      decompressedBuffer = compressor.decompress(valueBuffer);
-                    } else {
-                      decompressedBuffer = valueBuffer;
-                    }
-
-                    // Deserialize the value
-                    RecordDeserializer<GenericRecord> deserializer =
-                        deserializerCache.getDeserializer(valueSchemaEntry.getId(), valueSchemaEntry.getId());
-
-                    GenericRecord record = deserializer.deserialize(decompressedBuffer);
-
-                    // Extract field values for all requested fields
-                    for (String fieldName: fieldNames) {
-                      Object fieldValue = record.get(fieldName);
-                      if (fieldValue != null) {
-                        String fieldValueStr = fieldValue.toString();
-                        Map<String, Integer> fieldCounts = partitionCounts.get(fieldName);
-                        if (fieldCounts != null) {
-                          fieldCounts.merge(fieldValueStr, 1, Integer::sum);
-                        }
-                      }
-                    }
-                  }
-                } catch (Exception e) {
-                  LOGGER.warn("Error processing key in partition {}: {}", partitionId, e.getMessage());
-                }
-              }
-
-              return partitionCounts;
-            }, executor);
-
-            partitionFutures.add(partitionFuture);
-          }
-
-          // Step 3: Wait for all partitions and aggregate results on server-side
-          CompletableFuture<Void> allPartitions =
-              CompletableFuture.allOf(partitionFutures.toArray(new CompletableFuture[0]));
-
-          Map<String, Map<String, Integer>> globalCounts = allPartitions.thenApply(v -> {
-            Map<String, Map<String, Integer>> aggregatedCounts = new HashMap<>();
-            // Initialize field counts
-            for (String fieldName: fieldNames) {
-              aggregatedCounts.put(fieldName, new HashMap<>());
-            }
-
-            for (CompletableFuture<Map<String, Map<String, Integer>>> partitionFuture: partitionFutures) {
+          try {
+            // Since client-side partitioning sends keys to the correct server,
+            // we need to find which local partition this key belongs to
+            byte[] valueBytes = null;
+            for (Integer partitionId: availablePartitions) {
               try {
-                Map<String, Map<String, Integer>> partitionCounts = partitionFuture.get();
-                // Merge partition counts into global counts
-                for (String fieldName: fieldNames) {
-                  Map<String, Integer> fieldCounts = partitionCounts.get(fieldName);
-                  if (fieldCounts != null) {
-                    Map<String, Integer> globalFieldCounts = aggregatedCounts.get(fieldName);
-                    if (globalFieldCounts != null) {
-                      for (Map.Entry<String, Integer> countEntry: fieldCounts.entrySet()) {
-                        globalFieldCounts.merge(countEntry.getKey(), countEntry.getValue(), Integer::sum);
-                      }
-                    }
-                  }
+                valueBytes = storageEngine.get(partitionId, keyBytes);
+                if (valueBytes != null) {
+                  break; // Found the key in this partition
                 }
               } catch (Exception e) {
-                LOGGER.error("Failed to get partition result", e);
+                // Key not found in this partition, continue to next
+                LOGGER.debug("Key not found in partition {}: {}", partitionId, e.getMessage());
               }
             }
+            if (valueBytes != null) {
+              // Decompress if needed
+              ByteBuffer valueBuffer = ByteBuffer.wrap(valueBytes);
+              ByteBuffer decompressedBuffer;
+              if (compressionStrategy != CompressionStrategy.NO_OP) {
+                decompressedBuffer = compressor.decompress(valueBuffer);
+              } else {
+                decompressedBuffer = valueBuffer;
+              }
 
-            return aggregatedCounts;
-          }).get(); // Wait for completion
+              // Deserialize the value
+              RecordDeserializer<GenericRecord> deserializer =
+                  deserializerCache.getDeserializer(valueSchemaEntry.getId(), valueSchemaEntry.getId());
+              GenericRecord record = deserializer.deserialize(decompressedBuffer);
 
-          // Step 4: Server-side topK calculation for each field
-          CountByValueResponse.Builder responseBuilder = CountByValueResponse.newBuilder();
-          for (String fieldName: fieldNames) {
-            Map<String, Integer> fieldCounts = globalCounts.get(fieldName);
-            if (fieldCounts != null) {
-              Map<String, Integer> topKCounts = fieldCounts.entrySet()
-                  .stream()
-                  .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-                  .limit(topK)
-                  .collect(
-                      Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new));
-
-              responseBuilder.putFieldToValueCounts(
-                  fieldName,
-                  com.linkedin.venice.protocols.ValueCount.newBuilder().putAllValueToCounts(topKCounts).build());
-            } else {
-              // If no counts for this field, add an empty result
-              responseBuilder
-                  .putFieldToValueCounts(fieldName, com.linkedin.venice.protocols.ValueCount.newBuilder().build());
+              // Extract field values and count them
+              for (String fieldName: fieldNames) {
+                Object fieldValue = record.get(fieldName);
+                if (fieldValue != null) {
+                  String fieldValueStr = fieldValue.toString();
+                  fieldCounts.get(fieldName).merge(fieldValueStr, 1, Integer::sum);
+                }
+              }
             }
+          } catch (Exception e) {
+            LOGGER.warn("Error processing key: {}", e.getMessage());
           }
-
-          return responseBuilder.setErrorCode(VeniceReadResponseStatus.OK).build();
-
-        } catch (VeniceException e) {
-          LOGGER.error("Venice error processing countByValue request for store: " + storeName, e);
-          return CountByValueResponse.newBuilder()
-              .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
-              .setErrorMessage("Venice error: " + e.getMessage())
-              .build();
-        } catch (IllegalArgumentException e) {
-          LOGGER.warn("Invalid argument in countByValue request for store: " + storeName, e);
-          return CountByValueResponse.newBuilder()
-              .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
-              .setErrorMessage("Invalid argument: " + e.getMessage())
-              .build();
-        } catch (Exception e) {
-          LOGGER.error("Unexpected error processing countByValue request for store: " + storeName, e);
-          return CountByValueResponse.newBuilder()
-              .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
-              .setErrorMessage("Internal server error: " + e.getClass().getSimpleName())
-              .build();
         }
-      }, executor);
 
-      // Wait for completion and return result
-      return future.get();
+        // Build response with all counts (no topK filtering - client will do that)
+        CountByValueResponse.Builder responseBuilder = CountByValueResponse.newBuilder();
+        for (String fieldName: fieldNames) {
+          Map<String, Integer> counts = fieldCounts.get(fieldName);
+          if (counts != null && !counts.isEmpty()) {
+            responseBuilder.putFieldToValueCounts(
+                fieldName,
+                com.linkedin.venice.protocols.ValueCount.newBuilder().putAllValueToCounts(counts).build());
+          } else {
+            // Add empty result for this field
+            responseBuilder
+                .putFieldToValueCounts(fieldName, com.linkedin.venice.protocols.ValueCount.newBuilder().build());
+          }
+        }
+
+        return responseBuilder.setErrorCode(VeniceReadResponseStatus.OK).build();
+
+      } catch (Exception e) {
+        LOGGER.error("Error processing keys for store: {}", storeName, e);
+        return CountByValueResponse.newBuilder()
+            .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
+            .setErrorMessage("Error processing keys: " + e.getMessage())
+            .build();
+      }
 
     } catch (VeniceNoStoreException e) {
       return CountByValueResponse.newBuilder()
