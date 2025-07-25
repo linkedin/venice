@@ -24,18 +24,18 @@ public class AuditInfo {
 
   @Override
   public String toString() {
-    return formatAuditMessage("[AUDIT]", null);
+    return formatAuditMessage("[AUDIT]", null, null);
   }
 
-  public String successString() {
-    return formatAuditMessage("[AUDIT]", "SUCCESS");
+  public String successString(long latency) {
+    return formatAuditMessage("[AUDIT]", "SUCCESS", latency);
   }
 
-  public String failureString(String errMsg) {
-    return formatAuditMessage("[AUDIT]", "FAILURE: " + (errMsg != null ? errMsg : ""));
+  public String failureString(String errMsg, long latency) {
+    return formatAuditMessage("[AUDIT]", "FAILURE: " + (errMsg != null ? errMsg : ""), latency);
   }
 
-  private String formatAuditMessage(String prefix, String status) {
+  private String formatAuditMessage(String prefix, String status, Long latency) {
     StringJoiner joiner = new StringJoiner(" ").add(prefix);
 
     if (status != null) {
@@ -43,6 +43,10 @@ public class AuditInfo {
     }
 
     joiner.add(method).add(url).add(params.toString()).add("ClientIP: " + clientIp);
+
+    if (latency != null) {
+      joiner.add("Latency: " + latency + " ms");
+    }
 
     return joiner.toString();
   }
