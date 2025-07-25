@@ -15,12 +15,12 @@ import java.util.concurrent.CompletableFuture;
 public class ProducerBufferRecord implements Measurable {
   private static final int SHALLOW_CLASS_OVERHEAD = getClassOverhead(ProducerBufferRecord.class);
   private final byte[] serializedKey;
-  private byte[] serializedValue;
-  private final byte[] serializedUpdate;
-  private MessageType messageType;
+  private final byte[] serializedValue;
+  private byte[] serializedUpdate;
+  private final MessageType messageType;
   private final int schemaId;
-  private int protocolId;
-  private final long logicalTimestamp;
+  private final int protocolId;
+  private final long timestamp;
   private final PubSubProducerCallback callback;
   private final List<PubSubProducerCallback> dependentCallbackList = new ArrayList<>();
   private final List<ProducerBufferRecord> dependentRecordList = new ArrayList<>();
@@ -35,15 +35,14 @@ public class ProducerBufferRecord implements Measurable {
       int schemaId,
       int protocolId,
       PubSubProducerCallback callback,
-      long logicalTimestamp) {
+      long timestamp) {
     this.serializedKey = serializedKey;
     this.serializedValue = serializedValue;
     this.serializedUpdate = serializedUpdate;
     this.messageType = messageType;
     this.schemaId = schemaId;
     this.protocolId = protocolId;
-    // Let's do not consider logical TS as of now.
-    this.logicalTimestamp = logicalTimestamp;
+    this.timestamp = timestamp;
     this.callback = callback;
   }
 
@@ -75,8 +74,8 @@ public class ProducerBufferRecord implements Measurable {
     return protocolId;
   }
 
-  public long getLogicalTimestamp() {
-    return logicalTimestamp;
+  public long getTimestamp() {
+    return timestamp;
   }
 
   public MessageType getMessageType() {
@@ -111,10 +110,11 @@ public class ProducerBufferRecord implements Measurable {
     return dependentRecordList;
   }
 
-  public void updateSerializedValue(byte[] serializedValue) {
-    this.messageType = MessageType.PUT;
-    this.protocolId = -1;
-    this.serializedValue = serializedValue;
+  /**
+   * This method convert message into a PUT message type.
+   */
+  public void updateSerializedUpdate(byte[] serializedUpdate) {
+    this.serializedUpdate = serializedUpdate;
   }
 
   @Override

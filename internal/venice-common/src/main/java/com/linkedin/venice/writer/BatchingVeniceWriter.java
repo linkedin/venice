@@ -17,6 +17,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.collections.BiIntKeyCache;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.writer.update.UpdateBuilder;
+import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -47,9 +49,8 @@ import org.apache.logging.log4j.Logger;
  * (1) Max batch interval: Maximum delay of a batch of records before it is produced.
  * (2) Max batch buffer size: Maximum size of buffer records before it is produced.
  * If any of the limit is reached, the buffered batch will be flushed and produced.
- * For messages within the same batch, only the last one will be produced into the topic, except for those mentioned below.
- * (1) UPDATE message: It will be supported in the future.
- * (2) Message with logical timestamp: It will be sent out individually.
+ * For messages within the same batch, only the last one will be produced into the topic, except for message with logical
+ * timestamp: It is against the design goal for this feature and hence it will be sent out individually.
  *
  * When the last message is produced, its callback will be completed (either successfully or exceptionally), all the
  * related messages' callbacks will also be completed with the same result.
@@ -70,7 +71,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   private final WriteComputeHandlerV1 updateHandler = new WriteComputeHandlerV1();
   private final BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCacheForFullValue;
   private final Map<Schema, Map<Schema, RecordDeserializer<GenericRecord>>> deserializerCacheForUpdateValue;
-  private final Map<Schema, RecordSerializer<GenericRecord>> valueSerializerMap = new VeniceConcurrentHashMap<>();
+  private final Map<Schema, RecordSerializer<GenericRecord>> updateSerializerMap = new VeniceConcurrentHashMap<>();
 
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
   private final SchemaFetcherBackedStoreSchemaCache storeSchemaCache;
@@ -302,18 +303,15 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       long logicalTimestamp) {
     maybeStartCheckExecutor();
     if (schemaId > 0) {
-      storeSchemaCache.maybeUpdateSupersetSchema(schemaId);
+      getStoreSchemaCache().maybeUpdateSupersetSchema(schemaId);
     }
     byte[] serializedKey = getKeySerializer().serialize(getTopicName(), key);
-    LOGGER.info("DEBUGGING: INCOMING KEY: {}, MSG: {}", serializedKey, messageType);
     byte[] serializedValue = value == null ? null : getValueSerializer().serialize(getTopicName(), value);
     byte[] serializedUpdate = update == null ? null : getUpdateSerializer().serialize(getTopicName(), update);
     CompletableFuture<PubSubProduceResult> produceResultFuture;
     getLock().lock();
     try {
-      /**
-       * For logical timestamp record, timestamp compaction is not supported
-       */
+      // For logical timestamp record, timestamp compaction is not supported
       ProducerBufferRecord record;
       if (logicalTimestamp > 0) {
         record = new ProducerBufferRecord(
@@ -371,7 +369,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
             record.getSerializedKey(),
             record.getSerializedValue(),
             record.getSchemaId(),
-            record.getLogicalTimestamp(),
+            record.getTimestamp(),
             finalCallback);
         break;
       case UPDATE:
@@ -381,11 +379,10 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
             record.getSchemaId(),
             record.getProtocolId(),
             finalCallback,
-            record.getLogicalTimestamp());
+            record.getTimestamp());
         break;
       case DELETE:
-        produceFuture =
-            getVeniceWriter().delete(record.getSerializedKey(), record.getLogicalTimestamp(), finalCallback);
+        produceFuture = getVeniceWriter().delete(record.getSerializedKey(), record.getTimestamp(), finalCallback);
         break;
       default:
         break;
@@ -402,8 +399,14 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
     }
   }
 
+  /**
+   * This method will only be invoked when the last message associated to a key is an UPDATE message.
+   * The idea of this method is to locate the last PUT / DELETE message and start merging all the follow-up UPDATE
+   * messages. All the messages before the last PUT / DELETE will be ignored as they will be fully overwritten.
+   */
   void maybeUpdateRecordUpdatePayload(ProducerBufferRecord producerBufferRecord) {
     List<ProducerBufferRecord> dependentRecordList = producerBufferRecord.getDependentRecordList();
+    // Try to locate the last non-UPDATE message's index in the dependent record list.
     int idx = dependentRecordList.size() - 1;
     while (idx >= 0) {
       if (!dependentRecordList.get(idx).getMessageType().equals(MessageType.UPDATE)) {
@@ -411,44 +414,80 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       }
       idx--;
     }
-    GenericRecord valueRecord = null;
-    ProducerBufferRecord anchorRecord = null;
+    GenericRecord resultUpdateRecord = null;
+    ProducerBufferRecord anchorPutRecord;
+    /**
+     * If there is such message and if it is PUT message, we will deserialize it with superset value schema and convert
+     * it to an UPDATE message and merge it will all the follow-up UPDATE message.
+     * The reason to convert PUT message into UPDATE message instead of merging all the UPDATE messages into a PUT message
+     * is: If there is no PUT message in the beginning, then using {@link WriteComputeHandlerV1} to build a default
+     * value record and merge following UDPATE into PUT will change the semantic: It will set untouched fields back to
+     * default value which is not a correct behavior.
+     * Using superset schema is always correct for partial update enabled store.
+     */
+    int supersetSchemaId = getStoreSchemaCache().getLatestOrSupersetSchemaId();
+    Schema supersetSchema = getStoreSchemaCache().getSupersetSchema();
     if (idx >= 0) {
-      anchorRecord = dependentRecordList.get(idx);
-      if (anchorRecord.getMessageType().equals(MessageType.PUT)) {
-        valueRecord = deserializerCacheForFullValue
-            .get(anchorRecord.getSchemaId(), storeSchemaCache.getLatestOrSupersetSchemaId())
-            .deserialize(anchorRecord.getSerializedValue());
+      anchorPutRecord = dependentRecordList.get(idx);
+      if (anchorPutRecord.getMessageType().equals(MessageType.PUT)) {
+        resultUpdateRecord = convertValueRecordToUpdateRecord(
+            getStoreSchemaCache().getUpdateSchema(),
+            getValueDeserializer(anchorPutRecord.getSchemaId(), supersetSchemaId)
+                .deserialize(anchorPutRecord.getSerializedValue()));
       }
     }
-    Schema supersetSchema = storeSchemaCache.getSupersetSchema();
+    /**
+     * Sequentially merge all the follow-up UPDATE payload using {@link com.linkedin.venice.schema.writecompute.WriteComputeHandler}.
+     */
     GenericRecord updateRecord;
     for (int i = idx + 1; i < dependentRecordList.size(); i++) {
       updateRecord = deserializeUpdateBytes(dependentRecordList.get(i).getSerializedUpdate());
-      valueRecord = updateHandler.updateValueRecord(supersetSchema, valueRecord, updateRecord);
+      resultUpdateRecord = getUpdateHandler().mergeUpdateRecord(supersetSchema, resultUpdateRecord, updateRecord);
     }
+    /**
+     * Merge with the final UPDATE message.
+     */
     updateRecord = deserializeUpdateBytes(producerBufferRecord.getSerializedUpdate());
-    valueRecord = updateHandler.updateValueRecord(supersetSchema, valueRecord, updateRecord);
-
-    producerBufferRecord.updateSerializedValue(serializeMergedValueRecord(valueRecord));
+    resultUpdateRecord = getUpdateHandler().mergeUpdateRecord(supersetSchema, resultUpdateRecord, updateRecord);
+    /**
+     * Re-serialize the payload and update the final to-be-produced record.
+     */
+    producerBufferRecord.updateSerializedUpdate(serializeMergedValueRecord(resultUpdateRecord));
   }
 
   private GenericRecord deserializeUpdateBytes(byte[] updateBytes) {
-    Schema writerSchema = storeSchemaCache.getUpdateSchema();
-    Schema readerSchema = writerSchema;
-    RecordDeserializer<GenericRecord> deserializer =
-        deserializerCacheForUpdateValue.computeIfAbsent(writerSchema, k -> new VeniceConcurrentHashMap<>())
-            .computeIfAbsent(
-                readerSchema,
-                k -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, readerSchema));
-    return deserializer.deserialize(updateBytes);
+    // Use latest superset schema's update schema as both reader/writer schema to deserialize payload.
+    Schema updateSchema = getStoreSchemaCache().getUpdateSchema();
+    try {
+      RecordDeserializer<GenericRecord> deserializer =
+          getDeserializerCacheForUpdateValue().computeIfAbsent(updateSchema, k -> new VeniceConcurrentHashMap<>())
+              .computeIfAbsent(
+                  updateSchema,
+                  k -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(updateSchema, updateSchema));
+      return deserializer.deserialize(updateBytes);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Unable to deserialize update payload with update schema: {} associated with superset schema id: {}",
+          updateSchema,
+          getStoreSchemaCache().getLatestOrSupersetSchemaId());
+      throw e;
+    }
   }
 
-  private byte[] serializeMergedValueRecord(GenericRecord mergedValue) {
-    Schema schema = storeSchemaCache.getSupersetSchema();
-    RecordSerializer serializer = valueSerializerMap
-        .computeIfAbsent(schema, ignored -> FastSerializerDeserializerFactory.getFastAvroGenericSerializer(schema));
-    return serializer.serialize(mergedValue);
+  private byte[] serializeMergedValueRecord(GenericRecord mergedUpdateRecord) {
+    Schema updateSchema = getStoreSchemaCache().getUpdateSchema();
+    try {
+      RecordSerializer serializer = getUpdateSerializerMap().computeIfAbsent(
+          updateSchema,
+          ignored -> FastSerializerDeserializerFactory.getFastAvroGenericSerializer(updateSchema));
+      return serializer.serialize(mergedUpdateRecord);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Unable to serialize merged UPDATE payload with update schema: {} associated with superset schema id: {}",
+          updateSchema,
+          getStoreSchemaCache().getLatestOrSupersetSchemaId());
+      throw e;
+    }
   }
 
   void maybeStartCheckExecutor() {
@@ -457,6 +496,15 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       checkServiceExecutor.execute(this::periodicCheckTask);
       lastBatchProduceMs = System.currentTimeMillis();
     }
+  }
+
+  GenericRecord convertValueRecordToUpdateRecord(Schema updateSchema, GenericRecord valueRecord) {
+    UpdateBuilder builder = new UpdateBuilderImpl(updateSchema);
+    for (Schema.Field valueField: valueRecord.getSchema().getFields()) {
+      final String valueFieldName = valueField.name();
+      builder.setNewFieldValue(valueFieldName, valueRecord.get(valueFieldName));
+    }
+    return builder.build();
   }
 
   List<ProducerBufferRecord> getBufferRecordList() {
@@ -493,5 +541,29 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
 
   VeniceWriter<byte[], byte[], byte[]> getVeniceWriter() {
     return veniceWriter;
+  }
+
+  BiIntKeyCache<RecordDeserializer<GenericRecord>> getDeserializerCacheForFullValue() {
+    return deserializerCacheForFullValue;
+  }
+
+  Map<Schema, RecordSerializer<GenericRecord>> getUpdateSerializerMap() {
+    return updateSerializerMap;
+  }
+
+  Map<Schema, Map<Schema, RecordDeserializer<GenericRecord>>> getDeserializerCacheForUpdateValue() {
+    return deserializerCacheForUpdateValue;
+  }
+
+  RecordDeserializer<GenericRecord> getValueDeserializer(int readerSchemaId, int writerSchemaId) {
+    return getDeserializerCacheForFullValue().get(readerSchemaId, writerSchemaId);
+  }
+
+  WriteComputeHandlerV1 getUpdateHandler() {
+    return updateHandler;
+  }
+
+  SchemaFetcherBackedStoreSchemaCache getStoreSchemaCache() {
+    return storeSchemaCache;
   }
 }
