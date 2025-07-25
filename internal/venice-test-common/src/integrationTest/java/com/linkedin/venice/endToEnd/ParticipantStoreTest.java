@@ -13,6 +13,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -122,6 +123,19 @@ public class ParticipantStoreTest {
       assertEquals(getMetric(metrics, metricPrefix + "--killed_push_jobs.Count").value(), 1.0);
       assertTrue(getMetric(metrics, metricPrefix + "--kill_push_job_latency.Avg").value() > 0);
       assertTrue(getMetric(metrics, ".venice-client_" + requestMetricExample).value() > 0);
+    });
+  }
+
+  @Test
+  public void testParticipantStoreCreation() {
+    // Verify the participant store is created.
+    VersionCreationResponse versionCreationResponse = getNewStoreVersion(parentControllerClient, true);
+    assertFalse(versionCreationResponse.isError());
+
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+      StoreResponse storeResponse = controllerClient.getStore(participantMessageStoreName);
+      System.out.println(storeResponse.getError());
+      assertFalse(storeResponse.isError());
     });
   }
 

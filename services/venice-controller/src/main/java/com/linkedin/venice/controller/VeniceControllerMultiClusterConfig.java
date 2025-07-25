@@ -215,6 +215,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getPushJobStatusStoreClusterName();
   }
 
+  public String getParentControllerMetadataStoreClusterName() {
+    return getCommonConfig().getParentControllerMetadataStoreClusterName();
+  }
+
   public String getSystemSchemaClusterName() {
     return getCommonConfig().getSystemSchemaClusterName();
   }
