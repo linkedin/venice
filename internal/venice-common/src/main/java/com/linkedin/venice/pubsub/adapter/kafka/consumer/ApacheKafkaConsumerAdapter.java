@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
@@ -21,6 +22,8 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -57,7 +60,8 @@ import org.apache.logging.log4j.Logger;
 @NotThreadsafe
 public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaConsumerAdapter.class);
-
+  private static final ApacheKafkaOffsetPosition LOWEST_OFFSET_POSITION =
+      new ApacheKafkaOffsetPosition(OffsetRecord.LOWEST_OFFSET);
   private final Consumer<byte[], byte[]> kafkaConsumer;
   private final TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker;
   private final Map<TopicPartition, PubSubTopicPartition> assignments = new HashMap<>();
@@ -615,6 +619,88 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       }
     }
     return pubSubTopicPartitionInfos;
+  }
+
+  /**
+   * Compares two {@link PubSubPosition} instances for a given {@link PubSubTopicPartition}.
+   * <p>
+   * Special symbolic positions are handled with the following order:
+   * <ul>
+   *   <li>{@link PubSubSymbolicPosition#EARLIEST} is considered the lowest possible position.</li>
+   *   <li>{@link PubSubSymbolicPosition#LATEST} is considered the highest possible position.</li>
+   * </ul>
+   * If both positions are concrete (e.g., {@link ApacheKafkaOffsetPosition}), they must be of the same type and
+   * will be compared based on their offset values.
+   *
+   * @param partition the topic partition context (not used in current implementation, but required for interface compatibility)
+   * @param position1 the first position to compare (must not be null)
+   * @param position2 the second position to compare (must not be null)
+   * @return a negative value if {@code position1} is less than {@code position2}, zero if equal, or positive if greater
+   * @throws IllegalArgumentException if either position is null or unsupported
+   */
+  @Override
+  public long comparePositions(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    return positionDifference(partition, position1, position2);
+  }
+
+  @Override
+  public long positionDifference(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    if (position1 == null || position2 == null) {
+      throw new IllegalArgumentException("Positions cannot be null");
+    }
+
+    PubSubPosition resolved1 = resolveSymbolicPosition(partition, position1);
+    PubSubPosition resolved2 = resolveSymbolicPosition(partition, position2);
+
+    // Case 1: Both resolved to concrete ApacheKafkaOffsetPosition
+    if (resolved1 instanceof ApacheKafkaOffsetPosition && resolved2 instanceof ApacheKafkaOffsetPosition) {
+      long offset1 = ((ApacheKafkaOffsetPosition) resolved1).getOffset();
+      long offset2 = ((ApacheKafkaOffsetPosition) resolved2).getOffset();
+      return (offset1 - offset2);
+    }
+
+    // Case 2: Both unresolved symbolic positions and equal
+    if (resolved1 == resolved2
+        && (resolved1 == PubSubSymbolicPosition.EARLIEST || resolved1 == PubSubSymbolicPosition.LATEST)) {
+      return 0L;
+    }
+
+    // Case 3: One is EARLIEST, one is concrete
+    if (resolved1 == PubSubSymbolicPosition.EARLIEST && resolved2 instanceof ApacheKafkaOffsetPosition) {
+      return -((ApacheKafkaOffsetPosition) resolved2).getOffset();
+    }
+    if (resolved2 == PubSubSymbolicPosition.EARLIEST && resolved1 instanceof ApacheKafkaOffsetPosition) {
+      return ((ApacheKafkaOffsetPosition) resolved1).getOffset();
+    }
+
+    // Case 4: One is LATEST, one is concrete
+    if (resolved1 == PubSubSymbolicPosition.LATEST && resolved2 instanceof ApacheKafkaOffsetPosition) {
+      return Long.MAX_VALUE - ((ApacheKafkaOffsetPosition) resolved2).getOffset();
+    }
+    if (resolved2 == PubSubSymbolicPosition.LATEST && resolved1 instanceof ApacheKafkaOffsetPosition) {
+      return ((ApacheKafkaOffsetPosition) resolved1).getOffset() - Long.MAX_VALUE;
+    }
+
+    throw new IllegalArgumentException(
+        "Unsupported position types: " + resolved1.getClass().getName() + " vs " + resolved2.getClass().getName());
+  }
+
+  private PubSubPosition resolveSymbolicPosition(PubSubTopicPartition partition, PubSubPosition position) {
+    if (position == PubSubSymbolicPosition.EARLIEST) {
+      return beginningPosition(partition);
+    } else if (position == PubSubSymbolicPosition.LATEST) {
+      return endPosition(partition);
+    }
+    return position;
+  }
+
+  @Override
+  public PubSubPosition decodePosition(PubSubTopicPartition partition, ByteBuffer buffer) {
+    try {
+      return new ApacheKafkaOffsetPosition(buffer);
+    } catch (IOException e) {
+      throw new VeniceException("Failed to decode position for partition: " + partition + " from buffer: " + buffer, e);
+    }
   }
 
   /**
