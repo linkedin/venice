@@ -12,32 +12,33 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 
-public class ProducerBufferRecord<V, U> implements Measurable {
+public class ProducerBufferRecord implements Measurable {
   private static final int SHALLOW_CLASS_OVERHEAD = getClassOverhead(ProducerBufferRecord.class);
   private final byte[] serializedKey;
-  private final V value;
-  private final U update;
-  private final MessageType messageType;
+  private byte[] serializedValue;
+  private final byte[] serializedUpdate;
+  private MessageType messageType;
   private final int schemaId;
-  private final int protocolId;
+  private int protocolId;
   private final long logicalTimestamp;
-  private boolean shouldSkipProduce = false;
-  private PubSubProducerCallback callback;
-  private List<PubSubProducerCallback> dependentCallbackList = new ArrayList<>();
+  private final PubSubProducerCallback callback;
+  private final List<PubSubProducerCallback> dependentCallbackList = new ArrayList<>();
+  private final List<ProducerBufferRecord> dependentRecordList = new ArrayList<>();
   private CompletableFuture<PubSubProduceResult> produceResultFuture = null;
+  private boolean shouldSkipProduce = false;
 
   public ProducerBufferRecord(
       MessageType messageType,
       byte[] serializedKey,
-      V value,
-      U update,
+      byte[] serializedValue,
+      byte[] serializedUpdate,
       int schemaId,
       int protocolId,
       PubSubProducerCallback callback,
       long logicalTimestamp) {
     this.serializedKey = serializedKey;
-    this.value = value;
-    this.update = update;
+    this.serializedValue = serializedValue;
+    this.serializedUpdate = serializedUpdate;
     this.messageType = messageType;
     this.schemaId = schemaId;
     this.protocolId = protocolId;
@@ -58,12 +59,12 @@ public class ProducerBufferRecord<V, U> implements Measurable {
     return serializedKey;
   }
 
-  public V getValue() {
-    return value;
+  public byte[] getSerializedValue() {
+    return serializedValue;
   }
 
-  public U getUpdate() {
-    return update;
+  public byte[] getSerializedUpdate() {
+    return serializedUpdate;
   }
 
   public int getSchemaId() {
@@ -102,15 +103,29 @@ public class ProducerBufferRecord<V, U> implements Measurable {
     this.produceResultFuture = produceResultFuture;
   }
 
+  public void addRecordToDependentRecordList(ProducerBufferRecord record) {
+    dependentRecordList.add(record);
+  }
+
+  public List<ProducerBufferRecord> getDependentRecordList() {
+    return dependentRecordList;
+  }
+
+  public void updateSerializedValue(byte[] serializedValue) {
+    this.messageType = MessageType.PUT;
+    this.protocolId = -1;
+    this.serializedValue = serializedValue;
+  }
+
   @Override
   public int getHeapSize() {
     int size = SHALLOW_CLASS_OVERHEAD;
     size += InstanceSizeEstimator.getObjectSize(serializedKey);
-    if (value != null) {
-      size += InstanceSizeEstimator.getObjectSize(value);
+    if (serializedValue != null) {
+      size += InstanceSizeEstimator.getObjectSize(serializedValue);
     }
-    if (update != null) {
-      size += InstanceSizeEstimator.getObjectSize(update);
+    if (serializedUpdate != null) {
+      size += InstanceSizeEstimator.getObjectSize(serializedUpdate);
     }
     if (callback != null && callback instanceof Measurable) {
       size += ((Measurable) callback).getHeapSize();
