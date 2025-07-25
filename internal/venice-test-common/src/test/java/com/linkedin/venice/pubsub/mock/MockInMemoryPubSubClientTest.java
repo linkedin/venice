@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.mock;
 
 import static org.mockito.Mockito.mock;
+import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
@@ -80,8 +81,12 @@ public class MockInMemoryPubSubClientTest {
 
     // 3. Verify produce offsets
     for (int i = 0; i < recordCount; i++) {
-      Assert.assertEquals((long) producedOffsets.get(i), i, "Mismatch in produced offset at index " + i);
+      assertEquals((long) producedOffsets.get(i), i, "Mismatch in produced offset at index " + i);
     }
+
+    long positionDiff = consumerAdapter
+        .positionDifference(topicPartition, PubSubSymbolicPosition.LATEST, PubSubSymbolicPosition.EARLIEST);
+    assertEquals(positionDiff, recordCount, "Position difference should match the number of produced records");
 
     // 4. Subscribe consumer from EARLIEST
     consumerAdapter.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
@@ -97,18 +102,44 @@ public class MockInMemoryPubSubClientTest {
         for (DefaultPubSubMessage msg: messages) {
           consumedOffsets.add((InMemoryPubSubPosition) msg.getPosition());
           consumedValues.add(msg.getValue());
+
+          positionDiff =
+              consumerAdapter.positionDifference(topicPartition, PubSubSymbolicPosition.LATEST, msg.getPosition()) - 1; // -1
+                                                                                                                        // because
+                                                                                                                        // latest
+                                                                                                                        // is
+                                                                                                                        // lastRecord
+                                                                                                                        // position
+                                                                                                                        // +
+                                                                                                                        // 1
+          // create vars for assertions
+
+          assertEquals(
+              positionDiff,
+              recordCount - consumedValues.size(),
+              "Position difference should match the number of remaining records: " + positionDiff + ", consumed: "
+                  + consumedValues.size());
+
+          // compute lag with self
+          long selfLag = consumerAdapter.positionDifference(topicPartition, msg.getPosition(), msg.getPosition());
+          assertEquals(
+              selfLag,
+              0,
+              "Self lag should be zero for the same position: "
+                  + ((InMemoryPubSubPosition) msg.getPosition()).getInternalOffset());
+
         }
       }
       retries++;
     }
 
-    Assert.assertEquals(consumedOffsets.size(), recordCount, "Did not consume all expected records");
-    Assert.assertEquals(consumedValues.size(), recordCount, "Mismatch in consumed values count");
+    assertEquals(consumedOffsets.size(), recordCount, "Did not consume all expected records");
+    assertEquals(consumedValues.size(), recordCount, "Mismatch in consumed values count");
 
     // 6. Validate offsets and values
     for (int i = 0; i < recordCount; i++) {
-      Assert.assertEquals(consumedOffsets.get(i).getInternalOffset(), i, "Mismatch in consumed offset at index " + i);
-      Assert.assertEquals(consumedValues.get(i), expectedValues.get(i), "Mismatch in value at offset " + i);
+      assertEquals(consumedOffsets.get(i).getInternalOffset(), i, "Mismatch in consumed offset at index " + i);
+      assertEquals(consumedValues.get(i), expectedValues.get(i), "Mismatch in value at offset " + i);
     }
   }
 }
