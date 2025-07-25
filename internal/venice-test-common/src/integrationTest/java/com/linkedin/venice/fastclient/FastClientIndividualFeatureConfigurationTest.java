@@ -328,13 +328,17 @@ public class FastClientIndividualFeatureConfigurationTest extends AbstractClient
     veniceCluster.useControllerClient(controllerClient -> {
       TestUtils.waitForNonDeterministicPushCompletion(storeVersion, controllerClient, 30, TimeUnit.SECONDS);
     });
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       final Map<String, GenericRecord> result = genericFastClient.batchGet(keys).get();
       assertEquals(result.size(), recordCnt);
       for (int i = 0; i < recordCnt; ++i) {
         String key = keyPrefix + i;
         assertEquals((int) result.get(key).get(VALUE_FIELD_NAME), i);
-        assertEquals(result.get(key).get(SECOND_VALUE_FIELD_NAME), i);
+        try {
+          assertEquals(result.get(key).get(SECOND_VALUE_FIELD_NAME), i);
+        } catch (AvroRuntimeException e) {
+          fail("The FC didn't notice the new store-version yet...");
+        }
       }
     });
   }

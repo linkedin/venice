@@ -240,6 +240,20 @@ public class RocksDBServerConfig {
 
   public static final String ROCKSDB_BLOCK_CACHE_MEMORY_LIMIT = "rocksdb.block.cache.memory.limit";
 
+  /**
+   * Check these pages to find more details:
+   * https://github.com/facebook/rocksdb/wiki/Iterator
+   * https://javadoc.io/static/org.rocksdb/rocksdbjni/6.20.3/org/rocksdb/ReadOptions.html
+   */
+
+  /**
+   * When this config is set to a value > 0, the RocksDB iterator will pre-fetch data asynchronously leading to better
+   * iteration performance.
+   * From testing, setting this to a value larger than 2MB doesn't result in any performance gain. Hypothetically, if
+   * the records are large, setting this to a higher number may see noticeable gains.
+   */
+  public static final String ROCKSDB_ITERATOR_READ_AHEAD_SIZE_IN_BYTES = "rocksdb.iterator.read.ahead.size.in.bytes";
+
   private final boolean rocksDBUseDirectReads;
 
   private final int rocksDBEnvFlushPoolSize;
@@ -318,6 +332,8 @@ public class RocksDBServerConfig {
   private final double blobGarbageCollectionForceThreshold;
   private final int blobFileStartingLevel;
   private final double rocksdbBlockCacheMemoryLimit;
+
+  private final long iteratorReadAheadSizeInBytes;
 
   public RocksDBServerConfig(VeniceProperties props) {
     // Do not use Direct IO for reads by default
@@ -458,6 +474,9 @@ public class RocksDBServerConfig {
     this.blobGarbageCollectionForceThreshold = props.getDouble(ROCKSDB_BLOB_GARBAGE_COLLECTION_FORCE_THRESHOLD, 0.8);
     this.blobFileStartingLevel = props.getInt(ROCKSDB_BLOB_FILE_STARTING_LEVEL, 0);
     this.rocksdbBlockCacheMemoryLimit = props.getDouble(ROCKSDB_BLOCK_CACHE_MEMORY_LIMIT, 0.8);
+
+    this.iteratorReadAheadSizeInBytes =
+        props.getSizeInBytes(ROCKSDB_ITERATOR_READ_AHEAD_SIZE_IN_BYTES, 2 * 1024 * 1024); // default: 2MB
   }
 
   public int getLevel0FileNumCompactionTriggerWriteOnlyVersion() {
@@ -701,5 +720,9 @@ public class RocksDBServerConfig {
 
   public double getRocksdbBlockCacheMemoryLimit() {
     return rocksdbBlockCacheMemoryLimit;
+  }
+
+  public long getIteratorReadAheadSizeInBytes() {
+    return iteratorReadAheadSizeInBytes;
   }
 }

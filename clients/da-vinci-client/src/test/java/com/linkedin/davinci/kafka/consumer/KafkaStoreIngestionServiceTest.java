@@ -203,7 +203,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         null,
         null,
-        null);
+        null,
+        Optional.empty());
 
     String mockStoreName = "test";
     String mockSimilarStoreName = "testTest";
@@ -290,7 +291,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         null,
         null,
-        null);
+        null,
+        Optional.empty());
     String topic1 = "test-store_v1";
     String topic2 = "test-store_v2";
     String invalidTopic = "invalid-store_v1";
@@ -381,7 +383,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         null,
         null,
-        null);
+        null,
+        Optional.empty());
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -459,7 +462,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         null,
         null,
-        null);
+        null,
+        Optional.empty());
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -635,7 +639,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         null,
         null,
-        null);
+        null,
+        Optional.empty());
     kafkaStoreIngestionService.start();
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
@@ -697,7 +702,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         null,
         null,
-        null);
+        null,
+        Optional.empty());
     kafkaStoreIngestionService.start();
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
@@ -766,7 +772,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         null,
         null,
-        null);
+        null,
+        Optional.empty());
 
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     PubSubTopic topic = pubSubTopicRepository.getTopic("test-store_v1");
@@ -824,7 +831,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         null,
         null,
-        null);
+        null,
+        Optional.empty());
 
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     PubSubTopic topic = pubSubTopicRepository.getTopic("test-store_v1");

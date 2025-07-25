@@ -49,12 +49,12 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
+import com.linkedin.venice.pubsub.mock.InMemoryPubSubBroker;
+import com.linkedin.venice.pubsub.mock.adapter.admin.MockInMemoryAdminAdapter;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.MockInMemoryConsumerAdapter;
+import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.RandomPollStrategy;
+import com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
-import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
-import com.linkedin.venice.unit.kafka.MockInMemoryAdminAdapter;
-import com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer;
-import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
-import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.StoreUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -102,21 +102,24 @@ public class TopicManagerTest {
     topicManager.setTopicConfigCache(cacheNothingCache);
   }
 
-  private InMemoryKafkaBroker inMemoryKafkaBroker;
+  private InMemoryPubSubBroker inMemoryPubSubBroker;
 
   protected void createTopicManager() {
-    inMemoryKafkaBroker = new InMemoryKafkaBroker("local");
+    inMemoryPubSubBroker = new InMemoryPubSubBroker("local");
     PubSubAdminAdapterFactory pubSubAdminAdapterFactory = mock(ApacheKafkaAdminAdapterFactory.class);
-    MockInMemoryAdminAdapter mockInMemoryAdminAdapter = new MockInMemoryAdminAdapter(inMemoryKafkaBroker);
+    MockInMemoryAdminAdapter mockInMemoryAdminAdapter = new MockInMemoryAdminAdapter(inMemoryPubSubBroker);
     doReturn(mockInMemoryAdminAdapter).when(pubSubAdminAdapterFactory).create(any(PubSubAdminAdapterContext.class));
-    MockInMemoryConsumer mockInMemoryConsumer =
-        new MockInMemoryConsumer(inMemoryKafkaBroker, new RandomPollStrategy(), mock(PubSubConsumerAdapter.class));
-    mockInMemoryConsumer.setMockInMemoryAdminAdapter(mockInMemoryAdminAdapter);
+    MockInMemoryConsumerAdapter mockInMemoryConsumerAdapter = new MockInMemoryConsumerAdapter(
+        inMemoryPubSubBroker,
+        new RandomPollStrategy(),
+        mock(PubSubConsumerAdapter.class));
+    mockInMemoryConsumerAdapter.setMockInMemoryAdminAdapter(mockInMemoryAdminAdapter);
     PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
-    doReturn(mockInMemoryConsumer).when(pubSubConsumerAdapterFactory).create(any(PubSubConsumerAdapterContext.class));
+    doReturn(mockInMemoryConsumerAdapter).when(pubSubConsumerAdapterFactory)
+        .create(any(PubSubConsumerAdapterContext.class));
 
     Properties properties = new Properties();
-    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, inMemoryKafkaBroker.getKafkaBootstrapServer());
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, inMemoryPubSubBroker.getPubSubBrokerAddress());
     VeniceProperties pubSubProperties = new VeniceProperties(properties);
     TopicManagerContext topicManagerContext =
         new TopicManagerContext.Builder().setPubSubPropertiesSupplier(k -> pubSubProperties)
@@ -132,7 +135,7 @@ public class TopicManagerTest {
   }
 
   protected PubSubProducerAdapter createPubSubProducerAdapter() {
-    return new MockInMemoryProducerAdapter(inMemoryKafkaBroker);
+    return new MockInMemoryProducerAdapter(inMemoryPubSubBroker);
   }
 
   @AfterClass

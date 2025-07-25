@@ -35,6 +35,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
@@ -42,6 +44,7 @@ import com.linkedin.davinci.consumer.VeniceAfterImageConsumerImpl;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -49,6 +52,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.endToEnd.TestChangelogValue;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -76,11 +80,11 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.views.MaterializedView;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.io.IOException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -90,6 +94,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -115,6 +120,7 @@ public class TestChangelogConsumer {
   private String clusterName;
   private VeniceClusterWrapper clusterWrapper;
   private ControllerClient parentControllerClient;
+  private D2Client d2Client;
   private static final List<Schema> SCHEMA_HISTORY = Arrays.asList(
       NAME_RECORD_V1_SCHEMA,
       NAME_RECORD_V2_SCHEMA,
@@ -166,10 +172,17 @@ public class TestChangelogConsumer {
             VeniceUserStoreType.BATCH_ONLY.toString(),
             Optional.empty()),
         "Failed to configure active-active replication for cluster " + clusterName);
+    d2Client = new D2ClientBuilder()
+        .setZkHosts(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress())
+        .setZkSessionTimeout(3, TimeUnit.SECONDS)
+        .setZkStartupTimeout(3, TimeUnit.SECONDS)
+        .build();
+    D2ClientUtils.startClient(d2Client);
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
+    D2ClientUtils.shutdownClient(d2Client);
     multiRegionMultiClusterWrapper.close();
     TestView.resetCounters();
   }
@@ -223,10 +236,12 @@ public class TestChangelogConsumer {
     Properties consumerProperties = new Properties();
     String localKafkaUrl = localKafka.getAddress();
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
     ChangelogClientConfig globalAfterImageClientConfig =
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
             .setLocalD2ZkHosts(localZkServer.getAddress())
             .setControllerRequestRetryCount(3)
             .setVersionSwapDetectionIntervalTimeInSeconds(3L)
@@ -242,7 +257,7 @@ public class TestChangelogConsumer {
 
     Map<String, Utf8> versionTopicEvents = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       Assert.assertEquals(versionTopicEvents.size(), 100);
     });
 
@@ -271,7 +286,7 @@ public class TestChangelogConsumer {
 
       // poll data from version topic
       TestUtils.waitForNonDeterministicAssertion(100, TimeUnit.SECONDS, true, () -> {
-        pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+        IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
         Assert.assertEquals(versionTopicEvents.size(), 21);
       });
       versionTopicEvents.clear();
@@ -369,6 +384,7 @@ public class TestChangelogConsumer {
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
     PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
     Properties consumerProperties = new Properties();
+    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
     String localKafkaUrl = localKafka.getAddress();
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
     ChangelogClientConfig globalChangelogClientConfig = new ChangelogClientConfig().setViewName("changeCaptureView")
@@ -376,6 +392,7 @@ public class TestChangelogConsumer {
         .setControllerD2ServiceName(D2_SERVICE_NAME)
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setLocalD2ZkHosts(localZkServer.getAddress())
+        .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
         .setControllerRequestRetryCount(3)
         .setVersionSwapDetectionIntervalTimeInSeconds(3L)
         .setIsBeforeImageView(true);
@@ -396,6 +413,7 @@ public class TestChangelogConsumer {
         .setConsumerProperties(consumerProperties)
         .setControllerD2ServiceName(D2_SERVICE_NAME)
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
         .setLocalD2ZkHosts(localZkServer.getAddress())
         .setVersionSwapDetectionIntervalTimeInSeconds(3L)
         .setControllerRequestRetryCount(3)
@@ -410,16 +428,29 @@ public class TestChangelogConsumer {
 
     // Let's consume those 100 records off of version 1
     Map<String, Utf8> versionTopicEvents = new HashMap<>();
-    pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
-    Assert.assertEquals(versionTopicEvents.size(), 100);
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      Assert.assertEquals(versionTopicEvents.size(), 100, "Version topic consumer should consume 100 records.");
+    });
 
     Map<String, Utf8> viewTopicEvents = new HashMap<>();
-    pollAfterImageEventsFromChangeCaptureConsumer(viewTopicEvents, viewTopicConsumer);
-    Assert.assertEquals(viewTopicEvents.size(), 100);
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(viewTopicEvents, viewTopicConsumer);
+      Assert.assertEquals(viewTopicEvents.size(), 100, "View topic consumer should consume 100 records.");
+    });
 
     VeniceChangelogConsumer<Utf8, Utf8> veniceChangelogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
     veniceChangelogConsumer.subscribeAll().get();
+
+    // Validate change events for version 1. 100 records exist in version 1.
+    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
+    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> allChangeEvents = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 100, "Venice change log consumer should consume 100 records.");
+    });
+
     try (VeniceSystemProducer veniceProducer =
         IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
       // Run Samza job to send PUT and DELETE requests.
@@ -437,20 +468,12 @@ public class TestChangelogConsumer {
       });
     }
 
-    // Validate change events for version 1. 100 records exist in version 1.
-    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents = new HashMap<>();
-    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> allChangeEvents = new HashMap<>();
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      Assert.assertEquals(polledChangeEvents.size(), 100);
-    });
-
     allChangeEvents.putAll(polledChangeEvents);
     polledChangeEvents.clear();
 
     // 21 changes in nearline. 10 puts, 10 deletes, and 1 record with a producer timestamp
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       // 21 events for nearline events
       Assert.assertEquals(polledChangeEvents.size(), 21);
       for (int i = 100; i < 110; i++) {
@@ -475,12 +498,12 @@ public class TestChangelogConsumer {
 
     versionTopicEvents.clear();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       Assert.assertEquals(versionTopicEvents.size(), 21);
     });
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 21);
     });
 
@@ -537,15 +560,15 @@ public class TestChangelogConsumer {
 
     // we shouldn't pull anything on this version if filtering is working correctly
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       Assert.assertEquals(versionTopicEvents.size(), 0);
     });
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       // poll a few times in a row to make sure version jump happens
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
 
@@ -587,15 +610,15 @@ public class TestChangelogConsumer {
 
     // We should only poll 1 record as we produced 1 that would have been applied in LWW
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       Assert.assertEquals(versionTopicEvents.size(), 1);
     });
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       // poll a few times in a row to make sure version jump happens
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 1);
     });
 
@@ -610,7 +633,7 @@ public class TestChangelogConsumer {
     veniceChangelogConsumer.pause();
     polledChangeEvents.clear();
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
     veniceChangelogConsumer.resume();
@@ -628,6 +651,7 @@ public class TestChangelogConsumer {
         5,
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 4));
+
     // Validate repush from version 4
     clusterWrapper.refreshAllRouterMetaData();
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
@@ -660,7 +684,7 @@ public class TestChangelogConsumer {
 
     polledChangeEvents.clear();
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer2(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 20);
     });
 
@@ -684,9 +708,9 @@ public class TestChangelogConsumer {
     polledChangeEvents.clear();
     // Poll Change events again, verify we get everything
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       // Repush with TTL will include delete events in the topic
       Assert.assertEquals(polledChangeEvents.size(), 7);
     });
@@ -697,20 +721,20 @@ public class TestChangelogConsumer {
     // Should be nothing on the tail
     veniceChangelogConsumer.seekToTail().join();
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
 
     // This should get everything submitted to the CC topic on this version (version 4 doesn't have anything)
     veniceChangelogConsumer.seekToTimestamp(timestamp);
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
 
     versionTopicEvents.clear();
     TestUtils.waitForNonDeterministicAssertion(1000, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       // At this point, the consumer should have auto tracked to version 4, and since we didn't apply any nearline
       // writes to version 4, there should be no events to consume at this point
       Assert.assertEquals(versionTopicEvents.size(), 0);
@@ -719,7 +743,7 @@ public class TestChangelogConsumer {
     // The repush should result in nothing getting placed on the RT, so this seek should put us at the tail of events
     versionTopicConsumer.seekToEndOfPush().get();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       // Again, no events to consume here.
       Assert.assertEquals(versionTopicEvents.size(), 0);
     });
@@ -728,7 +752,7 @@ public class TestChangelogConsumer {
     // it
     versionTopicConsumer.seekToBeginningOfPush().get();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
+      IntegrationTestUtils.pollAfterImageEventsFromChangeCaptureConsumer(versionTopicEvents, versionTopicConsumer);
       Assert.assertEquals(versionTopicEvents.size(), 30);
     });
 
@@ -790,6 +814,7 @@ public class TestChangelogConsumer {
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
     PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
     Properties consumerProperties = new Properties();
+    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
     String localKafkaUrl = localKafka.getAddress();
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
     consumerProperties.put(CLUSTER_NAME, clusterName);
@@ -799,6 +824,7 @@ public class TestChangelogConsumer {
             .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setLocalD2ZkHosts(localZkServer.getAddress())
+            .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
             .setControllerRequestRetryCount(3)
             .setVersionSwapDetectionIntervalTimeInSeconds(3L)
             .setSpecificValue(TestChangelogValue.class)
@@ -815,7 +841,7 @@ public class TestChangelogConsumer {
     List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsList =
         new ArrayList<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromSpecificBootstrappingChangeCaptureConsumer(
+      IntegrationTestUtils.pollChangeEventsFromSpecificBootstrappingChangeCaptureConsumer(
           polledChangeEventsMap,
           polledChangeEventsList,
           specificChangelogConsumer);
@@ -846,7 +872,7 @@ public class TestChangelogConsumer {
     }
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromSpecificBootstrappingChangeCaptureConsumer(
+      IntegrationTestUtils.pollChangeEventsFromSpecificBootstrappingChangeCaptureConsumer(
           polledChangeEventsMap,
           polledChangeEventsList,
           specificChangelogConsumer);
@@ -905,6 +931,7 @@ public class TestChangelogConsumer {
     ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
     PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
     Properties consumerProperties = new Properties();
+    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
     String localKafkaUrl = localKafka.getAddress();
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
     consumerProperties.put(CLUSTER_NAME, clusterName);
@@ -914,6 +941,7 @@ public class TestChangelogConsumer {
             .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setLocalD2ZkHosts(localZkServer.getAddress())
+            .setD2Client(IntegrationTestPushUtils.getD2Client(localZkServer.getAddress()))
             .setControllerRequestRetryCount(3)
             .setVersionSwapDetectionIntervalTimeInSeconds(3L)
             .setSpecificValue(TestChangelogValue.class)
@@ -932,7 +960,7 @@ public class TestChangelogConsumer {
     List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEventsList =
         new ArrayList<>();
     TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromSpecificChangeCaptureConsumer(
+      IntegrationTestUtils.pollChangeEventsFromSpecificChangeCaptureConsumer(
           polledChangeEventsMap,
           polledChangeEventsList,
           specificChangelogConsumer);
@@ -965,7 +993,7 @@ public class TestChangelogConsumer {
     }
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromSpecificChangeCaptureConsumer(
+      IntegrationTestUtils.pollChangeEventsFromSpecificChangeCaptureConsumer(
           polledChangeEventsMap,
           polledChangeEventsList,
           specificChangelogConsumer);
@@ -980,6 +1008,84 @@ public class TestChangelogConsumer {
       Assert.assertFalse(storeTopicsResponse.isError());
       Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
     });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, priority = 3)
+  public void testChangelogConsumerWithNewValueSchema() throws IOException, ExecutionException, InterruptedException {
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithStringToNameRecordV1Schema(inputDir);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props = TestWriteUtils.defaultVPJProps(
+        parentControllers.get(0).getControllerUrl(),
+        inputDirPath,
+        storeName,
+        clusterWrapper.getPubSubClientProperties());
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = NAME_RECORD_V1_SCHEMA.toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(500)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(3);
+    MetricsRepository metricsRepository =
+        getVeniceMetricsRepository(CHANGE_DATA_CAPTURE_CLIENT, CONSUMER_METRIC_ENTITIES, true);
+    ControllerClient setupControllerClient =
+        createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms);
+    IntegrationTestPushUtils.runVPJ(props);
+    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
+    PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getPubSubBrokerWrapper();
+    Properties consumerProperties = new Properties();
+    consumerProperties.putAll(multiRegionMultiClusterWrapper.getPubSubClientProperties());
+    String localKafkaUrl = localKafka.getAddress();
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
+    consumerProperties.put(CLUSTER_NAME, clusterName);
+    consumerProperties.put(ZOOKEEPER_ADDRESS, localZkServer.getAddress());
+    // setVersionSwapDetectionIntervalTimeInSeconds also controls native metadata repository refresh interval, setting
+    // it to a large value to reproduce the scenario where the newly added schema is yet to be fetched.
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setConsumerProperties(consumerProperties)
+            .setControllerD2ServiceName(D2_SERVICE_NAME)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setLocalD2ZkHosts(localZkServer.getAddress())
+            .setControllerRequestRetryCount(3)
+            .setVersionSwapDetectionIntervalTimeInSeconds(180)
+            .setUseRequestBasedMetadataRepository(true)
+            .setD2Client(d2Client)
+            .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
+    VeniceChangelogConsumer<Utf8, Utf8> changeLogConsumer =
+        veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName, "0");
+
+    changeLogConsumer.subscribeAll().get();
+    Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsMap = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, true, () -> {
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEventsMap, changeLogConsumer);
+      Assert.assertEquals(polledChangeEventsMap.size(), 100);
+      Assert.assertTrue(changeLogConsumer.isCaughtUp());
+    });
+    TestUtils.assertCommand(
+        setupControllerClient.retryableRequest(
+            5,
+            controllerClient -> setupControllerClient.addValueSchema(storeName, NAME_RECORD_V2_SCHEMA.toString())),
+        "Failed to add schema: " + NAME_RECORD_V2_SCHEMA.toString() + " to store " + storeName);
+    GenericRecord genericRecord = new GenericData.Record(NAME_RECORD_V2_SCHEMA);
+    genericRecord.put("firstName", "Venice");
+    genericRecord.put("lastName", "Italy");
+    genericRecord.put("age", 18);
+    try (VeniceSystemProducer veniceProducer =
+        IntegrationTestPushUtils.getSamzaProducerForStream(multiRegionMultiClusterWrapper, 0, storeName)) {
+      // Run Samza job to send the new write with schema v2.
+      sendStreamingRecord(veniceProducer, storeName, Integer.toString(10000), genericRecord, null);
+    }
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      IntegrationTestUtils.pollChangeEventsFromChangeCaptureConsumer(polledChangeEventsMap, changeLogConsumer);
+      Assert.assertEquals(polledChangeEventsMap.size(), 101);
+    });
+    Assert.assertNotNull(polledChangeEventsMap.get(Integer.toString(10000)));
+    parentControllerClient.disableAndDeleteStore(storeName);
   }
 
   private void runSamzaStreamJob(
@@ -1007,70 +1113,4 @@ public class TestChangelogConsumer {
           mockedTime == null ? null : mockedTime.getMilliseconds());
     }
   }
-
-  private void pollChangeEventsFromChangeCaptureConsumer(
-      Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
-      VeniceChangelogConsumer veniceChangelogConsumer) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(1000);
-    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      String key = pubSubMessage.getKey().toString();
-      polledChangeEvents.put(key, pubSubMessage);
-    }
-  }
-
-  private void pollChangeEventsFromSpecificBootstrappingChangeCaptureConsumer(
-      Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEvents,
-      List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
-      BootstrappingVeniceChangelogConsumer veniceChangelogConsumer) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(1000);
-    for (PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      String key = pubSubMessage.getKey() == null ? null : pubSubMessage.getKey().toString();
-      polledChangeEvents.put(key, pubSubMessage);
-    }
-    polledMessageList.addAll(pubSubMessages);
-  }
-
-  private void pollChangeEventsFromSpecificChangeCaptureConsumer(
-      Map<String, PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledChangeEvents,
-      List<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> polledMessageList,
-      VeniceChangelogConsumer veniceChangelogConsumer) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(1000);
-    for (PubSubMessage<Utf8, ChangeEvent<TestChangelogValue>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      String key = pubSubMessage.getKey() == null ? null : pubSubMessage.getKey().toString();
-      polledChangeEvents.put(key, pubSubMessage);
-    }
-    polledMessageList.addAll(pubSubMessages);
-  }
-
-  private void pollChangeEventsFromChangeCaptureConsumer2(
-      Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEvents,
-      VeniceChangelogConsumer veniceChangelogConsumer) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(1000);
-    pubSubMessages.addAll(veniceChangelogConsumer.poll(1000));
-    pubSubMessages.addAll(veniceChangelogConsumer.poll(1000));
-    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      String key = pubSubMessage.getKey().toString();
-      polledChangeEvents.put(key, pubSubMessage);
-    }
-  }
-
-  private int pollAfterImageEventsFromChangeCaptureConsumer(
-      Map<String, Utf8> polledChangeEvents,
-      VeniceChangelogConsumer veniceChangelogConsumer) {
-    int polledMessagesNum = 0;
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        veniceChangelogConsumer.poll(1000);
-    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      Utf8 afterImageEvent = pubSubMessage.getValue().getCurrentValue();
-      String key = pubSubMessage.getKey().toString();
-      polledChangeEvents.put(key, afterImageEvent);
-      polledMessagesNum++;
-    }
-    return polledMessagesNum;
-  }
-
 }

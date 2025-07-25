@@ -592,6 +592,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               null,
               (schemaId) -> storeDeserializerCache.getDeserializer(schemaId, schemaId)));
     } else {
+      // If rmdWithValueSchemaID is not null this implies Venice has processed this key before
+      // it will be produced to VT with as a duplicate key message. emit this info for log compaction
+      if (rmdWithValueSchemaID != null) {
+        aggVersionedIngestionStats.recordTotalDuplicateKeyUpdate(storeName, versionNumber);
+      }
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
 
       final ByteBuffer updatedValueBytes = maybeCompressData(

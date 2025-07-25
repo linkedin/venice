@@ -42,6 +42,35 @@ public abstract class AbstractVeniceWriter<K, V, U> implements Closeable {
       K key,
       V value,
       int valueSchemaId,
+      long logicalTimestamp,
+      PubSubProducerCallback callback);
+
+  public abstract Future<PubSubProduceResult> update(
+      K key,
+      U update,
+      int valueSchemaId,
+      int derivedSchemaId,
+      PubSubProducerCallback callback);
+
+  public abstract CompletableFuture<PubSubProduceResult> update(
+      K key,
+      U update,
+      int valueSchemaId,
+      int derivedSchemaId,
+      long logicalTimestamp,
+      PubSubProducerCallback callback);
+
+  public abstract CompletableFuture<PubSubProduceResult> delete(K key, PubSubProducerCallback callback);
+
+  public abstract CompletableFuture<PubSubProduceResult> delete(
+      K key,
+      long logicalTimestamp,
+      PubSubProducerCallback callback);
+
+  public abstract CompletableFuture<PubSubProduceResult> put(
+      K key,
+      V value,
+      int valueSchemaId,
       PubSubProducerCallback callback,
       PutMetadata putMetadata);
 
@@ -57,13 +86,6 @@ public abstract class AbstractVeniceWriter<K, V, U> implements Closeable {
       K key,
       PubSubProducerCallback callback,
       DeleteMetadata deleteMetadata);
-
-  public abstract Future<PubSubProduceResult> update(
-      K key,
-      U update,
-      int valueSchemaId,
-      int derivedSchemaId,
-      PubSubProducerCallback callback);
 
   public abstract void flush();
 }

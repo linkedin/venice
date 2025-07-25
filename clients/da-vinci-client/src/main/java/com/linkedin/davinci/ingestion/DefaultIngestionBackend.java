@@ -9,6 +9,8 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
+import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
@@ -84,9 +86,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
     if (!storeAndVersion.getStore().isBlobTransferEnabled() || blobTransferManager == null) {
       runnable.run();
     } else {
-      // Open store for lag check and later metadata update for offset/StoreVersionState
-      storageService.openStore(storeConfig, svsSupplier);
-
       BlobTransferTableFormat requestTableFormat =
           serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
               ? BlobTransferTableFormat.PLAIN_TABLE
@@ -97,7 +96,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeAndVersion.getVersion().getNumber(),
           partition,
           requestTableFormat,
-          serverConfig.getBlobTransferDisabledOffsetLagThreshold());
+          serverConfig.getBlobTransferDisabledOffsetLagThreshold(),
+          storeConfig,
+          svsSupplier);
 
       bootstrapFuture.whenComplete((result, throwable) -> {
         runnable.run();
@@ -106,31 +107,45 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   /**
-   * Bootstrap from the blobs from another source (like another peer). If it fails (due to the 30-minute timeout or
+   * Bootstrap from the blobs from another source (like another peer). If it fails (due to the timeout or
    * any exceptions), it deletes the partially downloaded blobs, and eventually falls back to bootstrapping from Kafka.
    * Blob transfer should be enabled to boostrap from blobs.
+   *
+   * If the blob transfer fails during transferring:
+   * The folder will be cleaned up in NettyP2PBlobTransferManager#handlePeerFetchException.
+   * When falling back to Kafka ingestion, it will bootstrap from the beginning.
+   *
+   * If the blob transfer succeeds:
+   * When falling back to Kafka ingestion, it will resume from the last offset instead of starting from the beginning.
+   *
+   * Regardless of whether the blob transfer succeeds or fails,
+   * this method always returns a completed future, All exceptions are handled either by cleaning up the folder or dropping the partition.
    */
   CompletionStage<Void> bootstrapFromBlobs(
       Store store,
       int versionNumber,
       int partitionId,
       BlobTransferTableFormat tableFormat,
-      long blobTransferDisabledOffsetLagThreshold) {
+      long blobTransferDisabledOffsetLagThreshold,
+      VeniceStoreVersionConfig storeConfig,
+      Supplier<StoreVersionState> svsSupplier) {
+    String storeName = store.getName();
+    String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
+
     if (!store.isBlobTransferEnabled() || blobTransferManager == null) {
       return CompletableFuture.completedFuture(null);
     }
 
+    // Open store for lag check and later metadata update for offset/StoreVersionState
     // If the offset lag is below the blobTransferDisabledOffsetLagThreshold, it indicates there is not lagging and
     // can bootstrap from Kafka.
+    storageService.openStore(storeConfig, svsSupplier);
     if (!isOffsetLagged(store.getName(), versionNumber, partitionId, blobTransferDisabledOffsetLagThreshold)) {
       return CompletableFuture.completedFuture(null);
     }
 
-    String storeName = store.getName();
-
     // After decide to bootstrap from blobs transfer, close the partition, clean up the offset and partition folder,
     // but the metadata partition is not removed.
-    String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
     StorageEngine storageEngine = storageService.getStorageEngine(kafkaTopic);
     if (storageEngine != null && storageEngine.containsPartition(partitionId)) {
       storageEngine.dropPartition(partitionId, false);
@@ -151,6 +166,8 @@ public class DefaultIngestionBackend implements IngestionBackend {
           Utils.getReplicaId(kafkaTopic, partitionId),
           Arrays.toString(partitionFolderDir.list()));
     }
+
+    addStoragePartitionWhenBlobTransferStart(partitionId, storeConfig, svsSupplier);
 
     return blobTransferManager.get(storeName, versionNumber, partitionId, tableFormat)
         .handle((inputStream, throwable) -> {
@@ -174,8 +191,59 @@ public class DefaultIngestionBackend implements IngestionBackend {
                   Arrays.toString(partitionFolderDir.list()));
             }
           }
+          adjustStoragePartitionWhenBlobTransferComplete(storageService.getStorageEngine(kafkaTopic), partitionId);
           return null;
         });
+  }
+
+  /**
+   * Add a partition to the storage engine when blob transfer starts
+   * with disabled read, disabled write, and rocksDB not open, but have blob transfer in-progress flag.
+   *
+   */
+  private void addStoragePartitionWhenBlobTransferStart(
+      int partitionId,
+      VeniceStoreVersionConfig storeConfig,
+      Supplier<StoreVersionState> svsSupplier) {
+    // Prepare configs with blob transfer in-progress flag.
+    StoragePartitionConfig storagePartitionConfig =
+        new StoragePartitionConfig(storeConfig.getStoreVersionName(), partitionId, true);
+    storagePartitionConfig.setReadOnly(true);
+
+    // due to we use storage service to open the store and partition here,
+    // it can prevent the race condition between dropping entire store (SE) and receiving transfer file for new
+    // partition.
+    storageService.openStoreForNewPartition(storeConfig, partitionId, svsSupplier, storagePartitionConfig);
+    LOGGER.info(
+        "Storage partition is added with {} for replica {} for blob transfer with config {}",
+        StoragePartitionAdjustmentTrigger.BEGIN_BLOB_TRANSFER,
+        Utils.getReplicaId(storeConfig.getStoreVersionName(), partitionId),
+        storagePartitionConfig);
+  }
+
+  /**
+   * Adjust the storage partition when blob transfer is complete
+   * Adjust storage partition will drop the old partition without rocksDB and create a new one with default options and running rocksDB.
+   */
+  private void adjustStoragePartitionWhenBlobTransferComplete(StorageEngine storageEngine, int partitionId) {
+    try {
+      // Prepare storage partition with default options, and remove blob transfer in-progress flag.
+      StoragePartitionConfig defaultStoragePartitionConfig =
+          new StoragePartitionConfig(storageEngine.getStoreVersionName(), partitionId);
+
+      // Adjust the storage partition will create a new partition with rocksDB
+      storageEngine.adjustStoragePartition(
+          partitionId,
+          StoragePartitionAdjustmentTrigger.END_BLOB_TRANSFER,
+          defaultStoragePartitionConfig);
+    } catch (Exception e) {
+      LOGGER.error(
+          "Failed to adjust storage partition for replica {} after blob transfer completed: {}, dropping the partition.",
+          Utils.getReplicaId(storageEngine.getStoreVersionName(), partitionId),
+          e.getMessage(),
+          e);
+      storageEngine.dropPartition(partitionId, false);
+    }
   }
 
   /**

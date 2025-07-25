@@ -16,6 +16,7 @@ public class D2ControllerClientFactory {
   private static final SharedObjectFactory<D2ControllerClient> SHARED_OBJECT_FACTORY = new SharedObjectFactory<>();
   private static final Map<ControllerClient, String> CONTROLLER_CLIENT_TO_IDENTIFIER_MAP = new HashMap<>();
 
+  @Deprecated
   public static D2ControllerClient getControllerClient(
       String d2ServiceName,
       String clusterName,
@@ -51,6 +52,7 @@ public class D2ControllerClientFactory {
     return getControllerClient(d2ServiceName, discoveryResponse.getCluster(), d2Client);
   }
 
+  @Deprecated
   public static D2ControllerClient discoverAndConstructControllerClient(
       String storeName,
       String d2ServiceName,

@@ -46,12 +46,12 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
 
   @BeforeMethod(alwaysRun = true)
   public void setUp() throws Exception {
-    setupCluster(false, new MetricsRepository());
+    setupCluster(new MetricsRepository());
   }
 
   @AfterMethod(alwaysRun = true)
   public void cleanUp() {
-    cleanupCluster();
+    super.cleanUp();
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST_MS)

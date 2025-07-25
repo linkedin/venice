@@ -28,6 +28,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_P
 import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.kafka.consumer.ConsumerPoolType;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.TopicPartitionIngestionInfo;
@@ -38,6 +39,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
@@ -424,8 +426,8 @@ public class IntegrationTestPushUtils {
         String childControllerRegionName = pushJobProps.getProperty(SOURCE_GRID_FABRIC);
         d2ZkHosts = pushJobProps.getProperty(D2_ZK_HOSTS_PREFIX + childControllerRegionName);
       }
-      return D2ControllerClientFactory
-          .getControllerClient(d2ServiceName, veniceClusterName, d2ZkHosts, Optional.empty());
+      D2Client d2Client = D2ClientFactory.getD2Client(d2ZkHosts, Optional.empty());
+      return D2ControllerClientFactory.getControllerClient(d2ServiceName, veniceClusterName, d2Client);
     } else {
       return ControllerClient.constructClusterControllerClient(veniceClusterName, veniceUrl);
     }
@@ -483,6 +485,16 @@ public class IntegrationTestPushUtils {
       Object key,
       Object message,
       Long logicalTimeStamp) {
+    sendStreamingRecordWithoutFlush(producer, storeName, key, message, logicalTimeStamp);
+    producer.flush(storeName);
+  }
+
+  public static void sendStreamingRecordWithoutFlush(
+      SystemProducer producer,
+      String storeName,
+      Object key,
+      Object message,
+      Long logicalTimeStamp) {
     OutgoingMessageEnvelope envelope;
     if (logicalTimeStamp == null) {
       envelope = new OutgoingMessageEnvelope(new SystemStream("venice", storeName), key, message);
@@ -493,7 +505,14 @@ public class IntegrationTestPushUtils {
           new VeniceObjectWithTimestamp(message, logicalTimeStamp));
     }
     producer.send(storeName, envelope);
-    producer.flush(storeName);
+  }
+
+  public static void sendStreamingRecordWithoutFlush(
+      SystemProducer producer,
+      String storeName,
+      Object key,
+      Object message) {
+    sendStreamingRecordWithoutFlush(producer, storeName, key, message, null);
   }
 
   /**
@@ -598,6 +617,10 @@ public class IntegrationTestPushUtils {
       }
       Assert.assertEquals(replicaPerRegionCount, expectedReplicaNumPerRegion);
     }
+  }
+
+  static public D2Client getD2Client(String d2ZkHosts) {
+    return D2ClientFactory.getD2Client(d2ZkHosts, Optional.empty());
   }
 
 }

@@ -198,7 +198,8 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     addStoragePartition(new StoragePartitionConfig(storeVersionName, partitionId));
   }
 
-  synchronized void addStoragePartition(StoragePartitionConfig storagePartitionConfig) {
+  @Override
+  public synchronized void addStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     validateStoreName(storagePartitionConfig);
     int partitionId = storagePartitionConfig.getPartitionId();
 

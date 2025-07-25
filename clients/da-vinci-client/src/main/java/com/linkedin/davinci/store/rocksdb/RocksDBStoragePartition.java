@@ -83,6 +83,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    * to avoid data loss during recovery.
    */
   protected final WriteOptions writeOptions;
+  protected final ReadOptions iteratorReadOptions;
   private final String fullPathForTempSSTFileDir;
   private final String fullPathForPartitionDBSnapshot;
 
@@ -138,6 +139,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   protected final boolean readOnly;
   protected final boolean writeOnly;
+  protected final boolean blobTransferInProgress;
   protected final boolean readWriteLeaderForDefaultCF;
   protected final boolean readWriteLeaderForRMDCF;
 
@@ -187,6 +189,23 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     // if WAL is disabled then all ingestion progress made would be lost in case of non-graceful shutdown of server.
     this.writeOptions = new WriteOptions().setDisableWAL(this.partitionId != METADATA_PARTITION_ID);
 
+    this.iteratorReadOptions = new ReadOptions().setReadaheadSize(rocksDBServerConfig.getIteratorReadAheadSizeInBytes())
+        /*
+         * Setting this to false prevents data blocks accessed during iteration from being pinned in memory,
+         * allowing them to be evicted from the block cache and saving memory.
+         */
+        .setPinData(false)
+        /*
+         * Setting this to false disables caching of blocks loaded by the iterator in the block cache,
+         * reducing memory usage and eliminating the eviction costs in the LRU block cache.
+         */
+        .setFillCache(false)
+        /*
+         * Setting this to true, allows for iterator cleanup operations to be performed asynchronously leading to
+         * faster iterator closing times.
+         */
+        .setBackgroundPurgeOnIteratorCleanup(true);
+
     // For multiple column family enable atomic flush
     if (columnFamilyNameList.size() > 1 && rocksDBServerConfig.isAtomicFlushEnabled()) {
       options.setAtomicFlush(true);
@@ -199,6 +218,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
     this.readOnly = storagePartitionConfig.isReadOnly();
     this.writeOnly = storagePartitionConfig.isWriteOnlyConfig();
+    this.blobTransferInProgress = storagePartitionConfig.isBlobTransferInProgress();
     this.readWriteLeaderForDefaultCF = storagePartitionConfig.isReadWriteLeaderForDefaultCF();
     this.readWriteLeaderForRMDCF = storagePartitionConfig.isReadWriteLeaderForRMDCF();
     this.fullPathForPartitionDB = RocksDBUtils.composePartitionDbDir(dbDir, storeNameAndVersion, partitionId);
@@ -240,6 +260,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       }
       columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions));
     }
+
+    if (blobTransferInProgress) {
+      this.rocksDB = null;
+      LOGGER.info("Blob transfer in progress for replica: {}. Skip initializing and opening RocksDB.", replicaId);
+      return;
+    }
+
     /**
      * This new open(ReadOnly)WithColumnFamily API replace original open(ReadOnly) API to reduce code duplication.
      * In the default case, we will only open DEFAULT_COLUMN_FAMILY, which is what old API does internally.
@@ -339,7 +366,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   protected void makeSureRocksDBIsStillOpen() {
-    if (isClosed) {
+    if (rocksDB == null || isClosed) {
       throw new VeniceException(
           "RocksDB has been closed for replica: " + replicaId + ", partition id: " + partitionId
               + ", any further operation is disallowed");
@@ -717,7 +744,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     try {
       makeSureRocksDBIsStillOpen();
 
-      try (ReadOptions readOptions = getReadOptionsForIteration(keyPrefix);
+      try (ReadOptions readOptions = getReadOptionsForPrefixIteration(keyPrefix);
           RocksIterator iterator = rocksDB.newIterator(readOptions)) {
         if (keyPrefix == null) {
           iterator.seekToFirst();
@@ -742,7 +769,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return rocksDBSstFileWriter.validateBatchIngestion();
   }
 
-  private ReadOptions getReadOptionsForIteration(byte[] keyPrefix) {
+  private ReadOptions getReadOptionsForPrefixIteration(byte[] keyPrefix) {
     if (keyPrefix == null) {
       return new ReadOptions();
     } else {
@@ -898,7 +925,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     deRegisterDBStats();
     readCloseRWLock.writeLock().lock();
     try {
-      rocksDB.close();
+      if (rocksDB != null) {
+        rocksDB.close();
+      }
     } finally {
       isClosed = true;
       readCloseRWLock.writeLock().unlock();
@@ -1008,6 +1037,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       }
     }
 
+    if (blobTransferInProgress != partitionConfig.isBlobTransferInProgress()) {
+      return false;
+    }
+
     if (options.tableFormatConfig() instanceof BlockBasedTableConfig
         && deferredWrite != partitionConfig.isDeferredWrite()) {
       return false;
@@ -1043,7 +1076,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public AbstractStorageIterator getIterator() {
-    return new RocksDBStorageIterator(rocksDB.newIterator());
+    return new RocksDBStorageIterator(rocksDB.newIterator(iteratorReadOptions));
   }
 
   /**

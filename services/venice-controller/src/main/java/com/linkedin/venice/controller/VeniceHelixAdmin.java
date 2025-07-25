@@ -44,6 +44,7 @@ import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.VeniceComponent;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -74,6 +75,7 @@ import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.AddVersionLatencyStats;
 import com.linkedin.venice.controller.stats.DeadStoreStats;
 import com.linkedin.venice.controller.stats.DisabledPartitionStats;
+import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.PushJobStatusStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -206,6 +208,7 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
+import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
@@ -219,6 +222,7 @@ import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
@@ -361,6 +365,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final long CONTROLLER_CLUSTER_RESOURCE_EV_CHECK_DELAY_MS = 500;
   private static final long HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS = 500;
   private static final long HELIX_RESOURCE_ASSIGNMENT_LOG_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1);
+  private static final long HELIX_MANAGER_DISCONNECT_TIMEOUT_MS = 1 * Time.MS_PER_MINUTE;
 
   protected static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
   protected static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = TimeUnit.SECONDS.toMillis(5);
@@ -404,6 +409,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final MetaStoreWriter metaStoreWriter;
   private final MetaStoreReader metaStoreReader;
   private final D2Client d2Client;
+  private final Map<String, D2Client> d2Clients;
   private final Map<String, HelixReadWriteLiveClusterConfigRepository> clusterToLiveClusterConfigRepo;
   private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
   private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH = "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH;
@@ -464,7 +470,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final LogContext logContext;
 
   final Map<String, DeadStoreStats> deadStoreStatsMap = new VeniceConcurrentHashMap<>();
+  final Map<String, LogCompactionStats> logCompactionStatsMap = new VeniceConcurrentHashMap<>();
 
+  // Test only.
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
@@ -476,7 +484,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         multiClusterConfigs,
         metricsRepository,
         false,
-        d2Client,
+        Collections.singletonMap(multiClusterConfigs.getRegionName(), d2Client),
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
@@ -491,7 +499,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
       boolean sslEnabled,
-      @Nonnull D2Client d2Client,
+      Map<String, D2Client> d2Clients,
       Optional<SSLConfig> sslConfig,
       Optional<DynamicAccessController> accessController,
       Optional<ICProvider> icProvider,
@@ -499,7 +507,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubClientsFactory pubSubClientsFactory,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines) {
-    Validate.notNull(d2Client);
+    Validate.notNull(d2Clients);
+    Validate.notEmpty(d2Clients);
     this.multiClusterConfigs = multiClusterConfigs;
     this.logContext = multiClusterConfigs.getLogContext();
     VeniceControllerClusterConfig commonConfig = multiClusterConfigs.getCommonConfig();
@@ -516,7 +525,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.defaultMaxRecordSizeBytes = multiClusterConfigs.getDefaultMaxRecordSizeBytes();
 
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
-    this.d2Client = d2Client;
+
+    LOGGER.info(
+        "D2 client map: {}, getRegionName: {}, {}",
+        d2Clients,
+        multiClusterConfigs.getParentFabrics(),
+        getRegionName());
+    this.d2Client = d2Clients.get(getRegionName());
+    Validate.notNull(this.d2Client);
+    this.d2Clients = d2Clients;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.sslEnabled = sslEnabled;
 
@@ -631,23 +648,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     dataRecoveryManager =
         new DataRecoveryManager(this, icProvider, pubSubTopicRepository, participantStoreClientsManager);
 
-    if (multiClusterConfigs.isLogCompactionEnabled()) {
-      // TODO LC: extends interchangeable with implements?
-      Class<? extends RepushOrchestrator> repushOrchestratorClass =
-          ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
-      try {
-        RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
-            repushOrchestratorClass,
-            new Class[] { VeniceProperties.class },
-            new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
-        compactionManager =
-            new CompactionManager(repushOrchestrator, multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS());
-      } catch (Exception e) {
-        LOGGER.error("Failed to enable " + LogCompactionService.class.getSimpleName(), e);
-        throw new VeniceException(e);
-      }
-    }
-
     List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
     initRoutines.add(
         new SystemSchemaInitializationRoutine(
@@ -748,6 +748,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         helixAdminClient);
 
     for (String clusterName: multiClusterConfigs.getClusters()) {
+      if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()) {
+        logCompactionStatsMap.putIfAbsent(clusterName, new LogCompactionStats(metricsRepository, clusterName));
+      }
+
       if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
         continue;
       }
@@ -785,6 +789,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       });
     }
+
+    if (multiClusterConfigs.isLogCompactionEnabled()) {
+      Class<? extends RepushOrchestrator> repushOrchestratorClass =
+          ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
+      try {
+        RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
+            repushOrchestratorClass,
+            new Class[] { VeniceProperties.class },
+            new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
+        this.compactionManager = new CompactionManager(
+            repushOrchestrator,
+            multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS(),
+            logCompactionStatsMap);
+      } catch (Exception e) {
+        LOGGER.error(
+            "[log-compaction] Failed to enable repush for log compaction " + CompactionManager.class.getSimpleName(),
+            e);
+        throw new VeniceException(e);
+      }
+    }
+
     emptyPushZSTDDictionary =
         Lazy.of(() -> ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData()));
 
@@ -1341,6 +1366,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   static void emitPushJobStatusMetrics(
       Map<String, PushJobStatusStats> pushJobStatusStatsMap,
+      Map<String, LogCompactionStats> logCompactionStatsMap,
       PushJobStatusRecordKey pushJobDetailsKey,
       PushJobDetails pushJobDetailsValue,
       Set<PushJobCheckpoints> pushJobUserErrorCheckpoints) {
@@ -1349,6 +1375,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return;
     }
     try {
+      // Push job status detail metrics
       PushJobDetailsStatus overallStatus =
           PushJobDetailsStatus.valueOf(overallStatuses.get(overallStatuses.size() - 1).getStatus());
       if (PushJobDetailsStatus.isTerminal(overallStatus.getValue())) {
@@ -1360,8 +1387,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           isIncrementalPush = Boolean.parseBoolean(pushJobDetailsValue.getPushJobConfigs().get(incPushKey).toString());
         }
         StringBuilder logMessage = new StringBuilder();
+        CharSequence storeName = pushJobDetailsKey.getStoreName();
         logMessage.append("Push job status for store name: ")
-            .append(pushJobDetailsKey.getStoreName())
+            .append(storeName)
             .append(", version: ")
             .append(pushJobDetailsKey.getVersionNumber())
             .append(", cluster: ")
@@ -1390,6 +1418,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             pushJobStatusStats.recordIncrementalPushSuccessSensor();
           } else {
             pushJobStatusStats.recordBatchPushSuccessSensor();
+          }
+
+          // Scheduled log compaction metric
+          if (Version.isPushIdRePush(pushJobDetailsValue.getPushId().toString())) {
+            logCompactionStatsMap.get(cluster).setCompactionComplete(storeName.toString());
           }
         }
         // Append job duration in minutes to log message
@@ -1456,7 +1489,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   void sendPushJobDetailsToLocalRT(PushJobStatusRecordKey key, PushJobDetails value) {
     // Emit push job status metrics
-    emitPushJobStatusMetrics(pushJobStatusStatsMap, key, value, pushJobUserErrorCheckpoints);
+    emitPushJobStatusMetrics(pushJobStatusStatsMap, logCompactionStatsMap, key, value, pushJobUserErrorCheckpoints);
     // Send push job details to the push job status system store
     if (getPushJobStatusStoreClusterName().isEmpty()) {
       throw new VeniceException(
@@ -1924,6 +1957,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                       clusterName,
                       entry.getValue(),
                       sslFactory)));
+
+      // Respect d2Clients from controller constructor
+      if (d2Clients != null) {
+        controllerConfig.getChildDataCenterControllerD2Map()
+            .entrySet()
+            .forEach(
+                entry -> controllerClients.put(
+                    entry.getKey(),
+                    new D2ControllerClient(
+                        controllerConfig.getD2ServiceName(),
+                        clusterName,
+                        d2Clients.get(entry.getKey()),
+                        sslFactory)));
+      }
 
       return controllerClients;
     });
@@ -7601,20 +7648,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
-    StatusMessageChannel messageChannel = resources.getMessageChannel();
-    // As we should already have retry outside of this function call, so we do not need to retry again inside.
-    int retryCount = 1;
-    // Broadcast kill message to all of storage nodes assigned to given resource. Helix will help us to only send
-    // message to the live instances.
-    // The alternative way here is that get the storage nodes in BOOTSTRAP state of given resource, then send the
-    // kill message node by node. Considering the simplicity, broadcast is a better.
-    // In prospective of performance, each time helix sending a message needs to read the whole LIVE_INSTANCE and
-    // EXTERNAL_VIEW from ZK, so sending message nodes by nodes would generate lots of useless read requests. Of course
-    // broadcast would generate useless write requests to ZK(N-M useless messages, N=number of nodes assigned to
-    // resource,
-    // M=number of nodes have completed the ingestion or have not started). But considering the number of nodes in
-    // our cluster is not too big, so it's not a big deal here.
     if (multiClusterConfigs.getControllerConfig(clusterName).isAdminHelixMessagingChannelEnabled()) {
+      StatusMessageChannel messageChannel = resources.getMessageChannel();
+      // As we should already have retry outside of this function call, so we do not need to retry again inside.
+      int retryCount = 1;
+      // Broadcast kill message to all of storage nodes assigned to given resource. Helix will help us to only send
+      // message to the live instances.
+      // The alternative way here is that get the storage nodes in BOOTSTRAP state of given resource, then send the
+      // kill message node by node. Considering the simplicity, broadcast is a better.
+      // In prospective of performance, each time helix sending a message needs to read the whole LIVE_INSTANCE and
+      // EXTERNAL_VIEW from ZK, so sending message nodes by nodes would generate lots of useless read requests. Of
+      // course
+      // broadcast would generate useless write requests to ZK(N-M useless messages, N=number of nodes assigned to
+      // resource,
+      // M=number of nodes have completed the ingestion or have not started). But considering the number of nodes in
+      // our cluster is not too big, so it's not a big deal here.
       messageChannel.sendToStorageNodes(clusterName, new KillOfflinePushMessage(kafkaTopic), kafkaTopic, retryCount);
     }
     if (multiClusterConfigs.getControllerConfig(clusterName).isParticipantMessageStoreEnabled()
@@ -8076,23 +8124,43 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void close() {
-    Utils.closeQuietlyWithErrorLogged(getPushStatusStoreReader());
-    pushStatusStoreWriter.ifPresent(PushStatusStoreWriter::close);
+    long closeStartTime = System.currentTimeMillis();
+    ExecutorService ex = Executors.newSingleThreadExecutor(new DaemonThreadFactory("HelixManagerDisconnect"));
+    try {
+      // This disconnect sometimes hangs... hence why we treat it this way...
+      Future helixManagerDisconnectFuture = ex.submit(this.helixManager::disconnect);
 
-    helixManager.disconnect();
-    Utils.closeQuietlyWithErrorLogged(zkSharedSystemStoreRepository);
-    Utils.closeQuietlyWithErrorLogged(zkSharedSchemaRepository);
-    zkClient.close();
-    jobTrackingVeniceWriterMap.forEach((k, v) -> Utils.closeQuietlyWithErrorLogged(v));
-    jobTrackingVeniceWriterMap.clear();
-    dataRecoveryManager.close();
-    participantStoreClientsManager.close();
-    Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
-    Utils.closeQuietlyWithErrorLogged(pushJobDetailsStoreClient);
-    Utils.closeQuietlyWithErrorLogged(livenessHeartbeatStoreClient);
-    clusterControllerClientPerColoMap.forEach(
-        (clusterName, controllerClientMap) -> controllerClientMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
-    D2ClientUtils.shutdownClient(d2Client);
+      // Close everything else, which usually works fine...
+      Utils.closeQuietlyWithErrorLogged(getPushStatusStoreReader());
+      this.pushStatusStoreWriter.ifPresent(Utils::closeQuietlyWithErrorLogged);
+      Utils.closeQuietlyWithErrorLogged(this.zkSharedSystemStoreRepository);
+      Utils.closeQuietlyWithErrorLogged(this.zkSharedSchemaRepository);
+      try {
+        zkClient.close();
+      } catch (Exception e) {
+        LOGGER.error("Failed to close zkClient. Swallowing and moving on.", e);
+      }
+      this.jobTrackingVeniceWriterMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
+      this.jobTrackingVeniceWriterMap.clear();
+      Utils.closeQuietlyWithErrorLogged(this.dataRecoveryManager);
+      Utils.closeQuietlyWithErrorLogged(this.participantStoreClientsManager);
+      Utils.closeQuietlyWithErrorLogged(this.topicManagerRepository);
+      Utils.closeQuietlyWithErrorLogged(this.pushJobDetailsStoreClient);
+      Utils.closeQuietlyWithErrorLogged(this.livenessHeartbeatStoreClient);
+      this.clusterControllerClientPerColoMap.values()
+          .forEach(ccMap -> ccMap.values().forEach(Utils::closeQuietlyWithErrorLogged));
+      D2ClientUtils.shutdownClient(this.d2Client);
+
+      long elapsedTime = System.currentTimeMillis() - closeStartTime;
+      long remainingTime = Math.max(1, HELIX_MANAGER_DISCONNECT_TIMEOUT_MS - elapsedTime);
+      helixManagerDisconnectFuture.get(remainingTime, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException | ExecutionException | TimeoutException e) {
+      LOGGER.error("Timed out waiting for helixManagerDisconnectFuture. Swallowing and moving on.", e);
+    } finally {
+      ex.shutdownNow();
+      long elapsedTime = System.currentTimeMillis() - closeStartTime;
+      LOGGER.info("{} took {} ms to close.", VeniceHelixAdmin.class.getSimpleName(), elapsedTime);
+    }
   }
 
   /**
@@ -8367,7 +8435,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public List<StoreInfo> getStoresForCompaction(String clusterName) {
     Assert.isTrue(
         multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled(),
-        "Log compaction is not enabled for this cluster!");
+        "[log-compaction] Log compaction is not enabled for this cluster!");
     try {
       Map<String, ControllerClient> childControllers = getControllerClientMap(clusterName);
       return compactionManager.getStoresForCompaction(clusterName, childControllers);
@@ -8387,14 +8455,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public RepushJobResponse repushStore(RepushJobRequest repushJobRequest) throws Exception {
     Assert.isTrue(
-        multiClusterConfigs.getControllerConfig(repushJobRequest.getClusterName()).isLogCompactionEnabled(),
+        getMultiClusterConfigs().getControllerConfig(repushJobRequest.getClusterName()).isLogCompactionEnabled(),
         "[log-compaction] Log compaction is not enabled for this cluster!");
     try {
-      return compactionManager.repushStore(repushJobRequest);
+      RepushJobResponse response = getCompactionManager().repushStore(repushJobRequest);
+      getLogCompactionStatsMap().get(repushJobRequest.getClusterName())
+          .recordRepushStoreCall(
+              repushJobRequest.getStoreName(),
+              repushJobRequest.getTriggerSource(),
+              response.isError() ? VeniceResponseStatusCategory.FAIL : VeniceResponseStatusCategory.SUCCESS);
+      return response;
     } catch (Exception e) {
       LOGGER.error("[log-compaction] Error while triggering repush for store: {}", repushJobRequest.getStoreName(), e);
+      getLogCompactionStatsMap().get(repushJobRequest.getClusterName())
+          .recordRepushStoreCall(
+              repushJobRequest.getStoreName(),
+              repushJobRequest.getTriggerSource(),
+              VeniceResponseStatusCategory.FAIL);
       throw e; // this method is the first common point for scheduled & adhoc log compaction, each has different error
     }
+  }
+
+  @VisibleForTesting
+  Map<String, LogCompactionStats> getLogCompactionStatsMap() {
+    return logCompactionStatsMap;
   }
 
   // for testing
@@ -9338,7 +9422,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return multiClusterConfigs.getControllerConfig(clusterName).isClusterWipeAllowed();
   }
 
-  // Visible for testing
+  @VisibleForTesting
   VeniceControllerMultiClusterConfig getMultiClusterConfigs() {
     return multiClusterConfigs;
   }
@@ -9381,5 +9465,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   // visible for testing
   RealTimeTopicSwitcher getRealTimeTopicSwitcher() {
     return realTimeTopicSwitcher;
+  }
+
+  Map<String, D2Client> getD2Clients() {
+    return d2Clients;
   }
 }

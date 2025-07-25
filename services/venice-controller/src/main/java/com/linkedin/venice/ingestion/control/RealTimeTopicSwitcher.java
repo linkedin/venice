@@ -125,13 +125,9 @@ public class RealTimeTopicSwitcher {
   /**
    * General verification and topic creation for hybrid stores.
    */
-  void ensurePreconditions(
-      PubSubTopic srcTopicName,
-      PubSubTopic topicWhereToSendTheTopicSwitch,
-      Store store,
-      Optional<HybridStoreConfig> hybridStoreConfig) {
+  void ensurePreconditions(PubSubTopic srcTopicName, PubSubTopic topicWhereToSendTheTopicSwitch, Store store) {
     // Carrying on assuming that there needs to be only one and only TopicManager
-    if (!hybridStoreConfig.isPresent()) {
+    if (!store.isHybrid()) {
       throw new VeniceException("Topic switching is only supported for Hybrid Stores.");
     }
     Version version =
@@ -142,18 +138,14 @@ public class RealTimeTopicSwitcher {
      * it if necessary.
      * TODO: Remove topic creation logic from here once new code is deployed to all regions.
      */
-    createRealTimeTopicIfNeeded(store, version, srcTopicName, hybridStoreConfig.get());
+    createRealTimeTopicIfNeeded(store, version, srcTopicName);
     if (version != null && version.isSeparateRealTimeTopicEnabled()) {
       PubSubTopic separateRealTimeTopic = pubSubTopicRepository.getTopic(Utils.getSeparateRealTimeTopicName(version));
-      createRealTimeTopicIfNeeded(store, version, separateRealTimeTopic, hybridStoreConfig.get());
+      createRealTimeTopicIfNeeded(store, version, separateRealTimeTopic);
     }
   }
 
-  void createRealTimeTopicIfNeeded(
-      Store store,
-      Version version,
-      PubSubTopic realTimeTopic,
-      HybridStoreConfig hybridStoreConfig) {
+  void createRealTimeTopicIfNeeded(Store store, Version version, PubSubTopic realTimeTopic) {
     if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(realTimeTopic)) {
       int partitionCount;
       if (version != null) {
@@ -167,7 +159,7 @@ public class RealTimeTopicSwitcher {
           realTimeTopic,
           partitionCount,
           replicationFactor,
-          StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
+          StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
           false,
           minISR,
           false);
@@ -176,7 +168,7 @@ public class RealTimeTopicSwitcher {
        * If real-time topic already exists, check whether its retention time is correct.
        */
       long topicRetentionTimeInMs = getTopicManager().getTopicRetention(realTimeTopic);
-      long expectedRetentionTimeMs = StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig);
+      long expectedRetentionTimeMs = StoreUtils.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig());
       if (topicRetentionTimeInMs != expectedRetentionTimeMs) {
         getTopicManager().updateTopicRetention(realTimeTopic, expectedRetentionTimeMs);
       }
@@ -324,14 +316,13 @@ public class RealTimeTopicSwitcher {
 
     Version version =
         store.getVersionOrThrow(Version.parseVersionFromKafkaTopicName(topicWhereToSendTheTopicSwitch.getName()));
-
+    ensurePreconditions(realTimeTopic, topicWhereToSendTheTopicSwitch, store);
     Optional<HybridStoreConfig> hybridStoreConfig;
     if (version.isUseVersionLevelHybridConfig()) {
       hybridStoreConfig = Optional.ofNullable(version.getHybridStoreConfig());
     } else {
       hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
     }
-    ensurePreconditions(realTimeTopic, topicWhereToSendTheTopicSwitch, store, hybridStoreConfig);
     long rewindStartTimestamp = getRewindStartTime(version, hybridStoreConfig, version.getCreatedTime());
     PubSubTopic finalTopicWhereToSendTheTopicSwitch = version.getPushType().isStreamReprocessing()
         ? pubSubTopicRepository.getTopic(Version.composeStreamReprocessingTopic(store.getName(), version.getNumber()))

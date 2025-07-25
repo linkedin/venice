@@ -70,6 +70,7 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -83,7 +84,6 @@ import java.security.cert.CertificateExpiredException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -157,7 +157,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       "Blob Discovery: failed to get the live node hostNames for store:%s version:%s partition:%s";
   private final VeniceVersionFinder veniceVersionFinder;
   private final MetricsRepository metricsRepository;
-  private final Map<String, D2Stats> d2StatsMap = new HashMap<>();
+  private final Map<String, D2Stats> d2StatsMap = new VeniceConcurrentHashMap<>();
 
   public MetaDataHandler(
       HelixCustomizedViewOfflinePushRepository routingDataRepository,

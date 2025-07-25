@@ -67,7 +67,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
-import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -116,6 +116,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   private final MetricsRepository metricsRepository;
   private final String regionName;
 
+  private final Map<String, D2Client> d2Clients;
+
   private VeniceControllerWrapper(
       String regionName,
       String serviceName,
@@ -129,7 +131,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       boolean isParent,
       List<ServiceDiscoveryAnnouncer> d2ServerList,
       String zkAddress,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository,
+      Map<String, D2Client> d2Clients) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.configs = configs;
@@ -142,6 +145,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     this.d2ServerList = d2ServerList;
     this.metricsRepository = metricsRepository;
     this.regionName = regionName;
+    this.d2Clients = d2Clients;
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(VeniceControllerCreateOptions options) {
@@ -354,7 +358,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       }
 
       D2Client d2Client = D2TestUtils.getAndStartD2Client(options.getZkAddress());
-      MetricsRepository metricsRepository = TehutiUtils.getMetricsRepository(D2_SERVICE_NAME);
+      MetricsRepository metricsRepository = VeniceMetricsRepository.getVeniceMetricsRepository(
+          D2_SERVICE_NAME,
+          VeniceController.CONTROLLER_SERVICE_METRIC_PREFIX,
+          VeniceController.CONTROLLER_SERVICE_METRIC_ENTITIES,
+          propertiesList.get(0).getAsMap() // TODO repush otel: not sure if properties is accessed this way
+      );
 
       Optional<ClientConfig> consumerClientConfig = Optional.empty();
       Object clientConfig = options.getExtraProperties().get(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER);
@@ -366,11 +375,13 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       if (passedSupersetSchemaGenerator instanceof SupersetSchemaGenerator) {
         supersetSchemaGenerator = Optional.of((SupersetSchemaGenerator) passedSupersetSchemaGenerator);
       }
+      Map<String, D2Client> d2Clients = options.getD2Clients();
       VeniceControllerContext ctx = new VeniceControllerContext.Builder().setPropertiesList(propertiesList)
           .setMetricsRepository(metricsRepository)
           .setServiceDiscoveryAnnouncers(d2ServerList)
           .setAuthorizerService(options.getAuthorizerService())
           .setD2Client(d2Client)
+          .setD2Clients(d2Clients)
           .setRouterClientConfig(consumerClientConfig.orElse(null))
           .setExternalSupersetSchemaGenerator(supersetSchemaGenerator.orElse(null))
           .setAccessController(options.getDynamicAccessController())
@@ -389,7 +400,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           options.isParent(),
           d2ServerList,
           options.getZkAddress(),
-          metricsRepository);
+          metricsRepository,
+          d2Clients);
     };
   }
 
@@ -481,6 +493,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         new VeniceControllerContext.Builder().setPropertiesList(configs)
             .setServiceDiscoveryAnnouncers(d2ServerList)
             .setD2Client(d2Client)
+            .setD2Clients(d2Clients)
             .build());
   }
 

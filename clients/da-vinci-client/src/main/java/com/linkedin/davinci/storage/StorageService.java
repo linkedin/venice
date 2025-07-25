@@ -13,6 +13,7 @@ import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.DelegatingStorageEngine;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StorageEngineFactory;
+import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngineFactory;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
@@ -327,6 +328,18 @@ public class StorageService extends AbstractVeniceService {
     LOGGER.info("Opening store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
     StorageEngine engine = openStore(storeConfig, initialStoreVersionStateSupplier);
     engine.addStoragePartitionIfAbsent(partitionId);
+    LOGGER.info("Opened store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
+    return engine;
+  }
+
+  public synchronized StorageEngine openStoreForNewPartition(
+      VeniceStoreVersionConfig storeConfig,
+      int partitionId,
+      Supplier<StoreVersionState> initialStoreVersionStateSupplier,
+      StoragePartitionConfig storagePartitionConfig) {
+    LOGGER.info("Opening store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
+    StorageEngine engine = openStore(storeConfig, initialStoreVersionStateSupplier);
+    engine.addStoragePartition(storagePartitionConfig);
     LOGGER.info("Opened store for {} partition {}", storeConfig.getStoreVersionName(), partitionId);
     return engine;
   }

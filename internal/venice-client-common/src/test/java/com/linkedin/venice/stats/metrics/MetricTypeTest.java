@@ -2,7 +2,7 @@ package com.linkedin.venice.stats.metrics;
 
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateHistogramPointData;
-import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointDataFromCounter;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 
@@ -89,7 +89,7 @@ public class MetricTypeTest {
     assertFalse(metrics.isEmpty(), "Metrics should not be empty");
     assertEquals(metrics.size(), 3, "There should be three metrics recorded");
 
-    validateLongPointData(inMemoryMetricReader, 150, baseAttributes, "test_metric_counter", "test_prefix");
+    validateLongPointDataFromCounter(inMemoryMetricReader, 150, baseAttributes, "test_metric_counter", "test_prefix");
     validateExponentialHistogramPointData(
         inMemoryMetricReader,
         10.0,

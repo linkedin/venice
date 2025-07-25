@@ -163,4 +163,8 @@ public class PushJobSetting implements Serializable {
   }
 
   public String materializedViewConfigFlatMap;
+
+  public boolean isBatchWriteOptimizationForHybridStoreEnabled;
+  public boolean isSortedIngestionEnabled;
+
 }

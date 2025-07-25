@@ -33,6 +33,8 @@ public interface StorageEngine<Partition extends AbstractStoragePartition> exten
 
   void addStoragePartitionIfAbsent(int partitionId);
 
+  void addStoragePartition(StoragePartitionConfig storagePartitionConfig);
+
   void closePartition(int partitionId);
 
   void closeMetadataPartition();
