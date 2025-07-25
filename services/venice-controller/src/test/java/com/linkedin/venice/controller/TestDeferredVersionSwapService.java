@@ -513,6 +513,7 @@ public class TestDeferredVersionSwapService {
     versionList.add(versionOneImpl);
     versionList.add(versionTwoImpl);
     StoreResponse storeResponse = getStoreResponse(versionList);
+    storeResponse.getStore().setCurrentVersion(2);
 
     Map<String, ControllerClient> controllerClientMap = mockControllerClients(versionList);
     for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
