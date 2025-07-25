@@ -14,7 +14,6 @@ import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcAudi
 import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcSslSessionInterceptor;
 import com.linkedin.venice.controller.grpc.server.interceptor.ParentControllerRegionValidationInterceptor;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
-import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
@@ -241,21 +240,13 @@ public class VeniceController {
   private TopicCleanupService createTopicCleanupService() {
     Admin admin = controllerService.getVeniceHelixAdmin();
 
-    if (multiClusterConfigs.isParent()) {
-      return new TopicCleanupServiceForParentController(
-          admin,
-          multiClusterConfigs,
-          pubSubTopicRepository,
-          new TopicCleanupServiceStats(metricsRepository),
-          pubSubClientsFactory);
-    } else {
-      return new TopicCleanupService(
-          admin,
-          multiClusterConfigs,
-          pubSubTopicRepository,
-          new TopicCleanupServiceStats(metricsRepository),
-          pubSubClientsFactory);
-    }
+    return new TopicCleanupService(
+        admin,
+        multiClusterConfigs,
+        pubSubTopicRepository,
+        new TopicCleanupServiceStats(metricsRepository),
+        pubSubClientsFactory);
+
   }
 
   private Optional<StoreBackupVersionCleanupService> createStoreBackupVersionCleanupService() {
