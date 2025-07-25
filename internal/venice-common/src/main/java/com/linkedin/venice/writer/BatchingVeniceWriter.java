@@ -7,10 +7,15 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.schema.writecompute.WriteComputeHandlerV1;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.collections.BiIntKeyCache;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -23,6 +28,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -60,6 +67,11 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
   private final VeniceKafkaSerializer keySerializer;
   private final VeniceKafkaSerializer valueSerializer;
   private final VeniceKafkaSerializer updateSerializer;
+  private final WriteComputeHandlerV1 updateHandler = new WriteComputeHandlerV1();
+  private final BiIntKeyCache<RecordDeserializer<GenericRecord>> deserializerCacheForFullValue;
+  private final Map<Schema, Map<Schema, RecordDeserializer<GenericRecord>>> deserializerCacheForUpdateValue;
+  private final Map<Schema, RecordSerializer<GenericRecord>> valueSerializerMap = new VeniceConcurrentHashMap<>();
+
   private final AtomicBoolean isRunning = new AtomicBoolean(false);
   private final SchemaFetcherBackedStoreSchemaCache storeSchemaCache;
   private volatile long lastBatchProduceMs;
@@ -76,6 +88,12 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
     this.valueSerializer = params.getValuePayloadSerializer();
     this.updateSerializer = params.getWriteComputePayloadSerializer();
     this.storeSchemaCache = new SchemaFetcherBackedStoreSchemaCache(params.getStoreSchemaFetcher());
+    this.deserializerCacheForFullValue = new BiIntKeyCache<>((writerSchemaId, readerSchemaId) -> {
+      Schema writerSchema = storeSchemaCache.getValueSchema(writerSchemaId);
+      Schema readerSchema = storeSchemaCache.getValueSchema(readerSchemaId);
+      return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, readerSchema);
+    });
+    this.deserializerCacheForUpdateValue = new VeniceConcurrentHashMap<>();
     /**
      * We introduce an internal Venice writer with byte[] as the key type for any input key type. This is to make sure
      * internal buffer is indexed correctly when input key type is byte[]. For internal buffer index map, if key type is
@@ -250,8 +268,12 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
           ProducerBufferRecord latestRecord = getBufferRecordIndex().get(ByteBuffer.wrap(record.getSerializedKey()));
           if (latestRecord != null) {
             latestRecord.addDependentCallback(record.getCallback());
+            latestRecord.addRecordToDependentRecordList(record);
           }
           continue;
+        }
+        if (record.getMessageType().equals(MessageType.UPDATE) && !record.getDependentRecordList().isEmpty()) {
+          maybeUpdateRecordUpdatePayload(record);
         }
         try {
           sendRecord(record);
@@ -283,6 +305,7 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
       storeSchemaCache.maybeUpdateSupersetSchema(schemaId);
     }
     byte[] serializedKey = getKeySerializer().serialize(getTopicName(), key);
+    LOGGER.info("DEBUGGING: INCOMING KEY: {}, MSG: {}", serializedKey, messageType);
     byte[] serializedValue = value == null ? null : getValueSerializer().serialize(getTopicName(), value);
     byte[] serializedUpdate = update == null ? null : getUpdateSerializer().serialize(getTopicName(), update);
     CompletableFuture<PubSubProduceResult> produceResultFuture;
@@ -290,10 +313,9 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
     try {
       /**
        * For logical timestamp record, timestamp compaction is not supported
-       * For UPDATE, it is not supported in the current scope, support will be added in the future iteration.
        */
       ProducerBufferRecord record;
-      if (messageType.equals(MessageType.UPDATE) || logicalTimestamp > 0) {
+      if (logicalTimestamp > 0) {
         record = new ProducerBufferRecord(
             messageType,
             serializedKey,
@@ -378,6 +400,55 @@ public class BatchingVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U>
         }
       });
     }
+  }
+
+  void maybeUpdateRecordUpdatePayload(ProducerBufferRecord producerBufferRecord) {
+    List<ProducerBufferRecord> dependentRecordList = producerBufferRecord.getDependentRecordList();
+    int idx = dependentRecordList.size() - 1;
+    while (idx >= 0) {
+      if (!dependentRecordList.get(idx).getMessageType().equals(MessageType.UPDATE)) {
+        break;
+      }
+      idx--;
+    }
+    GenericRecord valueRecord = null;
+    ProducerBufferRecord anchorRecord = null;
+    if (idx >= 0) {
+      anchorRecord = dependentRecordList.get(idx);
+      if (anchorRecord.getMessageType().equals(MessageType.PUT)) {
+        valueRecord = deserializerCacheForFullValue
+            .get(anchorRecord.getSchemaId(), storeSchemaCache.getLatestOrSupersetSchemaId())
+            .deserialize(anchorRecord.getSerializedValue());
+      }
+    }
+    Schema supersetSchema = storeSchemaCache.getSupersetSchema();
+    GenericRecord updateRecord;
+    for (int i = idx + 1; i < dependentRecordList.size(); i++) {
+      updateRecord = deserializeUpdateBytes(dependentRecordList.get(i).getSerializedUpdate());
+      valueRecord = updateHandler.updateValueRecord(supersetSchema, valueRecord, updateRecord);
+    }
+    updateRecord = deserializeUpdateBytes(producerBufferRecord.getSerializedUpdate());
+    valueRecord = updateHandler.updateValueRecord(supersetSchema, valueRecord, updateRecord);
+
+    producerBufferRecord.updateSerializedValue(serializeMergedValueRecord(valueRecord));
+  }
+
+  private GenericRecord deserializeUpdateBytes(byte[] updateBytes) {
+    Schema writerSchema = storeSchemaCache.getUpdateSchema();
+    Schema readerSchema = writerSchema;
+    RecordDeserializer<GenericRecord> deserializer =
+        deserializerCacheForUpdateValue.computeIfAbsent(writerSchema, k -> new VeniceConcurrentHashMap<>())
+            .computeIfAbsent(
+                readerSchema,
+                k -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, readerSchema));
+    return deserializer.deserialize(updateBytes);
+  }
+
+  private byte[] serializeMergedValueRecord(GenericRecord mergedValue) {
+    Schema schema = storeSchemaCache.getSupersetSchema();
+    RecordSerializer serializer = valueSerializerMap
+        .computeIfAbsent(schema, ignored -> FastSerializerDeserializerFactory.getFastAvroGenericSerializer(schema));
+    return serializer.serialize(mergedValue);
   }
 
   void maybeStartCheckExecutor() {

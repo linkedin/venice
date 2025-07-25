@@ -31,6 +31,10 @@ public class SchemaFetcherBackedStoreSchemaCache {
     return valueSchemaMap.get(latestOrSupersetSchemaId);
   }
 
+  public int getLatestOrSupersetSchemaId() {
+    return latestOrSupersetSchemaId;
+  }
+
   public Schema getUpdateSchema() {
     return updateSchema;
   }
