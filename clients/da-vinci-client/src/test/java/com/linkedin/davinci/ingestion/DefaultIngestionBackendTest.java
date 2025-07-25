@@ -183,10 +183,34 @@ public class DefaultIngestionBackendTest {
   }
 
   @Test
-  public void testNotStartBootstrapFromBlobTransferWhenNotLagging() {
+  public void testNotStartBootstrapFromBlobTransferWhenNotLaggingForHybridStore() {
     long laggingThreshold = 1000L;
-    when(offsetRecord.getOffsetLag()).thenReturn(-10L);
+    when(offsetRecord.getOffsetLag()).thenReturn(10L);
     when(offsetRecord.getLocalVersionTopicOffset()).thenReturn(10L);
+    when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
+        .thenReturn(offsetRecord);
+
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(store.isHybrid()).thenReturn(true); // hybrid store
+    CompletableFuture<InputStream> future = new CompletableFuture<>();
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
+        .thenReturn(future);
+
+    CompletableFuture<Void> result = ingestionBackend
+        .bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, laggingThreshold, storeConfig, null)
+        .toCompletableFuture();
+    assertTrue(result.isDone());
+    verify(blobTransferManager, never())
+        .get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
+    verify(aggVersionedBlobTransferStats, never()).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats, never())
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(false));
+  }
+
+  @Test
+  public void testNotStartBootstrapFromBlobTransferWhenNotLaggingForBatchStore() {
+    long laggingThreshold = 1000L;
+    when(offsetRecord.isEndOfPushReceived()).thenReturn(true); // for batch store, end of push is received.
     when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
         .thenReturn(offsetRecord);
 

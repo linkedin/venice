@@ -140,7 +140,12 @@ public class DefaultIngestionBackend implements IngestionBackend {
     // If the offset lag is below the blobTransferDisabledOffsetLagThreshold, it indicates there is not lagging and
     // can bootstrap from Kafka.
     storageService.openStore(storeConfig, svsSupplier);
-    if (!isOffsetLagged(store.getName(), versionNumber, partitionId, blobTransferDisabledOffsetLagThreshold)) {
+    if (!isOffsetLagged(
+        store.getName(),
+        versionNumber,
+        partitionId,
+        blobTransferDisabledOffsetLagThreshold,
+        store.isHybrid())) {
       return CompletableFuture.completedFuture(null);
     }
 
@@ -247,52 +252,71 @@ public class DefaultIngestionBackend implements IngestionBackend {
   }
 
   /**
-   * A helper method to check if the offset lag is within the allowed threshold.
-   * If the offset lag is smaller than the `blobTransferDisabledOffsetLagThreshold`,
-   * bootstrapping from Kafka firstly, even if blob transfer is enabled.
+   * A helper method to help decide if skip blob transfer and use kafka ingestion directly when there are some files already restore.
+   *
+   * 1. If the store is a batch store, check if the end of push is received
+   * 2. If the store is a hybrid store, check the offset lag within the allowed threshold.
+   *
+   * Note: If `blobTransferDisabledOffsetLagThreshold` is negative, the offset lag check is skipped, and blob transfer always runs.
+   * This is because retained data may not be cleaned up unless a new host is added, making it difficult to validate this feature.
+   * This 'blobTransferDisabledOffsetLagThreshold' config ensures blob transfer always runs in such cases.
    *
    * @param store the store name
    * @param versionNumber the version number
    * @param partition the partition number
    * @param blobTransferDisabledOffsetLagThreshold the maximum allowed offset lag threshold.
+   *        This value is controlled by config BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, and default is 100000L.
    *        If the offset lag is within this threshold, bootstrapping from Kafka is allowed, even if blob transfer is enabled.
    *        If the lag exceeds this threshold, bootstrapping should happen from blobs transfer firstly.
-   *
-   * @return true if the offset lag exceeds the threshold or if the lag is 0, indicating bootstrapping should happen from blobs transfer.
-   *         false otherwise
+   * @param hybridStore whether the store is a hybrid store or not.
+   *                    If it is a hybrid store, then check via the offset.
+   *                    If it is a batch store, check if the batch push is done or not.
+   * @return true if the store is lagged and needs to bootstrap from blob transfer, else false then bootstrap from Kafka.
    */
   public boolean isOffsetLagged(
       String store,
       int versionNumber,
       int partition,
-      long blobTransferDisabledOffsetLagThreshold) {
+      long blobTransferDisabledOffsetLagThreshold,
+      boolean hybridStore) {
     String topicName = Version.composeKafkaTopic(store, versionNumber);
     OffsetRecord offsetRecord = storageMetadataService.getLastOffset(topicName, partition);
 
-    if (offsetRecord == null || (offsetRecord.getOffsetLag() == 0 && offsetRecord.getLocalVersionTopicOffset() == -1)) {
-      LOGGER.info(
-          "Offset record is null or offset lag is 0 and topic offset is -1 for store {} partition {}.",
-          store,
-          partition);
+    if (offsetRecord == null) {
       return true;
     }
 
-    if (offsetRecord.getOffsetLag() < blobTransferDisabledOffsetLagThreshold) {
-      LOGGER.info(
-          "Offset lag {} for store {} partition {} is within the allowed lag threshold {}. Bootstrapping from Kafka.",
-          offsetRecord.getOffsetLag(),
-          store,
-          partition,
-          blobTransferDisabledOffsetLagThreshold);
-      return false;
+    if (blobTransferDisabledOffsetLagThreshold < 0) {
+      return true;
+    }
+
+    if (!hybridStore) {
+      if (offsetRecord.isEndOfPushReceived()) {
+        LOGGER.info(
+            "End of push received for batch store replica {}, might due to restore. Bootstrapping from Kafka.",
+            Utils.getReplicaId(topicName, partition));
+        return false;
+      }
+    } else {
+      if (offsetRecord.getOffsetLag() == 0 && offsetRecord.getLocalVersionTopicOffset() == -1) {
+        LOGGER.info("Offset lag is 0 and topic offset is -1 for replica {}.", Utils.getReplicaId(topicName, partition));
+        return true;
+      }
+
+      if (offsetRecord.getOffsetLag() < blobTransferDisabledOffsetLagThreshold) {
+        LOGGER.info(
+            "Offset lag {} for hybrid store replica {} is within the allowed lag threshold {}. Bootstrapping from Kafka.",
+            offsetRecord.getOffsetLag(),
+            Utils.getReplicaId(topicName, partition),
+            blobTransferDisabledOffsetLagThreshold);
+        return false;
+      }
     }
 
     LOGGER.info(
-        "Store {} partition {} topic offset is {}, offset lag is {}",
-        store,
-        partition,
-        offsetRecord.getLocalVersionTopicOffset(),
-        offsetRecord.getOffsetLag());
+        "Lag check before blob transfer: Replica {} offset is {}. Bootstrapping from blob transfer.",
+        Utils.getReplicaId(topicName, partition),
+        offsetRecord);
     return true;
   }
 
