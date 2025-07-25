@@ -133,9 +133,9 @@ public class TestProducerBatching {
       assertFalse(response.isError(), "Empty push to parent colo should succeed");
       veniceClusterWrapper.waitVersion(storeName, 1);
     }
-    SystemProducer veniceProducer = null;
+    SystemProducer veniceProducer;
     VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-    Pair<String, String> additionalConfig = new Pair<>(ConfigKeys.WRITER_BATCHING_MAX_INTERVAL_MS, "10");
+    Pair<String, String> additionalConfig = new Pair<>(ConfigKeys.WRITER_BATCHING_MAX_INTERVAL_MS, "50");
     Pair<String, String> additionalConfig2 = new Pair<>(ConfigKeys.WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES, "1024000");
     veniceProducer = IntegrationTestPushUtils
         .getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM, additionalConfig, additionalConfig2);
@@ -160,20 +160,24 @@ public class TestProducerBatching {
     sendStreamingRecordWithoutFlush(veniceProducer, storeName, key, value, 100L);
 
     String key2 = "key2";
-    // Message 4: Will be compacted by Message 5
+    // Message 4: Will be compacted by Message 7
     value = new GenericData.Record(valueSchema);
     value.put("name", "DEN");
     value.put("age", 2023);
     sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
 
-    // Message 5: Should be produced.
+    // Message 5: Will be compacted by Message 7
     value = new GenericData.Record(valueSchema);
     value.put("name", "CLE");
     value.put("age", 2024);
     sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
 
-    // Message 6: Should be produced (UPDATE message)
-    value = new UpdateBuilderImpl(updateSchema).setNewFieldValue("name", "OKC").setNewFieldValue("age", 2025).build();
+    // Message 6: Will be compacted by Message 7
+    value = new UpdateBuilderImpl(updateSchema).setNewFieldValue("age", 2025).build();
+    sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
+
+    // Message 7: Should be produced.
+    value = new UpdateBuilderImpl(updateSchema).setNewFieldValue("name", "OKC").build();
     sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
 
     try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
@@ -224,7 +228,7 @@ public class TestProducerBatching {
           }
         }
       }
-      Assert.assertEquals(messageCount, 4);
+      Assert.assertEquals(messageCount, 3);
     }
   }
 

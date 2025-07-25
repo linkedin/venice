@@ -15,16 +15,17 @@ import java.util.concurrent.CompletableFuture;
 public class ProducerBufferRecord implements Measurable {
   private static final int SHALLOW_CLASS_OVERHEAD = getClassOverhead(ProducerBufferRecord.class);
   private final byte[] serializedKey;
-  private final byte[] serializedValue;
+  private byte[] serializedValue;
   private final byte[] serializedUpdate;
-  private final MessageType messageType;
+  private MessageType messageType;
   private final int schemaId;
-  private final int protocolId;
+  private int protocolId;
   private final long logicalTimestamp;
-  private boolean shouldSkipProduce = false;
-  private PubSubProducerCallback callback;
-  private List<PubSubProducerCallback> dependentCallbackList = new ArrayList<>();
+  private final PubSubProducerCallback callback;
+  private final List<PubSubProducerCallback> dependentCallbackList = new ArrayList<>();
+  private final List<ProducerBufferRecord> dependentRecordList = new ArrayList<>();
   private CompletableFuture<PubSubProduceResult> produceResultFuture = null;
+  private boolean shouldSkipProduce = false;
 
   public ProducerBufferRecord(
       MessageType messageType,
@@ -100,6 +101,20 @@ public class ProducerBufferRecord implements Measurable {
 
   public void setProduceResultFuture(CompletableFuture<PubSubProduceResult> produceResultFuture) {
     this.produceResultFuture = produceResultFuture;
+  }
+
+  public void addRecordToDependentRecordList(ProducerBufferRecord record) {
+    dependentRecordList.add(record);
+  }
+
+  public List<ProducerBufferRecord> getDependentRecordList() {
+    return dependentRecordList;
+  }
+
+  public void updateSerializedValue(byte[] serializedValue) {
+    this.messageType = MessageType.PUT;
+    this.protocolId = -1;
+    this.serializedValue = serializedValue;
   }
 
   @Override
