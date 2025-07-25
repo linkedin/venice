@@ -1,6 +1,7 @@
 package com.linkedin.davinci.client;
 
 import static com.linkedin.davinci.client.AvroGenericDaVinciClient.READ_CHUNK_EXECUTOR;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.anyString;
@@ -25,6 +26,7 @@ import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.AvroSerializer;
@@ -52,9 +54,19 @@ import org.testng.annotations.Test;
 
 
 public class AvroGenericDaVinciClientTest {
+  private static final String storeName = "test_store";
+
   public AvroGenericDaVinciClient setUpClientWithRecordTransformer(
       ClientConfig clientConfig,
-      DaVinciConfig daVinciConfig) throws IllegalAccessException, NoSuchFieldException {
+      DaVinciConfig daVinciConfig) throws NoSuchFieldException, IllegalAccessException {
+    return setUpClientWithRecordTransformer(clientConfig, daVinciConfig, false, false);
+  }
+
+  public AvroGenericDaVinciClient setUpClientWithRecordTransformer(
+      ClientConfig clientConfig,
+      DaVinciConfig daVinciConfig,
+      boolean skipCompatabilityChecks,
+      boolean enableDatabaseChecksumVerification) throws IllegalAccessException, NoSuchFieldException {
 
     if (daVinciConfig == null) {
       daVinciConfig = new DaVinciConfig();
@@ -64,11 +76,13 @@ public class AvroGenericDaVinciClientTest {
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .setOutputValueClass(String.class)
             .setOutputValueSchema(Schema.create(Schema.Type.STRING))
+            .setSkipCompatibilityChecks(skipCompatabilityChecks)
             .build();
     daVinciConfig.setRecordTransformerConfig(recordTransformerConfig);
 
-    VeniceProperties backendConfig = mock(VeniceProperties.class);
-    when(backendConfig.toProperties()).thenReturn(new java.util.Properties());
+    VeniceProperties backendConfig =
+        new PropertyBuilder().put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, enableDatabaseChecksumVerification)
+            .build();
 
     AvroGenericDaVinciClient<Integer, String> dvcClient =
         spy(new AvroGenericDaVinciClient<>(daVinciConfig, clientConfig, backendConfig, Optional.empty()));
@@ -116,10 +130,8 @@ public class AvroGenericDaVinciClientTest {
 
   @Test
   public void testRecordTransformerClient() throws NoSuchFieldException, IllegalAccessException {
-    ClientConfig clientConfig = mock(ClientConfig.class);
-    when(clientConfig.getStoreName()).thenReturn("test_store");
-    when(clientConfig.getSpecificValueClass()).thenReturn(String.class);
-    when(clientConfig.isSpecificClient()).thenReturn(true);
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
+    clientConfig.setSpecificValueClass(String.class);
 
     AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null);
     dvcClient.start();
@@ -127,10 +139,8 @@ public class AvroGenericDaVinciClientTest {
 
   @Test
   public void testRecordTransformerClientValueClassMismatch() throws NoSuchFieldException, IllegalAccessException {
-    ClientConfig clientConfig = mock(ClientConfig.class);
-    when(clientConfig.getStoreName()).thenReturn("test_store");
-    when(clientConfig.getSpecificValueClass()).thenReturn(Integer.class);
-    when(clientConfig.isSpecificClient()).thenReturn(true);
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
+    clientConfig.setSpecificValueClass(Integer.class);
 
     AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null);
     assertThrows(VeniceClientException.class, () -> dvcClient.start());
@@ -138,11 +148,31 @@ public class AvroGenericDaVinciClientTest {
 
   @Test
   public void testRecordTransformerWithIngestionIsolation() {
-    ClientConfig clientConfig = mock(ClientConfig.class);
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
     DaVinciConfig daVinciConfig = new DaVinciConfig();
     daVinciConfig.setIsolated(true);
 
     assertThrows(VeniceClientException.class, () -> setUpClientWithRecordTransformer(clientConfig, daVinciConfig));
+  }
+
+  @Test
+  public void testRecordTransformerWithChecksumVerificationEnabled()
+      throws NoSuchFieldException, IllegalAccessException {
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
+
+    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null, true, true);
+    dvcClient.start();
+  }
+
+  @Test
+  public void testRecordTransformerWithChecksumVerificationEnabledException()
+      throws NoSuchFieldException, IllegalAccessException {
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
+
+    // If skipCompatabilityChecks are disabled, then the DVRT implementation could be transforming records, causing
+    // database checksum verification to fail.
+    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null, false, true);
+    assertThrows(VeniceException.class, () -> dvcClient.start());
   }
 
   @Test
@@ -165,7 +195,7 @@ public class AvroGenericDaVinciClientTest {
     Executor readChunkExecutorForLargeRequest =
         Executors.newFixedThreadPool(2, new DaemonThreadFactory("davinci_read_chunk"));
     AvroGenericDaVinciClient<String, String> dvcClient = mock(AvroGenericDaVinciClient.class);
-    when(dvcClient.getStoreName()).thenReturn("test_store");
+    when(dvcClient.getStoreName()).thenReturn(storeName);
 
     int largeRequestSplitThreshold = 10;
     DaVinciConfig daVinciConfig = new DaVinciConfig();

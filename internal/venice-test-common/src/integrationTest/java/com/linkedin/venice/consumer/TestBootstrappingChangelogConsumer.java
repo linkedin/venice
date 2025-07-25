@@ -21,6 +21,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PO
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
@@ -268,6 +269,7 @@ public class TestBootstrappingChangelogConsumer {
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
     consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
+    consumerProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
     ChangelogClientConfig globalChangelogClientConfig =
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
