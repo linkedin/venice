@@ -1161,6 +1161,7 @@ public class TestVeniceHelixAdmin {
     doReturn(response).when(controllerTransport).request(eq(controllerUrl), any(), any(), any(), anyInt(), any());
 
     client.getLocalAdminOperationProtocolVersion(controllerUrl);
+    // When the controller URL is provided, it should NOT call getLeaderControllerUrl
     verify(client, never()).getLeaderControllerUrl();
   }
 
