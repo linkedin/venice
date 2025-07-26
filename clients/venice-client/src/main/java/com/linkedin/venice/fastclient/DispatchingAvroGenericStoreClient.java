@@ -65,7 +65,6 @@ import org.apache.logging.log4j.Logger;
 public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(DispatchingAvroGenericStoreClient.class);
   private static final String URI_SEPARATOR = "/";
-  private static final Executor DESERIALIZATION_EXECUTOR = AbstractAvroStoreClient.getDefaultDeserializationExecutor();
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
   private final String BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE;
@@ -111,8 +110,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     this.metadata = metadata;
     this.config = config;
     this.transportClient = transportClient;
-    this.deserializationExecutor =
-        Optional.ofNullable(config.getDeserializationExecutor()).orElse(DESERIALIZATION_EXECUTOR);
+    this.deserializationExecutor = Optional.ofNullable(config.getDeserializationExecutor())
+        .orElseGet(AbstractAvroStoreClient::getDefaultDeserializationExecutor);
     String storeName = metadata.getStoreName();
     BATCH_GET_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "BatchGet Transport Exception for " + storeName;
     COMPUTE_TRANSPORT_EXCEPTION_FILTER_MESSAGE = "Compute Transport Exception for " + storeName;
