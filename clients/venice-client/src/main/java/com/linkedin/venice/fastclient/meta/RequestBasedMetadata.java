@@ -140,8 +140,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         new RouterBackedSchemaReader(() -> metadataSchemaResponseStoreClient, Optional.empty(), Optional.empty());
     this.r2TransportClient = new R2TransportClient(clientConfig.getR2Client());
     this.harClusters = clientConfig.getHarClusters();
-    this.scheduler =
-        Optional.ofNullable(clientConfig.getMetadataRefreshExecutor()).orElse(Executors.newScheduledThreadPool(1));
+    this.scheduler = Optional.ofNullable(clientConfig.getMetadataRefreshExecutor())
+        .orElseGet(() -> Executors.newScheduledThreadPool(1));
   }
 
   // For unit tests only
