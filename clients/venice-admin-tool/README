@@ -558,7 +558,7 @@ java -jar venice-admin-tool-all.jar --list-storage-nodes --url <url> --cluster <
 java -jar venice-admin-tool-all.jar --list-store-push-info --url <url> --store <store> [--cluster <cluster>] [--partition-detail-enabled <partition-detail-enabled>]
 java -jar venice-admin-tool-all.jar --list-stores --url <url> --cluster <cluster> [--include-system-stores <include-system-stores>]
 java -jar venice-admin-tool-all.jar --migrate-store --url <url> --store <store> --cluster-src <cluster-src> --cluster-dest <cluster-dest>
-java -jar venice-admin-tool-all.jar --auto-migrate-store --url <url> --store <store> --cluster-src <cluster-src> --cluster-dest <cluster-dest> [--initial-step <initial-step>] [--abort-on-failure <abort-on-failure>]
+java -jar venice-admin-tool-all.jar --auto-migrate-store --url <url> --store <store> --cluster-src <cluster-src> --cluster-dest <cluster-dest> [--initial-step <initial-step>] [--paused-after-step <paused-after-step>] [--abort-on-failure <abort-on-failure>]
 java -jar venice-admin-tool-all.jar --migration-status --url <url> --store <store> --cluster-src <cluster-src> --cluster-dest <cluster-dest>
 java -jar venice-admin-tool-all.jar --monitor-data-recovery --url <url> --dest-fabric <dest-fabric> --datetime <datetime> [--stores <stores>] [--cluster <cluster>] [--interval <interval>]
 java -jar venice-admin-tool-all.jar --new-storage-persona --url <url> --cluster <cluster> --storage-persona <storage-persona> --storage-quota <storage-quota> --store <store> --owner <owner>

@@ -309,6 +309,7 @@ public enum Arg {
       "admin-operation-protocol-version", "aopv", true, "Admin operation protocol version"
   ), GLOBAL_RT_DIV_ENABLED("global-rt-div-enabled", "grde", true, "Enable Global RT DIV for a store"),
   INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
+  PAUSE_AFTER_STEP("pause-after-step", "pas", true, "Pause the auto store migration after this step"),
   ABORT_ON_FAILURE("abort-on-failure", "aof", true, "Abort the auto store migration if any step fails"),;
 
   private final String argName;
