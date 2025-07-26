@@ -37,8 +37,8 @@ public class TestClusterLevelConfigForNativeReplication {
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties parentControllerProps = new Properties();
-    parentControllerProps.setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, "dc-batch");
-    parentControllerProps.setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, "dc-hybrid");
+    parentControllerProps.setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, "dc-0");
+    parentControllerProps.setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, "dc-0");
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
             .numberOfParentControllers(1)
@@ -74,7 +74,7 @@ public class TestClusterLevelConfigForNativeReplication {
     assertEquals(store.getVersions().size(), 1);
     // native replication should be enabled by cluster-level config
     assertTrue(store.isNativeReplicationEnabled());
-    assertEquals(store.getNativeReplicationSourceFabric(), "dc-batch");
+    assertEquals(store.getNativeReplicationSourceFabric(), "dc-0");
     assertCommand(
         parentControllerClient.updateStore(
             storeName,
@@ -82,7 +82,7 @@ public class TestClusterLevelConfigForNativeReplication {
     TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
       Assert.assertEquals(
           parentControllerClient.getStore(storeName).getStore().getNativeReplicationSourceFabric(),
-          "dc-hybrid");
+          "dc-0");
     });
     assertCommand(
         parentControllerClient.updateStore(
@@ -91,7 +91,7 @@ public class TestClusterLevelConfigForNativeReplication {
     TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
       Assert.assertEquals(
           parentControllerClient.getStore(storeName).getStore().getNativeReplicationSourceFabric(),
-          "dc-batch");
+          "dc-0");
     });
     assertCommand(
         parentControllerClient.updateStore(
@@ -103,7 +103,7 @@ public class TestClusterLevelConfigForNativeReplication {
     TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
       Assert.assertEquals(
           parentControllerClient.getStore(storeName).getStore().getNativeReplicationSourceFabric(),
-          "dc-hybrid");
+          "dc-0");
     });
   }
 

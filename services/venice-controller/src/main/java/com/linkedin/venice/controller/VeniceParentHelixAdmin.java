@@ -1367,7 +1367,7 @@ public class VeniceParentHelixAdmin implements Admin {
       int versionNumber = Version.parseVersionFromKafkaTopicName(latestTopicName);
 
       Version version = store.getVersion(versionNumber);
-      if (version != null && version.isVersionSwapDeferred()) {
+      if (version != null && version.isVersionSwapDeferred() && version.getStatus() == STARTED) {
         LOGGER.error(
             "There is already future version {} exists for store {}, please wait till the future version is made current.",
             versionNumber,
