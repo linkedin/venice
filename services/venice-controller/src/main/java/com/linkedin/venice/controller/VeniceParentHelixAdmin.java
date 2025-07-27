@@ -5975,7 +5975,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * Validates that a store has been completely deleted from all venice clusters cross-regionally
-   *
    * @see Admin#validateStoreDeleted(String, String)
    */
   @Override
