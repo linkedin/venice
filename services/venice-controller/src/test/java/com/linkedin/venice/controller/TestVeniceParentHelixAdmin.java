@@ -1239,7 +1239,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testIdempotentIncrementVersionWhenPreviousTopicsDoNotExistButVersionExistsForSamePushId() {
+  public void testIdempotentIncrementVersionPreviousTopicsDoNotExistVersionExistsForSamePushId() {
     String storeName = Utils.getUniqueString("test_store");
     String pushJobId = Utils.getUniqueString("push_job_id");
     Store store = new ZKStore(
