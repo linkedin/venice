@@ -215,7 +215,6 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -1373,36 +1372,7 @@ public class VeniceParentHelixAdmin implements Admin {
             "There is already future version {} exists for store {}, please wait till the future version is made current.",
             versionNumber,
             storeName);
-        return Optional.of(latestTopic.get());
-      }
-
-      /**
-       * Check whether the corresponding version exists or not, since it is possible that last push
-       * meets Kafka topic creation timeout.
-       * When Kafka topic creation timeout happens, topic/job could be still running, but the version
-       * should not exist according to the logic in {@link VeniceHelixAdmin#addVersion}.
-       * However, it is possible that a different request enters this code section when the topic has been created but
-       * either the version information has not been persisted to Zk or the in-memory Store object. In this case, it
-       * is desirable to add a delay to topic deletion.
-       *
-       * If the corresponding version doesn't exist, this function will issue command to kill job to deprecate
-       * the incomplete topic/job.
-       */
-      StoreVersionInfo storeVersionPair =
-          getVeniceHelixAdmin().waitVersion(clusterName, storeName, versionNumber, Duration.ofSeconds(30));
-      if (storeVersionPair.getVersion() == null) {
-        // TODO: Guard this topic deletion code using a store-level lock instead.
-        // Long inMemoryTopicCreationTime = getVeniceHelixAdmin().getInMemoryTopicCreationTime(latestTopicName);
-        // if (inMemoryTopicCreationTime != null
-        // && SystemTime.INSTANCE.getMilliseconds() < (inMemoryTopicCreationTime + TOPIC_DELETION_DELAY_MS)) {
-        // throw new VeniceException(
-        // "Failed to get version information but the topic exists and has been created recently. Try again after some
-        // time.");
-        // }
-
-        killOfflinePush(clusterName, latestTopicName, true);
-        LOGGER.info("Found topic: {} without the corresponding version, will kill it", latestTopicName);
-        return Optional.empty();
+        return latestTopic;
       }
 
       /**
@@ -1444,22 +1414,7 @@ public class VeniceParentHelixAdmin implements Admin {
             jobStatus,
             latestTopicName,
             extraInfo);
-        if (latestTopic.isPresent()) {
-          return Optional.of(latestTopic.get());
-        }
-        return Optional.empty();
-      } else {
-        /**
-         * If the job status of latestKafkaTopic is terminal and it is not an incremental push,
-         * it will be truncated in {@link #getOffLinePushStatus(String, String)}.
-         */
-        /*   if (!isIncrementalPush) {
-          Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
-          truncateTopicsBasedOnMaxErroredTopicNumToKeep(
-              versionTopics.stream().map(vt -> vt.getName()).collect(Collectors.toList()),
-              isRepush,
-              currentVersionsMap);
-        } */
+        return latestTopic;
       }
     }
     return Optional.empty();
@@ -4066,20 +4021,6 @@ public class VeniceParentHelixAdmin implements Admin {
     boolean isHybridStore = storeVersion != null && storeVersion.getHybridStoreConfig() != null;
 
     boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
-
-    if (!isTargetRegionPush // Push is complete for a normal batch push w/o target region push
-        || isPushCompleteInAllRegionsForTargetRegionPush // Push is complete in all regions for a target region push w/o
-                                                         // deferred swap
-        || isHybridStore // Push is to a hybrid store
-    ) {
-      LOGGER.info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
-      /* truncateTopicsOptionally(
-          clusterName,
-          kafkaTopic,
-          incrementalPushVersion,
-          currentReturnStatus,
-          currentReturnStatusDetails); */
-    }
 
     // Update the parent version status for all pushes except for target region push w/ deferred swap as it's handled
     // separately
