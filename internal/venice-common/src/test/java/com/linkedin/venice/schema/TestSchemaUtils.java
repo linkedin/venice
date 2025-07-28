@@ -2,10 +2,21 @@ package com.linkedin.venice.schema;
 
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
-import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.*;
-import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.*;
-import static org.apache.avro.Schema.Type.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_TS_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.PUT_ONLY_PART_LENGTH_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_COLO_ID_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.MAP_DIFF;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.MAP_UNION;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_DIFF;
+import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_UNION;
+import static org.apache.avro.Schema.Type.INT;
+import static org.apache.avro.Schema.Type.LONG;
+import static org.apache.avro.Schema.Type.NULL;
+import static org.apache.avro.Schema.Type.UNION;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.schema.SchemaUtils;
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
