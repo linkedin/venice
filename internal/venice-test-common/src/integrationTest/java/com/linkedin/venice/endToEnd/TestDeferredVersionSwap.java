@@ -615,9 +615,9 @@ public class TestDeferredVersionSwap {
       ControllerClient controllerClient) {
     ReadWriteStoreRepository storeRepository =
         admin.getHelixVeniceClusterResources(CLUSTER_NAMES[0]).getStoreMetadataRepository();
-    Store store1 = storeRepository.getStore(storeName);
-    store1.updateVersionStatus(1, status);
-    storeRepository.updateStore(store1);
+    Store store = storeRepository.getStore(storeName);
+    store.updateVersionStatus(1, status);
+    storeRepository.updateStore(store);
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       StoreInfo parentStore = controllerClient.getStore(storeName).getStore();
       Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), status);
