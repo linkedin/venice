@@ -128,6 +128,7 @@ import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.ETLStoreConfigImpl;
@@ -3000,7 +3001,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
             }
             long createBatchTopicStartTime = System.currentTimeMillis();
-            if (!isParent()) {
+            if (!isParent() && multiClusterConfigs.getConcurrentPushDetectionStrategy()
+                .equals(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY)) {
               topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
               createBatchTopics(
                   version,

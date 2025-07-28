@@ -201,6 +201,7 @@ import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -215,6 +216,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -1335,17 +1337,153 @@ public class VeniceParentHelixAdmin implements Admin {
    * If there is no ongoing push for specified store currently, this function will return {@link Optional#empty()},
    * else will return the ongoing Kafka topic. It will also try to clean up legacy topics.
    */
+
   Optional<String> getTopicForCurrentPushJob(
       String clusterName,
       String storeName,
       boolean isIncrementalPush,
       boolean isRepush) {
+    if (multiClusterConfigs.getConcurrentPushDetectionStrategy()
+        .equals(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY)) {
+      return getTopicForCurrentPushJobTopicBased(clusterName, storeName, isIncrementalPush, isRepush);
+    } else if (multiClusterConfigs.getConcurrentPushDetectionStrategy().equals(ConcurrentPushDetectionStrategy.DUAL)) {
+      Optional<String> topicBased =
+          getTopicForCurrentPushJobTopicBased(clusterName, storeName, isIncrementalPush, isRepush);
+      Optional<String> versionStatusBased = getTopicForCurrentPushJobParentVersionStatusBased(clusterName, storeName);
+      if (!topicBased.equals(versionStatusBased)) {
+        LOGGER.error(
+            "getTopicForCurrentPushJob returns different value for store {}, topicBased: {}, versionStatusBased: {}",
+            storeName,
+            topicBased,
+            versionStatusBased);
+      }
+      return topicBased;
+    } else {
+      return getTopicForCurrentPushJobParentVersionStatusBased(clusterName, storeName);
+    }
+  }
+
+  Optional<String> getTopicForCurrentPushJobTopicBased(
+      String clusterName,
+      String storeName,
+      boolean isIncrementalPush,
+      boolean isRepush) {
     // The first/last topic in the list is the latest/oldest version topic
-    // List<PubSubTopic> versionTopics = getKafkaTopicsByAge(storeName);
-    // Optional<PubSubTopic> latestTopic = Optional.empty();
-    // if (!versionTopics.isEmpty()) {
-    // latestTopic = Optional.of(versionTopics.get(0));
-    // }
+    List<PubSubTopic> versionTopics = getKafkaTopicsByAge(storeName);
+    Optional<PubSubTopic> latestTopic = Optional.empty();
+    if (!versionTopics.isEmpty()) {
+      latestTopic = Optional.of(versionTopics.get(0));
+    }
+
+    /**
+     * Check current topic retention to decide whether the previous job is already done or not
+     */
+    if (latestTopic.isPresent()) {
+      LOGGER.debug("Latest kafka topic for store: {} is {}", storeName, latestTopic.get());
+      final String latestTopicName = latestTopic.get().getName();
+      int versionNumber = Version.parseVersionFromKafkaTopicName(latestTopicName);
+      Store store = getStore(clusterName, storeName);
+      Version version = store.getVersion(versionNumber);
+      if (version != null && version.isVersionSwapDeferred()) {
+        LOGGER.error(
+            "There is already future version {} exists for store {}, please wait till the future version is made current.",
+            versionNumber,
+            storeName);
+        return Optional.of(latestTopic.get().getName());
+      }
+
+      if (!isTopicTruncated(latestTopicName)) {
+        /**
+         * Check whether the corresponding version exists or not, since it is possible that last push
+         * meets Kafka topic creation timeout.
+         * When Kafka topic creation timeout happens, topic/job could be still running, but the version
+         * should not exist according to the logic in {@link VeniceHelixAdmin#addVersion}.
+         * However, it is possible that a different request enters this code section when the topic has been created but
+         * either the version information has not been persisted to Zk or the in-memory Store object. In this case, it
+         * is desirable to add a delay to topic deletion.
+         *
+         * If the corresponding version doesn't exist, this function will issue command to kill job to deprecate
+         * the incomplete topic/job.
+         */
+        StoreVersionInfo storeVersionPair =
+            getVeniceHelixAdmin().waitVersion(clusterName, storeName, versionNumber, Duration.ofSeconds(30));
+        if (storeVersionPair.getVersion() == null) {
+          // TODO: Guard this topic deletion code using a store-level lock instead.
+          Long inMemoryTopicCreationTime = getVeniceHelixAdmin().getInMemoryTopicCreationTime(latestTopicName);
+          if (inMemoryTopicCreationTime != null
+              && SystemTime.INSTANCE.getMilliseconds() < (inMemoryTopicCreationTime + TOPIC_DELETION_DELAY_MS)) {
+            throw new VeniceException(
+                "Failed to get version information but the topic exists and has been created recently. Try again after some time.");
+          }
+
+          killOfflinePush(clusterName, latestTopicName, true);
+          LOGGER.info("Found topic: {} without the corresponding version, will kill it", latestTopicName);
+          return Optional.empty();
+        }
+
+        /**
+         * If Parent Controller could not infer the job status from topic retention policy, it will check the actual
+         * job status by sending requests to each individual datacenter.
+         * If the job is still running, Parent Controller will block current push.
+         */
+        final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
+        ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;
+        Map<String, String> extraInfo = new HashMap<>();
+
+        int retryTimes = 5;
+        int current = 0;
+        while (current++ < retryTimes) {
+          OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, latestTopicName);
+          jobStatus = offlineJobStatus.getExecutionStatus();
+          extraInfo = offlineJobStatus.getExtraInfo();
+          if (!extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
+            break;
+          }
+          // Retry since there is a connection failure when querying job status against each datacenter
+          try {
+            timer.sleep(SLEEP_MS_BETWEEN_RETRY);
+          } catch (InterruptedException e) {
+            throw new VeniceException(
+                "Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
+          }
+        }
+        if (extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
+          // TODO: Do we need to throw exception here??
+          LOGGER.error(
+              "Failed to get job status for topic: {} after retrying {} times, extra info: {}",
+              latestTopicName,
+              retryTimes,
+              extraInfo);
+        }
+        if (!jobStatus.isTerminal()) {
+          LOGGER.info(
+              "Job status: {} for Kafka topic: {} is not terminal, extra info: {}",
+              jobStatus,
+              latestTopicName,
+              extraInfo);
+          if (latestTopic.isPresent()) {
+            return Optional.of(latestTopic.get().getName());
+          }
+          return Optional.empty();
+        } else {
+          /**
+           * If the job status of latestKafkaTopic is terminal and it is not an incremental push,
+           * it will be truncated in {@link #getOffLinePushStatus(String, String)}.
+           */
+          if (!isIncrementalPush) {
+            Map<String, Integer> currentVersionsMap = getCurrentVersionsForMultiColos(clusterName, storeName);
+            truncateTopicsBasedOnMaxErroredTopicNumToKeep(
+                versionTopics.stream().map(vt -> vt.getName()).collect(Collectors.toList()),
+                isRepush,
+                currentVersionsMap);
+          }
+        }
+      }
+    }
+    return Optional.empty();
+  }
+
+  Optional<String> getTopicForCurrentPushJobParentVersionStatusBased(String clusterName, String storeName) {
     Store store = getStore(clusterName, storeName);
     if (store == null) {
       return Optional.empty();
@@ -1361,7 +1499,6 @@ public class VeniceParentHelixAdmin implements Admin {
      * Check current topic retention to decide whether the previous job is already done or not
      */
     if (latestTopic.isPresent()) {
-      LOGGER.debug("Latest kafka topic for store: {} is {}", storeName, latestTopic.get());
       final String latestTopicName = latestTopic.get();
       int versionNumber = Version.parseVersionFromKafkaTopicName(latestTopicName);
 
@@ -4022,6 +4159,22 @@ public class VeniceParentHelixAdmin implements Admin {
 
     boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
 
+    if (multiClusterConfigs.getConcurrentPushDetectionStrategy()
+        .equals(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY)
+        && (!isTargetRegionPush // Push is complete for a normal batch push w/o target region push
+            || isPushCompleteInAllRegionsForTargetRegionPush // Push is complete in all regions for a target region push
+                                                             // w/o
+            // deferred swap
+            || isHybridStore) // Push is to a hybrid store
+    ) {
+      LOGGER.info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
+      truncateTopicsOptionally(
+          clusterName,
+          kafkaTopic,
+          incrementalPushVersion,
+          currentReturnStatus,
+          currentReturnStatusDetails);
+    }
     // Update the parent version status for all pushes except for target region push w/ deferred swap as it's handled
     // separately
     // in DeferredVersionSwapService

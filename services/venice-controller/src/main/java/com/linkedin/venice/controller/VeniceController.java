@@ -14,6 +14,7 @@ import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcAudi
 import com.linkedin.venice.controller.grpc.server.interceptor.ControllerGrpcSslSessionInterceptor;
 import com.linkedin.venice.controller.grpc.server.interceptor.ParentControllerRegionValidationInterceptor;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
+import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
@@ -26,6 +27,7 @@ import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.grpc.VeniceGrpcServer;
 import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -239,17 +241,29 @@ public class VeniceController {
 
   private Optional<TopicCleanupService> createTopicCleanupService() {
     Admin admin = controllerService.getVeniceHelixAdmin();
-    if (multiClusterConfigs.isParent()) {
-      return Optional.empty();
-    }
-    return Optional.of(
-        new TopicCleanupService(
-            admin,
-            multiClusterConfigs,
-            pubSubTopicRepository,
-            new TopicCleanupServiceStats(metricsRepository),
-            pubSubClientsFactory));
 
+    if (multiClusterConfigs.isParent()) {
+      if (multiClusterConfigs.getConcurrentPushDetectionStrategy()
+          .equals(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY)) {
+        return Optional.of(
+            new TopicCleanupServiceForParentController(
+                admin,
+                multiClusterConfigs,
+                pubSubTopicRepository,
+                new TopicCleanupServiceStats(metricsRepository),
+                pubSubClientsFactory));
+      } else {
+        return Optional.empty();
+      }
+    } else {
+      return Optional.of(
+          new TopicCleanupService(
+              admin,
+              multiClusterConfigs,
+              pubSubTopicRepository,
+              new TopicCleanupServiceStats(metricsRepository),
+              pubSubClientsFactory));
+    }
   }
 
   private Optional<StoreBackupVersionCleanupService> createStoreBackupVersionCleanupService() {

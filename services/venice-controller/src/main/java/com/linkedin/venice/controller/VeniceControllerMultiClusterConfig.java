@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
@@ -77,6 +78,10 @@ public class VeniceControllerMultiClusterConfig {
 
   public boolean isParent() {
     return getCommonConfig().isParent();
+  }
+
+  public ConcurrentPushDetectionStrategy getConcurrentPushDetectionStrategy() {
+    return getCommonConfig().getConcurrentPushDetectionStrategy();
   }
 
   public ParentControllerRegionState getParentControllerRegionState() {
