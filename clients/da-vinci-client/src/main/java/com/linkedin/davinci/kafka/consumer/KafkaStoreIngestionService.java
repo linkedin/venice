@@ -12,6 +12,7 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -230,7 +231,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       Optional<SSLFactory> sslFactory,
       HeartbeatMonitoringService heartbeatMonitoringService,
       Lazy<ZKHelixAdmin> zkHelixAdmin,
-      AdaptiveThrottlerSignalService adaptiveThrottlerSignalService) {
+      AdaptiveThrottlerSignalService adaptiveThrottlerSignalService,
+      Optional<D2Client> d2Client) {
     this.storageService = storageService;
     this.cacheBackend = cacheBackend;
     this.recordTransformerConfig = recordTransformerConfig;
@@ -379,6 +381,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
               sslFactory,
               serverConfig.getLocalControllerUrl(),
               serverConfig.getLocalControllerD2ServiceName(),
+              d2Client,
               serverConfig.getLocalD2ZkHost(),
               false)) {
         schemaInitializer.execute(Collections.singletonMap(schemaId, schema));

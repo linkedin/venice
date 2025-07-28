@@ -9,7 +9,6 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
@@ -36,6 +35,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.writer.VeniceWriter;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -51,12 +51,11 @@ import org.apache.helix.zookeeper.impl.client.ZkClient;
 public class AbstractTestVeniceParentHelixAdmin {
   static final int TIMEOUT_IN_MS = 60 * Time.MS_PER_SECOND;
   static int KAFKA_REPLICA_FACTOR = 3;
-  static final String PUSH_JOB_DETAILS_STORE_NAME = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
   static final int MAX_PARTITION_NUM = 1024;
   static final String TEST_SCHEMA =
       "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", " + "\"type\":\"int\"}]}";
 
-  static final String clusterName = "test-cluster";
+  protected static final String clusterName = "test-cluster";
   static final String regionName = "test-region";
   static final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
   static final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
@@ -154,13 +153,16 @@ public class AbstractTestVeniceParentHelixAdmin {
    * Separate internal mocks setup and initialization so tests can change the behavior of the mocks without running into
    * concurrency issues. i.e. change mock's behavior in test thread while it's being used in some background threads.
    */
-  public void initializeParentAdmin(Optional<AuthorizerService> authorizerService) {
+  public void initializeParentAdmin(
+      Optional<AuthorizerService> authorizerService,
+      Optional<MetricsRepository> metricsRepository) {
     parentAdmin = new VeniceParentHelixAdmin(
         internalAdmin,
         TestUtils.getMultiClusterConfigFromOneCluster(config),
         false,
         Optional.empty(),
-        authorizerService);
+        authorizerService,
+        metricsRepository.orElseGet(() -> mock(MetricsRepository.class)));
     ControllerClient mockControllerClient = mock(ControllerClient.class);
     doReturn(new ControllerResponse()).when(mockControllerClient).checkResourceCleanupForStoreCreation(anyString());
     StoreResponse storeResponse = mock(StoreResponse.class);
@@ -216,4 +218,10 @@ public class AbstractTestVeniceParentHelixAdmin {
     return resources;
   }
 
+  /**
+   * Expose the config object to configure specific config values for testing.
+   */
+  protected VeniceControllerClusterConfig getConfig() {
+    return config;
+  }
 }

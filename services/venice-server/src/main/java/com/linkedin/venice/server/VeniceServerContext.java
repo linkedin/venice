@@ -2,6 +2,7 @@ package com.linkedin.venice.server;
 
 import static com.linkedin.venice.server.VeniceServer.SERVER_SERVICE_NAME;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
@@ -27,6 +28,7 @@ public class VeniceServerContext {
   private final ClientConfig clientConfigForConsumer;
   private final ICProvider icProvider;
   private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
+  private final D2Client d2Client;
 
   public VeniceConfigLoader getVeniceConfigLoader() {
     return veniceConfigLoader;
@@ -60,6 +62,10 @@ public class VeniceServerContext {
     return serviceDiscoveryAnnouncers;
   }
 
+  public D2Client getD2Client() {
+    return d2Client;
+  }
+
   private VeniceServerContext(Builder builder) {
     this.veniceConfigLoader = builder.veniceConfigLoader;
     this.metricsRepository = builder.metricsRepository;
@@ -69,6 +75,7 @@ public class VeniceServerContext {
     this.clientConfigForConsumer = builder.clientConfigForConsumer;
     this.icProvider = builder.icProvider;
     this.serviceDiscoveryAnnouncers = builder.serviceDiscoveryAnnouncers;
+    this.d2Client = builder.d2Client;
   }
 
   public static class Builder {
@@ -82,6 +89,7 @@ public class VeniceServerContext {
     private ICProvider icProvider;
     private List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
     private boolean isServiceDiscoveryAnnouncerSet;
+    private D2Client d2Client;
 
     public Builder setVeniceConfigLoader(VeniceConfigLoader veniceConfigLoader) {
       this.veniceConfigLoader = veniceConfigLoader;
@@ -122,6 +130,11 @@ public class VeniceServerContext {
     public Builder setServiceDiscoveryAnnouncers(List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers) {
       this.isServiceDiscoveryAnnouncerSet = true;
       this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
+      return this;
+    }
+
+    public Builder setD2Client(D2Client d2Client) {
+      this.d2Client = d2Client;
       return this;
     }
 

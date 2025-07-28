@@ -105,6 +105,10 @@ public class AggVersionedIngestionStats
     recordVersionedAndTotalStat(storeName, version, IngestionStats::recordTotalDCR);
   }
 
+  public void recordTotalDuplicateKeyUpdate(String storeName, int version) {
+    recordVersionedAndTotalStat(storeName, version, IngestionStats::recordTotalDuplicateKeyUpdate);
+  }
+
   public void recordTimestampRegressionDCRError(String storeName, int version) {
     recordVersionedAndTotalStat(storeName, version, IngestionStats::recordTimestampRegressionDCRError);
   }

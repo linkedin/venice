@@ -13,7 +13,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.lang.StringUtils;
@@ -186,12 +185,7 @@ public class VeniceChangelogConsumerClientFactory {
           globalChangelogClientConfig.getControllerRequestRetryCount(),
           newStoreChangelogClientConfig.getD2Client());
     } else {
-      d2ControllerClient = D2ControllerClientFactory.discoverAndConstructControllerClient(
-          storeName,
-          globalChangelogClientConfig.getControllerD2ServiceName(),
-          globalChangelogClientConfig.getLocalD2ZkHosts(),
-          Optional.ofNullable(newStoreChangelogClientConfig.getInnerClientConfig().getSslFactory()),
-          globalChangelogClientConfig.getControllerRequestRetryCount());
+      throw new IllegalArgumentException("D2Client should be set, please check the config");
     }
     newStoreChangelogClientConfig.setD2ControllerClient(d2ControllerClient);
     if (newStoreChangelogClientConfig.getSchemaReader() == null) {

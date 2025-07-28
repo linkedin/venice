@@ -18,6 +18,7 @@ import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentControll
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.server.VeniceControllerGrpcServiceImpl;
 import com.linkedin.venice.controller.server.VeniceControllerRequestHandler;
+import com.linkedin.venice.controller.stats.ControllerMetricEntity;
 import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controller.stats.TopicCleanupServiceStats;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
@@ -35,9 +36,12 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.AsyncRetryingServiceDiscoveryAnnouncer;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
+import com.linkedin.venice.stats.metrics.MetricEntity;
+import com.linkedin.venice.stats.metrics.ModuleMetricEntityInterface;
 import com.linkedin.venice.system.store.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -46,8 +50,10 @@ import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
 import io.grpc.ServerInterceptor;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.apache.logging.log4j.LogManager;
@@ -60,7 +66,10 @@ import org.apache.logging.log4j.Logger;
 public class VeniceController {
   private static final Logger LOGGER = LogManager.getLogger(VeniceController.class);
   private static final String CONTROLLER_GRPC_SERVER_THREAD_NAME = "ControllerGrpcServer";
-  static final String CONTROLLER_SERVICE_NAME = "venice-controller";
+  public static final String CONTROLLER_SERVICE_NAME = "venice-controller";
+  public static final String CONTROLLER_SERVICE_METRIC_PREFIX = "controller";
+  public static final Collection<MetricEntity> CONTROLLER_SERVICE_METRIC_ENTITIES =
+      ModuleMetricEntityInterface.getUniqueMetricEntities(ControllerMetricEntity.class);
 
   // services
   private final VeniceControllerService controllerService;
@@ -91,6 +100,7 @@ public class VeniceController {
   private final Optional<DynamicAccessController> accessController;
   private final Optional<AuthorizerService> authorizerService;
   private final D2Client d2Client;
+  private Map<String, D2Client> d2Clients;
   private final Optional<ClientConfig> routerClientConfig;
   private final Optional<ICProvider> icProvider;
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
@@ -155,6 +165,7 @@ public class VeniceController {
     this.accessController = Optional.ofNullable(ctx.getAccessController());
     this.authorizerService = Optional.ofNullable(ctx.getAuthorizerService());
     this.d2Client = ctx.getD2Client();
+    this.d2Clients = ctx.getD2Clients();
     this.routerClientConfig = Optional.ofNullable(ctx.getRouterClientConfig());
     this.icProvider = Optional.ofNullable(ctx.getIcProvider());
     this.externalSupersetSchemaGenerator = Optional.ofNullable(ctx.getExternalSupersetSchemaGenerator());
@@ -191,6 +202,7 @@ public class VeniceController {
         accessController,
         authorizerService,
         d2Client,
+        d2Clients,
         routerClientConfig,
         icProvider,
         externalSupersetSchemaGenerator,
@@ -417,6 +429,7 @@ public class VeniceController {
       String childControllerUrl = systemStoreClusterConfig.getChildControllerUrl(regionName);
       String d2ServiceName = systemStoreClusterConfig.getD2ServiceName();
       String d2ZkHost = systemStoreClusterConfig.getChildControllerD2ZkHost(regionName);
+      Optional<D2Client> regionD2Client = Optional.ofNullable(d2Clients == null ? null : d2Clients.get(regionName));
       boolean sslOnly = systemStoreClusterConfig.isControllerEnforceSSLOnly();
       if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
         ControllerClientBackedSystemSchemaInitializer metaSystemStoreSchemaInitializer =
@@ -429,6 +442,7 @@ public class VeniceController {
                 ((VeniceHelixAdmin) admin).getSslFactory(),
                 childControllerUrl,
                 d2ServiceName,
+                regionD2Client,
                 d2ZkHost,
                 sslOnly);
         metaSystemStoreSchemaInitializer.execute();
@@ -443,6 +457,7 @@ public class VeniceController {
               ((VeniceHelixAdmin) admin).getSslFactory(),
               childControllerUrl,
               d2ServiceName,
+              regionD2Client,
               d2ZkHost,
               sslOnly);
       kmeSchemaInitializer.execute();
@@ -508,12 +523,13 @@ public class VeniceController {
       LOGGER.error(errorMessage, e);
       Utils.exit(errorMessage + e.getMessage());
     }
-
     D2Client d2Client = D2ClientFactory.getD2Client(zkAddress, Optional.empty());
+    String regionName = RegionUtils.getLocalRegionName(controllerProps, false);
+    Map<String, D2Client> d2Clients = Collections.singletonMap(regionName, d2Client);
     VeniceController controller = new VeniceController(
         new VeniceControllerContext.Builder().setPropertiesList(Collections.singletonList(controllerProps))
             .setServiceDiscoveryAnnouncers(new ArrayList<>())
-            .setD2Client(d2Client)
+            .setD2Clients(d2Clients)
             .build());
     controller.start();
     addShutdownHook(controller, zkAddress);
