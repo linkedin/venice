@@ -1588,13 +1588,18 @@ public class ControllerClient implements Closeable {
       Optional<String> controllerUrl) {
     Exception lastException = null;
     boolean logErrorMessage = true;
-    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
+    try (ControllerTransport transport = getNewControllerTransport()) {
       for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
         try {
           // If the controllerUrl is not provided, use the leader controller URL.
           // This option is useful when we want to forward request to specific controller (e.g. to standby controller)
-          return transport
-              .request(controllerUrl.orElse(getLeaderControllerUrl()), route, params, responseType, timeoutMs, data);
+          return transport.request(
+              controllerUrl.orElseGet(this::getLeaderControllerUrl),
+              route,
+              params,
+              responseType,
+              timeoutMs,
+              data);
         } catch (ExecutionException | TimeoutException e) {
           // Controller is unreachable. Let's wait for a new leader to be elected.
           // Total wait time should be at least leader election time (~30 seconds)
@@ -1672,5 +1677,10 @@ public class ControllerClient implements Closeable {
 
   public Collection<String> getControllerDiscoveryUrls() {
     return this.controllerDiscoveryUrls;
+  }
+
+  // For testing only
+  public ControllerTransport getNewControllerTransport() {
+    return new ControllerTransport(sslFactory);
   }
 }

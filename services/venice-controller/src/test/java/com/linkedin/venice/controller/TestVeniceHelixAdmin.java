@@ -41,6 +41,7 @@ import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerTransport;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -85,6 +86,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
@@ -1142,6 +1145,26 @@ public class TestVeniceHelixAdmin {
     assertEquals(
         veniceParentHelixAdmin.getLocalAdminOperationProtocolVersion(),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+  }
+
+  @Test
+  public void testRequestWithControllerUrl() throws ExecutionException, TimeoutException {
+    ControllerClient client = mock(ControllerClient.class);
+    ControllerTransport controllerTransport = mock(ControllerTransport.class);
+    doCallRealMethod().when(client).getLeaderControllerUrl();
+    doCallRealMethod().when(client).getLocalAdminOperationProtocolVersion(anyString());
+
+    when(client.getNewControllerTransport()).thenReturn(controllerTransport);
+    AdminOperationProtocolVersionControllerResponse response = new AdminOperationProtocolVersionControllerResponse();
+    response.setLocalAdminOperationProtocolVersion(1);
+    response.setLocalControllerName("localhost_1234");
+
+    String controllerUrl = "http://localhost:1234";
+    doReturn(response).when(controllerTransport).request(eq(controllerUrl), any(), any(), any(), anyInt(), any());
+
+    client.getLocalAdminOperationProtocolVersion(controllerUrl);
+    // When the controller URL is provided, it should NOT call getLeaderControllerUrl
+    verify(client, never()).getLeaderControllerUrl();
   }
 
   @Test

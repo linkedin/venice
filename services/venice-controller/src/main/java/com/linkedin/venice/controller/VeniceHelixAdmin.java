@@ -5706,9 +5706,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (regularVersionETLEnabled.isPresent() || futureVersionETLEnabled.isPresent()
           || etledUserProxyAccount.isPresent()) {
         ETLStoreConfig etlStoreConfig = new ETLStoreConfigImpl(
-            etledUserProxyAccount.orElse(originalStore.getEtlStoreConfig().getEtledUserProxyAccount()),
-            regularVersionETLEnabled.orElse(originalStore.getEtlStoreConfig().isRegularVersionETLEnabled()),
-            futureVersionETLEnabled.orElse(originalStore.getEtlStoreConfig().isFutureVersionETLEnabled()));
+            etledUserProxyAccount.orElseGet(() -> originalStore.getEtlStoreConfig().getEtledUserProxyAccount()),
+            regularVersionETLEnabled.orElseGet(() -> originalStore.getEtlStoreConfig().isRegularVersionETLEnabled()),
+            futureVersionETLEnabled.orElseGet(() -> originalStore.getEtlStoreConfig().isFutureVersionETLEnabled()));
         storeMetadataUpdate(clusterName, storeName, store -> {
           store.setEtlStoreConfig(etlStoreConfig);
           return store;
@@ -5982,9 +5982,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       originalPartitionerConfig = oldStore.getPartitionerConfig();
     }
     return new PartitionerConfigImpl(
-        partitionerClass.orElse(originalPartitionerConfig.getPartitionerClass()),
-        partitionerParams.orElse(originalPartitionerConfig.getPartitionerParams()),
-        amplificationFactor.orElse(originalPartitionerConfig.getAmplificationFactor()));
+        partitionerClass.orElseGet(originalPartitionerConfig::getPartitionerClass),
+        partitionerParams.orElseGet(originalPartitionerConfig::getPartitionerParams),
+        amplificationFactor.orElseGet(originalPartitionerConfig::getAmplificationFactor));
   }
 
   static Map<String, StoreViewConfigRecord> mergeNewViewConfigsIntoOldConfigs(
