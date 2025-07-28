@@ -538,7 +538,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
   }
 
-  public synchronized boolean isRocksDBPartitionBlobTransferInProgress() {
+  public boolean isRocksDBPartitionBlobTransferInProgress() {
     return blobTransferInProgress;
   }
 
