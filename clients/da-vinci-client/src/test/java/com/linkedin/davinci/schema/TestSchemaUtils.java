@@ -48,8 +48,8 @@ public class TestSchemaUtils {
   private static final String NULLABLE_LIST_FIELD_NAME = "NullableStringListField";
   private static final String NULLABLE_MAP_FIELD_NAME = "NullableIntMapField";
 
-  @Test
-  public void testAnnotateValueSchema() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testAnnotateValueSchema(boolean useStrictValidation) {
     GenericRecord valueRecord = new GenericData.Record(VALUE_SCHEMA);
     valueRecord.put(LIST_FIELD_NAME, Collections.singletonList("key1"));
     Map<String, Integer> integerMap = new HashMap<>();
@@ -57,17 +57,17 @@ public class TestSchemaUtils {
     valueRecord.put(MAP_FIELD_NAME, integerMap);
 
     byte[] serializedBytes = getSerializer(VALUE_SCHEMA).serialize(valueRecord);
-    Schema annotatedValueSchema = SchemaUtils.annotateValueSchema(VALUE_SCHEMA);
+    Schema annotatedValueSchema = SchemaUtils.annotateValueSchema(VALUE_SCHEMA, useStrictValidation);
     GenericRecord deserializedValueRecord =
         getDeserializer(annotatedValueSchema, annotatedValueSchema).deserialize(serializedBytes);
     Assert.assertEquals(((List<String>) deserializedValueRecord.get(LIST_FIELD_NAME)).get(0), "key1");
     Assert.assertEquals(((Map<String, Integer>) deserializedValueRecord.get(MAP_FIELD_NAME)).get("key1"), (Integer) 1);
   }
 
-  @Test
-  public void testAnnotateUpdateSchema() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testAnnotateUpdateSchema(boolean useStrictValidation) {
     Schema updateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
-    Schema annotatedUpdateSchema = SchemaUtils.annotateUpdateSchema(updateSchema);
+    Schema annotatedUpdateSchema = SchemaUtils.annotateUpdateSchema(updateSchema, useStrictValidation);
 
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
     GenericRecord updateRecord =
@@ -97,10 +97,10 @@ public class TestSchemaUtils {
     Assert.assertEquals(deserializedValueRecord.get(MAP_FIELD_NAME), Collections.singletonMap("key2", 1));
   }
 
-  @Test
-  public void testAnnotateRmdSchema() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testAnnotateRmdSchema(boolean useStrictValidation) {
     Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(VALUE_SCHEMA);
-    Schema annotatedRmdSchema = SchemaUtils.annotateRmdSchema(rmdSchema);
+    Schema annotatedRmdSchema = SchemaUtils.annotateRmdSchema(rmdSchema, useStrictValidation);
     GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
     Schema tsSchema = rmdSchema.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
     Schema listFieldTsSchema = tsSchema.getField(LIST_FIELD_NAME).schema();
