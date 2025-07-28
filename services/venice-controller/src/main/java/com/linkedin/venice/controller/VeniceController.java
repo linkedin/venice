@@ -76,7 +76,7 @@ public class VeniceController {
   private final AdminSparkServer secureAdminServer;
   private VeniceGrpcServer adminGrpcServer;
   private VeniceGrpcServer adminSecureGrpcServer;
-  private final TopicCleanupService topicCleanupService;
+  private final Optional<TopicCleanupService> topicCleanupService;
   private final Optional<StoreBackupVersionCleanupService> storeBackupVersionCleanupService;
 
   private final Optional<DisabledPartitionEnablerService> disabledPartitionEnablerService;
@@ -237,15 +237,18 @@ public class VeniceController {
         secure ? secureRequestHandler : unsecureRequestHandler);
   }
 
-  private TopicCleanupService createTopicCleanupService() {
+  private Optional<TopicCleanupService> createTopicCleanupService() {
     Admin admin = controllerService.getVeniceHelixAdmin();
-
-    return new TopicCleanupService(
-        admin,
-        multiClusterConfigs,
-        pubSubTopicRepository,
-        new TopicCleanupServiceStats(metricsRepository),
-        pubSubClientsFactory);
+    if (multiClusterConfigs.isParent()) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        new TopicCleanupService(
+            admin,
+            multiClusterConfigs,
+            pubSubTopicRepository,
+            new TopicCleanupServiceStats(metricsRepository),
+            pubSubClientsFactory));
 
   }
 
@@ -393,7 +396,7 @@ public class VeniceController {
       secureAdminServer.start();
     }
 
-    topicCleanupService.start();
+    topicCleanupService.ifPresent(TopicCleanupService::start);
     storeBackupVersionCleanupService.ifPresent(AbstractVeniceService::start);
     storeGraveyardCleanupService.ifPresent(AbstractVeniceService::start);
     unusedValueSchemaCleanupService.ifPresent(AbstractVeniceService::start);
@@ -478,7 +481,7 @@ public class VeniceController {
       LOGGER.info("Shutting down gRPC executor");
       grpcExecutor.shutdown();
     }
-    Utils.closeQuietlyWithErrorLogged(topicCleanupService);
+    topicCleanupService.ifPresent(Utils::closeQuietlyWithErrorLogged);
     Utils.closeQuietlyWithErrorLogged(secureAdminServer);
     Utils.closeQuietlyWithErrorLogged(adminServer);
     Utils.closeQuietlyWithErrorLogged(controllerService);
@@ -556,10 +559,6 @@ public class VeniceController {
 
   VeniceGrpcServer getAdminGrpcServer() {
     return adminGrpcServer;
-  }
-
-  TopicCleanupService getTopicCleanupService() {
-    return topicCleanupService;
   }
 
   Optional<StoreBackupVersionCleanupService> getStoreBackupVersionCleanupService() {
