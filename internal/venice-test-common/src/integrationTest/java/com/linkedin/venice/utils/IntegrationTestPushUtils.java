@@ -633,11 +633,15 @@ public class IntegrationTestPushUtils {
       String storeName) {
     List<VeniceMultiClusterWrapper> childDatacenters = clusterWrapper.getChildRegions();
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
-      for (VeniceMultiClusterWrapper childDataCenter : childDatacenters) {
+      for (VeniceMultiClusterWrapper childDataCenter: childDatacenters) {
         childDataCenter.getClusters().get(clusterName).useControllerClient(cc -> {
-          assertStoreHealth(cc, VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
+          assertStoreHealth(
+              cc,
+              VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
               childDataCenter.getRegionName());
-          assertStoreHealth(cc, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName),
+          assertStoreHealth(
+              cc,
+              VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName),
               childDataCenter.getRegionName());
         });
       }
