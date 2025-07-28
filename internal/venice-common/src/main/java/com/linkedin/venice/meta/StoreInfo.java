@@ -86,6 +86,7 @@ public class StoreInfo {
     storeInfo.setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
     storeInfo.setGlobalRtDivEnabled(store.isGlobalRtDivEnabled());
     storeInfo.setTTLRepushEnabled(store.isTTLRepushEnabled());
+    storeInfo.setEnumSchemaEvolutionAllowed(store.isEnumSchemaEvolutionAllowed());
     return storeInfo;
   }
 
@@ -363,6 +364,7 @@ public class StoreInfo {
    * Self-managed config that's set to true once there is a TTL re-push.
    */
   private boolean ttlRepushEnabled = false;
+  private boolean enumSchemaEvolutionAllowed = false;
 
   public StoreInfo() {
   }
@@ -947,5 +949,12 @@ public class StoreInfo {
 
   public boolean isTTLRepushEnabled() {
     return this.ttlRepushEnabled;
+  }
+  public boolean isEnumSchemaEvolutionAllowed() {
+    return enumSchemaEvolutionAllowed;
+  }
+
+  public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    this.enumSchemaEvolutionAllowed = enumSchemaEvolutionAllowed;
   }
 }

@@ -776,6 +776,15 @@ public class SystemStore extends AbstractStore {
     throw new UnsupportedOperationException();
   }
 
+  public boolean isEnumSchemaEvolutionAllowed() {
+    return false;
+  }
+
+  @Override
+  public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    throwUnsupportedOperationException("setEnumSchemaEvolutionAllowed");
+  }
+
   @Override
   public boolean isGlobalRtDivEnabled() {
     return zkSharedStore.isGlobalRtDivEnabled();
