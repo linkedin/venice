@@ -726,10 +726,48 @@ public class TestParentControllerWithMultiDataCenter {
         }
       });
 
+      // Update read quota as a random store config change
+      long newReadQuota = 110L;
+      UpdateStoreQueryParams updateParams = new UpdateStoreQueryParams().setReadQuotaInCU(newReadQuota);
+      ControllerResponse quotaUpdateResponse = parentControllerClient.updateStore(storeName, updateParams);
+      Assert
+          .assertFalse(quotaUpdateResponse.isError(), "Failed to update read quota: " + quotaUpdateResponse.getError());
+
+      // Verify the read quota update is reflected in all child controllers
+      // The update store command is critical in this test case - it's used as a synchronization point between the
+      // PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION message and the DELETE_STORE message in child controllers.
+      // Since the push jobs to the system stores are triggered in parent controller, it's possible that the pushes to
+      // system stores already completed, but the PUSH_STATUS_SYSTEM_STORE_AUTO_CREATION_VALIDATION messages haven't
+      // been processed yet in child controllers, so checking the push jobs completion of system stores is not enough.
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        for (int i = 0; i < childDatacenters.size(); i++) {
+          ControllerClient childClient =
+              new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+          StoreResponse storeResponse = childClient.getStore(storeName);
+          Assert.assertFalse(storeResponse.isError(), "Failed to get store from child datacenter " + i);
+          StoreInfo storeInfo = storeResponse.getStore();
+          Assert.assertEquals(
+              storeInfo.getReadQuotaInCU(),
+              newReadQuota,
+              "Read quota should be updated to " + newReadQuota + " in child datacenter " + i);
+          childClient.close();
+        }
+      });
+
+      String metaSystemStoreTopic =
+          Version.composeKafkaTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName), 1);
+      String pushStatusSystemStoreTopic =
+          Version.composeKafkaTopic(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName), 1);
+
       // 2. Delete the store in all child regions by sending requests directly to child controllers
       for (int i = 0; i < childDatacenters.size(); i++) {
         try (ControllerClient childClient =
             new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString())) {
+          // Ensure the pushes to system stores are completed before deleting the parent store
+          TestUtils.waitForNonDeterministicPushCompletion(metaSystemStoreTopic, childClient, 30, TimeUnit.SECONDS);
+          TestUtils
+              .waitForNonDeterministicPushCompletion(pushStatusSystemStoreTopic, childClient, 30, TimeUnit.SECONDS);
+
           ControllerResponse deleteResponse = childClient.disableAndDeleteStore(storeName);
           Assert.assertFalse(
               deleteResponse.isError(),
@@ -792,7 +830,7 @@ public class TestParentControllerWithMultiDataCenter {
 
         // After MAX_RETRIES_FOR_NONEXISTENT_STORE retries, there should be no exception anymore
         // as the message should be skipped
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, false, true, () -> {
           Exception lastException = adminConsumerService.getLastExceptionForStore(storeName);
           Assert.assertNull(
               lastException,
