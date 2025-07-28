@@ -9,17 +9,27 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.StoragePartitionConfig;
+import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
+import com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition;
+import com.linkedin.davinci.store.rocksdb.RocksDBThrottler;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -77,6 +87,72 @@ public class BlobSnapshotManagerTest {
     // Due to the store is hybrid, it will re-create a new snapshot.
     verify(storagePartition, times(1)).createSnapshot();
     Assert.assertEquals(actualBlobTransferPartitionMetadata, blobTransferPartitionMetadata);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testFastFailoverForSEAndPartitionCheck() {
+    // prepare:
+    Store mockStore = mock(Store.class);
+    Version mockVersion = mock(Version.class);
+    HybridStoreConfig hybridStoreConfig = mock(HybridStoreConfig.class);
+    when(mockStore.getVersion(VERSION_ID)).thenReturn(mockVersion);
+    when(readOnlyStoreRepository.getStore(STORE_NAME)).thenReturn(mockStore);
+    when(mockStore.getHybridStoreConfig()).thenReturn(hybridStoreConfig);
+    BlobSnapshotManager blobSnapshotManager =
+        spy(new BlobSnapshotManager(storageEngineRepository, storageMetadataService));
+
+    // case 1: SE does not exist
+    Mockito.doReturn(null).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    // action
+    try {
+      blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
+      Assert.fail("Should throw exception when SE does not exist");
+    } catch (VeniceException e) {
+      String errorMessage =
+          String.format("No storage engine found for replica %s", Utils.getReplicaId(TOPIC_NAME, PARTITION_ID));
+      Assert.assertEquals(e.getMessage(), errorMessage);
+    }
+
+    // case 2: have SE, but SE does not contain partition
+    StorageEngine storageEngine = Mockito.mock(StorageEngine.class);
+    Mockito.doReturn(storageEngine).when(storageEngineRepository).getLocalStorageEngine(TOPIC_NAME);
+    Mockito.doReturn(false).when(storageEngine).containsPartition(PARTITION_ID);
+    // action
+    try {
+      blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
+      Assert.fail("Should throw exception when partition does not exist");
+    } catch (VeniceException e) {
+      String errorMessage =
+          String.format("No storage engine found for replica %s", Utils.getReplicaId(TOPIC_NAME, PARTITION_ID));
+      Assert.assertEquals(e.getMessage(), errorMessage);
+    }
+
+    // case 3: SE contains this partition, but this partition is in blob transfer.
+    // prepare the rocksDBStoragePartition
+    // Set the blobTransferInProgress flag to true in StoragePartitionConfig
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(TOPIC_NAME, PARTITION_ID, true);
+    Properties properties = new Properties();
+    VeniceProperties veniceServerProperties =
+        AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
+    RocksDBServerConfig rocksDBServerConfig =
+        new RocksDBServerConfig(AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties));
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    RocksDBStoragePartition storagePartition =
+        new RocksDBStoragePartition(partitionConfig, factory, "", null, new RocksDBThrottler(3), rocksDBServerConfig);
+
+    Mockito.doReturn(storagePartition).when(storageEngine).getPartitionOrThrow(PARTITION_ID);
+    Mockito.doReturn(true).when(storageEngine).containsPartition(PARTITION_ID);
+    // action
+    try {
+      blobSnapshotManager.getTransferMetadata(blobTransferPayload, new AtomicBoolean(false));
+      Assert.fail("Should throw exception when partition is in blob transfer");
+    } catch (VeniceException e) {
+      String errorMessage = String.format(
+          "RocksDB instance is null, rocksDBPartitionBlobTransferInProgress flag is true for replica %s",
+          Utils.getReplicaId(TOPIC_NAME, PARTITION_ID));
+      Assert.assertEquals(e.getMessage(), errorMessage);
+    }
   }
 
   @Test(timeOut = TIMEOUT)
