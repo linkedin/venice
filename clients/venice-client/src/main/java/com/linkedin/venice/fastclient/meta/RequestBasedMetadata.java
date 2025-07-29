@@ -113,6 +113,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private volatile boolean isReady;
   private CountDownLatch isReadyLatch = new CountDownLatch(1);
   private AtomicReference<String> serverClusterName = new AtomicReference<>();
+  private final AtomicInteger fetchedCurrentVersionPartitionResourceInCompletionRetries = new AtomicInteger();
 
   private Set<String> harClusters;
 
@@ -424,7 +425,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
       for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
         String key = getVersionPartitionMapKey(fetchedCurrentVersion, partitionId);
-        readyToServeInstancesMap.put(key, routingInfo.get(partitionId));
+        List<String> replicas = routingInfo.get(partitionId);
+        if (!replicas.isEmpty()) {
+          readyToServeInstancesMap.put(key, routingInfo.get(partitionId));
+        }
       }
 
       // Update schemas
@@ -491,6 +495,27 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
             fetchedCurrentVersion);
         currentVersion.set(fetchedCurrentVersion);
         clusterStats.updateCurrentVersion(fetchedCurrentVersion);
+        fetchedCurrentVersionPartitionResourceInCompletionRetries.set(0);
+      } else {
+        if (currentVersion.get() != fetchedCurrentVersion) {
+          int retries = fetchedCurrentVersionPartitionResourceInCompletionRetries.incrementAndGet();
+          if (retries > 5) {
+            LOGGER.warn(
+                "Current version for store: {} is not updated to fetched current version: {} even after {} retries. "
+                    + "Current version is still: {}. This might be due to partition resources not being ready.",
+                storeName,
+                fetchedCurrentVersion,
+                retries,
+                currentVersion.get());
+          } else {
+            LOGGER.info(
+                "Current version for store: {} is not updated to fetched current version: {}. "
+                    + "Current version is still: {}. Will retry in next metadata fetch.",
+                storeName,
+                fetchedCurrentVersion,
+                currentVersion.get());
+          }
+        }
       }
 
       routingStrategy.updateHelixGroupInfo(helixGroupInfo);
@@ -549,7 +574,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     }
     // If the partition resources are not ready for the fetched current version, we do not update the current
     // version to avoid breaking the client.
-    LOGGER.warn(
+    LOGGER.info(
         "Partition resources are not ready for store: {}, version: {}. "
             + "Current version will not be updated to fetched current version: {}, but continue to use version: {}",
         storeName,
@@ -573,7 +598,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       return false;
     }
     if (routingInfo.size() != partitionCount) {
-      LOGGER.warn(
+      LOGGER.info(
           "Routing info size: {} does not match partition count: {} for store: {}, version: {}",
           routingInfo.size(),
           partitionCount,
@@ -584,7 +609,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       List<String> replicas = routingInfo.get(partitionId);
       if (replicas == null || replicas.isEmpty()) {
-        LOGGER.warn(
+        LOGGER.info(
             "No ready-to-serve replicas found for partition: {} in store: {}, version: {}",
             partitionId,
             storeName,
