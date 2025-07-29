@@ -32,14 +32,20 @@ public class TestD2ControllerClient {
         PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker(
             new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).setRegionName(STANDALONE_REGION_NAME).build());
         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(CLUSTER_NAME, zkServer, pubSubBrokerWrapper).replicationFactor(1)
-                .partitionSize(10)
-                .rebalanceDelayMs(0)
-                .sslToKafka(true)
-                .d2Enabled(true)
-                .clusterToD2(Collections.singletonMap(CLUSTER_NAME, clusterD2Service))
-                .regionName(STANDALONE_REGION_NAME)
-                .build())) {
+            new VeniceControllerCreateOptions.Builder(
+                CLUSTER_NAME,
+                zkServer,
+                pubSubBrokerWrapper,
+                Collections
+                    .singletonMap(STANDALONE_REGION_NAME, D2TestUtils.getAndStartD2Client(zkServer.getAddress())))
+                        .replicationFactor(1)
+                        .partitionSize(10)
+                        .rebalanceDelayMs(0)
+                        .sslToKafka(true)
+                        .d2Enabled(true)
+                        .clusterToD2(Collections.singletonMap(CLUSTER_NAME, clusterD2Service))
+                        .regionName(STANDALONE_REGION_NAME)
+                        .build())) {
       D2TestUtils.setupD2Config(
           zkServer.getAddress(),
           false,
