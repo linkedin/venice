@@ -17,11 +17,13 @@ import static org.testng.Assert.*;
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
+import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
-import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -34,10 +36,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.TestVeniceServer;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.kafka.protocol.state.GlobalRtDivState;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -193,7 +197,7 @@ public class TestGlobalRtDiv {
               .setHybridOffsetLagThreshold(streamingMessageLag)
               .setGlobalRtDivEnabled(true)
               .setChunkingEnabled(isChunkingEnabled)
-              // .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
               .setPartitionCount(partitionCount));
       Assert.assertFalse(response.isError());
       // Do a VPJ push
@@ -254,11 +258,17 @@ public class TestGlobalRtDiv {
           .getHelixVeniceClusterResources(sharedVenice.getClusterName())
           .getRoutingDataRepository();
       Assert.assertTrue(routingDataRepo.containsKafkaTopic(resourceName), "Topic " + resourceName + " should exist");
+      Instance leaderNode = routingDataRepo.getLeaderInstance(resourceName, 0);
+      Assert.assertNotNull(leaderNode);
+
       List<VeniceServerWrapper> servers = sharedVenice.getVeniceServers();
       servers.forEach(server -> {
+        TestVeniceServer testVeniceServer = server.getVeniceServer();
+        StoreIngestionTask sit = testVeniceServer.getKafkaStoreIngestionService().getStoreIngestionTask(resourceName);
+        DataIntegrityValidator div = sit.getDataIntegrityValidator();
+        boolean isLeader = server.getPort() == leaderNode.getPort();
         // server.getVeniceServer().getStorageService().get;
-        AbstractStorageEngine storageEngine =
-            server.getVeniceServer().getStorageService().getStorageEngine(resourceName);
+        StorageEngine storageEngine = testVeniceServer.getStorageService().getStorageEngine(resourceName);
         String key = "GLOBAL_RT_DIV_KEY." + venice.getPubSubBrokerWrapper().getAddress();
         byte[] keyBytes = key.getBytes();
         if (isChunkingEnabled) {
@@ -267,11 +277,10 @@ public class TestGlobalRtDiv {
         if (storageEngine == null) {
           return;
         }
-        byte[] result = storageEngine.get(partition, keyBytes);
 
         ChunkedValueManifestContainer manifestContainer = new ChunkedValueManifestContainer();
         StorageEngineBackedCompressorFactory compressorFactory =
-            new StorageEngineBackedCompressorFactory(server.getVeniceServer().getStorageMetadataService());
+            new StorageEngineBackedCompressorFactory(testVeniceServer.getStorageMetadataService());
         VeniceCompressor compressor = compressorFactory.getCompressor(
             CompressionStrategy.NO_OP,
             storageEngine.getStoreVersionName(),
@@ -299,8 +308,9 @@ public class TestGlobalRtDiv {
         Assert.assertNotNull(globalRtDiv);
       });
 
-      // Instance leaderNode = routingDataRepo.getLeaderInstance(resourceName, 0);
-      // Assert.assertNotNull(leaderNode);
+      // TODO: shutdown hosts and restart them to verify that the global RT div state gets loaded correctly
+      // TODO: shutdown leader for leader transition
+
       // LOGGER.info("Restart server port {}", leaderNode.getPort());
       // leaderNode.
       // sharedVenice.stopAndRestartVeniceServer(leaderNode.getPort());

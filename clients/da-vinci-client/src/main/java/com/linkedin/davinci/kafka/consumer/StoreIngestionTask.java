@@ -4775,7 +4775,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /** When Global RT DIV is enabled the ConsumptionTask's DIV is exclusively used to validate data integrity. */
-  DataIntegrityValidator getDataIntegrityValidator() {
+  public DataIntegrityValidator getDataIntegrityValidator() {
     return (isGlobalRtDivEnabled()) ? consumerDiv : drainerDiv;
   }
 
