@@ -654,7 +654,15 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public PubSubPosition decodePosition(PubSubTopicPartition partition, ByteBuffer buffer) {
+  public PubSubPosition decodePosition(PubSubTopicPartition partition, int positionTypeId, ByteBuffer buffer) {
+    if (buffer == null || buffer.remaining() == 0) {
+      throw new VeniceException("Buffer cannot be null or empty for partition: " + partition);
+    }
+    if (positionTypeId != PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID) {
+      throw new VeniceException(
+          "Position type ID: " + positionTypeId + " is not supported for partition: " + partition
+              + ". Expected type ID: " + PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID);
+    }
     try {
       return new ApacheKafkaOffsetPosition(buffer);
     } catch (IOException e) {

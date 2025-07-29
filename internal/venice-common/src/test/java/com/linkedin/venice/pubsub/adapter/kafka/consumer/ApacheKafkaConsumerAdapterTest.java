@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
+import static com.linkedin.venice.pubsub.PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -842,7 +843,8 @@ public class ApacheKafkaConsumerAdapterTest {
     ApacheKafkaOffsetPosition original = new ApacheKafkaOffsetPosition(expectedOffset);
     ByteBuffer buffer = original.getWireFormatBytes();
 
-    PubSubPosition decoded = kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, buffer);
+    PubSubPosition decoded =
+        kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, APACHE_KAFKA_OFFSET_POSITION_TYPE_ID, buffer);
     assertTrue(decoded instanceof ApacheKafkaOffsetPosition);
     assertEquals(((ApacheKafkaOffsetPosition) decoded).getInternalOffset(), expectedOffset);
   }
@@ -850,6 +852,6 @@ public class ApacheKafkaConsumerAdapterTest {
   @Test(expectedExceptions = VeniceException.class)
   public void testDecodePositionWithInvalidBuffer() {
     ByteBuffer invalidBuffer = ByteBuffer.wrap(new byte[] {}); // Too short to decode
-    kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, invalidBuffer);
+    kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, APACHE_KAFKA_OFFSET_POSITION_TYPE_ID, invalidBuffer);
   }
 }
