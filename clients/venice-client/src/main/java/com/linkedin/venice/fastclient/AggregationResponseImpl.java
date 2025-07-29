@@ -19,20 +19,6 @@ public class AggregationResponseImpl implements AggregationResponse {
   }
 
   @Override
-  @Deprecated
-  public Map<String, Integer> getValueCounts() {
-    if (hasError()) {
-      return Collections.emptyMap();
-    }
-    // For backward compatibility, return the first field's counts
-    Map<String, Map<String, Integer>> fieldCounts = getFieldToValueCounts();
-    if (fieldCounts.isEmpty()) {
-      return Collections.emptyMap();
-    }
-    return fieldCounts.values().iterator().next();
-  }
-
-  @Override
   public Map<String, Map<String, Integer>> getFieldToValueCounts() {
     if (hasError()) {
       return Collections.emptyMap();

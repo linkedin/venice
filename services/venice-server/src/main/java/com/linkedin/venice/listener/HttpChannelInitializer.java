@@ -3,7 +3,9 @@ package com.linkedin.venice.listener;
 import com.linkedin.alpini.netty4.handlers.BasicHttpServerCodec;
 import com.linkedin.alpini.netty4.http2.Http2PipelineInitializer;
 import com.linkedin.alpini.netty4.ssl.SslInitializer;
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.authorization.IdentityParser;
@@ -16,6 +18,7 @@ import com.linkedin.venice.listener.grpc.handlers.GrpcRouterRequestHandler;
 import com.linkedin.venice.listener.grpc.handlers.GrpcStatsHandler;
 import com.linkedin.venice.listener.grpc.handlers.GrpcStorageReadRequestHandler;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.security.SSLFactory;
@@ -68,8 +71,16 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final ServerLoadControllerHandler loadControllerHandler;
   private boolean isDaVinciClient;
 
+  // Dependencies needed for gRPC request processor in test mode
+  private final StorageEngineRepository storageEngineRepository;
+  private final ReadOnlyStoreRepository storeMetadataRepository;
+  private final ReadOnlySchemaRepository schemaRepository;
+  private final StorageEngineBackedCompressorFactory compressorFactory;
+
   public HttpChannelInitializer(
+      StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository storeMetadataRepository,
+      ReadOnlySchemaRepository schemaRepository,
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       MetricsRepository metricsRepository,
       Optional<SSLFactory> sslFactory,
@@ -77,10 +88,17 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       VeniceServerConfig serverConfig,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
+      StorageEngineBackedCompressorFactory compressorFactory,
       StorageReadRequestHandler requestHandler) {
     this.serverConfig = serverConfig;
     this.requestHandler = requestHandler;
     this.isDaVinciClient = serverConfig.isDaVinciClient();
+
+    // Store dependencies for gRPC request processor
+    this.storageEngineRepository = storageEngineRepository;
+    this.storeMetadataRepository = storeMetadataRepository;
+    this.schemaRepository = schemaRepository;
+    this.compressorFactory = compressorFactory;
 
     boolean isKeyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
     boolean isUnregisterMetricForDeletedStoreEnabled = serverConfig.isUnregisterMetricForDeletedStoreEnabled();
@@ -264,14 +282,25 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   }
 
   public VeniceServerGrpcRequestProcessor initGrpcRequestProcessor() {
-    // Check if we're in a test environment by looking for test-specific system properties or class names
-    boolean isTestMode = isTestEnvironment();
+    // Use force production mode system property for integration tests that need full functionality
+    boolean forceProductionMode = Boolean.getBoolean("venice.grpc.force.production.mode");
+
+    LOGGER.info("Creating gRPC request processor. Force production mode: {}", forceProductionMode);
 
     VeniceServerGrpcRequestProcessor grpcServerRequestProcessor;
-    if (isTestMode) {
-      grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor(requestHandler, true);
-    } else {
+    if (forceProductionMode) {
+      // Force production mode - extract dependencies from request handler
+      LOGGER.info("Using production mode with dependency extraction from request handler");
       grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor(requestHandler);
+    } else {
+      // Default mode - use dependencies stored in this class (passed from ListenerService)
+      LOGGER.info("Using default mode with direct dependency injection");
+      grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor(
+          this.storageEngineRepository,
+          this.schemaRepository,
+          this.storeMetadataRepository,
+          null,
+          this.compressorFactory);
     }
 
     StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats, null);
@@ -297,18 +326,6 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     grpcServerRequestProcessor.addHandler(grpcOutboundStatsHandler);
 
     return grpcServerRequestProcessor;
-  }
-
-  /**
-   * Check if we're running in a test environment
-   */
-  private boolean isTestEnvironment() {
-    // Check for common test indicators
-    String classPath = System.getProperty("java.class.path", "");
-    String javaCommand = System.getProperty("sun.java.command", "");
-
-    return classPath.contains("test") || classPath.contains("junit") || javaCommand.contains("test")
-        || javaCommand.contains("junit") || System.getProperty("test.mode", "false").equals("true");
   }
 
   /**

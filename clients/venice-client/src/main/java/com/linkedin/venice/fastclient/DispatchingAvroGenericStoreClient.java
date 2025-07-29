@@ -167,25 +167,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return config;
   }
 
-  /**
-   * Creates a server-side aggregation request builder for performing aggregations
-   * like countByValue on the server side using gRPC.
-   * 
-   * @return A new ServerSideAggregationRequestBuilder instance
-   * @throws VeniceClientException if gRPC is not enabled
-   */
-  public ServerSideAggregationRequestBuilder<K> serverSideAggregation() throws VeniceClientException {
-    if (!(transportClient instanceof GrpcTransportClient)) {
-      throw new VeniceClientException("Server-side aggregation requires gRPC. Please enable gRPC in ClientConfig.");
-    }
-
-    verifyMetadataInitialized();
-    return new ServerSideAggregationRequestBuilderImpl<>(
-        metadata,
-        (GrpcTransportClient) transportClient,
-        keySerializer);
-  }
-
   @Override
   protected CompletableFuture<V> get(GetRequestContext<K> requestContext, K key) throws VeniceClientException {
     verifyMetadataInitialized();
@@ -794,5 +775,23 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   @Override
   public SchemaReader getSchemaReader() {
     return metadata;
+  }
+
+  @Override
+  public ServerSideAggregationRequestBuilder<K> getServerSideAggregationRequestBuilder() throws VeniceClientException {
+    // Only support server-side aggregation for gRPC clients
+    if (!config.useGrpc()) {
+      throw new VeniceClientException("Server-side aggregation is only supported for gRPC clients");
+    }
+
+    if (!(transportClient instanceof GrpcTransportClient)) {
+      throw new VeniceClientException("Server-side aggregation requires a gRPC transport client");
+    }
+
+    verifyMetadataInitialized();
+    return new ServerSideAggregationRequestBuilderImpl<>(
+        metadata,
+        (GrpcTransportClient) transportClient,
+        keySerializer);
   }
 }

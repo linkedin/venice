@@ -70,6 +70,9 @@ public class VeniceGrpcEndToEndTest {
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
 
+    // Force production mode for gRPC request processor to ensure full countByValue functionality
+    System.setProperty("venice.grpc.force.production.mode", "true");
+
     Properties props = new Properties();
     props.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "true");
     props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
@@ -118,6 +121,8 @@ public class VeniceGrpcEndToEndTest {
 
   @AfterClass
   public void cleanUp() {
+    // Clean up system property
+    System.clearProperty("venice.grpc.force.production.mode");
     Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
@@ -219,11 +224,7 @@ public class VeniceGrpcEndToEndTest {
     // Verify gRPC port mapping
     LOGGER.info("Using gRPC port mapping: {}", nettyToGrpcPortMap);
 
-    GrpcClientConfig grpcClientConfig =
-        new GrpcClientConfig.Builder().setSSLFactory(SslUtils.getVeniceLocalSslFactory())
-            .setR2Client(grpcR2ClientPassthrough)
-            .setNettyServerToGrpcAddress(nettyToGrpcPortMap)
-            .build();
+    GrpcClientConfig grpcClientConfig = createGrpcClientConfig(grpcR2ClientPassthrough);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -291,11 +292,7 @@ public class VeniceGrpcEndToEndTest {
     // Verify gRPC port mapping
     LOGGER.info("Using gRPC port mapping: {}", nettyToGrpcPortMap);
 
-    GrpcClientConfig grpcClientConfig =
-        new GrpcClientConfig.Builder().setSSLFactory(SslUtils.getVeniceLocalSslFactory())
-            .setR2Client(r2Client)
-            .setNettyServerToGrpcAddress(nettyToGrpcPortMap)
-            .build();
+    GrpcClientConfig grpcClientConfig = createGrpcClientConfig(r2Client);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -347,11 +344,7 @@ public class VeniceGrpcEndToEndTest {
     // Verify gRPC port mapping
     LOGGER.info("Using gRPC port mapping: {}", nettyToGrpcPortMap);
 
-    GrpcClientConfig grpcClientConfig =
-        new GrpcClientConfig.Builder().setSSLFactory(SslUtils.getVeniceLocalSslFactory())
-            .setR2Client(grpcR2Client)
-            .setNettyServerToGrpcAddress(nettyToGrpcPortMap)
-            .build();
+    GrpcClientConfig grpcClientConfig = createGrpcClientConfig(grpcR2Client);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
         new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -387,6 +380,93 @@ public class VeniceGrpcEndToEndTest {
         Assert.assertEquals(fastClientRet.get(key), grpcClientRet.get(key));
       }
     }
+  }
+
+  @Test
+  public void testCountByValueEndToEnd() throws Exception {
+    Client grpcR2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_R2_CLIENT);
+    D2Client grpcD2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
+
+    GrpcClientConfig grpcClientConfig = createGrpcClientConfig(grpcR2Client);
+
+    ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
+        new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setUseGrpc(true)
+            .setGrpcClientConfig(grpcClientConfig);
+
+    AvroGenericStoreClient<String, GenericRecord> grpcFastClient =
+        getGenericFastClient(grpcClientConfigBuilder, new MetricsRepository(), grpcD2Client);
+
+    // Wait for client initialization to complete
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      try {
+        grpcFastClient.get("1").get();
+      } catch (Exception e) {
+        LOGGER.warn("gRPC client not ready yet: {}", e.getMessage());
+        throw new AssertionError("gRPC client not ready");
+      }
+    });
+
+    // Test countByValue with a subset of keys
+    Set<String> testKeys = new HashSet<>(java.util.Arrays.asList("1", "2", "3", "4", "5", "10", "20", "50", "100"));
+
+    // Create aggregation request builder
+    // The grpcFastClient is wrapped but contains a DispatchingAvroGenericStoreClient that supports server-side
+    // aggregation
+    com.linkedin.venice.fastclient.ServerSideAggregationRequestBuilder<String> requestBuilder;
+    if (grpcFastClient instanceof com.linkedin.venice.fastclient.InternalAvroStoreClient) {
+      requestBuilder = ((com.linkedin.venice.fastclient.InternalAvroStoreClient<String, GenericRecord>) grpcFastClient)
+          .getServerSideAggregationRequestBuilder();
+    } else {
+      throw new RuntimeException("gRPC client does not support server-side aggregation");
+    }
+
+    // Test single field countByValue
+    com.linkedin.venice.fastclient.AggregationResponse response =
+        requestBuilder.countByValue(java.util.Arrays.asList("value"), 10).execute(testKeys).get();
+
+    Assert.assertFalse(response.hasError(), "CountByValue should not have errors: " + response.getErrorMessage());
+    Assert.assertNotNull(response.getFieldToValueCounts(), "Field to value counts should not be null");
+    Assert.assertTrue(response.getFieldToValueCounts().containsKey("value"), "Response should contain 'value' field");
+
+    Map<String, Integer> valueCounts = response.getFieldToValueCounts().get("value");
+    Assert.assertNotNull(valueCounts, "Value counts should not be null");
+    Assert.assertTrue(valueCounts.size() > 0, "Should have at least one value count");
+
+    LOGGER.info("CountByValue results for 'value' field: {}", valueCounts);
+
+    // Verify that the total count matches the number of keys processed
+    int totalCount = valueCounts.values().stream().mapToInt(Integer::intValue).sum();
+    Assert.assertTrue(totalCount > 0, "Total count should be greater than 0");
+    Assert.assertTrue(totalCount <= testKeys.size(), "Total count should not exceed number of test keys");
+
+    grpcFastClient.close();
+  }
+
+  private GrpcClientConfig createGrpcClientConfig(Client r2Client) {
+    // Extract gRPC port from the first mapping entry
+    int grpcPort = 0;
+    if (!nettyToGrpcPortMap.isEmpty()) {
+      String firstGrpcAddress = nettyToGrpcPortMap.values().iterator().next();
+      if (firstGrpcAddress.contains(":")) {
+        String[] parts = firstGrpcAddress.split(":");
+        if (parts.length == 2) {
+          try {
+            grpcPort = Integer.parseInt(parts[1]);
+          } catch (NumberFormatException e) {
+            LOGGER.warn("Failed to parse gRPC port from address: " + firstGrpcAddress, e);
+          }
+        }
+      }
+    }
+
+    LOGGER.info("Extracted gRPC port: {}", grpcPort);
+
+    return new GrpcClientConfig.Builder().setSSLFactory(SslUtils.getVeniceLocalSslFactory())
+        .setR2Client(r2Client)
+        .setNettyServerToGrpcAddress(nettyToGrpcPortMap)
+        .setPort(grpcPort)
+        .build();
   }
 
   private Set<Set<String>> getKeySets() {

@@ -8,14 +8,6 @@ import java.util.Map;
  */
 public interface AggregationResponse {
   /**
-   * Get the aggregated value counts for countByValue operations.
-   * @return A map where keys are field values and values are counts
-   * @deprecated Use getFieldToValueCounts() for multi-field support
-   */
-  @Deprecated
-  Map<String, Integer> getValueCounts();
-
-  /**
    * Get the aggregated value counts for multiple fields in countByValue operations.
    * @return A map where keys are field names and values are maps of field values to counts
    */
