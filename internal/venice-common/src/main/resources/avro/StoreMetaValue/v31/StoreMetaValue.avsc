@@ -159,6 +159,8 @@
             {"name": "storeMetaSystemStoreEnabled", "type": "boolean", "default": false, "doc": "Whether or not the store meta system store is enabled for this store."},
             {"name": "activeActiveReplicationEnabled", "type": "boolean", "default": false, "doc": "Whether or not active/active replication is enabled for hybrid stores; eventually this config will replace native replication flag, when all stores are on A/A"},
             {"name": "applyTargetVersionFilterForIncPush", "type": "boolean", "default": false, "doc": "Whether or not the target version field in Kafka messages will be used in increment push to RT policy"},
+            {"name": "compactionEnabled", "type": "boolean", "default": true, "doc": "Whether or not the store will be scheduled to compact"},
+            {"name": "compactionThresholdMilliseconds", "type": "long", "default": -1, "doc": "Store level compaction interval in milliseconds"},
             {"name": "minCompactionLagSeconds", "type": "long", "default": -1, "doc": "Store level min compaction lag config and if not specified, it will use the global config for version topics"},
             {"name": "maxCompactionLagSeconds", "type": "long", "default": -1, "doc": "Store level max compaction lag config and if not specified, 'max.compaction.lag.ms' config won't be setup in the corresponding version topics"},
             {"name": "maxRecordSizeBytes", "type": "int", "default": -1, "doc": "Store-level max record size in bytes. If not specified (-1), the controller config 'default.max.record.size.bytes' (100MB default) will be backfilled"},
@@ -282,8 +284,7 @@
             {"name": "targetSwapRegion", "type": "string", "default": "", "doc": "Controls what region to swap in the current version during target colo push"},
             {"name": "targetSwapRegionWaitTime", "type": "int", "default": 60, "doc": "Controls how long to wait in minutes before swapping the version on the regions"},
             {"name": "isDaVinciHeartBeatReported", "type": "boolean", "default": false, "doc": "Flag to indicate whether DVC is bootstrapping and sending heartbeats"},
-            {"name": "globalRtDivEnabled", "type":  "boolean", "default": false, "doc": "Flag to indicate whether the Global RT DIV feature is on. The DIV will be centralized in the ConsumptionTask, and leaders will periodically replicate the RT DIV to followers via VT."},
-            {"name": "ttlRepushEnabled", "type": "boolean", "default": false, "doc": "Self-managed (by controller) flag to indicate whether TTL re-push is enabled or not"}
+            {"name": "globalRtDivEnabled", "type":  "boolean", "default": false, "doc": "Flag to indicate whether the Global RT DIV feature is on. The DIV will be centralized in the ConsumptionTask, and leaders will periodically replicate the RT DIV to followers via VT."}
           ]
         }
       ],

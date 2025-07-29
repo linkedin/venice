@@ -16,6 +16,7 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTRO
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
@@ -28,16 +29,20 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_P
 import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.kafka.consumer.ConsumerPoolType;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.TopicPartitionIngestionInfo;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
+import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.endToEnd.DaVinciClientDiskFullTest;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
@@ -65,6 +70,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -424,8 +430,8 @@ public class IntegrationTestPushUtils {
         String childControllerRegionName = pushJobProps.getProperty(SOURCE_GRID_FABRIC);
         d2ZkHosts = pushJobProps.getProperty(D2_ZK_HOSTS_PREFIX + childControllerRegionName);
       }
-      return D2ControllerClientFactory
-          .getControllerClient(d2ServiceName, veniceClusterName, d2ZkHosts, Optional.empty());
+      D2Client d2Client = D2ClientFactory.getD2Client(d2ZkHosts, Optional.empty());
+      return D2ControllerClientFactory.getControllerClient(d2ServiceName, veniceClusterName, d2Client);
     } else {
       return ControllerClient.constructClusterControllerClient(veniceClusterName, veniceUrl);
     }
@@ -617,4 +623,35 @@ public class IntegrationTestPushUtils {
     }
   }
 
+  static public D2Client getD2Client(String d2ZkHosts) {
+    return D2ClientFactory.getD2Client(d2ZkHosts, Optional.empty());
+  }
+
+  public static void makeSureUserSystemStoreIsOnline(
+      VeniceTwoLayerMultiRegionMultiClusterWrapper clusterWrapper,
+      String clusterName,
+      String storeName) {
+    List<VeniceMultiClusterWrapper> childDatacenters = clusterWrapper.getChildRegions();
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, true, () -> {
+      for (VeniceMultiClusterWrapper childDataCenter: childDatacenters) {
+        childDataCenter.getClusters().get(clusterName).useControllerClient(cc -> {
+          assertStoreHealth(
+              cc,
+              VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
+              childDataCenter.getRegionName());
+          assertStoreHealth(
+              cc,
+              VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName),
+              childDataCenter.getRegionName());
+        });
+      }
+    });
+  }
+
+  private static void assertStoreHealth(ControllerClient controllerClient, String systemStoreName, String regionName) {
+    StoreResponse storeResponse = assertCommand(controllerClient.getStore(systemStoreName));
+    Assert.assertTrue(
+        storeResponse.getStore().getCurrentVersion() > 0,
+        systemStoreName + " is not ready for " + regionName);
+  }
 }

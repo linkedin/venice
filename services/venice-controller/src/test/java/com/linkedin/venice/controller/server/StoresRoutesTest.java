@@ -13,6 +13,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
@@ -21,6 +22,7 @@ import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.SystemStoreHeartbeatResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -403,5 +405,27 @@ public class StoresRoutesTest {
             TEST_STORE_NAME,
             EXTRA_CLUSTER,
             TEST_CLUSTER));
+  }
+
+  @Test
+  public void testGetHeartbeatFromSystemStore() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+    String systemStore = VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(TEST_STORE_NAME);
+
+    doReturn(100L).when(mockAdmin).getHeartbeatFromSystemStore(TEST_CLUSTER, systemStore);
+
+    Request request = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(systemStore).when(request).queryParams(eq(ControllerApiConstants.NAME));
+
+    Route getSystemStoreHeartbeatRoute =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getHeartbeatFromSystemStore(mockAdmin);
+    SystemStoreHeartbeatResponse multiStoreStatusResponse = ObjectMapperFactory.getInstance()
+        .readValue(
+            getSystemStoreHeartbeatRoute.handle(request, mock(Response.class)).toString(),
+            SystemStoreHeartbeatResponse.class);
+    Assert.assertEquals(multiStoreStatusResponse.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(multiStoreStatusResponse.getHeartbeatTimestamp(), 100L);
   }
 }

@@ -22,6 +22,7 @@ import com.linkedin.davinci.stats.AggVersionedBlobTransferStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.VenicePeersNotFoundException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
@@ -90,6 +91,8 @@ public class DefaultIngestionBackendTest {
     when(metadataRepo.waitVersion(anyString(), anyInt(), any(Duration.class))).thenReturn(storeAndVersion);
     when(storageMetadataService.getStoreVersionState(STORE_VERSION)).thenReturn(storeVersionState);
     when(storageService.openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any())).thenReturn(storageEngine);
+    when(storageService.openStoreForNewPartition(eq(storeConfig), eq(PARTITION), any(), any()))
+        .thenReturn(storageEngine);
 
     when(offsetRecord.getOffsetLag()).thenReturn(0L);
     when(offsetRecord.getLocalVersionTopicOffset()).thenReturn(-1L);
@@ -127,6 +130,41 @@ public class DefaultIngestionBackendTest {
   }
 
   @Test
+  public void testStartConsumptionWithBlobTransferValidatePartitionStatus() {
+    when(storageService.getStorageEngine(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER)))
+        .thenReturn(storageEngine);
+
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(store.isHybrid()).thenReturn(true);
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
+        .thenReturn(CompletableFuture.completedFuture(null));
+    when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
+    RocksDBServerConfig rocksDBServerConfig = Mockito.mock(RocksDBServerConfig.class);
+    when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
+    when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
+    doNothing().when(storageEngine)
+        .adjustStoragePartition(eq(PARTITION), eq(StoragePartitionAdjustmentTrigger.END_BLOB_TRANSFER), any());
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION);
+
+    verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
+    verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats)
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(true));
+    // verify that blob transfer flag is true when creating the partition.
+    verify(storageService).openStoreForNewPartition(
+        eq(storeConfig),
+        eq(PARTITION),
+        any(),
+        Mockito.argThat(storagePartitionConfig -> storagePartitionConfig.isBlobTransferInProgress()));
+    // verify that when adjust the status after the blob transfer is completed, the blob transfer flag is off.
+    verify(storageEngine).adjustStoragePartition(
+        eq(PARTITION),
+        eq(StoragePartitionAdjustmentTrigger.END_BLOB_TRANSFER),
+        Mockito.argThat(storagePartitionConfig -> !storagePartitionConfig.isBlobTransferInProgress()));
+  }
+
+  @Test
   public void testStartConsumptionWithBlobTransferWhenNoPeerFound() {
     when(store.isBlobTransferEnabled()).thenReturn(true);
     when(store.isHybrid()).thenReturn(false);
@@ -135,9 +173,9 @@ public class DefaultIngestionBackendTest {
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
         .thenReturn(errorFuture);
 
-    CompletableFuture<Void> future =
-        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, 100L)
-            .toCompletableFuture();
+    CompletableFuture<Void> future = ingestionBackend
+        .bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, 100L, storeConfig, null)
+        .toCompletableFuture();
     assertTrue(future.isDone());
     verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
     verify(aggVersionedBlobTransferStats)
@@ -145,10 +183,34 @@ public class DefaultIngestionBackendTest {
   }
 
   @Test
-  public void testNotStartBootstrapFromBlobTransferWhenNotLagging() {
+  public void testNotStartBootstrapFromBlobTransferWhenNotLaggingForHybridStore() {
     long laggingThreshold = 1000L;
-    when(offsetRecord.getOffsetLag()).thenReturn(-10L);
+    when(offsetRecord.getOffsetLag()).thenReturn(10L);
     when(offsetRecord.getLocalVersionTopicOffset()).thenReturn(10L);
+    when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
+        .thenReturn(offsetRecord);
+
+    when(store.isBlobTransferEnabled()).thenReturn(true);
+    when(store.isHybrid()).thenReturn(true); // hybrid store
+    CompletableFuture<InputStream> future = new CompletableFuture<>();
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
+        .thenReturn(future);
+
+    CompletableFuture<Void> result = ingestionBackend
+        .bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, laggingThreshold, storeConfig, null)
+        .toCompletableFuture();
+    assertTrue(result.isDone());
+    verify(blobTransferManager, never())
+        .get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
+    verify(aggVersionedBlobTransferStats, never()).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats, never())
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(false));
+  }
+
+  @Test
+  public void testNotStartBootstrapFromBlobTransferWhenNotLaggingForBatchStore() {
+    long laggingThreshold = 1000L;
+    when(offsetRecord.isEndOfPushReceived()).thenReturn(true); // for batch store, end of push is received.
     when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
         .thenReturn(offsetRecord);
 
@@ -158,9 +220,9 @@ public class DefaultIngestionBackendTest {
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
         .thenReturn(future);
 
-    CompletableFuture<Void> result =
-        ingestionBackend.bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, laggingThreshold)
-            .toCompletableFuture();
+    CompletableFuture<Void> result = ingestionBackend
+        .bootstrapFromBlobs(store, VERSION_NUMBER, PARTITION, BLOB_TRANSFER_FORMAT, laggingThreshold, storeConfig, null)
+        .toCompletableFuture();
     assertTrue(result.isDone());
     verify(blobTransferManager, never())
         .get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));

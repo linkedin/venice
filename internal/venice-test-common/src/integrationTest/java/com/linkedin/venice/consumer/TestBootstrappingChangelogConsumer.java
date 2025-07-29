@@ -169,6 +169,7 @@ public class TestBootstrappingChangelogConsumer {
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setD2Client(d2Client)
             .setLocalD2ZkHosts(zkAddress)
             .setControllerRequestRetryCount(3)
             .setBootstrapFileSystemPath(Utils.getUniqueString(inputDirPath));

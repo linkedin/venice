@@ -726,6 +726,15 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       try {
         // the pubsubconsumer internally is completely unthreadsafe, so we need an exclusive lock to poll (ugh)
         lockAcquired = subscriptionLock.writeLock().tryLock(timeoutInMs, TimeUnit.MILLISECONDS);
+
+        /*
+         * If the lock acquisition fails, don't invoke poll on the pubSubConsumer.
+         * Invoking poll without acquiring the lock can lead to a KafkaConsumer multi-threaded access exception
+         * if multiple threads attempt to use this function concurrently.
+         */
+        if (!lockAcquired) {
+          return Collections.emptyList();
+        }
         messagesMap = pubSubConsumer.poll(timeoutInMs);
       } catch (InterruptedException exception) {
         LOGGER.info("Thread was interrupted", exception);

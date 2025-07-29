@@ -1,9 +1,11 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -21,6 +23,8 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -57,7 +61,6 @@ import org.apache.logging.log4j.Logger;
 @NotThreadsafe
 public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaConsumerAdapter.class);
-
   private final Consumer<byte[], byte[]> kafkaConsumer;
   private final TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker;
   private final Map<TopicPartition, PubSubTopicPartition> assignments = new HashMap<>();
@@ -162,7 +165,7 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       logMessage = PubSubSymbolicPosition.LATEST.toString();
     } else {
       ApacheKafkaOffsetPosition kafkaOffsetPosition = (ApacheKafkaOffsetPosition) lastReadPubSubPosition;
-      long consumptionStartOffset = kafkaOffsetPosition.getOffset() + 1;
+      long consumptionStartOffset = kafkaOffsetPosition.getInternalOffset() + 1;
       kafkaConsumer.seek(topicPartition, consumptionStartOffset);
       logMessage = "" + consumptionStartOffset;
     }
@@ -615,6 +618,48 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
       }
     }
     return pubSubTopicPartitionInfos;
+  }
+
+  /**
+   * Compares two {@link PubSubPosition} instances for a given {@link PubSubTopicPartition}.
+   * <p>
+   * Special symbolic positions are handled with the following order:
+   * <ul>
+   *   <li>{@link PubSubSymbolicPosition#EARLIEST} is considered the lowest possible position.</li>
+   *   <li>{@link PubSubSymbolicPosition#LATEST} is considered the highest possible position.</li>
+   * </ul>
+   * If both positions are concrete (e.g., {@link ApacheKafkaOffsetPosition}), they must be of the same type and
+   * will be compared based on their offset values.
+   *
+   * @param partition the topic partition context (not used in current implementation, but required for interface compatibility)
+   * @param position1 the first position to compare (must not be null)
+   * @param position2 the second position to compare (must not be null)
+   * @return a negative value if {@code position1} is less than {@code position2}, zero if equal, or positive if greater
+   * @throws IllegalArgumentException if either position is null or unsupported
+   */
+  @Override
+  public long comparePositions(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    return positionDifference(partition, position1, position2);
+  }
+
+  @Override
+  public long positionDifference(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    return PubSubUtil.computeOffsetDelta(
+        partition,
+        position1,
+        position2,
+        this,
+        ApacheKafkaOffsetPosition.class,
+        ApacheKafkaOffsetPosition::getInternalOffset);
+  }
+
+  @Override
+  public PubSubPosition decodePosition(PubSubTopicPartition partition, ByteBuffer buffer) {
+    try {
+      return new ApacheKafkaOffsetPosition(buffer);
+    } catch (IOException e) {
+      throw new VeniceException("Failed to decode position for partition: " + partition + " from buffer: " + buffer, e);
+    }
   }
 
   /**
