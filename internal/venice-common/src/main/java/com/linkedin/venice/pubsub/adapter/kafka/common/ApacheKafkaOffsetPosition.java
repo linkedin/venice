@@ -43,7 +43,7 @@ public class ApacheKafkaOffsetPosition implements PubSubPosition {
             .readLong());
   }
 
-  public long getOffset() {
+  public long getInternalOffset() {
     return offset;
   }
 

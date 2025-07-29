@@ -7,9 +7,11 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
@@ -182,39 +184,6 @@ public final class PubSubUtil {
   }
 
   /**
-   * Computes the difference in numeric offsets between two {@link PubSubPosition} instances.
-   *
-   * <p>If both positions are {@code EARLIEST} or both are {@code LATEST}, returns {@code 0}.</p>
-   * <p>If one of the positions is {@code EARLIEST} and the other is {@code LATEST},
-   * it returns {@code Long.MIN_VALUE} or {@code Long.MAX_VALUE} to represent symbolic extremes.</p>
-   *
-   * @param position1 The first position.
-   * @param position2 The second position.
-   * @return The numeric difference: (position1 - position2).
-   * @throws IllegalArgumentException if either position is {@code null}.
-   */
-  public static long diffPubSubPositions(PubSubPosition position1, PubSubPosition position2) {
-    if (position1 == null || position2 == null) {
-      throw new IllegalArgumentException("Positions cannot be null");
-    }
-
-    if ((position1 == PubSubSymbolicPosition.EARLIEST && position2 == PubSubSymbolicPosition.EARLIEST)
-        || (position1 == PubSubSymbolicPosition.LATEST && position2 == PubSubSymbolicPosition.LATEST)) {
-      return 0;
-    }
-
-    if (position1 == PubSubSymbolicPosition.EARLIEST && position2 == PubSubSymbolicPosition.LATEST) {
-      return Long.MIN_VALUE;
-    }
-
-    if (position1 == PubSubSymbolicPosition.LATEST && position2 == PubSubSymbolicPosition.EARLIEST) {
-      return Long.MAX_VALUE;
-    }
-
-    return position1.getNumericOffset() - position2.getNumericOffset();
-  }
-
-  /**
    * Compares two {@link PubSubPosition} instances by their symbolic or numeric ordering.
    *
    * <p>This method defines the following ordering:
@@ -250,5 +219,70 @@ public final class PubSubUtil {
     }
 
     return Long.compare(position1.getNumericOffset(), position2.getNumericOffset());
+  }
+
+  @FunctionalInterface
+  public interface OffsetExtractor<T extends PubSubPosition> {
+    long getInternalOffset(T position);
+  }
+
+  public static <T extends PubSubPosition> long computeOffsetDelta(
+      PubSubTopicPartition partition,
+      PubSubPosition position1,
+      PubSubPosition position2,
+      PubSubConsumerAdapter consumerAdapter,
+      Class<T> concretePositionClass,
+      OffsetExtractor<T> offsetExtractor) {
+
+    if (position1 == null || position2 == null) {
+      throw new IllegalArgumentException("Positions cannot be null");
+    }
+
+    PubSubPosition resolved1 = resolveSymbolicPosition(partition, position1, consumerAdapter);
+    PubSubPosition resolved2 = resolveSymbolicPosition(partition, position2, consumerAdapter);
+
+    // Case 1: Both resolved to concrete type
+    if (concretePositionClass.isInstance(resolved1) && concretePositionClass.isInstance(resolved2)) {
+      long offset1 = offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved1));
+      long offset2 = offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved2));
+      return offset1 - offset2;
+    }
+
+    // Case 2: Equal symbolic positions
+    if (resolved1 == resolved2
+        && (resolved1 == PubSubSymbolicPosition.EARLIEST || resolved1 == PubSubSymbolicPosition.LATEST)) {
+      return 0L;
+    }
+
+    // Case 3: One is EARLIEST, one is concrete
+    if (resolved1 == PubSubSymbolicPosition.EARLIEST && concretePositionClass.isInstance(resolved2)) {
+      return -offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved2));
+    }
+    if (resolved2 == PubSubSymbolicPosition.EARLIEST && concretePositionClass.isInstance(resolved1)) {
+      return offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved1));
+    }
+
+    // Case 4: One is LATEST, one is concrete
+    if (resolved1 == PubSubSymbolicPosition.LATEST && concretePositionClass.isInstance(resolved2)) {
+      return Long.MAX_VALUE - offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved2));
+    }
+    if (resolved2 == PubSubSymbolicPosition.LATEST && concretePositionClass.isInstance(resolved1)) {
+      return offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved1)) - Long.MAX_VALUE;
+    }
+
+    throw new IllegalArgumentException(
+        "Unsupported position types: " + resolved1.getClass().getName() + " vs " + resolved2.getClass().getName());
+  }
+
+  private static PubSubPosition resolveSymbolicPosition(
+      PubSubTopicPartition partition,
+      PubSubPosition position,
+      PubSubConsumerAdapter consumerAdapter) {
+    if (position == PubSubSymbolicPosition.EARLIEST) {
+      return consumerAdapter.beginningPosition(partition);
+    } else if (position == PubSubSymbolicPosition.LATEST) {
+      return consumerAdapter.endPosition(partition);
+    }
+    return position;
   }
 }

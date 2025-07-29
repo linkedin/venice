@@ -191,37 +191,6 @@ public class PubSubUtilTest {
   }
 
   @Test
-  public void testDiffWithNullPositionsThrowsException() {
-    assertThrows(() -> PubSubUtil.diffPubSubPositions(null, PubSubSymbolicPosition.EARLIEST));
-    assertThrows(() -> PubSubUtil.diffPubSubPositions(PubSubSymbolicPosition.LATEST, null));
-  }
-
-  @Test
-  public void testDiffWithSymbolicPositions() {
-    assertEquals(PubSubUtil.diffPubSubPositions(PubSubSymbolicPosition.EARLIEST, PubSubSymbolicPosition.EARLIEST), 0L);
-    assertEquals(PubSubUtil.diffPubSubPositions(PubSubSymbolicPosition.LATEST, PubSubSymbolicPosition.LATEST), 0L);
-    assertEquals(
-        PubSubUtil.diffPubSubPositions(PubSubSymbolicPosition.EARLIEST, PubSubSymbolicPosition.LATEST),
-        Long.MIN_VALUE);
-    assertEquals(
-        PubSubUtil.diffPubSubPositions(PubSubSymbolicPosition.LATEST, PubSubSymbolicPosition.EARLIEST),
-        Long.MAX_VALUE);
-  }
-
-  @Test
-  public void testDiffWithNumericPositions() {
-    PubSubPosition pos1 = mock(PubSubPosition.class);
-    PubSubPosition pos2 = mock(PubSubPosition.class);
-
-    when(pos1.getNumericOffset()).thenReturn(150L);
-    when(pos2.getNumericOffset()).thenReturn(100L);
-
-    assertEquals(PubSubUtil.diffPubSubPositions(pos1, pos2), 50L);
-    assertEquals(PubSubUtil.diffPubSubPositions(pos2, pos1), -50L);
-    assertEquals(PubSubUtil.diffPubSubPositions(pos1, pos1), 0L);
-  }
-
-  @Test
   public void testCompareWithNullPositionsThrowsException() {
     expectThrows(
         IllegalArgumentException.class,

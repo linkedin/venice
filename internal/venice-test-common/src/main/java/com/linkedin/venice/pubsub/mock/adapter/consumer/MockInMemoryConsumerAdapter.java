@@ -1,6 +1,8 @@
 package com.linkedin.venice.pubsub.mock.adapter.consumer;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -13,6 +15,7 @@ import com.linkedin.venice.pubsub.mock.InMemoryPubSubPosition;
 import com.linkedin.venice.pubsub.mock.adapter.admin.MockInMemoryAdminAdapter;
 import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.PollStrategy;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
@@ -203,7 +206,7 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
 
   @Override
   public synchronized PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
-    return PubSubSymbolicPosition.EARLIEST;
+    return InMemoryPubSubPosition.of(0);
   }
 
   @Override
@@ -246,6 +249,35 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
       return adminAdapter.partitionsFor(topic);
     } else {
       throw new UnsupportedOperationException("In-memory admin adapter is not set");
+    }
+  }
+
+  @Override
+  public long comparePositions(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    return positionDifference(partition, position1, position2);
+  }
+
+  @Override
+  public long positionDifference(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    return PubSubUtil.computeOffsetDelta(
+        partition,
+        position1,
+        position2,
+        this,
+        InMemoryPubSubPosition.class,
+        InMemoryPubSubPosition::getInternalOffset);
+  }
+
+  @Override
+  public PubSubPosition decodePosition(PubSubTopicPartition partition, ByteBuffer buffer) {
+    try {
+      if (buffer.remaining() < Long.BYTES) {
+        throw new VeniceException("Buffer too short to decode InMemoryPubSubPosition: " + buffer);
+      }
+      long offset = buffer.getLong();
+      return InMemoryPubSubPosition.of(offset);
+    } catch (Exception e) {
+      throw new VeniceException("Failed to decode InMemoryPubSubPosition from buffer: " + buffer, e);
     }
   }
 
