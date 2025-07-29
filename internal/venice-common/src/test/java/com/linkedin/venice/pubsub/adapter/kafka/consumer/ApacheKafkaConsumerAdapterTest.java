@@ -515,7 +515,7 @@ public class ApacheKafkaConsumerAdapterTest {
     PubSubPosition position = kafkaConsumerAdapter.beginningPosition(pubSubTopicPartition, Duration.ofMillis(500));
     assertNotNull(position);
     assertTrue(position instanceof ApacheKafkaOffsetPosition);
-    assertEquals(((ApacheKafkaOffsetPosition) position).getOffset(), 0L);
+    assertEquals(((ApacheKafkaOffsetPosition) position).getInternalOffset(), 0L);
 
     // Case 2: return empty response
     doReturn(Collections.emptyMap()).when(internalKafkaConsumer)
@@ -550,8 +550,8 @@ public class ApacheKafkaConsumerAdapterTest {
         .endPositions(Arrays.asList(pubSubTopicPartition1, pubSubTopicPartition2), Duration.ofMillis(500));
     assertTrue(actualPositions.get(pubSubTopicPartition1) instanceof ApacheKafkaOffsetPosition);
     assertTrue(actualPositions.get(pubSubTopicPartition2) instanceof ApacheKafkaOffsetPosition);
-    assertEquals(((ApacheKafkaOffsetPosition) actualPositions.get(pubSubTopicPartition1)).getOffset(), 500L);
-    assertEquals(((ApacheKafkaOffsetPosition) actualPositions.get(pubSubTopicPartition2)).getOffset(), 600L);
+    assertEquals(((ApacheKafkaOffsetPosition) actualPositions.get(pubSubTopicPartition1)).getInternalOffset(), 500L);
+    assertEquals(((ApacheKafkaOffsetPosition) actualPositions.get(pubSubTopicPartition2)).getInternalOffset(), 600L);
   }
 
   @Test(expectedExceptions = PubSubOpTimeoutException.class)
@@ -571,7 +571,7 @@ public class ApacheKafkaConsumerAdapterTest {
     PubSubPosition position = kafkaConsumerAdapter.endPosition(pubSubTopicPartition);
     assertNotNull(position);
     assertTrue(position instanceof ApacheKafkaOffsetPosition);
-    assertEquals(((ApacheKafkaOffsetPosition) position).getOffset(), expectedOffset);
+    assertEquals(((ApacheKafkaOffsetPosition) position).getInternalOffset(), expectedOffset);
 
     // Case 2: return empty response
     doReturn(Collections.emptyMap()).when(internalKafkaConsumer)
@@ -666,7 +666,7 @@ public class ApacheKafkaConsumerAdapterTest {
         kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp, Duration.ofMillis(500));
     assertNotNull(position);
     assertTrue(position instanceof ApacheKafkaOffsetPosition);
-    assertEquals(((ApacheKafkaOffsetPosition) position).getOffset(), expectedOffset);
+    assertEquals(((ApacheKafkaOffsetPosition) position).getInternalOffset(), expectedOffset);
   }
 
   @Test
@@ -685,7 +685,7 @@ public class ApacheKafkaConsumerAdapterTest {
     PubSubPosition position = kafkaConsumerAdapter.getPositionByTimestamp(pubSubTopicPartition, timestamp);
     assertNotNull(position);
     assertTrue(position instanceof ApacheKafkaOffsetPosition);
-    assertEquals(((ApacheKafkaOffsetPosition) position).getOffset(), expectedOffset);
+    assertEquals(((ApacheKafkaOffsetPosition) position).getInternalOffset(), expectedOffset);
   }
 
   @Test
@@ -844,7 +844,7 @@ public class ApacheKafkaConsumerAdapterTest {
 
     PubSubPosition decoded = kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, buffer);
     assertTrue(decoded instanceof ApacheKafkaOffsetPosition);
-    assertEquals(((ApacheKafkaOffsetPosition) decoded).getOffset(), expectedOffset);
+    assertEquals(((ApacheKafkaOffsetPosition) decoded).getInternalOffset(), expectedOffset);
   }
 
   @Test(expectedExceptions = VeniceException.class)

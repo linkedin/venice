@@ -45,17 +45,17 @@ public class ApacheKafkaOffsetPositionTest {
   }
 
   @Test
-  public void testGetOffset() throws IOException {
+  public void testGetInternalOffset() throws IOException {
     ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1234);
-    assertEquals(position1.getOffset(), 1234);
+    assertEquals(position1.getInternalOffset(), 1234);
     PubSubPositionWireFormat wireFormat = position1.getPositionWireFormat();
     ApacheKafkaOffsetPosition position2 = new ApacheKafkaOffsetPosition(wireFormat.rawBytes);
-    assertEquals(position2.getOffset(), position1.getOffset());
+    assertEquals(position2.getInternalOffset(), position1.getInternalOffset());
     assertEquals(position1, position2);
   }
 
   @Test(expectedExceptions = NullPointerException.class)
-  public void testGetOffsetWithNull() throws IOException {
+  public void testGetInternalOffsetWithNull() throws IOException {
     new ApacheKafkaOffsetPosition(null);
   }
 
@@ -65,7 +65,7 @@ public class ApacheKafkaOffsetPositionTest {
     PubSubPositionWireFormat wireFormat = kafkaPosition.getPositionWireFormat();
     assertEquals(wireFormat.type, PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID);
     ApacheKafkaOffsetPosition kafkaPosition2 = new ApacheKafkaOffsetPosition(wireFormat.rawBytes);
-    assertEquals(kafkaPosition2.getOffset(), kafkaPosition.getOffset());
+    assertEquals(kafkaPosition2.getInternalOffset(), kafkaPosition.getInternalOffset());
     assertEquals(kafkaPosition2, kafkaPosition);
   }
 
