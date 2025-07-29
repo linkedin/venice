@@ -2083,16 +2083,18 @@ public class VenicePushJob implements AutoCloseable {
     if (setting.isIncrementalPush || setting.isSourceKafka || !setting.inputHasRecords) {
       return;
     }
+    // Also allow batch push that will provide the row level timestamp field (compatible with TTL re-push)
+    if (setting.timestampField != null && !setting.timestampField.isEmpty()) {
+      return;
+    }
     StoreResponse storeResponse = ControllerClient
         .retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
     if (storeResponse.isError()) {
       throw new VeniceException("Unable to fetch store to validate if regular push is allowed with TTL re-push");
     }
-    for (Version version: storeResponse.getStore().getVersions()) {
-      if (Version.isPushIdTTLRePush(version.getPushJobId())) {
-        String errorMessage = "Found TTL re-push: %s and regular batch push is not allowed with TTL re-push";
-        throw new VeniceException(String.format(errorMessage, version.getPushJobId()));
-      }
+    if (storeResponse.getStore().isTTLRepushEnabled()) {
+      String errorMessage = "Store: %s is TTL re-push enabled and regular batch push is not allowed with TTL re-push";
+      throw new VeniceException(String.format(errorMessage, storeResponse.getName()));
     }
   }
 

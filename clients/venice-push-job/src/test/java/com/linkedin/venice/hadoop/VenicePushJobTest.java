@@ -2,7 +2,6 @@ package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJob.getExecutionStatusFromControllerResponse;
-import static com.linkedin.venice.meta.Version.VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestWriteUtils.NAME_RECORD_V1_SCHEMA;
@@ -1287,9 +1286,7 @@ public class VenicePushJobTest {
     doReturn(false).when(mockStoreResponse).isError();
     StoreInfo mockStoreInfo = mock(StoreInfo.class);
     doReturn(mockStoreInfo).when(mockStoreResponse).getStore();
-    Version mockVersion = mock(Version.class);
-    doReturn(VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX + "test-push-id").when(mockVersion).getPushJobId();
-    doReturn(Collections.singletonList(mockVersion)).when(mockStoreInfo).getVersions();
+    doReturn(true).when(mockStoreInfo).isTTLRepushEnabled();
     // Re-push, incremental and empty pushes should be allowed
     Properties props = getVpjRequiredProperties();
     VenicePushJob venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
