@@ -4159,13 +4159,20 @@ public class VeniceParentHelixAdmin implements Admin {
 
     boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
 
-    if (multiClusterConfigs.getConcurrentPushDetectionStrategy()
-        .equals(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY)
-        && (!isTargetRegionPush // Push is complete for a normal batch push w/o target region push
-            || isPushCompleteInAllRegionsForTargetRegionPush // Push is complete in all regions for a target region push
-                                                             // w/o
-            // deferred swap
-            || isHybridStore) // Push is to a hybrid store
+    if (multiClusterConfigs.getConcurrentPushDetectionStrategy().isTopicWriteNeeded() && (!isTargetRegionPush // Push is
+                                                                                                              // complete
+                                                                                                              // for a
+                                                                                                              // normal
+                                                                                                              // batch
+                                                                                                              // push
+                                                                                                              // w/o
+                                                                                                              // target
+                                                                                                              // region
+                                                                                                              // push
+        || isPushCompleteInAllRegionsForTargetRegionPush // Push is complete in all regions for a target region push
+                                                         // w/o
+        // deferred swap
+        || isHybridStore) // Push is to a hybrid store
     ) {
       LOGGER.info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
       truncateTopicsOptionally(
