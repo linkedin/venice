@@ -719,7 +719,6 @@ public class VeniceServerGrpcRequestProcessorTest {
         .thenReturn(gzipCompressor);
 
     // Mock decompression
-    java.nio.ByteBuffer compressedBuffer = java.nio.ByteBuffer.wrap("compressed_data".getBytes());
     java.nio.ByteBuffer decompressedBuffer = java.nio.ByteBuffer.wrap("decompressed_data".getBytes());
     when(gzipCompressor.decompress(any(java.nio.ByteBuffer.class))).thenReturn(decompressedBuffer);
 
