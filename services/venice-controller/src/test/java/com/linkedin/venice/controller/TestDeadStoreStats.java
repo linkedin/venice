@@ -39,6 +39,25 @@ public class TestDeadStoreStats {
     }
 
     @Override
+    public List<StoreInfo> getDeadStores(List<StoreInfo> storeInfos, long lookBackMS) {
+      List<StoreInfo> deadStores = new ArrayList<>();
+      for (StoreInfo store: storeInfos) {
+        // For testing, a store is considered dead if its name equals "dead".
+        // In a real implementation, lookBackMS would be used to determine the time window for analysis
+        if ("dead".equals(store.getName())) {
+          store.setIsStoreDead(true);
+          store.setStoreDeadStatusReasons(
+              Arrays.asList("No traffic detected within lookback window of " + lookBackMS + "ms"));
+          deadStores.add(store);
+        } else {
+          store.setIsStoreDead(false);
+          store.setStoreDeadStatusReasons(Collections.emptyList());
+        }
+      }
+      return deadStores;
+    }
+
+    @Override
     public void preFetchStats(List<StoreInfo> storeInfos) {
       // This is a no-op for the fake implementation.
       // In a real implementation, this would pre-fetch and cache the dead store stats.

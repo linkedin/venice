@@ -15,6 +15,14 @@ public interface DeadStoreStats {
   List<StoreInfo> getDeadStores(List<StoreInfo> storeInfos);
 
   /**
+   * Side effect operation of populating isStoreDead and setStoreDeadStatusReasons in the StoreInfo object and
+   * returns back the same list of StoreInfo objects.
+   * @param storeInfos List of StoreInfo objects to evaluate
+   * @param lookBackMS Look back time in milliseconds for dead store detection
+   */
+  List<StoreInfo> getDeadStores(List<StoreInfo> storeInfos, long lookBackMS);
+
+  /**
    * Pre fetches the dead store stats for the given stores, to then be accessible to getDeadStores()
    * In the case where fetching dead store stats is latency intensive, this method can be used to
    * pre-populate dead store stats

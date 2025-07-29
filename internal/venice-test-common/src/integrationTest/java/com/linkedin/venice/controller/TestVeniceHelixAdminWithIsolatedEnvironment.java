@@ -428,6 +428,11 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     }
 
     @Override
+    public List<StoreInfo> getDeadStores(List<StoreInfo> storeInfos, long lookBackMS) {
+      return null;
+    }
+
+    @Override
     public void preFetchStats(List<StoreInfo> storeInfos) {
     }
   }

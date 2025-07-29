@@ -11,6 +11,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_ABORT_MIGRATION_CLEANUP;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOOK_BACK_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
@@ -1144,7 +1145,15 @@ public class StoresRoutes extends AbstractRoute {
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         boolean includeSystemStores = Boolean.parseBoolean(request.queryParams(INCLUDE_SYSTEM_STORES));
-        List<StoreInfo> storeList = admin.getDeadStores(cluster, storeName, includeSystemStores);
+        String lookBackMSParam = request.queryParams(LOOK_BACK_MS);
+
+        List<StoreInfo> storeList;
+        if (lookBackMSParam != null && !lookBackMSParam.isEmpty()) {
+          long lookBackMS = Long.parseLong(lookBackMSParam);
+          storeList = admin.getDeadStores(cluster, storeName, includeSystemStores, lookBackMS);
+        } else {
+          storeList = admin.getDeadStores(cluster, storeName, includeSystemStores);
+        }
         veniceResponse.setStoreInfoList(storeList);
       }
     };

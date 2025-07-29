@@ -30,6 +30,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOOK_BACK_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
@@ -1256,6 +1257,18 @@ public class ControllerClient implements Closeable {
       boolean includeSystemStores,
       Optional<String> storeName) {
     QueryParams params = newParams().add(CLUSTER, clusterName).add(INCLUDE_SYSTEM_STORES, includeSystemStores);
+    storeName.ifPresent(s -> params.add(NAME, s));
+    return request(ControllerRoute.GET_DEAD_STORES, params, MultiStoreInfoResponse.class);
+  }
+
+  public MultiStoreInfoResponse getDeadStores(
+      String clusterName,
+      boolean includeSystemStores,
+      Optional<String> storeName,
+      long lookBackMS) {
+    QueryParams params = newParams().add(CLUSTER, clusterName)
+        .add(INCLUDE_SYSTEM_STORES, includeSystemStores)
+        .add(LOOK_BACK_MS, lookBackMS);
     storeName.ifPresent(s -> params.add(NAME, s));
     return request(ControllerRoute.GET_DEAD_STORES, params, MultiStoreInfoResponse.class);
   }

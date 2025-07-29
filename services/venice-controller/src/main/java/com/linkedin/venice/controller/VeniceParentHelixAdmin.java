@@ -5275,6 +5275,18 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getDeadStores(clusterName, storeName, includeSystemStores);
   }
 
+  /**
+   * Cause {@link Admin#getDeadStores(String, String, boolean, long)}
+   */
+  @Override
+  public List<StoreInfo> getDeadStores(
+      String clusterName,
+      String storeName,
+      boolean includeSystemStores,
+      long lookBackMS) {
+    return getVeniceHelixAdmin().getDeadStores(clusterName, storeName, includeSystemStores, lookBackMS);
+  }
+
   @Override
   public int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName) {
     Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);

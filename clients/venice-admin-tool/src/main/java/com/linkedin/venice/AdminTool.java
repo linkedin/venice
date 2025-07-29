@@ -2919,8 +2919,15 @@ public class AdminTool {
     String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
     Optional<String> storeName = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE));
     boolean includeSystemStores = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES));
+    String lookBackMSStr = getOptionalArgument(cmd, Arg.LOOK_BACK_MS);
 
-    MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, includeSystemStores, storeName);
+    MultiStoreInfoResponse response;
+    if (lookBackMSStr != null && !lookBackMSStr.isEmpty()) {
+      long lookBackMS = Long.parseLong(lookBackMSStr);
+      response = controllerClient.getDeadStores(clusterName, includeSystemStores, storeName, lookBackMS);
+    } else {
+      response = controllerClient.getDeadStores(clusterName, includeSystemStores, storeName);
+    }
     printObject(response);
   }
 
