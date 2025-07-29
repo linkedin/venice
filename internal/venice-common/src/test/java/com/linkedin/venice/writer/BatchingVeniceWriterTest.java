@@ -378,9 +378,11 @@ public class BatchingVeniceWriterTest {
     byte[] updateBytes1 = updateSerializer.serialize(updateRecord1);
 
     List<Integer> intArrayUnion = Arrays.asList(3, 4);
+    List<Integer> intArrayDiff = Collections.singletonList(2);
 
     GenericRecord updateRecord2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "J")
         .setElementsToAddToListField("intArray", intArrayUnion)
+        .setElementsToRemoveFromListField("intArray", intArrayDiff)
         .build();
     byte[] updateBytes2 = updateSerializer.serialize(updateRecord2);
 
@@ -413,11 +415,13 @@ public class BatchingVeniceWriterTest {
     // Verify produced merged UPDATE value.
     GenericRecord finalValue = updateDeserializer.deserialize(payloadCaptor.getValue());
     Assert.assertEquals(finalValue.get("name").toString(), "J");
-    Assert.assertTrue(finalValue.get("intArray") instanceof GenericRecord);
+    Assert.assertTrue(finalValue.get("intArray") instanceof List);
 
-    GenericRecord intArrayField = (GenericRecord) finalValue.get("intArray");
-    List<Integer> newIntArrayList = (List<Integer>) intArrayField.get("setUnion");
-    Assert.assertEquals(newIntArrayList.size(), 4);
+    List<Integer> intArrayField = (List<Integer>) finalValue.get("intArray");
+    Assert.assertEquals(intArrayField.size(), 3);
+    Assert.assertTrue(intArrayField.contains(1));
+    Assert.assertTrue(intArrayField.contains(3));
+    Assert.assertTrue(intArrayField.contains(4));
 
     // Verify final callback is ChainedPubSubCallback
     PubSubProducerCallback putCallback = updateCallbackCaptor.getValue();
