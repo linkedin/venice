@@ -427,7 +427,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         String key = getVersionPartitionMapKey(fetchedCurrentVersion, partitionId);
         List<String> replicas = routingInfo.get(partitionId);
         if (!replicas.isEmpty()) {
-          readyToServeInstancesMap.put(key, routingInfo.get(partitionId));
+          readyToServeInstancesMap.put(key, replicas);
         }
       }
 
