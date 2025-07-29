@@ -117,7 +117,9 @@ public class ListenerService extends AbstractVeniceService {
         resourceReadUsageTracker);
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
+        storageEngineRepository,
         storeMetadataRepository,
+        schemaRepository,
         customizedViewRepository,
         metricsRepository,
         sslFactory,
@@ -125,6 +127,7 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig,
         routerAccessController,
         storeAccessController,
+        compressorFactory,
         requestHandler);
 
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;

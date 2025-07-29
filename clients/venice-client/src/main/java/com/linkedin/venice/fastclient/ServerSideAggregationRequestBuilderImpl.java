@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient;
 
 import com.google.protobuf.ByteString;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
 import com.linkedin.venice.protocols.CountByValueRequest;
@@ -41,20 +42,6 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
   }
 
   @Override
-  public ServerSideAggregationRequestBuilder<K> countByValue(String fieldName, int topK) {
-    if (fieldName == null || fieldName.isEmpty()) {
-      throw new VeniceClientException("Field name cannot be null or empty");
-    }
-    if (topK <= 0) {
-      throw new VeniceClientException("TopK must be positive");
-    }
-    this.fieldNames.clear();
-    this.fieldNames.add(fieldName);
-    this.topK = topK;
-    return this;
-  }
-
-  @Override
   public ServerSideAggregationRequestBuilder<K> countByValue(List<String> fieldNames, int topK) {
     if (fieldNames == null || fieldNames.isEmpty()) {
       throw new VeniceClientException("Field names cannot be null or empty");
@@ -74,7 +61,7 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
   }
 
   @Override
-  public CompletableFuture<AggregationResponse> execute(Set<K> keys) throws VeniceClientException {
+  public CompletableFuture<AggregationResponse> execute(Set<K> keys) throws VeniceException {
     if (keys == null || keys.isEmpty()) {
       throw new VeniceClientException("Keys cannot be null or empty");
     }
@@ -96,14 +83,19 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
       int partitionId = entry.getKey();
       List<K> partitionKeys = entry.getValue();
 
-      // Get server address for this partition
-      List<String> replicas = metadata.getReplicas(currentVersion, partitionId);
-      if (replicas.isEmpty()) {
+      // Get server address for this partition using the same routing strategy as other FastClient operations
+      String serverAddress = metadata.getReplica(
+          System.currentTimeMillis(), // Use current time as request ID
+          0, // Group ID (typically 0 for simple requests)
+          currentVersion,
+          partitionId,
+          java.util.Collections.emptySet() // No excluded instances
+      );
+
+      if (serverAddress == null) {
         throw new VeniceClientException(
             "No available replicas found for partition " + partitionId + " in store: " + metadata.getStoreName());
       }
-
-      String serverAddress = replicas.get(0); // Use first available replica
 
       // Serialize keys for this partition
       List<ByteString> serializedKeys = partitionKeys.stream()

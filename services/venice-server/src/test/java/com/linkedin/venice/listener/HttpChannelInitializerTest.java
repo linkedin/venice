@@ -4,12 +4,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
+import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLConfig;
 import com.linkedin.venice.security.SSLFactory;
@@ -61,7 +64,9 @@ public class HttpChannelInitializerTest {
     doReturn(10000).when(serverConfig).getQuotaEnforcementIntervalInMs();
     doReturn(5).when(serverConfig).getQuotaEnforcementCapacityMultiple();
     HttpChannelInitializer initializer = new HttpChannelInitializer(
+        mock(StorageEngineRepository.class),
         storeMetadataRepository,
+        mock(ReadOnlySchemaRepository.class),
         customizedViewRepository,
         metricsRepository,
         sslFactoryOptional,
@@ -69,6 +74,7 @@ public class HttpChannelInitializerTest {
         serverConfig,
         accessController,
         storeAccessController,
+        mock(StorageEngineBackedCompressorFactory.class),
         requestHandler);
     Assert.assertNotNull(initializer.getQuotaEnforcer());
   }
@@ -78,7 +84,9 @@ public class HttpChannelInitializerTest {
     doReturn(false).when(serverConfig).isQuotaEnforcementEnabled();
     doReturn(10l).when(serverConfig).getNodeCapacityInRcu();
     HttpChannelInitializer initializer = new HttpChannelInitializer(
+        mock(StorageEngineRepository.class),
         storeMetadataRepository,
+        mock(ReadOnlySchemaRepository.class),
         customizedViewRepository,
         metricsRepository,
         sslFactoryOptional,
@@ -86,6 +94,7 @@ public class HttpChannelInitializerTest {
         serverConfig,
         accessController,
         storeAccessController,
+        mock(StorageEngineBackedCompressorFactory.class),
         requestHandler);
     Assert.assertNull(initializer.getQuotaEnforcer());
   }
@@ -99,7 +108,9 @@ public class HttpChannelInitializerTest {
     doReturn(channelPipeline).when(ch).pipeline();
     doReturn(channelPipeline).when(channelPipeline).addLast(any());
     HttpChannelInitializer initializer = new HttpChannelInitializer(
+        mock(StorageEngineRepository.class),
         storeMetadataRepository,
+        mock(ReadOnlySchemaRepository.class),
         customizedViewRepository,
         metricsRepository,
         sslFactoryOptional,
@@ -107,6 +118,7 @@ public class HttpChannelInitializerTest {
         serverConfig,
         accessController,
         storeAccessController,
+        mock(StorageEngineBackedCompressorFactory.class),
         requestHandler);
     initializer.initChannel(ch);
   }
@@ -116,7 +128,9 @@ public class HttpChannelInitializerTest {
     SSLConfig sslConfig = new SSLConfig();
     doReturn(sslConfig).when(sslFactory).getSSLConfig();
     HttpChannelInitializer initializer = new HttpChannelInitializer(
+        mock(StorageEngineRepository.class),
         storeMetadataRepository,
+        mock(ReadOnlySchemaRepository.class),
         customizedViewRepository,
         metricsRepository,
         sslFactoryOptional,
@@ -124,6 +138,7 @@ public class HttpChannelInitializerTest {
         serverConfig,
         accessController,
         storeAccessController,
+        mock(StorageEngineBackedCompressorFactory.class),
         requestHandler);
 
     VeniceServerGrpcRequestProcessor processor = initializer.initGrpcRequestProcessor();
@@ -135,7 +150,9 @@ public class HttpChannelInitializerTest {
     SSLConfig sslConfig = new SSLConfig();
     doReturn(sslConfig).when(sslFactory).getSSLConfig();
     HttpChannelInitializer initializer = new HttpChannelInitializer(
+        mock(StorageEngineRepository.class),
         storeMetadataRepository,
+        mock(ReadOnlySchemaRepository.class),
         customizedViewRepository,
         metricsRepository,
         sslFactoryOptional,
@@ -143,6 +160,7 @@ public class HttpChannelInitializerTest {
         serverConfig,
         accessController,
         storeAccessController,
+        mock(StorageEngineBackedCompressorFactory.class),
         requestHandler);
 
     List<ServerInterceptor> interceptors = initializer.initGrpcInterceptors();

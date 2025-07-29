@@ -136,4 +136,13 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
       StreamingCallback<GenericRecord, GenericRecord> callback) {
     throw new VeniceClientException("'computeWithKeyPrefixFilter' is not supported by Venice Avro Store Client");
   }
+
+  /**
+   * Create a new server-side aggregation request builder.
+   * This is a fast-client specific capability for gRPC-based server-side aggregation.
+   * @return A new {@link ServerSideAggregationRequestBuilder} instance.
+   * @throws VeniceClientException if there is an error creating the builder.
+   */
+  public abstract ServerSideAggregationRequestBuilder<K> getServerSideAggregationRequestBuilder()
+      throws VeniceClientException;
 }

@@ -168,8 +168,16 @@ public class GrpcTransportClient extends InternalTransportClient {
     Preconditions.checkState(StringUtils.isNotEmpty(serverAddress), "Server address cannot be empty ");
 
     nettyServerToGrpcAddress.computeIfAbsent(serverAddress, nettyAddress -> {
-      String[] serverAddressParts = serverAddress.split(":");
-      Preconditions.checkState(serverAddressParts.length == 2, "Invalid server address");
+      // Handle potential protocol prefixes (http://, https://)
+      String cleanAddress = nettyAddress;
+      if (cleanAddress.startsWith("http://")) {
+        cleanAddress = cleanAddress.substring(7);
+      } else if (cleanAddress.startsWith("https://")) {
+        cleanAddress = cleanAddress.substring(8);
+      }
+
+      String[] serverAddressParts = cleanAddress.split(":");
+      Preconditions.checkState(serverAddressParts.length == 2, "Invalid server address: " + serverAddress);
 
       return String.format(GRPC_ADDRESS_FORMAT, serverAddressParts[0], port);
     });
