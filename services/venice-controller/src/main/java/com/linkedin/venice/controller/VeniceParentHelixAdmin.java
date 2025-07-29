@@ -1343,10 +1343,11 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName,
       boolean isIncrementalPush,
       boolean isRepush) {
-    if (multiClusterConfigs.getConcurrentPushDetectionStrategy()
+    if (getMultiClusterConfigs().getConcurrentPushDetectionStrategy()
         .equals(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY)) {
       return getTopicForCurrentPushJobTopicBased(clusterName, storeName, isIncrementalPush, isRepush);
-    } else if (multiClusterConfigs.getConcurrentPushDetectionStrategy().equals(ConcurrentPushDetectionStrategy.DUAL)) {
+    } else if (getMultiClusterConfigs().getConcurrentPushDetectionStrategy()
+        .equals(ConcurrentPushDetectionStrategy.DUAL)) {
       Optional<String> topicBased =
           getTopicForCurrentPushJobTopicBased(clusterName, storeName, isIncrementalPush, isRepush);
       Optional<String> versionStatusBased = getTopicForCurrentPushJobParentVersionStatusBased(clusterName, storeName);

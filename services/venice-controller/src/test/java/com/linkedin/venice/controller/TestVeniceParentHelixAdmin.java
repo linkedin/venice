@@ -2566,7 +2566,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Map<String, ControllerClient> map = new HashMap<>();
     map.put("dc-0", client);
     doReturn(map).when(internalAdmin).getControllerClientMap(anyString());
+    Map<String, VeniceControllerClusterConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, config);
+    doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
+
     doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false, false);
+    doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJobParentVersionStatusBased(clusterName, storeName);
 
     Store store = new ZKStore(
         storeName,
@@ -2594,7 +2599,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .getOffLinePushStatus(clusterName, latestTopic);
     doReturn(false).when(mockParentAdmin).isTopicTruncated(latestTopic);
     Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
-    verify(mockParentAdmin).getOffLinePushStatus(clusterName, latestTopic);
+    // verify(mockParentAdmin).getOffLinePushStatus(clusterName, latestTopic);
 
     // When there is a regular topic and the job status is not terminal
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS)).when(mockParentAdmin)

@@ -128,7 +128,9 @@ public class AbstractTestVeniceParentHelixAdmin {
 
     config = mockConfig(clusterName);
     doReturn(1).when(config).getReplicationMetadataVersion();
-    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY).when(config)
+    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY)
+        .doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY)
+        .when(config)
         .getConcurrentPushDetectionStrategy();
 
     controllerClients
