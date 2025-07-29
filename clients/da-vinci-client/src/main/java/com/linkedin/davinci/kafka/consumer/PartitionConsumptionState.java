@@ -187,14 +187,43 @@ public class PartitionConsumptionState {
   private long endOfPushTimestamp = 0;
 
   /**
-   * Latest local version topic offset processed by drainer.
+   * Latest local version topic offset processed by the drainer (numeric form).
    */
   private long latestProcessedLocalVersionTopicOffset;
+
+  /**
+   * PubSubPosition equivalent of {@link #latestProcessedLocalVersionTopicOffset}.
+   *
+   * We currently maintain both fields to support a gradual migration from numeric offsets
+   * to PubSubPosition. Full migration requires:
+   *   a. Writing both numeric and PubSubPosition formats to disk/wire,
+   *   b. A mechanism to resolve compact PubSubPosition into its full form.
+   *
+   * Since that support isn't available yet, we keep both fields.
+   *
+   * Note: This is stored as a ByteBuffer temporarily; it will be switched to
+   * PubSubPosition once compact-to-full resolution is supported.
+   */
+  private ByteBuffer latestProcessedLocalVersionTopicPubSubPosition;
+
   /**
    * Latest upstream version topic offset processed by drainer; if batch native replication source is the same as local
    * region, this tracking offset should remain as -1.
    */
   private long latestProcessedUpstreamVersionTopicOffset;
+
+  /**
+   * PubSubPosition equivalent of {@link #latestProcessedUpstreamVersionTopicOffset}.
+   * Similar to local version topic tracking, both numeric and PubSubPosition formats
+   * are maintained until full migration is supported.
+   * Full migration will require:
+   *   a. Populating both numeric and PubSubPosition values,
+   *   b. A mechanism to resolve compact PubSubPositions to their full form.
+   * Note:
+   * This is temporarily stored as a ByteBuffer and will be switched to
+   * PubSubPosition once the resolution mechanism is available.
+   */
+  private ByteBuffer latestProcessedUpstreamVersionTopicPubSubPosition;
 
   /**
    * Key: source Kafka url
@@ -245,7 +274,10 @@ public class PartitionConsumptionState {
     }
     // Restore in-memory latest consumed version topic offset and leader info from the checkpoint version topic offset
     this.latestProcessedLocalVersionTopicOffset = offsetRecord.getLocalVersionTopicOffset();
+    this.latestProcessedLocalVersionTopicPubSubPosition = offsetRecord.getLocalVersionTopicPubSubPosition();
     this.latestProcessedUpstreamVersionTopicOffset = offsetRecord.getCheckpointUpstreamVersionTopicOffset();
+    this.latestProcessedUpstreamVersionTopicPubSubPosition =
+        offsetRecord.getCheckpointUpstreamVersionTopicPubSubPosition();
     this.leaderHostId = offsetRecord.getLeaderHostId();
     this.leaderGUID = offsetRecord.getLeaderGUID();
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
@@ -758,8 +790,9 @@ public class PartitionConsumptionState {
     return endOfPushTimestamp;
   }
 
-  public void updateLatestProcessedLocalVersionTopicOffset(long offset) {
-    this.latestProcessedLocalVersionTopicOffset = offset;
+  public void updateLatestProcessedLocalVersionTopicOffset(PubSubPosition pubSubPosition) {
+    this.latestProcessedLocalVersionTopicOffset = pubSubPosition.getNumericOffset();
+    this.latestProcessedLocalVersionTopicPubSubPosition = pubSubPosition.getWireFormatBytes();
   }
 
   public long getLatestProcessedLocalVersionTopicOffset() {
@@ -770,8 +803,9 @@ public class PartitionConsumptionState {
     return offsetRecord.getLatestConsumedVtOffset();
   }
 
-  public void updateLatestProcessedUpstreamVersionTopicOffset(long offset) {
+  public void updateLatestProcessedUpstreamVersionTopicOffset(long offset, ByteBuffer pubSubPositionBytes) {
     this.latestProcessedUpstreamVersionTopicOffset = offset;
+    this.latestProcessedUpstreamVersionTopicPubSubPosition = pubSubPositionBytes;
   }
 
   public long getLatestProcessedUpstreamVersionTopicOffset() {
@@ -851,5 +885,15 @@ public class PartitionConsumptionState {
   public void clearPendingReportIncPushVersionList() {
     pendingReportIncPushVersionList.clear();
     offsetRecord.setPendingReportIncPushVersionList(pendingReportIncPushVersionList);
+  }
+
+  public void checkpointLocalVersionTopicPosition() {
+    offsetRecord.setCheckpointLocalVersionTopicOffset(
+        latestProcessedLocalVersionTopicOffset,
+        latestProcessedLocalVersionTopicPubSubPosition);
+  }
+
+  public ByteBuffer getLatestProcessedUpstreamVersionTopicPubSubPosition() {
+    return this.latestProcessedUpstreamVersionTopicPubSubPosition;
   }
 }

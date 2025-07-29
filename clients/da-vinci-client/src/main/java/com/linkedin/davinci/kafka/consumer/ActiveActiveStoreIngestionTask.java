@@ -1173,11 +1173,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         consumerRecord,
         leaderProducedRecordContext,
         partitionConsumptionState::updateLatestProcessedLocalVersionTopicOffset,
-        (sourceKafkaUrl, upstreamTopic, upstreamTopicOffset) -> {
+        (sourceKafkaUrl, upstreamTopic, upstreamTopicOffset, upstreamPubSubPositionBytes) -> {
           if (upstreamTopic.isRealTime()) {
             partitionConsumptionState.updateLatestProcessedUpstreamRTOffset(sourceKafkaUrl, upstreamTopicOffset);
           } else {
-            partitionConsumptionState.updateLatestProcessedUpstreamVersionTopicOffset(upstreamTopicOffset);
+            partitionConsumptionState
+                .updateLatestProcessedUpstreamVersionTopicOffset(upstreamTopicOffset, upstreamPubSubPositionBytes);
           }
         },
         (sourceKafkaUrl, upstreamTopic) -> upstreamTopic.isRealTime()

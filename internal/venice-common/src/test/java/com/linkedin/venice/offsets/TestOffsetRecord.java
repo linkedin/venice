@@ -5,6 +5,8 @@ import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -22,6 +24,7 @@ public class TestOffsetRecord {
   private GUID guid;
   private ProducerPartitionState state;
   private String kafkaUrl;
+  private static final PubSubPosition TEST_POSITION = ApacheKafkaOffsetPosition.of(100L);
 
   TestOffsetRecord() {
     offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
@@ -32,13 +35,14 @@ public class TestOffsetRecord {
 
   @Test
   public void testToBytes() {
-    OffsetRecord offsetRecord1 = TestUtils.getOffsetRecord(100);
+    OffsetRecord offsetRecord1 =
+        TestUtils.getOffsetRecord(TEST_POSITION.getNumericOffset(), TEST_POSITION.getWireFormatBytes());
     OffsetRecord offsetRecord2 =
         new OffsetRecord(offsetRecord1.toBytes(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     Assert.assertTrue(offsetRecord2.getProducerPartitionStateMap() instanceof VeniceConcurrentHashMap);
     Assert.assertEquals(offsetRecord2, offsetRecord1);
 
-    offsetRecord1 = TestUtils.getOffsetRecord(100);
+    offsetRecord1 = TestUtils.getOffsetRecord(TEST_POSITION.getNumericOffset(), TEST_POSITION.getWireFormatBytes());
     offsetRecord1.endOfPushReceived(100);
     offsetRecord2 = new OffsetRecord(offsetRecord1.toBytes(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     Assert.assertEquals(offsetRecord2, offsetRecord1);
@@ -46,7 +50,8 @@ public class TestOffsetRecord {
 
   @Test
   public void testResetUpstreamOffsetMap() {
-    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(100);
+    OffsetRecord offsetRecord =
+        TestUtils.getOffsetRecord(TEST_POSITION.getNumericOffset(), TEST_POSITION.getWireFormatBytes());
     offsetRecord.setLeaderUpstreamOffset(TEST_KAFKA_URL1, 1L);
 
     Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL1), 1L);
@@ -61,7 +66,8 @@ public class TestOffsetRecord {
 
   @Test
   public void testBatchUpdateEOIP() {
-    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(100);
+    OffsetRecord offsetRecord =
+        TestUtils.getOffsetRecord(TEST_POSITION.getNumericOffset(), TEST_POSITION.getWireFormatBytes());
     offsetRecord.setPendingReportIncPushVersionList(Arrays.asList("a", "b", "c"));
     Assert.assertEquals(offsetRecord.getPendingReportIncPushVersionList(), Arrays.asList("a", "b", "c"));
   }

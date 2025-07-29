@@ -1273,9 +1273,10 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    final long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
+    final PubSubPosition pubSubPosition = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getPubSubPosition();
     OffsetRecord offsetRecord = offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    offsetRecord.setCheckpointLocalVersionTopicOffset(offset);
+    offsetRecord
+        .setCheckpointLocalVersionTopicOffset(pubSubPosition.getNumericOffset(), pubSubPosition.getWireFormatBytes());
     offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, 3L);
     executionIdAccessor.updateLastSucceededExecutionId(clusterName, 3L);
@@ -1284,7 +1285,7 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(getLastOffset(clusterName), offset));
+        () -> Assert.assertEquals(getLastOffset(clusterName), pubSubPosition.getNumericOffset()));
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
