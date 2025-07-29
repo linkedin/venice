@@ -34,6 +34,7 @@ public interface WriteComputeHandler {
    * -- If both are collection merge, they will also merge into a collection merge. Note that if an element is removed
    * in the first update and added in the latter update, it will still present in the merged collection merge operation.
    *
+   * Also, note that this API may modify the content of input update records.
    * @param currUpdateRecord Current update record. If existing update record is null, return the next update record.
    * @param newUpdateRecord Next update record.
    *

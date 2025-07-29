@@ -172,14 +172,18 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
      * Otherwise, they are both collection merge OP, just merge both {@link SET_UNION} field and {@link SET_DIFF} field.
      */
     if (currArrayUpdate instanceof List) {
-      // Creating a new updated list to avoid the case that old list is unmodifiable.
-      List updatedSetUnion = new GenericData.Array(arraySchema, (List) currArrayUpdate);
-      for (Object element: newSetUnion) {
-        if (!updatedSetUnion.contains(element)) {
-          updatedSetUnion.add(element);
+      List updatedArray = new ArrayList<>();
+      for (Object element: (List) currArrayUpdate) {
+        if (!newSetDiff.contains(element)) {
+          updatedArray.add(element);
         }
       }
-      ((GenericRecord) newArrayUpdate).put(SET_UNION, updatedSetUnion);
+      for (Object element: newSetUnion) {
+        if (!updatedArray.contains(element) && !newSetDiff.contains(element)) {
+          updatedArray.add(element);
+        }
+      }
+      return updatedArray;
     } else {
       List currSetUnion = (List) ((GenericRecord) currArrayUpdate).get(SET_UNION);
       List currSetDiff = (List) ((GenericRecord) currArrayUpdate).get(SET_DIFF);
@@ -235,11 +239,15 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
     Map newMapUnion = ((Map) ((GenericRecord) newMapUpdate).get(MAP_UNION));
     List newMapDiff = ((List) ((GenericRecord) newMapUpdate).get(MAP_DIFF));
     if (currMapUpdate instanceof Map) {
-      for (Object entry: ((Map) currMapUpdate).entrySet()) {
+      for (Object entry: newMapUnion.entrySet()) {
         Object key = ((Map.Entry) entry).getKey();
         Object value = ((Map.Entry) entry).getValue();
-        newMapUnion.putIfAbsent(key, value);
+        ((Map) currMapUpdate).put(key, value);
       }
+      for (Object diffKey: newMapDiff) {
+        ((Map) currMapUpdate).remove(diffKey);
+      }
+      return currMapUpdate;
     } else {
       Map currMapUnion = ((Map) ((GenericRecord) currMapUpdate).get(MAP_UNION));
       List currMapDiff = ((List) ((GenericRecord) currMapUpdate).get(MAP_DIFF));
