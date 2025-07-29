@@ -556,9 +556,9 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         StoreInfo childStore = storeResponse.getStore();
         if (childStore.getCurrentVersion() < targetVersionNum) {
           completedNonTargetRegions.add(nonTargetRegion);
-          String message = "Child version " + targetVersionNum + " status is ONLINE for store " + parentStore.getName()
-              + " , but there is still a future version detected in region " + nonTargetRegion
-              + " and the current version is " + parentStore.getCurrentVersion();
+          String message = "Child version " + targetVersionNum + " status is ONLINE while the current version is "
+              + childStore.getCurrentVersion() + " for store " + parentStore.getName() + " in region "
+              + nonTargetRegion;
           logMessageIfNotRedundant(message);
           deferredVersionSwapStats.recordDeferredVersionSwapChildStatusMismatchSensor();
         }
