@@ -27,7 +27,6 @@ import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.grpc.VeniceGrpcServer;
 import com.linkedin.venice.grpc.VeniceGrpcServerConfig;
-import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -243,18 +242,19 @@ public class VeniceController {
     Admin admin = controllerService.getVeniceHelixAdmin();
 
     if (multiClusterConfigs.isParent()) {
-      if (multiClusterConfigs.getConcurrentPushDetectionStrategy()
-          .equals(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY)) {
-        return Optional.of(
-            new TopicCleanupServiceForParentController(
-                admin,
-                multiClusterConfigs,
-                pubSubTopicRepository,
-                new TopicCleanupServiceStats(metricsRepository),
-                pubSubClientsFactory));
-      } else {
-        return Optional.empty();
-      }
+      // TODO: Remove the following once ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY is fully rolled out
+      // if (multiClusterConfigs.getConcurrentPushDetectionStrategy()
+      // .equals(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY)) {
+      return Optional.of(
+          new TopicCleanupServiceForParentController(
+              admin,
+              multiClusterConfigs,
+              pubSubTopicRepository,
+              new TopicCleanupServiceStats(metricsRepository),
+              pubSubClientsFactory));
+      // } else {
+      // return Optional.empty();
+      // }
     } else {
       return Optional.of(
           new TopicCleanupService(
