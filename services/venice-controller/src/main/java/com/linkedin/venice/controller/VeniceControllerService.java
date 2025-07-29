@@ -89,6 +89,7 @@ public class VeniceControllerService extends AbstractVeniceService {
         multiClusterConfigs,
         metricsRepository,
         sslEnabled,
+        d2Client,
         d2Clients,
         sslConfig,
         accessController,
