@@ -91,7 +91,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private ExecutorService h2ConnWarmupExecutorService =
       Executors.newCachedThreadPool(new NamedThreadFactory("h2ConnWarmupForFastClient"));
 
-  private final AtomicInteger currentVersion = new AtomicInteger();
+  private final AtomicInteger currentVersion = new AtomicInteger(-1);
   private final AtomicInteger latestSuperSetValueSchemaId = new AtomicInteger();
   private final AtomicReference<SchemaData> schemas = new AtomicReference<>();
   private final Map<String, List<String>> readyToServeInstancesMap = new VeniceConcurrentHashMap<>();
@@ -475,8 +475,24 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       versionPartitionerMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionPartitionCountMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
-      currentVersion.set(fetchedCurrentVersion);
-      clusterStats.updateCurrentVersion(fetchedCurrentVersion);
+      if (whetherToSwitchToFetchedCurrentVersion(
+          storeName,
+          activeVersions,
+          currentVersion,
+          fetchedCurrentVersion,
+          partitionCount,
+          routingInfo)) {
+        // If the fetched current version is different from the local current version, update it
+        // and update the cluster stats.
+        LOGGER.info(
+            "Updating current version for store: {} from {} to {}",
+            storeName,
+            currentVersion.get(),
+            fetchedCurrentVersion);
+        currentVersion.set(fetchedCurrentVersion);
+        clusterStats.updateCurrentVersion(fetchedCurrentVersion);
+      }
+
       routingStrategy.updateHelixGroupInfo(helixGroupInfo);
       // Update the metadata timestamp only if all updates are successful
       clientStats.updateCacheTimestamp(currentTimeMs);
@@ -500,6 +516,83 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
             e.getCause());
       }
     }
+  }
+
+  public static boolean whetherToSwitchToFetchedCurrentVersion(
+      String storeName,
+      Set<Integer> activeVersions,
+      AtomicInteger currentVersion,
+      int fetchedCurrentVersion,
+      int partitionCountForFetchedCurrentVersion,
+      Map<Integer, List<String>> routingInfo) {
+    if (fetchedCurrentVersion == currentVersion.get()) {
+      // Already same
+      return false;
+    }
+
+    boolean isPartitionResourcesReadyForFetchedCurrentVersion = isPartitionResourcesReady(
+        storeName,
+        fetchedCurrentVersion,
+        partitionCountForFetchedCurrentVersion,
+        routingInfo);
+    boolean isCurrentVersionActive = activeVersions.contains(currentVersion.get());
+    if (!isCurrentVersionActive || isPartitionResourcesReadyForFetchedCurrentVersion) {
+      if (!isCurrentVersionActive && !isPartitionResourcesReadyForFetchedCurrentVersion) {
+        LOGGER.warn(
+            "Current version: {} is not active anymore for store: {}, updating to fetched current version: {}"
+                + " even the partition resources are not ready",
+            currentVersion.get(),
+            storeName,
+            fetchedCurrentVersion);
+      }
+      return true;
+    }
+    // If the partition resources are not ready for the fetched current version, we do not update the current
+    // version to avoid breaking the client.
+    LOGGER.warn(
+        "Partition resources are not ready for store: {}, version: {}. "
+            + "Current version will not be updated to fetched current version: {}, but continue to use version: {}",
+        storeName,
+        fetchedCurrentVersion,
+        fetchedCurrentVersion,
+        currentVersion.get());
+    return false;
+  }
+
+  public static boolean isPartitionResourcesReady(
+      String storeName,
+      int version,
+      int partitionCount,
+      Map<Integer, List<String>> routingInfo) {
+    if (partitionCount <= 0) {
+      LOGGER.warn("Partition count is not valid: {} for store: {}, version: {}", partitionCount, storeName, version);
+      return false;
+    }
+    if (routingInfo == null || routingInfo.isEmpty()) {
+      LOGGER.warn("Routing info is not valid for store: {}, version: {}", storeName, version);
+      return false;
+    }
+    if (routingInfo.size() != partitionCount) {
+      LOGGER.warn(
+          "Routing info size: {} does not match partition count: {} for store: {}, version: {}",
+          routingInfo.size(),
+          partitionCount,
+          storeName,
+          version);
+      return false;
+    }
+    for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
+      List<String> replicas = routingInfo.get(partitionId);
+      if (replicas == null || replicas.isEmpty()) {
+        LOGGER.warn(
+            "No ready-to-serve replicas found for partition: {} in store: {}, version: {}",
+            partitionId,
+            storeName,
+            version);
+        return false;
+      }
+    }
+    return true;
   }
 
   private void refresh() {
