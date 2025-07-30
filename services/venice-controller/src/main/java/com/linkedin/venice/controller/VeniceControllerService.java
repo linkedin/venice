@@ -84,9 +84,6 @@ public class VeniceControllerService extends AbstractVeniceService {
     if (!multiClusterConfigs.isParent()) {
       initRoutineForPushJobDetailsSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
-    }
-
-    if (multiClusterConfigs.isParent()) {
       initRoutineForParentControllerMetadataSystemStore.setAllowEmptyDelegateInitializationToSucceed();
     }
 

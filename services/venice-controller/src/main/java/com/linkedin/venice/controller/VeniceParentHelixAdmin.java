@@ -569,7 +569,7 @@ public class VeniceParentHelixAdmin implements Admin {
         initRoutineForParentMetadataStore.setDelegate(
             new SharedInternalRTStoreInitializationRoutine(
                 parentMetaDataStoreClusterName,
-                PARENT_CONTROLLER_METADATA_SYSTEM_SCHEMA_STORE_VALUE.getSystemStoreName(),
+                VeniceSystemStoreUtils.getParentControllerMetadataStoreNameForCluster(parentMetaDataStoreClusterName),
                 PARENT_CONTROLLER_METADATA_SYSTEM_SCHEMA_STORE_VALUE,
                 multiClusterConfigs,
                 this,

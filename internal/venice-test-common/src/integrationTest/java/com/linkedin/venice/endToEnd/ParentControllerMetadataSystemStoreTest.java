@@ -50,8 +50,7 @@ public class ParentControllerMetadataSystemStoreTest {
     Properties controllerProps = new Properties();
     controllerProps.put(PARENT_CONTROLLER_METADATA_STORE_ENABLED, "true");
     controllerProps.put(PARENT_CONTROLLER_METADATA_STORE_CLUSTER_NAME, "venice-cluster0");
-    venice = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper( // where the store initalization logic
-                                                                             // acutally ahppends
+    venice = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
             .numberOfClusters(1)
             .numberOfParentControllers(1)
@@ -80,27 +79,32 @@ public class ParentControllerMetadataSystemStoreTest {
 
   @Test
   public void testParentControllerMetadataNewStoreVersionCreation() {
-    // Verify the parent controller metadata store is created.
     VersionCreationResponse versionCreationResponse = getNewStoreVersion(parentControllerClient, true); // only works
-                                                                                                        // when the
-                                                                                                        // parentControllerClient
-                                                                                                        // is used
     assertFalse(versionCreationResponse.isError());
   }
 
   @Test
   public void testParentControllerMetadataStoreCreation() {
     // Verify the parentControllerMetadataStore is created.
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> { // TODO: refractor
       StoreResponse storeResponse = controllerClient.getStore(parentControllerMetadataSystemStoreName);
-      System.out.println(storeResponse);
+      System.out.println("Store response: " + storeResponse);
+      assertFalse(
+          storeResponse.isError(),
+          "Failed to get parent controller metadata store: " + storeResponse.getError());
+      assertNotNull(storeResponse.getStore(), "Parent controller metadata store should exist");
 
       MultiStoreInfoResponse multiStoreInfoResponse = controllerClient.getClusterStores(clusterName);
+      System.out.println("All stores in cluster:");
       for (StoreInfo storeInfo: multiStoreInfoResponse.getStoreInfoList()) {
-        System.out.println(storeInfo.getName());
+        System.out.println("  - " + storeInfo.getName());
       }
+
+      boolean foundStore = multiStoreInfoResponse.getStoreInfoList()
+          .stream()
+          .anyMatch(storeInfo -> storeInfo.getName().equals(parentControllerMetadataSystemStoreName));
+      assertTrue(foundStore, "Parent controller metadata store should appear in cluster store list");
     });
-    assertTrue(false);
   }
 
   private static Metric getMetric(Map<String, ? extends Metric> metrics, String name) {
