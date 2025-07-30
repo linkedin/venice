@@ -66,12 +66,7 @@ public class ParentControllerMetadataSystemStoreTest {
 
   @Test
   public void testParentControllerMetadataStoreCreationOneAttempt() {
-    StoreResponse storeResponse = parentControllerClient.getStore(parentControllerMetadataSystemStoreName); // still not
-                                                                                                            // anymore
-                                                                                                            // with the
-                                                                                                            // parentControllerClient
-                                                                                                            // being
-                                                                                                            // used
+    StoreResponse storeResponse = parentControllerClient.getStore(parentControllerMetadataSystemStoreName);
     assertFalse(storeResponse.isError(), "Failed to get parent controller metadata store: " + storeResponse.getError());
     assertNotNull(storeResponse.getStore(), "Parent controller metadata store should exist");
     assertEquals(
