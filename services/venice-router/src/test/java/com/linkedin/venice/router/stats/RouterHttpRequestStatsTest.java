@@ -108,10 +108,15 @@ public class RouterHttpRequestStatsTest {
         metricsRepository.getMetric("." + storeName + "--" + RESPONSE_SIZE.getMetricName() + ".Avg").value(),
         1024.0);
 
-    // Verify key size is recorded
-    routerHttpRequestStats.recordKeySizeInByte((long) 256.0);
-    assertEquals(
-        metricsRepository.getMetric("." + storeName + "--" + KEY_SIZE.getMetricName() + ".Avg").value(),
-        256.0);
+    // Verify key size is recorded if keyValueProfiling is enabled
+    if (routerHttpRequestStats.emitOpenTelemetryMetrics()) {
+      routerHttpRequestStats.recordKeySizeInByte((long) 256.0);
+      assertEquals(
+          metricsRepository.getMetric("." + storeName + "--" + KEY_SIZE.getMetricName() + ".Avg").value(),
+          256.0);
+    } else {
+      assertNull(routerHttpRequestStats.getOtelRepository());
+      ;
+    }
   }
 }

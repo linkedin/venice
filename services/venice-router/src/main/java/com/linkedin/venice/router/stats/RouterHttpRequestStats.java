@@ -135,7 +135,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor unavailableReplicaStreamingRequestSensor;
   private final Sensor multiGetFallbackSensor;
   private final Sensor metaStoreShadowReadSensor;
-  private Sensor keySizeSensor;
 
   /** TODO: Need to clarify the usage and add new OTel metrics or add it as a part of existing ones */
   private final Sensor errorRetryAttemptTriggeredByPendingRequestCheckSensor;
