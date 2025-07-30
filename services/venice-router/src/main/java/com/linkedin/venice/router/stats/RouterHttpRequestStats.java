@@ -478,7 +478,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
             null, // no OTEL repository/metrics
             this::registerSensorFinal,
             RouterTehutiMetricNameEnum.KEY_SIZE,
-            Arrays.asList(new Avg(), keySize),
+            Arrays.asList(new Avg(), new Max(), keySize),
             baseDimensionsMap,
             baseAttributes);
 
@@ -488,7 +488,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
             null, // no OTEL repository/metrics
             this::registerSensorFinal,
             RouterTehutiMetricNameEnum.RESPONSE_SIZE,
-            Arrays.asList(new Avg(), responseSize),
+            Arrays.asList(new Avg(), new Max(), responseSize),
             baseDimensionsMap,
             MessageType.class);
       } else {
@@ -504,7 +504,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
             // Pass null Tehuti metric name if you want OTel only,
             // or keep both if you want dual record:
             RouterTehutiMetricNameEnum.RESPONSE_SIZE,
-            Arrays.asList(new Avg(), responseSize),
+            Arrays.asList(new Avg(), new Max(), responseSize),
             baseDimensionsMap,
             MessageType.class);
       }
@@ -518,7 +518,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           otelRepository,
           this::registerSensorFinal,
           RouterTehutiMetricNameEnum.RESPONSE_SIZE,
-          Arrays.asList(new Avg(), responseSize),
+          Arrays.asList(new Avg(), new Max(), responseSize),
           baseDimensionsMap,
           MessageType.class);
     }
