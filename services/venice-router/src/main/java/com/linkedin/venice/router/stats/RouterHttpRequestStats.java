@@ -209,7 +209,11 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         otelRepository,
         this::registerSensorFinal,
         RouterTehutiMetricNameEnum.REQUEST_SIZE,
-        Arrays.asList(new Avg(), requestSize),
+        Arrays.asList(
+            new Avg(),
+            TehutiUtils.getPercentileStat(
+                getName(),
+                getFullMetricName(RouterTehutiMetricNameEnum.REQUEST_SIZE.getMetricName()))),
         baseDimensionsMap,
         MessageType.class);
 
@@ -478,7 +482,12 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
             null, // no OTEL repository/metrics
             this::registerSensorFinal,
             RouterTehutiMetricNameEnum.KEY_SIZE,
-            Arrays.asList(new Avg(), new Max(), keySize),
+            Arrays.asList(
+                new Avg(),
+                new Max(),
+                TehutiUtils.getFineGrainedPercentileStat(
+                    getName(),
+                    getFullMetricName(RouterTehutiMetricNameEnum.KEY_SIZE.getMetricName()))),
             baseDimensionsMap,
             baseAttributes);
 
@@ -488,7 +497,12 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
             null, // no OTEL repository/metrics
             this::registerSensorFinal,
             RouterTehutiMetricNameEnum.RESPONSE_SIZE,
-            Arrays.asList(new Avg(), new Max(), responseSize),
+            Arrays.asList(
+                new Avg(),
+                new Max(),
+                TehutiUtils.getFineGrainedPercentileStat(
+                    getName(),
+                    getFullMetricName(RouterTehutiMetricNameEnum.RESPONSE_SIZE.getMetricName()))),
             baseDimensionsMap,
             MessageType.class);
       } else {
@@ -504,7 +518,12 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
             // Pass null Tehuti metric name if you want OTel only,
             // or keep both if you want dual record:
             RouterTehutiMetricNameEnum.RESPONSE_SIZE,
-            Arrays.asList(new Avg(), new Max(), responseSize),
+            Arrays.asList(
+                new Avg(),
+                new Max(),
+                TehutiUtils.getPercentileStat(
+                    getName(),
+                    getFullMetricName(RouterTehutiMetricNameEnum.RESPONSE_SIZE.getMetricName()))),
             baseDimensionsMap,
             MessageType.class);
       }
@@ -518,7 +537,12 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           otelRepository,
           this::registerSensorFinal,
           RouterTehutiMetricNameEnum.RESPONSE_SIZE,
-          Arrays.asList(new Avg(), new Max(), responseSize),
+          Arrays.asList(
+              new Avg(),
+              new Max(),
+              TehutiUtils.getPercentileStat(
+                  getName(),
+                  getFullMetricName(RouterTehutiMetricNameEnum.RESPONSE_SIZE.getMetricName()))),
           baseDimensionsMap,
           MessageType.class);
     }
