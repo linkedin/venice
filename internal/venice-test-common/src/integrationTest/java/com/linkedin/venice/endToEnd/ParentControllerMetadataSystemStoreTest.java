@@ -2,6 +2,7 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_METADATA_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_METADATA_STORE_ENABLED;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -10,36 +11,23 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import io.tehuti.Metric;
-import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
 public class ParentControllerMetadataSystemStoreTest {
-  private static final Logger LOGGER = LogManager.getLogger(ParentControllerMetadataSystemStoreTest.class);
-
   private VeniceTwoLayerMultiRegionMultiClusterWrapper venice;
-  private VeniceClusterWrapper veniceLocalCluster;
-  private VeniceServerWrapper veniceServerWrapper;
-
   private ControllerClient controllerClient;
   private ControllerClient parentControllerClient;
   private String parentControllerMetadataSystemStoreName;
@@ -63,8 +51,7 @@ public class ParentControllerMetadataSystemStoreTest {
     clusterName = venice.getClusterNames()[0];
     parentControllerMetadataSystemStoreName =
         VeniceSystemStoreUtils.getParentControllerMetadataStoreNameForCluster(clusterName);
-    veniceLocalCluster = venice.getChildRegions().get(0).getClusters().get(clusterName);
-    veniceServerWrapper = veniceLocalCluster.getVeniceServers().get(0);
+    VeniceClusterWrapper veniceLocalCluster = venice.getChildRegions().get(0).getClusters().get(clusterName);
 
     controllerClient = new ControllerClient(clusterName, veniceLocalCluster.getAllControllersURLs());
     parentControllerClient = new ControllerClient(clusterName, venice.getControllerConnectString());
@@ -78,22 +65,28 @@ public class ParentControllerMetadataSystemStoreTest {
   }
 
   @Test
-  public void testParentControllerMetadataNewStoreVersionCreation() {
-    VersionCreationResponse versionCreationResponse = getNewStoreVersion(parentControllerClient, true); // only works
-    assertFalse(versionCreationResponse.isError());
+  public void testParentControllerMetadataStoreCreationOneAttempt() {
+    StoreResponse storeResponse = parentControllerClient.getStore(parentControllerMetadataSystemStoreName); // still not
+                                                                                                            // anymore
+                                                                                                            // with the
+                                                                                                            // parentControllerClient
+                                                                                                            // being
+                                                                                                            // used
+    assertFalse(storeResponse.isError(), "Failed to get parent controller metadata store: " + storeResponse.getError());
+    assertNotNull(storeResponse.getStore(), "Parent controller metadata store should exist");
+    assertEquals(
+        storeResponse.getStore().getName(),
+        parentControllerMetadataSystemStoreName,
+        "Parent controller metadata store name should match expected name");
+    assertEquals(
+        storeResponse.getCluster(),
+        clusterName,
+        "Parent controller metadata store should be in the expected cluster");
   }
 
   @Test
-  public void testParentControllerMetadataStoreCreation() {
-    // Verify the parentControllerMetadataStore is created.
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> { // TODO: refractor
-      StoreResponse storeResponse = controllerClient.getStore(parentControllerMetadataSystemStoreName);
-      System.out.println("Store response: " + storeResponse);
-      assertFalse(
-          storeResponse.isError(),
-          "Failed to get parent controller metadata store: " + storeResponse.getError());
-      assertNotNull(storeResponse.getStore(), "Parent controller metadata store should exist");
-
+  public void testParentControllerMetadataSystemStoreCreationAndShowOtherStores() {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
       MultiStoreInfoResponse multiStoreInfoResponse = controllerClient.getClusterStores(clusterName);
       System.out.println("All stores in cluster:");
       for (StoreInfo storeInfo: multiStoreInfoResponse.getStoreInfoList()) {
@@ -105,37 +98,5 @@ public class ParentControllerMetadataSystemStoreTest {
           .anyMatch(storeInfo -> storeInfo.getName().equals(parentControllerMetadataSystemStoreName));
       assertTrue(foundStore, "Parent controller metadata store should appear in cluster store list");
     });
-  }
-
-  private static Metric getMetric(Map<String, ? extends Metric> metrics, String name) {
-    Metric metric = metrics.get(name);
-    assertNotNull(metric, "Metric '" + name + "' was not found!");
-    return metric;
-  }
-
-  private VersionCreationResponse getNewStoreVersion(
-      ControllerClient controllerClient,
-      String storeName,
-      boolean newStore) {
-    if (newStore) {
-      controllerClient.createNewStore(storeName, "test-user", "\"string\"", "\"string\"");
-    }
-    return parentControllerClient.requestTopicForWrites(
-        storeName,
-        1024,
-        Version.PushType.BATCH,
-        Version.guidBasedDummyPushId(),
-        true,
-        true,
-        false,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        false,
-        -1);
-  }
-
-  private VersionCreationResponse getNewStoreVersion(ControllerClient controllerClient, boolean newStore) {
-    return getNewStoreVersion(controllerClient, Utils.getUniqueString("test-kill"), newStore);
   }
 }
