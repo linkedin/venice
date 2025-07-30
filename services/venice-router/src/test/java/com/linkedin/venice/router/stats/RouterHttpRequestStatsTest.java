@@ -116,7 +116,6 @@ public class RouterHttpRequestStatsTest {
           256.0);
     } else {
       assertNull(routerHttpRequestStats.getOtelRepository());
-      ;
     }
   }
 }
