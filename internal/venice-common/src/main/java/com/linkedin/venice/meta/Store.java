@@ -300,6 +300,14 @@ public interface Store {
 
   void setStorageNodeReadQuotaEnabled(boolean storageNodeReadQuotaEnabled);
 
+  boolean isCompactionEnabled();
+
+  void setCompactionEnabled(boolean compactionEnabled);
+
+  long getCompactionThresholdMilliseconds();
+
+  void setCompactionThresholdMilliseconds(long compactionThreshold);
+
   long getMinCompactionLagSeconds();
 
   void setMinCompactionLagSeconds(long minCompactionLagSeconds);
