@@ -58,6 +58,7 @@ public class TestWriteComputeProcessor {
     map.put("c", 1);
     updateV1 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "abc")
         .setNewFieldValue("IntMapField", map)
+        .setNewFieldValue("NullableIntMapField", null)
         .build();
     Map<String, Integer> map2 = new HashMap<>();
     map2.put("a", 2);
@@ -65,6 +66,8 @@ public class TestWriteComputeProcessor {
     updateV2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "def")
         .setEntriesToAddToMapField("IntMapField", map2)
         .setKeysToRemoveFromMapField("IntMapField", Collections.singletonList("c"))
+        .setEntriesToAddToMapField("NullableIntMapField", map2)
+        .setKeysToRemoveFromMapField("NullableIntMapField", Collections.singletonList("c"))
         .build();
     resultUpdate = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, updateV1, updateV2);
     Assert.assertTrue(resultUpdate.get("IntMapField") instanceof Map);
@@ -72,6 +75,10 @@ public class TestWriteComputeProcessor {
     Assert.assertEquals(updatedMap.size(), 3);
     Assert.assertEquals((int) updatedMap.get("a"), 2);
     Assert.assertEquals((int) updatedMap.get("b"), 1);
+    Assert.assertEquals((int) updatedMap.get("d"), 1);
+    updatedMap = (Map<String, Integer>) resultUpdate.get("NullableIntMapField");
+    Assert.assertEquals(updatedMap.size(), 2);
+    Assert.assertEquals((int) updatedMap.get("a"), 2);
     Assert.assertEquals((int) updatedMap.get("d"), 1);
 
     // Case 2: collection merge -> partial update
@@ -159,19 +166,27 @@ public class TestWriteComputeProcessor {
     // Case 1: partial update -> collection merge
     updateV1 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "abc")
         .setNewFieldValue("StringListField", Arrays.asList("abc", "def", "xyz"))
+        .setNewFieldValue("NullableStringListField", null)
         .build();
     updateV2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "def")
         .setElementsToAddToListField("StringListField", Arrays.asList("def", "ghi"))
         .setElementsToRemoveFromListField("StringListField", Collections.singletonList("xyz"))
+        .setElementsToAddToListField("NullableStringListField", Arrays.asList("def", "ghi"))
+        .setElementsToRemoveFromListField("NullableStringListField", Collections.singletonList("xyz"))
         .build();
 
     resultUpdate = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, updateV1, updateV2);
 
     Assert.assertTrue(resultUpdate.get("StringListField") instanceof List);
+    Assert.assertTrue(resultUpdate.get("NullableStringListField") instanceof List);
+
     List<String> updatedList = (List<String>) resultUpdate.get("StringListField");
     Assert.assertEquals(updatedList.size(), 3);
-
     Assert.assertTrue(updatedList.contains("abc"));
+    Assert.assertTrue(updatedList.contains("def"));
+    Assert.assertTrue(updatedList.contains("ghi"));
+    updatedList = (List<String>) resultUpdate.get("NullableStringListField");
+    Assert.assertEquals(updatedList.size(), 2);
     Assert.assertTrue(updatedList.contains("def"));
     Assert.assertTrue(updatedList.contains("ghi"));
 

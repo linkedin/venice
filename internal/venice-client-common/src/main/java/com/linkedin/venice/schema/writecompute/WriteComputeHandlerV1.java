@@ -7,6 +7,8 @@ import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.LIST_OPS;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.MAP_OPS;
 import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_OP_ON_FIELD;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.PUT_NEW_FIELD;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.getFieldOperationType;
 
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import java.util.ArrayList;
@@ -161,30 +163,17 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
   }
 
   Object mergeArray(Schema arraySchema, Object currArrayUpdate, Object newArrayUpdate) {
-    if (newArrayUpdate instanceof List) {
+    if (getFieldOperationType(newArrayUpdate).equals(PUT_NEW_FIELD)) {
       return newArrayUpdate; // Partial update on a list field
     }
-
+    /**
+     * If old array update is {@link LIST_OPS}, merge it into the new collection merge OP's {@link SET_UNION} field.
+     * If old array update is NULL, a new empty array is created to take in the new collection merge.
+     * Otherwise, they are both {@link LIST_OPS}, just merge both {@link SET_UNION} field and {@link SET_DIFF} field.
+     */
     List newSetUnion = (List) ((GenericRecord) newArrayUpdate).get(SET_UNION);
     List newSetDiff = (List) ((GenericRecord) newArrayUpdate).get(SET_DIFF);
-    /**
-     * If old array update is Partial Update OP, merge it into the new collection merge OP's {@link SET_UNION} field.
-     * Otherwise, they are both collection merge OP, just merge both {@link SET_UNION} field and {@link SET_DIFF} field.
-     */
-    if (currArrayUpdate instanceof List) {
-      List updatedArray = new ArrayList<>();
-      for (Object element: (List) currArrayUpdate) {
-        if (!newSetDiff.contains(element)) {
-          updatedArray.add(element);
-        }
-      }
-      for (Object element: newSetUnion) {
-        if (!updatedArray.contains(element) && !newSetDiff.contains(element)) {
-          updatedArray.add(element);
-        }
-      }
-      return updatedArray;
-    } else {
+    if (getFieldOperationType(currArrayUpdate).equals(LIST_OPS)) {
       List currSetUnion = (List) ((GenericRecord) currArrayUpdate).get(SET_UNION);
       List currSetDiff = (List) ((GenericRecord) currArrayUpdate).get(SET_DIFF);
       // Creating a new updated list to avoid the case that old list is unmodifiable.
@@ -203,8 +192,23 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
       ((GenericRecord) newArrayUpdate).put(SET_UNION, updatedSetUnion);
       ((GenericRecord) newArrayUpdate).put(SET_DIFF, updatedSetDiff);
 
+      return newArrayUpdate;
+    } else {
+      List updatedArray = new ArrayList<>();
+      if (currArrayUpdate != null) {
+        for (Object element: (List) currArrayUpdate) {
+          if (!newSetDiff.contains(element)) {
+            updatedArray.add(element);
+          }
+        }
+      }
+      for (Object element: newSetUnion) {
+        if (!updatedArray.contains(element) && !newSetDiff.contains(element)) {
+          updatedArray.add(element);
+        }
+      }
+      return updatedArray;
     }
-    return newArrayUpdate;
   }
 
   // Visible for testing
@@ -231,24 +235,17 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
   }
 
   Object mergeMap(Object currMapUpdate, Object newMapUpdate) {
-    if (newMapUpdate instanceof Map) {
+    if (getFieldOperationType(newMapUpdate).equals(PUT_NEW_FIELD)) {
       return newMapUpdate; // Partial update on a map field
     }
-
-    // Conduct collection merging
+    /**
+     * If old map update is {@link MAP_OPS}, merge it into the new collection merge OP's {@link MAP_UNION} field.
+     * If old map update is NULL, a new empty map is created to take in the new collection merge.
+     * Otherwise, they are both {@link MAP_OPS}, just merge both {@link MAP_UNION} field and {@link MAP_DIFF} field.
+     */
     Map newMapUnion = ((Map) ((GenericRecord) newMapUpdate).get(MAP_UNION));
     List newMapDiff = ((List) ((GenericRecord) newMapUpdate).get(MAP_DIFF));
-    if (currMapUpdate instanceof Map) {
-      for (Object entry: newMapUnion.entrySet()) {
-        Object key = ((Map.Entry) entry).getKey();
-        Object value = ((Map.Entry) entry).getValue();
-        ((Map) currMapUpdate).put(key, value);
-      }
-      for (Object diffKey: newMapDiff) {
-        ((Map) currMapUpdate).remove(diffKey);
-      }
-      return currMapUpdate;
-    } else {
+    if (getFieldOperationType(currMapUpdate).equals(MAP_OPS)) {
       Map currMapUnion = ((Map) ((GenericRecord) currMapUpdate).get(MAP_UNION));
       List currMapDiff = ((List) ((GenericRecord) currMapUpdate).get(MAP_DIFF));
       List<Object> updatedMapDiff = new ArrayList<>();
@@ -268,8 +265,19 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
         newMapUnion.putIfAbsent(key, value);
       }
       ((GenericRecord) newMapUpdate).put(MAP_DIFF, updatedMapDiff);
+      return newMapUpdate;
+    } else {
+      Map updatedMap = currMapUpdate == null ? new HashMap<>() : (Map) currMapUpdate;
+      for (Object entry: newMapUnion.entrySet()) {
+        Object key = ((Map.Entry) entry).getKey();
+        Object value = ((Map.Entry) entry).getValue();
+        updatedMap.put(key, value);
+      }
+      for (Object diffKey: newMapDiff) {
+        updatedMap.remove(diffKey);
+      }
+      return updatedMap;
     }
-    return newMapUpdate;
   }
 
   // Visible for testing

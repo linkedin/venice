@@ -7,6 +7,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerServiceDelegator;
@@ -44,6 +45,8 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -52,6 +55,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.util.Utf8;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -108,7 +112,7 @@ public class TestProducerBatching {
     final String storeName = Utils.getUniqueString("store");
     String parentControllerUrl = parentController.getControllerUrl();
     VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/PersonV1.avsc"));
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV2.avsc"));
     Schema updateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
@@ -135,7 +139,8 @@ public class TestProducerBatching {
     }
     SystemProducer veniceProducer;
     VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-    Pair<String, String> additionalConfig = new Pair<>(ConfigKeys.WRITER_BATCHING_MAX_INTERVAL_MS, "50");
+    // Put some big enough delay number to make sure they all get sent in a batch for final validation.
+    Pair<String, String> additionalConfig = new Pair<>(ConfigKeys.WRITER_BATCHING_MAX_INTERVAL_MS, "1000");
     Pair<String, String> additionalConfig2 = new Pair<>(ConfigKeys.WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES, "1024000");
     veniceProducer = IntegrationTestPushUtils
         .getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM, additionalConfig, additionalConfig2);
@@ -170,14 +175,22 @@ public class TestProducerBatching {
     value = new GenericData.Record(valueSchema);
     value.put("name", "CLE");
     value.put("age", 2024);
+    value.put("intArray", Arrays.asList(1, 2, 3));
     sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
 
     // Message 6: Will be compacted by Message 7
-    value = new UpdateBuilderImpl(updateSchema).setNewFieldValue("age", 2025).build();
+    value = new UpdateBuilderImpl(updateSchema).setNewFieldValue("age", 2025)
+        .setNewFieldValue("intArray", Arrays.asList(4, 5, 6))
+        .setEntriesToAddToMapField("intMap", Collections.singletonMap("a", 1))
+        .build();
     sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
 
     // Message 7: Should be produced.
-    value = new UpdateBuilderImpl(updateSchema).setNewFieldValue("name", "OKC").build();
+    value = new UpdateBuilderImpl(updateSchema).setNewFieldValue("name", "OKC")
+        .setElementsToAddToListField("intArray", Arrays.asList(7, 8))
+        .setElementsToRemoveFromListField("intArray", Arrays.asList(3, 4))
+        .setNewFieldValue("intMap", Collections.singletonMap("b", 2))
+        .build();
     sendStreamingRecordWithoutFlush(veniceProducer, storeName, key2, value);
 
     try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
@@ -192,6 +205,17 @@ public class TestProducerBatching {
           retrievedValue = readValue(storeReader, key2);
           assertNotNull(retrievedValue, "Key " + key2 + " should not be missing!");
           assertEquals(retrievedValue.get("name").toString(), "OKC");
+          assertNotNull(retrievedValue.get("intArray"));
+          assertNotNull(retrievedValue.get("intMap"));
+          List<Integer> intArray = (List<Integer>) retrievedValue.get("intArray");
+          Map<Utf8, Integer> intMap = (Map<Utf8, Integer>) retrievedValue.get("intMap");
+          assertEquals(intArray.size(), 4);
+          assertTrue(intArray.contains(5));
+          assertTrue(intArray.contains(6));
+          assertTrue(intArray.contains(7));
+          assertTrue(intArray.contains(8));
+          assertEquals(intMap.size(), 1);
+          assertEquals((int) intMap.get(new Utf8("b")), 2);
         } catch (Exception e) {
           throw new VeniceException(e);
         }
