@@ -154,21 +154,6 @@ public class VeniceServerGrpcRequestProcessorTest {
   }
 
   /**
-   * Create a CountByValueRequest with custom keys.
-   */
-  private CountByValueRequest createRequestWithKeys(String... keys) {
-    CountByValueRequest.Builder builder = CountByValueRequest.newBuilder()
-        .setResourceName(DEFAULT_RESOURCE_NAME)
-        .addFieldNames(DEFAULT_FIELD_NAME)
-        .setTopK(DEFAULT_TOP_K);
-
-    for (String key: keys) {
-      builder.addKeys(ByteString.copyFrom(key.getBytes()));
-    }
-    return builder.build();
-  }
-
-  /**
    * Create a CountByValueRequest with no field names (for testing empty field validation).
    */
   private CountByValueRequest createRequestWithNoFields() {
