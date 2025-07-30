@@ -9,7 +9,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
-import com.linkedin.venice.utils.RedundantExceptionFilter;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -20,8 +19,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class VeniceServerGrpcRequestProcessor {
   private static final Logger LOGGER = LogManager.getLogger(VeniceServerGrpcRequestProcessor.class);
-  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private VeniceServerGrpcHandler head = null;
   private final StorageReadRequestHandler storageReadRequestHandler;
