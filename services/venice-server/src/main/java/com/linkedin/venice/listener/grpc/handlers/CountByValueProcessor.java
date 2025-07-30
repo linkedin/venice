@@ -152,9 +152,8 @@ public class CountByValueProcessor {
       VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy);
 
       // Get deserializer cache for this store - use Object type to handle both GenericRecord and String values
-      AvroStoreDeserializerCache<Object> deserializerCache =
-          (AvroStoreDeserializerCache<Object>) storeDeserializerCacheMap
-              .computeIfAbsent(storeName, k -> new AvroStoreDeserializerCache<>(schemaRepository, storeName, true));
+      AvroStoreDeserializerCache<Object> deserializerCache = storeDeserializerCacheMap
+          .computeIfAbsent(storeName, k -> new AvroStoreDeserializerCache<>(schemaRepository, storeName, true));
 
       return processKeys(
           request,
@@ -174,7 +173,6 @@ public class CountByValueProcessor {
           .build();
     } catch (Exception e) {
       LOGGER.error("Error in processCountByValue for store: " + request.getResourceName(), e);
-      e.printStackTrace(); // Add stack trace for debugging
       return CountByValueResponse.newBuilder()
           .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
           .setErrorMessage("Internal error: " + e.getMessage())
@@ -334,8 +332,6 @@ public class CountByValueProcessor {
     String valueStr;
     if (deserializedValue instanceof Utf8) {
       valueStr = ((Utf8) deserializedValue).toString();
-    } else if (deserializedValue instanceof String) {
-      valueStr = (String) deserializedValue;
     } else {
       valueStr = deserializedValue.toString();
     }

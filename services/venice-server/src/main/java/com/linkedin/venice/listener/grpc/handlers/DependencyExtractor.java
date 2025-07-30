@@ -2,6 +2,8 @@ package com.linkedin.venice.listener.grpc.handlers;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.lang.reflect.Field;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -10,15 +12,19 @@ import org.apache.logging.log4j.Logger;
  * Utility class for extracting dependencies from objects using reflection.
  * This class provides both strict and fallback approaches for dependency extraction.
  */
-public class DependencyExtractor {
+final class DependencyExtractor {
   private static final Logger LOGGER = LogManager.getLogger(DependencyExtractor.class);
+
+  private DependencyExtractor() {
+    // Utility class, prevent instantiation
+  }
 
   /**
    * Safely extract a field from an object using reflection.
    * Returns null if extraction fails to avoid breaking basic functionality.
    */
   @SuppressWarnings("unchecked")
-  public static <T> T extractDependency(Object source, String fieldName, Class<T> expectedType) {
+  static <T> T extractDependency(Object source, String fieldName, Class<T> expectedType) {
     try {
       // Check if this is a mock object - if so, return null to allow testing
       if (source.getClass().getName().contains("Mockito")) {
@@ -27,7 +33,7 @@ public class DependencyExtractor {
       }
 
       Field field = source.getClass().getDeclaredField(fieldName);
-      field.setAccessible(true);
+      makeAccessible(field);
       Object value = field.get(source);
       if (value == null) {
         throw new VeniceException("Required field '" + fieldName + "' is null in " + source.getClass().getSimpleName());
@@ -48,7 +54,7 @@ public class DependencyExtractor {
    * Tries multiple approaches to extract the field and provides detailed logging.
    */
   @SuppressWarnings("unchecked")
-  public static <T> T extractDependencyWithFallback(Object source, String fieldName, Class<T> expectedType) {
+  static <T> T extractDependencyWithFallback(Object source, String fieldName, Class<T> expectedType) {
     if (source == null) {
       LOGGER.warn("Cannot extract field '{}' from null source object", fieldName);
       return null;
@@ -70,7 +76,7 @@ public class DependencyExtractor {
     try {
       // First try: direct field access
       Field field = source.getClass().getDeclaredField(fieldName);
-      field.setAccessible(true);
+      makeAccessible(field);
       Object value = field.get(source);
 
       if (value == null) {
@@ -98,7 +104,7 @@ public class DependencyExtractor {
       while (currentClass != null) {
         try {
           Field field = currentClass.getDeclaredField(fieldName);
-          field.setAccessible(true);
+          makeAccessible(field);
           Object value = field.get(source);
 
           if (value != null && expectedType.isInstance(value)) {
@@ -131,5 +137,12 @@ public class DependencyExtractor {
           e.getMessage());
       return null;
     }
+  }
+
+  private static void makeAccessible(final Field field) {
+    AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
+      field.setAccessible(true);
+      return null;
+    });
   }
 }
