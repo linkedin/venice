@@ -484,6 +484,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         multiClusterConfigs,
         metricsRepository,
         false,
+        d2Client,
         Collections.singletonMap(multiClusterConfigs.getRegionName(), d2Client),
         Optional.empty(),
         Optional.empty(),
@@ -499,6 +500,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
       boolean sslEnabled,
+      D2Client d2Client,
       Map<String, D2Client> d2Clients,
       Optional<SSLConfig> sslConfig,
       Optional<DynamicAccessController> accessController,
@@ -507,8 +509,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PubSubClientsFactory pubSubClientsFactory,
       PubSubPositionTypeRegistry pubSubPositionTypeRegistry,
       List<ClusterLeaderInitializationRoutine> additionalInitRoutines) {
-    Validate.notNull(d2Clients);
-    Validate.notEmpty(d2Clients);
+    Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
     this.logContext = multiClusterConfigs.getLogContext();
     VeniceControllerClusterConfig commonConfig = multiClusterConfigs.getCommonConfig();
@@ -526,13 +527,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
 
-    LOGGER.info(
-        "D2 client map: {}, getRegionName: {}, {}",
-        d2Clients,
-        multiClusterConfigs.getParentFabrics(),
-        getRegionName());
-    this.d2Client = d2Clients.get(getRegionName());
-    Validate.notNull(this.d2Client);
+    this.d2Client = d2Client;
     this.d2Clients = d2Clients;
     this.pubSubTopicRepository = pubSubTopicRepository;
     this.sslEnabled = sslEnabled;

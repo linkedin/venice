@@ -1,0 +1,45 @@
+{
+  "type": "record",
+  "namespace": "com.linkedin.avro",
+  "name": "TestRecord",
+  "fields": [
+    {
+      "name": "StringListField",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "default": []
+    },
+    {
+      "name": "NullableStringListField",
+      "type": [
+        "null",
+        {
+          "type": "array",
+          "items": "string"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "IntMapField",
+      "type": {
+        "type": "map",
+        "values": "int"
+      },
+      "default": {}
+    },
+    {
+      "name": "NullableIntMapField",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "int"
+        }
+      ],
+      "default": null
+    }
+  ]
+}

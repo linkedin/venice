@@ -1,6 +1,5 @@
-package com.linkedin.davinci.schema;
+package com.linkedin.venice.schema;
 
-import static com.linkedin.venice.schema.Utils.loadSchemaFileAsString;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
@@ -19,8 +18,9 @@ import static org.apache.avro.Schema.Type.NULL;
 import static org.apache.avro.Schema.Type.UNION;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.davinci.schema.SchemaUtils;
 import com.linkedin.davinci.serializer.avro.MapOrderPreservingSerDeFactory;
-import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -28,14 +28,18 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -48,8 +52,8 @@ public class TestSchemaUtils {
   private static final String NULLABLE_LIST_FIELD_NAME = "NullableStringListField";
   private static final String NULLABLE_MAP_FIELD_NAME = "NullableIntMapField";
 
-  @Test
-  public void testAnnotateValueSchema() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testAnnotateValueSchema(boolean useStrictValidation) {
     GenericRecord valueRecord = new GenericData.Record(VALUE_SCHEMA);
     valueRecord.put(LIST_FIELD_NAME, Collections.singletonList("key1"));
     Map<String, Integer> integerMap = new HashMap<>();
@@ -57,17 +61,17 @@ public class TestSchemaUtils {
     valueRecord.put(MAP_FIELD_NAME, integerMap);
 
     byte[] serializedBytes = getSerializer(VALUE_SCHEMA).serialize(valueRecord);
-    Schema annotatedValueSchema = SchemaUtils.annotateValueSchema(VALUE_SCHEMA);
+    Schema annotatedValueSchema = SchemaUtils.annotateValueSchema(VALUE_SCHEMA, useStrictValidation);
     GenericRecord deserializedValueRecord =
         getDeserializer(annotatedValueSchema, annotatedValueSchema).deserialize(serializedBytes);
     Assert.assertEquals(((List<String>) deserializedValueRecord.get(LIST_FIELD_NAME)).get(0), "key1");
     Assert.assertEquals(((Map<String, Integer>) deserializedValueRecord.get(MAP_FIELD_NAME)).get("key1"), (Integer) 1);
   }
 
-  @Test
-  public void testAnnotateUpdateSchema() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testAnnotateUpdateSchema(boolean useStrictValidation) {
     Schema updateSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
-    Schema annotatedUpdateSchema = SchemaUtils.annotateUpdateSchema(updateSchema);
+    Schema annotatedUpdateSchema = SchemaUtils.annotateUpdateSchema(updateSchema, useStrictValidation);
 
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
     GenericRecord updateRecord =
@@ -97,10 +101,10 @@ public class TestSchemaUtils {
     Assert.assertEquals(deserializedValueRecord.get(MAP_FIELD_NAME), Collections.singletonMap("key2", 1));
   }
 
-  @Test
-  public void testAnnotateRmdSchema() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testAnnotateRmdSchema(boolean useStrictValidation) {
     Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(VALUE_SCHEMA);
-    Schema annotatedRmdSchema = SchemaUtils.annotateRmdSchema(rmdSchema);
+    Schema annotatedRmdSchema = SchemaUtils.annotateRmdSchema(rmdSchema, useStrictValidation);
     GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
     Schema tsSchema = rmdSchema.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
     Schema listFieldTsSchema = tsSchema.getField(LIST_FIELD_NAME).schema();
@@ -203,5 +207,15 @@ public class TestSchemaUtils {
 
   protected RecordDeserializer<GenericRecord> getDeserializer(Schema writerSchema, Schema readerSchema) {
     return MapOrderPreservingSerDeFactory.getAvroGenericDeserializer(writerSchema, readerSchema);
+  }
+
+  private static String loadSchemaFileAsString(String filePath) {
+    try {
+      return IOUtils.toString(
+          Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(filePath)),
+          StandardCharsets.UTF_8);
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
   }
 }

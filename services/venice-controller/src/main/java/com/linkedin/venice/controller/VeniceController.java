@@ -530,6 +530,7 @@ public class VeniceController {
         new VeniceControllerContext.Builder().setPropertiesList(Collections.singletonList(controllerProps))
             .setServiceDiscoveryAnnouncers(new ArrayList<>())
             .setD2Clients(d2Clients)
+            .setD2Client(d2Client)
             .build());
     controller.start();
     addShutdownHook(controller, zkAddress);
