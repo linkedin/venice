@@ -45,6 +45,12 @@ final class EarliestPosition implements PubSubPosition {
   }
 
   @Override
+  public boolean isSymbolic() {
+    // EarliestPosition is a symbolic position
+    return true;
+  }
+
+  @Override
   public String toString() {
     return NAME;
   }
