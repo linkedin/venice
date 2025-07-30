@@ -30,10 +30,14 @@ public interface WriteComputeHandler {
    * (2) If both field operation are set field, the latter one will win.
    * (2) For collection field:
    * -- If 2nd update is a set field, it will override the previous one;
-   * -- If the first one is set field and the 2nd one is collection merge, they will merge into a collection merge.
-   * -- If both are collection merge, they will also merge into a collection merge. Note that if an element is removed
-   * in the first update and added in the latter update, it will still present in the merged collection merge operation.
-   *
+   * -- If the first one is set field and the 2nd one is collection merge, they will merge into a set field. This is to
+   * make sure the first set field semantic get applied correctly and fully override previous value.
+   * -- If both are collection merge, they will also merge into a collection merge. Note that:
+   *    (1) If an element is removed in the first update and added in the latter update, it will still present in the
+   *    merged collection merge operation. This API for now does not perform de-dupe if an element present in both union
+   *    and diff operation. Venice Server will be able to handle this correctly regardless.
+   *    (2) The expected priority for the two collection merge operation is: (a) current update's union op (b) current
+   *    update's diff op (c) next update's union op (d) next update's diff op.
    * Also, note that this API may modify the content of input update records.
    * @param currUpdateRecord Current update record. If existing update record is null, return the next update record.
    * @param newUpdateRecord Next update record.
