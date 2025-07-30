@@ -2918,16 +2918,23 @@ public class AdminTool {
   private static void getDeadStores(CommandLine cmd) {
     String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
     Optional<String> storeName = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE));
-    boolean includeSystemStores = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES));
+    String includeSystemStoresStr = getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES);
     String lookBackMSStr = getOptionalArgument(cmd, Arg.LOOK_BACK_MS);
 
-    MultiStoreInfoResponse response;
-    if (lookBackMSStr != null && !lookBackMSStr.isEmpty()) {
-      long lookBackMS = Long.parseLong(lookBackMSStr);
-      response = controllerClient.getDeadStores(clusterName, includeSystemStores, storeName, lookBackMS);
-    } else {
-      response = controllerClient.getDeadStores(clusterName, includeSystemStores, storeName);
+    // Build parameters map for clean, extensible API
+    Map<String, String> params = new HashMap<>();
+
+    // Include system stores parameter (default: false if not specified)
+    if (includeSystemStoresStr != null && !includeSystemStoresStr.isEmpty()) {
+      params.put("includeSystemStores", includeSystemStoresStr);
     }
+
+    // Look back MS parameter
+    if (lookBackMSStr != null && !lookBackMSStr.isEmpty()) {
+      params.put("lookBackMS", lookBackMSStr);
+    }
+
+    MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, storeName, params);
     printObject(response);
   }
 

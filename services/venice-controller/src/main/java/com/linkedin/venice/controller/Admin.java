@@ -972,15 +972,12 @@ public interface Admin extends AutoCloseable, Closeable {
   /**
    * @return list of stores infos that are considered dead. A store is considered dead if it exists but has no
    * user traffic in it's read or write path.
+   * @param params Parameters for dead store detection including:
+   *               - "includeSystemStores": boolean (default: false)
+   *               - "lookBackMS": long (optional)
+   *               - Future extension points
    */
-  List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores);
-
-  /**
-   * @return list of stores infos that are considered dead. A store is considered dead if it exists but has no
-   * user traffic in it's read or write path.
-   * @param lookBackMS Look back time in milliseconds for dead store detection
-   */
-  List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores, long lookBackMS);
+  List<StoreInfo> getDeadStores(String clusterName, String storeName, Map<String, String> params);
 
   Map<String, RegionPushDetails> listStorePushInfo(
       String clusterName,

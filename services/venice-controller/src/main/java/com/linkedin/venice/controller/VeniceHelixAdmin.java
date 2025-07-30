@@ -8504,14 +8504,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getDeadStores(String, String, boolean)
+   * @see Admin#getDeadStores(String, String, Map)
    */
   @Override
-  public List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores) {
+  public List<StoreInfo> getDeadStores(String clusterName, String storeName, Map<String, String> params) {
     checkControllerLeadershipFor(clusterName);
     if (!multiClusterConfigs.getControllerConfig(clusterName).isDeadStoreEndpointEnabled()) {
       throw new VeniceUnsupportedOperationException("Dead store stats is not enabled.");
     }
+
+    // Extract includeSystemStores from params (default: false)
+    boolean includeSystemStores = Boolean.parseBoolean(params.getOrDefault("includeSystemStores", "false"));
 
     if (storeName == null) {
       List<StoreInfo> clusterStoreInfos = getAllStores(clusterName).stream()
@@ -8519,43 +8522,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .filter(store -> includeSystemStores || !store.isSystemStore())
           .map(StoreInfo::fromStore)
           .collect(Collectors.toList());
-      return deadStoreStatsMap.get(clusterName).getDeadStores(clusterStoreInfos);
+      return deadStoreStatsMap.get(clusterName).getDeadStores(clusterStoreInfos, params);
     } else {
       StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
       if (store == null) {
         throw new VeniceNoStoreException(storeName, clusterName);
       }
-      return deadStoreStatsMap.get(clusterName).getDeadStores(Collections.singletonList(store));
-    }
-  }
-
-  /**
-   * @see Admin#getDeadStores(String, String, boolean, long)
-   */
-  @Override
-  public List<StoreInfo> getDeadStores(
-      String clusterName,
-      String storeName,
-      boolean includeSystemStores,
-      long lookBackMS) {
-    checkControllerLeadershipFor(clusterName);
-    if (!multiClusterConfigs.getControllerConfig(clusterName).isDeadStoreEndpointEnabled()) {
-      throw new VeniceUnsupportedOperationException("Dead store stats is not enabled.");
-    }
-
-    if (storeName == null) {
-      List<StoreInfo> clusterStoreInfos = getAllStores(clusterName).stream()
-          .filter(Objects::nonNull)
-          .filter(store -> includeSystemStores || !store.isSystemStore())
-          .map(StoreInfo::fromStore)
-          .collect(Collectors.toList());
-      return deadStoreStatsMap.get(clusterName).getDeadStores(clusterStoreInfos, lookBackMS);
-    } else {
-      StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
-      if (store == null) {
-        throw new VeniceNoStoreException(storeName, clusterName);
-      }
-      return deadStoreStatsMap.get(clusterName).getDeadStores(Collections.singletonList(store), lookBackMS);
+      return deadStoreStatsMap.get(clusterName).getDeadStores(Collections.singletonList(store), params);
     }
   }
 

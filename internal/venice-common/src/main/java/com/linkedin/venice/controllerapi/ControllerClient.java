@@ -105,6 +105,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -1254,23 +1255,27 @@ public class ControllerClient implements Closeable {
 
   public MultiStoreInfoResponse getDeadStores(
       String clusterName,
-      boolean includeSystemStores,
-      Optional<String> storeName) {
-    QueryParams params = newParams().add(CLUSTER, clusterName).add(INCLUDE_SYSTEM_STORES, includeSystemStores);
-    storeName.ifPresent(s -> params.add(NAME, s));
-    return request(ControllerRoute.GET_DEAD_STORES, params, MultiStoreInfoResponse.class);
-  }
-
-  public MultiStoreInfoResponse getDeadStores(
-      String clusterName,
-      boolean includeSystemStores,
       Optional<String> storeName,
-      long lookBackMS) {
-    QueryParams params = newParams().add(CLUSTER, clusterName)
-        .add(INCLUDE_SYSTEM_STORES, includeSystemStores)
-        .add(LOOK_BACK_MS, lookBackMS);
-    storeName.ifPresent(s -> params.add(NAME, s));
-    return request(ControllerRoute.GET_DEAD_STORES, params, MultiStoreInfoResponse.class);
+      Map<String, String> params) {
+    QueryParams queryParams = newParams().add(CLUSTER, clusterName);
+
+    // Add storeName if present
+    storeName.ifPresent(s -> queryParams.add(NAME, s));
+
+    // Add all parameters from the map including includeSystemStores
+    for (Map.Entry<String, String> entry: params.entrySet()) {
+      String key = entry.getKey();
+      String value = entry.getValue();
+
+      // Map our internal param names to the API constants
+      if ("includeSystemStores".equals(key)) {
+        queryParams.add(INCLUDE_SYSTEM_STORES, value);
+      } else if ("lookBackMS".equals(key)) {
+        queryParams.add(LOOK_BACK_MS, value);
+      }
+    }
+
+    return request(ControllerRoute.GET_DEAD_STORES, queryParams, MultiStoreInfoResponse.class);
   }
 
   public VersionResponse getStoreLargestUsedVersion(String clusterName, String storeName) {
