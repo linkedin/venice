@@ -50,6 +50,13 @@ public class VeniceServerGrpcRequestProcessorTest {
   private VeniceCompressor mockCompressor;
   private VeniceServerGrpcRequestProcessor processor;
 
+  // Test constants
+  private static final String DEFAULT_STORE_NAME = "test_store";
+  private static final String DEFAULT_RESOURCE_NAME = "test_store_v1";
+  private static final String DEFAULT_FIELD_NAME = "category";
+  private static final int DEFAULT_TOP_K = 5;
+  private static final String DEFAULT_KEY = "key1";
+
   @BeforeMethod
   public void setUp() throws Exception {
     // Create mocks
@@ -105,15 +112,88 @@ public class VeniceServerGrpcRequestProcessorTest {
         mockCompressorFactory);
   }
 
+  /**
+   * Create a basic CountByValueRequest builder with default values.
+   * Tests can customize specific fields as needed.
+   */
+  private CountByValueRequest.Builder createDefaultRequestBuilder() {
+    return CountByValueRequest.newBuilder()
+        .setResourceName(DEFAULT_RESOURCE_NAME)
+        .addFieldNames(DEFAULT_FIELD_NAME)
+        .setTopK(DEFAULT_TOP_K)
+        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()));
+  }
+
+  /**
+   * Create a CountByValueRequest with custom resource name.
+   */
+  private CountByValueRequest createRequestWithResourceName(String resourceName) {
+    return createDefaultRequestBuilder().setResourceName(resourceName).build();
+  }
+
+  /**
+   * Create a CountByValueRequest with custom field names.
+   */
+  private CountByValueRequest createRequestWithFieldNames(String... fieldNames) {
+    CountByValueRequest.Builder builder = CountByValueRequest.newBuilder()
+        .setResourceName(DEFAULT_RESOURCE_NAME)
+        .setTopK(DEFAULT_TOP_K)
+        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()));
+
+    for (String fieldName: fieldNames) {
+      builder.addFieldNames(fieldName);
+    }
+    return builder.build();
+  }
+
+  /**
+   * Create a CountByValueRequest with custom topK value.
+   */
+  private CountByValueRequest createRequestWithTopK(int topK) {
+    return createDefaultRequestBuilder().setTopK(topK).build();
+  }
+
+  /**
+   * Create a CountByValueRequest with custom keys.
+   */
+  private CountByValueRequest createRequestWithKeys(String... keys) {
+    CountByValueRequest.Builder builder = CountByValueRequest.newBuilder()
+        .setResourceName(DEFAULT_RESOURCE_NAME)
+        .addFieldNames(DEFAULT_FIELD_NAME)
+        .setTopK(DEFAULT_TOP_K);
+
+    for (String key: keys) {
+      builder.addKeys(ByteString.copyFrom(key.getBytes()));
+    }
+    return builder.build();
+  }
+
+  /**
+   * Create a CountByValueRequest with no field names (for testing empty field validation).
+   */
+  private CountByValueRequest createRequestWithNoFields() {
+    return CountByValueRequest.newBuilder()
+        .setResourceName(DEFAULT_RESOURCE_NAME)
+        .setTopK(DEFAULT_TOP_K)
+        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()))
+        .build();
+  }
+
+  /**
+   * Create a CountByValueRequest with no keys (for testing empty keys).
+   */
+  private CountByValueRequest createRequestWithNoKeys() {
+    return CountByValueRequest.newBuilder()
+        .setResourceName(DEFAULT_RESOURCE_NAME)
+        .addFieldNames(DEFAULT_FIELD_NAME)
+        .setTopK(DEFAULT_TOP_K)
+        .build();
+  }
+
   @Test
   public void testSuccessfulCountByValue() throws Exception {
     // Simple test - just verify it doesn't crash
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
+    CountByValueRequest request = createDefaultRequestBuilder().build();
 
     CountByValueResponse response = processor.processCountByValue(request);
     assertNotNull(response);
@@ -122,11 +202,7 @@ public class VeniceServerGrpcRequestProcessorTest {
 
   @Test
   public void testEmptyFieldNames() {
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
+    CountByValueRequest request = createRequestWithNoFields();
 
     CountByValueResponse response = processor.processCountByValue(request);
 
@@ -138,12 +214,7 @@ public class VeniceServerGrpcRequestProcessorTest {
   public void testInvalidTopK() {
     // Note: Server no longer validates TopK since client handles TopK filtering
     // This test is kept for backward compatibility but server accepts any TopK value
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(0)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
+    CountByValueRequest request = createRequestWithTopK(0);
 
     CountByValueResponse response = processor.processCountByValue(request);
     // Server no longer validates TopK - it returns all counts and client does TopK filtering
@@ -152,12 +223,7 @@ public class VeniceServerGrpcRequestProcessorTest {
 
   @Test
   public void testInvalidResourceName() {
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("invalid_format")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
+    CountByValueRequest request = createRequestWithResourceName("invalid_format");
 
     CountByValueResponse response = processor.processCountByValue(request);
 
@@ -170,12 +236,7 @@ public class VeniceServerGrpcRequestProcessorTest {
     when(mockStoreRepository.getStoreOrThrow("nonexistent_store"))
         .thenThrow(new VeniceNoStoreException("nonexistent_store"));
 
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("nonexistent_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
+    CountByValueRequest request = createRequestWithResourceName("nonexistent_store_v1");
 
     CountByValueResponse response = processor.processCountByValue(request);
 
@@ -185,12 +246,7 @@ public class VeniceServerGrpcRequestProcessorTest {
 
   @Test
   public void testFieldNotFound() {
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("nonexistent_field")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
+    CountByValueRequest request = createRequestWithFieldNames("nonexistent_field");
 
     CountByValueResponse response = processor.processCountByValue(request);
 
@@ -202,12 +258,7 @@ public class VeniceServerGrpcRequestProcessorTest {
   public void testStorageEngineNotFound() {
     when(mockStorageEngineRepository.getLocalStorageEngine("test_store_v1")).thenReturn(null);
 
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
+    CountByValueRequest request = createDefaultRequestBuilder().build();
 
     CountByValueResponse response = processor.processCountByValue(request);
 
@@ -217,10 +268,8 @@ public class VeniceServerGrpcRequestProcessorTest {
 
   @Test
   public void testMultipleKeys() {
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(3)
+    CountByValueRequest request = createDefaultRequestBuilder().setTopK(3)
+        .clearKeys()
         .addKeys(ByteString.copyFrom("key1".getBytes()))
         .addKeys(ByteString.copyFrom("key2".getBytes()))
         .build();
@@ -232,12 +281,7 @@ public class VeniceServerGrpcRequestProcessorTest {
   @Test
   public void testServerReturnsAllCounts() {
     // Server no longer does TopK limiting - it returns all counts for client-side aggregation
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(2)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
+    CountByValueRequest request = createRequestWithTopK(2);
 
     CountByValueResponse response = processor.processCountByValue(request);
     assertNotNull(response);
@@ -248,9 +292,9 @@ public class VeniceServerGrpcRequestProcessorTest {
   public void testDefaultTopK() {
     // Server ignores TopK value since client handles TopK filtering
     CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setResourceName(DEFAULT_RESOURCE_NAME)
+        .addFieldNames(DEFAULT_FIELD_NAME)
+        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()))
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -259,8 +303,7 @@ public class VeniceServerGrpcRequestProcessorTest {
 
   @Test
   public void testEmptyKeysList() {
-    CountByValueRequest request =
-        CountByValueRequest.newBuilder().setResourceName("test_store_v1").addFieldNames("category").setTopK(5).build();
+    CountByValueRequest request = createRequestWithNoKeys();
 
     CountByValueResponse response = processor.processCountByValue(request);
     assertNotNull(response);
@@ -269,12 +312,7 @@ public class VeniceServerGrpcRequestProcessorTest {
 
   @Test
   public void testInvalidVersionNumber() {
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_vabc")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
+    CountByValueRequest request = createRequestWithResourceName("test_store_vabc");
 
     CountByValueResponse response = processor.processCountByValue(request);
 
@@ -574,12 +612,7 @@ public class VeniceServerGrpcRequestProcessorTest {
     Schema stringSchema = Schema.create(Schema.Type.STRING);
     when(mockSchemaEntry.getSchema()).thenReturn(stringSchema);
 
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("value")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
+    CountByValueRequest request = createRequestWithFieldNames("value");
 
     CountByValueResponse response = processor.processCountByValue(request);
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
