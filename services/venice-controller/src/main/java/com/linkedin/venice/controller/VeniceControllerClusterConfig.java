@@ -660,7 +660,7 @@ public class VeniceControllerClusterConfig {
       this.concurrentPushDetectionStrategy =
           ConcurrentPushDetectionStrategy.valueOf(props.getString(DEFAULT_CONCURRENT_PUSH_DETECTION_STRATEGY));
     } else {
-      this.concurrentPushDetectionStrategy = ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY;
+      this.concurrentPushDetectionStrategy = ConcurrentPushDetectionStrategy.DUAL;
     }
 
     if (props.containsKey(DEFAULT_READ_STRATEGY)) {

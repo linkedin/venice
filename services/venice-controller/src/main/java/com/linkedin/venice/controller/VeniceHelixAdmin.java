@@ -3000,7 +3000,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
             }
             long createBatchTopicStartTime = System.currentTimeMillis();
-            if (!isParent() && multiClusterConfigs.getConcurrentPushDetectionStrategy().isTopicWriteNeeded()) {
+            if (multiClusterConfigs.getConcurrentPushDetectionStrategy().isTopicWriteNeeded() || !isParent()) {
               topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
               createBatchTopics(
                   version,
