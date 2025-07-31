@@ -135,7 +135,7 @@ class TopicMetadataFetcher implements Closeable {
         15L,
         TimeUnit.MINUTES,
         new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory("TopicMetadataFetcherThreadPool"));
+        new DaemonThreadFactory("TopicMetadataFetcherThreadPool", topicManagerContext.getLogContext()));
     threadPoolExecutor.allowCoreThreadTimeOut(true);
 
     stats.registerTopicMetadataFetcherSensors(this);

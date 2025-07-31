@@ -90,7 +90,7 @@ public class LogCompactionService extends AbstractVeniceService {
 
     @Override
     public void run() {
-      LogContext.setStructuredLogContext(clusterConfigs.getLogContext());
+      LogContext.setLogContext(clusterConfigs.getLogContext());
       try {
         LOGGER.info(
             "Scheduled log compaction cycle started for cluster: {} at time: {}",

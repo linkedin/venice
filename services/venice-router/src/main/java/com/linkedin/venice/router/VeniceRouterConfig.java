@@ -103,12 +103,14 @@ import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST
 import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.LEAST_LOADED;
 
 import com.linkedin.alpini.netty4.handlers.ConnectionHandleMode;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.NameRepository;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -228,6 +230,7 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int retryManagerCorePoolSize;
   private final int nameRepoMaxEntryCount;
   private final int aclInMemoryCacheTTLMs;
+  private final LogContext logContext;
 
   // MUTABLE CONFIGS
 
@@ -240,6 +243,10 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       clusterName = props.getString(CLUSTER_NAME);
       port = props.getInt(LISTENER_PORT);
       hostname = props.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
+      logContext = new LogContext.Builder().setComponentName(VeniceComponent.ROUTER.name())
+          .setRegionName(regionName)
+          .setInstanceName(Utils.getHelixNodeIdentifier(hostname, port))
+          .build();
       sslPort = props.getInt(LISTENER_SSL_PORT);
       zkConnection = props.getString(ZOOKEEPER_ADDRESS);
       kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
@@ -898,5 +905,9 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public String getRegionName() {
     return regionName;
+  }
+
+  public LogContext getLogContext() {
+    return logContext;
   }
 }
