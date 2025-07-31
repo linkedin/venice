@@ -153,7 +153,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         null,
         null,
-        null);
+        null,
+        Optional.empty());
   }
 
   abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();
