@@ -46,7 +46,7 @@ public class UnusedValueSchemaCleanupService extends AbstractVeniceService {
 
   private Runnable getRunnableForSchemaCleanup() {
     return () -> {
-      LogContext.setStructuredLogContext(multiClusterConfig.getLogContext());
+      LogContext.setLogContext(multiClusterConfig.getLogContext());
       if (stop) {
         return;
       }

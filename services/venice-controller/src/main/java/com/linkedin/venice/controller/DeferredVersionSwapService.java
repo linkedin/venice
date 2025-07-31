@@ -592,7 +592,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
 
   private Runnable getRunnableForDeferredVersionSwap() {
     return () -> {
-      LogContext.setStructuredLogContext(veniceControllerMultiClusterConfig.getLogContext());
+      LogContext.setLogContext(veniceControllerMultiClusterConfig.getLogContext());
       if (stop.get()) {
         return;
       }

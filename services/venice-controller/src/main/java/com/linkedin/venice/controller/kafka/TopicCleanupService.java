@@ -184,7 +184,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   private class TopicCleanupTask implements Runnable {
     @Override
     public void run() {
-      LogContext.setStructuredLogContext(multiClusterConfigs.getLogContext());
+      LogContext.setLogContext(multiClusterConfigs.getLogContext());
       while (!stop.get()) {
         try {
           Thread.sleep(sleepIntervalBetweenTopicListFetchMs);

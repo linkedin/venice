@@ -38,17 +38,7 @@ public class LogContext {
     }
   }
 
-  /**
-   * Updates the ThreadContext (MDC) with a logging context derived from the given region name.
-   * If the region name is blank or null, no update is performed.
-   *
-   * @param regionName The name of the region to include in the log context.
-   */
-  public static void setRegionLogContext(String regionName) {
-    putLogContextKeyValue(regionName);
-  }
-
-  public static void setStructuredLogContext(@Nullable LogContext logContext) {
+  public static void setLogContext(@Nullable LogContext logContext) {
     if (logContext != null) {
       putLogContextKeyValue(logContext.getValue());
     }

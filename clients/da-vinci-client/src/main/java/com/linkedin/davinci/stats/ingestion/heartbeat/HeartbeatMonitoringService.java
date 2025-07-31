@@ -63,6 +63,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   private final HeartbeatVersionedStats versionStatsReporter;
   private final HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats;
   private final Duration maxWaitForVersionInfo;
+  private final LogContext logContext;
 
   public HeartbeatMonitoringService(
       MetricsRepository metricsRepository,
@@ -70,6 +71,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       VeniceServerConfig serverConfig,
       HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats) {
     this.regionNames = serverConfig.getRegionNames();
+    this.logContext = serverConfig.getLogContext();
     this.localRegionName = serverConfig.getRegionName();
     this.maxWaitForVersionInfo = serverConfig.getServerMaxWaitForVersionInfo();
     this.reportingThread = new HeartbeatReporterThread();
@@ -625,7 +627,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
     @Override
     public void run() {
-      LogContext.setRegionLogContext(localRegionName);
+      LogContext.setLogContext(logContext);
       while (!Thread.interrupted()) {
         try {
           heartbeatMonitoringServiceStats.recordLoggerHeartbeat();

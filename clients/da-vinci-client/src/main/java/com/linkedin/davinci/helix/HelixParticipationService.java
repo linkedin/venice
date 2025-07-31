@@ -149,7 +149,7 @@ public class HelixParticipationService extends AbstractVeniceService
         300L,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory(threadName, veniceConfigLoader.getVeniceServerConfig().getRegionName()));
+        new DaemonThreadFactory(threadName, veniceConfigLoader.getVeniceServerConfig().getLogContext()));
     helixStateTransitionThreadPool.allowCoreThreadTimeOut(true);
 
     return helixStateTransitionThreadPool;
@@ -368,7 +368,7 @@ public class HelixParticipationService extends AbstractVeniceService
         clusterName,
         zkClient,
         new HelixAdapterSerializer(),
-        veniceServerConfig.getRegionName(),
+        veniceServerConfig.getLogContext(),
         veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect());
 
     /**

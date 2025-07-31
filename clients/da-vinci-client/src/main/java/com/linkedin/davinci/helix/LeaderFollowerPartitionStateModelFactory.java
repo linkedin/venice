@@ -54,7 +54,7 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
     VeniceStoreVersionConfig storeVersionConfig =
         getConfigService().getStoreConfig(HelixUtils.getResourceName(partitionName));
     int partitionId = HelixUtils.getPartitionId(partitionName);
-    LogContext.setStructuredLogContext(storeVersionConfig.getLogContext());
+    LogContext.setLogContext(storeVersionConfig.getLogContext());
     logger.info(
         "Creating LeaderFollowerParticipantModel handler for partition: {}",
         Utils.getReplicaId(resourceName, partitionId));

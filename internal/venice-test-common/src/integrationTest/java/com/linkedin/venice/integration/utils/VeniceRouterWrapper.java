@@ -40,6 +40,7 @@ import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MetricsAware;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -267,8 +268,12 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   }
 
   @Override
-  public String getComponentTagForLogging() {
-    return new StringBuilder(getComponentTagPrefix(regionName)).append(super.getComponentTagForLogging()).toString();
+  public LogContext getComponentTagForLogging() {
+    return LogContext.newBuilder()
+        .setRegionName(regionName)
+        .setComponentName(getServiceName())
+        .setInstanceName(Utils.getHelixNodeIdentifier(getHost(), getPort()))
+        .build();
   }
 
   public HelixBaseRoutingRepository getRoutingDataRepository() {

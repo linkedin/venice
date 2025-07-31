@@ -55,6 +55,7 @@ import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
@@ -68,6 +69,7 @@ import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -533,7 +535,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   }
 
   @Override
-  public String getComponentTagForLogging() {
-    return getComponentTagPrefix(regionName) + super.getComponentTagForLogging();
+  public LogContext getComponentTagForLogging() {
+    return LogContext.newBuilder()
+        .setComponentName(VeniceComponent.CONTROLLER.name())
+        .setRegionName(regionName)
+        .setInstanceName(Utils.getHelixNodeIdentifier(getHost(), getPort()))
+        .build();
   }
 }
