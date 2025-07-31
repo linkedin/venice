@@ -19,18 +19,14 @@ import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class UpdateBuilderImplTest {
-  private static final Logger LOGGER = LogManager.getLogger(UpdateBuilderImplTest.class);
-  private static final Schema VALUE_SCHEMA =
-      AvroCompatibilityHelper.parse(TestUtils.loadFileAsString("TestWriteComputeBuilder.avsc"));
+  private static final Schema VALUE_SCHEMA = AvroCompatibilityHelper.parse(TestUtils.loadFileAsString("PersonV1.avsc"));
   private static final Schema EVOLVED_VALUE_SCHEMA =
-      AvroCompatibilityHelper.parse(TestUtils.loadFileAsString("TestEvolvedWriteComputeBuilder.avsc"));
+      AvroCompatibilityHelper.parse(TestUtils.loadFileAsString("PersonV2.avsc"));
   private static final Schema UPDATE_SCHEMA =
       WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
   private static final Schema EVOLVED_UPDATE_SCHEMA =

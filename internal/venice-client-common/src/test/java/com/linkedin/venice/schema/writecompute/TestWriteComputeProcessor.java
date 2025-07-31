@@ -7,6 +7,8 @@ import static com.linkedin.venice.schema.writecompute.WriteComputeConstants.SET_
 import static org.apache.avro.Schema.Type.INT;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -14,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -29,9 +33,210 @@ public class TestWriteComputeProcessor {
       + "    \"type\" : \"boolean\",\n" + "    \"default\" : false\n" + "  } ]\n" + "}";
 
   private final WriteComputeSchemaConverter writeComputeSchemaConverter = WriteComputeSchemaConverter.getInstance();
+  private static final Schema VALUE_SCHEMA =
+      AvroCompatibilityHelper.parse(TestUtils.loadFileAsString("MergeUpdateV1.avsc"));
+  private static final Schema UPDATE_SCHEMA =
+      WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
 
   protected WriteComputeHandlerV1 getWriteComputeHandler() {
     return new WriteComputeHandlerV1();
+  }
+
+  @Test
+  public void testMergeTwoMapUpdate() {
+    WriteComputeHandlerV1 updateHandler = new WriteComputeHandlerV1();
+    GenericRecord updateV1;
+    GenericRecord updateV2;
+    GenericRecord resultUpdate;
+    Map<String, Integer> mapUnion;
+    List<String> mapDiff;
+
+    // Case 1: partial update -> collection merge
+    Map<String, Integer> map = new HashMap<>();
+    map.put("a", 1);
+    map.put("b", 1);
+    map.put("c", 1);
+    updateV1 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "abc")
+        .setNewFieldValue("IntMapField", map)
+        .setNewFieldValue("NullableIntMapField", null)
+        .build();
+    Map<String, Integer> map2 = new HashMap<>();
+    map2.put("a", 2);
+    map2.put("d", 1);
+    updateV2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "def")
+        .setEntriesToAddToMapField("IntMapField", map2)
+        .setKeysToRemoveFromMapField("IntMapField", Collections.singletonList("c"))
+        .setEntriesToAddToMapField("NullableIntMapField", map2)
+        .setKeysToRemoveFromMapField("NullableIntMapField", Collections.singletonList("c"))
+        .build();
+    resultUpdate = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, updateV1, updateV2);
+    Assert.assertTrue(resultUpdate.get("IntMapField") instanceof Map);
+    Map<String, Integer> updatedMap = (Map<String, Integer>) resultUpdate.get("IntMapField");
+    Assert.assertEquals(updatedMap.size(), 3);
+    Assert.assertEquals((int) updatedMap.get("a"), 2);
+    Assert.assertEquals((int) updatedMap.get("b"), 1);
+    Assert.assertEquals((int) updatedMap.get("d"), 1);
+    updatedMap = (Map<String, Integer>) resultUpdate.get("NullableIntMapField");
+    Assert.assertEquals(updatedMap.size(), 2);
+    Assert.assertEquals((int) updatedMap.get("a"), 2);
+    Assert.assertEquals((int) updatedMap.get("d"), 1);
+
+    // Case 2: collection merge -> partial update
+    map = new HashMap<>();
+    map.put("a", 1);
+    map.put("b", 1);
+    map.put("d", 1);
+    map2 = new HashMap<>();
+    map2.put("a", 2);
+    map2.put("c", 2);
+    updateV1 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "def")
+        .setEntriesToAddToMapField("IntMapField", map)
+        .setKeysToRemoveFromMapField("IntMapField", Collections.singletonList("c"))
+        .setEntriesToAddToMapField("NullableIntMapField", map)
+        .setKeysToRemoveFromMapField("NullableIntMapField", Collections.singletonList("c"))
+        .build();
+    updateV2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "abc")
+        .setNewFieldValue("IntMapField", map2)
+        .setNewFieldValue("NullableIntMapField", null)
+        .build();
+    resultUpdate = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, updateV1, updateV2);
+    Map<String, Integer> updatedField = (Map<String, Integer>) resultUpdate.get("IntMapField");
+    Assert.assertEquals(updatedField.size(), 2);
+    Assert.assertEquals((int) updatedField.get("a"), 2);
+    Assert.assertEquals((int) updatedField.get("c"), 2);
+    Assert.assertNull(resultUpdate.get("NullableIntMapField"));
+
+    // Case 3: two collection merge
+    map = new HashMap<>();
+    map.put("a", 1);
+    map.put("b", 1);
+    map.put("c", 1);
+
+    map2 = new HashMap<>();
+    map2.put("a", 2);
+    map2.put("d", 2);
+
+    updateV1 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "def")
+        .setEntriesToAddToMapField("IntMapField", map)
+        .setKeysToRemoveFromMapField("IntMapField", Collections.singletonList("d"))
+        .build();
+    updateV2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "abc")
+        .setEntriesToAddToMapField("IntMapField", map2)
+        .setKeysToRemoveFromMapField("IntMapField", Collections.singletonList("c"))
+        .build();
+    resultUpdate = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, updateV1, updateV2);
+    Assert.assertTrue(resultUpdate.get("IntMapField") instanceof IndexedRecord);
+    mapUnion = (Map<String, Integer>) ((GenericRecord) resultUpdate.get("IntMapField")).get(MAP_UNION);
+    mapDiff = (List<String>) ((GenericRecord) resultUpdate.get("IntMapField")).get(MAP_DIFF);
+    Assert.assertEquals(mapUnion.size(), 4);
+    Assert.assertEquals(mapDiff.size(), 1);
+    Assert.assertEquals((int) mapUnion.get("a"), 2);
+
+    // Case 4: one update is NoOp
+    updateV1 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "def")
+        .setEntriesToAddToMapField("IntMapField", Collections.singletonMap("a", 1))
+        .setKeysToRemoveFromMapField("IntMapField", Collections.singletonList("d"))
+        .build();
+    updateV2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "abc")
+        .setEntriesToAddToMapField("NullableIntMapField", Collections.singletonMap("a", 1))
+        .setKeysToRemoveFromMapField("NullableIntMapField", Collections.singletonList("d"))
+        .build();
+    resultUpdate = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, updateV1, updateV2);
+    Assert.assertTrue(resultUpdate.get("IntMapField") instanceof IndexedRecord);
+    mapUnion = (Map<String, Integer>) ((GenericRecord) resultUpdate.get("IntMapField")).get(MAP_UNION);
+    mapDiff = (List<String>) ((GenericRecord) resultUpdate.get("IntMapField")).get(MAP_DIFF);
+    Assert.assertEquals(mapUnion.size(), 1);
+    Assert.assertEquals(mapDiff.size(), 1);
+    Assert.assertTrue(resultUpdate.get("NullableIntMapField") instanceof IndexedRecord);
+    mapUnion = (Map<String, Integer>) ((GenericRecord) resultUpdate.get("NullableIntMapField")).get(MAP_UNION);
+    mapDiff = (List<String>) ((GenericRecord) resultUpdate.get("NullableIntMapField")).get(MAP_DIFF);
+    Assert.assertEquals(mapUnion.size(), 1);
+    Assert.assertEquals(mapDiff.size(), 1);
+  }
+
+  @Test
+  public void testMergeTwoListUpdate() {
+    WriteComputeHandlerV1 updateHandler = new WriteComputeHandlerV1();
+    GenericRecord updateV1;
+    GenericRecord updateV2;
+    GenericRecord resultUpdate;
+    List<String> unionList;
+    List<String> diffList;
+
+    // Case 1: partial update -> collection merge
+    updateV1 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "abc")
+        .setNewFieldValue("StringListField", Arrays.asList("abc", "def", "xyz"))
+        .setNewFieldValue("NullableStringListField", null)
+        .build();
+    updateV2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("name", "def")
+        .setElementsToAddToListField("StringListField", Arrays.asList("def", "ghi"))
+        .setElementsToRemoveFromListField("StringListField", Collections.singletonList("xyz"))
+        .setElementsToAddToListField("NullableStringListField", Arrays.asList("def", "ghi"))
+        .setElementsToRemoveFromListField("NullableStringListField", Collections.singletonList("xyz"))
+        .build();
+
+    resultUpdate = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, updateV1, updateV2);
+
+    Assert.assertTrue(resultUpdate.get("StringListField") instanceof List);
+    Assert.assertTrue(resultUpdate.get("NullableStringListField") instanceof List);
+
+    List<String> updatedList = (List<String>) resultUpdate.get("StringListField");
+    Assert.assertEquals(updatedList.size(), 3);
+    Assert.assertTrue(updatedList.contains("abc"));
+    Assert.assertTrue(updatedList.contains("def"));
+    Assert.assertTrue(updatedList.contains("ghi"));
+    updatedList = (List<String>) resultUpdate.get("NullableStringListField");
+    Assert.assertEquals(updatedList.size(), 2);
+    Assert.assertTrue(updatedList.contains("def"));
+    Assert.assertTrue(updatedList.contains("ghi"));
+
+    // Case 2: collection merge -> partial update
+    updateV1 = new UpdateBuilderImpl(UPDATE_SCHEMA)
+        .setElementsToAddToListField("NullableStringListField", Arrays.asList("def", "ghi"))
+        .setElementsToRemoveFromListField("NullableStringListField", Collections.singletonList("xyz"))
+        .build();
+    updateV2 = new UpdateBuilderImpl(UPDATE_SCHEMA).setNewFieldValue("NullableStringListField", null).build();
+    resultUpdate = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, updateV1, updateV2);
+    Assert.assertNull(resultUpdate.get("NullableStringListField"));
+    Assert.assertEquals(
+        WriteComputeOperation.getFieldOperationType(resultUpdate.get("StringListField")),
+        WriteComputeOperation.NO_OP_ON_FIELD);
+
+    // Case 3: two collection merge
+    updateV1 =
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setElementsToAddToListField("StringListField", Arrays.asList("a", "b"))
+            .setElementsToRemoveFromListField("StringListField", Collections.singletonList("c"))
+            .build();
+    updateV2 =
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setElementsToAddToListField("StringListField", Arrays.asList("d", "c"))
+            .setElementsToRemoveFromListField("StringListField", Collections.singletonList("b"))
+            .build();
+    resultUpdate = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, updateV1, updateV2);
+    Assert.assertTrue(resultUpdate.get("StringListField") instanceof IndexedRecord);
+    unionList = (List<String>) ((GenericRecord) resultUpdate.get("StringListField")).get(SET_UNION);
+    diffList = (List<String>) ((GenericRecord) resultUpdate.get("StringListField")).get(SET_DIFF);
+    Assert.assertEquals(unionList.size(), 4);
+    Assert.assertEquals(diffList.size(), 1);
+
+    // Case 4: one update is NoOp
+    updateV1 =
+        new UpdateBuilderImpl(UPDATE_SCHEMA).setElementsToAddToListField("StringListField", Arrays.asList("a", "b"))
+            .setElementsToRemoveFromListField("StringListField", Collections.singletonList("c"))
+            .build();
+    updateV2 = new UpdateBuilderImpl(UPDATE_SCHEMA)
+        .setElementsToAddToListField("NullableStringListField", Arrays.asList("d", "c"))
+        .setElementsToRemoveFromListField("NullableStringListField", Collections.singletonList("b"))
+        .build();
+    resultUpdate = updateHandler.mergeUpdateRecord(VALUE_SCHEMA, updateV1, updateV2);
+    Assert.assertTrue(resultUpdate.get("StringListField") instanceof IndexedRecord);
+    unionList = (List<String>) ((GenericRecord) resultUpdate.get("NullableStringListField")).get(SET_UNION);
+    diffList = (List<String>) ((GenericRecord) resultUpdate.get("NullableStringListField")).get(SET_DIFF);
+    Assert.assertEquals(unionList.size(), 2);
+    Assert.assertEquals(diffList.size(), 1);
+    unionList = (List<String>) ((GenericRecord) resultUpdate.get("StringListField")).get(SET_UNION);
+    diffList = (List<String>) ((GenericRecord) resultUpdate.get("StringListField")).get(SET_DIFF);
+    Assert.assertEquals(unionList.size(), 2);
+    Assert.assertEquals(diffList.size(), 1);
   }
 
   @Test
