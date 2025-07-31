@@ -135,7 +135,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     if (maxColoIdValue > -1) {
       highWaterMarkOffsets = new ArrayList<>(Collections.nCopies(maxColoIdValue + 1, 0L));
       highWaterMarkPubSubPositions = new ArrayList<>(
-          Collections.nCopies(maxColoIdValue + 1, PubSubSymbolicPosition.EARLIEST.getWireFormatBytes()));
+          Collections.nCopies(maxColoIdValue + 1, PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer()));
       for (String url: sortedWaterMarkOffsets.keySet()) {
         highWaterMarkOffsets.set(
             kafkaClusterUrlToIdMap.getInt(url),

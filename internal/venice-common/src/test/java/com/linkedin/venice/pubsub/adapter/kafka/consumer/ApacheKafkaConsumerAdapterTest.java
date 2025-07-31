@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
+import static com.linkedin.venice.pubsub.PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -28,6 +29,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
@@ -37,6 +39,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -840,9 +843,14 @@ public class ApacheKafkaConsumerAdapterTest {
   public void testDecodePositionFromBuffer() {
     long expectedOffset = 12345L;
     ApacheKafkaOffsetPosition original = new ApacheKafkaOffsetPosition(expectedOffset);
-    ByteBuffer buffer = original.getWireFormatBytes();
+    byte[] wireBytes = original.toWireFormatBytes();
+    PubSubPosition resolvedPos = PubSubPositionDeserializer.getPositionFromWireFormat(wireBytes);
+    assertTrue(resolvedPos instanceof ApacheKafkaOffsetPosition);
+    assertEquals(((ApacheKafkaOffsetPosition) resolvedPos).getInternalOffset(), expectedOffset);
 
-    PubSubPosition decoded = kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, buffer);
+    PubSubPositionWireFormat wireFormat = original.getPositionWireFormat();
+    PubSubPosition decoded =
+        kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, wireFormat.getType(), wireFormat.getRawBytes());
     assertTrue(decoded instanceof ApacheKafkaOffsetPosition);
     assertEquals(((ApacheKafkaOffsetPosition) decoded).getInternalOffset(), expectedOffset);
   }
@@ -850,6 +858,6 @@ public class ApacheKafkaConsumerAdapterTest {
   @Test(expectedExceptions = VeniceException.class)
   public void testDecodePositionWithInvalidBuffer() {
     ByteBuffer invalidBuffer = ByteBuffer.wrap(new byte[] {}); // Too short to decode
-    kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, invalidBuffer);
+    kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, APACHE_KAFKA_OFFSET_POSITION_TYPE_ID, invalidBuffer);
   }
 }

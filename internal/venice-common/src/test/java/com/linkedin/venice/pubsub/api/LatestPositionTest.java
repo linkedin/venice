@@ -18,6 +18,8 @@ public class LatestPositionTest {
 
     assertNotNull(instance1, "Singleton instance should not be null");
     assertSame(instance1, instance2, "Should return the same singleton instance");
+    assertTrue(instance1.isSymbolic(), "LatestPosition should be symbolic");
+    assertEquals(instance2.isSymbolic(), true, "LatestPosition should be symbolic");
   }
 
   @Test

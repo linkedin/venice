@@ -14,6 +14,7 @@ import com.linkedin.r2.transport.common.TransportClientFactory;
 import com.linkedin.r2.transport.http.client.HttpClientFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.schema.StoreSchemaFetcher;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
@@ -145,6 +146,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private D2Client primaryControllerColoD2Client;
   private D2Client childColoD2Client;
   private ControllerClient controllerClient;
+  private StoreSchemaFetcher schemaFetcher;
   // It can be version topic, real-time topic or stream reprocessing topic, depending on push type
   private String topicName;
   private String kafkaBootstrapServers;
@@ -445,6 +447,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         .setMaxBatchSizeInBytes(
             Integer.parseInt(
                 veniceWriterProperties.getProperty(ConfigKeys.WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES, "5242880")))
+        .setStoreSchemaFetcher(schemaFetcher)
         .setChunkingEnabled(isChunkingEnabled);
     extractConcurrentProducerConfig(veniceWriterProperties, builder);
     return constructVeniceWriter(veniceWriterProperties, builder.build());
@@ -486,6 +489,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         LOGGER.info("Skip verifying the latest protocols at runtime are valid in Venice backend.");
       }
 
+      LOGGER.info("Discovery url for schema fetcher: {}", discoveryUrl.get());
+      this.schemaFetcher = ClientFactory.createStoreSchemaFetcher(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(discoveryUrl.get()));
       if (sslFactory.isPresent()) {
         reinitProvider = () -> new HttpsTransportClient(discoveryUrl.get(), 0, 0, false, sslFactory.get());
       } else {
@@ -530,6 +536,11 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
             .verifySchemaVersionPresentOrExit();
         LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
       }
+      LOGGER.info("Discovery service name for schema fetcher: {}", discoveryResponse.getD2Service());
+      ClientConfig clientConfigForSchemaFetcher = ClientConfig.defaultGenericClientConfig(storeName)
+          .setD2Client(childColoD2Client)
+          .setD2ServiceName(discoveryResponse.getD2Service());
+      this.schemaFetcher = ClientFactory.createStoreSchemaFetcher(clientConfigForSchemaFetcher);
 
       this.controllerClient = new D2ControllerClient(
           primaryControllerD2ServiceName,
