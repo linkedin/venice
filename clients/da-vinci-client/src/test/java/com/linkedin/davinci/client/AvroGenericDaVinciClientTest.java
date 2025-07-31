@@ -1,6 +1,7 @@
 package com.linkedin.davinci.client;
 
 import static com.linkedin.davinci.client.AvroGenericDaVinciClient.READ_CHUNK_EXECUTOR;
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -59,14 +60,15 @@ public class AvroGenericDaVinciClientTest {
   public AvroGenericDaVinciClient setUpClientWithRecordTransformer(
       ClientConfig clientConfig,
       DaVinciConfig daVinciConfig) throws NoSuchFieldException, IllegalAccessException {
-    return setUpClientWithRecordTransformer(clientConfig, daVinciConfig, false, false);
+    return setUpClientWithRecordTransformer(clientConfig, daVinciConfig, false, false, false);
   }
 
   public AvroGenericDaVinciClient setUpClientWithRecordTransformer(
       ClientConfig clientConfig,
       DaVinciConfig daVinciConfig,
       boolean skipCompatabilityChecks,
-      boolean enableDatabaseChecksumVerification) throws IllegalAccessException, NoSuchFieldException {
+      boolean enableDatabaseChecksumVerification,
+      boolean subscribeOnDiskPartitionsAutomatically) throws IllegalAccessException, NoSuchFieldException {
 
     if (daVinciConfig == null) {
       daVinciConfig = new DaVinciConfig();
@@ -82,6 +84,7 @@ public class AvroGenericDaVinciClientTest {
 
     VeniceProperties backendConfig =
         new PropertyBuilder().put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, enableDatabaseChecksumVerification)
+            .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, subscribeOnDiskPartitionsAutomatically)
             .build();
 
     AvroGenericDaVinciClient<Integer, String> dvcClient =
@@ -129,6 +132,17 @@ public class AvroGenericDaVinciClientTest {
   }
 
   @Test
+  public void testRecordTransformerClientAutomaticSubscriptionException()
+      throws NoSuchFieldException, IllegalAccessException {
+    ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
+    clientConfig.setSpecificValueClass(String.class);
+
+    assertThrows(
+        VeniceClientException.class,
+        () -> setUpClientWithRecordTransformer(clientConfig, null, false, false, true));
+  }
+
+  @Test
   public void testRecordTransformerClient() throws NoSuchFieldException, IllegalAccessException {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
     clientConfig.setSpecificValueClass(String.class);
@@ -160,7 +174,7 @@ public class AvroGenericDaVinciClientTest {
       throws NoSuchFieldException, IllegalAccessException {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
 
-    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null, true, true);
+    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null, true, true, false);
     dvcClient.start();
   }
 
@@ -171,7 +185,7 @@ public class AvroGenericDaVinciClientTest {
 
     // If skipCompatabilityChecks are disabled, then the DVRT implementation could be transforming records, causing
     // database checksum verification to fail.
-    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null, false, true);
+    AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null, false, true, false);
     assertThrows(VeniceException.class, () -> dvcClient.start());
   }
 

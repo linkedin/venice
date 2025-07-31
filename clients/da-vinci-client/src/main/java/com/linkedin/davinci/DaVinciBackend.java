@@ -486,19 +486,13 @@ public class DaVinciBackend implements Closeable {
     if (configLoader.getCombinedProperties().getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)) {
       // Subscribe all bootstrap version partitions.
       storeNameToBootstrapVersionMap.forEach((storeName, version) -> {
-        /*
-         * If DaVinciRecordTransformer is enabled, we shouldn't subscribe to on disk partitions as there could be issues
-         * when we perform RocksDB scan.
-         */
-        if (ingestionService.getRecordTransformerConfig(storeName) == null) {
-          List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
-          String versionTopic = version.kafkaTopicName();
-          LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
-          StorageEngine storageEngine = getStorageService().getStorageEngine(versionTopic);
-          aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
-          StoreBackend storeBackend = getStoreOrThrow(storeName);
-          storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
-        }
+        List<Integer> partitions = storeNameToPartitionListMap.get(storeName);
+        String versionTopic = version.kafkaTopicName();
+        LOGGER.info("Bootstrapping partitions {} for {}", partitions, versionTopic);
+        StorageEngine storageEngine = getStorageService().getStorageEngine(versionTopic);
+        aggVersionedStorageEngineStats.setStorageEngine(versionTopic, storageEngine);
+        StoreBackend storeBackend = getStoreOrThrow(storeName);
+        storeBackend.subscribe(ComplementSet.newSet(partitions), Optional.of(version));
       });
     }
   }
