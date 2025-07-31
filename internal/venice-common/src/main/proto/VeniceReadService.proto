@@ -50,7 +50,6 @@ message ValueCount {
   map<string, int32> valueToCounts = 1;
 }
 
-// CountByBucket protocol - supports nested predicates
 message BucketPredicate {
   oneof predicate_type {
     ComparisonPredicate comparison = 1;
