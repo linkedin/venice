@@ -1,10 +1,11 @@
 package com.linkedin.venice.pubsub;
 
+import static com.linkedin.venice.pubsub.api.PubSubPosition.PUBSUB_POSITION_WIRE_FORMAT_SERIALIZER;
+
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -41,7 +42,7 @@ public class PubSubPositionDeserializer {
    * @param positionWireFormat the wire format position
    * @return concrete position object represented by the wire format
    */
-  public PubSubPosition convertToPosition(PubSubPositionWireFormat positionWireFormat) {
+  public PubSubPosition toPosition(PubSubPositionWireFormat positionWireFormat) {
     if (positionWireFormat == null) {
       throw new IllegalArgumentException("Cannot deserialize null wire format position");
     }
@@ -59,31 +60,54 @@ public class PubSubPositionDeserializer {
     return factory.createFromWireFormat(positionWireFormat);
   }
 
-  public PubSubPosition convertToPosition(byte[] positionWireFormatBytes) {
+  public PubSubPosition toPosition(byte[] positionWireFormatBytes) {
     if (positionWireFormatBytes == null) {
       throw new IllegalArgumentException("Cannot deserialize null wire format position");
     }
-    InternalAvroSpecificSerializer<PubSubPositionWireFormat> wireFormatSerializer =
-        AvroProtocolDefinition.PUBSUB_POSITION_WIRE_FORMAT.getSerializer();
-    PubSubPositionWireFormat wireFormat = wireFormatSerializer.deserialize(positionWireFormatBytes, null);
-    return convertToPosition(wireFormat);
+    PubSubPositionWireFormat wireFormat =
+        PUBSUB_POSITION_WIRE_FORMAT_SERIALIZER.deserialize(positionWireFormatBytes, null);
+    return toPosition(wireFormat);
   }
 
-  public PubSubPosition convertToPosition(ByteBuffer positionWireFormatBytes) {
+  public PubSubPosition toPosition(ByteBuffer positionWireFormatBytes) {
     if (positionWireFormatBytes == null) {
       throw new IllegalArgumentException("Cannot deserialize null wire format position");
     }
-    InternalAvroSpecificSerializer<PubSubPositionWireFormat> wireFormatSerializer =
-        AvroProtocolDefinition.PUBSUB_POSITION_WIRE_FORMAT.getSerializer();
-    PubSubPositionWireFormat wireFormat = wireFormatSerializer.deserialize(positionWireFormatBytes.array(), null);
-    return convertToPosition(wireFormat);
+    PubSubPositionWireFormat wireFormat =
+        PUBSUB_POSITION_WIRE_FORMAT_SERIALIZER.deserialize(ByteUtils.extractByteArray(positionWireFormatBytes), null);
+    return toPosition(wireFormat);
   }
 
+  /**
+   * Convenience method for converting a serialized byte array representing a
+   * {@link PubSubPositionWireFormat} into a concrete {@link PubSubPosition} instance.
+   *
+   * <p>This uses the {@link #DEFAULT_DESERIALIZER} with the reserved position type registry.
+   * Recommended only for use in non-critical paths or tests where custom registries are not required.</p>
+   *
+   * @param positionWireFormatBytes the serialized bytes of {@link PubSubPositionWireFormat}
+   * @return deserialized {@link PubSubPosition} object
+   * @throws VeniceException if deserialization fails or type ID is unrecognized
+   */
   public static PubSubPosition getPositionFromWireFormat(byte[] positionWireFormatBytes) {
-    return DEFAULT_DESERIALIZER.convertToPosition(positionWireFormatBytes);
+    return DEFAULT_DESERIALIZER.toPosition(positionWireFormatBytes);
   }
 
+  public static PubSubPosition getPositionFromWireFormat(ByteBuffer positionWireFormatBuffer) {
+    return DEFAULT_DESERIALIZER.toPosition(positionWireFormatBuffer);
+  }
+
+  /**
+   * Convenience method for converting a {@link PubSubPositionWireFormat} record into a concrete {@link PubSubPosition}.
+   *
+   * <p>This uses the {@link #DEFAULT_DESERIALIZER} with the reserved position type registry.
+   * Prefer constructing your own {@link PubSubPositionDeserializer} with a custom registry if needed.</p>
+   *
+   * @param positionWireFormat the wire format record to convert
+   * @return deserialized {@link PubSubPosition} object
+   * @throws VeniceException if the type ID in the wire format is unrecognized
+   */
   public static PubSubPosition getPositionFromWireFormat(PubSubPositionWireFormat positionWireFormat) {
-    return DEFAULT_DESERIALIZER.convertToPosition(positionWireFormat);
+    return DEFAULT_DESERIALIZER.toPosition(positionWireFormat);
   }
 }
