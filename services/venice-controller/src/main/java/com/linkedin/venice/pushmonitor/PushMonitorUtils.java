@@ -263,6 +263,10 @@ public class PushMonitorUtils {
      * This cache is used to reduce the duplicate calls for liveness check as one host can host multiple partitions.
      */
     Map<String, PushStatusStoreReader.InstanceStatus> instanceLivenessCache = new HashMap<>();
+    /**
+     * Map to store incomplete partition details with their associated instances
+     */
+    Map<Integer, Set<String>> incompletePartitionInstances = new HashMap<>();
     for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
       Map<CharSequence, Integer> instances =
           reader.getPartitionStatus(storeName, version, partitionId, incrementalPushVersion);
@@ -327,6 +331,23 @@ public class PushMonitorUtils {
         completedPartitions++;
       } else {
         incompletePartition.add(partitionId);
+        // Collect instance information for incomplete partitions
+        Set<String> partitionInstances = new HashSet<>();
+        for (Map.Entry<CharSequence, Integer> entry: instances.entrySet()) {
+          if (instancesToIgnore.contains(entry.getKey())) {
+            continue;
+          }
+          String instanceName = entry.getKey().toString();
+          PushStatusStoreReader.InstanceStatus instanceStatus = instanceLivenessCache.get(instanceName);
+          if (instanceStatus != null && !instanceStatus.equals(PushStatusStoreReader.InstanceStatus.BOOTSTRAPPING)
+              && !instanceStatus.equals(PushStatusStoreReader.InstanceStatus.DEAD)) {
+            ExecutionStatus status = ExecutionStatus.valueOf(entry.getValue());
+            if (status != completeStatus) {
+              partitionInstances.add(instanceName);
+            }
+          }
+        }
+        incompletePartitionInstances.put(partitionId, partitionInstances);
       }
     }
     boolean noDaVinciStatusReported = totalReplicaCount == 0;
@@ -381,9 +402,27 @@ public class PushMonitorUtils {
     int incompleteSize = incompletePartition.size();
     if (incompleteSize > 0) {
       List<Integer> list = new ArrayList<>(incompletePartition);
-      statusDetailStringBuilder.append(". Following partitions still not complete (capped at 10) ")
-          .append(list.subList(0, Math.min(10, list.size())))
-          .append(". Live replica count: ")
+      statusDetailStringBuilder.append(". Following partitions still not complete (capped at 10) ");
+
+      if (incompleteSize > 10) {
+        // If more than 10 partitions, show only partition IDs like before
+        statusDetailStringBuilder.append(list.subList(0, 10));
+      } else {
+        // If 10 or fewer partitions, show partition IDs with their associated instances
+        for (int i = 0; i < list.size(); i++) {
+          int partitionId = list.get(i);
+          Set<String> instances = incompletePartitionInstances.get(partitionId);
+          statusDetailStringBuilder.append("Partition ").append(partitionId);
+          if (instances != null && !instances.isEmpty()) {
+            statusDetailStringBuilder.append(" (instances: ").append(instances).append(")");
+          }
+          if (i < list.size() - 1) {
+            statusDetailStringBuilder.append(", ");
+          }
+        }
+      }
+
+      statusDetailStringBuilder.append(". Live replica count: ")
           .append(liveReplicaCount)
           .append(", completed replica count: ")
           .append(completedReplicaCount)
