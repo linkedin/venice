@@ -63,7 +63,7 @@ public class RouterHttpRequestStatsTest {
         clusterName,
         RequestType.SINGLE_GET,
         mock(ScatterGatherStats.class),
-        false,
+        true,
         null);
 
     if (useVeniceMetricRepository && isOtelEnabled) {
@@ -108,5 +108,39 @@ public class RouterHttpRequestStatsTest {
         metricsRepository.getMetric("." + storeName + "--" + RESPONSE_SIZE.getMetricName() + ".Avg").value(),
         1024.0);
 
+  }
+
+  @Test
+  public void testKeyValueProfiling() {
+    String storeName = "test-store";
+    String clusterName = "test-cluster";
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    metricsRepository.addReporter(new MockTehutiReporter());
+
+    RouterHttpRequestStats routerHttpRequestStats = new RouterHttpRequestStats(
+        metricsRepository,
+        storeName,
+        clusterName,
+        RequestType.SINGLE_GET,
+        mock(ScatterGatherStats.class),
+        true,
+        null);
+
+    if (routerHttpRequestStats.emitOpenTelemetryMetrics()) {
+      // Verify key size metric is recorded
+      routerHttpRequestStats.recordKeySizeInByte(128);
+      assertEquals(
+          metricsRepository.getMetric("." + storeName + "--" + KEY_SIZE.getMetricName() + ".Avg").value(),
+          128.0);
+    } else {
+      // Verify key size metric is not recorded
+      assertNull(metricsRepository.getMetric("." + storeName + "--" + KEY_SIZE.getMetricName() + ".Avg"));
+    }
+
+    // Response size metric should always be recorded
+    routerHttpRequestStats.recordResponseSize(1024.0);
+    assertEquals(
+        metricsRepository.getMetric("." + storeName + "--" + RESPONSE_SIZE.getMetricName() + ".Avg").value(),
+        1024.0);
   }
 }
