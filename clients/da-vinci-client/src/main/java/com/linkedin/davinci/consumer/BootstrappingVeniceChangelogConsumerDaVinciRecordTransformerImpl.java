@@ -270,6 +270,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     return new PropertyBuilder().put(changelogClientConfig.getConsumerProperties())
         .put(DATA_BASE_PATH, changelogClientConfig.getBootstrapFileSystemPath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
+        // Turning this off, so users don't subscribe to unwanted partitions automatically
         .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .build();
