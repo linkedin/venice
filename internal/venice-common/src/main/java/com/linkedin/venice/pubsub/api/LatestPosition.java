@@ -7,15 +7,16 @@ import java.nio.ByteBuffer;
 
 
 /**
- * Represents a special {@link PubSubPosition} indicating the latest available message in a partition.
- * <p>
- * This position acts as a symbolic marker used to initiate consumption from the most recent offset in a topic-partition.
- * All PubSub adapters are required to support this position and map it to the appropriate "latest" offset or
- * equivalent marker in the underlying PubSub system (e.g., Kafka's "latest" offset).
- * <p>
- * This class is typically treated as a singleton and has a fixed, reserved position type ID,
- * explicitly defined in code and used during serialization.
- * <p>
+ * Represents a special {@link PubSubPosition} that indicates the latest available position in a partition.
+ *
+ * <p>This symbolic marker is used to initiate consumption from the end of a topic-partition,
+ * meaning the offset that would be assigned to the next message (i.e., one past the last existing message).</p>
+ *
+ * <p>All PubSub adapters are required to support this position and resolve it to the appropriate
+ * end position in the underlying PubSub system (e.g., Kafka's endOffset or equivalent).</p>
+ *
+ * <p>This class is treated as a singleton and has a fixed, reserved position type ID.
+ * This ID is explicitly defined in code and used during serialization and deserialization.</p>
  */
 final class LatestPosition implements PubSubPosition {
   private static final LatestPosition INSTANCE = new LatestPosition();
@@ -29,6 +30,12 @@ final class LatestPosition implements PubSubPosition {
 
   static LatestPosition getInstance() {
     return INSTANCE;
+  }
+
+  @Override
+  public boolean isSymbolic() {
+    // LatestPosition is a symbolic position
+    return true;
   }
 
   @Override

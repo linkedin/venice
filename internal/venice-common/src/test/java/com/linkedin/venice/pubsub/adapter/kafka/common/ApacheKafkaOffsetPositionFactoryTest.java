@@ -34,7 +34,7 @@ public class ApacheKafkaOffsetPositionFactoryTest {
 
     PubSubPosition deserialized = factory.createFromWireFormat(wireFormat);
     assertTrue(deserialized instanceof ApacheKafkaOffsetPosition);
-    assertEquals(((ApacheKafkaOffsetPosition) deserialized).getOffset(), 12345L);
+    assertEquals(((ApacheKafkaOffsetPosition) deserialized).getInternalOffset(), 12345L);
   }
 
   @Test
@@ -44,7 +44,7 @@ public class ApacheKafkaOffsetPositionFactoryTest {
 
     PubSubPosition deserialized = factory.createFromByteBuffer(buffer);
     assertTrue(deserialized instanceof ApacheKafkaOffsetPosition);
-    assertEquals(((ApacheKafkaOffsetPosition) deserialized).getOffset(), 67890L);
+    assertEquals(((ApacheKafkaOffsetPosition) deserialized).getInternalOffset(), 67890L);
   }
 
   @Test

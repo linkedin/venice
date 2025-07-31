@@ -410,7 +410,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         null,
         null,
-        null);
+        null,
+        Optional.empty());
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(

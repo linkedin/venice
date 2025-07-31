@@ -534,7 +534,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void createSnapshot() {
+    makeSureRocksDBIsStillOpen();
     createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
+  }
+
+  public boolean isRocksDBPartitionBlobTransferInProgress() {
+    return blobTransferInProgress;
   }
 
   @Override

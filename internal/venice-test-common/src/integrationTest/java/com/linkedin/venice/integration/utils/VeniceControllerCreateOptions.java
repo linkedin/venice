@@ -10,6 +10,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_REPLICATION_FACTOR;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.authorization.AuthorizerService;
 import java.util.Arrays;
@@ -41,6 +42,8 @@ public class VeniceControllerCreateOptions {
   private final String regionName;
   private final DynamicAccessController dynamicAccessController;
 
+  private final Map<String, D2Client> d2Clients;
+
   private VeniceControllerCreateOptions(Builder builder) {
     multiRegion = builder.multiRegion;
     sslToKafka = builder.sslToKafka;
@@ -62,6 +65,7 @@ public class VeniceControllerCreateOptions {
     isParent = builder.childControllers != null && builder.childControllers.length != 0;
     regionName = builder.regionName;
     dynamicAccessController = builder.dynamicAccessController;
+    d2Clients = builder.d2Clients;
   }
 
   @Override
@@ -119,6 +123,8 @@ public class VeniceControllerCreateOptions {
         .append(", ")
         .append("childControllers:")
         .append(getAddressesOfChildControllers())
+        .append("d2Clients:")
+        .append(d2Clients)
         .toString();
   }
 
@@ -212,6 +218,10 @@ public class VeniceControllerCreateOptions {
     return regionName;
   }
 
+  public Map<String, D2Client> getD2Clients() {
+    return d2Clients;
+  }
+
   public static class Builder {
     private boolean multiRegion = false;
     private final String[] clusterNames;
@@ -232,16 +242,26 @@ public class VeniceControllerCreateOptions {
     private AuthorizerService authorizerService;
     private String regionName;
     private DynamicAccessController dynamicAccessController;
+    private Map<String, D2Client> d2Clients;
 
-    public Builder(String[] clusterNames, ZkServerWrapper zkServer, PubSubBrokerWrapper kafkaBroker) {
+    public Builder(
+        String[] clusterNames,
+        ZkServerWrapper zkServer,
+        PubSubBrokerWrapper kafkaBroker,
+        Map<String, D2Client> d2Clients) {
       this.clusterNames = Objects.requireNonNull(clusterNames, "clusterNames cannot be null when creating controller");
       this.zkServer = Objects.requireNonNull(zkServer, "ZkServerWrapper cannot be null when creating controller");
       this.kafkaBroker =
           Objects.requireNonNull(kafkaBroker, "KafkaBrokerWrapper cannot be null when creating controller");
+      this.d2Clients = d2Clients;
     }
 
-    public Builder(String clusterName, ZkServerWrapper zkServer, PubSubBrokerWrapper kafkaBroker) {
-      this(new String[] { clusterName }, zkServer, kafkaBroker);
+    public Builder(
+        String clusterName,
+        ZkServerWrapper zkServer,
+        PubSubBrokerWrapper kafkaBroker,
+        Map<String, D2Client> d2Clients) {
+      this(new String[] { clusterName }, zkServer, kafkaBroker, d2Clients);
     }
 
     public Builder multiRegion(boolean multiRegion) {

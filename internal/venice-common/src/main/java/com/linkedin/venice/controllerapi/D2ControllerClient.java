@@ -3,6 +3,7 @@ package com.linkedin.venice.controllerapi;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
@@ -33,6 +34,7 @@ public class D2ControllerClient extends ControllerClient {
   private final List<String> d2ZkHosts;
   private final Optional<SSLFactory> sslFactory;
 
+  @VisibleForTesting
   public D2ControllerClient(
       String d2ServiceName,
       String clusterName,
@@ -179,6 +181,7 @@ public class D2ControllerClient extends ControllerClient {
     return discoverCluster(d2ZkHost, d2ServiceName, storeName, retryAttempts, Optional.empty());
   }
 
+  @Deprecated
   public static D2ServiceDiscoveryResponse discoverCluster(
       String d2ZkHost,
       String d2ServiceName,

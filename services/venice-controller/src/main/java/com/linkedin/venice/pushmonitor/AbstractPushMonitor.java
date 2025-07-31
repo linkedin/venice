@@ -1175,8 +1175,6 @@ public abstract class AbstractPushMonitor
         }
       }
 
-      store.updateVersionStatus(versionNumber, newStatus);
-      LOGGER.info("Updated store: {} version: {} to status: {}", store.getName(), versionNumber, newStatus.toString());
       if (newStatus.equals(VersionStatus.ONLINE)) {
         if (versionNumber > store.getCurrentVersion()) {
           // Here we'll check if version swap is deferred. If so, we don't perform the setCurrentVersion. We'll continue
@@ -1231,12 +1229,13 @@ public abstract class AbstractPushMonitor
             boolean isVersionSwapDeferredInNonTargetRegion =
                 !targetRegions.isEmpty() && !targetRegions.contains(regionName) && version.isVersionSwapDeferred();
             if (isVersionSwapDeferredInNonTargetRegion) {
+              newStatus = VersionStatus.PUSHED;
               LOGGER.info(
-                  "Marking version status as PUSHED for version: {} in store: {} during a target region push w/ deferred swap"
+                  "Marking version status as {} for version: {} in store: {} during a target region push w/ deferred swap"
                       + "because it is a non target region",
+                  newStatus,
                   versionNumber,
                   storeName);
-              store.updateVersionStatus(versionNumber, VersionStatus.PUSHED);
             }
           }
         } else {
@@ -1248,7 +1247,9 @@ public abstract class AbstractPushMonitor
               versionNumber);
         }
       }
+      store.updateVersionStatus(versionNumber, newStatus);
       metadataRepository.updateStore(store);
+      LOGGER.info("Updated store: {} version: {} to status: {}", store.getName(), versionNumber, newStatus.toString());
     }
   }
 

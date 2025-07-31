@@ -38,6 +38,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -358,7 +359,7 @@ public class TestMaterializedViewEndToEnd {
           .setViewClassParams(viewParamBuilder.build());
       controllerClient
           .retryableRequest(5, controllerClient1 -> controllerClient.updateStore(storeName, updateViewParam));
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, false, () -> {
         Map<String, ViewConfig> viewConfigMap = controllerClient.getStore(storeName).getStore().getViewConfigs();
         Assert.assertEquals(viewConfigMap.size(), 1);
         Assert.assertEquals(
@@ -453,6 +454,9 @@ public class TestMaterializedViewEndToEnd {
         .setControllerD2ServiceName(D2_SERVICE_NAME)
         .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
         .setLocalD2ZkHosts(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress())
+        .setD2Client(
+            IntegrationTestPushUtils
+                .getD2Client(multiRegionMultiClusterWrapper.getChildRegions().get(1).getZkServerWrapper().getAddress()))
         .setVersionSwapDetectionIntervalTimeInSeconds(3L)
         .setControllerRequestRetryCount(3)
         .setBootstrapFileSystemPath(getTempDataDirectory().getAbsolutePath());
@@ -466,7 +470,7 @@ public class TestMaterializedViewEndToEnd {
     // Verify we can get the records
     Map<String, Utf8> polledChangeEvents = new HashMap<>();
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        viewTopicConsumer.poll(1000);
+        IntegrationTestUtils.pollAllMessagesForVeniceChangelogConsumer(viewTopicConsumer, 1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
       Utf8 afterImageEvent = pubSubMessage.getValue().getCurrentValue();
       String key = pubSubMessage.getKey().toString();

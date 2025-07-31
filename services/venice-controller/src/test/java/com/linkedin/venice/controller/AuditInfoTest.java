@@ -2,8 +2,7 @@ package com.linkedin.venice.controller;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.assertEquals;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -22,9 +21,6 @@ public class AuditInfoTest {
   private static final String PARAM_2 = "param2";
   private static final String VALUE_1 = "value1";
   private static final String VALUE_2 = "value2";
-  private static final String AUDIT_PREFIX = "[AUDIT]";
-  private static final String SUCCESS = "SUCCESS";
-  private static final String FAILURE = "FAILURE";
   private static final String ERROR_MESSAGE = "Some error";
 
   private Request request;
@@ -56,39 +52,25 @@ public class AuditInfoTest {
   @Test
   public void testToStringReturnsExpectedFormat() {
     String result = auditInfo.toString();
-    assertTrue(result.contains(AUDIT_PREFIX));
-    assertTrue(result.contains(METHOD_GET));
-    assertTrue(result.contains(TEST_URL));
-    assertTrue(result.contains(PARAM_1 + "=" + VALUE_1));
-    assertTrue(result.contains(PARAM_2 + "=" + VALUE_2));
-    assertTrue(result.contains("ClientIP: " + CLIENT_IP + ":" + CLIENT_PORT));
+    String expected = "[AUDIT] GET http://localhost/test {param1=value1, param2=value2} ClientIP: 127.0.0.1:8080";
+    assertEquals(result, expected);
   }
 
   @Test
-  public void testSuccessStringReturnsExpectedFormat() {
-    String result = auditInfo.successString();
-    assertTrue(result.contains(AUDIT_PREFIX));
-    assertTrue(result.contains(SUCCESS));
-    assertTrue(result.contains(METHOD_GET));
-    assertTrue(result.contains(TEST_URL));
-    assertTrue(result.contains("ClientIP: " + CLIENT_IP));
+  public void testSuccessStringWithLatencyReturnsExpectedFormat() {
+    long latency = 10000;
+    String result = auditInfo.successString(latency);
+    String expected =
+        "[AUDIT] SUCCESS GET http://localhost/test {param1=value1, param2=value2} ClientIP: 127.0.0.1:8080 Latency: 10000 ms";
+    assertEquals(result, expected);
   }
 
   @Test
-  public void testFailureStringReturnsExpectedFormat() {
-    String result = auditInfo.failureString(ERROR_MESSAGE);
-    assertTrue(result.contains(AUDIT_PREFIX));
-    assertTrue(result.contains(FAILURE));
-    assertTrue(result.contains(ERROR_MESSAGE));
-    assertTrue(result.contains(METHOD_GET));
-    assertTrue(result.contains(TEST_URL));
-    assertTrue(result.contains("ClientIP: " + CLIENT_IP));
-  }
-
-  @Test
-  public void testFailureStringHandlesNullErrorMessage() {
-    String result = auditInfo.failureString(null);
-    assertTrue(result.contains(AUDIT_PREFIX));
-    assertFalse(result.contains("null"));
+  public void testFailureWithLatencyStringReturnsExpectedFormat() {
+    long latency = 10000;
+    String result = auditInfo.failureString(ERROR_MESSAGE, latency);
+    String expected =
+        "[AUDIT] FAILURE: Some error GET http://localhost/test {param1=value1, param2=value2} ClientIP: 127.0.0.1:8080 Latency: 10000 ms";
+    assertEquals(result, expected);
   }
 }

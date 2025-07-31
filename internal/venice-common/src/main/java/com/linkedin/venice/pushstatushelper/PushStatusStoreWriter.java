@@ -96,7 +96,11 @@ public class PushStatusStoreWriter implements AutoCloseable {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getHeartbeatKey(instanceName);
     UpdateBuilder updateBuilder = new UpdateBuilderImpl(updateSchema);
     updateBuilder.setNewFieldValue("reportTimestamp", heartbeat);
-    LOGGER.info("Sending heartbeat of {}", instanceName);
+    LOGGER.info(
+        "Sending heartbeat: {} with instance name: {} for push status store of: {}",
+        heartbeat,
+        instanceName,
+        storeName);
     writer.update(pushStatusKey, updateBuilder.build(), valueSchemaId, derivedSchemaId, null);
   }
 

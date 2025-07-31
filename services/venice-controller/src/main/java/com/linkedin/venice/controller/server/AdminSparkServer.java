@@ -287,10 +287,10 @@ public class AdminSparkServer extends AbstractVeniceService {
       }
       long latency = System.currentTimeMillis() - (long) request.attribute(REQUEST_START_TIME);
       if ((boolean) request.attribute(REQUEST_SUCCEED)) {
-        LOGGER.info(audit.successString());
+        LOGGER.info(audit.successString(latency));
         stats.recordSuccessfulRequestLatency(latency);
       } else {
-        LOGGER.info(audit.failureString(response.body()));
+        LOGGER.info(audit.failureString(response.body(), latency));
         stats.recordFailedRequestLatency(latency);
       }
       LogContext.clearLogContext();

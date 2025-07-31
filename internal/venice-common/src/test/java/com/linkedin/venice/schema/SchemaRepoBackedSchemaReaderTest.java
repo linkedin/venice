@@ -16,10 +16,10 @@ import org.testng.annotations.Test;
 
 
 public class SchemaRepoBackedSchemaReaderTest {
-  private static final Schema VALUE_SCHEMA_1 = AvroSchemaParseUtils
-      .parseSchemaFromJSONLooseValidation(loadFileAsStringQuietlyWithErrorLogged("TestWriteComputeBuilder.avsc"));
-  private static final Schema VALUE_SCHEMA_2 = AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(
-      loadFileAsStringQuietlyWithErrorLogged("TestEvolvedWriteComputeBuilder.avsc"));
+  private static final Schema VALUE_SCHEMA_1 =
+      AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(loadFileAsStringQuietlyWithErrorLogged("PersonV1.avsc"));
+  private static final Schema VALUE_SCHEMA_2 =
+      AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation(loadFileAsStringQuietlyWithErrorLogged("PersonV2.avsc"));
   private static final Schema UPDATE_SCHEMA_1 =
       WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA_1);
   private static final Schema UPDATE_SCHEMA_2 =

@@ -17,6 +17,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 
 /**
@@ -29,6 +30,8 @@ public class VeniceControllerContext {
   private DynamicAccessController accessController;
   private AuthorizerService authorizerService;
   private D2Client d2Client;
+
+  private Map<String, D2Client> d2Clients;
   private ClientConfig routerClientConfig;
   private ICProvider icProvider;
   private SupersetSchemaGenerator externalSupersetSchemaGenerator;
@@ -58,6 +61,10 @@ public class VeniceControllerContext {
     return d2Client;
   }
 
+  public Map<String, D2Client> getD2Clients() {
+    return d2Clients;
+  }
+
   public ClientConfig getRouterClientConfig() {
     return routerClientConfig;
   }
@@ -85,6 +92,7 @@ public class VeniceControllerContext {
     this.icProvider = builder.icProvider;
     this.externalSupersetSchemaGenerator = builder.externalSupersetSchemaGenerator;
     this.pubSubClientsFactory = builder.pubSubClientsFactory;
+    this.d2Clients = builder.d2Clients;
   }
 
   public static class Builder {
@@ -94,6 +102,7 @@ public class VeniceControllerContext {
     private DynamicAccessController accessController;
     private AuthorizerService authorizerService;
     private D2Client d2Client;
+    private Map<String, D2Client> d2Clients;
     private ClientConfig routerClientConfig;
     private ICProvider icProvider;
     private SupersetSchemaGenerator externalSupersetSchemaGenerator;
@@ -154,6 +163,12 @@ public class VeniceControllerContext {
       return this;
     }
 
+    // Set D2 Client
+    public Builder setD2Clients(Map<String, D2Client> d2Clients) {
+      this.d2Clients = d2Clients;
+      return this;
+    }
+
     private void addDefaultValues() {
       if (metricsRepository == null && !isMetricsRepositorySet) {
 
@@ -176,6 +191,7 @@ public class VeniceControllerContext {
       addDefaultValues();
       return new VeniceControllerContext(this);
     }
+
   }
 
 }

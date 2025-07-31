@@ -30,7 +30,7 @@ public class VeniceControllerMultiClusterConfig {
     }
   }
 
-  // This contructor is used for testing.
+  // This constructor is used for testing.
   public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerClusterConfig> clusterToControllerConfigMap) {
     this.clusterToControllerConfigMap = new HashMap<>(clusterToControllerConfigMap);
   }
@@ -351,8 +351,8 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getLogCompactionIntervalMS();
   }
 
-  public long getTimeSinceLastLogCompactionThresholdMS() {
-    return getCommonConfig().getTimeSinceLastLogCompactionThresholdMS();
+  public long getLogCompactionThresholdMS() {
+    return getCommonConfig().getLogCompactionThresholdMS();
   }
 
   public boolean isRealTimeTopicVersioningEnabled() {
