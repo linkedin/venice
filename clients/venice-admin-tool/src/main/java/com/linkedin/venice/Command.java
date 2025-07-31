@@ -478,6 +478,10 @@ public enum Command {
       "get-dead-stores", "Get the stores that are considered dead via ACL DB and Store Discovery",
       new Arg[] { URL, CLUSTER }, new Arg[] { STORE, INCLUDE_SYSTEM_STORES }
   ),
+  VALIDATE_STORE_DELETED(
+      "validate-store-deleted", "Validate whether a store has been fully deleted from the cluster",
+      new Arg[] { URL, CLUSTER, STORE }
+  ),
   LIST_STORE_PUSH_INFO(
       "list-store-push-info", "List information about current pushes and push history for a specific store.",
       new Arg[] { URL, STORE }, new Arg[] { CLUSTER, PARTITION_DETAIL_ENABLED }

@@ -62,6 +62,7 @@ import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoragePersonaResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonResponse;
+import com.linkedin.venice.controllerapi.StoreDeletedValidationResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -519,6 +520,9 @@ public class AdminTool {
           break;
         case GET_DEAD_STORES:
           getDeadStores(cmd);
+          break;
+        case VALIDATE_STORE_DELETED:
+          validateStoreDeleted(cmd);
           break;
         case COMPARE_STORE:
           compareStore(cmd);
@@ -2921,6 +2925,14 @@ public class AdminTool {
     boolean includeSystemStores = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES));
 
     MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, includeSystemStores, storeName);
+    printObject(response);
+  }
+
+  private static void validateStoreDeleted(CommandLine cmd) {
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+
+    StoreDeletedValidationResponse response = controllerClient.validateStoreDeleted(clusterName, storeName);
     printObject(response);
   }
 

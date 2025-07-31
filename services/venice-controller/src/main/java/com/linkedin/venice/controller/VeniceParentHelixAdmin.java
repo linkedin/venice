@@ -5995,7 +5995,7 @@ public class VeniceParentHelixAdmin implements Admin {
       ControllerClient controllerClient = entry.getValue();
       try {
         // Make the API call to the child controller
-        StoreDeletedValidationResponse response = controllerClient.validateStoreDeleted(storeName);
+        StoreDeletedValidationResponse response = controllerClient.validateStoreDeleted(clusterName, storeName);
         if (response.isError()) {
           errors.add("Failed to validate store deletion in region " + regionName + ": " + response.getError());
         } else {
