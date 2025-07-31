@@ -285,6 +285,7 @@
             {"name": "targetSwapRegionWaitTime", "type": "int", "default": 60, "doc": "Controls how long to wait in minutes before swapping the version on the regions"},
             {"name": "isDaVinciHeartBeatReported", "type": "boolean", "default": false, "doc": "Flag to indicate whether DVC is bootstrapping and sending heartbeats"},
             {"name": "globalRtDivEnabled", "type":  "boolean", "default": false, "doc": "Flag to indicate whether the Global RT DIV feature is on. The DIV will be centralized in the ConsumptionTask, and leaders will periodically replicate the RT DIV to followers via VT."},
+            {"name": "ttlRepushEnabled", "type": "boolean", "default": false, "doc": "Self-managed (by controller) flag to indicate whether TTL re-push is enabled or not"},
             {
               "name": "StoreLifecycleHooks",
               "doc": "List of store lifecycle hooks",
