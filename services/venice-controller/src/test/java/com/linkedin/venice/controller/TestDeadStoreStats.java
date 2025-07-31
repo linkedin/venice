@@ -7,7 +7,9 @@ import com.linkedin.venice.meta.StoreInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.testng.annotations.Test;
 
 
@@ -22,13 +24,20 @@ public class TestDeadStoreStats {
    */
   public static class FakeDeadStoreStats implements DeadStoreStats {
     @Override
-    public List<StoreInfo> getDeadStores(List<StoreInfo> storeInfos) {
+    public List<StoreInfo> getDeadStores(List<StoreInfo> storeInfos, Map<String, String> params) {
       List<StoreInfo> deadStores = new ArrayList<>();
+      String lookBackMSStr = params.get("lookBackMS");
+
       for (StoreInfo store: storeInfos) {
         // For testing, a store is considered dead if its name equals "dead".
         if ("dead".equals(store.getName())) {
           store.setIsStoreDead(true);
-          store.setStoreDeadStatusReasons(Arrays.asList("No traffic detected"));
+          if (lookBackMSStr != null && !lookBackMSStr.isEmpty()) {
+            store.setStoreDeadStatusReasons(
+                Arrays.asList("No traffic detected within lookback window of " + lookBackMSStr + "ms"));
+          } else {
+            store.setStoreDeadStatusReasons(Arrays.asList("No traffic detected"));
+          }
           deadStores.add(store);
         } else {
           store.setIsStoreDead(false);
@@ -82,13 +91,43 @@ public class TestDeadStoreStats {
     List<StoreInfo> stores = Arrays.asList(deadStore, aliveStore);
 
     DeadStoreStats stats = new FakeDeadStoreStats();
-    List<StoreInfo> deadStores = stats.getDeadStores(stores);
+    List<StoreInfo> deadStores = stats.getDeadStores(stores, Collections.emptyMap());
 
     // Verify that only the deadStore is returned and its state has been updated.
     assertEquals(1, deadStores.size());
     assertEquals("dead", deadStores.get(0).getName());
     assertTrue(deadStores.get(0).getIsStoreDead());
     List<String> expectedReasons = Arrays.asList("No traffic detected");
+    assertEquals(expectedReasons, deadStores.get(0).getStoreDeadStatusReasons());
+
+    // Confirm that the alive store remains not marked as dead.
+    assertFalse(aliveStore.getIsStoreDead());
+    assertTrue(aliveStore.getStoreDeadStatusReasons().isEmpty());
+  }
+
+  /**
+   * Tests the FakeDeadStoreStats implementation with lookBackMS parameter.
+   */
+  @Test
+  public void testFakeDeadStoreStatsWithLookBack() {
+    // Create two stores: one intended to be dead and one alive.
+    StoreInfo deadStore = new StoreInfo();
+    deadStore.setName("dead");
+    StoreInfo aliveStore = new StoreInfo();
+    aliveStore.setName("alive");
+
+    List<StoreInfo> stores = Arrays.asList(deadStore, aliveStore);
+
+    DeadStoreStats stats = new FakeDeadStoreStats();
+    Map<String, String> params = new HashMap<>();
+    params.put("lookBackMS", "30000");
+    List<StoreInfo> deadStores = stats.getDeadStores(stores, params);
+
+    // Verify that only the deadStore is returned and its state has been updated with lookback info
+    assertEquals(1, deadStores.size());
+    assertEquals("dead", deadStores.get(0).getName());
+    assertTrue(deadStores.get(0).getIsStoreDead());
+    List<String> expectedReasons = Arrays.asList("No traffic detected within lookback window of 30000ms");
     assertEquals(expectedReasons, deadStores.get(0).getStoreDeadStatusReasons());
 
     // Confirm that the alive store remains not marked as dead.

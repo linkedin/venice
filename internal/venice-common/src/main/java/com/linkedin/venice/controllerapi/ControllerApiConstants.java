@@ -114,6 +114,7 @@ public class ControllerApiConstants {
   public static final String BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS = "bootstrap_to_online_timeout_in_hours";
 
   public static final String INCLUDE_SYSTEM_STORES = "include_system_stores";
+  public static final String LOOK_BACK_MS = "look_back_ms";
 
   public static final String STORE_VIEW = "store_view";
   public static final String STORE_VIEW_NAME = "store_view_name";
