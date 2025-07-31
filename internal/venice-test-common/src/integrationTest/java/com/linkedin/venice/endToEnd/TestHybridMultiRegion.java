@@ -274,7 +274,7 @@ public class TestHybridMultiRegion {
                 upstreamPosition1.getNumericOffset(),
                 0,
                 DEFAULT_TERM_ID,
-                upstreamPosition1.getWireFormatBytes()));
+                upstreamPosition1.toWireFormatBuffer()));
         veniceWriter1.flush();
 
         PubSubPosition upstreamPosition2 = new ApacheKafkaOffsetPosition(1);
@@ -287,7 +287,7 @@ public class TestHybridMultiRegion {
                 upstreamPosition2.getNumericOffset(),
                 0,
                 DEFAULT_TERM_ID,
-                upstreamPosition2.getWireFormatBytes()));
+                upstreamPosition2.toWireFormatBuffer()));
         veniceWriter2.flush();
 
         PubSubPosition upstreamPositionIPlusFive;
@@ -302,7 +302,7 @@ public class TestHybridMultiRegion {
                   upstreamPositionIPlusFive.getNumericOffset(),
                   0,
                   DEFAULT_TERM_ID,
-                  upstreamPositionIPlusFive.getWireFormatBytes()));
+                  upstreamPositionIPlusFive.toWireFormatBuffer()));
         }
         veniceWriter1.flush();
 
@@ -316,7 +316,7 @@ public class TestHybridMultiRegion {
                 upstreamPosition3.getNumericOffset(),
                 0,
                 DEFAULT_TERM_ID,
-                upstreamPosition3.getWireFormatBytes()));
+                upstreamPosition3.toWireFormatBuffer()));
 
         for (int i = 5; i < 10; ++i) {
           upstreamPositionIPlusFive = new ApacheKafkaOffsetPosition(i + 5);
@@ -329,7 +329,7 @@ public class TestHybridMultiRegion {
                   upstreamPositionIPlusFive.getNumericOffset(),
                   0,
                   DEFAULT_TERM_ID,
-                  upstreamPositionIPlusFive.getWireFormatBytes()));
+                  upstreamPositionIPlusFive.toWireFormatBuffer()));
         }
         veniceWriter2.flush();
         veniceWriter1.broadcastEndOfPush(Collections.emptyMap());

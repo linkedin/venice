@@ -301,7 +301,7 @@ public class KafkaConsumptionTest {
     recordValue.producerMetadata.producerGUID = new GUID();
     recordValue.producerMetadata.messageTimestamp = producerTimestamp;
     recordValue.leaderMetadataFooter = new LeaderMetadata();
-    recordValue.leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.getWireFormatBytes();
+    recordValue.leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     recordValue.leaderMetadataFooter.hostName = "localhost";
 
     if (isDataRecord) {
