@@ -664,7 +664,8 @@ public class DaVinciClientRecordTransformerTest {
     LOGGER.info("zkHosts is {}", zkHosts);
 
     // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
-    File configFile = File.createTempFile("dvc-config", ".properties");
+    File configDir = Utils.getTempDataDirectory();
+    File configFile = new File(configDir, "dvc-config.properties");
     Properties props = new Properties();
     props.setProperty("zk.hosts", zkHosts);
     props.setProperty("base.data.path", dvcPath1);
@@ -676,7 +677,7 @@ public class DaVinciClientRecordTransformerTest {
     props.setProperty("blob.transfer.client.port", Integer.toString(port2));
     props.setProperty("storage.class", StorageClass.DISK.toString());
     props.setProperty("record.transformer.enabled", "true");
-    props.setProperty("blob.transfer.ssl.enabled", "true");
+    props.setProperty("blob.transfer.manager.enabled", "true");
     props.setProperty("batch.push.report.enabled", "false");
 
     // Write properties to file
@@ -743,10 +744,6 @@ public class DaVinciClientRecordTransformerTest {
         assertEquals(valueObj.toString(), expectedValue);
         assertEquals(recordTransformer.get(k), expectedValue);
       }
-    }
-    // clean up config file
-    if (configFile.exists()) {
-      Assert.assertTrue(configFile.delete(), "Failed to delete config file: " + configFile.getAbsolutePath());
     }
   }
 

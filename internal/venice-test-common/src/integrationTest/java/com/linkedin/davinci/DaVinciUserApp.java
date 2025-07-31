@@ -76,7 +76,8 @@ public class DaVinciUserApp {
     int blobTransferClientPort = Integer.parseInt(props.getProperty("blob.transfer.client.port"));
     String storageClass = props.getProperty("storage.class");
     boolean recordTransformerEnabled = Boolean.parseBoolean(props.getProperty("record.transformer.enabled"));
-    boolean blobTransferDaVinciSSLEnabled = Boolean.parseBoolean(props.getProperty("blob.transfer.ssl.enabled"));
+    boolean blobTransferDaVinciManagerEnabled =
+        Boolean.parseBoolean(props.getProperty("blob.transfer.manager.enabled"));
     boolean batchPushReportEnabled = Boolean.parseBoolean(props.getProperty("batch.push.report.enabled"));
 
     D2Client d2Client = new D2ClientBuilder().setZkHosts(zkHosts)
@@ -89,12 +90,13 @@ public class DaVinciUserApp {
     extraBackendConfig.put(SERVER_INGESTION_MODE, ingestionIsolation ? ISOLATED : BUILT_IN);
     extraBackendConfig.put(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, heartbeatTimeoutSeconds);
     extraBackendConfig.put(DATA_BASE_PATH, baseDataPath);
-    extraBackendConfig.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, blobTransferServerPort);
-    extraBackendConfig.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, blobTransferClientPort);
     extraBackendConfig.put(PUSH_STATUS_STORE_ENABLED, true);
-    extraBackendConfig.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
 
-    if (blobTransferDaVinciSSLEnabled) {
+    if (blobTransferDaVinciManagerEnabled) {
+      extraBackendConfig.put(BLOB_TRANSFER_MANAGER_ENABLED, true);
+      extraBackendConfig.put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, blobTransferServerPort);
+      extraBackendConfig.put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, blobTransferClientPort);
+
       extraBackendConfig.put(BLOB_TRANSFER_SSL_ENABLED, true);
       extraBackendConfig.put(BLOB_TRANSFER_ACL_ENABLED, true);
 
