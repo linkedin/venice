@@ -5,6 +5,7 @@ import static com.linkedin.venice.pubsub.api.PubSubPosition.PUBSUB_POSITION_WIRE
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -73,7 +74,7 @@ public class PubSubPositionDeserializer {
       throw new IllegalArgumentException("Cannot deserialize null wire format position");
     }
     PubSubPositionWireFormat wireFormat =
-        PUBSUB_POSITION_WIRE_FORMAT_SERIALIZER.deserialize(positionWireFormatBytes.array(), null);
+        PUBSUB_POSITION_WIRE_FORMAT_SERIALIZER.deserialize(ByteUtils.extractByteArray(positionWireFormatBytes), null);
     return toPosition(wireFormat);
   }
 
@@ -90,6 +91,10 @@ public class PubSubPositionDeserializer {
    */
   public static PubSubPosition getPositionFromWireFormat(byte[] positionWireFormatBytes) {
     return DEFAULT_DESERIALIZER.toPosition(positionWireFormatBytes);
+  }
+
+  public static PubSubPosition getPositionFromWireFormat(ByteBuffer positionWireFormatBuffer) {
+    return DEFAULT_DESERIALIZER.toPosition(positionWireFormatBuffer);
   }
 
   /**

@@ -10,7 +10,6 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
-import java.nio.ByteBuffer;
 import org.testng.annotations.Test;
 
 
@@ -32,8 +31,8 @@ public class PubSubPositionDeserializerTest {
     assertTrue(positionFromBytes instanceof ApacheKafkaOffsetPosition);
     assertEquals(positionFromBytes, position);
 
-    ByteBuffer wireFormatBuffer = position1.toWireFormatBuffer();
-    PubSubPosition positionFromBuffer = PubSubPositionDeserializer.getPositionFromWireFormat(wireFormatBuffer.array());
+    PubSubPosition positionFromBuffer =
+        PubSubPositionDeserializer.getPositionFromWireFormat(position1.toWireFormatBuffer());
     assertTrue(positionFromBuffer instanceof ApacheKafkaOffsetPosition);
     assertEquals(positionFromBuffer, position);
   }
