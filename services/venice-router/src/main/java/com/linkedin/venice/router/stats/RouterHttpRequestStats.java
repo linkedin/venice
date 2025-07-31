@@ -481,13 +481,13 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
             KEY_SIZE.getMetricEntity(),
             null, // no OTEL repository/metrics
             this::registerSensorFinal,
-            RouterTehutiMetricNameEnum.KEY_SIZE,
+            RouterTehutiMetricNameEnum.KEY_SIZE_IN_BYTE,
             Arrays.asList(
                 new Avg(),
                 new Max(),
                 TehutiUtils.getFineGrainedPercentileStat(
                     getName(),
-                    getFullMetricName(RouterTehutiMetricNameEnum.KEY_SIZE.getMetricName()))),
+                    getFullMetricName(RouterTehutiMetricNameEnum.KEY_SIZE_IN_BYTE.getMetricName()))),
             baseDimensionsMap,
             baseAttributes);
 
@@ -521,7 +521,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
             Arrays.asList(
                 new Avg(),
                 new Max(),
-                TehutiUtils.getPercentileStat(
+                TehutiUtils.getFineGrainedPercentileStat(
                     getName(),
                     getFullMetricName(RouterTehutiMetricNameEnum.RESPONSE_SIZE.getMetricName()))),
             baseDimensionsMap,
@@ -547,6 +547,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           MessageType.class);
     }
 
+    // Initialize the in-flight request counter
     currentInFlightRequest = new AtomicInteger();
 
     metaStoreShadowReadSensor = registerSensor("meta_store_shadow_read", new OccurrenceRate());
@@ -863,7 +864,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     /** for {@link RouterMetricEntity#CALL_SIZE} */
     REQUEST_SIZE, RESPONSE_SIZE,
     /** for {@link RouterMetricEntity#KEY_SIZE} */
-    KEY_SIZE,
+    KEY_SIZE_IN_BYTE,
     /** for {@link RouterMetricEntity#ABORTED_RETRY_COUNT} */
     DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST, SLOW_ROUTE_ABORTED_RETRY_REQUEST, RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST,
     NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST;

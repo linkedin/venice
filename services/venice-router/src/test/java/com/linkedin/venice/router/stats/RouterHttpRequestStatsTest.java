@@ -130,11 +130,11 @@ public class RouterHttpRequestStatsTest {
       // Verify key size metric is recorded
       routerHttpRequestStats.recordKeySizeInByte(128);
       assertEquals(
-          metricsRepository.getMetric("." + storeName + "--" + KEY_SIZE.getMetricName() + ".Avg").value(),
+          metricsRepository.getMetric("." + storeName + "--" + KEY_SIZE_IN_BYTE.getMetricName() + ".Avg").value(),
           128.0);
     } else {
       // Verify key size metric is not recorded
-      assertNull(metricsRepository.getMetric("." + storeName + "--" + KEY_SIZE.getMetricName() + ".Avg"));
+      assertNull(metricsRepository.getMetric("." + storeName + "--" + KEY_SIZE_IN_BYTE.getMetricName() + ".Avg"));
     }
 
     // Response size metric should always be recorded
