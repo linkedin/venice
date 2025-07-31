@@ -37,10 +37,11 @@ import com.linkedin.venice.endToEnd.TestStringRecordTransformer;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.utils.SslUtils;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.FileInputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -53,19 +54,30 @@ import org.apache.logging.log4j.Logger;
 public class DaVinciUserApp {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciUserApp.class);
 
-  public static void main(String[] args) throws InterruptedException, ExecutionException {
-    String zkHosts = args[0];
-    String baseDataPath = args[1];
-    String storeName = args[2];
-    int sleepSeconds = Integer.parseInt(args[3]);
-    int heartbeatTimeoutSeconds = Integer.parseInt(args[4]);
-    boolean ingestionIsolation = Boolean.parseBoolean(args[5]);
-    int blobTransferServerPort = Integer.parseInt(args[6]);
-    int blobTransferClientPort = Integer.parseInt(args[7]);
-    String storageClass = args[8]; // DISK or MEMORY_BACKED_BY_DISK
-    boolean recordTransformerEnabled = Boolean.parseBoolean(args[9]);
-    boolean blobTransferDaVinciSSLEnabled = Boolean.parseBoolean(args[10]);
-    boolean batchPushReportEnabled = Boolean.parseBoolean(args[11]);
+  public static void main(String[] args) throws Exception {
+    if (args.length != 1) {
+      throw new IllegalArgumentException("Expected config file path");
+    }
+
+    // Load properties from file
+    Properties props = new Properties();
+    try (FileInputStream fis = new FileInputStream(args[0])) {
+      props.load(fis);
+    }
+
+    // Read properties
+    String zkHosts = props.getProperty("zk.hosts");
+    String baseDataPath = props.getProperty("base.data.path");
+    String storeName = props.getProperty("store.name");
+    int sleepSeconds = Integer.parseInt(props.getProperty("sleep.seconds"));
+    int heartbeatTimeoutSeconds = Integer.parseInt(props.getProperty("heartbeat.timeout.seconds"));
+    boolean ingestionIsolation = Boolean.parseBoolean(props.getProperty("ingestion.isolation"));
+    int blobTransferServerPort = Integer.parseInt(props.getProperty("blob.transfer.server.port"));
+    int blobTransferClientPort = Integer.parseInt(props.getProperty("blob.transfer.client.port"));
+    String storageClass = props.getProperty("storage.class");
+    boolean recordTransformerEnabled = Boolean.parseBoolean(props.getProperty("record.transformer.enabled"));
+    boolean blobTransferDaVinciSSLEnabled = Boolean.parseBoolean(props.getProperty("blob.transfer.ssl.enabled"));
+    boolean batchPushReportEnabled = Boolean.parseBoolean(props.getProperty("batch.push.report.enabled"));
 
     D2Client d2Client = new D2ClientBuilder().setZkHosts(zkHosts)
         .setZkSessionTimeout(3, TimeUnit.SECONDS)

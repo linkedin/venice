@@ -129,6 +129,7 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -1293,20 +1294,27 @@ public class DaVinciClientTest {
     setUpStore(storeName, paramsConsumer, properties -> {}, true);
 
     // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
-    ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts,
-        dvcPath1,
-        storeName,
-        "100",
-        "10",
-        "false",
-        Integer.toString(port1),
-        Integer.toString(port2),
-        StorageClass.DISK.toString(),
-        "false",
-        "true",
-        String.valueOf(batchPushReportEnable));
+    File configFile = File.createTempFile("dvc-config", ".properties");
+    Properties props = new Properties();
+    props.setProperty("zk.hosts", zkHosts);
+    props.setProperty("base.data.path", dvcPath1);
+    props.setProperty("store.name", storeName);
+    props.setProperty("sleep.seconds", "100");
+    props.setProperty("heartbeat.timeout.seconds", "10");
+    props.setProperty("ingestion.isolation", "false");
+    props.setProperty("blob.transfer.server.port", Integer.toString(port1));
+    props.setProperty("blob.transfer.client.port", Integer.toString(port2));
+    props.setProperty("storage.class", StorageClass.DISK.toString());
+    props.setProperty("record.transformer.enabled", "false");
+    props.setProperty("blob.transfer.ssl.enabled", "true");
+    props.setProperty("batch.push.report.enabled", String.valueOf(batchPushReportEnable));
+
+    // Write properties to file
+    try (FileWriter writer = new FileWriter(configFile)) {
+      props.store(writer, null);
+    }
+
+    ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
@@ -1400,6 +1408,10 @@ public class DaVinciClientTest {
         Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
       }
     }
+    // clean up config file
+    if (configFile.exists()) {
+      Assert.assertTrue(configFile.delete(), "Failed to delete config file: " + configFile.getAbsolutePath());
+    }
   }
 
   /**
@@ -1422,20 +1434,27 @@ public class DaVinciClientTest {
     setUpStore(storeName, paramsConsumer, properties -> {}, true);
 
     // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
-    ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts,
-        dvcPath1,
-        storeName,
-        "100",
-        "10",
-        "false",
-        Integer.toString(port1),
-        Integer.toString(port2),
-        StorageClass.DISK.toString(),
-        "false",
-        "true",
-        "false");
+    File configFile = File.createTempFile("dvc-config", ".properties");
+    Properties props = new Properties();
+    props.setProperty("zk.hosts", zkHosts);
+    props.setProperty("base.data.path", dvcPath1);
+    props.setProperty("store.name", storeName);
+    props.setProperty("sleep.seconds", "100");
+    props.setProperty("heartbeat.timeout.seconds", "10");
+    props.setProperty("ingestion.isolation", "false");
+    props.setProperty("blob.transfer.server.port", Integer.toString(port1));
+    props.setProperty("blob.transfer.client.port", Integer.toString(port2));
+    props.setProperty("storage.class", StorageClass.DISK.toString());
+    props.setProperty("record.transformer.enabled", "false");
+    props.setProperty("blob.transfer.ssl.enabled", "true");
+    props.setProperty("batch.push.report.enabled", "false");
+
+    // Write properties to file
+    try (FileWriter writer = new FileWriter(configFile)) {
+      props.store(writer, null);
+    }
+
+    ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
@@ -1533,6 +1552,11 @@ public class DaVinciClientTest {
         Assert.assertFalse(Files.exists(Paths.get(snapshotPath1)));
       }
     }
+
+    // clean up config file
+    if (configFile.exists()) {
+      Assert.assertTrue(configFile.delete(), "Failed to delete config file: " + configFile.getAbsolutePath());
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -1609,20 +1633,27 @@ public class DaVinciClientTest {
     setUpStore(storeName, paramsConsumer, properties -> {}, true);
 
     // Start the first DaVinci Client using DaVinciUserApp
-    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts,
-        dvcPath1,
-        storeName,
-        "100",
-        "10",
-        "false",
-        Integer.toString(port1),
-        Integer.toString(port2),
-        StorageClass.DISK.toString(),
-        "false",
-        "true",
-        "false");
+    File configFile = File.createTempFile("dvc-config", ".properties");
+    Properties props = new Properties();
+    props.setProperty("zk.hosts", zkHosts);
+    props.setProperty("base.data.path", dvcPath1);
+    props.setProperty("store.name", storeName);
+    props.setProperty("sleep.seconds", "100");
+    props.setProperty("heartbeat.timeout.seconds", "10");
+    props.setProperty("ingestion.isolation", "false");
+    props.setProperty("blob.transfer.server.port", Integer.toString(port1));
+    props.setProperty("blob.transfer.client.port", Integer.toString(port2));
+    props.setProperty("storage.class", StorageClass.DISK.toString());
+    props.setProperty("record.transformer.enabled", "false");
+    props.setProperty("blob.transfer.ssl.enabled", "true");
+    props.setProperty("batch.push.report.enabled", "false");
+
+    // Write properties to file
+    try (FileWriter writer = new FileWriter(configFile)) {
+      props.store(writer, null);
+    }
+
+    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
@@ -1711,6 +1742,11 @@ public class DaVinciClientTest {
       } finally {
         client2.close();
       }
+    }
+
+    // clean up config file
+    if (configFile.exists()) {
+      Assert.assertTrue(configFile.delete(), "Failed to delete config file: " + configFile.getAbsolutePath());
     }
   }
 
