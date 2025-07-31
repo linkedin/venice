@@ -36,8 +36,9 @@ public interface WriteComputeHandler {
    *    (1) If an element is removed in the first update and added in the latter update, it will still present in the
    *    merged collection merge operation. This API for now does not perform de-dupe if an element present in both union
    *    and diff operation. Venice Server will be able to handle this correctly regardless.
-   *    (2) The expected priority for the two collection merge operation is: (a) current update's union op (b) current
-   *    update's diff op (c) next update's union op (d) next update's diff op.
+   *    (2) The expected priority for the two collection merge operation is: (a) current update's union op < (b) current
+   *    update's diff op < (c) next update's union op < (d) next update's diff op. Within the same update, diff always
+   *    has higher priority than union op, which is also exercised in Venice Backend conflict resolution logic.
    * Also, note that this API may modify the content of input update records.
    * @param currUpdateRecord Current update record. If existing update record is null, return the next update record.
    * @param newUpdateRecord Next update record.
