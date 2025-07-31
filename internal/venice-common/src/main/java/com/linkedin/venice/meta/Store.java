@@ -357,4 +357,8 @@ public interface Store {
   boolean isGlobalRtDivEnabled();
 
   void setGlobalRtDivEnabled(boolean globalRtDivEnabled);
+
+  boolean isTTLRepushEnabled();
+
+  void setTTLRepushEnabled(boolean ttlRepushEnabled);
 }

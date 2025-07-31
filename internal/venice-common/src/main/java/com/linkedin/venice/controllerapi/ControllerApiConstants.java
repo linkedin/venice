@@ -273,4 +273,5 @@ public class ControllerApiConstants {
    * Params for repush job
    */
   public static final String SOURCE_REGION = "source_region";
+  public static final String TTL_REPUSH_ENABLED = "ttl_repush_enabled";
 }

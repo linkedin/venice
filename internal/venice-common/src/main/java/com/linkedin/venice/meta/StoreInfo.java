@@ -85,6 +85,7 @@ public class StoreInfo {
     storeInfo.setTargetRegionSwapWaitTime(store.getTargetSwapRegionWaitTime());
     storeInfo.setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
     storeInfo.setGlobalRtDivEnabled(store.isGlobalRtDivEnabled());
+    storeInfo.setTTLRepushEnabled(store.isTTLRepushEnabled());
     return storeInfo;
   }
 
@@ -358,6 +359,10 @@ public class StoreInfo {
   private int targetRegionSwapWaitTime;
   private boolean isDavinciHeartbeatReported;
   private boolean globalRtDivEnabled = false;
+  /**
+   * Self-managed config that's set to true once there is a TTL re-push.
+   */
+  private boolean ttlRepushEnabled = false;
 
   public StoreInfo() {
   }
@@ -934,5 +939,13 @@ public class StoreInfo {
 
   public boolean isGlobalRtDivEnabled() {
     return this.globalRtDivEnabled;
+  }
+
+  public void setTTLRepushEnabled(boolean ttlRepushEnabled) {
+    this.ttlRepushEnabled = ttlRepushEnabled;
+  }
+
+  public boolean isTTLRepushEnabled() {
+    return this.ttlRepushEnabled;
   }
 }
