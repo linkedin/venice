@@ -8,6 +8,7 @@ import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
+import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -57,6 +58,7 @@ public class StoreIngestionTaskFactory {
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerConfig recordTransformerConfig,
+      AggVersionedDaVinciRecordTransformerStats recordTransformerStats,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
@@ -71,6 +73,7 @@ public class StoreIngestionTaskFactory {
           isIsolatedIngestion,
           cacheBackend,
           recordTransformerConfig,
+          recordTransformerStats,
           zkHelixAdmin);
     }
     return new LeaderFollowerStoreIngestionTask(
@@ -85,6 +88,7 @@ public class StoreIngestionTaskFactory {
         isIsolatedIngestion,
         cacheBackend,
         recordTransformerConfig,
+        recordTransformerStats,
         zkHelixAdmin);
   }
 
@@ -111,6 +115,7 @@ public class StoreIngestionTaskFactory {
     private ReadOnlySchemaRepository schemaRepo;
     private ReadOnlyStoreRepository metadataRepo;
     private TopicManagerRepository topicManagerRepository;
+    private AggVersionedDaVinciRecordTransformerStats daVinciRecordTransformerStats;
     private AggHostLevelIngestionStats ingestionStats;
     private AggVersionedDIVStats versionedDIVStats;
     private AggVersionedIngestionStats versionedStorageIngestionStats;

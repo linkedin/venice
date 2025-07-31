@@ -26,6 +26,7 @@ import com.linkedin.davinci.ingestion.LagType;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.davinci.schema.merge.MergeRecordHelper;
+import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageService;
@@ -233,6 +234,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerConfig recordTransformerConfig,
+      AggVersionedDaVinciRecordTransformerStats recordTransformerStats,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
     super(
         storageService,
@@ -246,6 +248,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         isIsolatedIngestion,
         cacheBackend,
         recordTransformerConfig,
+        recordTransformerStats,
         builder.getLeaderFollowerNotifiers(),
         zkHelixAdmin);
     this.version = version;

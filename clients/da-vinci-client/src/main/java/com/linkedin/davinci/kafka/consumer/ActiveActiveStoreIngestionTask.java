@@ -14,6 +14,7 @@ import com.linkedin.davinci.replication.merge.MergeConflictResolverFactory;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
+import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.storage.chunking.ChunkedValueManifestContainer;
@@ -107,6 +108,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
       DaVinciRecordTransformerConfig recordTransformerConfig,
+      AggVersionedDaVinciRecordTransformerStats recordTransformerStats,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
     super(
         storageService,
@@ -120,6 +122,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         isIsolatedIngestion,
         cacheBackend,
         recordTransformerConfig,
+        recordTransformerStats,
         zkHelixAdmin);
 
     this.rmdProtocolVersionId = version.getRmdVersionId();

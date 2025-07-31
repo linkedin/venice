@@ -1,6 +1,5 @@
 package com.linkedin.davinci.client;
 
-import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Optional;
@@ -23,7 +22,6 @@ public class DaVinciRecordTransformerConfig {
   private final boolean useSpecificRecordKeyDeserializer;
   private final boolean useSpecificRecordValueDeserializer;
   private AtomicInteger startConsumptionLatchCount;
-  private AggVersionedDaVinciRecordTransformerStats recordTransformerStats;
 
   public DaVinciRecordTransformerConfig(Builder builder) {
     this.recordTransformerFunction = Optional.ofNullable(builder.recordTransformerFunction)
@@ -127,14 +125,6 @@ public class DaVinciRecordTransformerConfig {
       throw new VeniceException("startConsumptionLatchCount should only be modified once");
     }
     this.startConsumptionLatchCount.set(startConsumptionLatchCount);
-  }
-
-  synchronized public AggVersionedDaVinciRecordTransformerStats getRecordTransformerStats() {
-    return this.recordTransformerStats;
-  }
-
-  public synchronized void setRecordTransformerStats(AggVersionedDaVinciRecordTransformerStats recordTransformerStats) {
-    this.recordTransformerStats = recordTransformerStats;
   }
 
   public static class Builder {

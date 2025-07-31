@@ -604,6 +604,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         isIsolatedIngestion,
         cacheBackend,
         getRecordTransformerConfig(storeName),
+        recordTransformerStats,
         zkHelixAdmin);
   }
 
@@ -1440,7 +1441,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (recordTransformerStats == null) {
       recordTransformerStats =
           new AggVersionedDaVinciRecordTransformerStats(metricsRepository, metadataRepo, serverConfig);
-      recordTransformerConfig.setRecordTransformerStats(recordTransformerStats);
     }
 
     storeNameToRecordTransformerConfig.put(storeName, recordTransformerConfig);

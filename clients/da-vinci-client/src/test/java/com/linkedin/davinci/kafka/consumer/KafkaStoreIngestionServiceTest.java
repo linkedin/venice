@@ -767,6 +767,5 @@ public abstract class KafkaStoreIngestionServiceTest {
     AggVersionedDaVinciRecordTransformerStats recordTransformerStats =
         kafkaStoreIngestionService.getRecordTransformerStats();
     assertNotNull(recordTransformerStats);
-    assertEquals(recordTransformerConfig.getRecordTransformerStats(), recordTransformerStats);
   }
 }
