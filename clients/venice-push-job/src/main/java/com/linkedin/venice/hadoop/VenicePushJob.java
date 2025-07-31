@@ -289,6 +289,8 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.jobStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
     if (pushJobSetting.isSourceKafka) {
       pushId = pushJobSetting.repushTTLEnabled ? Version.generateTTLRePushId(pushId) : Version.generateRePushId(pushId);
+    } else if (pushJobSetting.allowRegularPushWithTTLRepush) {
+      pushId = Version.generateRegularPushWithTTLRePushId(pushId);
     }
     pushJobDetails.pushId = pushId;
   }
@@ -741,7 +743,7 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info("Overriding re-push rewind time in seconds to: {}", pushJobSetting.rewindTimeInSecondsOverride);
         }
       }
-      validateRegularPushWithTTLRepush(controllerClient, pushJobSetting);
+      checkRegularPushWithTTLRepush(controllerClient, pushJobSetting);
       // Create new store version, topic and fetch Kafka url from backend
       createNewStoreVersion(
           pushJobSetting,
@@ -2074,7 +2076,7 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   // Visible for unit testing
-  void validateRegularPushWithTTLRepush(ControllerClient controllerClient, PushJobSetting setting) {
+  void checkRegularPushWithTTLRepush(ControllerClient controllerClient, PushJobSetting setting) {
     if (setting.allowRegularPushWithTTLRepush) {
       return;
     }

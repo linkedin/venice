@@ -686,13 +686,14 @@ public class TestVenicePushJob {
                 .setChunkingEnabled(true)
                 .setRmdChunkingEnabled(true)));
     controllerClient.emptyPush(storeName, "test-empty-push", 1000000L);
-    // Enable repush ttl
+    // Enable ttl re-push
     props.setProperty(REPUSH_TTL_ENABLE, "true");
     props.setProperty(SOURCE_KAFKA, "true");
     IntegrationTestPushUtils.runVPJ(props);
     StoreResponse response = controllerClient.getStore(storeName);
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getStore().getVersions().size(), 2);
+    Assert.assertTrue(response.getStore().isTTLRepushEnabled());
     props.remove(REPUSH_TTL_ENABLE);
     props.remove(SOURCE_KAFKA);
     // A regular batch push should fail

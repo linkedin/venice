@@ -1293,23 +1293,23 @@ public class VenicePushJobTest {
     PushJobSetting pushJobSetting = venicePushJob.getPushJobSetting();
     pushJobSetting.inputHasRecords = true;
     pushJobSetting.isIncrementalPush = true;
-    venicePushJob.validateRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
     venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
     pushJobSetting = venicePushJob.getPushJobSetting();
     pushJobSetting.inputHasRecords = true;
     pushJobSetting.isSourceKafka = true;
-    venicePushJob.validateRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
     venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
     pushJobSetting = venicePushJob.getPushJobSetting();
     pushJobSetting.inputHasRecords = false;
-    venicePushJob.validateRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
     // Regular batch push should be rejected
     final VenicePushJob failPushJob = new VenicePushJob(PUSH_JOB_ID, props);
     pushJobSetting = failPushJob.getPushJobSetting();
     pushJobSetting.inputHasRecords = true;
     Assert.assertThrows(
         VeniceException.class,
-        () -> failPushJob.validateRegularPushWithTTLRepush(mockControllerClient, failPushJob.getPushJobSetting()));
+        () -> failPushJob.checkRegularPushWithTTLRepush(mockControllerClient, failPushJob.getPushJobSetting()));
   }
 
   private SchemaResponse getKeySchemaResponse() {

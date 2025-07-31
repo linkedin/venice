@@ -3162,8 +3162,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               }
             }
           }
+          // Check the push job id to self-manage the ttlRepushEnabled store property.
           if (Version.isPushIdTTLRePush(pushJobId) && !store.isTTLRepushEnabled()) {
             store.setTTLRepushEnabled(true);
+            repository.updateStore(store);
+          } else if (Version.isPushIdRegularPushWithTTLRePush(pushJobId) && store.isTTLRepushEnabled()) {
+            store.setTTLRepushEnabled(false);
             repository.updateStore(store);
           }
           if (startIngestion) {
