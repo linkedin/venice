@@ -269,7 +269,7 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public PubSubPosition decodePosition(PubSubTopicPartition partition, ByteBuffer buffer) {
+  public PubSubPosition decodePosition(PubSubTopicPartition partition, int positionTypeId, ByteBuffer buffer) {
     try {
       if (buffer.remaining() < Long.BYTES) {
         throw new VeniceException("Buffer too short to decode InMemoryPubSubPosition: " + buffer);

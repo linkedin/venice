@@ -18,6 +18,8 @@ public class EarliestPositionTest {
 
     assertNotNull(instance1);
     assertSame(instance1, instance2, "Should return the same singleton instance");
+    assertTrue(instance1.isSymbolic(), "EarliestPosition should be symbolic");
+    assertTrue(instance2.isSymbolic(), "EarliestPosition should be symbolic");
   }
 
   @Test

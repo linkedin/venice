@@ -33,6 +33,12 @@ final class LatestPosition implements PubSubPosition {
   }
 
   @Override
+  public boolean isSymbolic() {
+    // LatestPosition is a symbolic position
+    return true;
+  }
+
+  @Override
   public int getHeapSize() {
     return SHALLOW_CLASS_OVERHEAD;
   }

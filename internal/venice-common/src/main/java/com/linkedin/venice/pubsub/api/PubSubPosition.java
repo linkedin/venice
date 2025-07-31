@@ -18,6 +18,10 @@ public interface PubSubPosition extends Measurable {
 
   int hashCode();
 
+  default boolean isSymbolic() {
+    return false;
+  }
+
   /**
    * Position wrapper is used to wrap the position type and the position value.
    * This is used to serialize and deserialize the position object when sending and receiving it over the wire.
