@@ -69,6 +69,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
@@ -219,7 +220,7 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     // Set up IngestionTask Builder
     StoreIngestionTaskFactory.Builder builder = new StoreIngestionTaskFactory.Builder();
-    builder.setPubSubTopicRepository(TOPIC_REPOSITORY);
+    builder.setPubSubContext(new PubSubContext.Builder().setPubSubTopicRepository(TOPIC_REPOSITORY).build());
     builder.setHostLevelIngestionStats(mock(AggHostLevelIngestionStats.class));
     builder.setAggKafkaConsumerService(mock(AggKafkaConsumerService.class));
     builder.setMetadataRepository(readOnlyStoreRepository);

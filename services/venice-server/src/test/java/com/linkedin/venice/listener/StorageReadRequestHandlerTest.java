@@ -83,6 +83,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceServerResponse;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.mock.SimplePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
@@ -191,6 +192,8 @@ public class StorageReadRequestHandlerTest {
       new ChunkedValueManifestSerializer(true);
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
 
+  private PubSubContext pubSubContext;
+
   @BeforeMethod
   public void setUp() {
     doReturn(store).when(storeRepository).getStoreOrThrow(any());
@@ -207,6 +210,7 @@ public class StorageReadRequestHandlerTest {
 
     RocksDBServerConfig rocksDBServerConfig = mock(RocksDBServerConfig.class);
     doReturn(rocksDBServerConfig).when(serverConfig).getRocksDBServerConfig();
+    pubSubContext = new PubSubContext.Builder().build();
   }
 
   @AfterMethod
@@ -550,6 +554,7 @@ public class StorageReadRequestHandlerTest {
         Utils.getReplicaId(topic, expectedPartitionId),
         expectedPartitionId,
         new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()),
+        pubSubContext,
         false);
     expectedAdminResponse.addPartitionConsumptionState(state);
     doReturn(expectedAdminResponse).when(ingestionMetadataRetriever).getConsumptionSnapshots(eq(topic), any());
