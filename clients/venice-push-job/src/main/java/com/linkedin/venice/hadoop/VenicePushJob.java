@@ -12,6 +12,7 @@ import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENAB
 import static com.linkedin.venice.utils.AvroSupersetSchemaUtils.validateSubsetValueSchema;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.BATCH_NUM_BYTES_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SAMPLE_SIZE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.COMPRESSION_DICTIONARY_SIZE_LIMIT;
@@ -80,6 +81,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.PushJobCheckpoints;
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -95,6 +97,7 @@ import com.linkedin.venice.controllerapi.RepushInfoResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -286,6 +289,8 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.jobStartTimeMs + "_" + props.getString(JOB_EXEC_URL, "failed_to_obtain_execution_url");
     if (pushJobSetting.isSourceKafka) {
       pushId = pushJobSetting.repushTTLEnabled ? Version.generateTTLRePushId(pushId) : Version.generateRePushId(pushId);
+    } else if (pushJobSetting.allowRegularPushWithTTLRepush) {
+      pushId = Version.generateRegularPushWithTTLRePushId(pushId);
     }
     pushJobDetails.pushId = pushId;
   }
@@ -522,6 +527,7 @@ public class VenicePushJob implements AutoCloseable {
       Validate.isAssignableFrom(DataWriterComputeJob.class, objectClass);
       pushJobSettingToReturn.dataWriterComputeJobClass = objectClass;
     }
+    pushJobSettingToReturn.allowRegularPushWithTTLRepush = props.getBoolean(ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH, false);
     return pushJobSettingToReturn;
   }
 
@@ -737,6 +743,7 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info("Overriding re-push rewind time in seconds to: {}", pushJobSetting.rewindTimeInSecondsOverride);
         }
       }
+      checkRegularPushWithTTLRepush(controllerClient, pushJobSetting);
       // Create new store version, topic and fetch Kafka url from backend
       createNewStoreVersion(
           pushJobSetting,
@@ -1322,12 +1329,10 @@ public class VenicePushJob implements AutoCloseable {
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
     if (useD2ControllerClient) {
-      return D2ControllerClientFactory.discoverAndConstructControllerClient(
-          storeName,
-          controllerD2ServiceName,
-          d2ZkHosts,
-          sslFactory,
-          retryAttempts);
+      // TODO: we probably need to provide more for constructing d2Client here.
+      D2Client d2Client = D2ClientFactory.getD2Client(d2ZkHosts, sslFactory);
+      return D2ControllerClientFactory
+          .discoverAndConstructControllerClient(storeName, controllerD2ServiceName, retryAttempts, d2Client);
     } else {
       return ControllerClientFactory.discoverAndConstructControllerClient(
           storeName,
@@ -2068,6 +2073,31 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.valueSchemaId,
         pushJobSetting.valueSchemaString,
         setting.storeName);
+  }
+
+  // Visible for unit testing
+  void checkRegularPushWithTTLRepush(ControllerClient controllerClient, PushJobSetting setting) {
+    if (setting.allowRegularPushWithTTLRepush) {
+      return;
+    }
+    // Validation only required for regular batch pushes with records since user could be scheduling an empty push to
+    // wipe all data
+    if (setting.isIncrementalPush || setting.isSourceKafka || !setting.inputHasRecords) {
+      return;
+    }
+    // Also allow batch push that will provide the row level timestamp field (compatible with TTL re-push)
+    if (setting.timestampField != null && !setting.timestampField.isEmpty()) {
+      return;
+    }
+    StoreResponse storeResponse = ControllerClient
+        .retryableRequest(controllerClient, setting.controllerRetries, c -> c.getStore(setting.storeName));
+    if (storeResponse.isError()) {
+      throw new VeniceException("Unable to fetch store to validate if regular push is allowed with TTL re-push");
+    }
+    if (storeResponse.getStore().isTTLRepushEnabled()) {
+      String errorMessage = "Store: %s is TTL re-push enabled and regular batch push is not allowed with TTL re-push";
+      throw new VeniceException(String.format(errorMessage, storeResponse.getName()));
+    }
   }
 
   // Visible for testing

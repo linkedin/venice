@@ -245,7 +245,7 @@ public class ControllerClient implements Closeable {
 
   public StoreResponse getStore(String storeName, int timeoutMs) {
     QueryParams params = newParams().add(NAME, storeName);
-    return request(ControllerRoute.STORE, params, StoreResponse.class, timeoutMs, 1, null, Optional.empty());
+    return request(ControllerRoute.STORE, params, StoreResponse.class, timeoutMs, 1, null, null);
   }
 
   public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabricName) {
@@ -857,7 +857,7 @@ public class ControllerClient implements Closeable {
     if (StringUtils.isNotEmpty(targetedRegions)) {
       params.add(TARGETED_REGIONS, targetedRegions);
     }
-    return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1, null, Optional.empty());
+    return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1, null, null);
   }
 
   /**
@@ -869,14 +869,7 @@ public class ControllerClient implements Closeable {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     QueryParams params = newParams().add(NAME, storeName).add(VERSION, version).add(FABRIC, region);
-    return request(
-        ControllerRoute.JOB,
-        params,
-        JobStatusQueryResponse.class,
-        QUERY_JOB_STATUS_TIMEOUT,
-        1,
-        null,
-        Optional.empty());
+    return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, QUERY_JOB_STATUS_TIMEOUT, 1, null, null);
   }
 
   public ControllerResponse sendPushJobDetails(String storeName, int version, byte[] pushJobDetails) {
@@ -1469,7 +1462,7 @@ public class ControllerClient implements Closeable {
         DEFAULT_REQUEST_TIMEOUT_MS,
         DEFAULT_MAX_ATTEMPTS,
         null,
-        Optional.of(controllerUrl));
+        controllerUrl);
   }
 
   public ControllerResponse deleteKafkaTopic(String topicName) {
@@ -1542,14 +1535,7 @@ public class ControllerClient implements Closeable {
   }
 
   private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType) {
-    return request(
-        route,
-        params,
-        responseType,
-        DEFAULT_REQUEST_TIMEOUT_MS,
-        DEFAULT_MAX_ATTEMPTS,
-        null,
-        Optional.empty());
+    return request(route, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_MAX_ATTEMPTS, null, null);
   }
 
   private <T extends ControllerResponse> T request(
@@ -1557,14 +1543,7 @@ public class ControllerClient implements Closeable {
       QueryParams params,
       Class<T> responseType,
       byte[] data) {
-    return request(
-        route,
-        params,
-        responseType,
-        DEFAULT_REQUEST_TIMEOUT_MS,
-        DEFAULT_MAX_ATTEMPTS,
-        data,
-        Optional.empty());
+    return request(route, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_MAX_ATTEMPTS, data, null);
   }
 
   /**
@@ -1585,16 +1564,22 @@ public class ControllerClient implements Closeable {
       int timeoutMs,
       int maxAttempts,
       byte[] data,
-      Optional<String> controllerUrl) {
+      String controllerUrl) {
     Exception lastException = null;
     boolean logErrorMessage = true;
-    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
+    boolean requireLeaderDiscovery = controllerUrl == null || controllerUrl.isEmpty();
+    try (ControllerTransport transport = getNewControllerTransport()) {
       for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
         try {
           // If the controllerUrl is not provided, use the leader controller URL.
           // This option is useful when we want to forward request to specific controller (e.g. to standby controller)
-          return transport
-              .request(controllerUrl.orElse(getLeaderControllerUrl()), route, params, responseType, timeoutMs, data);
+          return transport.request(
+              requireLeaderDiscovery ? getLeaderControllerUrl() : controllerUrl,
+              route,
+              params,
+              responseType,
+              timeoutMs,
+              data);
         } catch (ExecutionException | TimeoutException e) {
           // Controller is unreachable. Let's wait for a new leader to be elected.
           // Total wait time should be at least leader election time (~30 seconds)
@@ -1618,7 +1603,7 @@ public class ControllerClient implements Closeable {
               "Retrying controller request, attempt = {}/{}, controller = {}, route = {}, params = {}, timeout = {}",
               attempt,
               maxAttempts,
-              controllerUrl.orElse(this.leaderControllerUrl),
+              (requireLeaderDiscovery ? this.leaderControllerUrl : controllerUrl),
               route.getPath(),
               params.getNameValuePairs(),
               timeoutMs,
@@ -1631,8 +1616,8 @@ public class ControllerClient implements Closeable {
     }
 
     String message = "An error occurred during controller request." + " controller = "
-        + controllerUrl.orElse(this.leaderControllerUrl) + ", route = " + route.getPath() + ", params = "
-        + params.getAbbreviatedNameValuePairs() + ", timeout = " + timeoutMs;
+        + (requireLeaderDiscovery ? this.leaderControllerUrl : controllerUrl) + ", route = " + route.getPath()
+        + ", params = " + params.getAbbreviatedNameValuePairs() + ", timeout = " + timeoutMs;
     return makeErrorResponse(message, lastException, responseType, logErrorMessage);
   }
 
@@ -1672,5 +1657,10 @@ public class ControllerClient implements Closeable {
 
   public Collection<String> getControllerDiscoveryUrls() {
     return this.controllerDiscoveryUrls;
+  }
+
+  // For testing only
+  public ControllerTransport getNewControllerTransport() {
+    return new ControllerTransport(sslFactory);
   }
 }

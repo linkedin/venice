@@ -1,0 +1,38 @@
+{
+  "name": "SampleRecord",
+  "type": "record",
+  "fields": [
+    {
+      "name": "name",
+      "type": "string",
+      "default": "default_name"
+    },
+    {
+      "name" : "age",
+      "type" : "int",
+      "default" : -1
+    },
+    {
+      "name": "intArray",
+      "type": [
+        "null",
+        {
+          "type": "array",
+          "items": "int"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "intMap",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "int"
+        }
+      ],
+      "default": null
+    }
+  ]
+}

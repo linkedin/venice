@@ -41,6 +41,7 @@ import com.linkedin.venice.controller.stats.LogCompactionStats;
 import com.linkedin.venice.controller.stats.VeniceAdminStats;
 import com.linkedin.venice.controllerapi.AdminOperationProtocolVersionControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerTransport;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -64,8 +65,10 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.stats.dimensions.RepushStoreTriggerSource;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.RegionUtils;
@@ -83,6 +86,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.MockedStatic;
@@ -1143,6 +1148,26 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
+  public void testRequestWithControllerUrl() throws ExecutionException, TimeoutException {
+    ControllerClient client = mock(ControllerClient.class);
+    ControllerTransport controllerTransport = mock(ControllerTransport.class);
+    doCallRealMethod().when(client).getLeaderControllerUrl();
+    doCallRealMethod().when(client).getLocalAdminOperationProtocolVersion(anyString());
+
+    when(client.getNewControllerTransport()).thenReturn(controllerTransport);
+    AdminOperationProtocolVersionControllerResponse response = new AdminOperationProtocolVersionControllerResponse();
+    response.setLocalAdminOperationProtocolVersion(1);
+    response.setLocalControllerName("localhost_1234");
+
+    String controllerUrl = "http://localhost:1234";
+    doReturn(response).when(controllerTransport).request(eq(controllerUrl), any(), any(), any(), anyInt(), any());
+
+    client.getLocalAdminOperationProtocolVersion(controllerUrl);
+    // When the controller URL is provided, it should NOT call getLeaderControllerUrl
+    verify(client, never()).getLeaderControllerUrl();
+  }
+
+  @Test
   public void testGetControllersWithInvalidHelixState() {
     VeniceHelixAdmin veniceHelixAdmin = mock(VeniceHelixAdmin.class);
     doCallRealMethod().when(veniceHelixAdmin).getControllersByHelixState(any(), any());
@@ -1366,5 +1391,32 @@ public class TestVeniceHelixAdmin {
             .autoMigrateStore(clusterName, destCluster, storeNameForMigration, currStep, Optional.empty()));
 
     assertTrue(exp.getMessage().contains("Store migration is not supported in this cluster: " + clusterName));
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  void testSendHeartbeatToPushStatusStore(boolean isParent) {
+    VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
+    PushStatusStoreWriter mockPushWriter = mock(PushStatusStoreWriter.class);
+    MetaStoreWriter mockMetaWriter = mock(MetaStoreWriter.class);
+
+    doReturn(isParent).when(admin).isParent();
+    doReturn(mockPushWriter).when(admin).getPushStatusStoreWriter();
+    doReturn(mockMetaWriter).when(admin).getMetaStoreWriter();
+    doCallRealMethod().when(admin).sendHeartbeatToSystemStore(anyString(), anyString(), anyLong());
+    String userStore = "test-store";
+    long timestamp = 12345L;
+
+    admin.sendHeartbeatToSystemStore(
+        "clusterA",
+        VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(userStore),
+        timestamp);
+    admin.sendHeartbeatToSystemStore("clusterA", VeniceSystemStoreUtils.getMetaStoreName(userStore), timestamp);
+    if (isParent) {
+      verify(mockMetaWriter, never()).writeHeartbeat(anyString(), anyLong());
+      verify(mockPushWriter, never()).writeHeartbeat(anyString(), anyLong());
+    } else {
+      verify(mockPushWriter).writeHeartbeat(eq(userStore), eq(timestamp));
+      verify(mockMetaWriter).writeHeartbeat(eq(userStore), eq(timestamp));
+    }
   }
 }

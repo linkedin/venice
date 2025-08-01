@@ -129,6 +129,7 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -1215,20 +1216,32 @@ public class DaVinciClientTest {
     while (port1 == port2) {
       port2 = TestUtils.getFreePort();
     }
-    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts,
-        baseDataPath,
-        storeName,
-        "100",
-        "10",
-        "true",
-        Integer.toString(port1),
-        Integer.toString(port2),
-        StorageClass.DISK.toString(),
-        "false",
-        "false",
-        "false");
+
+    // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
+    File configDir = Utils.getTempDataDirectory();
+    File configFile = new File(configDir, "dvc-config.properties");
+
+    Properties props = new Properties();
+    props.setProperty("zk.hosts", zkHosts);
+    props.setProperty("base.data.path", baseDataPath);
+    props.setProperty("store.name", storeName);
+    props.setProperty("sleep.seconds", "100");
+    props.setProperty("heartbeat.timeout.seconds", "10");
+    props.setProperty("ingestion.isolation", "true");
+    props.setProperty("blob.transfer.server.port", Integer.toString(port1));
+    props.setProperty("blob.transfer.client.port", Integer.toString(port2));
+    props.setProperty("storage.class", StorageClass.DISK.toString());
+    props.setProperty("record.transformer.enabled", "false");
+    props.setProperty("blob.transfer.manager.enabled", "false");
+    props.setProperty("batch.push.report.enabled", "false");
+
+    // Write properties to file
+    try (FileWriter writer = new FileWriter(configFile)) {
+      props.store(writer, null);
+    }
+
+    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
+
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
     IsolatedIngestionUtils.executeShellCommand("kill " + forkedDaVinciUserApp.pid());
@@ -1293,20 +1306,28 @@ public class DaVinciClientTest {
     setUpStore(storeName, paramsConsumer, properties -> {}, true);
 
     // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
-    ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts,
-        dvcPath1,
-        storeName,
-        "100",
-        "10",
-        "false",
-        Integer.toString(port1),
-        Integer.toString(port2),
-        StorageClass.DISK.toString(),
-        "false",
-        "true",
-        String.valueOf(batchPushReportEnable));
+    File configDir = Utils.getTempDataDirectory();
+    File configFile = new File(configDir, "dvc-config.properties");
+    Properties props = new Properties();
+    props.setProperty("zk.hosts", zkHosts);
+    props.setProperty("base.data.path", dvcPath1);
+    props.setProperty("store.name", storeName);
+    props.setProperty("sleep.seconds", "100");
+    props.setProperty("heartbeat.timeout.seconds", "10");
+    props.setProperty("ingestion.isolation", "false");
+    props.setProperty("blob.transfer.server.port", Integer.toString(port1));
+    props.setProperty("blob.transfer.client.port", Integer.toString(port2));
+    props.setProperty("storage.class", StorageClass.DISK.toString());
+    props.setProperty("record.transformer.enabled", "false");
+    props.setProperty("blob.transfer.manager.enabled", "true");
+    props.setProperty("batch.push.report.enabled", String.valueOf(batchPushReportEnable));
+
+    // Write properties to file
+    try (FileWriter writer = new FileWriter(configFile)) {
+      props.store(writer, null);
+    }
+
+    ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
@@ -1329,7 +1350,7 @@ public class DaVinciClientTest {
         .put(BLOB_TRANSFER_MANAGER_ENABLED, true)
         .put(BLOB_TRANSFER_SSL_ENABLED, true)
         .put(BLOB_TRANSFER_ACL_ENABLED, true)
-        .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, -1000000)
+        .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, -1000000) // force the usage of blob transfer.
         .put(SSL_KEYSTORE_TYPE, "JKS")
         .put(SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
         .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
@@ -1398,6 +1419,147 @@ public class DaVinciClientTest {
         // path 1 (dvc1) should have snapshot which they are transfer to path 2 (dvc2)
         String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
         Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
+      }
+    }
+  }
+
+  /**
+   * Test for blob P2P transfer among Da Vinci clients with batch store
+   * 1. Start a Da Vinci client with batch store and blob transfer enabled.
+   * 2. When client completes ingestion, it should have the data in the local but not clean it.
+   * 3. Restart the client to allow it restore the data from the previous ingestion and skip blob transfer.
+   */
+  @Test
+  public void testBlobP2PTransferForNonLaggingDaVinciClient() throws Exception {
+    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
+    String zkHosts = cluster.getZk().getAddress();
+    int port1 = TestUtils.getFreePort();
+    int port2 = TestUtils.getFreePort();
+    while (port1 == port2) {
+      port2 = TestUtils.getFreePort();
+    }
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
+    String storeName = Utils.getUniqueString("test-store");
+    setUpStore(storeName, paramsConsumer, properties -> {}, true);
+
+    // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
+    File configDir = Utils.getTempDataDirectory();
+    File configFile = new File(configDir, "dvc-config.properties");
+    Properties props = new Properties();
+    props.setProperty("zk.hosts", zkHosts);
+    props.setProperty("base.data.path", dvcPath1);
+    props.setProperty("store.name", storeName);
+    props.setProperty("sleep.seconds", "100");
+    props.setProperty("heartbeat.timeout.seconds", "10");
+    props.setProperty("ingestion.isolation", "false");
+    props.setProperty("blob.transfer.server.port", Integer.toString(port1));
+    props.setProperty("blob.transfer.client.port", Integer.toString(port2));
+    props.setProperty("storage.class", StorageClass.DISK.toString());
+    props.setProperty("record.transformer.enabled", "false");
+    props.setProperty("blob.transfer.manager.enabled", "true");
+    props.setProperty("batch.push.report.enabled", "false");
+
+    // Write properties to file
+    try (FileWriter writer = new FileWriter(configFile)) {
+      props.store(writer, null);
+    }
+
+    ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
+
+    // Wait for the first DaVinci Client to complete ingestion
+    Thread.sleep(60000);
+
+    // Start the second DaVinci Client using settings for blob transfer
+    String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
+
+    PropertyBuilder configBuilder = new PropertyBuilder().put(PERSISTENCE_TYPE, ROCKS_DB)
+        .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
+        .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true")
+        .put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "3000")
+        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
+        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
+        .put(DATA_BASE_PATH, dvcPath2)
+        .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port2)
+        .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1)
+        .put(PUSH_STATUS_STORE_ENABLED, true)
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+        .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
+        .put(BLOB_TRANSFER_MANAGER_ENABLED, true)
+        .put(BLOB_TRANSFER_SSL_ENABLED, true)
+        .put(BLOB_TRANSFER_ACL_ENABLED, true)
+        .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, 100) // Do not enforce the use of blob transfer.
+        .put(SSL_KEYSTORE_TYPE, "JKS")
+        .put(SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_TRUSTSTORE_TYPE, "JKS")
+        .put(SSL_TRUSTSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
+        .put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
+        .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
+        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+
+    VeniceProperties backendConfig2 = configBuilder.build();
+    DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
+
+    try (CachingDaVinciClientFactory factory2 = getCachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        backendConfig2,
+        cluster)) {
+      // Time 1: Start a fresh client, and see if it can bootstrap via blob transfer from the first one.
+      DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
+      client2.subscribeAll().get();
+
+      for (int i = 0; i < 3; i++) {
+        String partitionPath = RocksDBUtils.composePartitionDbDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(partitionPath)));
+      }
+
+      for (int i = 0; i < 3; i++) {
+        String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
+        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
+        // path 1 (dvc1) should have snapshot which are transfer to path 2 (dvc2)
+        String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
+      }
+
+      // Remove the snapshot for path 1.
+      // Check if client 2 restarts, client 1 no longer generates snapshots for path 1, since client 2 no longer
+      // requests it at all.
+      for (int i = 0; i < 3; i++) {
+        String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
+        FileUtils.deleteDirectory(new File(snapshotPath1));
+      }
+
+      // Time 2:
+      // Restart the second Da Vinci client while retaining its old data; it should skip blob transfer.
+      // Since client 2 restores the retained data upon restart, it is not expected to be lagged.
+      client2.close();
+
+      // wait and restart, and verify old data is retained before subscribing
+      Thread.sleep(3000);
+      for (int i = 0; i < 3; i++) {
+        String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
+        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
+      }
+
+      client2.start();
+      client2.subscribeAll().get();
+      for (int i = 0; i < 3; i++) {
+        String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
+        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
+        // DVC1 1 should not give DVC2 2 snapshot.
+        String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
+        Assert.assertFalse(Files.exists(Paths.get(snapshotPath1)));
       }
     }
   }
@@ -1476,20 +1638,28 @@ public class DaVinciClientTest {
     setUpStore(storeName, paramsConsumer, properties -> {}, true);
 
     // Start the first DaVinci Client using DaVinciUserApp
-    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts,
-        dvcPath1,
-        storeName,
-        "100",
-        "10",
-        "false",
-        Integer.toString(port1),
-        Integer.toString(port2),
-        StorageClass.DISK.toString(),
-        "false",
-        "true",
-        "false");
+    File configDir = Utils.getTempDataDirectory();
+    File configFile = new File(configDir, "dvc-config.properties");
+    Properties props = new Properties();
+    props.setProperty("zk.hosts", zkHosts);
+    props.setProperty("base.data.path", dvcPath1);
+    props.setProperty("store.name", storeName);
+    props.setProperty("sleep.seconds", "100");
+    props.setProperty("heartbeat.timeout.seconds", "10");
+    props.setProperty("ingestion.isolation", "false");
+    props.setProperty("blob.transfer.server.port", Integer.toString(port1));
+    props.setProperty("blob.transfer.client.port", Integer.toString(port2));
+    props.setProperty("storage.class", StorageClass.DISK.toString());
+    props.setProperty("record.transformer.enabled", "false");
+    props.setProperty("blob.transfer.manager.enabled", "true");
+    props.setProperty("batch.push.report.enabled", "false");
+
+    // Write properties to file
+    try (FileWriter writer = new FileWriter(configFile)) {
+      props.store(writer, null);
+    }
+
+    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);

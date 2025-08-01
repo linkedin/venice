@@ -93,6 +93,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -386,6 +387,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final boolean isChunked;
   protected final boolean isRmdChunked;
   protected final ChunkedValueManifestSerializer manifestSerializer;
+  protected final PubSubContext pubSubContext;
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
   private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
@@ -430,7 +432,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.storeRepository = builder.getMetadataRepo();
     this.schemaRepository = builder.getSchemaRepo();
     this.kafkaVersionTopic = storeVersionConfig.getStoreVersionName();
-    this.pubSubTopicRepository = builder.getPubSubTopicRepository();
+    this.pubSubContext = builder.getPubSubContext();
+    this.pubSubTopicRepository = pubSubContext.getPubSubTopicRepository();
+    this.topicManagerRepository = pubSubContext.getTopicManagerRepository();
     this.versionTopic = pubSubTopicRepository.getTopic(kafkaVersionTopic);
     this.storeName = versionTopic.getStoreName();
     this.storeVersionName = storeVersionConfig.getStoreVersionName();
@@ -469,7 +473,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.consumerDiv = new DataIntegrityValidator(kafkaVersionTopic);
     this.consumedBytesSinceLastSync = new VeniceConcurrentHashMap<>();
     this.ingestionTaskName = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
-    this.topicManagerRepository = builder.getTopicManagerRepository();
     this.readOnlyForBatchOnlyStoreEnabled = storeVersionConfig.isReadOnlyForBatchOnlyStoreEnabled();
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
     this.versionedDIVStats = builder.getVersionedDIVStats();
@@ -2212,6 +2215,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             getReplicaId(versionTopic, partition),
             partition,
             offsetRecord,
+            pubSubContext,
             hybridStoreConfig.isPresent());
         newPartitionConsumptionState.setCurrentVersionSupplier(isCurrentVersion);
 
@@ -2375,6 +2379,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           getReplicaId(versionTopic, partition),
           partition,
           new OffsetRecord(partitionStateSerializer),
+          pubSubContext,
           hybridStoreConfig.isPresent());
       consumptionState.setCurrentVersionSupplier(isCurrentVersion);
       partitionConsumptionStateMap.put(partition, consumptionState);

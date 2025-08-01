@@ -169,7 +169,7 @@ public class TopicManagerTest {
     recordValue.producerMetadata.messageTimestamp = producerTimestamp;
     recordValue.leaderMetadataFooter = new LeaderMetadata();
     recordValue.leaderMetadataFooter.hostName = "localhost";
-    recordValue.leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.LATEST.getWireFormatBytes();
+    recordValue.leaderMetadataFooter.upstreamPubSubPosition = PubSubSymbolicPosition.LATEST.toWireFormatBuffer();
 
     if (isDataRecord) {
       Put put = new Put();

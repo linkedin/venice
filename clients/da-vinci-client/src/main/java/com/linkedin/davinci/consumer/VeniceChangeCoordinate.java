@@ -41,7 +41,8 @@ public class VeniceChangeCoordinate implements Externalizable {
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
     this.topic = in.readUTF();
     this.partition = in.readInt();
-    this.pubSubPosition = PubSubPosition.getPositionFromWireFormat((PubSubPositionWireFormat) in.readObject());
+    this.pubSubPosition =
+        PubSubPositionDeserializer.getPositionFromWireFormat((PubSubPositionWireFormat) in.readObject());
   }
 
   // Partition and store name can be publicly accessible

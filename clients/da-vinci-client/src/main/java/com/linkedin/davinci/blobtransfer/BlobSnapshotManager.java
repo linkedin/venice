@@ -6,6 +6,7 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStoragePartition;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -13,6 +14,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.nio.ByteBuffer;
@@ -131,11 +133,21 @@ public class BlobSnapshotManager {
     String topicName = payload.getTopicName();
     int partitionId = payload.getPartition();
 
+    // 0. Fast failover
     // check if storageEngineRepository has this store partition, so exit early if not, otherwise won't be able to
     // create snapshot
     if (storageEngineRepository.getLocalStorageEngine(topicName) == null
         || !storageEngineRepository.getLocalStorageEngine(topicName).containsPartition(partitionId)) {
-      throw new VeniceException("No storage engine found for topic: " + topicName + " partition: " + partitionId);
+      throw new VeniceException("No storage engine found for replica " + Utils.getReplicaId(topicName, partitionId));
+    }
+    // Check if this partition transfer is in progress, if so, throw an exception to avoid creating a new snapshot
+    AbstractStoragePartition partition =
+        storageEngineRepository.getLocalStorageEngine(topicName).getPartitionOrThrow(partitionId);
+    if (partition instanceof RocksDBStoragePartition
+        && ((RocksDBStoragePartition) partition).isRocksDBPartitionBlobTransferInProgress()) {
+      throw new VeniceException(
+          "RocksDB instance is null, rocksDBPartitionBlobTransferInProgress flag is true for replica "
+              + Utils.getReplicaId(topicName, partitionId));
     }
 
     ReentrantLock lock = getSnapshotLock(topicName, partitionId);

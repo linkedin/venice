@@ -10,6 +10,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_SSL_TO_STORAGE_NODES;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.acl.DynamicAccessController;
 import java.util.Collections;
 import java.util.Map;
@@ -39,6 +40,7 @@ public class VeniceMultiClusterCreateOptions {
   private final Properties childControllerProperties;
   private final Properties extraProperties;
   private final DynamicAccessController accessController;
+  private final Map<String, D2Client> d2Clients;
 
   public String getRegionName() {
     return regionName;
@@ -128,6 +130,10 @@ public class VeniceMultiClusterCreateOptions {
     return accessController;
   }
 
+  public Map<String, D2Client> getD2Clients() {
+    return d2Clients;
+  }
+
   @Override
   public String toString() {
     return new StringBuilder().append("VeniceMultiClusterCreateOptions - ")
@@ -193,6 +199,8 @@ public class VeniceMultiClusterCreateOptions {
         .append(", ")
         .append("kafkaClusterMap:")
         .append(kafkaClusterMap)
+        .append("d2Clients:")
+        .append(d2Clients)
         .toString();
   }
 
@@ -219,6 +227,7 @@ public class VeniceMultiClusterCreateOptions {
     forkServer = builder.forkServer;
     kafkaClusterMap = builder.kafkaClusterMap;
     accessController = builder.accessController;
+    d2Clients = builder.d2Clients;
   }
 
   public static class Builder {
@@ -244,6 +253,7 @@ public class VeniceMultiClusterCreateOptions {
     private Properties childControllerProperties;
     private Properties extraProperties;
     private DynamicAccessController accessController;
+    private Map<String, D2Client> d2Clients;
 
     public Builder numberOfClusters(int numberOfClusters) {
       this.numberOfClusters = numberOfClusters;
@@ -356,6 +366,11 @@ public class VeniceMultiClusterCreateOptions {
 
     public Builder accessController(DynamicAccessController accessController) {
       this.accessController = accessController;
+      return this;
+    }
+
+    public Builder d2Clients(Map<String, D2Client> d2Clients) {
+      this.d2Clients = d2Clients;
       return this;
     }
 

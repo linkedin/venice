@@ -174,6 +174,7 @@ public class MetaStoreWriter implements Closeable {
   }
 
   public void writeHeartbeat(String storeName, long heartbeatTimestamp) {
+    LOGGER.info("Sending heartbeat: {} for meta store of: {}", heartbeatTimestamp, storeName);
     write(
         storeName,
         MetaStoreDataType.HEARTBEAT,

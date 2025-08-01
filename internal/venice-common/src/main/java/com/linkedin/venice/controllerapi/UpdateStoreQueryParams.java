@@ -12,6 +12,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DECOMPRESSION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_THRESHOLD_MILLISECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_REPLICATION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_DAVINCI_PUSH_STATUS_STORE;
@@ -68,6 +70,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -151,10 +154,13 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
             .setTargetRegionSwapWaitTime(srcStore.getTargetRegionSwapWaitTime())
             .setGlobalRtDivEnabled(srcStore.isGlobalRtDivEnabled())
+            .setCompactionEnabled(srcStore.isCompactionEnabled())
+            .setCompactionThresholdMilliseconds(srcStore.getCompactionThreshold())
             .setMaxCompactionLagSeconds(srcStore.getMaxCompactionLagSeconds())
             .setMinCompactionLagSeconds(srcStore.getMinCompactionLagSeconds())
             .setNearlineProducerCountPerWriter(srcStore.getNearlineProducerCountPerWriter())
             .setIsDavinciHeartbeatReported(srcStore.getIsDavinciHeartbeatReported())
+            .setTTLRepushEnabled(srcStore.isTTLRepushEnabled())
             // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
             // still easy to parse
             .setStoreViews(
@@ -709,6 +715,22 @@ public class UpdateStoreQueryParams extends QueryParams {
     return (UpdateStoreQueryParams) add(DISABLE_STORE_VIEW, true);
   }
 
+  public UpdateStoreQueryParams setCompactionEnabled(boolean compactionEnabled) {
+    return putBoolean(COMPACTION_ENABLED, compactionEnabled);
+  }
+
+  public Optional<Boolean> getCompactionEnabled() {
+    return getBoolean(COMPACTION_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setCompactionThresholdMilliseconds(long compactionThresholdMilliseconds) {
+    return putLong(COMPACTION_THRESHOLD_MILLISECONDS, compactionThresholdMilliseconds);
+  }
+
+  public Optional<Long> getCompactionThresholdMilliseconds() {
+    return getLong(COMPACTION_THRESHOLD_MILLISECONDS);
+  }
+
   public UpdateStoreQueryParams setMaxCompactionLagSeconds(long maxCompactionLagSeconds) {
     return putLong(MAX_COMPACTION_LAG_SECONDS, maxCompactionLagSeconds);
   }
@@ -795,6 +817,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> isGlobalRtDivEnabled() {
     return getBoolean(GLOBAL_RT_DIV_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setTTLRepushEnabled(boolean ttlRepushEnabled) {
+    return putBoolean(TTL_REPUSH_ENABLED, ttlRepushEnabled);
+  }
+
+  public Optional<Boolean> isTTLRepushEnabled() {
+    return getBoolean(TTL_REPUSH_ENABLED);
   }
 
   // ***************** above this line are getters and setters *****************

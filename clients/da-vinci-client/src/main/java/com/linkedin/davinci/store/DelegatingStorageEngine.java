@@ -70,6 +70,11 @@ public class DelegatingStorageEngine<P extends AbstractStoragePartition> impleme
   }
 
   @Override
+  public void addStoragePartition(StoragePartitionConfig storagePartitionConfig) {
+    this.delegate.addStoragePartition(storagePartitionConfig);
+  }
+
+  @Override
   public void closePartition(int partitionId) {
     this.delegate.closePartition(partitionId);
   }

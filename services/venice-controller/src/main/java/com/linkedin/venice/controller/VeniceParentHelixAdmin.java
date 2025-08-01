@@ -15,6 +15,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DECOMPRESSION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_THRESHOLD_MILLISECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_REPLICATION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_DAVINCI_PUSH_STATUS_STORE;
@@ -1708,7 +1710,6 @@ public class VeniceParentHelixAdmin implements Admin {
           repushSourceVersion,
           store.getLargestUsedRTVersionNumber());
     }
-    cleanupHistoricalVersions(clusterName, storeName);
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == null) {
       if (pushType.isBatch()) {
         getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
@@ -1805,6 +1806,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       getSystemStoreLifeCycleHelper().maybeCreateSystemStoreWildcardAcl(storeName);
     }
+    cleanupHistoricalVersions(clusterName, storeName);
     return newVersion;
   }
 
@@ -2476,6 +2478,8 @@ public class VeniceParentHelixAdmin implements Admin {
        */
       Optional<Boolean> replicateAll = params.getReplicateAllConfigs();
       Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
+      Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
+      Optional<Long> compactionThreshold = params.getCompactionThresholdMilliseconds();
       Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
       Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
       Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -2546,7 +2550,7 @@ public class VeniceParentHelixAdmin implements Admin {
             throw new VeniceException("View class name is required when configuring a view.");
           }
           // If View parameter is not provided, use emtpy map instead. It does not inherit from existing config.
-          ViewConfig viewConfig = new ViewConfigImpl(viewClassName.get(), viewParams.orElse(Collections.emptyMap()));
+          ViewConfig viewConfig = new ViewConfigImpl(viewClassName.get(), viewParams.orElseGet(Collections::emptyMap));
           ViewConfig validatedViewConfig = validateAndDecorateStoreViewConfig(currStore, viewConfig, viewName.get());
           updatedViewSettings =
               VeniceHelixAdmin.addNewViewConfigsIntoOldConfigs(currStore, viewName.get(), validatedViewConfig);
@@ -2707,7 +2711,7 @@ public class VeniceParentHelixAdmin implements Admin {
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
       }
 
-      if (incrementalPushEnabled.orElse(currStore.isIncrementalPushEnabled())
+      if (incrementalPushEnabled.orElseGet(currStore::isIncrementalPushEnabled)
           && !veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
           && !veniceHelixAdmin.isHybrid(updatedHybridStoreConfig)) {
         LOGGER.info(
@@ -2746,7 +2750,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.compressionStrategy =
           compressionStrategy.map(addToUpdatedConfigList(updatedConfigsList, COMPRESSION_STRATEGY))
               .map(CompressionStrategy::getValue)
-              .orElse(currStore.getCompressionStrategy().getValue());
+              .orElseGet(() -> currStore.getCompressionStrategy().getValue());
       setStore.clientDecompressionEnabled =
           clientDecompressionEnabled.map(addToUpdatedConfigList(updatedConfigsList, CLIENT_DECOMPRESSION_ENABLED))
               .orElseGet(currStore::getClientDecompressionEnabled);
@@ -2761,7 +2765,7 @@ public class VeniceParentHelixAdmin implements Admin {
               .orElseGet(currStore::isMigrating);
       setStore.replicationMetadataVersionID = replicationMetadataVersionID
           .map(addToUpdatedConfigList(updatedConfigsList, REPLICATION_METADATA_PROTOCOL_VERSION_ID))
-          .orElse(currStore.getRmdVersion());
+          .orElseGet(currStore::getRmdVersion);
       setStore.readComputationEnabled =
           readComputationEnabled.map(addToUpdatedConfigList(updatedConfigsList, READ_COMPUTATION_ENABLED))
               .orElseGet(currStore::isReadComputationEnabled);
@@ -2770,15 +2774,15 @@ public class VeniceParentHelixAdmin implements Admin {
           .orElseGet(currStore::getBootstrapToOnlineTimeoutInHours);
       setStore.leaderFollowerModelEnabled = true; // do not mess up during upgrades
       setStore.backupStrategy = (backupStrategy.map(addToUpdatedConfigList(updatedConfigsList, BACKUP_STRATEGY))
-          .orElse(currStore.getBackupStrategy())).ordinal();
+          .orElseGet(currStore::getBackupStrategy)).ordinal();
 
       setStore.schemaAutoRegisterFromPushJobEnabled = autoSchemaRegisterPushJobEnabled
           .map(addToUpdatedConfigList(updatedConfigsList, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED))
-          .orElse(currStore.isSchemaAutoRegisterFromPushJobEnabled());
+          .orElseGet(currStore::isSchemaAutoRegisterFromPushJobEnabled);
 
       setStore.hybridStoreDiskQuotaEnabled =
           hybridStoreDiskQuotaEnabled.map(addToUpdatedConfigList(updatedConfigsList, HYBRID_STORE_DISK_QUOTA_ENABLED))
-              .orElse(currStore.isHybridStoreDiskQuotaEnabled());
+              .orElseGet(currStore::isHybridStoreDiskQuotaEnabled);
 
       regularVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigsList, REGULAR_VERSION_ETL_ENABLED));
       futureVersionETLEnabled.map(addToUpdatedConfigList(updatedConfigsList, FUTURE_VERSION_ETL_ENABLED));
@@ -2858,6 +2862,7 @@ public class VeniceParentHelixAdmin implements Admin {
           }
         }
       }
+
       setStore.latestSuperSetValueSchemaId =
           latestSupersetSchemaId.map(addToUpdatedConfigList(updatedConfigsList, LATEST_SUPERSET_SCHEMA_ID))
               .orElseGet(currStore::getLatestSuperSetValueSchemaId);
@@ -2867,6 +2872,11 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.unusedSchemaDeletionEnabled =
           unusedSchemaDeletionEnabled.map(addToUpdatedConfigList(updatedConfigsList, UNUSED_SCHEMA_DELETION_ENABLED))
               .orElseGet(currStore::isUnusedSchemaDeletionEnabled);
+      setStore.compactionEnabled = compactionEnabled.map(addToUpdatedConfigList(updatedConfigsList, COMPACTION_ENABLED))
+          .orElseGet(currStore::isCompactionEnabled);
+      setStore.compactionThresholdMilliseconds =
+          compactionThreshold.map(addToUpdatedConfigList(updatedConfigsList, COMPACTION_THRESHOLD_MILLISECONDS))
+              .orElseGet(currStore::getCompactionThresholdMilliseconds);
       setStore.minCompactionLagSeconds =
           minCompactionLagSeconds.map(addToUpdatedConfigList(updatedConfigsList, MIN_COMPACTION_LAG_SECONDS))
               .orElseGet(currStore::getMinCompactionLagSeconds);
@@ -4556,6 +4566,11 @@ public class VeniceParentHelixAdmin implements Admin {
     getVeniceHelixAdmin().setAdminConsumerService(clusterName, service);
   }
 
+  @Override
+  public AdminConsumerService getAdminConsumerService(String clusterName) {
+    return getVeniceHelixAdmin().getAdminConsumerService(clusterName);
+  }
+
   /**
    * @see Admin#skipAdminMessage(String, long, boolean)
    */
@@ -4971,11 +4986,11 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     ETLStoreConfigRecord etlStoreConfigRecord = new ETLStoreConfigRecord();
     etlStoreConfigRecord.etledUserProxyAccount =
-        etledUserProxyAccount.orElse(etlStoreConfig.getEtledUserProxyAccount());
+        etledUserProxyAccount.orElseGet(etlStoreConfig::getEtledUserProxyAccount);
     etlStoreConfigRecord.regularVersionETLEnabled =
-        regularVersionETLEnabled.orElse(etlStoreConfig.isRegularVersionETLEnabled());
+        regularVersionETLEnabled.orElseGet(etlStoreConfig::isRegularVersionETLEnabled);
     etlStoreConfigRecord.futureVersionETLEnabled =
-        futureVersionETLEnabled.orElse(etlStoreConfig.isFutureVersionETLEnabled());
+        futureVersionETLEnabled.orElseGet(etlStoreConfig::isFutureVersionETLEnabled);
     return etlStoreConfigRecord;
   }
 
@@ -5806,6 +5821,12 @@ public class VeniceParentHelixAdmin implements Admin {
               String d2ZkHost = controllerConfig.getChildControllerD2ZkHost(fabric);
               String d2ServiceName = controllerConfig.getD2ServiceName();
               if (StringUtils.isNotBlank(d2ZkHost) && StringUtils.isNotBlank(d2ServiceName)) {
+                if (veniceHelixAdmin.getD2Clients() != null) {
+                  return new D2ControllerClient(
+                      d2ServiceName,
+                      clusterName,
+                      veniceHelixAdmin.getD2Clients().get(fabric));
+                }
                 return new D2ControllerClient(d2ServiceName, clusterName, d2ZkHost, sslFactory);
               }
               String url = controllerConfig.getChildControllerUrl(fabric);
@@ -5995,7 +6016,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * Validates that a store has been completely deleted from all venice clusters cross-regionally
-   * 
    * @see Admin#validateStoreDeleted(String, String)
    */
   @Override

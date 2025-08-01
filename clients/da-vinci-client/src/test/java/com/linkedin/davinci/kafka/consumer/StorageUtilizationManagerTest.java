@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -41,12 +42,14 @@ public class StorageUtilizationManagerTest {
   private Version version;
   private StorageUtilizationManager quotaEnforcer;
   private StorageUtilizationManager hybridQuotaEnforcer;
+  private PubSubContext pubSubContext;
 
   @BeforeClass
   public void setUp() {
     storageEngine = mock(StorageEngine.class);
     store = mock(Store.class);
     version = mock(Version.class);
+    pubSubContext = new PubSubContext.Builder().build();
   }
 
   @BeforeMethod
@@ -57,7 +60,7 @@ public class StorageUtilizationManagerTest {
 
     for (int i = 1; i <= storePartitionCount; i++) {
       PartitionConsumptionState pcs =
-          new PartitionConsumptionState(Utils.getReplicaId(topic, i), i, mock(OffsetRecord.class), true);
+          new PartitionConsumptionState(Utils.getReplicaId(topic, i), i, mock(OffsetRecord.class), pubSubContext, true);
       partitionConsumptionStateMap.put(i, pcs);
     }
 
@@ -65,7 +68,7 @@ public class StorageUtilizationManagerTest {
     when(mockOffsetRecord.getLeaderTopic()).thenReturn(realTimeTopic);
     for (int i = 1; i <= storePartitionCount; i++) {
       PartitionConsumptionState pcs =
-          new PartitionConsumptionState(Utils.getReplicaId(realTimeTopic, i), i, mockOffsetRecord, true);
+          new PartitionConsumptionState(Utils.getReplicaId(realTimeTopic, i), i, mockOffsetRecord, pubSubContext, true);
       pcs.setLeaderFollowerState(LEADER);
       hybridPartitionConsumptionStateMap.put(i, pcs);
     }

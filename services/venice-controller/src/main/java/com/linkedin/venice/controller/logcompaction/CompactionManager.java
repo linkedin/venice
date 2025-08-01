@@ -29,15 +29,15 @@ public class CompactionManager {
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class + " [log-compaction]");
 
   private final RepushOrchestrator repushOrchestrator;
-  private final long timeSinceLastLogCompactionThresholdMs;
+  private final long logCompactionThresholdMs;
   private final Map<String, LogCompactionStats> statsMap;
 
   public CompactionManager(
       RepushOrchestrator repushOrchestrator,
-      long timeSinceLastLogCompactionThresholdMs,
+      long logCompactionThresholdMs,
       Map<String, LogCompactionStats> statsMap) {
     this.repushOrchestrator = repushOrchestrator;
-    this.timeSinceLastLogCompactionThresholdMs = timeSinceLastLogCompactionThresholdMs;
+    this.logCompactionThresholdMs = logCompactionThresholdMs;
     this.statsMap = statsMap;
   }
 
@@ -88,56 +88,9 @@ public class CompactionManager {
   //
   public boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
-    return isHybridStore && isLastCompactionTimeOlderThanThreshold(timeSinceLastLogCompactionThresholdMs, storeInfo)
-        && storeInfo.isActiveActiveReplicationEnabled() && !VeniceSystemStoreUtils.isSystemStore(storeInfo.getName());
-  }
-
-  /**
-   * This function checks if the last compaction time is older than the threshold.
-   * @param compactionThresholdMs, the number of hours that the last compaction time should be older than
-   * @param storeInfo, the store to check the last compaction time for
-   * @return true if the last compaction time is older than the threshold, false otherwise
-   */
-  private boolean isLastCompactionTimeOlderThanThreshold(long compactionThresholdMs, StoreInfo storeInfo) {
-    /**
-     *  Reason for getting the largest version:
-     *  The largest version may be larger than the current version if there is an ongoing push.
-     *  The purpose of this function is to check if the last compaction time is older than the threshold.
-     *  An ongoing push is regarded as the most recent compaction
-     */
-    Version mostRecentPushedVersion = getLargestNonFailedVersion(storeInfo);
-    if (mostRecentPushedVersion == null) {
-      LOGGER.warn("Store {} has never had an active version", storeInfo.getName());
-      return false;
-    }
-
-    long lastCompactionTime = mostRecentPushedVersion.getCreatedTime();
-    long currentTime = System.currentTimeMillis();
-    long timeSinceLastCompactionMs = currentTime - lastCompactionTime;
-
-    return timeSinceLastCompactionMs >= compactionThresholdMs;
-  }
-
-  /**
-   * This function gets the most recent version that is not in ERROR or KILLED status.
-   * This can be a version that is:
-   * - in an ongoing push
-   * - pushed but not yet online
-   * - online
-   * @param storeInfo
-   * @return
-   */
-  private Version getLargestNonFailedVersion(StoreInfo storeInfo) {
-    Version largestVersion = null;
-    for (Version version: storeInfo.getVersions()) {
-      VersionStatus versionStatus = version.getStatus();
-      if (versionStatus != VersionStatus.ERROR && versionStatus != VersionStatus.KILLED) {
-        if (largestVersion == null || version.getNumber() > largestVersion.getNumber()) {
-          largestVersion = version;
-        }
-      }
-    }
-    return largestVersion;
+    return isHybridStore && isLastCompactionTimeOlderThanThreshold(getLogCompactionThresholdMs(storeInfo), storeInfo)
+        && storeInfo.isActiveActiveReplicationEnabled() && !VeniceSystemStoreUtils.isSystemStore(storeInfo.getName())
+        && storeInfo.isCompactionEnabled();
   }
 
   /**
@@ -167,5 +120,64 @@ public class CompactionManager {
       LOGGER.error("Failed to compact store: {}", repushJobRequest.getStoreName(), e);
       throw e;
     }
+  }
+
+  /**
+   * This function checks if the last compaction time is older than the threshold.
+   * @param thresholdMs, the number of milliseconds that the last compaction time should be older than
+   * @param storeInfo, the store to check the last compaction time for
+   * @return true if the last compaction time is older than the threshold, false otherwise
+   */
+  private boolean isLastCompactionTimeOlderThanThreshold(long thresholdMs, StoreInfo storeInfo) {
+    /**
+     *  Reason for getting the largest version:
+     *  The largest version may be larger than the current version if there is an ongoing push.
+     *  The purpose of this function is to check if the last compaction time is older than the threshold.
+     *  An ongoing push is regarded as the most recent compaction
+     */
+    Version mostRecentPushedVersion = getLargestNonFailedVersion(storeInfo);
+    if (mostRecentPushedVersion == null) {
+      LOGGER.warn("Store {} has never had an active version, skipping compaction nomination", storeInfo.getName());
+      return false;
+    }
+
+    long lastCompactionTime = mostRecentPushedVersion.getCreatedTime();
+    long currentTime = System.currentTimeMillis();
+    long timeSinceLastCompactionMs = currentTime - lastCompactionTime;
+
+    return timeSinceLastCompactionMs >= thresholdMs;
+  }
+
+  /**
+   * This function gets the most recent version that is not in ERROR or KILLED status.
+   * This can be a version that is:
+   * - in an ongoing push
+   * - pushed but not yet online
+   * - online
+   * @param storeInfo
+   * @return
+   */
+  private Version getLargestNonFailedVersion(StoreInfo storeInfo) {
+    Version largestVersion = null;
+    for (Version version: storeInfo.getVersions()) {
+      VersionStatus versionStatus = version.getStatus();
+      if (versionStatus != VersionStatus.ERROR && versionStatus != VersionStatus.KILLED) {
+        if (largestVersion == null || version.getNumber() > largestVersion.getNumber()) {
+          largestVersion = version;
+        }
+      }
+    }
+    return largestVersion;
+  }
+
+  /**
+  * This function will get the log compaction threshold from the store config.
+  * If default `-1`, use cluster config
+  *
+  * @param storeInfo
+  * @return
+  * */
+  private long getLogCompactionThresholdMs(StoreInfo storeInfo) {
+    return storeInfo.getCompactionThreshold() > -1 ? storeInfo.getCompactionThreshold() : logCompactionThresholdMs;
   }
 }

@@ -91,7 +91,7 @@ public class TestD2ControllerClient {
     Assert.assertEquals(response.getCluster(), TEST_CLUSTER);
 
     try (D2ControllerClient controllerClient =
-        new D2ControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, TEST_ZK_ADDRESS, Optional.empty())) {
+        new D2ControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, mockD2Client)) {
       D2ServiceDiscoveryResponse response1 = controllerClient.discoverCluster(TEST_STORE);
       Assert.assertEquals(response1.getCluster(), TEST_CLUSTER);
     }
@@ -206,8 +206,8 @@ public class TestD2ControllerClient {
     Assert.assertTrue(
         D2ControllerClient.discoverCluster(mockD2Client, TEST_CONTROLLER_D2_SERVICE, TEST_STORE, 1).isError());
 
-    try (D2ControllerClient controllerClient = D2ControllerClientFactory
-        .getControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, TEST_ZK_ADDRESS, Optional.empty())) {
+    try (D2ControllerClient controllerClient =
+        D2ControllerClientFactory.getControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, mockD2Client)) {
       // D2ControllerClient should follow the behavior of the base class and return an error response
       D2ServiceDiscoveryResponse response = controllerClient.discoverCluster(TEST_STORE);
       Assert.assertTrue(response.isError());
@@ -297,7 +297,7 @@ public class TestD2ControllerClient {
     D2ClientFactory.setD2Client(TEST_ZK_ADDRESS, mockD2Client);
 
     try (D2ControllerClient controllerClient =
-        new D2ControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, TEST_ZK_ADDRESS, Optional.empty())) {
+        new D2ControllerClient(TEST_CONTROLLER_D2_SERVICE, TEST_CLUSTER, mockD2Client, Optional.empty())) {
       String leaderController = controllerClient.discoverLeaderController();
       Assert.assertEquals(leaderController, leaderControllerResponse.getUrl());
     }
@@ -305,7 +305,7 @@ public class TestD2ControllerClient {
     try (D2ControllerClient controllerClient = new D2ControllerClient(
         TEST_CONTROLLER_D2_SERVICE,
         TEST_CLUSTER,
-        TEST_ZK_ADDRESS,
+        mockD2Client,
         Optional.of(mock(SSLFactory.class)))) {
       String leaderController = controllerClient.discoverLeaderController();
       Assert.assertEquals(leaderController, leaderControllerResponse.getSecureUrl());
@@ -343,7 +343,7 @@ public class TestD2ControllerClient {
     try (D2ControllerClient controllerClient = new D2ControllerClient(
         TEST_CONTROLLER_D2_SERVICE,
         TEST_CLUSTER,
-        TEST_ZK_ADDRESS,
+        mockD2Client,
         Optional.of(mock(SSLFactory.class)))) {
       URL responseUrl = new URL(controllerClient.discoverLeaderController());
       Assert.assertEquals(responseUrl.getPort(), 1578);

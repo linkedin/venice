@@ -307,7 +307,7 @@ public class TestFatalDataValidationExceptionHandling {
             pubSubPosition0.getNumericOffset(),
             0,
             DEFAULT_TERM_ID,
-            pubSubPosition0.getWireFormatBytes()));
+            pubSubPosition0.toWireFormatBuffer()));
     vw1.flush();
 
     PubSubPosition pubSubPosition1 = new ApacheKafkaOffsetPosition(1);
@@ -320,7 +320,7 @@ public class TestFatalDataValidationExceptionHandling {
             pubSubPosition1.getNumericOffset(),
             0,
             DEFAULT_TERM_ID,
-            pubSubPosition1.getWireFormatBytes()));
+            pubSubPosition1.toWireFormatBuffer()));
 
     PubSubPosition pubSubPosition2 = new ApacheKafkaOffsetPosition(2);
     vw2.put(
@@ -332,7 +332,7 @@ public class TestFatalDataValidationExceptionHandling {
             pubSubPosition2.getNumericOffset(),
             0,
             DEFAULT_TERM_ID,
-            pubSubPosition2.getWireFormatBytes()));
+            pubSubPosition2.toWireFormatBuffer()));
     vw2.flush();
 
     PubSubPosition pubSubPosition3 = new ApacheKafkaOffsetPosition(3);
@@ -345,7 +345,7 @@ public class TestFatalDataValidationExceptionHandling {
             pubSubPosition3.getNumericOffset(),
             0,
             DEFAULT_TERM_ID,
-            pubSubPosition3.getWireFormatBytes()));
+            pubSubPosition3.toWireFormatBuffer()));
     vw1.flush();
     vw1.closePartition(0);
     vw1.flush();

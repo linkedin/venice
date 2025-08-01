@@ -37,6 +37,7 @@ import static com.linkedin.davinci.stats.IngestionStats.SUBSCRIBE_ACTION_PREP_LA
 import static com.linkedin.davinci.stats.IngestionStats.TIMESTAMP_REGRESSION_DCR_ERROR;
 import static com.linkedin.davinci.stats.IngestionStats.TOMBSTONE_CREATION_DCR;
 import static com.linkedin.davinci.stats.IngestionStats.TOTAL_DCR;
+import static com.linkedin.davinci.stats.IngestionStats.TOTAL_DUPLICATE_KEY_UPDATE_COUNT;
 import static com.linkedin.davinci.stats.IngestionStats.UPDATE_IGNORED_DCR;
 import static com.linkedin.davinci.stats.IngestionStats.VERSION_TOPIC_END_OFFSET_REWIND_COUNT;
 import static com.linkedin.davinci.stats.IngestionStats.WRITE_COMPUTE_OPERATION_FAILURE;
@@ -343,6 +344,12 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               TIMESTAMP_REGRESSION_DCR_ERROR));
       registerSensor(
           new IngestionStatsGauge(this, () -> getStats().getOffsetRegressionDCRRate(), 0, OFFSET_REGRESSION_DCR_ERROR));
+      registerSensor(
+          new IngestionStatsGauge(
+              this,
+              () -> getStats().getTotalDuplicateKeyUpdateCount(),
+              0,
+              TOTAL_DUPLICATE_KEY_UPDATE_COUNT));
 
       for (Int2ObjectMap.Entry<String> entry: getStats().getIngestionTask()
           .getServerConfig()

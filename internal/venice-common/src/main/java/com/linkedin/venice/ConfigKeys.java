@@ -442,8 +442,7 @@ public class ConfigKeys {
   /**
    * Time since last log compaction before a store is considered for log compaction
    */
-  public static final String TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS =
-      "log.compaction.time.since.last.compaction.threshold.ms";
+  public static final String LOG_COMPACTION_THRESHOLD_MS = "log.compaction.threshold.ms";
 
   /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
@@ -1069,12 +1068,6 @@ public class ConfigKeys {
    */
   public static final String FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS =
       "freeze.ingestion.if.ready.to.serve.or.local.data.exists";
-
-  /**
-   * a comma seperated list of kafka producer metrics that will be reported.
-   * For ex. "outgoing-byte-rate,record-send-rate,batch-size-max,batch-size-avg,buffer-available-bytes,buffer-exhausted-rate"
-   */
-  public static final String KAFKA_PRODUCER_METRICS = "list.of.producer.metrics.from.kafka";
 
   /**
    * Whether to print logs that are used for troubleshooting only.

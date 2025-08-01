@@ -139,6 +139,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   protected final boolean readOnly;
   protected final boolean writeOnly;
+  protected final boolean blobTransferInProgress;
   protected final boolean readWriteLeaderForDefaultCF;
   protected final boolean readWriteLeaderForRMDCF;
 
@@ -217,6 +218,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
     this.readOnly = storagePartitionConfig.isReadOnly();
     this.writeOnly = storagePartitionConfig.isWriteOnlyConfig();
+    this.blobTransferInProgress = storagePartitionConfig.isBlobTransferInProgress();
     this.readWriteLeaderForDefaultCF = storagePartitionConfig.isReadWriteLeaderForDefaultCF();
     this.readWriteLeaderForRMDCF = storagePartitionConfig.isReadWriteLeaderForRMDCF();
     this.fullPathForPartitionDB = RocksDBUtils.composePartitionDbDir(dbDir, storeNameAndVersion, partitionId);
@@ -258,6 +260,13 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       }
       columnFamilyDescriptors.add(new ColumnFamilyDescriptor(name, columnFamilyOptions));
     }
+
+    if (blobTransferInProgress) {
+      this.rocksDB = null;
+      LOGGER.info("Blob transfer in progress for replica: {}. Skip initializing and opening RocksDB.", replicaId);
+      return;
+    }
+
     /**
      * This new open(ReadOnly)WithColumnFamily API replace original open(ReadOnly) API to reduce code duplication.
      * In the default case, we will only open DEFAULT_COLUMN_FAMILY, which is what old API does internally.
@@ -357,7 +366,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   protected void makeSureRocksDBIsStillOpen() {
-    if (isClosed) {
+    if (rocksDB == null || isClosed) {
       throw new VeniceException(
           "RocksDB has been closed for replica: " + replicaId + ", partition id: " + partitionId
               + ", any further operation is disallowed");
@@ -525,7 +534,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   @Override
   public synchronized void createSnapshot() {
+    makeSureRocksDBIsStillOpen();
     createSnapshot(rocksDB, fullPathForPartitionDBSnapshot);
+  }
+
+  public boolean isRocksDBPartitionBlobTransferInProgress() {
+    return blobTransferInProgress;
   }
 
   @Override
@@ -916,7 +930,9 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     deRegisterDBStats();
     readCloseRWLock.writeLock().lock();
     try {
-      rocksDB.close();
+      if (rocksDB != null) {
+        rocksDB.close();
+      }
     } finally {
       isClosed = true;
       readCloseRWLock.writeLock().unlock();
@@ -1024,6 +1040,10 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       if (readWriteLeaderForRMDCF != partitionConfig.isReadWriteLeaderForRMDCF()) {
         return false;
       }
+    }
+
+    if (blobTransferInProgress != partitionConfig.isBlobTransferInProgress()) {
+      return false;
     }
 
     if (options.tableFormatConfig() instanceof BlockBasedTableConfig
