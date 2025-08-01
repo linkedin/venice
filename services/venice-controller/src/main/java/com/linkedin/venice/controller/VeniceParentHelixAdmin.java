@@ -562,16 +562,18 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
 
-    String parentMetaDataStoreClusterName = getMultiClusterConfigs().getParentControllerMetadataStoreClusterName();
-    boolean initializeParentMetaDataStore = !StringUtils.isEmpty(parentMetaDataStoreClusterName);
+    String parentControllerMetadataStoreClusterName =
+        getMultiClusterConfigs().getParentControllerMetadataStoreClusterName();
+    boolean initializeParentControllerMetadataStore = !StringUtils.isEmpty(parentControllerMetadataStoreClusterName);
     if (initRoutineForParentMetadataStore != null) {
-      if (initializeParentMetaDataStore) {
+      if (initializeParentControllerMetadataStore) {
         UpdateStoreQueryParams updateStoreQueryParamsForParentControllerMetadataStore =
             new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
         initRoutineForParentMetadataStore.setDelegate(
             new SharedInternalRTStoreInitializationRoutine(
-                parentMetaDataStoreClusterName,
-                VeniceSystemStoreUtils.getParentControllerMetadataStoreNameForCluster(parentMetaDataStoreClusterName),
+                parentControllerMetadataStoreClusterName,
+                VeniceSystemStoreUtils
+                    .getParentControllerMetadataStoreNameForCluster(parentControllerMetadataStoreClusterName),
                 PARENT_CONTROLLER_METADATA_SYSTEM_STORE_VALUE,
                 multiClusterConfigs,
                 this,
@@ -602,7 +604,6 @@ public class VeniceParentHelixAdmin implements Admin {
    * </ul>
    * @param clusterName Venice cluster name.
    */
-
   @Override
   public synchronized void initStorageCluster(String clusterName) {
     /*
