@@ -279,7 +279,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            null,
             null));
 
     leaderFollowerStoreIngestionTask.addPartitionConsumptionState(0, mockPartitionConsumptionState);

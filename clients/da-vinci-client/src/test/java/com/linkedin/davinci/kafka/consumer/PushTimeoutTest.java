@@ -85,7 +85,6 @@ public class PushTimeoutTest {
         false,
         Optional.empty(),
         null,
-        null,
         null);
 
     leaderFollowerStoreIngestionTask
@@ -166,7 +165,6 @@ public class PushTimeoutTest {
         0,
         false,
         Optional.empty(),
-        null,
         null,
         null);
 

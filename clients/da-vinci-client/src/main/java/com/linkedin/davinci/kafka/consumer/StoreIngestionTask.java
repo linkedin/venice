@@ -28,6 +28,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -414,8 +415,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerConfig recordTransformerConfig,
-      AggVersionedDaVinciRecordTransformerStats recordTransformerStats,
+      InternalDaVinciRecordTransformerConfig internalDaVinciRecordTransformerConfig,
       Queue<VeniceNotifier> notifiers,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
     this.storeVersionConfig = storeVersionConfig;
@@ -526,7 +526,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.cacheBackend = cacheBackend;
 
-    this.recordTransformerConfig = recordTransformerConfig;
+    this.recordTransformerConfig = internalDaVinciRecordTransformerConfig.getRecordTransformerConfig();
     if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
       this.chunkAssembler = new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName));
 
@@ -560,13 +560,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           keySchema,
           this.recordTransformerInputValueSchema,
           outputValueSchema,
-          recordTransformerConfig);
+          internalDaVinciRecordTransformerConfig);
       this.recordTransformerOnRecoveryThreadPool =
           Executors.newFixedThreadPool(serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize());
       this.recordTransformerPausedConsumptionQueue = new ConcurrentLinkedQueue<>();
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
-      this.recordTransformerStats = recordTransformerStats;
+      this.recordTransformerStats = internalDaVinciRecordTransformerConfig.getRecordTransformerStats();
 
       // onStartVersionIngestion called here instead of run() because this needs to finish running
       // before bootstrapping starts

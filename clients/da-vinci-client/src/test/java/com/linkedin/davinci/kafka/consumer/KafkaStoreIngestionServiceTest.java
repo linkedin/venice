@@ -20,6 +20,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -27,7 +28,6 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
-import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
@@ -753,19 +753,18 @@ public abstract class KafkaStoreIngestionServiceTest {
   }
 
   @Test
-  public void testGetAndSetRecordTransformerConfig() {
+  public void testGetAndSetInternalRecordTransformerConfig() {
     String storeName = "test-store";
-    assertNull(kafkaStoreIngestionService.getRecordTransformerConfig(storeName));
-    assertNull(kafkaStoreIngestionService.getRecordTransformerStats());
+    assertNull(kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName));
 
     DaVinciRecordTransformerConfig recordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
     kafkaStoreIngestionService.registerRecordTransformerConfig(storeName, recordTransformerConfig);
-    assertEquals(kafkaStoreIngestionService.getRecordTransformerConfig(storeName), recordTransformerConfig);
 
-    AggVersionedDaVinciRecordTransformerStats recordTransformerStats =
-        kafkaStoreIngestionService.getRecordTransformerStats();
-    assertNotNull(recordTransformerStats);
+    InternalDaVinciRecordTransformerConfig internalDaVinciRecordTransformerConfig =
+        kafkaStoreIngestionService.getInternalRecordTransformerConfig(storeName);
+    assertEquals(internalDaVinciRecordTransformerConfig.getRecordTransformerConfig(), recordTransformerConfig);
+    assertNotNull(internalDaVinciRecordTransformerConfig.getRecordTransformerStats());
   }
 }

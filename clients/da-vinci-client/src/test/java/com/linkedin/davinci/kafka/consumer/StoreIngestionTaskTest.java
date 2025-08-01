@@ -81,6 +81,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -898,6 +899,9 @@ public abstract class StoreIngestionTaskTest {
 
     zkHelixAdmin = mock(ZKHelixAdmin.class);
     doNothing().when(zkHelixAdmin).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
+
+    InternalDaVinciRecordTransformerConfig internalDaVinciRecordTransformerConfig =
+        new InternalDaVinciRecordTransformerConfig(recordTransformerConfig, mockDaVinciRecordTransformerStats);
     storeIngestionTaskUnderTest = spy(
         ingestionTaskFactory.getNewIngestionTask(
             this.mockStorageService,
@@ -909,8 +913,7 @@ public abstract class StoreIngestionTaskTest {
             PARTITION_FOO,
             false,
             Optional.empty(),
-            recordTransformerConfig,
-            mockDaVinciRecordTransformerStats,
+            internalDaVinciRecordTransformerConfig,
             Lazy.of(() -> zkHelixAdmin)));
 
     Future testSubscribeTaskFuture = null;
@@ -2913,7 +2916,6 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            null,
             null));
 
     Schema schema1 = Schema.parse(
@@ -3140,7 +3142,6 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        null,
         null);
 
     AtomicLong remoteKafkaQuota = new AtomicLong(10);
@@ -3292,7 +3293,6 @@ public abstract class StoreIngestionTaskTest {
         PARTITION_FOO,
         false,
         Optional.empty(),
-        null,
         null,
         null);
     String rtTopicName = Utils.getRealTimeTopicName(mockStore);
@@ -3505,7 +3505,6 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        null,
         null);
 
     if (hybridConfig.equals(HYBRID) && nodeType.equals(LEADER) && isAaWCParallelProcessingEnabled()) {
@@ -3641,7 +3640,6 @@ public abstract class StoreIngestionTaskTest {
         PARTITION_FOO,
         false,
         Optional.empty(),
-        null,
         null,
         null);
 
@@ -3787,7 +3785,6 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            null,
             null);
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
@@ -3884,7 +3881,6 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        null,
         null);
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
     doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository)
@@ -3963,7 +3959,6 @@ public abstract class StoreIngestionTaskTest {
             0,
             false,
             Optional.empty(),
-            null,
             null,
             null);
 
@@ -4075,7 +4070,6 @@ public abstract class StoreIngestionTaskTest {
             -1,
             false,
             Optional.empty(),
-            null,
             null,
             null));
 
@@ -4330,7 +4324,6 @@ public abstract class StoreIngestionTaskTest {
             -1,
             false,
             Optional.empty(),
-            null,
             null,
             null));
 
@@ -4712,7 +4705,6 @@ public abstract class StoreIngestionTaskTest {
         false,
         Optional.empty(),
         null,
-        null,
         null);
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn(pubSubTopic).when(offsetRecord).getLeaderTopic(any());
@@ -4835,7 +4827,6 @@ public abstract class StoreIngestionTaskTest {
             false,
             Optional.empty(),
             null,
-            null,
             null);
 
     ingestionTask.setPartitionConsumptionState(0, pcs);
@@ -4934,7 +4925,6 @@ public abstract class StoreIngestionTaskTest {
             0,
             false,
             Optional.empty(),
-            null,
             null,
             null);
 
@@ -5624,7 +5614,6 @@ public abstract class StoreIngestionTaskTest {
             -1,
             false,
             Optional.empty(),
-            null,
             null,
             null));
 

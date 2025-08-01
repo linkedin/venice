@@ -15,6 +15,7 @@ import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.blobtransfer.P2PBlobTransferConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.StoreBackendConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -888,7 +889,7 @@ public class DaVinciBackend implements Closeable {
     ingestionService.registerRecordTransformerConfig(storeName, recordTransformerConfig);
   }
 
-  public DaVinciRecordTransformerConfig getRecordTransformerConfig(String storeName) {
-    return ingestionService.getRecordTransformerConfig(storeName);
+  public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {
+    return ingestionService.getInternalRecordTransformerConfig(storeName);
   }
 }

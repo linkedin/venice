@@ -14,6 +14,7 @@ import static java.lang.Thread.sleep;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -181,7 +182,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   // primary
   // source. This could be a view of the data, or in our case a cache, or both potentially.
   private final Optional<ObjectCacheBackend> cacheBackend;
-  private final Map<String, DaVinciRecordTransformerConfig> storeNameToRecordTransformerConfig =
+  private final Map<String, InternalDaVinciRecordTransformerConfig> storeNameToInternalRecordTransformerConfig =
       new VeniceConcurrentHashMap<>();
   private AggVersionedDaVinciRecordTransformerStats recordTransformerStats = null;
 
@@ -603,8 +604,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        getRecordTransformerConfig(storeName),
-        recordTransformerStats,
+        getInternalRecordTransformerConfig(storeName),
         zkHelixAdmin);
   }
 
@@ -1443,15 +1443,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           new AggVersionedDaVinciRecordTransformerStats(metricsRepository, metadataRepo, serverConfig);
     }
 
-    storeNameToRecordTransformerConfig.put(storeName, recordTransformerConfig);
+    storeNameToInternalRecordTransformerConfig
+        .put(storeName, new InternalDaVinciRecordTransformerConfig(recordTransformerConfig, recordTransformerStats));
   }
 
-  public DaVinciRecordTransformerConfig getRecordTransformerConfig(String storeName) {
-    return storeNameToRecordTransformerConfig.get(storeName);
-  }
-
-  @VisibleForTesting
-  synchronized public AggVersionedDaVinciRecordTransformerStats getRecordTransformerStats() {
-    return recordTransformerStats;
+  public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {
+    return storeNameToInternalRecordTransformerConfig.get(storeName);
   }
 }
