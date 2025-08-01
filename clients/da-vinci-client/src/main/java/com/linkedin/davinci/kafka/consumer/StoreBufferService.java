@@ -22,6 +22,7 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.collections.MemoryBoundBlockingQueue;
 import io.tehuti.metrics.MetricsRepository;
@@ -74,14 +75,14 @@ public class StoreBufferService extends AbstractStoreBufferService {
   private final boolean isSorted;
 
   private volatile boolean isStarted = false;
-  private final String regionName;
+  private final LogContext logContext;
 
   public StoreBufferService(
       int drainerNum,
       long bufferCapacityPerDrainer,
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
-      String regionName,
+      LogContext logContext,
       MetricsRepository metricsRepository,
       boolean sorted) {
     this(
@@ -90,7 +91,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
         bufferNotifyDelta,
         queueLeaderWrites,
         null,
-        regionName,
+        logContext,
         metricsRepository,
         sorted);
   }
@@ -104,8 +105,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
       StoreBufferServiceStats stats,
-      String regionName) {
-    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, stats, regionName, null, true);
+      LogContext logContext) {
+    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, queueLeaderWrites, stats, logContext, null, true);
   }
 
   /**
@@ -121,10 +122,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
       long bufferNotifyDelta,
       boolean queueLeaderWrites,
       StoreBufferServiceStats stats,
-      String regionName,
+      LogContext logContext,
       MetricsRepository metricsRepository,
       boolean sorted) {
-    this.regionName = regionName;
+    this.logContext = logContext;
     this.drainerNum = drainerNum;
     this.blockingQueueArr = new ArrayList<>();
     this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
@@ -348,7 +349,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   public boolean startInner() {
     this.executorService = Executors.newFixedThreadPool(
         drainerNum,
-        new DaemonThreadFactory(isSorted ? "Store-writer-sorted" : "Store-writer-hybrid", regionName));
+        new DaemonThreadFactory(isSorted ? "Store-writer-sorted" : "Store-writer-hybrid", logContext));
 
     // Submit all the buffer drainers
     for (int cur = 0; cur < drainerNum; ++cur) {

@@ -126,7 +126,7 @@ public class PushStatusCollector {
   }
 
   private void scanDaVinciPushStatus() {
-    LogContext.setStructuredLogContext(logContext);
+    LogContext.setLogContext(logContext);
     List<CompletableFuture<TopicPushStatus>> resultList = new ArrayList<>();
     for (Map.Entry<String, TopicPushStatus> entry: topicToPushStatusMap.entrySet()) {
       String topicName = entry.getKey();

@@ -48,6 +48,7 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
@@ -60,6 +61,7 @@ import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.ForkedJavaProcess;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -95,7 +97,7 @@ import org.testng.Assert;
  */
 public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware {
   private static final Logger LOGGER = LogManager.getLogger(VeniceServerWrapper.class);
-  public static final String SERVICE_NAME = "VeniceServer";
+  public static final String SERVICE_NAME = VeniceComponent.SERVER.getName();
 
   /**
    *  Possible config options which are not included in {@link com.linkedin.venice.ConfigKeys}.
@@ -547,8 +549,12 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   }
 
   @Override
-  public String getComponentTagForLogging() {
-    return new StringBuilder(getComponentTagPrefix(regionName)).append(super.getComponentTagForLogging()).toString();
+  public LogContext getComponentTagForLogging() {
+    return LogContext.newBuilder()
+        .setComponentName(VeniceComponent.SERVER.name())
+        .setRegionName(regionName)
+        .setInstanceName(Utils.getHelixNodeIdentifier(getHost(), getPort()))
+        .build();
   }
 
   public static void main(String args[]) throws Exception {

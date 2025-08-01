@@ -672,7 +672,7 @@ public class TestUtils {
         cluster,
         new ZkClient(zkAddress),
         new HelixAdapterSerializer(),
-        cluster,
+        LogContext.newBuilder().setComponentName(TestUtils.class.getName()).build(),
         3);
     MockTestStateModelFactory stateModelFactory = new MockTestStateModelFactory(offlinePushStatusAccessor);
     return getParticipant(cluster, nodeId, zkAddress, httpPort, stateModelFactory, stateModelDef);

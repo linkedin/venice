@@ -316,7 +316,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
   private class StoreBackupVersionCleanupTask implements Runnable {
     @Override
     public void run() {
-      LogContext.setStructuredLogContext(multiClusterConfig.getLogContext());
+      LogContext.setLogContext(multiClusterConfig.getLogContext());
       boolean interruptReceived = false;
       while (!stop.get()) {
         try {
