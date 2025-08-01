@@ -4,7 +4,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_TIMEOUT_IN_SECONDS;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.listener.response.NoOpReadResponseStats;
 import com.linkedin.davinci.notifier.DaVinciPushStatusUpdateTask;
@@ -72,7 +72,7 @@ public class VersionBackend {
       new VeniceConcurrentHashMap<>();
   private final Map<Integer, Boolean> partitionToBatchReportEOIPEnabled = new VeniceConcurrentHashMap<>();
   private final boolean batchReportEOIPStatusEnabled;
-  private final DaVinciRecordTransformerConfig recordTransformerConfig;
+  private final InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig;
 
   /*
    * if daVinciPushStatusStoreEnabled, VersionBackend will schedule a periodic job sending heartbeats
@@ -129,7 +129,7 @@ public class VersionBackend {
       this.daVinciPushStatusUpdateTask = null;
     }
 
-    this.recordTransformerConfig = backend.getRecordTransformerConfig();
+    this.internalRecordTransformerConfig = backend.getInternalRecordTransformerConfig(version.getStoreName());
   }
 
   synchronized void close() {
@@ -384,8 +384,9 @@ public class VersionBackend {
       futures.add(partitionFutures.get(partition));
     }
 
-    if (recordTransformerConfig != null && recordTransformerConfig.getStartConsumptionLatchCount() == 0) {
-      recordTransformerConfig.setStartConsumptionLatchCount(partitionsToStartConsumption.size());
+    if (internalRecordTransformerConfig != null
+        && internalRecordTransformerConfig.getStartConsumptionLatchCount() == 0) {
+      internalRecordTransformerConfig.setStartConsumptionLatchCount(partitionsToStartConsumption.size());
     }
 
     for (int partition: partitionsToStartConsumption) {

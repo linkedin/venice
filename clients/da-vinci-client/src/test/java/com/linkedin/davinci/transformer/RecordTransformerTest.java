@@ -20,7 +20,9 @@ import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.DaVinciRecordTransformerUtility;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.consumer.BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl;
+import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.store.AbstractStorageIterator;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.StoragePartitionAdjustmentTrigger;
@@ -227,8 +229,13 @@ public class RecordTransformerTest {
     DaVinciRecordTransformerConfig dummyRecordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
-    dummyRecordTransformerConfig.setStartConsumptionLatchCount(1);
-    assertThrows(() -> dummyRecordTransformerConfig.setStartConsumptionLatchCount(2));
+
+    InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig = new InternalDaVinciRecordTransformerConfig(
+        dummyRecordTransformerConfig,
+        mock(AggVersionedDaVinciRecordTransformerStats.class));
+
+    internalRecordTransformerConfig.setStartConsumptionLatchCount(1);
+    assertThrows(() -> internalRecordTransformerConfig.setStartConsumptionLatchCount(2));
 
     DaVinciRecordTransformer<Integer, String, String> clientRecordTransformer = spy(
         new TestStringRecordTransformer(
@@ -245,7 +252,7 @@ public class RecordTransformerTest {
             keySchema,
             valueSchema,
             valueSchema,
-            dummyRecordTransformerConfig);
+            internalRecordTransformerConfig);
     internalRecordTransformer.onStartVersionIngestion(true);
     verify(clientRecordTransformer).onStartVersionIngestion(true);
 
@@ -287,6 +294,10 @@ public class RecordTransformerTest {
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
 
+    InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig = new InternalDaVinciRecordTransformerConfig(
+        dummyRecordTransformerConfig,
+        mock(AggVersionedDaVinciRecordTransformerStats.class));
+
     BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer clientRecordTransformer =
         mock(
             BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer.class);
@@ -296,7 +307,7 @@ public class RecordTransformerTest {
             keySchema,
             valueSchema,
             valueSchema,
-            dummyRecordTransformerConfig);
+            internalRecordTransformerConfig);
 
     internalRecordTransformer.onVersionSwap(currentVersion, futureVersion, partitionId);
     verify(clientRecordTransformer).onVersionSwap(currentVersion, futureVersion, partitionId);
@@ -364,6 +375,10 @@ public class RecordTransformerTest {
         .setStoreRecordsInDaVinci(false)
         .build();
 
+    InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig = new InternalDaVinciRecordTransformerConfig(
+        dummyRecordTransformerConfig,
+        mock(AggVersionedDaVinciRecordTransformerStats.class));
+
     DaVinciRecordTransformer<GenericRecord, GenericRecord, GenericRecord> recordTransformer =
         new TestRecordTransformerUsingUniformInputValueSchema(
             storeVersion,
@@ -379,7 +394,7 @@ public class RecordTransformerTest {
         keySchema,
         valueSchema,
         valueSchema,
-        dummyRecordTransformerConfig);
+        internalRecordTransformerConfig);
 
     assertTrue(internalRecordTransformer.useUniformInputValueSchema());
   }

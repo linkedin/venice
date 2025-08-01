@@ -34,10 +34,16 @@ public class InternalDaVinciRecordTransformer<K, V, O> extends DaVinciRecordTran
       Schema keySchema,
       Schema inputValueSchema,
       Schema outputValueSchema,
-      DaVinciRecordTransformerConfig recordTransformerConfig) {
-    super(recordTransformer.getStoreVersion(), keySchema, inputValueSchema, outputValueSchema, recordTransformerConfig);
+      InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig) {
+    super(
+        recordTransformer.getStoreVersion(),
+        keySchema,
+        inputValueSchema,
+        outputValueSchema,
+        internalRecordTransformerConfig.getRecordTransformerConfig());
     this.recordTransformer = recordTransformer;
-    this.startLatchConsumptionLatch = new CountDownLatch(recordTransformerConfig.getStartConsumptionLatchCount());
+    this.startLatchConsumptionLatch =
+        new CountDownLatch(internalRecordTransformerConfig.getStartConsumptionLatchCount());
   }
 
   @Override

@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -8,7 +8,6 @@ import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
-import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -56,7 +55,7 @@ public class StoreIngestionTaskFactory {
       int partitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerConfig recordTransformerConfig,
+      InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
@@ -70,7 +69,7 @@ public class StoreIngestionTaskFactory {
           partitionId,
           isIsolatedIngestion,
           cacheBackend,
-          recordTransformerConfig,
+          internalRecordTransformerConfig,
           zkHelixAdmin);
     }
     return new LeaderFollowerStoreIngestionTask(
@@ -84,7 +83,7 @@ public class StoreIngestionTaskFactory {
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformerConfig,
+        internalRecordTransformerConfig,
         zkHelixAdmin);
   }
 
@@ -110,7 +109,6 @@ public class StoreIngestionTaskFactory {
     private Queue<VeniceNotifier> leaderFollowerNotifiers;
     private ReadOnlySchemaRepository schemaRepo;
     private ReadOnlyStoreRepository metadataRepo;
-    private AggVersionedDaVinciRecordTransformerStats daVinciRecordTransformerStats;
     private AggHostLevelIngestionStats ingestionStats;
     private AggVersionedDIVStats versionedDIVStats;
     private AggVersionedIngestionStats versionedStorageIngestionStats;
@@ -224,15 +222,6 @@ public class StoreIngestionTaskFactory {
 
     public PubSubContext getPubSubContext() {
       return pubSubContext;
-    }
-
-    public AggVersionedDaVinciRecordTransformerStats getDaVinciRecordTransformerStats() {
-      return daVinciRecordTransformerStats;
-    }
-
-    public Builder setDaVinciRecordTransformerStats(
-        AggVersionedDaVinciRecordTransformerStats daVinciRecordTransformerStats) {
-      return set(() -> this.daVinciRecordTransformerStats = daVinciRecordTransformerStats);
     }
 
     public AggHostLevelIngestionStats getIngestionStats() {

@@ -410,7 +410,6 @@ public class VeniceServer {
         false,
         compressorFactory,
         Optional.empty(),
-        null,
         false,
         remoteIngestionRepairService,
         pubSubClientsFactory,
