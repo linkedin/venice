@@ -199,7 +199,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         && recordTransformerConfig != null) {
       throw new VeniceClientException(
           DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY
-              + " must be turned off when using DaVinciRecordTransformer");
+              + " must be set to false when using DaVinciRecordTransformer");
     }
 
     preValidation.run();
@@ -788,7 +788,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         && daVinciConfig.isRecordTransformerEnabled() && !recordTransformerConfig.shouldSkipCompatibilityChecks()) {
       // The checksum verification will fail when a DaVinciRecordTransformer implementation transforms the values
       throw new VeniceException(
-          "DaVinciRecordTransformer cannot be used with database checksum verification when skipCompatibilityChecks are disabled.");
+          "DaVinciRecordTransformer cannot be used with database checksum verification when skipCompatibilityChecks is set to false.");
     }
 
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());

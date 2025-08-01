@@ -294,10 +294,9 @@ public class RecordTransformerTest {
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
             .build();
 
-    InternalDaVinciRecordTransformerConfig internalDaVinciRecordTransformerConfig =
-        new InternalDaVinciRecordTransformerConfig(
-            dummyRecordTransformerConfig,
-            mock(AggVersionedDaVinciRecordTransformerStats.class));
+    InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig = new InternalDaVinciRecordTransformerConfig(
+        dummyRecordTransformerConfig,
+        mock(AggVersionedDaVinciRecordTransformerStats.class));
 
     BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl.DaVinciRecordTransformerBootstrappingChangelogConsumer clientRecordTransformer =
         mock(
@@ -308,7 +307,7 @@ public class RecordTransformerTest {
             keySchema,
             valueSchema,
             valueSchema,
-            internalDaVinciRecordTransformerConfig);
+            internalRecordTransformerConfig);
 
     internalRecordTransformer.onVersionSwap(currentVersion, futureVersion, partitionId);
     verify(clientRecordTransformer).onVersionSwap(currentVersion, futureVersion, partitionId);
@@ -376,10 +375,9 @@ public class RecordTransformerTest {
         .setStoreRecordsInDaVinci(false)
         .build();
 
-    InternalDaVinciRecordTransformerConfig internalDaVinciRecordTransformerConfig =
-        new InternalDaVinciRecordTransformerConfig(
-            dummyRecordTransformerConfig,
-            mock(AggVersionedDaVinciRecordTransformerStats.class));
+    InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig = new InternalDaVinciRecordTransformerConfig(
+        dummyRecordTransformerConfig,
+        mock(AggVersionedDaVinciRecordTransformerStats.class));
 
     DaVinciRecordTransformer<GenericRecord, GenericRecord, GenericRecord> recordTransformer =
         new TestRecordTransformerUsingUniformInputValueSchema(
@@ -396,7 +394,7 @@ public class RecordTransformerTest {
         keySchema,
         valueSchema,
         valueSchema,
-        internalDaVinciRecordTransformerConfig);
+        internalRecordTransformerConfig);
 
     assertTrue(internalRecordTransformer.useUniformInputValueSchema());
   }

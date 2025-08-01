@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
- * Internal config used for {@link DaVinciRecordTransformer}.
+ * Internal config used for {@link InternalDaVinciRecordTransformer}.
  * This is what gets passed into the {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask}.
  */
 public class InternalDaVinciRecordTransformerConfig {

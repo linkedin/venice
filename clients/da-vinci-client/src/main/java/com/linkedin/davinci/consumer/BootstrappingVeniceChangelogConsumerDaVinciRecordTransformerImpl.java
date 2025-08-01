@@ -269,12 +269,13 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
 
   private VeniceProperties buildVeniceConfig() {
     return new PropertyBuilder().put(changelogClientConfig.getConsumerProperties())
+        // We don't need the block cache, since we only read each key once from disk
+        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0)
         .put(DATA_BASE_PATH, changelogClientConfig.getBootstrapFileSystemPath())
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         // Turning this off, so users don't subscribe to unwanted partitions automatically
         .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
-        // We don't need the block cache, since we only read each key once from disk
-        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 0)
+        // This is set to true so it's compatible with blob transfer
         .put(PUSH_STATUS_STORE_ENABLED, true)
         .build();
   }

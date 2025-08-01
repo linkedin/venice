@@ -415,7 +415,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      InternalDaVinciRecordTransformerConfig internalDaVinciRecordTransformerConfig,
+      InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
       Queue<VeniceNotifier> notifiers,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
     this.storeVersionConfig = storeVersionConfig;
@@ -526,8 +526,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.cacheBackend = cacheBackend;
 
-    if (internalDaVinciRecordTransformerConfig != null) {
-      this.recordTransformerConfig = internalDaVinciRecordTransformerConfig.getRecordTransformerConfig();
+    if (internalRecordTransformerConfig != null) {
+      this.recordTransformerConfig = internalRecordTransformerConfig.getRecordTransformerConfig();
       this.chunkAssembler = new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName));
 
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
@@ -560,13 +560,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           keySchema,
           this.recordTransformerInputValueSchema,
           outputValueSchema,
-          internalDaVinciRecordTransformerConfig);
+          internalRecordTransformerConfig);
       this.recordTransformerOnRecoveryThreadPool =
           Executors.newFixedThreadPool(serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize());
       this.recordTransformerPausedConsumptionQueue = new ConcurrentLinkedQueue<>();
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
-      this.recordTransformerStats = internalDaVinciRecordTransformerConfig.getRecordTransformerStats();
+      this.recordTransformerStats = internalRecordTransformerConfig.getRecordTransformerStats();
 
       // onStartVersionIngestion called here instead of run() because this needs to finish running
       // before bootstrapping starts
