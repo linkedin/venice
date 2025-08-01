@@ -526,8 +526,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.cacheBackend = cacheBackend;
 
-    this.recordTransformerConfig = internalDaVinciRecordTransformerConfig.getRecordTransformerConfig();
-    if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
+    if (internalDaVinciRecordTransformerConfig != null) {
+      this.recordTransformerConfig = internalDaVinciRecordTransformerConfig.getRecordTransformerConfig();
       this.chunkAssembler = new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName));
 
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
@@ -578,6 +578,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           storeVersionName);
     } else {
       this.schemaIdToSchemaMap = null;
+      this.recordTransformerConfig = null;
       this.recordTransformerKeyDeserializer = null;
       this.recordTransformerInputValueSchema = null;
       this.chunkAssembler = null;

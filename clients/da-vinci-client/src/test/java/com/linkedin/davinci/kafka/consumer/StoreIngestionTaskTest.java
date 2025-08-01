@@ -900,8 +900,12 @@ public abstract class StoreIngestionTaskTest {
     zkHelixAdmin = mock(ZKHelixAdmin.class);
     doNothing().when(zkHelixAdmin).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
 
-    InternalDaVinciRecordTransformerConfig internalDaVinciRecordTransformerConfig =
-        new InternalDaVinciRecordTransformerConfig(recordTransformerConfig, mockDaVinciRecordTransformerStats);
+    InternalDaVinciRecordTransformerConfig internalDaVinciRecordTransformerConfig = null;
+    if (recordTransformerConfig != null) {
+      internalDaVinciRecordTransformerConfig =
+          new InternalDaVinciRecordTransformerConfig(recordTransformerConfig, mockDaVinciRecordTransformerStats);
+    }
+
     storeIngestionTaskUnderTest = spy(
         ingestionTaskFactory.getNewIngestionTask(
             this.mockStorageService,
