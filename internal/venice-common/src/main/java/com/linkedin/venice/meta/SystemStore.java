@@ -776,6 +776,7 @@ public class SystemStore extends AbstractStore {
     throw new UnsupportedOperationException();
   }
 
+  @Override
   public boolean isEnumSchemaEvolutionAllowed() {
     return false;
   }

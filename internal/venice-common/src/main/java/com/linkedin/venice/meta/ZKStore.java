@@ -1013,6 +1013,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     this.storeProperties.ttlRepushEnabled = ttlRepushEnabled;
   }
 
+  @Override
   public boolean isEnumSchemaEvolutionAllowed() {
     return this.storeProperties.enumSchemaEvolutionAllowed;
   }

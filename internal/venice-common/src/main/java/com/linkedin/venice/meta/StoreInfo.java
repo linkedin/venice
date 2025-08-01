@@ -950,6 +950,7 @@ public class StoreInfo {
   public boolean isTTLRepushEnabled() {
     return this.ttlRepushEnabled;
   }
+
   public boolean isEnumSchemaEvolutionAllowed() {
     return enumSchemaEvolutionAllowed;
   }

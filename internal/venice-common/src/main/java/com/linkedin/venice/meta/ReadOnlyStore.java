@@ -1649,6 +1649,7 @@ public class ReadOnlyStore implements Store {
     throw new UnsupportedOperationException();
   }
 
+  @Override
   public boolean isEnumSchemaEvolutionAllowed() {
     return delegate.isEnumSchemaEvolutionAllowed();
   }
