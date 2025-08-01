@@ -99,6 +99,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLIN
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_CONCURRENT_PUSH_DETECTION_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_RECORD_SIZE_BYTES;
@@ -209,6 +210,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -448,6 +450,8 @@ public class VeniceControllerClusterConfig {
 
   private final PersistenceType persistenceType;
   private final ReadStrategy readStrategy;
+
+  private final ConcurrentPushDetectionStrategy concurrentPushDetectionStrategy;
   private final OfflinePushStrategy offlinePushStrategy;
   private final RoutingStrategy routingStrategy;
   private final int replicationFactor;
@@ -649,6 +653,14 @@ public class VeniceControllerClusterConfig {
     } else {
       this.persistenceType = PersistenceType.IN_MEMORY;
     }
+
+    if (props.containsKey(DEFAULT_CONCURRENT_PUSH_DETECTION_STRATEGY)) {
+      this.concurrentPushDetectionStrategy =
+          ConcurrentPushDetectionStrategy.valueOf(props.getString(DEFAULT_CONCURRENT_PUSH_DETECTION_STRATEGY));
+    } else {
+      this.concurrentPushDetectionStrategy = ConcurrentPushDetectionStrategy.DUAL;
+    }
+
     if (props.containsKey(DEFAULT_READ_STRATEGY)) {
       this.readStrategy = ReadStrategy.valueOf(props.getString(DEFAULT_READ_STRATEGY));
     } else {
@@ -1207,6 +1219,10 @@ public class VeniceControllerClusterConfig {
 
   public ReadStrategy getReadStrategy() {
     return readStrategy;
+  }
+
+  public ConcurrentPushDetectionStrategy getConcurrentPushDetectionStrategy() {
+    return concurrentPushDetectionStrategy;
   }
 
   public OfflinePushStrategy getOfflinePushStrategy() {
