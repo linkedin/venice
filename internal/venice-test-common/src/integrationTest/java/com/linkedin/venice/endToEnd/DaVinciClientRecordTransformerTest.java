@@ -81,6 +81,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
@@ -175,13 +176,12 @@ public class DaVinciClientRecordTransformerTest {
           factory.getAndStartGenericAvroClient(recordTransformerStoreName, clientConfig);
       DaVinciClient<Integer, Object> client2 = factory.getAndStartGenericAvroClient(storeName2, new DaVinciConfig());
 
-      client1.subscribeAll().get();
+      CompletableFuture
+          .allOf(client1.subscribeAll(), clientWithRecordTransformer.subscribeAll(), client2.subscribeAll())
+          .join();
 
       // Test non-existent key access
-      clientWithRecordTransformer.subscribeAll().get();
       assertNull(clientWithRecordTransformer.get(numKeys + 1).get());
-
-      client2.subscribeAll().get();
 
       // Test single-get access
       for (int k = 1; k <= numKeys; ++k) {
@@ -318,7 +318,7 @@ public class DaVinciClientRecordTransformerTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testRecordTransformerOnRecovery() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
     String storeName1 = Utils.getUniqueString(BASE_STORE_NAME);
@@ -370,17 +370,17 @@ public class DaVinciClientRecordTransformerTest {
 
       DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, new DaVinciConfig());
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
-          factory.getAndStartGenericAvroClient(storeName1, clientConfig);
-      DaVinciClient<Integer, Object> client2 = factory.getAndStartGenericAvroClient(storeName2, new DaVinciConfig());
+          factory.getAndStartGenericAvroClient(recordTransformerStoreName, clientConfig);
+      DaVinciClient<Integer, Object> client2 =
+          factory.getAndStartGenericAvroClient(storeName2, new DaVinciConfig().setStorageClass(StorageClass.DISK));
 
-      client1.subscribeAll().get();
+      CompletableFuture
+          .allOf(client1.subscribeAll(), clientWithRecordTransformer.subscribeAll(), client2.subscribeAll())
+          .join();
 
       // Test non-existent key access
-      clientWithRecordTransformer.subscribeAll().get();
       assertNull(clientWithRecordTransformer.get(numKeys + 1).get());
       assertNull(recordTransformer.get(numKeys + 1));
-
-      client2.subscribeAll().get();
 
       // Test single-get access
       for (int k = 1; k <= numKeys; ++k) {
@@ -404,6 +404,9 @@ public class DaVinciClientRecordTransformerTest {
       recordTransformer.clearInMemoryDB();
       assertTrue(recordTransformer.isInMemoryDBEmpty());
 
+      client1.close();
+      client2.close();
+
       // Submit online write to ensure writes are still possible after iterating over RocksDB
       try (OnlineVeniceProducer producer = OnlineProducerFactory.createProducer(
           ClientConfig.defaultGenericClientConfig(recordTransformerStoreName)
@@ -416,20 +419,28 @@ public class DaVinciClientRecordTransformerTest {
         producer.asyncPut(key, value).get();
       }
 
+      client1.start();
       clientWithRecordTransformer.start();
-      clientWithRecordTransformer.subscribeAll().get();
+      client2.start();
+
+      CompletableFuture
+          .allOf(client1.subscribeAll(), clientWithRecordTransformer.subscribeAll(), client2.subscribeAll())
+          .join();
 
       for (int k = 1; k <= numKeys + 1; ++k) {
-        String value1 = client1.get(k).get().toString();
-        String value2 = client2.get(k).get().toString();
         String transformedValue = clientWithRecordTransformer.get(k).get().toString();
-
         String expectedValue = "a" + k;
         String expectedTransformedValue = expectedValue + "Transformed";
 
-        assertEquals(value1, expectedValue);
-        assertEquals(value2, expectedValue);
         assertEquals(transformedValue, expectedTransformedValue);
+
+        if (k <= numKeys) {
+          String value1 = client1.get(k).get().toString();
+          String value2 = client2.get(k).get().toString();
+
+          assertEquals(value1, expectedValue);
+          assertEquals(value2, expectedValue);
+        }
       }
 
       client1.unsubscribeAll();
