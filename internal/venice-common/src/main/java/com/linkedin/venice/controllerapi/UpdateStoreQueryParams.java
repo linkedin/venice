@@ -820,8 +820,8 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getBoolean(ENUM_SCHEMA_EVOLUTION_ALLOWED);
   }
 
-  public UpdateStoreQueryParams setEnumSchemaEvolutionAllowed(boolean EnumSchemaEvolutionAllowed) {
-    return putBoolean(ENUM_SCHEMA_EVOLUTION_ALLOWED, EnumSchemaEvolutionAllowed);
+  public UpdateStoreQueryParams setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    return putBoolean(ENUM_SCHEMA_EVOLUTION_ALLOWED, enumSchemaEvolutionAllowed);
   }
 
   public Optional<Boolean> isGlobalRtDivEnabled() {

@@ -1321,6 +1321,8 @@ public class VeniceParentHelixAdminTest {
     schemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaWithEnumEvolved);
     assertFalse(schemaResponse.isError(), "Enum schema evolution should be allowed now.");
     // Make sure the child region has the evolved schema too
+    store = childControllerClient.getStore(storeName).getStore();
+    assertTrue(store.isEnumSchemaEvolutionAllowed());
     allValueSchemaResponse = childControllerClient.getAllValueSchema(storeName);
     assertEquals(allValueSchemaResponse.getSchemas().length, 2);
   }
