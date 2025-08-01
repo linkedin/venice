@@ -153,7 +153,7 @@ public enum AvroProtocolDefinition {
   /*
     Value Schema for Parent Controller Metadata system store
   */
-  PARENT_CONTROLLER_METADATA_SYSTEM_SCHEMA_STORE_VALUE(1, ParentControllerMetadataValue.class),
+  PARENT_CONTROLLER_METADATA_SYSTEM_STORE_VALUE(1, ParentControllerMetadataValue.class),
 
   /**
    * Key schema for push status system store.
