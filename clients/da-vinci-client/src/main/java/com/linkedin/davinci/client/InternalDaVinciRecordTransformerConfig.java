@@ -13,11 +13,19 @@ public class InternalDaVinciRecordTransformerConfig {
   private final DaVinciRecordTransformerConfig recordTransformerConfig;
   private final AggVersionedDaVinciRecordTransformerStats recordTransformerStats;
   // Default = 0 to guard against NPE downstream, which shouldn't be possible.
-  private AtomicInteger startConsumptionLatchCount = new AtomicInteger(0);;
+  private final AtomicInteger startConsumptionLatchCount = new AtomicInteger(0);;
 
   public InternalDaVinciRecordTransformerConfig(
       DaVinciRecordTransformerConfig recordTransformerConfig,
       AggVersionedDaVinciRecordTransformerStats recordTransformerStats) {
+    if (recordTransformerConfig == null) {
+      throw new IllegalArgumentException("recordTransformerConfig cannot be null");
+    }
+
+    if (recordTransformerStats == null) {
+      throw new IllegalArgumentException("recordTransformerStats cannot be null");
+    }
+
     this.recordTransformerConfig = recordTransformerConfig;
     this.recordTransformerStats = recordTransformerStats;
   }
