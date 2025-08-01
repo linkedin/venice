@@ -21,12 +21,15 @@ import com.linkedin.venice.utils.Utils;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
 public class ParentControllerMetadataSystemStoreTest {
+  private static final Logger LOGGER = LogManager.getLogger(ParentControllerMetadataSystemStoreTest.class);
   private VeniceTwoLayerMultiRegionMultiClusterWrapper venice;
   private ControllerClient controllerClient;
   private ControllerClient parentControllerClient;
@@ -83,9 +86,9 @@ public class ParentControllerMetadataSystemStoreTest {
   public void testParentControllerMetadataSystemStoreCreationAndShowOtherStores() {
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
       MultiStoreInfoResponse multiStoreInfoResponse = controllerClient.getClusterStores(clusterName);
-      System.out.println("All stores in cluster:");
+      LOGGER.info("All stores in cluster {}:", clusterName);
       for (StoreInfo storeInfo: multiStoreInfoResponse.getStoreInfoList()) {
-        System.out.println("  - " + storeInfo.getName());
+        LOGGER.info(storeInfo.getName());
       }
 
       boolean foundStore = multiStoreInfoResponse.getStoreInfoList()
