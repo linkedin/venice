@@ -1678,7 +1678,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         sourceTopicOffset,
         kafkaClusterId,
         DEFAULT_TERM_ID,
-        consumedPosition.getWireFormatBytes());
+        consumedPosition.toWireFormatBuffer());
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     long beforeProduceTimestampNS = System.nanoTime();
     produceFunction.accept(callback, leaderMetadataWrapper);
@@ -2196,7 +2196,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         consumedPosition.getNumericOffset(),
         kafkaClusterId,
         DEFAULT_TERM_ID,
-        consumedPosition.getWireFormatBytes());
+        consumedPosition.toWireFormatBuffer());
     LeaderCompleteState leaderCompleteState =
         LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported());
     /**

@@ -29,6 +29,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
@@ -38,6 +39,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -841,10 +843,14 @@ public class ApacheKafkaConsumerAdapterTest {
   public void testDecodePositionFromBuffer() {
     long expectedOffset = 12345L;
     ApacheKafkaOffsetPosition original = new ApacheKafkaOffsetPosition(expectedOffset);
-    ByteBuffer buffer = original.getWireFormatBytes();
+    byte[] wireBytes = original.toWireFormatBytes();
+    PubSubPosition resolvedPos = PubSubPositionDeserializer.getPositionFromWireFormat(wireBytes);
+    assertTrue(resolvedPos instanceof ApacheKafkaOffsetPosition);
+    assertEquals(((ApacheKafkaOffsetPosition) resolvedPos).getInternalOffset(), expectedOffset);
 
+    PubSubPositionWireFormat wireFormat = original.getPositionWireFormat();
     PubSubPosition decoded =
-        kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, APACHE_KAFKA_OFFSET_POSITION_TYPE_ID, buffer);
+        kafkaConsumerAdapter.decodePosition(pubSubTopicPartition, wireFormat.getType(), wireFormat.getRawBytes());
     assertTrue(decoded instanceof ApacheKafkaOffsetPosition);
     assertEquals(((ApacheKafkaOffsetPosition) decoded).getInternalOffset(), expectedOffset);
   }
