@@ -238,6 +238,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
     setGlobalRtDivEnabled(store.isGlobalRtDivEnabled());
     setTTLRepushEnabled(store.isTTLRepushEnabled());
+    setEnumSchemaEvolutionAllowed(store.isEnumSchemaEvolutionAllowed());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -1010,6 +1011,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setTTLRepushEnabled(boolean ttlRepushEnabled) {
     this.storeProperties.ttlRepushEnabled = ttlRepushEnabled;
+  }
+
+  @Override
+  public boolean isEnumSchemaEvolutionAllowed() {
+    return this.storeProperties.enumSchemaEvolutionAllowed;
+  }
+
+  @Override
+  public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    this.storeProperties.enumSchemaEvolutionAllowed = enumSchemaEvolutionAllowed;
   }
 
   @Override

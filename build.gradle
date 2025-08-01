@@ -766,6 +766,9 @@ ext.createDiffFile = { ->
       ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
       ':!internal/venice-common/src/main/java/com/linkedin/venice/acl/handler/StoreAclHandler.java',
 
+      // venice-client-common
+      ':!internal/venice-client-common/src/main/java/com/linkedin/venice/schema/avro/SchemaCompatibility19.java',
+
       // venice-test-common
       ':!internal/venice-test-common/*',
 

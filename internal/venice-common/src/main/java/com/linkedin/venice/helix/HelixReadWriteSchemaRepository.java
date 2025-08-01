@@ -316,6 +316,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
     if (schemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
       int dupSchemaId = getNextAvailableSchemaId(
+          storeName,
           getValueSchemas(storeName),
           newValueSchemaEntry,
           DirectionalSchemaCompatibilityType.FULL);
@@ -366,7 +367,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
               + " please don't use it in the value schema");
     }
 
-    return getNextAvailableSchemaId(getValueSchemas(storeName), valueSchemaEntry, expectedCompatibilityType);
+    return getNextAvailableSchemaId(storeName, getValueSchemas(storeName), valueSchemaEntry, expectedCompatibilityType);
   }
 
   @Override
@@ -377,6 +378,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
         new DerivedSchemaEntry(valueSchemaId, SchemaData.UNKNOWN_SCHEMA_ID, derivedSchemaStr);
 
     return getNextAvailableSchemaId(
+        storeName,
         getDerivedSchemaMap(storeName).get(valueSchemaId),
         derivedSchemaEntry,
         DirectionalSchemaCompatibilityType.BACKWARD);
@@ -393,6 +395,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
         schemaStr,
         valueSchemaId,
         getNextAvailableSchemaId(
+            storeName,
             getDerivedSchemaMap(storeName).get(valueSchemaId),
             newDerivedSchemaEntry,
             DirectionalSchemaCompatibilityType.NONE));
@@ -433,6 +436,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   private int getNextAvailableSchemaId(
+      String storeName,
       Collection<? extends SchemaEntry> schemaEntries,
       SchemaEntry newSchemaEntry,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
@@ -441,12 +445,15 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       if (schemaEntries == null || schemaEntries.isEmpty()) {
         newValueSchemaId = HelixSchemaAccessor.VALUE_SCHEMA_STARTING_ID;
       } else {
+        Store store = storeRepository.getStoreOrThrow(storeName);
+        boolean enumSchemaEvolutionAllowed = store.isEnumSchemaEvolutionAllowed();
         newValueSchemaId = schemaEntries.stream().map(schemaEntry -> {
           if (schemaEntry.equals(newSchemaEntry)
               && !AvroSchemaUtils.hasDocFieldChange(newSchemaEntry.getSchema(), schemaEntry.getSchema())) {
             throw new SchemaDuplicateException(schemaEntry, newSchemaEntry);
           }
-          if (!schemaEntry.isNewSchemaCompatible(newSchemaEntry, expectedCompatibilityType)) {
+          if (!schemaEntry
+              .isNewSchemaCompatible(newSchemaEntry, expectedCompatibilityType, enumSchemaEvolutionAllowed)) {
             throw new SchemaIncompatibilityException(schemaEntry, newSchemaEntry);
           }
 

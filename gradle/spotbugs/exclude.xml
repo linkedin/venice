@@ -529,4 +529,11 @@
       <Class name="com.linkedin.venice.duckdb.DuckDBDaVinciRecordTransformer"/>
     </Or>
   </Match>
+  <Match>
+    <Bug pattern="DB_DUPLICATE_SWITCH_CLAUSES"/>
+    <Or>
+      <!-- Copied class from Avro-1.9 -->
+      <Class name="com.linkedin.venice.schema.avro.SchemaCompatibility19$ReaderWriterCompatibilityChecker"/>
+    </Or>
+  </Match>
 </FindBugsFilter>

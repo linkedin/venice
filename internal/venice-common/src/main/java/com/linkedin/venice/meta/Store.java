@@ -361,4 +361,8 @@ public interface Store {
   boolean isTTLRepushEnabled();
 
   void setTTLRepushEnabled(boolean ttlRepushEnabled);
+
+  boolean isEnumSchemaEvolutionAllowed();
+
+  void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed);
 }

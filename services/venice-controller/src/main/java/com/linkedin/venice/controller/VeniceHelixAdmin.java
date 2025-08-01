@@ -5497,6 +5497,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> isDavinciHeartbeatReported = params.getIsDavinciHeartbeatReported();
     Optional<Boolean> globalRtDivEnabled = params.isGlobalRtDivEnabled();
     Optional<Boolean> ttlRepushEnabled = params.isTTLRepushEnabled();
+    Optional<Boolean> enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -5828,6 +5829,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       ttlRepushEnabled.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
         store.setTTLRepushEnabled(aBool);
+        return store;
+      }));
+
+      enumSchemaEvolutionAllowed.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setEnumSchemaEvolutionAllowed(aBool);
         return store;
       }));
 
