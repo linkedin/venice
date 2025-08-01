@@ -776,4 +776,22 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   public SchemaReader getSchemaReader() {
     return metadata;
   }
+
+  @Override
+  public ServerSideAggregationRequestBuilder<K> getServerSideAggregationRequestBuilder() throws VeniceClientException {
+    // Only support server-side aggregation for gRPC clients
+    if (!config.useGrpc()) {
+      throw new VeniceClientException("Server-side aggregation is only supported for gRPC clients");
+    }
+
+    if (!(transportClient instanceof GrpcTransportClient)) {
+      throw new VeniceClientException("Server-side aggregation requires a gRPC transport client");
+    }
+
+    verifyMetadataInitialized();
+    return new ServerSideAggregationRequestBuilderImpl<>(
+        metadata,
+        (GrpcTransportClient) transportClient,
+        keySerializer);
+  }
 }
