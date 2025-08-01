@@ -78,7 +78,7 @@ import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
-import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARENT_CONTROLLER_METADATA_SYSTEM_SCHEMA_STORE_VALUE;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARENT_CONTROLLER_METADATA_SYSTEM_STORE_VALUE;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 import static com.linkedin.venice.utils.RegionUtils.isRegionPartOfRegionsFilterList;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
@@ -570,7 +570,7 @@ public class VeniceParentHelixAdmin implements Admin {
             new SharedInternalRTStoreInitializationRoutine(
                 parentMetaDataStoreClusterName,
                 VeniceSystemStoreUtils.getParentControllerMetadataStoreNameForCluster(parentMetaDataStoreClusterName),
-                PARENT_CONTROLLER_METADATA_SYSTEM_SCHEMA_STORE_VALUE,
+                PARENT_CONTROLLER_METADATA_SYSTEM_STORE_VALUE,
                 multiClusterConfigs,
                 this,
                 Schema.create(Schema.Type.STRING),
