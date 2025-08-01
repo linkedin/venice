@@ -233,7 +233,7 @@ public class TopicManager implements Closeable {
   }
 
   protected void waitUntilTopicCreated(PubSubTopic topicName, int partitionCount, long deadlineMs) {
-    long startTimeMs = System.nanoTime();
+    long startTimeMs = System.currentTimeMillis();
     while (!containsTopicAndAllPartitionsAreOnline(topicName, partitionCount)) {
       if (System.currentTimeMillis() > deadlineMs) {
         throw new PubSubOpTimeoutException(

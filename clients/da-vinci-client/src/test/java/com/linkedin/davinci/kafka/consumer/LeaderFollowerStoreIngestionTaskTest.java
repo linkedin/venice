@@ -59,7 +59,7 @@ import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -117,6 +117,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
   private ReadOnlyStoreRepository storeRepository;
   private VeniceServerConfig mockVeniceServerConfig;
   private TopicManagerRepository mockTopicManagerRepository;
+  private PubSubContext pubSubContext;
 
   @Test
   public void testCheckWhetherToCloseUnusedVeniceWriter() {
@@ -229,17 +230,12 @@ public class LeaderFollowerStoreIngestionTaskTest {
         .getRefCountedStorageEngine(anyString());
     mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     hostLevelIngestionStats = mock(HostLevelIngestionStats.class);
     AggHostLevelIngestionStats aggHostLevelIngestionStats = mock(AggHostLevelIngestionStats.class);
     doReturn(hostLevelIngestionStats).when(aggHostLevelIngestionStats).getStoreStats(storeName);
     StorageMetadataService inMemoryStorageMetadataService = new InMemoryStorageMetadataService();
-    StoreIngestionTaskFactory.Builder builder = getStoreIngestionTaskBuilder(
-        isHybrid,
-        storeName,
-        pubSubTopicRepository,
-        inMemoryStorageMetadataService,
-        aggHostLevelIngestionStats);
+    StoreIngestionTaskFactory.Builder builder =
+        getStoreIngestionTaskBuilder(isHybrid, storeName, inMemoryStorageMetadataService, aggHostLevelIngestionStats);
     when(builder.getSchemaRepo().getKeySchema(storeName)).thenReturn(new SchemaEntry(1, "\"string\""));
     mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     mockStoreBufferService = (StoreBufferService) builder.getStoreBufferService();
@@ -265,7 +261,8 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(versionTopic).when(mockVeniceStoreVersionConfig).getStoreVersionName();
     mockStorageMetadataService = builder.getStorageMetadataService();
     storeRepository = builder.getMetadataRepo();
-    mockTopicManagerRepository = builder.getTopicManagerRepository();
+    pubSubContext = builder.getPubSubContext();
+    mockTopicManagerRepository = pubSubContext.getTopicManagerRepository();
     leaderFollowerStoreIngestionTask = spy(
         new LeaderFollowerStoreIngestionTask(
             mockStorageService,
@@ -287,13 +284,11 @@ public class LeaderFollowerStoreIngestionTaskTest {
   public StoreIngestionTaskFactory.Builder getStoreIngestionTaskBuilder(
       boolean isHybrid,
       String storeName,
-      PubSubTopicRepository pubSubTopicRepository,
       StorageMetadataService inMemoryStorageMetadataService,
       AggHostLevelIngestionStats aggHostLevelIngestionStats) {
     if (isHybrid) {
       return TestUtils.getStoreIngestionTaskBuilder(storeName, true)
           .setServerConfig(mockVeniceServerConfig)
-          .setPubSubTopicRepository(pubSubTopicRepository)
           .setVeniceViewWriterFactory(mockVeniceViewWriterFactory)
           .setHeartbeatMonitoringService(mock(HeartbeatMonitoringService.class))
           .setCompressorFactory(new StorageEngineBackedCompressorFactory(inMemoryStorageMetadataService))
@@ -301,7 +296,6 @@ public class LeaderFollowerStoreIngestionTaskTest {
     }
     return TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setServerConfig(mockVeniceServerConfig)
-        .setPubSubTopicRepository(pubSubTopicRepository)
         .setVeniceViewWriterFactory(mockVeniceViewWriterFactory)
         .setHeartbeatMonitoringService(mock(HeartbeatMonitoringService.class))
         .setCompressorFactory(new StorageEngineBackedCompressorFactory(inMemoryStorageMetadataService))
