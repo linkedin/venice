@@ -30,7 +30,7 @@ public class SingleSplitPerPartitionStrategy implements PubSubTopicPartitionSpli
       return Collections.emptyList();
     }
     LOGGER.info(
-        "Created split-0 for TP{}: record count: {}, start: {}, end: {}",
+        "Created split-0 for TP: {} record count: {}, start: {}, end: {}",
         pubSubTopicPartition,
         numberOfRecords,
         startPosition,
