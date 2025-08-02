@@ -29,6 +29,8 @@ import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.task.ReporterBackedMapReduceDataWriterTaskTracker;
 import com.linkedin.venice.hadoop.task.datawriter.AbstractPartitionWriter;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -68,7 +70,9 @@ public class TestVeniceKafkaInputReducer {
     byte[] keyBytes = "test_key".getBytes();
     KafkaInputMapperKey mapperKey = new KafkaInputMapperKey();
     mapperKey.key = ByteBuffer.wrap(keyBytes);
-    mapperKey.offset = 1;
+    PubSubPosition offset = ApacheKafkaOffsetPosition.of(1);
+    mapperKey.positionWireBytes = offset.toWireFormatBuffer();
+    mapperKey.positionFactoryClass = offset.getFactoryClassName();
     RecordSerializer<KafkaInputMapperKey> keySerializer =
         FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperKey.SCHEMA$);
     byte[] serializedMapperKey = keySerializer.serialize(mapperKey);
@@ -145,7 +149,9 @@ public class TestVeniceKafkaInputReducer {
     byte[] keyBytes = "test_key".getBytes();
     KafkaInputMapperKey mapperKey = new KafkaInputMapperKey();
     mapperKey.key = ByteBuffer.wrap(keyBytes);
-    mapperKey.offset = 1;
+    PubSubPosition offset = ApacheKafkaOffsetPosition.of(1);
+    mapperKey.positionWireBytes = offset.toWireFormatBuffer();
+    mapperKey.positionFactoryClass = offset.getFactoryClassName();
     RecordSerializer<KafkaInputMapperKey> keySerializer =
         FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperKey.SCHEMA$);
     byte[] serializedMapperKey = keySerializer.serialize(mapperKey);
@@ -180,7 +186,9 @@ public class TestVeniceKafkaInputReducer {
     long offset = 0;
     for (MapperValueType valueType: valueTypes) {
       KafkaInputMapperValue value = new KafkaInputMapperValue();
-      value.offset = offset++;
+      ApacheKafkaOffsetPosition position = ApacheKafkaOffsetPosition.of(offset++);
+      value.positionWireBytes = position.toWireFormatBuffer();
+      value.positionFactoryClass = position.getFactoryClassName();
       value.schemaId = 1;
       value.valueType = valueType;
       value.replicationMetadataVersionId = hasRmdPayload ? 1 : -1;
@@ -189,7 +197,7 @@ public class TestVeniceKafkaInputReducer {
       if (valueType.equals(MapperValueType.DELETE)) {
         value.value = ByteBuffer.wrap(new byte[0]);
       } else {
-        value.value = ByteBuffer.wrap((VALUE_PREFIX + value.offset).getBytes());
+        value.value = ByteBuffer.wrap((VALUE_PREFIX + position.getInternalOffset()).getBytes());
       }
       byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(value);
       values.add(serializedValue);

@@ -23,6 +23,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -270,7 +271,8 @@ public class TopicManagerE2ETest {
     PubSubTopic nonExistentTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString("nonExistentTopic"));
     assertFalse(topicManager.containsTopicCached(nonExistentTopic));
     assertFalse(topicManager.containsTopic(nonExistentTopic));
-    Map<Integer, Long> nonExistentTopicLatestOffsets = topicManager.getTopicLatestOffsets(nonExistentTopic);
+    Map<PubSubTopicPartition, PubSubPosition> nonExistentTopicLatestOffsets =
+        topicManager.getEndPositionsForTopic(nonExistentTopic);
     assertNotNull(nonExistentTopicLatestOffsets);
     assertEquals(nonExistentTopicLatestOffsets.size(), 0);
     assertThrows(PubSubTopicDoesNotExistException.class, () -> topicManager.getPartitionCount(nonExistentTopic));
@@ -312,11 +314,36 @@ public class TopicManagerE2ETest {
     });
 
     // when there are no messages, the latest offset should be 0
-    Map<Integer, Long> latestOffsets = topicManager.getTopicLatestOffsets(existingTopic);
-    assertNotNull(latestOffsets);
-    assertEquals(latestOffsets.size(), numPartitions);
-    for (int i = 0; i < numPartitions; i++) {
-      assertEquals((long) latestOffsets.get(i), 0L);
+    Map<PubSubTopicPartition, PubSubPosition> endOffsets = topicManager.getEndPositionsForTopic(existingTopic);
+    Map<PubSubTopicPartition, PubSubPosition> startOffsets = topicManager.getStartPositionsForTopic(existingTopic);
+    assertNotNull(endOffsets, "End offsets should not be null");
+    assertEquals(
+        endOffsets.size(),
+        numPartitions,
+        "End offsets size should match number of partitions. Size: " + endOffsets.size() + ", Partitions: "
+            + numPartitions);
+    assertNotNull(startOffsets, "Start offsets should not be null");
+    assertEquals(
+        startOffsets.size(),
+        numPartitions,
+        "Start offsets size should match number of partitions. Size: " + startOffsets.size() + ", Partitions: "
+            + numPartitions);
+    for (Map.Entry<PubSubTopicPartition, PubSubPosition> entry: endOffsets.entrySet()) {
+      PubSubPosition startOffset = startOffsets.get(entry.getKey());
+      PubSubPosition endOffset = entry.getValue();
+      PubSubTopicPartition partition = entry.getKey();
+      long diff = topicManager.diffPosition(partition, startOffset, endOffset);
+      assertEquals(
+          diff,
+          0L,
+          "Start and end offsets should be equal for a new topic partition: " + partition + ". Start: " + startOffset
+              + ", End: " + endOffset);
+      long compare = topicManager.comparePosition(partition, startOffset, endOffset);
+      assertEquals(
+          compare,
+          0L,
+          "Start and end offsets should be equal for a new topic partition: " + partition + ". Start: " + startOffset
+              + ", End: " + endOffset);
     }
     assertEquals(topicManager.getPartitionCount(existingTopic), numPartitions);
 
@@ -335,24 +362,44 @@ public class TopicManagerE2ETest {
         PubSubHelper.produceMessages(pubSubProducerAdapter, p2, 19, 10, false);
 
     // get the latest offsets
-    latestOffsets = topicManager.getTopicLatestOffsets(existingTopic);
-    assertNotNull(latestOffsets);
-    assertEquals(latestOffsets.size(), numPartitions);
-    assertEquals((long) latestOffsets.get(0), p0Messages.size());
+    endOffsets = topicManager.getEndPositionsForTopic(existingTopic);
+    assertNotNull(endOffsets);
+    assertEquals(endOffsets.size(), numPartitions);
+    long numRecordsInP0 = topicManager.getNumRecordsInPartition(p0);
+    assertEquals(
+        numRecordsInP0,
+        p0Messages.size(),
+        "Number of records in partition p0 should match produced messages size. " + "Expected: " + p0Messages.size()
+            + ", Actual: " + numRecordsInP0);
     assertEquals(topicManager.getLatestOffsetWithRetries(p0, 5), p0Messages.size());
     assertEquals(topicManager.getLatestOffsetCached(p0.getPubSubTopic(), 0), p0Messages.size());
 
-    assertEquals((long) latestOffsets.get(1), p1Messages.size());
+    long numRecordsInP1 = topicManager.getNumRecordsInPartition(p1);
+    assertEquals(
+        numRecordsInP1,
+        p1Messages.size(),
+        "Number of records in partition p1 should match produced messages size. " + "Expected: " + p1Messages.size()
+            + ", Actual: " + numRecordsInP1);
     assertEquals(topicManager.getLatestOffsetWithRetries(p1, 5), p1Messages.size());
     assertEquals(topicManager.getLatestOffsetCached(p1.getPubSubTopic(), 1), p1Messages.size());
 
-    assertEquals((long) latestOffsets.get(2), p2Messages.size());
+    long numRecordsInP2 = topicManager.getNumRecordsInPartition(p2);
+    assertEquals(
+        numRecordsInP2,
+        p2Messages.size(),
+        "Number of records in partition p2 should match produced messages size. " + "Expected: " + p2Messages.size()
+            + ", Actual: " + numRecordsInP2);
     assertEquals(topicManager.getLatestOffsetWithRetries(p2, 5), p2Messages.size());
     assertEquals(topicManager.getLatestOffsetCached(p2.getPubSubTopic(), 2), p2Messages.size());
 
     // except for the first 3 partitions, the latest offset should be 0
     for (int i = 3; i < numPartitions; i++) {
-      assertEquals((long) latestOffsets.get(i), 0L);
+      PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingTopic, i);
+      long numRecordsInPartition = topicManager.getNumRecordsInPartition(partition);
+      assertEquals(
+          numRecordsInPartition,
+          0L,
+          "Number of records in partition " + partition + " should be 0. Actual: " + numRecordsInPartition);
       assertEquals(topicManager.getLatestOffsetWithRetries(new PubSubTopicPartitionImpl(existingTopic, i), 5), 0L);
       assertEquals(topicManager.getLatestOffsetCached(existingTopic, i), 0L);
     }

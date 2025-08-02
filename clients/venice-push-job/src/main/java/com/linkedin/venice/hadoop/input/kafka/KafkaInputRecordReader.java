@@ -23,6 +23,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -34,6 +35,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
@@ -71,13 +73,16 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
 
   private final PubSubConsumerAdapter consumer;
   private final PubSubTopicPartition topicPartition;
-  private final long maxNumberOfRecords;
-  private final long startingOffset;
-  private long currentOffset;
-  private final long endingOffset;
+  private final PubSubPosition startingPosition;
+  private final PubSubPosition endingPosition;
   private final boolean isSourceVersionChunkingEnabled;
   private final Schema keySchema;
   private ChunkKeyValueTransformer chunkKeyValueTransformer;
+  private PubSubPosition currentPosition;
+
+  private final long totalRecordsToRead;
+  private final AtomicLong recordsReadSoFar = new AtomicLong(0);
+
   /**
    * Iterator pointing to the current messages fetched from the Kafka topic partition.
    */
@@ -91,7 +96,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   private boolean ownedConsumer = true;
 
   public KafkaInputRecordReader(InputSplit split, JobConf job, DataWriterTaskTracker taskTracker) {
-    this(split, job, taskTracker, createConsumer(job), PUBSUB_TOPIC_REPOSITORY);
+    this(split, job, taskTracker, createConsumer(job));
   }
 
   private static PubSubConsumerAdapter createConsumer(JobConf job) {
@@ -115,26 +120,17 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
       JobConf job,
       DataWriterTaskTracker taskTracker,
       PubSubConsumerAdapter consumer) {
-    this(split, job, taskTracker, consumer, PUBSUB_TOPIC_REPOSITORY);
     this.ownedConsumer = false;
-  }
-
-  /** For unit tests */
-  KafkaInputRecordReader(
-      InputSplit split,
-      JobConf job,
-      DataWriterTaskTracker taskTracker,
-      PubSubConsumerAdapter consumer,
-      PubSubTopicRepository pubSubTopicRepository) {
     if (!(split instanceof KafkaInputSplit)) {
       throw new VeniceException("InputSplit for RecordReader is not valid split type.");
     }
     KafkaInputSplit inputSplit = (KafkaInputSplit) split;
     this.consumer = consumer;
     this.topicPartition = inputSplit.getTopicPartition();
-    this.startingOffset = inputSplit.getStartingOffset();
-    this.currentOffset = inputSplit.getStartingOffset() - 1;
-    this.endingOffset = inputSplit.getEndingOffset();
+    this.startingPosition = inputSplit.getStartingOffset();
+    this.currentPosition = inputSplit.getStartingOffset();
+    this.endingPosition = inputSplit.getEndingOffset();
+    this.totalRecordsToRead = inputSplit.getNumberOfRecords();
     this.isSourceVersionChunkingEnabled = job.getBoolean(KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED, false);
     String keySchemaString = job.get(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP);
     if (keySchemaString == null) {
@@ -144,18 +140,18 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
     /**
      * Not accurate since the topic partition could be log compacted.
      */
-    this.maxNumberOfRecords = endingOffset - startingOffset;
     // In case the Kafka Consumer is passed by the caller, we will unsubscribe all the existing subscriptions first
     if (!ownedConsumer) {
       this.consumer.batchUnsubscribe(this.consumer.getAssignment());
     }
-    this.consumer.subscribe(topicPartition, currentOffset);
+    this.consumer.subscribe(topicPartition, currentPosition, true);
     this.taskTracker = taskTracker;
     LOGGER.info(
-        "KafkaInputRecordReader started for TopicPartition: {} starting offset: {} ending offset: {}",
+        "KafkaInputRecordReader started for TopicPartition: {} starting offset: {} ending offset: {} total records: {}",
         this.topicPartition,
-        this.startingOffset,
-        this.endingOffset);
+        this.startingPosition,
+        this.endingPosition,
+        this.totalRecordsToRead);
   }
 
   /**
@@ -170,11 +166,12 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
       } catch (InterruptedException e) {
         throw new IOException(
             "Got interrupted while loading records from topic partition: " + topicPartition + " with current offset: "
-                + currentOffset);
+                + currentPosition);
       }
       pubSubMessage = recordIterator.hasNext() ? recordIterator.next() : null;
       if (pubSubMessage != null) {
-        currentOffset = pubSubMessage.getPosition().getNumericOffset();
+        currentPosition = pubSubMessage.getPosition();
+        recordsReadSoFar.incrementAndGet();
 
         KafkaKey kafkaKey = pubSubMessage.getKey();
         KafkaMessageEnvelope kafkaMessageEnvelope = pubSubMessage.getValue();
@@ -186,7 +183,11 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
 
         MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope);
 
-        key.offset = pubSubMessage.getPosition().getNumericOffset();
+        key.setPositionWireBytes(pubSubMessage.getPosition().toWireFormatBuffer());
+        key.setPositionFactoryClass(pubSubMessage.getPosition().getFactoryClassName());
+        value.setPositionWireBytes(pubSubMessage.getPosition().toWireFormatBuffer());
+        value.setPositionFactoryClass(pubSubMessage.getPosition().getFactoryClassName());
+
         if (isSourceVersionChunkingEnabled) {
           RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix =
               splitCompositeKey(kafkaKey.getKey(), messageType, getSchemaIdFromValue(kafkaMessageEnvelope));
@@ -196,7 +197,6 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         } else {
           key.key = ByteBuffer.wrap(kafkaKey.getKey(), 0, kafkaKey.getKeyLength());
         }
-        value.offset = pubSubMessage.getPosition().getNumericOffset();
         switch (messageType) {
           case PUT:
             Put put = (Put) kafkaMessageEnvelope.payloadUnion;
@@ -234,7 +234,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         // We have pending data, but we are unable to fetch any records so throw an exception and stop the job
         throw new IOException(
             "Unable to read additional data from Kafka. See logs for details. Partition " + topicPartition
-                + " Current Offset: " + currentOffset + " End Offset: " + endingOffset);
+                + " Current Offset: " + currentPosition + " End Offset: " + endingPosition);
       }
     }
     return false;
@@ -281,7 +281,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
 
   @Override
   public long getPos() {
-    return currentOffset;
+    return recordsReadSoFar.get() - 1; // Return the last read record logical position
   }
 
   @Override
@@ -294,7 +294,17 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   @Override
   public float getProgress() {
     // not most accurate but gives reasonable estimate
-    return ((float) (currentOffset - startingOffset + 1)) / maxNumberOfRecords;
+    if (totalRecordsToRead <= 0) {
+      return 0.0f;
+    }
+    float progress = Math.min(1.0f, ((float) recordsReadSoFar.get() / totalRecordsToRead));
+    LOGGER.debug(
+        "KafkaInputRecordReader for TopicPartition: {} has read {} records out of total {} records, progress: {}",
+        this.topicPartition,
+        recordsReadSoFar.get(),
+        totalRecordsToRead,
+        progress);
+    return progress;
   }
 
   private boolean hasPendingData() {
@@ -302,7 +312,9 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
      * Offset range is exclusive at the end which means the ending offset is one higher
      * than the actual physical last offset
      */
-    return currentOffset < endingOffset - 1;
+    // TODO(sushantmane): Thoroughly test this logic
+    return recordsReadSoFar.get() < totalRecordsToRead
+        || consumer.positionDifference(topicPartition, endingPosition, currentPosition) > 1;
   }
 
   /**
@@ -327,7 +339,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
             .append("topic partition: ")
             .append(topicPartition)
             .append(" and current offset: ")
-            .append(currentOffset);
+            .append(currentPosition);
         throw new VeniceException(sb.toString());
       }
 

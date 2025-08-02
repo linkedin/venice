@@ -83,7 +83,7 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
         () -> topicManager.getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, 1),
         () -> topicManager.getPartitionCount(topic),
         () -> topicManager.getLatestOffsetWithRetries(pubSubTopicPartition, 1),
-        () -> topicManager.getTopicLatestOffsets(topic) };
+        () -> topicManager.getEndPositionsForTopic(topic) };
 
     for (int i = 0; i < numberOfThreads; i++) {
       vwFutures[i] = executorService.submit(tasks[i % tasks.length]);

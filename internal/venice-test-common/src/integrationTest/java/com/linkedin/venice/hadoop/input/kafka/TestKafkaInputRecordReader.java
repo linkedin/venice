@@ -10,8 +10,10 @@ import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
@@ -36,13 +38,13 @@ public class TestKafkaInputRecordReader {
   private static final String KAFKA_MESSAGE_VALUE_PREFIX = "value_";
 
   private PubSubBrokerWrapper pubSubBrokerWrapper;
-  private TopicManager manager;
+  private TopicManager topicManager;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
-    manager =
+    topicManager =
         IntegrationTestPushUtils
             .getTopicManagerRepo(
                 PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE,
@@ -55,13 +57,13 @@ public class TestKafkaInputRecordReader {
 
   @AfterClass
   public void cleanUp() throws IOException {
-    Utils.closeQuietlyWithErrorLogged(manager);
+    Utils.closeQuietlyWithErrorLogged(topicManager);
     Utils.closeQuietlyWithErrorLogged(pubSubBrokerWrapper);
   }
 
   public String getTopic(int numRecord, Pair<Integer, Integer> updateRange, Pair<Integer, Integer> deleteRange) {
     String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
-    manager.createTopic(pubSubTopicRepository.getTopic(topicName), 1, 1, true);
+    topicManager.createTopic(pubSubTopicRepository.getTopic(topicName), 1, 1, true);
     VeniceWriterFactory veniceWriterFactory = IntegrationTestPushUtils.getVeniceWriterFactory(
         pubSubBrokerWrapper,
         pubSubBrokerWrapper.getPubSubClientsFactory().getProducerAdapterFactory());
@@ -92,17 +94,38 @@ public class TestKafkaInputRecordReader {
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
     conf.set(KAFKA_INPUT_TOPIC, topic);
 
-    try (KafkaInputRecordReader reader =
-        new KafkaInputRecordReader(new KafkaInputSplit(pubSubTopicRepository, topicPartition, 0, 102), conf, null)) {
+    PubSubPosition startPosition = topicManager.getStartPositionsForPartition(topicPartition);
+    PubSubPosition endPosition = topicManager.getEndPositionsForPartition(topicPartition);
+    long diff = topicManager.diffPosition(topicPartition, endPosition, startPosition);
+
+    try (KafkaInputRecordReader reader = new KafkaInputRecordReader(
+        new KafkaInputSplit(pubSubTopicRepository, topicPartition, startPosition, endPosition, diff),
+        conf,
+        null)) {
       for (int i = 0; i < 100; ++i) {
         KafkaInputMapperKey key = new KafkaInputMapperKey();
         KafkaInputMapperValue value = new KafkaInputMapperValue();
         reader.next(key, value);
         Assert.assertEquals(key.key.array(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
-        Assert.assertEquals(value.offset, i + 1);
         Assert.assertEquals(value.schemaId, -1);
         Assert.assertEquals(value.valueType, MapperValueType.PUT);
         Assert.assertEquals(ByteUtils.extractByteArray(value.value), (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes());
+
+        PubSubPosition recordPosition = PubSubPositionDeserializer
+            .deserializePubSubPosition(value.positionWireBytes, value.positionFactoryClass.toString());
+        long delta = topicManager.diffPosition(topicPartition, recordPosition, startPosition);
+        Assert.assertEquals(
+            delta,
+            i + 1,
+            "Record position does not match expected offset. Expected: " + (i + 1) + ", Actual: " + delta);
+
+        PubSubPosition recordPositionFromKey = PubSubPositionDeserializer
+            .deserializePubSubPosition(key.positionWireBytes, key.positionFactoryClass.toString());
+        Assert.assertEquals(
+            topicManager.comparePosition(topicPartition, recordPositionFromKey, recordPosition),
+            0,
+            "Record position from key does not match record position from value. Expected: " + recordPosition
+                + ", Actual: " + recordPositionFromKey);
       }
     }
   }
@@ -115,14 +138,25 @@ public class TestKafkaInputRecordReader {
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
-    try (KafkaInputRecordReader reader =
-        new KafkaInputRecordReader(new KafkaInputSplit(pubSubTopicRepository, topicPartition, 0, 102), conf, null)) {
+    PubSubPosition startPosition = topicManager.getStartPositionsForPartition(topicPartition);
+    PubSubPosition endPosition = topicManager.getEndPositionsForPartition(topicPartition);
+    long diff = topicManager.diffPosition(topicPartition, endPosition, startPosition);
+    try (KafkaInputRecordReader reader = new KafkaInputRecordReader(
+        new KafkaInputSplit(pubSubTopicRepository, topicPartition, startPosition, endPosition, diff),
+        conf,
+        null)) {
       for (int i = 0; i < 100; ++i) {
         KafkaInputMapperKey key = new KafkaInputMapperKey();
         KafkaInputMapperValue value = new KafkaInputMapperValue();
         reader.next(key, value);
         Assert.assertEquals(key.key.array(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
-        Assert.assertEquals(value.offset, i + 1);
+        PubSubPosition recordPosition = PubSubPositionDeserializer
+            .deserializePubSubPosition(value.positionWireBytes, value.positionFactoryClass.toString());
+        long delta = topicManager.diffPosition(topicPartition, recordPosition, startPosition);
+        Assert.assertEquals(
+            delta,
+            i + 1,
+            "Record position does not match expected offset. Expected: " + (i + 1) + ", Actual: " + delta);
         Assert.assertEquals(value.schemaId, -1);
         if (i <= 10) {
           // DELETE
@@ -144,8 +178,13 @@ public class TestKafkaInputRecordReader {
     PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
-    try (KafkaInputRecordReader reader =
-        new KafkaInputRecordReader(new KafkaInputSplit(pubSubTopicRepository, topicPartition, 0, 102), conf, null)) {
+    PubSubPosition startPosition = topicManager.getStartPositionsForPartition(topicPartition);
+    PubSubPosition endPosition = topicManager.getEndPositionsForPartition(topicPartition);
+    long diff = topicManager.diffPosition(topicPartition, endPosition, startPosition);
+    try (KafkaInputRecordReader reader = new KafkaInputRecordReader(
+        new KafkaInputSplit(pubSubTopicRepository, topicPartition, startPosition, endPosition, diff),
+        conf,
+        null)) {
       for (int i = 0; i < 100; ++i) {
         KafkaInputMapperKey key = new KafkaInputMapperKey();
         KafkaInputMapperValue value = new KafkaInputMapperValue();
@@ -161,7 +200,13 @@ public class TestKafkaInputRecordReader {
           reader.next(key, value);
         }
         Assert.assertEquals(key.key.array(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
-        Assert.assertEquals(value.offset, i + 1);
+        PubSubPosition recordPosition = PubSubPositionDeserializer
+            .deserializePubSubPosition(value.positionWireBytes, value.positionFactoryClass.toString());
+        long delta = topicManager.diffPosition(topicPartition, recordPosition, startPosition);
+        Assert.assertEquals(
+            delta,
+            i + 1,
+            "Record position does not match expected offset. Expected: " + (i + 1) + ", Actual: " + delta);
         Assert.assertEquals(value.schemaId, -1);
         if (i <= 10) {
           // PUT

@@ -3,6 +3,8 @@ package com.linkedin.venice.hadoop.input.kafka;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import java.io.IOException;
@@ -29,10 +31,11 @@ public class TestKafkaInputKeyComparator {
 
   private static final BytesWritable EMPTY_BYTES_WRITABLE = new BytesWritable();
 
-  public static BytesWritable getBytesWritable(byte[] key, long offset) {
+  public static BytesWritable getBytesWritable(byte[] key, PubSubPosition offset) {
     KafkaInputMapperKey mapperKey = new KafkaInputMapperKey();
     mapperKey.key = ByteBuffer.wrap(key);
-    mapperKey.offset = offset;
+    mapperKey.positionWireBytes = offset.toWireFormatBuffer();
+    mapperKey.positionFactoryClass = offset.getFactoryClassName();
 
     byte[] serializedKey = KAFKA_INPUT_MAPPER_KEY_SERIALIZER.serialize(mapperKey);
     BytesWritable bytesWritable = new BytesWritable();
@@ -41,7 +44,7 @@ public class TestKafkaInputKeyComparator {
     return bytesWritable;
   }
 
-  public static ByteBuffer getSerializedBytesWritable(byte[] key, long offset) throws IOException {
+  public static ByteBuffer getSerializedBytesWritable(byte[] key, PubSubPosition offset) throws IOException {
     BytesWritable bytesWritable = getBytesWritable(key, offset);
     DataOutputBuffer outputBuffer = new DataOutputBuffer();
     bytesWritable.write(outputBuffer);
@@ -59,8 +62,8 @@ public class TestKafkaInputKeyComparator {
   public void testCompareWithDifferentKey() throws IOException {
     byte[] key1 = "123".getBytes();
     byte[] key2 = "223".getBytes();
-    long offsetForKey1 = 1;
-    long offsetForKey2 = 2;
+    PubSubPosition offsetForKey1 = ApacheKafkaOffsetPosition.of(1);
+    PubSubPosition offsetForKey2 = ApacheKafkaOffsetPosition.of(2);
     BytesWritable bwForKey1 = getBytesWritable(key1, offsetForKey1);
     BytesWritable bwForKey2 = getBytesWritable(key2, offsetForKey2);
     ByteBuffer bbForKey1 = getSerializedBytesWritable(key1, offsetForKey1);
@@ -90,8 +93,8 @@ public class TestKafkaInputKeyComparator {
   @Test
   public void testCompareWithSameKeyWithDifferentOffset() throws IOException {
     byte[] key = "123".getBytes();
-    long keyOffset1 = 1;
-    long keyOffset2 = 2;
+    PubSubPosition keyOffset1 = ApacheKafkaOffsetPosition.of(1);
+    PubSubPosition keyOffset2 = ApacheKafkaOffsetPosition.of(2);
     BytesWritable bwForKey1 = getBytesWritable(key, keyOffset1);
     BytesWritable bwForKey2 = getBytesWritable(key, keyOffset2);
     ByteBuffer bbForKey1 = getSerializedBytesWritable(key, keyOffset1);
@@ -121,7 +124,7 @@ public class TestKafkaInputKeyComparator {
   @Test
   public void testSprayKeySorting() throws IOException {
     byte[] key = "123".getBytes();
-    long keyOffset1 = 1;
+    PubSubPosition keyOffset1 = ApacheKafkaOffsetPosition.of(1);
     BytesWritable bwForKey1 = getBytesWritable(key, keyOffset1);
     ByteBuffer bbForKey1 = getSerializedBytesWritable(key, keyOffset1);
 

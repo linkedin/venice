@@ -1,6 +1,10 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.pubsub.PubSubPositionDeserializer.deserializePubSubPosition;
+
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
+import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import java.io.IOException;
@@ -14,8 +18,8 @@ import org.apache.hadoop.io.WritableComparator;
 
 /**
  * This class is used to support secondary sorting for KafkaInput Repush.
- * The key is composed by the raw key + offset, and this class will compare key part first to make it in ascending order
- * and then compare the offset part when keys are equal to maintain an offset-descending order for the same key.
+ * The key is composed by the raw key + position, and this class will compare key part first to make it in ascending order
+ * and then compare the position part when keys are equal to maintain an offset-descending order for the same key.
  */
 public class KafkaInputKeyComparator implements RawComparator<BytesWritable>, Serializable {
   private static final long serialVersionUID = 1L;
@@ -77,11 +81,15 @@ public class KafkaInputKeyComparator implements RawComparator<BytesWritable>, Se
     if (compareResult != 0) {
       return compareResult;
     }
-    if (k1.offset < k2.offset) {
-      return 1;
-    } else if (k1.offset > k2.offset) {
-      return -1;
-    }
-    return 0;
+
+    PubSubPosition k1Position =
+        deserializePubSubPosition(k1.positionWireBytes, k1.getPositionFactoryClass().toString());
+    PubSubPosition k2Position =
+        deserializePubSubPosition(k2.positionWireBytes, k2.getPositionFactoryClass().toString());
+
+    // Original logic had reversed comparator semantics — it returned -1 for k1 > k2,
+    // which is opposite of Java’s contract. Keeping the semantics of the original code hence k2position first
+    // argument.
+    return PubSubUtil.comparePubSubPositions(k2Position, k1Position);
   }
 }

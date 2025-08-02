@@ -27,6 +27,8 @@ import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkAssembler;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
@@ -66,6 +68,8 @@ public class TestVeniceChunkedPayloadTTLFilter {
   private static final RecordSerializer<KafkaInputMapperValue> KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_SERIALIZER =
       FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperValue.SCHEMA$);
 
+  private static final ApacheKafkaOffsetPosition POSITION_1 = ApacheKafkaOffsetPosition.of(1);
+
   @BeforeClass
   public void setUp() throws IOException {
     Properties validProps = new Properties();
@@ -93,27 +97,27 @@ public class TestVeniceChunkedPayloadTTLFilter {
     // For field level TS, it will always retain even though field level TS is not fresh enough, as it will be a bit
     // complicated to check through.
     GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(RMD_SCHEMA, Collections.singletonMap("name", 10L));
-    List<byte[]> values = Collections
-        .singletonList(createRegularValue(null, rmdSerializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
+    List<byte[]> values = Collections.singletonList(
+        createRegularValue(null, rmdSerializer.serialize(rmdRecord), 1, POSITION_1, MapperValueType.DELETE));
     Assert.assertFalse(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
 
     rmdRecord = createRmdWithFieldLevelTimestamp(RMD_SCHEMA, Collections.singletonMap("name", 9L));
-    values = Collections
-        .singletonList(createRegularValue(null, rmdSerializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
+    values = Collections.singletonList(
+        createRegularValue(null, rmdSerializer.serialize(rmdRecord), 1, POSITION_1, MapperValueType.DELETE));
     Assert.assertTrue(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
 
     // For value level TS, it will filter based on RMD timestamp.
     rmdRecord = createRmdWithValueLevelTimestamp(RMD_SCHEMA, 10L);
-    values = Collections
-        .singletonList(createRegularValue(null, rmdSerializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
+    values = Collections.singletonList(
+        createRegularValue(null, rmdSerializer.serialize(rmdRecord), 1, POSITION_1, MapperValueType.DELETE));
     Assert.assertFalse(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
 
     rmdRecord = createRmdWithValueLevelTimestamp(RMD_SCHEMA, 9L);
-    values = Collections
-        .singletonList(createRegularValue(null, rmdSerializer.serialize(rmdRecord), 1, 1, MapperValueType.DELETE));
+    values = Collections.singletonList(
+        createRegularValue(null, rmdSerializer.serialize(rmdRecord), 1, POSITION_1, MapperValueType.DELETE));
     Assert.assertTrue(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
 
@@ -126,7 +130,7 @@ public class TestVeniceChunkedPayloadTTLFilter {
             valueSerializer.serialize(valueRecord),
             rmdSerializer.serialize(rmdRecord),
             1,
-            1,
+            POSITION_1,
             MapperValueType.PUT));
     Assert.assertTrue(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
@@ -137,7 +141,7 @@ public class TestVeniceChunkedPayloadTTLFilter {
             valueSerializer.serialize(valueRecord),
             rmdSerializer.serialize(rmdRecord),
             1,
-            1,
+            POSITION_1,
             MapperValueType.PUT));
     Assert.assertFalse(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
@@ -148,7 +152,7 @@ public class TestVeniceChunkedPayloadTTLFilter {
             valueSerializer.serialize(valueRecord),
             rmdSerializer.serialize(rmdRecord),
             1,
-            1,
+            POSITION_1,
             MapperValueType.PUT));
     Assert.assertFalse(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
@@ -159,7 +163,7 @@ public class TestVeniceChunkedPayloadTTLFilter {
             valueSerializer.serialize(valueRecord),
             rmdSerializer.serialize(rmdRecord),
             1,
-            1,
+            POSITION_1,
             MapperValueType.PUT));
     Assert.assertTrue(
         filter.checkAndMaybeFilterValue(chunkAssembler.assembleAndGetValue(serializedKey, values.iterator())));
@@ -169,7 +173,8 @@ public class TestVeniceChunkedPayloadTTLFilter {
   @Test
   public void testTTLFilterHandleValuePayloadOfDelete() {
     byte[] rmdBytes = "dummyString".getBytes();
-    List<byte[]> values = Collections.singletonList(createRegularValue(null, rmdBytes, 1, 1, MapperValueType.DELETE));
+    List<byte[]> values =
+        Collections.singletonList(createRegularValue(null, rmdBytes, 1, POSITION_1, MapperValueType.DELETE));
     final byte[] serializedKey = createChunkBytes(0, 5);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
@@ -182,13 +187,14 @@ public class TestVeniceChunkedPayloadTTLFilter {
       byte[] valueBytes,
       byte[] rmdBytes,
       int schemaId,
-      int offset,
+      PubSubPosition offset,
       MapperValueType valueType) {
     KafkaInputMapperValue regularValue = new KafkaInputMapperValue();
     regularValue.chunkedKeySuffix = ByteBuffer
         .wrap(CHUNKED_KEY_SUFFIX_SERIALIZER.serialize("", KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX));
     regularValue.schemaId = schemaId;
-    regularValue.offset = offset;
+    regularValue.positionWireBytes = offset.toWireFormatBuffer();
+    regularValue.positionFactoryClass = offset.getFactoryClassName();
     regularValue.value = valueBytes == null ? ByteBuffer.wrap(new byte[0]) : ByteBuffer.wrap(valueBytes);
     regularValue.valueType = valueType;
     regularValue.replicationMetadataPayload =

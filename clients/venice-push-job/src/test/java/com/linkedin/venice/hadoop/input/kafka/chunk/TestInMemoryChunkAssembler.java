@@ -6,6 +6,9 @@ import static com.linkedin.venice.utils.ChunkingTestUtils.createChunkedKeySuffix
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedKeySuffixSerializer;
@@ -63,7 +66,7 @@ public class TestInMemoryChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0);
+        ApacheKafkaOffsetPosition.of(0));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -88,7 +91,7 @@ public class TestInMemoryChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0);
+        ApacheKafkaOffsetPosition.of(0));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         rmdChunkingEnabledChunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -119,7 +122,7 @@ public class TestInMemoryChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0);
+        ApacheKafkaOffsetPosition.of(0));
     values.remove(1); // Remove the second value which should be a manifest
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
@@ -144,7 +147,7 @@ public class TestInMemoryChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0);
+        ApacheKafkaOffsetPosition.of(0));
     int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values.size() - 3) + 2;
     values.remove(indexOfMissingChunk); // Remove a chunk
     chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
@@ -177,7 +180,7 @@ public class TestInMemoryChunkAssembler {
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0);
+        ApacheKafkaOffsetPosition.of(0));
     ChunkInfo valueChunkInfo2 = new ChunkInfo(totalChunkCount2, eachCountSizeInBytes2);
     List<byte[]> values2 = createKafkaInputMapperValues(
         serializedKey,
@@ -186,7 +189,7 @@ public class TestInMemoryChunkAssembler {
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
-        totalChunkCount1 + 1);
+        ApacheKafkaOffsetPosition.of(totalChunkCount1 + 1));
 
     values2.remove(1); // Remove the manifest from the second sequence
     List<byte[]> allValues = new ArrayList<>();
@@ -231,7 +234,7 @@ public class TestInMemoryChunkAssembler {
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0);
+        ApacheKafkaOffsetPosition.of(0));
 
     List<byte[]> values2 = createKafkaInputMapperValues(
         serializedKey,
@@ -240,7 +243,7 @@ public class TestInMemoryChunkAssembler {
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
-        values1.size());
+        ApacheKafkaOffsetPosition.of(values1.size()));
 
     int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values2.size() - 3) + 2;
     values2.remove(indexOfMissingChunk); // Remove a chunk from the second sequence
@@ -278,7 +281,7 @@ public class TestInMemoryChunkAssembler {
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0);
+        ApacheKafkaOffsetPosition.of(0));
 
     List<byte[]> values2 = createKafkaInputMapperValues(
         serializedKey,
@@ -287,7 +290,7 @@ public class TestInMemoryChunkAssembler {
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
-        totalChunkCount1);
+        ApacheKafkaOffsetPosition.of(totalChunkCount1));
     List<byte[]> allValues = new ArrayList<>();
     allValues.addAll(values2);
     allValues.addAll(values1);
@@ -327,14 +330,23 @@ public class TestInMemoryChunkAssembler {
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0);
+        ApacheKafkaOffsetPosition.of(0));
 
     // Simulate a duplicated chunk
     KafkaInputMapperValue randomChunk =
         deserialize(values1.get(ThreadLocalRandom.current().nextInt(values1.size() - 1)));
     KafkaInputMapperValue duplicatedChunk = new KafkaInputMapperValue();
     duplicatedChunk.schemaId = randomChunk.schemaId;
-    duplicatedChunk.offset = deserialize(values1.get(values1.size() - 1)).offset + 1;
+
+    KafkaInputMapperValue lastValue = deserialize(values1.get(values1.size() - 1));
+    PubSubPosition lastPosition = PubSubPositionDeserializer
+        .deserializePubSubPosition(lastValue.positionWireBytes, lastValue.positionFactoryClass.toString());
+    Assert.assertTrue(lastPosition instanceof ApacheKafkaOffsetPosition);
+    PubSubPosition duplicatedPosition =
+        ApacheKafkaOffsetPosition.of(((ApacheKafkaOffsetPosition) lastPosition).getInternalOffset() + 1);
+    duplicatedChunk.positionWireBytes = duplicatedPosition.toWireFormatBuffer();
+    duplicatedChunk.positionFactoryClass = duplicatedPosition.getFactoryClassName();
+
     duplicatedChunk.valueType = randomChunk.valueType;
     duplicatedChunk.value = randomChunk.value;
     duplicatedChunk.chunkedKeySuffix = randomChunk.chunkedKeySuffix;
@@ -348,7 +360,7 @@ public class TestInMemoryChunkAssembler {
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
-        totalChunkCount1 + 1);
+        ApacheKafkaOffsetPosition.of(totalChunkCount1 + 1));
     List<byte[]> allValues = new ArrayList<>();
     allValues.addAll(values2);
     allValues.addAll(values1);
@@ -389,13 +401,20 @@ public class TestInMemoryChunkAssembler {
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0);
+        ApacheKafkaOffsetPosition.of(0));
 
     // Simulate a duplicated manifest
     KafkaInputMapperValue manifestValue = deserialize(values1.get(values1.size() - 1));
     KafkaInputMapperValue duplicatedManifestValue = new KafkaInputMapperValue();
     duplicatedManifestValue.schemaId = manifestValue.schemaId;
-    duplicatedManifestValue.offset = deserialize(values1.get(values1.size() - 1)).offset + 1;
+    KafkaInputMapperValue lastValue = deserialize(values1.get(values1.size() - 1));
+    PubSubPosition lastPosition = PubSubPositionDeserializer
+        .deserializePubSubPosition(lastValue.positionWireBytes, lastValue.positionFactoryClass.toString());
+    Assert.assertTrue(lastPosition instanceof ApacheKafkaOffsetPosition);
+    PubSubPosition duplicatedPosition =
+        ApacheKafkaOffsetPosition.of(((ApacheKafkaOffsetPosition) lastPosition).getInternalOffset() + 1L);
+    duplicatedManifestValue.positionWireBytes = duplicatedPosition.toWireFormatBuffer();
+    duplicatedManifestValue.positionFactoryClass = duplicatedPosition.getFactoryClassName();
     duplicatedManifestValue.valueType = manifestValue.valueType;
     duplicatedManifestValue.value = manifestValue.value;
     duplicatedManifestValue.chunkedKeySuffix = manifestValue.chunkedKeySuffix;
@@ -409,7 +428,7 @@ public class TestInMemoryChunkAssembler {
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
-        totalChunkCount1 + 1);
+        ApacheKafkaOffsetPosition.of(totalChunkCount1 + 1));
     List<byte[]> allValues = new ArrayList<>();
     allValues.addAll(values2);
     allValues.addAll(values1);
@@ -440,9 +459,15 @@ public class TestInMemoryChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0);
+        ApacheKafkaOffsetPosition.of(0));
     byte[] regularValueBytes = createChunkBytes(100, 23);
-    values.add(0, createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
+    values.add(
+        0,
+        createRegularValue(
+            regularValueBytes,
+            VALUE_SCHEMA_ID_2,
+            ApacheKafkaOffsetPosition.of(totalChunkCount + 1),
+            MapperValueType.PUT));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -467,12 +492,18 @@ public class TestInMemoryChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0);
+        ApacheKafkaOffsetPosition.of(0));
     // Randomly remove a value to simulate the incomplete large value
     values.remove(ThreadLocalRandom.current().nextInt(values.size() - 3) + 2);
 
     byte[] regularValueBytes = createChunkBytes(100, 23);
-    values.add(0, createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
+    values.add(
+        0,
+        createRegularValue(
+            regularValueBytes,
+            VALUE_SCHEMA_ID_2,
+            ApacheKafkaOffsetPosition.of(totalChunkCount + 1),
+            MapperValueType.PUT));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -493,9 +524,24 @@ public class TestInMemoryChunkAssembler {
     byte[] value3Bytes = createChunkBytes(30, 30);
 
     List<byte[]> values = new ArrayList<>(3);
-    values.add(createRegularValue(value1Bytes, VALUE_SCHEMA_ID_2, value1Offset, MapperValueType.PUT));
-    values.add(createRegularValue(value2Bytes, VALUE_SCHEMA_ID_2, value2Offset, MapperValueType.PUT));
-    values.add(createRegularValue(value3Bytes, VALUE_SCHEMA_ID_2, value3Offset, MapperValueType.PUT)); // The third
+    values.add(
+        createRegularValue(
+            value1Bytes,
+            VALUE_SCHEMA_ID_2,
+            ApacheKafkaOffsetPosition.of(value1Offset),
+            MapperValueType.PUT));
+    values.add(
+        createRegularValue(
+            value2Bytes,
+            VALUE_SCHEMA_ID_2,
+            ApacheKafkaOffsetPosition.of(value2Offset),
+            MapperValueType.PUT));
+    values.add(
+        createRegularValue(
+            value3Bytes,
+            VALUE_SCHEMA_ID_2,
+            ApacheKafkaOffsetPosition.of(value3Offset),
+            MapperValueType.PUT)); // The third
 
     Collections.reverse(values); // value wins
 
@@ -519,9 +565,19 @@ public class TestInMemoryChunkAssembler {
     byte[] value3Bytes = createChunkBytes(30, 30);
 
     List<byte[]> values = new ArrayList<>(3);
-    values.add(createRegularValue(value1Bytes, VALUE_SCHEMA_ID_2, value1Offset, MapperValueType.PUT));
-    values.add(createRegularValue(new byte[0], -1, value2Offset, MapperValueType.DELETE));
-    values.add(createRegularValue(value3Bytes, VALUE_SCHEMA_ID_2, value3Offset, MapperValueType.PUT)); // The third
+    values.add(
+        createRegularValue(
+            value1Bytes,
+            VALUE_SCHEMA_ID_2,
+            ApacheKafkaOffsetPosition.of(value1Offset),
+            MapperValueType.PUT));
+    values.add(createRegularValue(new byte[0], -1, ApacheKafkaOffsetPosition.of(value2Offset), MapperValueType.DELETE));
+    values.add(
+        createRegularValue(
+            value3Bytes,
+            VALUE_SCHEMA_ID_2,
+            ApacheKafkaOffsetPosition.of(value3Offset),
+            MapperValueType.PUT)); // The third
 
     // value wins
     Collections.reverse(values);
@@ -553,9 +609,11 @@ public class TestInMemoryChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0);
+        ApacheKafkaOffsetPosition.of(0));
     // "Delete value" at the end
-    values.add(0, createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
+    values.add(
+        0,
+        createRegularValue(new byte[0], -1, ApacheKafkaOffsetPosition.of(totalChunkCount + 1), MapperValueType.DELETE));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
     Assert.assertNull(assembledValue);
@@ -579,12 +637,14 @@ public class TestInMemoryChunkAssembler {
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
-        0);
+        ApacheKafkaOffsetPosition.of(0));
     // Randomly remove a value to simulate the incomplete large value
     values.remove(ThreadLocalRandom.current().nextInt(values.size() - 3) + 2);
 
     // "Delete value" at the end
-    values.add(0, createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
+    values.add(
+        0,
+        createRegularValue(new byte[0], -1, ApacheKafkaOffsetPosition.of(totalChunkCount + 1), MapperValueType.DELETE));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -601,9 +661,22 @@ public class TestInMemoryChunkAssembler {
 
     final int value3Offset = 3;
     List<byte[]> values = new ArrayList<>(3);
-    values.add(createRegularValue(value1Bytes, VALUE_SCHEMA_ID_2, value1Offset, MapperValueType.PUT));
-    values.add(createRegularValue(value2Bytes, VALUE_SCHEMA_ID_2, value2Offset, MapperValueType.PUT));
-    values.add(createRegularValue(new byte[0], -1, value3Offset, MapperValueType.DELETE)); // The third value wins
+    values.add(
+        createRegularValue(
+            value1Bytes,
+            VALUE_SCHEMA_ID_2,
+            ApacheKafkaOffsetPosition.of(value1Offset),
+            MapperValueType.PUT));
+    values.add(
+        createRegularValue(
+            value2Bytes,
+            VALUE_SCHEMA_ID_2,
+            ApacheKafkaOffsetPosition.of(value2Offset),
+            MapperValueType.PUT));
+    values.add(createRegularValue(new byte[0], -1, ApacheKafkaOffsetPosition.of(value3Offset), MapperValueType.DELETE)); // The
+                                                                                                                         // third
+                                                                                                                         // value
+                                                                                                                         // wins
     Collections.reverse(values);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
@@ -633,11 +706,12 @@ public class TestInMemoryChunkAssembler {
             segmentNumber,
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
-            1));
+            ApacheKafkaOffsetPosition.of(1)));
     // Randomly remove a value chunk to simulate the incomplete large value
     values.remove(ThreadLocalRandom.current().nextInt(values.size() - 3) + 2);
     byte[] regularValueBytes = createChunkBytes(100, 23);
-    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, 0, MapperValueType.PUT));
+    values.add(
+        createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, ApacheKafkaOffsetPosition.of(0), MapperValueType.PUT));
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
@@ -668,9 +742,10 @@ public class TestInMemoryChunkAssembler {
             segmentNumber,
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
-            1));
+            ApacheKafkaOffsetPosition.of(1)));
     byte[] regularValueBytes = createChunkBytes(100, 23);
-    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, 0, MapperValueType.PUT));
+    values.add(
+        createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, ApacheKafkaOffsetPosition.of(0), MapperValueType.PUT));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -700,8 +775,8 @@ public class TestInMemoryChunkAssembler {
             segmentNumber,
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
-            1));
-    values.add(createRegularValue(new byte[0], -1, 0, MapperValueType.DELETE));
+            ApacheKafkaOffsetPosition.of(1)));
+    values.add(createRegularValue(new byte[0], -1, ApacheKafkaOffsetPosition.of(0), MapperValueType.DELETE));
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
@@ -729,10 +804,10 @@ public class TestInMemoryChunkAssembler {
             segmentNumber,
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
-            1));
+            ApacheKafkaOffsetPosition.of(1)));
     // Randomly remove a chunk value to simulate the incomplete large value
     values.remove(ThreadLocalRandom.current().nextInt(values.size() - 3) + 2);
-    values.add(createRegularValue(new byte[0], -1, 0, MapperValueType.DELETE));
+    values.add(createRegularValue(new byte[0], -1, ApacheKafkaOffsetPosition.of(0), MapperValueType.DELETE));
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
@@ -740,12 +815,13 @@ public class TestInMemoryChunkAssembler {
     Assert.assertNull(assembledValue);
   }
 
-  private byte[] createRegularValue(byte[] valueBytes, int schemaId, int offset, MapperValueType valueType) {
+  private byte[] createRegularValue(byte[] valueBytes, int schemaId, PubSubPosition offset, MapperValueType valueType) {
     KafkaInputMapperValue regularValue = new KafkaInputMapperValue();
     regularValue.chunkedKeySuffix = ByteBuffer
         .wrap(CHUNKED_KEY_SUFFIX_SERIALIZER.serialize("", KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX));
     regularValue.schemaId = schemaId;
-    regularValue.offset = offset;
+    regularValue.positionWireBytes = offset.toWireFormatBuffer();
+    regularValue.positionFactoryClass = offset.getFactoryClassName();
     regularValue.value = ByteBuffer.wrap(valueBytes);
     regularValue.valueType = valueType;
     regularValue.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
@@ -764,7 +840,7 @@ public class TestInMemoryChunkAssembler {
       int segmentNumber,
       int sequenceNumber,
       int valueSchemaID,
-      int startOffset) {
+      ApacheKafkaOffsetPosition startOffset) {
 
     List<byte[]> values = rmdChunkInfo == null
         ? new ArrayList<>(valueChunkInfo.totalChunkCount + 1)
@@ -773,13 +849,15 @@ public class TestInMemoryChunkAssembler {
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(valueChunkInfo.totalChunkCount);
     ChunkedValueManifest chunkedRmdManifest = null;
-    int currOffset = startOffset;
+    long currOffset = startOffset.getInternalOffset();
     int currStartingByteValue = 0;
     for (int i = 0; i < valueChunkInfo.totalChunkCount; i++) {
       byte[] chunkBytes = createChunkBytes(currStartingByteValue, valueChunkInfo.eachCountSizeInBytes);
       KafkaInputMapperValue mapperValue = new KafkaInputMapperValue();
       mapperValue.valueType = MapperValueType.PUT;
-      mapperValue.offset = currOffset;
+      PubSubPosition currOffsetPosition = ApacheKafkaOffsetPosition.of(currOffset);
+      mapperValue.positionWireBytes = currOffsetPosition.toWireFormatBuffer();
+      mapperValue.positionFactoryClass = currOffsetPosition.getFactoryClassName();
       currOffset++;
       mapperValue.schemaId = CHUNK_VALUE_SCHEMA_ID;
       mapperValue.value = ByteBuffer.wrap(chunkBytes);
@@ -802,7 +880,9 @@ public class TestInMemoryChunkAssembler {
         byte[] chunkBytes = createChunkBytes(currStartingByteValue, rmdChunkInfo.eachCountSizeInBytes);
         KafkaInputMapperValue mapperValue = new KafkaInputMapperValue();
         mapperValue.valueType = MapperValueType.PUT;
-        mapperValue.offset = currOffset;
+        PubSubPosition currOffsetPosition = ApacheKafkaOffsetPosition.of(currOffset);
+        mapperValue.positionWireBytes = currOffsetPosition.toWireFormatBuffer();
+        mapperValue.positionFactoryClass = currOffsetPosition.getFactoryClassName();
         currOffset++;
         mapperValue.schemaId = CHUNK_VALUE_SCHEMA_ID;
         mapperValue.value = ByteBuffer.wrap(new byte[0]);
@@ -827,7 +907,9 @@ public class TestInMemoryChunkAssembler {
     }
     KafkaInputMapperValue mapperValueForManifest = new KafkaInputMapperValue();
     mapperValueForManifest.valueType = MapperValueType.PUT;
-    mapperValueForManifest.offset = currOffset++;
+    PubSubPosition currOffsetPosition = ApacheKafkaOffsetPosition.of(currOffset++);
+    mapperValueForManifest.positionWireBytes = currOffsetPosition.toWireFormatBuffer();
+    mapperValueForManifest.positionFactoryClass = currOffsetPosition.getFactoryClassName();
     mapperValueForManifest.schemaId = CHUNK_MANIFEST_SCHEMA_ID;
     mapperValueForManifest.value =
         ByteBuffer.wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize("", chunkedValueManifest));
@@ -842,7 +924,9 @@ public class TestInMemoryChunkAssembler {
     // Add one chunk cleanup message
     KafkaInputMapperValue valueChunkCleanupMessage = new KafkaInputMapperValue();
     valueChunkCleanupMessage.valueType = MapperValueType.DELETE;
-    valueChunkCleanupMessage.offset = currOffset++;
+    PubSubPosition currOffsetPositionForCleanup = ApacheKafkaOffsetPosition.of(currOffset);
+    valueChunkCleanupMessage.positionWireBytes = currOffsetPositionForCleanup.toWireFormatBuffer();
+    valueChunkCleanupMessage.positionFactoryClass = currOffsetPositionForCleanup.getFactoryClassName();
     valueChunkCleanupMessage.schemaId = CHUNK_VALUE_SCHEMA_ID;
     valueChunkCleanupMessage.value = VeniceWriter.EMPTY_BYTE_BUFFER;
 

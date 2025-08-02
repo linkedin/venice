@@ -24,9 +24,7 @@ public class EarliestPositionFactoryTest {
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.setType(TYPE_ID);
     wireFormat.setRawBytes(ByteBuffer.wrap(new byte[0]));
-
-    PubSubPosition result = factory.fromPositionRawBytes(wireFormat);
-
+    PubSubPosition result = factory.fromWireFormat(wireFormat);
     assertNotNull(result);
     assertSame(result, PubSubSymbolicPosition.EARLIEST);
   }
@@ -44,8 +42,7 @@ public class EarliestPositionFactoryTest {
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.setType(456); // wrong type
     wireFormat.setRawBytes(ByteBuffer.wrap(new byte[0]));
-
-    VeniceException ex = expectThrows(VeniceException.class, () -> factory.fromPositionRawBytes(wireFormat));
+    VeniceException ex = expectThrows(VeniceException.class, () -> factory.fromWireFormat(wireFormat));
     assertTrue(ex.getMessage().contains("Position type ID mismatch"));
   }
 }
