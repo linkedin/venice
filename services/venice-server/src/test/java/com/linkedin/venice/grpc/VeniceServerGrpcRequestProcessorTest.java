@@ -535,61 +535,13 @@ public class VeniceServerGrpcRequestProcessorTest {
     assertTrue(response.getErrorMessage().contains("CountByValue dependencies not available"));
   }
 
-  @Test
-  public void testConstructorWithStorageHandlerForceProductionMode() {
-    // Test the constructor with StorageReadRequestHandler and force production mode
-    com.linkedin.venice.listener.StorageReadRequestHandler mockHandler =
-        mock(com.linkedin.venice.listener.StorageReadRequestHandler.class);
+  // Removed testConstructorWithStorageHandlerForceProductionMode - no longer using reflection
 
-    // Test with force production mode enabled
-    System.setProperty("venice.grpc.force.production.mode", "true");
+  // Removed testConstructorWithStorageHandlerNormalMode - no longer using reflection
 
-    try {
-      VeniceServerGrpcRequestProcessor processor = new VeniceServerGrpcRequestProcessor(mockHandler);
-      assertNotNull(processor);
-    } finally {
-      // Clean up system property
-      System.clearProperty("venice.grpc.force.production.mode");
-    }
-  }
+  // Removed testConstructorWithTestMode - no longer using reflection
 
-  @Test
-  public void testConstructorWithStorageHandlerNormalMode() {
-    // Test the constructor with StorageReadRequestHandler in normal mode (no force production mode)
-    com.linkedin.venice.listener.StorageReadRequestHandler mockHandler =
-        mock(com.linkedin.venice.listener.StorageReadRequestHandler.class);
-
-    // Ensure force production mode is disabled
-    System.setProperty("venice.grpc.force.production.mode", "false");
-
-    try {
-      VeniceServerGrpcRequestProcessor processor = new VeniceServerGrpcRequestProcessor(mockHandler);
-      assertNotNull(processor);
-    } finally {
-      // Clean up system property
-      System.clearProperty("venice.grpc.force.production.mode");
-    }
-  }
-
-  @Test
-  public void testConstructorWithTestMode() {
-    // Test the constructor with test mode enabled
-    com.linkedin.venice.listener.StorageReadRequestHandler mockHandler =
-        mock(com.linkedin.venice.listener.StorageReadRequestHandler.class);
-
-    VeniceServerGrpcRequestProcessor processor = new VeniceServerGrpcRequestProcessor(mockHandler, true);
-    assertNotNull(processor);
-  }
-
-  @Test
-  public void testConstructorWithNormalMode() {
-    // Test the constructor with normal mode (test mode disabled)
-    com.linkedin.venice.listener.StorageReadRequestHandler mockHandler =
-        mock(com.linkedin.venice.listener.StorageReadRequestHandler.class);
-
-    VeniceServerGrpcRequestProcessor processor = new VeniceServerGrpcRequestProcessor(mockHandler, false);
-    assertNotNull(processor);
-  }
+  // Removed testConstructorWithNormalMode - no longer using reflection
 
   @Test
   public void testStringSchemaSupport() {
@@ -700,10 +652,8 @@ public class VeniceServerGrpcRequestProcessorTest {
   }
 
   @Test
-  public void testExtractDependencyFromNonMockObject() {
-    // Test the non-mock path in extractDependency by ensuring the method handles real objects
-    // Since creating a real StorageReadRequestHandler requires many dependencies,
-    // we'll test this indirectly by verifying the processor handles null dependencies properly
+  public void testNullDependenciesInConstructor() {
+    // Test that processor handles null dependencies properly
     VeniceServerGrpcRequestProcessor processor = new VeniceServerGrpcRequestProcessor(
         null, // storageEngineRepository
         null, // schemaRepository
