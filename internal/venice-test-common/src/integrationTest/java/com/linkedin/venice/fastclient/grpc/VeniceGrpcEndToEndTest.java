@@ -11,6 +11,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERI
 import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_THREADS;
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
+import static com.linkedin.venice.fastclient.factory.ClientFactory.getAndStartGenericStoreClient;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
@@ -20,8 +21,11 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.fastclient.AggregationResponse;
 import com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder;
 import com.linkedin.venice.fastclient.GrpcClientConfig;
+import com.linkedin.venice.fastclient.InternalAvroStoreClient;
+import com.linkedin.venice.fastclient.ServerSideAggregationRequestBuilder;
 import com.linkedin.venice.fastclient.meta.StoreMetadataFetchMode;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -58,6 +62,7 @@ public class VeniceGrpcEndToEndTest {
   public static final int maxAllowedKeys = 150;
   private static final Logger LOGGER = LogManager.getLogger(VeniceGrpcEndToEndTest.class);
   private static final int recordCnt = 1000;
+
   private VeniceClusterWrapper cluster;
   private Map<String, String> nettyToGrpcPortMap;
   private String storeName;
@@ -69,9 +74,6 @@ public class VeniceGrpcEndToEndTest {
   @BeforeClass
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
-
-    // Force production mode for gRPC request processor to ensure full countByValue functionality
-    System.setProperty("venice.grpc.force.production.mode", "true");
 
     Properties props = new Properties();
     props.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "true");
@@ -121,8 +123,6 @@ public class VeniceGrpcEndToEndTest {
 
   @AfterClass
   public void cleanUp() {
-    // Clean up system property
-    System.clearProperty("venice.grpc.force.production.mode");
     Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
@@ -164,8 +164,7 @@ public class VeniceGrpcEndToEndTest {
     clientConfigBuilder.setD2Client(d2Client);
     clientConfigBuilder.setMetricsRepository(metricsRepository);
 
-    return com.linkedin.venice.fastclient.factory.ClientFactory
-        .getAndStartGenericStoreClient(clientConfigBuilder.build());
+    return getAndStartGenericStoreClient(clientConfigBuilder.build());
   }
 
   @Test
@@ -179,8 +178,7 @@ public class VeniceGrpcEndToEndTest {
     D2Client d2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
-        new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setR2Client(r2Client);
+        new ClientConfigBuilder<>().setStoreName(storeName).setR2Client(r2Client);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), d2Client);
@@ -227,13 +225,10 @@ public class VeniceGrpcEndToEndTest {
     GrpcClientConfig grpcClientConfig = createGrpcClientConfig(grpcR2ClientPassthrough);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
-        new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setR2Client(r2Client);
+        new ClientConfigBuilder<>().setStoreName(storeName).setR2Client(r2Client);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
-        new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setUseGrpc(true)
-            .setGrpcClientConfig(grpcClientConfig);
+        new ClientConfigBuilder<>().setStoreName(storeName).setUseGrpc(true).setGrpcClientConfig(grpcClientConfig);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), d2Client);
@@ -295,13 +290,10 @@ public class VeniceGrpcEndToEndTest {
     GrpcClientConfig grpcClientConfig = createGrpcClientConfig(r2Client);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
-        new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setR2Client(r2Client);
+        new ClientConfigBuilder<>().setStoreName(storeName).setR2Client(r2Client);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
-        new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setUseGrpc(true)
-            .setGrpcClientConfig(grpcClientConfig);
+        new ClientConfigBuilder<>().setStoreName(storeName).setUseGrpc(true).setGrpcClientConfig(grpcClientConfig);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), d2Client);
@@ -347,13 +339,10 @@ public class VeniceGrpcEndToEndTest {
     GrpcClientConfig grpcClientConfig = createGrpcClientConfig(grpcR2Client);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
-        new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setR2Client(fastR2Client);
+        new ClientConfigBuilder<>().setStoreName(storeName).setR2Client(fastR2Client);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
-        new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setUseGrpc(true)
-            .setGrpcClientConfig(grpcClientConfig);
+        new ClientConfigBuilder<>().setStoreName(storeName).setUseGrpc(true).setGrpcClientConfig(grpcClientConfig);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), fastD2Client);
@@ -390,9 +379,7 @@ public class VeniceGrpcEndToEndTest {
     GrpcClientConfig grpcClientConfig = createGrpcClientConfig(grpcR2Client);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
-        new com.linkedin.venice.fastclient.ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setUseGrpc(true)
-            .setGrpcClientConfig(grpcClientConfig);
+        new ClientConfigBuilder<>().setStoreName(storeName).setUseGrpc(true).setGrpcClientConfig(grpcClientConfig);
 
     AvroGenericStoreClient<String, GenericRecord> grpcFastClient =
         getGenericFastClient(grpcClientConfigBuilder, new MetricsRepository(), grpcD2Client);
@@ -408,37 +395,57 @@ public class VeniceGrpcEndToEndTest {
     });
 
     // Test countByValue with a subset of keys
-    Set<String> testKeys = new HashSet<>(java.util.Arrays.asList("1", "2", "3", "4", "5", "10", "20", "50", "100"));
+    // The existing data setup creates records where key "N" has int_field value N
+    Set<String> testKeys = new HashSet<>(java.util.Arrays.asList("1", "2", "3", "4", "5"));
 
     // Create aggregation request builder
-    // The grpcFastClient is wrapped but contains a DispatchingAvroGenericStoreClient that supports server-side
-    // aggregation
-    com.linkedin.venice.fastclient.ServerSideAggregationRequestBuilder<String> requestBuilder;
-    if (grpcFastClient instanceof com.linkedin.venice.fastclient.InternalAvroStoreClient) {
-      requestBuilder = ((com.linkedin.venice.fastclient.InternalAvroStoreClient<String, GenericRecord>) grpcFastClient)
-          .getServerSideAggregationRequestBuilder();
+    ServerSideAggregationRequestBuilder<String> requestBuilder;
+    if (grpcFastClient instanceof InternalAvroStoreClient) {
+      requestBuilder =
+          ((InternalAvroStoreClient<String, GenericRecord>) grpcFastClient).getServerSideAggregationRequestBuilder();
     } else {
       throw new RuntimeException("gRPC client does not support server-side aggregation");
     }
 
-    // Test single field countByValue
-    com.linkedin.venice.fastclient.AggregationResponse response =
-        requestBuilder.countByValue(java.util.Arrays.asList("value"), 10).execute(testKeys).get();
+    // Test single field countByValue - use the correct field name "int_field"
+    AggregationResponse response =
+        requestBuilder.countByValue(java.util.Arrays.asList("int_field"), 10).execute(testKeys).get();
 
     Assert.assertFalse(response.hasError(), "CountByValue should not have errors: " + response.getErrorMessage());
     Assert.assertNotNull(response.getFieldToValueCounts(), "Field to value counts should not be null");
-    Assert.assertTrue(response.getFieldToValueCounts().containsKey("value"), "Response should contain 'value' field");
+    Assert.assertTrue(
+        response.getFieldToValueCounts().containsKey("int_field"),
+        "Response should contain 'int_field' field");
 
-    Map<String, Integer> valueCounts = response.getFieldToValueCounts().get("value");
+    Map<String, Integer> valueCounts = response.getFieldToValueCounts().get("int_field");
     Assert.assertNotNull(valueCounts, "Value counts should not be null");
     Assert.assertTrue(valueCounts.size() > 0, "Should have at least one value count");
 
-    LOGGER.info("CountByValue results for 'value' field: {}", valueCounts);
+    LOGGER.info("CountByValue results for 'int_field' field: {}", valueCounts);
 
-    // Verify that the total count matches the number of keys processed
+    // Verify the aggregation logic is working correctly:
+    // With existing data setup, each key maps to its corresponding int value (key "1" -> int_field 1, etc.)
+    // Since each key has a unique value, each value should appear exactly once
+    Assert.assertEquals(
+        valueCounts.size(),
+        testKeys.size(),
+        "Number of distinct values should equal number of test keys");
+
+    // Verify that each value appears exactly once (since we're using unique consecutive integers)
+    for (Integer count: valueCounts.values()) {
+      Assert.assertEquals(count, Integer.valueOf(1), "Each value should appear exactly once");
+    }
+
+    // Verify total count matches expected
     int totalCount = valueCounts.values().stream().mapToInt(Integer::intValue).sum();
-    Assert.assertTrue(totalCount > 0, "Total count should be greater than 0");
-    Assert.assertTrue(totalCount <= testKeys.size(), "Total count should not exceed number of test keys");
+    Assert.assertEquals(totalCount, testKeys.size(), "Total count should match number of test keys");
+
+    // Verify specific expected values are present
+    Assert.assertTrue(valueCounts.containsKey("1"), "Should contain value '1'");
+    Assert.assertTrue(valueCounts.containsKey("2"), "Should contain value '2'");
+    Assert.assertTrue(valueCounts.containsKey("3"), "Should contain value '3'");
+    Assert.assertTrue(valueCounts.containsKey("4"), "Should contain value '4'");
+    Assert.assertTrue(valueCounts.containsKey("5"), "Should contain value '5'");
 
     grpcFastClient.close();
   }

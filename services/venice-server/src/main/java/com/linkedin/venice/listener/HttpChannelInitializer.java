@@ -282,26 +282,15 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   }
 
   public VeniceServerGrpcRequestProcessor initGrpcRequestProcessor() {
-    // Use force production mode system property for integration tests that need full functionality
-    boolean forceProductionMode = Boolean.getBoolean("venice.grpc.force.production.mode");
+    LOGGER.info("Creating gRPC request processor with direct dependency injection");
 
-    LOGGER.info("Creating gRPC request processor. Force production mode: {}", forceProductionMode);
-
-    VeniceServerGrpcRequestProcessor grpcServerRequestProcessor;
-    if (forceProductionMode) {
-      // Force production mode - extract dependencies from request handler
-      LOGGER.info("Using production mode with dependency extraction from request handler");
-      grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor(requestHandler);
-    } else {
-      // Default mode - use dependencies stored in this class (passed from ListenerService)
-      LOGGER.info("Using default mode with direct dependency injection");
-      grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor(
-          this.storageEngineRepository,
-          this.schemaRepository,
-          this.storeMetadataRepository,
-          null,
-          this.compressorFactory);
-    }
+    // Always use direct dependency injection - no more reflection
+    VeniceServerGrpcRequestProcessor grpcServerRequestProcessor = new VeniceServerGrpcRequestProcessor(
+        this.storageEngineRepository,
+        this.schemaRepository,
+        this.storeMetadataRepository,
+        null,
+        this.compressorFactory);
 
     StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats, null);
     GrpcStatsHandler grpcStatsHandler = new GrpcStatsHandler(statsHandler);

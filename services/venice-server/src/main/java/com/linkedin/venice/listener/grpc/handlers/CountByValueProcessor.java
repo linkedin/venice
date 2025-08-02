@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
+import com.linkedin.venice.protocols.ValueCount;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
@@ -385,12 +386,10 @@ public class CountByValueProcessor {
     for (String fieldName: fieldNames) {
       Map<String, Integer> counts = fieldCounts.get(fieldName);
       if (counts != null && !counts.isEmpty()) {
-        responseBuilder.putFieldToValueCounts(
-            fieldName,
-            com.linkedin.venice.protocols.ValueCount.newBuilder().putAllValueToCounts(counts).build());
+        responseBuilder.putFieldToValueCounts(fieldName, ValueCount.newBuilder().putAllValueToCounts(counts).build());
       } else {
         // Add empty result for this field
-        responseBuilder.putFieldToValueCounts(fieldName, com.linkedin.venice.protocols.ValueCount.newBuilder().build());
+        responseBuilder.putFieldToValueCounts(fieldName, ValueCount.newBuilder().build());
       }
     }
 

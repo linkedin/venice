@@ -5,6 +5,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
@@ -71,7 +72,7 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
     }
 
     int currentVersion = metadata.getCurrentStoreVersion();
-    String resourceName = metadata.getStoreName() + "_v" + currentVersion;
+    String resourceName = Version.composeKafkaTopic(metadata.getStoreName(), currentVersion);
 
     // Step 1: Partition keys by their target partitions (client-side partitioning)
     Map<Integer, List<K>> partitionToKeysMap = partitionKeys(keys, currentVersion);
