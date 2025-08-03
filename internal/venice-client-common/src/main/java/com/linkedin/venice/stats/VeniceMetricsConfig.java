@@ -56,6 +56,19 @@ public class VeniceMetricsConfig {
   public static final String OTEL_VENICE_METRICS_EXPORT_TO_ENDPOINT = "otel.venice.metrics.export.to.endpoint";
 
   /**
+   * Config to enable/disable splitting the OpenTelemetry metrics export into multiple batches
+   * This might help to support the limitations of underlying metrics pipelines receiving the metrics.
+   */
+  public static final String OTEL_VENICE_METRICS_ENABLE_SPLIT_EXPORT = "otel.venice.metrics.enable.split.export";
+
+  /**
+   * Number of samples per split for OpenTelemetry metrics export
+   * This is used only if {@link #OTEL_VENICE_METRICS_ENABLE_SPLIT_EXPORT} is set to true
+   */
+  public static final String OTEL_VENICE_METRICS_NUMBER_OF_SAMPLES_PER_SPLIT =
+      "otel.venice.metrics.number.of.samples.per.split";
+
+  /**
    * Export interval in seconds for OpenTelemetry metrics
    */
   public static final String OTEL_VENICE_METRICS_EXPORT_INTERVAL_IN_SECONDS =
@@ -145,6 +158,8 @@ public class VeniceMetricsConfig {
    * 2. {@link VeniceOpenTelemetryMetricsRepository.LogBasedMetricExporter} for debug purposes
    */
   private final boolean exportOtelMetricsToEndpoint;
+  private final boolean enableSplitExportOfOtelMetrics;
+  private final int numberOfSamplesPerSplitExport;
   private final int exportOtelMetricsIntervalInSeconds;
   private final boolean exportOtelMetricsToLog;
 
@@ -184,6 +199,8 @@ public class VeniceMetricsConfig {
     this.metricEntities = builder.metricEntities;
     this.emitOTelMetrics = builder.emitOtelMetrics;
     this.exportOtelMetricsToEndpoint = builder.exportOtelMetricsToEndpoint;
+    this.enableSplitExportOfOtelMetrics = builder.enableSplitExportOfOtelMetrics;
+    this.numberOfSamplesPerSplitExport = builder.numberOfSamplesPerSplitExport;
     this.exportOtelMetricsIntervalInSeconds = builder.exportOtelMetricsIntervalInSeconds;
     this.otelCustomDimensionsMap = builder.otelCustomDimensionsMap;
     this.otelExportProtocol = builder.otelExportProtocol;
@@ -205,6 +222,8 @@ public class VeniceMetricsConfig {
     private Collection<MetricEntity> metricEntities = new ArrayList<>();
     private boolean emitOtelMetrics = false;
     private boolean exportOtelMetricsToEndpoint = false;
+    private boolean enableSplitExportOfOtelMetrics = false;
+    private int numberOfSamplesPerSplitExport = 1000;
     private int exportOtelMetricsIntervalInSeconds = 60;
     private Map<String, String> otelCustomDimensionsMap = new HashMap<>();
     private String otelExportProtocol = OtlpConfigUtil.PROTOCOL_HTTP_PROTOBUF;
@@ -242,6 +261,16 @@ public class VeniceMetricsConfig {
 
     public Builder setExportOtelMetricsToEndpoint(boolean exportOtelMetricsToEndpoint) {
       this.exportOtelMetricsToEndpoint = exportOtelMetricsToEndpoint;
+      return this;
+    }
+
+    public Builder setEnableSplitExportOfOtelMetrics(boolean enableSplitExportOfOtelMetrics) {
+      this.enableSplitExportOfOtelMetrics = enableSplitExportOfOtelMetrics;
+      return this;
+    }
+
+    public Builder setNumberOfSamplesPerSplitExport(int numberOfSamplesPerSplitExport) {
+      this.numberOfSamplesPerSplitExport = numberOfSamplesPerSplitExport;
       return this;
     }
 
@@ -331,6 +360,14 @@ public class VeniceMetricsConfig {
 
       if ((configValue = configs.get(OTEL_VENICE_METRICS_EXPORT_TO_ENDPOINT)) != null) {
         setExportOtelMetricsToEndpoint(Boolean.parseBoolean(configValue));
+      }
+
+      if ((configValue = configs.get(OTEL_VENICE_METRICS_ENABLE_SPLIT_EXPORT)) != null) {
+        setEnableSplitExportOfOtelMetrics(Boolean.parseBoolean(configValue));
+      }
+
+      if ((configValue = configs.get(OTEL_VENICE_METRICS_NUMBER_OF_SAMPLES_PER_SPLIT)) != null) {
+        setNumberOfSamplesPerSplitExport(Integer.parseInt(configValue));
       }
 
       if ((configValue = configs.get(OTEL_VENICE_METRICS_EXPORT_INTERVAL_IN_SECONDS)) != null) {
@@ -473,6 +510,14 @@ public class VeniceMetricsConfig {
     return exportOtelMetricsToEndpoint;
   }
 
+  public boolean enableSplitExportOfOtelMetrics() {
+    return enableSplitExportOfOtelMetrics;
+  }
+
+  public int getNumberOfSamplesPerSplitExport() {
+    return numberOfSamplesPerSplitExport;
+  }
+
   public int getExportOtelMetricsIntervalInSeconds() {
     return exportOtelMetricsIntervalInSeconds;
   }
@@ -529,13 +574,15 @@ public class VeniceMetricsConfig {
   public String toString() {
     return "VeniceMetricsConfig{" + "serviceName='" + serviceName + '\'' + ", metricPrefix='" + metricPrefix + '\''
         + ", metricEntities=" + metricEntities + ", emitOTelMetrics=" + emitOTelMetrics
-        + ", exportOtelMetricsToEndpoint=" + exportOtelMetricsToEndpoint + ", exportOtelMetricsIntervalInSeconds="
-        + exportOtelMetricsIntervalInSeconds + ", otelCustomDimensionsMap=" + otelCustomDimensionsMap
-        + ", otelExportProtocol='" + otelExportProtocol + '\'' + ", otelEndpoint='" + otelEndpoint + '\''
-        + ", otelHeaders=" + otelHeaders + ", metricNamingFormat=" + metricNamingFormat
-        + ", otelAggregationTemporalitySelector=" + otelAggregationTemporalitySelector
-        + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram + ", otelExponentialHistogramMaxScale="
-        + otelExponentialHistogramMaxScale + ", otelExponentialHistogramMaxBuckets="
-        + otelExponentialHistogramMaxBuckets + ", tehutiMetricConfig=" + tehutiMetricConfig + '}';
+        + ", exportOtelMetricsToEndpoint=" + exportOtelMetricsToEndpoint + ", enableSplitExportOfOtelMetrics="
+        + enableSplitExportOfOtelMetrics + ", numberOfSamplesPerSplitExport=" + numberOfSamplesPerSplitExport
+        + ", exportOtelMetricsIntervalInSeconds=" + exportOtelMetricsIntervalInSeconds + ", otelCustomDimensionsMap="
+        + otelCustomDimensionsMap + ", otelExportProtocol='" + otelExportProtocol + '\'' + ", otelEndpoint='"
+        + otelEndpoint + '\'' + ", otelHeaders=" + otelHeaders + ", exportOtelMetricsToLog=" + exportOtelMetricsToLog
+        + ", metricNamingFormat=" + metricNamingFormat + ", otelAggregationTemporalitySelector="
+        + otelAggregationTemporalitySelector + ", useOtelExponentialHistogram=" + useOtelExponentialHistogram
+        + ", otelExponentialHistogramMaxScale=" + otelExponentialHistogramMaxScale
+        + ", otelExponentialHistogramMaxBuckets=" + otelExponentialHistogramMaxBuckets
+        + ", otelAdditionalMetricsReader=" + otelAdditionalMetricsReader + '}';
   }
 }
