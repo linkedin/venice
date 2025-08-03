@@ -11,6 +11,8 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.protocols.ValueCount;
@@ -44,6 +46,7 @@ public class CountByValueProcessor {
   private final ReadOnlyStoreRepository storeRepository;
   private final StorageEngineBackedCompressorFactory compressorFactory;
   private final Map<String, AvroStoreDeserializerCache<Object>> storeDeserializerCacheMap;
+  private final VenicePartitioner partitioner;
 
   public CountByValueProcessor(
       StorageEngineRepository storageEngineRepository,
@@ -55,6 +58,7 @@ public class CountByValueProcessor {
     this.storeRepository = storeRepository;
     this.compressorFactory = compressorFactory;
     this.storeDeserializerCacheMap = new VeniceConcurrentHashMap<>();
+    this.partitioner = new DefaultVenicePartitioner();
   }
 
   /**
@@ -132,7 +136,6 @@ public class CountByValueProcessor {
       }
 
       Schema valueSchema = valueSchemaEntry.getSchema();
-      LOGGER.info("Processing countByValue for store: {}, value schema type: {}", storeName, valueSchema.getType());
 
       // Validate that all fields exist in the schema
       CountByValueResponse validationResponse = validateFields(fieldNames, valueSchema, storeName);
@@ -235,44 +238,43 @@ public class CountByValueProcessor {
       // Get all partition IDs available on this server
       Set<Integer> availablePartitions = storageEngine.getPersistedPartitionIds();
 
-      LOGGER.info("Processing {} keys for countByValue on fields {}", request.getKeysCount(), fieldNames);
-      LOGGER.info("Available partitions on this server: {}", availablePartitions);
+      // Get total partition count for this store version
+      // Parse version from resource name (format: storeName_v{version})
+      String[] resourceParts = request.getResourceName().split("_v");
+      int versionNumber = Integer.parseInt(resourceParts[1]);
+      Store store = storeRepository.getStoreOrThrow(storeName);
+      Version version = store.getVersion(versionNumber);
+      int totalPartitions = version.getPartitionCount();
 
-      // Process all keys sent by client (client has already partitioned them for this server)
+      // Process all keys sent by client
       for (int i = 0; i < request.getKeysCount(); i++) {
         byte[] keyBytes = request.getKeys(i).toByteArray();
 
         try {
-          // Since client-side partitioning sends keys to the correct server,
-          // we need to find which local partition this key belongs to
-          byte[] valueBytes = null;
-          for (Integer partitionId: availablePartitions) {
+          // Calculate the correct partition for this key using the same algorithm as client
+          int targetPartition = partitioner.getPartitionId(keyBytes, totalPartitions);
+
+          // Check if this server has the target partition
+          if (availablePartitions.contains(targetPartition)) {
             try {
-              valueBytes = storageEngine.get(partitionId, keyBytes);
+              byte[] valueBytes = storageEngine.get(targetPartition, keyBytes);
               if (valueBytes != null) {
-                break; // Found the key in this partition
+                processValue(
+                    valueBytes,
+                    fieldNames,
+                    valueSchema,
+                    valueSchemaEntry,
+                    compressionStrategy,
+                    compressor,
+                    deserializerCache,
+                    fieldCounts);
               }
             } catch (Exception e) {
-              // Key not found in this partition, continue to next
-              LOGGER.debug("Key not found in partition {}: {}", partitionId, e.getMessage());
+              LOGGER.warn("Error getting key {} from partition {}: {}", i, targetPartition, e.getMessage());
             }
           }
-          if (valueBytes != null) {
-            LOGGER.debug("Found value for key {}", i);
-            processValue(
-                valueBytes,
-                fieldNames,
-                valueSchema,
-                valueSchemaEntry,
-                compressionStrategy,
-                compressor,
-                deserializerCache,
-                fieldCounts);
-          } else {
-            LOGGER.debug("No value found for key {}", i);
-          }
         } catch (Exception e) {
-          LOGGER.warn("Error processing key: {}", e.getMessage());
+          LOGGER.warn("Error processing key {}: {}", i, e.getMessage());
         }
       }
 
@@ -346,16 +348,8 @@ public class CountByValueProcessor {
       writerSchemaId = readerSchemaId;
     }
 
-    LOGGER.debug("Using writer schema ID: {}, reader schema ID: {}", writerSchemaId, readerSchemaId);
-
     RecordDeserializer<Object> deserializer = deserializerCache.getDeserializer(writerSchemaId, readerSchemaId);
-
-    LOGGER.debug("Deserializing buffer with {} bytes remaining", decompressedBuffer.remaining());
     Object deserializedValue = deserializer.deserialize(decompressedBuffer);
-    LOGGER.debug(
-        "Deserialized value type: {}, value: {}",
-        deserializedValue == null ? "null" : deserializedValue.getClass().getName(),
-        deserializedValue);
 
     String valueStr;
     if (deserializedValue instanceof Utf8) {
@@ -370,23 +364,15 @@ public class CountByValueProcessor {
         value = record.get(0); // Try by index
       }
       valueStr = value == null ? "" : value.toString();
-      LOGGER.debug("Extracted value from GenericRecord: {}", valueStr);
     } else {
       valueStr = deserializedValue == null ? "" : deserializedValue.toString();
     }
-
-    LOGGER.debug("Processing string value: '{}'", valueStr);
 
     // For string values, the only meaningful field name is the value itself
     // We'll use a special field name to represent the entire value
     for (String fieldName: fieldNames) {
       if (fieldName.equals("value") || fieldName.equals("_value")) {
         fieldCounts.get(fieldName).merge(valueStr, 1, Integer::sum);
-        LOGGER.debug(
-            "Updated count for field {} value {}: {}",
-            fieldName,
-            valueStr,
-            fieldCounts.get(fieldName).get(valueStr));
       }
     }
   }
