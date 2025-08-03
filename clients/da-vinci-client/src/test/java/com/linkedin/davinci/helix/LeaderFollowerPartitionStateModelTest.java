@@ -1,5 +1,6 @@
 package com.linkedin.davinci.helix;
 
+import static com.linkedin.venice.helix.HelixState.DROPPED_STATE;
 import static com.linkedin.venice.helix.HelixState.LEADER_STATE;
 import static com.linkedin.venice.helix.HelixState.OFFLINE_STATE;
 import static com.linkedin.venice.helix.HelixState.STANDBY_STATE;
@@ -53,6 +54,8 @@ public class LeaderFollowerPartitionStateModelTest {
     storeIngestionService = mock(KafkaStoreIngestionService.class);
     doReturn(storeIngestionService).when(ingestionBackend).getStoreIngestionService();
     doReturn(CompletableFuture.completedFuture(null)).when(ingestionBackend).stopConsumption(any(), anyInt());
+    doReturn(CompletableFuture.completedFuture(null)).when(ingestionBackend)
+        .dropStoragePartitionGracefully(any(), anyInt(), anyInt());
 
     storeAndServerConfigs = mock(VeniceStoreVersionConfig.class);
     notifier = mock(LeaderFollowerIngestionProgressNotifier.class);
@@ -118,29 +121,36 @@ public class LeaderFollowerPartitionStateModelTest {
     // OFFLINE->STANDBY
     doReturn(OFFLINE_STATE).when(message).getFromState();
     doReturn(STANDBY_STATE).when(message).getToState();
-    leaderFollowerPartitionStateModelSpy.onBecomeLeaderFromStandby(message, context);
-    verify(stateTransitionStats, times(1)).trackStateTransitionStarted(OFFLINE_STATE, STANDBY_STATE);
-    verify(stateTransitionStats, times(1)).trackStateTransitionCompleted(OFFLINE_STATE, STANDBY_STATE);
+    leaderFollowerPartitionStateModelSpy.onBecomeStandbyFromOffline(message, context);
+    verify(stateTransitionStats).trackStateTransitionStarted(OFFLINE_STATE, STANDBY_STATE);
+    verify(stateTransitionStats).trackStateTransitionCompleted(OFFLINE_STATE, STANDBY_STATE);
 
     // STANDBY->LEADER
     doReturn(STANDBY_STATE).when(message).getFromState();
     doReturn(LEADER_STATE).when(message).getToState();
     leaderFollowerPartitionStateModelSpy.onBecomeLeaderFromStandby(message, context);
-    verify(stateTransitionStats, times(1)).trackStateTransitionStarted(STANDBY_STATE, LEADER_STATE);
-    verify(stateTransitionStats, times(1)).trackStateTransitionCompleted(STANDBY_STATE, LEADER_STATE);
+    verify(stateTransitionStats).trackStateTransitionStarted(STANDBY_STATE, LEADER_STATE);
+    verify(stateTransitionStats).trackStateTransitionCompleted(STANDBY_STATE, LEADER_STATE);
 
     // LEADER->STANDBY
     doReturn(LEADER_STATE).when(message).getFromState();
     doReturn(STANDBY_STATE).when(message).getToState();
     leaderFollowerPartitionStateModelSpy.onBecomeStandbyFromLeader(message, context);
-    verify(stateTransitionStats, times(1)).trackStateTransitionStarted(LEADER_STATE, STANDBY_STATE);
-    verify(stateTransitionStats, times(1)).trackStateTransitionCompleted(LEADER_STATE, STANDBY_STATE);
+    verify(stateTransitionStats).trackStateTransitionStarted(LEADER_STATE, STANDBY_STATE);
+    verify(stateTransitionStats).trackStateTransitionCompleted(LEADER_STATE, STANDBY_STATE);
 
     // STANDBY->OFFLINE
     doReturn(STANDBY_STATE).when(message).getFromState();
     doReturn(OFFLINE_STATE).when(message).getToState();
     leaderFollowerPartitionStateModelSpy.onBecomeOfflineFromStandby(message, context);
-    verify(stateTransitionStats, times(1)).trackStateTransitionStarted(STANDBY_STATE, OFFLINE_STATE);
-    verify(stateTransitionStats, times(1)).trackStateTransitionCompleted(STANDBY_STATE, OFFLINE_STATE);
+    verify(stateTransitionStats).trackStateTransitionStarted(STANDBY_STATE, OFFLINE_STATE);
+    verify(stateTransitionStats).trackStateTransitionCompleted(STANDBY_STATE, OFFLINE_STATE);
+
+    // OFFLINE -> DROPPED
+    doReturn(OFFLINE_STATE).when(message).getFromState();
+    doReturn(DROPPED_STATE).when(message).getToState();
+    leaderFollowerPartitionStateModelSpy.onBecomeDroppedFromOffline(message, context);
+    verify(stateTransitionStats).trackStateTransitionStarted(OFFLINE_STATE, DROPPED_STATE);
+    verify(stateTransitionStats).trackStateTransitionCompleted(OFFLINE_STATE, DROPPED_STATE);
   }
 }
