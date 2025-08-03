@@ -235,6 +235,9 @@ public class CountByValueProcessor {
       // Get all partition IDs available on this server
       Set<Integer> availablePartitions = storageEngine.getPersistedPartitionIds();
 
+      LOGGER.info("Processing {} keys for countByValue on fields {}", request.getKeysCount(), fieldNames);
+      LOGGER.info("Available partitions on this server: {}", availablePartitions);
+
       // Process all keys sent by client (client has already partitioned them for this server)
       for (int i = 0; i < request.getKeysCount(); i++) {
         byte[] keyBytes = request.getKeys(i).toByteArray();
@@ -255,6 +258,7 @@ public class CountByValueProcessor {
             }
           }
           if (valueBytes != null) {
+            LOGGER.debug("Found value for key {}", i);
             processValue(
                 valueBytes,
                 fieldNames,
@@ -264,6 +268,8 @@ public class CountByValueProcessor {
                 compressor,
                 deserializerCache,
                 fieldCounts);
+          } else {
+            LOGGER.debug("No value found for key {}", i);
           }
         } catch (Exception e) {
           LOGGER.warn("Error processing key: {}", e.getMessage());
@@ -325,23 +331,62 @@ public class CountByValueProcessor {
       List<String> fieldNames,
       Map<String, Map<String, Integer>> fieldCounts) {
 
-    // For string values, deserializer returns Utf8/String directly, not wrapped in GenericRecord
-    RecordDeserializer<Object> deserializer =
-        deserializerCache.getDeserializer(valueSchemaEntry.getId(), valueSchemaEntry.getId());
+    // For string values, we need to extract the schema ID from the data first
+    // Venice stores data with a schema ID prefix
+    int readerSchemaId = valueSchemaEntry.getId();
+
+    // Extract writer schema ID from the data (first few bytes)
+    int writerSchemaId;
+    if (decompressedBuffer.remaining() >= 4) {
+      // Schema ID is stored as the first 4 bytes in big-endian format
+      writerSchemaId = decompressedBuffer.getInt();
+      // Don't reset - we want to advance past the schema ID for deserialization
+    } else {
+      // Fallback to reader schema ID if data is too short
+      writerSchemaId = readerSchemaId;
+    }
+
+    LOGGER.debug("Using writer schema ID: {}, reader schema ID: {}", writerSchemaId, readerSchemaId);
+
+    RecordDeserializer<Object> deserializer = deserializerCache.getDeserializer(writerSchemaId, readerSchemaId);
+
+    LOGGER.debug("Deserializing buffer with {} bytes remaining", decompressedBuffer.remaining());
     Object deserializedValue = deserializer.deserialize(decompressedBuffer);
+    LOGGER.debug(
+        "Deserialized value type: {}, value: {}",
+        deserializedValue == null ? "null" : deserializedValue.getClass().getName(),
+        deserializedValue);
 
     String valueStr;
     if (deserializedValue instanceof Utf8) {
       valueStr = ((Utf8) deserializedValue).toString();
+    } else if (deserializedValue instanceof String) {
+      valueStr = (String) deserializedValue;
+    } else if (deserializedValue instanceof GenericRecord) {
+      // Sometimes the value might be wrapped in a record
+      GenericRecord record = (GenericRecord) deserializedValue;
+      Object value = record.get("value");
+      if (value == null) {
+        value = record.get(0); // Try by index
+      }
+      valueStr = value == null ? "" : value.toString();
+      LOGGER.debug("Extracted value from GenericRecord: {}", valueStr);
     } else {
-      valueStr = deserializedValue.toString();
+      valueStr = deserializedValue == null ? "" : deserializedValue.toString();
     }
+
+    LOGGER.debug("Processing string value: '{}'", valueStr);
 
     // For string values, the only meaningful field name is the value itself
     // We'll use a special field name to represent the entire value
     for (String fieldName: fieldNames) {
       if (fieldName.equals("value") || fieldName.equals("_value")) {
         fieldCounts.get(fieldName).merge(valueStr, 1, Integer::sum);
+        LOGGER.debug(
+            "Updated count for field {} value {}: {}",
+            fieldName,
+            valueStr,
+            fieldCounts.get(fieldName).get(valueStr));
       }
     }
   }

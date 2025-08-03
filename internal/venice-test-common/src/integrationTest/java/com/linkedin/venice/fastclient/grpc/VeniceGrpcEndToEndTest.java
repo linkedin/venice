@@ -373,20 +373,38 @@ public class VeniceGrpcEndToEndTest {
 
   @Test
   public void testCountByValueEndToEnd() throws Exception {
-    Client grpcR2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_R2_CLIENT);
-    D2Client grpcD2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
+    // 4. Create thin client
+    AvroGenericStoreClient<Object, Object> avroClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()));
 
-    GrpcClientConfig grpcClientConfig = createGrpcClientConfig(grpcR2Client);
+    // 4. Create fastClient
+    Client r2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_R2_CLIENT);
+    Client grpcR2ClientPassthrough =
+        ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_R2_CLIENT);
+
+    D2Client d2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
+
+    // Verify gRPC port mapping
+    LOGGER.info("Using gRPC port mapping: {}", nettyToGrpcPortMap);
+
+    GrpcClientConfig grpcClientConfig = createGrpcClientConfig(grpcR2ClientPassthrough);
+
+    ClientConfigBuilder<Object, Object, SpecificRecord> clientConfigBuilder =
+        new ClientConfigBuilder<>().setStoreName(storeName).setR2Client(r2Client);
 
     ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
         new ClientConfigBuilder<>().setStoreName(storeName).setUseGrpc(true).setGrpcClientConfig(grpcClientConfig);
 
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
+        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), d2Client);
+
     AvroGenericStoreClient<String, GenericRecord> grpcFastClient =
-        getGenericFastClient(grpcClientConfigBuilder, new MetricsRepository(), grpcD2Client);
+        getGenericFastClient(grpcClientConfigBuilder, new MetricsRepository(), d2Client);
 
     // Wait for client initialization to complete
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       try {
+        // Try a simple get operation to verify client is working properly
         grpcFastClient.get("1").get();
       } catch (Exception e) {
         LOGGER.warn("gRPC client not ready yet: {}", e.getMessage());
@@ -394,11 +412,22 @@ public class VeniceGrpcEndToEndTest {
       }
     });
 
-    // Test countByValue with a subset of keys
-    // The existing data setup creates records where key "N" has int_field value N
+    // Test basic functionality first - verify data is accessible
     Set<String> testKeys = new HashSet<>(java.util.Arrays.asList("1", "2", "3", "4", "5"));
 
-    // Create aggregation request builder
+    // Verify basic data access works using both clients
+    for (String key: testKeys) {
+      String grpcClientRecord = ((Utf8) grpcFastClient.get(key).get()).toString();
+      String fastClientRecord = ((Utf8) genericFastClient.get(key).get()).toString();
+      String avroClientRecord = avroClient.get(key).get().toString();
+
+      Assert.assertEquals(grpcClientRecord, avroClientRecord);
+      Assert.assertEquals(grpcClientRecord, fastClientRecord);
+
+      LOGGER.info("key: {}, value: {}", key, grpcClientRecord);
+    }
+
+    // Now test CountByValue functionality
     ServerSideAggregationRequestBuilder<String> requestBuilder;
     if (grpcFastClient instanceof InternalAvroStoreClient) {
       requestBuilder =
@@ -407,47 +436,56 @@ public class VeniceGrpcEndToEndTest {
       throw new RuntimeException("gRPC client does not support server-side aggregation");
     }
 
-    // Test single field countByValue - use the correct field name "int_field"
+    // Test single field countByValue - for string-valued stores, use "value" field name
     AggregationResponse response =
-        requestBuilder.countByValue(java.util.Arrays.asList("int_field"), 10).execute(testKeys).get();
+        requestBuilder.countByValue(java.util.Arrays.asList("value"), 10).execute(testKeys).get();
 
     Assert.assertFalse(response.hasError(), "CountByValue should not have errors: " + response.getErrorMessage());
     Assert.assertNotNull(response.getFieldToValueCounts(), "Field to value counts should not be null");
-    Assert.assertTrue(
-        response.getFieldToValueCounts().containsKey("int_field"),
-        "Response should contain 'int_field' field");
+    Assert.assertTrue(response.getFieldToValueCounts().containsKey("value"), "Response should contain 'value' field");
 
-    Map<String, Integer> valueCounts = response.getFieldToValueCounts().get("int_field");
+    Map<String, Integer> valueCounts = response.getFieldToValueCounts().get("value");
     Assert.assertNotNull(valueCounts, "Value counts should not be null");
+
     Assert.assertTrue(valueCounts.size() > 0, "Should have at least one value count");
 
-    LOGGER.info("CountByValue results for 'int_field' field: {}", valueCounts);
+    int totalCount = valueCounts.values().stream().mapToInt(Integer::intValue).sum();
 
-    // Verify the aggregation logic is working correctly:
-    // With existing data setup, each key maps to its corresponding int value (key "1" -> int_field 1, etc.)
-    // Since each key has a unique value, each value should appear exactly once
+    Set<String> expectedValues = new HashSet<>();
+    for (String key: testKeys) {
+      expectedValues.add("test_name_" + key);
+    }
+
+    Assert.assertEquals(
+        totalCount,
+        testKeys.size(),
+        "Total count should equal number of test keys (" + testKeys.size() + ")");
+
     Assert.assertEquals(
         valueCounts.size(),
         testKeys.size(),
-        "Number of distinct values should equal number of test keys");
+        "Number of distinct values should equal number of test keys (" + testKeys.size() + ")");
 
-    // Verify that each value appears exactly once (since we're using unique consecutive integers)
-    for (Integer count: valueCounts.values()) {
-      Assert.assertEquals(count, Integer.valueOf(1), "Each value should appear exactly once");
+    for (String expectedValue: expectedValues) {
+      Assert.assertTrue(
+          valueCounts.containsKey(expectedValue),
+          "Expected value '" + expectedValue + "' not found in results: " + valueCounts.keySet());
+      Assert.assertEquals(
+          valueCounts.get(expectedValue),
+          Integer.valueOf(1),
+          "Expected value '" + expectedValue + "' should appear exactly once, but appeared "
+              + valueCounts.get(expectedValue) + " times");
     }
 
-    // Verify total count matches expected
-    int totalCount = valueCounts.values().stream().mapToInt(Integer::intValue).sum();
-    Assert.assertEquals(totalCount, testKeys.size(), "Total count should match number of test keys");
-
-    // Verify specific expected values are present
-    Assert.assertTrue(valueCounts.containsKey("1"), "Should contain value '1'");
-    Assert.assertTrue(valueCounts.containsKey("2"), "Should contain value '2'");
-    Assert.assertTrue(valueCounts.containsKey("3"), "Should contain value '3'");
-    Assert.assertTrue(valueCounts.containsKey("4"), "Should contain value '4'");
-    Assert.assertTrue(valueCounts.containsKey("5"), "Should contain value '5'");
+    for (String actualValue: valueCounts.keySet()) {
+      Assert.assertTrue(
+          expectedValues.contains(actualValue),
+          "Unexpected value '" + actualValue + "' found in results. Expected values: " + expectedValues);
+    }
 
     grpcFastClient.close();
+    avroClient.close();
+    genericFastClient.close();
   }
 
   private GrpcClientConfig createGrpcClientConfig(Client r2Client) {
