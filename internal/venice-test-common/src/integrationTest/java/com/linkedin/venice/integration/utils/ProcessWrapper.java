@@ -109,10 +109,6 @@ public abstract class ProcessWrapper implements Closeable {
         .build();
   }
 
-  public static String getComponentTagPrefix(String prefix) {
-    return prefix.isEmpty() ? "" : prefix + "-";
-  }
-
   /**
    * This function should start the wrapped service AND block until the service is fully started.
    *

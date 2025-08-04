@@ -1,6 +1,5 @@
 package com.linkedin.venice.utils;
 
-import javax.annotation.Nullable;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -38,7 +37,7 @@ public class LogContext {
     }
   }
 
-  public static void setLogContext(@Nullable LogContext logContext) {
+  public static void setLogContext(LogContext logContext) {
     if (logContext != null) {
       putLogContextKeyValue(logContext.getValue());
     }
