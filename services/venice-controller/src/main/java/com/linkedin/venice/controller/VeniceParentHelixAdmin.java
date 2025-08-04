@@ -86,6 +86,8 @@ import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH
 import static com.linkedin.venice.utils.RegionUtils.isRegionPartOfRegionsFilterList;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
+import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -221,6 +223,8 @@ import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -686,8 +690,23 @@ public class VeniceParentHelixAdmin implements Admin {
         message.executionId = execution.getExecutionId();
         VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
         byte[] serializedValue = adminOperationSerializer.serialize(message, writerSchemaId);
+        PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
         try {
-          Future<PubSubProduceResult> future = veniceWriter.put(emptyKeyByteArr, serializedValue, writerSchemaId);
+          pubSubMessageHeaders.add(
+              new PubSubMessageHeader(
+                  PubSubMessageHeaders.EXECUTION_ID_KEY,
+                  ObjectMapperFactory.getInstance().writeValueAsBytes(message.executionId)));
+          Future<PubSubProduceResult> future = veniceWriter.put(
+              emptyKeyByteArr,
+              serializedValue,
+              writerSchemaId,
+              null,
+              DEFAULT_LEADER_METADATA_WRAPPER,
+              APP_DEFAULT_LOGICAL_TS,
+              null,
+              null,
+              null,
+              pubSubMessageHeaders);
           PubSubProduceResult produceResult = future.get();
 
           LOGGER.info("Sent message: {} to kafka, offset: {}", message, produceResult.getOffset());

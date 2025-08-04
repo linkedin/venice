@@ -28,11 +28,14 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -773,7 +776,18 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
     Put put = (Put) kafkaValue.payloadUnion;
     AdminOperation adminOperation = deserializer.deserialize(put.putValue, put.schemaId);
-    long executionId = adminOperation.executionId;
+    PubSubMessageHeader header = record.getPubSubMessageHeaders().get(PubSubMessageHeaders.EXECUTION_ID_KEY);
+    long executionId;
+    try {
+      if (header != null) {
+        executionId = ObjectMapperFactory.getInstance().readValue(header.value(), Long.class);
+      } else {
+        // Fallback for backward compatibility
+        executionId = adminOperation.executionId;
+      }
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
     try {
       checkAndValidateMessage(adminOperation, record);
       LOGGER.info(

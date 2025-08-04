@@ -1,6 +1,7 @@
 package com.linkedin.venice.writer;
 
 import static com.linkedin.venice.message.KafkaKey.HEART_BEAT;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.EXECUTION_ID_KEY;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
@@ -50,6 +51,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -59,10 +61,12 @@ import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -785,5 +789,80 @@ public class VeniceWriterUnitTest {
     Assert.assertEquals(resultCallback, inputCallback3);
     Assert.assertEquals(mainCallback.getCallback(), messageCallback);
     Assert.assertEquals(dependentCallback1.getCallback(), messageCallback);
+  }
+
+  @Test(timeOut = TIMEOUT)
+  public void testExecutionIdInHeader() throws IOException {
+    PubSubProducerAdapter mockedProducer = mock(PubSubProducerAdapter.class);
+    CompletableFuture mockedFuture = mock(CompletableFuture.class);
+    when(mockedProducer.sendMessage(any(), any(), any(), any(), any(), any())).thenReturn(mockedFuture);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    long executionId = 10L;
+    PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
+    pubSubMessageHeaders.add(
+        new PubSubMessageHeader(EXECUTION_ID_KEY, ObjectMapperFactory.getInstance().writeValueAsBytes(executionId)));
+    String testTopic = PubSubTopicType.ADMIN_TOPIC_PREFIX + "test";
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setKeyPayloadSerializer(serializer)
+            .setValuePayloadSerializer(serializer)
+            .setWriteComputePayloadSerializer(serializer)
+            .setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .setPartitionCount(1)
+            .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, VeniceProperties.empty(), mockedProducer);
+
+    ByteBuffer replicationMetadata = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
+    PutMetadata putMetadata = new PutMetadata(1, replicationMetadata);
+    String valueString = "abcdefghabcdefghabcdefghabcdefgh";
+
+    writer.put(
+        Integer.toString(1),
+        valueString,
+        1,
+        null,
+        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
+        APP_DEFAULT_LOGICAL_TS,
+        putMetadata,
+        null,
+        null,
+        pubSubMessageHeaders);
+    ArgumentCaptor<KafkaKey> keyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
+    ArgumentCaptor<KafkaMessageEnvelope> kmeArgumentCaptor = ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    ArgumentCaptor<PubSubMessageHeaders> pubSubMessageHeadersCaptor =
+        ArgumentCaptor.forClass(PubSubMessageHeaders.class);
+    verify(mockedProducer, atLeast(2)).sendMessage(
+        any(),
+        any(),
+        keyArgumentCaptor.capture(),
+        kmeArgumentCaptor.capture(),
+        pubSubMessageHeadersCaptor.capture(),
+        any());
+
+    // The order should be start segment start control message and then the data we wrote
+    assertEquals(kmeArgumentCaptor.getAllValues().size(), 2);
+
+    // Verify value of the 1st message which is segment start.
+    KafkaMessageEnvelope actualValue1 = kmeArgumentCaptor.getAllValues().get(0);
+    assertEquals(actualValue1.messageType, MessageType.CONTROL_MESSAGE.getValue());
+    assertEquals(actualValue1.producerMetadata.segmentNumber, 0);
+    assertEquals(actualValue1.producerMetadata.messageSequenceNumber, 0);
+
+    // Verify value of the 2nd message which is the admin message with execution id.
+    KafkaMessageEnvelope actualValue2 = kmeArgumentCaptor.getAllValues().get(1);
+    assertEquals(actualValue2.messageType, MessageType.PUT.getValue());
+    assertEquals(actualValue2.producerMetadata.segmentNumber, 0);
+    assertEquals(actualValue2.producerMetadata.messageSequenceNumber, 1);
+    assertEquals(((Put) actualValue2.payloadUnion).schemaId, 1);
+    assertEquals(((Put) actualValue2.payloadUnion).replicationMetadataVersionId, 1);
+
+    PubSubMessageHeaders actualPubSubMessageHeaders = pubSubMessageHeadersCaptor.getAllValues().get(1);
+    assertEquals(
+        ObjectMapperFactory.getInstance()
+            .readValue(actualPubSubMessageHeaders.get(PubSubMessageHeaders.EXECUTION_ID_KEY).value(), Long.class)
+            .longValue(),
+        executionId);
   }
 }
