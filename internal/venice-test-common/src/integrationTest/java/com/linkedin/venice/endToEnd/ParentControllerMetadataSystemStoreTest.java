@@ -83,6 +83,20 @@ public class ParentControllerMetadataSystemStoreTest {
   }
 
   @Test
+  public void testParentControllerMetadataStoreInaccessibleFromChildController() {
+    StoreResponse storeResponse = controllerClient.getStore(parentControllerMetadataSystemStoreName);
+    assertTrue(
+        storeResponse.isError(),
+        "Child controller should not be able to access parent controller metadata store");
+    String STORE_NOT_FOUND_ERROR_STRING =
+        "Exception type: class com.linkedin.venice.exceptions.VeniceHttpException. Detailed message: Http Status 404 - Store: venice_system_store_parent_controller_metadata_store_cluster_venice-cluster0 does not exist.";
+    String errorMessage = storeResponse.getError();
+    assertTrue(
+        errorMessage.contains(STORE_NOT_FOUND_ERROR_STRING),
+        "Expected error message to contain '" + STORE_NOT_FOUND_ERROR_STRING + "', but got: " + errorMessage);
+  }
+
+  @Test
   public void testParentControllerMetadataSystemStoreCreationAndShowOtherStores() {
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
       MultiStoreInfoResponse multiStoreInfoResponse = controllerClient.getClusterStores(clusterName);
