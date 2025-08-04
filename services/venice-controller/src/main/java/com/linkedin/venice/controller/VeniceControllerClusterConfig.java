@@ -920,7 +920,7 @@ public class VeniceControllerClusterConfig {
     this.parentControllerMetadataStoreClusterName = props.getString(PARENT_CONTROLLER_METADATA_STORE_CLUSTER_NAME, "");
     this.parentControllerMetadataStoreEnabled = props.getBoolean(PARENT_CONTROLLER_METADATA_STORE_ENABLED, false);
     this.participantMessageStoreEnabled = props.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, true);
-    this.adminHelixMessagingChannelEnabled = props.getBoolean(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, true);
+    this.adminHelixMessagingChannelEnabled = props.getBoolean(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, false);
     if (!adminHelixMessagingChannelEnabled && !participantMessageStoreEnabled) {
       throw new VeniceException(
           "Cannot perform kill push job if both " + ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED + " and "
