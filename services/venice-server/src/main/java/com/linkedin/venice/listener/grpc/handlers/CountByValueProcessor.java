@@ -15,21 +15,16 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
-import com.linkedin.venice.protocols.ValueCount;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
-import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.CountByValueUtils;
 import com.linkedin.venice.utils.StoreVersionStateUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -136,8 +131,8 @@ public class CountByValueProcessor {
 
       Schema valueSchema = valueSchemaEntry.getSchema();
 
-      // Validate that all fields exist in the schema
-      CountByValueResponse validationResponse = validateFields(fieldNames, valueSchema, storeName);
+      // Validate that all fields exist in the schema using shared utility
+      CountByValueResponse validationResponse = CountByValueUtils.validateFields(fieldNames, valueSchema, storeName);
       if (validationResponse != null) {
         return validationResponse;
       }
@@ -183,39 +178,6 @@ public class CountByValueProcessor {
     }
   }
 
-  private CountByValueResponse validateFields(List<String> fieldNames, Schema valueSchema, String storeName) {
-    if (valueSchema.getType() == Schema.Type.STRING) {
-      // For string schema, only "value" or "_value" are valid field names
-      for (String fieldName: fieldNames) {
-        if (!fieldName.equals("value") && !fieldName.equals("_value")) {
-          return CountByValueResponse.newBuilder()
-              .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
-              .setErrorMessage(
-                  "For string-valued stores, only 'value' or '_value' field names are supported. Got: " + fieldName)
-              .build();
-        }
-      }
-    } else if (valueSchema.getType() == Schema.Type.RECORD) {
-      // For record types, validate fields exist
-      for (String fieldName: fieldNames) {
-        Schema.Field field = valueSchema.getField(fieldName);
-        if (field == null) {
-          return CountByValueResponse.newBuilder()
-              .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
-              .setErrorMessage("Field '" + fieldName + "' not found in schema for store: " + storeName)
-              .build();
-        }
-      }
-    } else {
-      // Other types not supported for countByValue
-      return CountByValueResponse.newBuilder()
-          .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
-          .setErrorMessage("CountByValue only supports STRING and RECORD value types. Got: " + valueSchema.getType())
-          .build();
-    }
-    return null; // Validation passed
-  }
-
   private CountByValueResponse processKeys(
       CountByValueRequest request,
       List<String> fieldNames,
@@ -228,11 +190,8 @@ public class CountByValueProcessor {
       String storeName) {
 
     try {
-      // Initialize field counts
-      Map<String, Map<String, Integer>> fieldCounts = new HashMap<>();
-      for (String fieldName: fieldNames) {
-        fieldCounts.put(fieldName, new HashMap<>());
-      }
+      // Initialize field counts using shared utility
+      Map<String, Map<String, Integer>> fieldCounts = CountByValueUtils.initializeFieldCounts(fieldNames);
 
       // Get all partition IDs available on this server
       Set<Integer> availablePartitions = storageEngine.getPersistedPartitionIds();
@@ -256,7 +215,7 @@ public class CountByValueProcessor {
             try {
               byte[] valueBytes = storageEngine.get(targetPartition, keyBytes);
               if (valueBytes != null) {
-                processValue(
+                CountByValueUtils.processValue(
                     valueBytes,
                     fieldNames,
                     valueSchema,
@@ -275,7 +234,7 @@ public class CountByValueProcessor {
         }
       }
 
-      return buildResponse(fieldNames, fieldCounts);
+      return CountByValueUtils.buildResponse(fieldNames, fieldCounts);
 
     } catch (Exception e) {
       LOGGER.error("Error processing keys for store: {}", storeName, e);
@@ -286,106 +245,4 @@ public class CountByValueProcessor {
     }
   }
 
-  private void processValue(
-      byte[] valueBytes,
-      List<String> fieldNames,
-      Schema valueSchema,
-      SchemaEntry valueSchemaEntry,
-      CompressionStrategy compressionStrategy,
-      VeniceCompressor compressor,
-      AvroStoreDeserializerCache<Object> deserializerCache,
-      Map<String, Map<String, Integer>> fieldCounts) {
-
-    // Decompress if needed
-    ByteBuffer valueBuffer = ByteBuffer.wrap(valueBytes);
-    ByteBuffer decompressedBuffer;
-    try {
-      if (compressionStrategy != CompressionStrategy.NO_OP) {
-        decompressedBuffer = compressor.decompress(valueBuffer);
-      } else {
-        decompressedBuffer = valueBuffer;
-      }
-    } catch (Exception e) {
-      LOGGER.warn("Failed to decompress value: {}", e.getMessage());
-      return;
-    }
-
-    // Deserialize the value - handle both string values and GenericRecord values
-    try {
-      // Check if the value schema is a simple string type
-      if (valueSchema.getType() == Schema.Type.STRING) {
-        processStringValue(valueSchemaEntry, decompressedBuffer, deserializerCache, fieldNames, fieldCounts);
-      } else {
-        processRecordValue(valueSchemaEntry, decompressedBuffer, deserializerCache, fieldNames, fieldCounts);
-      }
-    } catch (Exception deserializeException) {
-      LOGGER.warn("Failed to deserialize value: {}", deserializeException.getMessage(), deserializeException);
-    }
-  }
-
-  private void processStringValue(
-      SchemaEntry valueSchemaEntry,
-      ByteBuffer decompressedBuffer,
-      AvroStoreDeserializerCache<Object> deserializerCache,
-      List<String> fieldNames,
-      Map<String, Map<String, Integer>> fieldCounts) {
-
-    // For string values, we need to extract the schema ID from the data first
-    // Venice stores data with a schema ID prefix
-    int readerSchemaId = valueSchemaEntry.getId();
-
-    // Extract writer schema ID from the data (first few bytes)
-    int writerSchemaId;
-    if (decompressedBuffer.remaining() >= 4) {
-      // Schema ID is stored as the first 4 bytes in big-endian format
-      writerSchemaId = decompressedBuffer.getInt();
-      // Don't reset - we want to advance past the schema ID for deserialization
-    } else {
-      // Fallback to reader schema ID if data is too short
-      writerSchemaId = readerSchemaId;
-    }
-
-    RecordDeserializer<Object> deserializer = deserializerCache.getDeserializer(writerSchemaId, readerSchemaId);
-    Object deserializedValue = deserializer.deserialize(decompressedBuffer);
-
-    // Use the shared utility to add value to field counts
-    CountByValueUtils.addValueToFieldCounts(fieldCounts, deserializedValue, fieldNames);
-  }
-
-  private void processRecordValue(
-      SchemaEntry valueSchemaEntry,
-      ByteBuffer decompressedBuffer,
-      AvroStoreDeserializerCache<Object> deserializerCache,
-      List<String> fieldNames,
-      Map<String, Map<String, Integer>> fieldCounts) {
-
-    // Complex GenericRecord value - deserialize and extract fields
-    RecordDeserializer<Object> deserializer =
-        deserializerCache.getDeserializer(valueSchemaEntry.getId(), valueSchemaEntry.getId());
-    Object deserializedValue = deserializer.deserialize(decompressedBuffer);
-
-    if (!(deserializedValue instanceof GenericRecord)) {
-      LOGGER.warn("Expected GenericRecord but got: {}", deserializedValue.getClass().getName());
-      return;
-    }
-
-    // Use the shared utility to add value to field counts
-    CountByValueUtils.addValueToFieldCounts(fieldCounts, deserializedValue, fieldNames);
-  }
-
-  private CountByValueResponse buildResponse(List<String> fieldNames, Map<String, Map<String, Integer>> fieldCounts) {
-    // Build response with all counts (no topK filtering - client will do that)
-    CountByValueResponse.Builder responseBuilder = CountByValueResponse.newBuilder();
-    for (String fieldName: fieldNames) {
-      Map<String, Integer> counts = fieldCounts.get(fieldName);
-      if (counts != null && !counts.isEmpty()) {
-        responseBuilder.putFieldToValueCounts(fieldName, ValueCount.newBuilder().putAllValueToCounts(counts).build());
-      } else {
-        // Add empty result for this field
-        responseBuilder.putFieldToValueCounts(fieldName, ValueCount.newBuilder().build());
-      }
-    }
-
-    return responseBuilder.setErrorCode(VeniceReadResponseStatus.OK).build();
-  }
 }

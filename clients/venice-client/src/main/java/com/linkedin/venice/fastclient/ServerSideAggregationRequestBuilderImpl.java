@@ -10,9 +10,9 @@ import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.CountByValueUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -154,58 +154,32 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
    */
   private AggregationResponse aggregatePartitionResults(List<CompletableFuture<CountByValueResponse>> futures) {
     try {
-      // Initialize global counts for each field
-      Map<String, Map<String, Integer>> globalFieldCounts = new HashMap<>();
-      for (String fieldName: fieldNames) {
-        globalFieldCounts.put(fieldName, new HashMap<>());
-      }
-
-      // Merge counts from all partitions
-      for (CompletableFuture<CountByValueResponse> future: futures) {
-        CountByValueResponse partitionResponse = future.get();
-
-        for (Map.Entry<String, com.linkedin.venice.protocols.ValueCount> entry: partitionResponse
-            .getFieldToValueCountsMap()
-            .entrySet()) {
-          String fieldName = entry.getKey();
-          Map<String, Integer> partitionFieldCounts = entry.getValue().getValueToCountsMap();
-
-          Map<String, Integer> globalFieldCount = globalFieldCounts.get(fieldName);
-          if (globalFieldCount != null) {
-            // Merge partition counts into global counts
-            for (Map.Entry<String, Integer> countEntry: partitionFieldCounts.entrySet()) {
-              globalFieldCount.merge(countEntry.getKey(), countEntry.getValue(), Integer::sum);
-            }
-          }
+      // Extract responses from futures
+      List<CountByValueResponse> responses = futures.stream().map(future -> {
+        try {
+          return future.get();
+        } catch (Exception e) {
+          throw new RuntimeException("Failed to get partition response", e);
         }
-      }
+      }).collect(Collectors.toList());
 
-      // Compute TopK for each field on client side
-      com.linkedin.venice.protocols.CountByValueResponse.Builder responseBuilder =
-          com.linkedin.venice.protocols.CountByValueResponse.newBuilder();
+      // Merge partition responses using shared utility
+      Map<String, Map<String, Integer>> globalFieldCounts =
+          CountByValueUtils.mergePartitionResponses(responses, fieldNames);
 
+      // Apply TopK filtering using shared utility
       for (String fieldName: fieldNames) {
         Map<String, Integer> fieldCounts = globalFieldCounts.get(fieldName);
         if (fieldCounts != null) {
-          // Sort by count descending and take topK
-          Map<String, Integer> topKCounts = fieldCounts.entrySet()
-              .stream()
-              .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-              .limit(topK)
-              .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new));
-
-          responseBuilder.putFieldToValueCounts(
-              fieldName,
-              com.linkedin.venice.protocols.ValueCount.newBuilder().putAllValueToCounts(topKCounts).build());
-        } else {
-          // Add empty result for this field
-          responseBuilder
-              .putFieldToValueCounts(fieldName, com.linkedin.venice.protocols.ValueCount.newBuilder().build());
+          // Use shared utility for TopK filtering
+          Map<String, Integer> topKCounts = CountByValueUtils.filterTopKValues(fieldCounts, topK);
+          globalFieldCounts.put(fieldName, topKCounts);
         }
       }
 
-      responseBuilder.setErrorCode(VeniceReadResponseStatus.OK);
-      return new AggregationResponseImpl(responseBuilder.build());
+      // Build response using shared utility
+      CountByValueResponse response = CountByValueUtils.buildResponse(fieldNames, globalFieldCounts);
+      return new AggregationResponseImpl(response);
 
     } catch (Exception e) {
       throw new VeniceClientException("Failed to aggregate partition results", e);
