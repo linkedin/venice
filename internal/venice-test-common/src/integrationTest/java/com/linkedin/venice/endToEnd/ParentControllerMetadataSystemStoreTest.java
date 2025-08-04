@@ -1,7 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_METADATA_STORE_CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_METADATA_STORE_ENABLED;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -39,7 +38,6 @@ public class ParentControllerMetadataSystemStoreTest {
   @BeforeClass
   public void setUp() {
     Properties controllerProps = new Properties();
-    controllerProps.put(PARENT_CONTROLLER_METADATA_STORE_ENABLED, "true");
     controllerProps.put(PARENT_CONTROLLER_METADATA_STORE_CLUSTER_NAME, "venice-cluster0");
     venice = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
