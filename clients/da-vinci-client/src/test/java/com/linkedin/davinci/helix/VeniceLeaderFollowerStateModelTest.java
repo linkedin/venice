@@ -65,7 +65,7 @@ public class VeniceLeaderFollowerStateModelTest extends
     LeaderFollowerIngestionProgressNotifier mockNotifier = mock(LeaderFollowerIngestionProgressNotifier.class);
     doAnswer(invocation -> {
       Thread.sleep(3000);
-      return null; // or return a value if needed
+      return null;
     }).when(mockNotifier).waitConsumptionCompleted(anyString(), anyInt(), anyInt(), any());
     return mockNotifier;
   }
@@ -202,8 +202,7 @@ public class VeniceLeaderFollowerStateModelTest extends
   }
 
   @Test
-  public void testSetHeartbeatMonitoringWhen() throws InterruptedException {
-    // when(mockStore.getVersion(1)).thenReturn(null);
+  public void testSetHeartbeatMonitoringWhen() {
     when(mockStore.getCurrentVersion()).thenReturn(1);
     when(mockReadOnlyStoreRepository.waitVersion(eq(storeName), eq(version), any(), anyLong()))
         .thenReturn(new StoreVersionInfo(mockStore, null));
@@ -212,6 +211,7 @@ public class VeniceLeaderFollowerStateModelTest extends
     });
     try {
       TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+        // Make sure lag monitor happens before wait latch action completes.
         verify(spyHeartbeatMonitoringService)
             .updateLagMonitor(any(), eq(testPartition), eq(HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR));
         Assert.assertFalse(future.isDone());
