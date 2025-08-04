@@ -20,6 +20,7 @@ import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.utils.CountByValueUtils;
 import com.linkedin.venice.utils.StoreVersionStateUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
@@ -29,7 +30,6 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -87,23 +87,22 @@ public class CountByValueProcessor {
             .build();
       }
 
-      // Parse store name and version from resource name (format: storeName_v{version})
-      String[] parts = resourceName.split("_v");
-      if (parts.length != 2) {
+      // Parse store name and version from resource name using Venice Version util
+      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+      if (storeName.isEmpty()) {
         return CountByValueResponse.newBuilder()
             .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
             .setErrorMessage("Invalid resource name format. Expected: storeName_v{version}")
             .build();
       }
 
-      String storeName = parts[0];
       int version;
       try {
-        version = Integer.parseInt(parts[1]);
-      } catch (NumberFormatException e) {
+        version = Version.parseVersionFromKafkaTopicName(resourceName);
+      } catch (Exception e) {
         return CountByValueResponse.newBuilder()
             .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
-            .setErrorMessage("Invalid version number in resource name")
+            .setErrorMessage("Invalid version number in resource name: " + e.getMessage())
             .build();
       }
 
@@ -239,9 +238,7 @@ public class CountByValueProcessor {
       Set<Integer> availablePartitions = storageEngine.getPersistedPartitionIds();
 
       // Get total partition count for this store version
-      // Parse version from resource name (format: storeName_v{version})
-      String[] resourceParts = request.getResourceName().split("_v");
-      int versionNumber = Integer.parseInt(resourceParts[1]);
+      int versionNumber = Version.parseVersionFromKafkaTopicName(request.getResourceName());
       Store store = storeRepository.getStoreOrThrow(storeName);
       Version version = store.getVersion(versionNumber);
       int totalPartitions = version.getPartitionCount();
@@ -351,30 +348,8 @@ public class CountByValueProcessor {
     RecordDeserializer<Object> deserializer = deserializerCache.getDeserializer(writerSchemaId, readerSchemaId);
     Object deserializedValue = deserializer.deserialize(decompressedBuffer);
 
-    String valueStr;
-    if (deserializedValue instanceof Utf8) {
-      valueStr = ((Utf8) deserializedValue).toString();
-    } else if (deserializedValue instanceof String) {
-      valueStr = (String) deserializedValue;
-    } else if (deserializedValue instanceof GenericRecord) {
-      // Sometimes the value might be wrapped in a record
-      GenericRecord record = (GenericRecord) deserializedValue;
-      Object value = record.get("value");
-      if (value == null) {
-        value = record.get(0); // Try by index
-      }
-      valueStr = value == null ? "" : value.toString();
-    } else {
-      valueStr = deserializedValue == null ? "" : deserializedValue.toString();
-    }
-
-    // For string values, the only meaningful field name is the value itself
-    // We'll use a special field name to represent the entire value
-    for (String fieldName: fieldNames) {
-      if (fieldName.equals("value") || fieldName.equals("_value")) {
-        fieldCounts.get(fieldName).merge(valueStr, 1, Integer::sum);
-      }
-    }
+    // Use the shared utility to add value to field counts
+    CountByValueUtils.addValueToFieldCounts(fieldCounts, deserializedValue, fieldNames);
   }
 
   private void processRecordValue(
@@ -394,21 +369,8 @@ public class CountByValueProcessor {
       return;
     }
 
-    GenericRecord record = (GenericRecord) deserializedValue;
-
-    // Extract field values and count them
-    for (String fieldName: fieldNames) {
-      Object fieldValue = record.get(fieldName);
-      if (fieldValue != null) {
-        String fieldValueStr;
-        if (fieldValue instanceof Utf8) {
-          fieldValueStr = ((Utf8) fieldValue).toString();
-        } else {
-          fieldValueStr = fieldValue.toString();
-        }
-        fieldCounts.get(fieldName).merge(fieldValueStr, 1, Integer::sum);
-      }
-    }
+    // Use the shared utility to add value to field counts
+    CountByValueUtils.addValueToFieldCounts(fieldCounts, deserializedValue, fieldNames);
   }
 
   private CountByValueResponse buildResponse(List<String> fieldNames, Map<String, Map<String, Integer>> fieldCounts) {
