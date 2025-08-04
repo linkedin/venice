@@ -102,13 +102,12 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     // Change name to indicate which st is occupied this thread.
     Thread.currentThread().setName("Helix-ST-" + message.getResourceName() + "-" + partition + "-" + from + "->" + to);
     try {
-      LogContext.setStructuredLogContext(storeAndServerConfigs.getLogContext());
+      LogContext.setLogContext(storeAndServerConfigs.getLogContext());
       handler.run();
       logCompletion(from, to, message, context, rollback);
     } finally {
       // Once st is terminated, change the name to indicate this thread will not be occupied by this st.
       Thread.currentThread().setName("Inactive ST thread.");
-      LogContext.clearLogContext();
     }
   }
 

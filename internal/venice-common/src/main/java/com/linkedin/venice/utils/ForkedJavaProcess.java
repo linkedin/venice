@@ -60,13 +60,13 @@ public final class ForkedJavaProcess extends Process {
       List<String> jvmArgs,
       String classPath,
       boolean killOnExit,
-      Optional<String> loggerPrefix) throws IOException {
+      Optional<LogContext> logContext) throws IOException {
     LOGGER.info("Forking " + appClass.getSimpleName() + " with arguments " + args + " and jvm arguments " + jvmArgs);
     List<String> command = prepareCommandArgList(appClass, classPath, args, jvmArgs);
 
     Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
     Logger logger = LogManager.getLogger(
-        loggerPrefix.map(s -> s + ", ").orElse("") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
+        logContext.map(s -> s + ", ").orElse("") + appClass.getSimpleName() + ", PID=" + getPidOfProcess(process));
     return new ForkedJavaProcess(process, logger, killOnExit);
   }
 
@@ -75,7 +75,7 @@ public final class ForkedJavaProcess extends Process {
       List<String> args,
       List<String> jvmArgs,
       boolean killOnExit,
-      Optional<String> loggerPrefix) throws IOException {
+      Optional<LogContext> loggerPrefix) throws IOException {
     return exec(appClass, args, jvmArgs, getClasspath(), killOnExit, loggerPrefix);
   }
 
