@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.protocols.CountByValueResponse;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -52,9 +53,9 @@ public class CountByValueUtilsTest {
     Schema jobRecordSchema = Schema.createRecord("JobRecord", null, null, false);
     jobRecordSchema.setFields(
         Arrays.asList(
-            new Schema.Field(JOB_TYPE_FIELD, Schema.create(Schema.Type.STRING), null, null),
-            new Schema.Field(LOCATION_FIELD, Schema.create(Schema.Type.STRING), null, null),
-            new Schema.Field("salary", Schema.create(Schema.Type.INT), null, null)));
+            AvroCompatibilityHelper.createSchemaField(JOB_TYPE_FIELD, Schema.create(Schema.Type.STRING), null, null),
+            AvroCompatibilityHelper.createSchemaField(LOCATION_FIELD, Schema.create(Schema.Type.STRING), null, null),
+            AvroCompatibilityHelper.createSchemaField("salary", Schema.create(Schema.Type.INT), null, null)));
 
     GenericRecord jobRecord = new GenericData.Record(jobRecordSchema);
     jobRecord.put(JOB_TYPE_FIELD, new Utf8("part-time"));
@@ -193,8 +194,8 @@ public class CountByValueUtilsTest {
     Schema jobRecordSchema = Schema.createRecord("JobRecord", null, null, false);
     jobRecordSchema.setFields(
         Arrays.asList(
-            new Schema.Field(JOB_TYPE_FIELD, Schema.create(Schema.Type.STRING), null, null),
-            new Schema.Field(LOCATION_FIELD, Schema.create(Schema.Type.STRING), null, null)));
+            AvroCompatibilityHelper.createSchemaField(JOB_TYPE_FIELD, Schema.create(Schema.Type.STRING), null, null),
+            AvroCompatibilityHelper.createSchemaField(LOCATION_FIELD, Schema.create(Schema.Type.STRING), null, null)));
 
     GenericRecord job1 = new GenericData.Record(jobRecordSchema);
     job1.put(JOB_TYPE_FIELD, new Utf8("full-time"));
