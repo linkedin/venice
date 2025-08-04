@@ -450,7 +450,7 @@ public class VeniceParentHelixAdmin implements Admin {
       PubSubTopicRepository pubSubTopicRepository,
       DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore,
       DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore,
-      DelegatingClusterLeaderInitializationRoutine initRoutineForParentMetadataStore,
+      DelegatingClusterLeaderInitializationRoutine initRoutineForParentControllerMetadataSystemStore,
       MetricsRepository metricsRepository) {
 
     Validate.notNull(lingeringStoreVersionChecker);
@@ -565,11 +565,11 @@ public class VeniceParentHelixAdmin implements Admin {
     String parentControllerMetadataStoreClusterName =
         getMultiClusterConfigs().getParentControllerMetadataStoreClusterName();
     boolean initializeParentControllerMetadataStore = !StringUtils.isEmpty(parentControllerMetadataStoreClusterName);
-    if (initRoutineForParentMetadataStore != null) {
+    if (initRoutineForParentControllerMetadataSystemStore != null) {
       if (initializeParentControllerMetadataStore) {
         UpdateStoreQueryParams updateStoreQueryParamsForParentControllerMetadataStore =
             new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
-        initRoutineForParentMetadataStore.setDelegate(
+        initRoutineForParentControllerMetadataSystemStore.setDelegate(
             new SharedInternalRTStoreInitializationRoutine(
                 parentControllerMetadataStoreClusterName,
                 VeniceSystemStoreUtils
@@ -580,7 +580,7 @@ public class VeniceParentHelixAdmin implements Admin {
                 Schema.create(Schema.Type.STRING),
                 updateStoreQueryParamsForParentControllerMetadataStore));
       } else {
-        initRoutineForParentMetadataStore.setAllowEmptyDelegateInitializationToSucceed();
+        initRoutineForParentControllerMetadataSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       }
     }
   }
