@@ -24,6 +24,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_M
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
@@ -2826,6 +2827,10 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.globalRtDivEnabled = params.isGlobalRtDivEnabled()
           .map(addToUpdatedConfigList(updatedConfigsList, GLOBAL_RT_DIV_ENABLED))
           .orElseGet((currStore::isGlobalRtDivEnabled));
+
+      setStore.enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed()
+          .map(addToUpdatedConfigList(updatedConfigsList, ENUM_SCHEMA_EVOLUTION_ALLOWED))
+          .orElseGet((currStore::isEnumSchemaEvolutionAllowed));
 
       // Check whether the passed param is valid or not
       if (latestSupersetSchemaId.isPresent()) {

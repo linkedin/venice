@@ -38,6 +38,7 @@ import static com.linkedin.venice.Arg.ENABLE_COMPACTION;
 import static com.linkedin.venice.Arg.ENABLE_DISABLED_REPLICA;
 import static com.linkedin.venice.Arg.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.Arg.END_DATE;
+import static com.linkedin.venice.Arg.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.Arg.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.Arg.EXECUTION;
 import static com.linkedin.venice.Arg.EXPECTED_ROUTER_COUNT;
@@ -306,7 +307,7 @@ public enum Command {
           MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES, UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED,
           SEPARATE_REALTIME_TOPIC_ENABLED, NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER,
           TARGET_SWAP_REGION, TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION,
-          GLOBAL_RT_DIV_ENABLED }
+          GLOBAL_RT_DIV_ENABLED, ENUM_SCHEMA_EVOLUTION_ALLOWED }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },

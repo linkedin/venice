@@ -4,13 +4,13 @@ import static com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType
 import static com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType.FORWARD;
 import static com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType.FULL;
 import static com.linkedin.venice.schema.avro.SchemaCompatibility.SchemaCompatibilityType.INCOMPATIBLE;
-import static com.linkedin.venice.schema.avro.SchemaCompatibility.checkReaderWriterCompatibility;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelperCommon;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
+import com.linkedin.venice.schema.avro.SchemaCompatibility19;
 import java.util.Arrays;
 import org.apache.avro.AvroTypeException;
 import org.apache.avro.Schema;
@@ -133,6 +133,12 @@ public class SchemaEntry {
     return schema.toString().getBytes();
   }
 
+  public boolean isNewSchemaCompatible(
+      final SchemaEntry newSchemaEntry,
+      final DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+    return isNewSchemaCompatible(newSchemaEntry, expectedCompatibilityType, false);
+  }
+
   /**
    * This function will check whether a new schema is compatible with this one according to the passed in
    * {@param expectedCompatibilityType}.
@@ -144,38 +150,78 @@ public class SchemaEntry {
    */
   public boolean isNewSchemaCompatible(
       final SchemaEntry newSchemaEntry,
-      final DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+      final DirectionalSchemaCompatibilityType expectedCompatibilityType,
+      final boolean enumSchemaEvolutionAllowed) {
+
+    String compatibilityResultDescription = "";
+    boolean compatible = true;
 
     if (Arrays.asList(BACKWARD, FULL).contains(expectedCompatibilityType)) {
-      SchemaCompatibility.SchemaPairCompatibility backwardCompatibility = checkReaderWriterCompatibility(
-          /** reader */
-          newSchemaEntry.schema,
-          /** writer */
-          this.schema);
-      if (backwardCompatibility.getType() == INCOMPATIBLE) {
+      if (enumSchemaEvolutionAllowed) {
+        SchemaCompatibility19.SchemaPairCompatibility backwardCompatibilityResult =
+            SchemaCompatibility19.checkReaderWriterCompatibility(
+                /** reader */
+                newSchemaEntry.schema,
+                /** writer */
+                this.schema);
+        if (backwardCompatibilityResult.getType() == SchemaCompatibility19.SchemaCompatibilityType.INCOMPATIBLE) {
+          compatible = false;
+          compatibilityResultDescription = backwardCompatibilityResult.getDescription();
+        }
+      } else {
+        SchemaCompatibility.SchemaPairCompatibility backwardCompatibility =
+            SchemaCompatibility.checkReaderWriterCompatibility(
+                /** reader */
+                newSchemaEntry.schema,
+                /** writer */
+                this.schema);
+        if (backwardCompatibility.getType() == INCOMPATIBLE) {
+          compatible = false;
+          compatibilityResultDescription = backwardCompatibility.getDescription();
+        }
+      }
+      if (!compatible) {
         LOGGER.info(
             "New schema (id {}) is not backward compatible with (i.e.: cannot read data written by)"
                 + " existing schema (id {}), Full message:\n{}",
             newSchemaEntry.getId(),
             this.id,
-            backwardCompatibility.getDescription());
+            compatibilityResultDescription);
         return false;
       }
     }
 
     if (Arrays.asList(FORWARD, FULL).contains(expectedCompatibilityType)) {
-      SchemaCompatibility.SchemaPairCompatibility forwardCompatibility = checkReaderWriterCompatibility(
-          /** reader */
-          this.schema,
-          /** writer */
-          newSchemaEntry.schema);
-      if (forwardCompatibility.getType() == INCOMPATIBLE) {
+      if (enumSchemaEvolutionAllowed) {
+        SchemaCompatibility19.SchemaPairCompatibility forwardCompatibilityResult =
+            SchemaCompatibility19.checkReaderWriterCompatibility(
+                /** reader */
+                this.schema,
+                /** writer */
+                newSchemaEntry.schema);
+        if (forwardCompatibilityResult.getType() == SchemaCompatibility19.SchemaCompatibilityType.INCOMPATIBLE) {
+          compatible = false;
+          compatibilityResultDescription = forwardCompatibilityResult.getDescription();
+        }
+      } else {
+        SchemaCompatibility.SchemaPairCompatibility forwardCompatibility =
+            SchemaCompatibility.checkReaderWriterCompatibility(
+                /** reader */
+                this.schema,
+                /** writer */
+                newSchemaEntry.schema);
+        if (forwardCompatibility.getType() == INCOMPATIBLE) {
+          compatible = false;
+          compatibilityResultDescription = forwardCompatibility.getDescription();
+        }
+      }
+      if (!compatible) {
         LOGGER.info(
             "New schema id ({}) is not forward compatible with (i.e.: cannot have its written data read by)"
                 + " existing schema id ({}), Full message:\n{}",
             newSchemaEntry.getId(),
             this.id,
-            forwardCompatibility.getDescription());
+            compatibilityResultDescription);
         return false;
       }
     }
