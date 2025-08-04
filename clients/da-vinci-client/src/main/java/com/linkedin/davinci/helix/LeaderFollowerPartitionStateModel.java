@@ -98,7 +98,6 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       // PUSHED is set for future versions of a target region push with deferred swap
       // ONLINE is set for future versions of a push with deferred swap
       boolean isFutureVersionReady = Utils.isFutureVersionReady(resourceName, getStoreRepo());
-      logger.info("DEBUGGING: {} {} {} {}", isFutureVersionReady, isCurrentVersion, currentVersion, version);
       /**
        * For current version and already completed future versions, firstly create a latch, then start ingestion and wait
        * for ingestion completion to make sure that the state transition waits until this new replica finished consuming
