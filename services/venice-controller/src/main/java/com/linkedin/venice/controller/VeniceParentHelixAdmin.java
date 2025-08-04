@@ -428,7 +428,7 @@ public class VeniceParentHelixAdmin implements Admin {
         accessController,
         authorizerService,
         lingeringStoreVersionChecker,
-        WriteComputeSchemaConverter.getInstance(),
+        WriteComputeSchemaConverter.getInstance(), // TODO: make it an input param
         Optional.empty(),
         new PubSubTopicRepository(),
         null,
