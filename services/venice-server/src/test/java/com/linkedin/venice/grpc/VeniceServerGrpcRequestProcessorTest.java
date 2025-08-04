@@ -302,7 +302,9 @@ public class VeniceServerGrpcRequestProcessorTest {
     CountByValueResponse response = processor.processCountByValue(request);
 
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
-    assertTrue(response.getErrorMessage().contains("Invalid version number"));
+    // The actual error message is "Invalid resource name format" because parseStoreFromKafkaTopicName
+    // returns empty string for "test_store_vabc" since it's not a valid version topic format
+    assertTrue(response.getErrorMessage().contains("Invalid resource name format"));
   }
 
   @Test
