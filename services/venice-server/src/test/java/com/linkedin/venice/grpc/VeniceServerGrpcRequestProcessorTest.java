@@ -1,6 +1,7 @@
 package com.linkedin.venice.grpc;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -22,11 +23,17 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.protocols.BucketPredicate;
+import com.linkedin.venice.protocols.ComparisonPredicate;
+import com.linkedin.venice.protocols.CountByBucketRequest;
+import com.linkedin.venice.protocols.CountByBucketResponse;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.schema.SchemaEntry;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.apache.avro.Schema;
@@ -845,5 +852,263 @@ public class VeniceServerGrpcRequestProcessorTest {
     CountByValueResponse response = processor.processCountByValue(request);
     assertNotNull(response);
     // Server should handle negative topK gracefully
+  }
+
+  // ============== CountByBucket Tests ==============
+
+  /**
+   * Create a basic CountByBucketRequest builder with default values.
+   */
+  private CountByBucketRequest.Builder createDefaultCountByBucketRequestBuilder() {
+    Map<String, BucketPredicate> bucketPredicates = new HashMap<>();
+    BucketPredicate predicate = BucketPredicate.newBuilder()
+        .setComparison(
+            ComparisonPredicate.newBuilder().setOperator("EQ").setFieldType("STRING").setValue("electronics").build())
+        .build();
+    bucketPredicates.put("bucket1", predicate);
+
+    return CountByBucketRequest.newBuilder()
+        .setResourceName(DEFAULT_RESOURCE_NAME)
+        .addFieldNames(DEFAULT_FIELD_NAME)
+        .putAllBucketPredicates(bucketPredicates)
+        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()));
+  }
+
+  @Test
+  public void testDefaultConstructorProcessCountByBucket() {
+    // Test the default constructor with processCountByBucket
+    VeniceServerGrpcRequestProcessor defaultProcessor = new VeniceServerGrpcRequestProcessor();
+
+    CountByBucketRequest request = createDefaultCountByBucketRequestBuilder().build();
+
+    CountByBucketResponse response = defaultProcessor.processCountByBucket(request);
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.INTERNAL_ERROR);
+    assertTrue(response.getErrorMessage().contains("CountByBucket dependencies not available"));
+  }
+
+  @Test
+  public void testCountByBucketWithNullDependencies() {
+    // Test with null dependencies
+    VeniceServerGrpcRequestProcessor nullProcessor = new VeniceServerGrpcRequestProcessor(null, null, null, null, null);
+
+    CountByBucketRequest request = createDefaultCountByBucketRequestBuilder().build();
+
+    CountByBucketResponse response = nullProcessor.processCountByBucket(request);
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.INTERNAL_ERROR);
+    assertTrue(response.getErrorMessage().contains("CountByBucket dependencies not available"));
+  }
+
+  @Test
+  public void testCountByBucketSuccessful() {
+    // Setup storage engine to return some partitions
+    Set<Integer> partitions = new HashSet<>();
+    partitions.add(0);
+    when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitions);
+
+    CountByBucketRequest request = createDefaultCountByBucketRequestBuilder().build();
+
+    CountByBucketResponse response = processor.processCountByBucket(request);
+    assertNotNull(response);
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
+  }
+
+  @Test
+  public void testCountByBucketWithEmptyFieldNames() {
+    CountByBucketRequest request = CountByBucketRequest.newBuilder()
+        .setResourceName(DEFAULT_RESOURCE_NAME)
+        .putBucketPredicates(
+            "bucket1",
+            BucketPredicate.newBuilder()
+                .setComparison(
+                    ComparisonPredicate.newBuilder().setOperator("EQ").setFieldType("STRING").setValue("test").build())
+                .build())
+        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()))
+        .build();
+
+    CountByBucketResponse response = processor.processCountByBucket(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
+    assertTrue(response.getErrorMessage().contains("Field names cannot be null or empty"));
+  }
+
+  @Test
+  public void testCountByBucketWithEmptyBucketPredicates() {
+    CountByBucketRequest request = CountByBucketRequest.newBuilder()
+        .setResourceName(DEFAULT_RESOURCE_NAME)
+        .addFieldNames(DEFAULT_FIELD_NAME)
+        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()))
+        .build();
+
+    CountByBucketResponse response = processor.processCountByBucket(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
+    assertTrue(response.getErrorMessage().contains("Bucket predicates cannot be null or empty"));
+  }
+
+  @Test
+  public void testCountByBucketWithInvalidResourceName() {
+    CountByBucketRequest request = createDefaultCountByBucketRequestBuilder().setResourceName("invalid_format").build();
+
+    CountByBucketResponse response = processor.processCountByBucket(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
+    assertTrue(response.getErrorMessage().contains("Invalid resource name format"));
+  }
+
+  @Test
+  public void testCountByBucketStoreNotFound() {
+    when(mockStoreRepository.getStoreOrThrow("nonexistent_store"))
+        .thenThrow(new VeniceNoStoreException("nonexistent_store"));
+
+    CountByBucketRequest request =
+        createDefaultCountByBucketRequestBuilder().setResourceName("nonexistent_store_v1").build();
+
+    CountByBucketResponse response = processor.processCountByBucket(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
+    assertTrue(response.getErrorMessage().contains("Store not found"));
+  }
+
+  @Test
+  public void testCountByBucketStorageEngineNotFound() {
+    when(mockStorageEngineRepository.getLocalStorageEngine("test_store_v1")).thenReturn(null);
+
+    CountByBucketRequest request = createDefaultCountByBucketRequestBuilder().build();
+
+    CountByBucketResponse response = processor.processCountByBucket(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
+    assertTrue(response.getErrorMessage().contains("Storage engine not found"));
+  }
+
+  @Test
+  public void testCountByBucketNoValueSchema() {
+    when(mockSchemaRepository.getSupersetOrLatestValueSchema("test_store")).thenReturn(null);
+
+    CountByBucketRequest request = createDefaultCountByBucketRequestBuilder().build();
+
+    CountByBucketResponse response = processor.processCountByBucket(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
+    assertTrue(response.getErrorMessage().contains("No value schema found"));
+  }
+
+  @Test
+  public void testCountByBucketStoreVersionStateNotAvailable() {
+    when(mockStorageEngine.getStoreVersionState()).thenReturn(null);
+
+    CountByBucketRequest request = createDefaultCountByBucketRequestBuilder().build();
+
+    CountByBucketResponse response = processor.processCountByBucket(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.INTERNAL_ERROR);
+    assertTrue(response.getErrorMessage().contains("Store version state not available"));
+  }
+
+  @Test
+  public void testCountByBucketMultipleKeys() {
+    Set<Integer> partitions = new HashSet<>();
+    partitions.add(0);
+    partitions.add(1);
+    when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitions);
+    when(mockStorageEngine.get(anyInt(), any(byte[].class))).thenReturn(null);
+
+    CountByBucketRequest request = createDefaultCountByBucketRequestBuilder().clearKeys()
+        .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .addKeys(ByteString.copyFrom("key2".getBytes()))
+        .build();
+
+    CountByBucketResponse response = processor.processCountByBucket(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
+    assertTrue(response.getFieldToBucketCountsMap().containsKey(DEFAULT_FIELD_NAME));
+  }
+
+  @Test
+  public void testCountByBucketEmptyPartitionSet() {
+    // Setup storage engine with no persisted partitions
+    when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(new HashSet<>());
+
+    CountByBucketRequest request = createDefaultCountByBucketRequestBuilder().build();
+
+    CountByBucketResponse response = processor.processCountByBucket(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
+    // Should return empty counts when no partitions available
+    assertTrue(response.getFieldToBucketCountsMap().containsKey(DEFAULT_FIELD_NAME));
+  }
+
+  @Test
+  public void testCountByBucketExceptionDuringStorageGet() {
+    // Test exception handling during storage engine get
+    Set<Integer> partitions = new HashSet<>();
+    partitions.add(0);
+    when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitions);
+    when(mockStorageEngine.get(anyInt(), any(byte[].class))).thenThrow(new RuntimeException("Storage error"));
+
+    CountByBucketRequest request = createDefaultCountByBucketRequestBuilder().build();
+
+    CountByBucketResponse response = processor.processCountByBucket(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
+    // Should handle exception gracefully and continue
+    assertTrue(response.getFieldToBucketCountsMap().containsKey(DEFAULT_FIELD_NAME));
+  }
+
+  @Test
+  public void testCountByBucketMultipleFieldNames() {
+    // Test with multiple field names
+    Set<Integer> partitions = new HashSet<>();
+    partitions.add(0);
+    when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitions);
+
+    CountByBucketRequest request = createDefaultCountByBucketRequestBuilder().clearFieldNames()
+        .addFieldNames("category")
+        .addFieldNames("value")
+        .build();
+
+    CountByBucketResponse response = processor.processCountByBucket(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
+    assertTrue(response.getFieldToBucketCountsMap().containsKey("category"));
+    assertTrue(response.getFieldToBucketCountsMap().containsKey("value"));
+  }
+
+  @Test
+  public void testCountByBucketMultipleBucketPredicates() {
+    // Test with multiple bucket predicates
+    Map<String, BucketPredicate> bucketPredicates = new HashMap<>();
+    bucketPredicates.put(
+        "bucket1",
+        BucketPredicate.newBuilder()
+            .setComparison(
+                ComparisonPredicate.newBuilder()
+                    .setOperator("EQ")
+                    .setFieldType("STRING")
+                    .setValue("electronics")
+                    .build())
+            .build());
+    bucketPredicates.put(
+        "bucket2",
+        BucketPredicate.newBuilder()
+            .setComparison(
+                ComparisonPredicate.newBuilder().setOperator("EQ").setFieldType("STRING").setValue("books").build())
+            .build());
+
+    Set<Integer> partitions = new HashSet<>();
+    partitions.add(0);
+    when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitions);
+
+    CountByBucketRequest request = CountByBucketRequest.newBuilder()
+        .setResourceName(DEFAULT_RESOURCE_NAME)
+        .addFieldNames(DEFAULT_FIELD_NAME)
+        .putAllBucketPredicates(bucketPredicates)
+        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()))
+        .build();
+
+    CountByBucketResponse response = processor.processCountByBucket(request);
+
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
+    assertTrue(response.getFieldToBucketCountsMap().containsKey(DEFAULT_FIELD_NAME));
   }
 }

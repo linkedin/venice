@@ -2,6 +2,8 @@ package com.linkedin.venice.utils;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -16,7 +18,9 @@ import com.linkedin.venice.protocols.LogicalPredicate;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -577,5 +581,287 @@ public class CountByBucketUtilsTest {
     assertEquals(merged.get("age").get("young"), Integer.valueOf(5));
     assertEquals(merged.get("age").get("middle"), Integer.valueOf(0)); // Should be 0 for missing bucket
     assertEquals(merged.get("age").get("old"), Integer.valueOf(3));
+  }
+
+  @Test
+  public void testProcessValueForBucketsWithStringSchemaAndNormalBuffer() {
+    // Test string schema with normal buffer (>=4 bytes) to cover writer schema ID extraction
+    Schema stringSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry stringSchemaEntry = new SchemaEntry(1, stringSchema);
+
+    List<String> fieldNames = Arrays.asList("value");
+    Map<String, BucketPredicate> bucketPredicates = new HashMap<>();
+    bucketPredicates.put(
+        "matches_test",
+        BucketPredicate.newBuilder()
+            .setComparison(
+                ComparisonPredicate.newBuilder()
+                    .setOperator("EQ")
+                    .setFieldType("STRING")
+                    .setValue("test_value")
+                    .build())
+            .build());
+
+    Map<String, Map<String, Integer>> bucketCounts =
+        CountByBucketUtils.initializeBucketCounts(fieldNames, new ArrayList<>(bucketPredicates.keySet()));
+
+    // Create a buffer with schema ID (4 bytes) + data
+    ByteBuffer normalBuffer = ByteBuffer.allocate(10);
+    normalBuffer.putInt(2); // Writer schema ID
+    normalBuffer.put("test".getBytes());
+    normalBuffer.flip();
+
+    RecordDeserializer<Object> mockDeserializer = mock(RecordDeserializer.class);
+    when(mockDeserializer.deserialize(any(ByteBuffer.class))).thenReturn("test_value");
+
+    AvroStoreDeserializerCache<Object> mockCache = mock(AvroStoreDeserializerCache.class);
+    when(mockCache.getDeserializer(2, 1)).thenReturn(mockDeserializer);
+
+    // Process value with normal buffer
+    CountByBucketUtils.processValueForBuckets(
+        normalBuffer.array(),
+        fieldNames,
+        bucketPredicates,
+        stringSchema,
+        stringSchemaEntry,
+        CompressionStrategy.NO_OP,
+        null,
+        mockCache,
+        bucketCounts);
+
+    // Should match and increment count
+    assertEquals(bucketCounts.get("value").get("matches_test"), Integer.valueOf(1));
+  }
+
+  @Test
+  public void testProcessValueForBucketsWithStringSchemaShortBuffer() {
+    // Test string schema with buffer shorter than 4 bytes to test fallback logic
+    Schema stringSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry stringSchemaEntry = new SchemaEntry(1, stringSchema);
+
+    List<String> fieldNames = Arrays.asList("_value"); // Test _value field name too
+    Map<String, BucketPredicate> bucketPredicates = new HashMap<>();
+    bucketPredicates.put(
+        "matches_test",
+        BucketPredicate.newBuilder()
+            .setComparison(
+                ComparisonPredicate.newBuilder().setOperator("EQ").setFieldType("STRING").setValue("test").build())
+            .build());
+
+    Map<String, Map<String, Integer>> bucketCounts =
+        CountByBucketUtils.initializeBucketCounts(fieldNames, new ArrayList<>(bucketPredicates.keySet()));
+
+    // Create a short buffer (less than 4 bytes)
+    ByteBuffer shortBuffer = ByteBuffer.allocate(2);
+    shortBuffer.put((byte) 1);
+    shortBuffer.put((byte) 2);
+    shortBuffer.flip();
+
+    RecordDeserializer<Object> mockDeserializer = mock(RecordDeserializer.class);
+    when(mockDeserializer.deserialize(any(ByteBuffer.class))).thenReturn("test");
+
+    AvroStoreDeserializerCache<Object> mockCache = mock(AvroStoreDeserializerCache.class);
+    when(mockCache.getDeserializer(1, 1)).thenReturn(mockDeserializer); // Uses reader schema ID as fallback
+
+    // Process value with short buffer
+    CountByBucketUtils.processValueForBuckets(
+        shortBuffer.array(),
+        fieldNames,
+        bucketPredicates,
+        stringSchema,
+        stringSchemaEntry,
+        CompressionStrategy.NO_OP,
+        null,
+        mockCache,
+        bucketCounts);
+
+    // Should still process successfully with fallback
+    assertEquals(bucketCounts.get("_value").get("matches_test"), Integer.valueOf(1));
+  }
+
+  @Test
+  public void testProcessValueForBucketsWithRecordSchemaAndDeserializer() {
+    // Test record schema with proper deserialization
+    Schema recordSchema = Schema.createRecord("TestRecord", null, null, false);
+    recordSchema.setFields(
+        Arrays.asList(
+            new Schema.Field("name", Schema.create(Schema.Type.STRING), null, null),
+            new Schema.Field("age", Schema.create(Schema.Type.INT), null, null)));
+    SchemaEntry recordSchemaEntry = new SchemaEntry(1, recordSchema);
+
+    List<String> fieldNames = Arrays.asList("name", "age");
+    Map<String, BucketPredicate> bucketPredicates = new HashMap<>();
+    bucketPredicates.put(
+        "name_john",
+        BucketPredicate.newBuilder()
+            .setComparison(
+                ComparisonPredicate.newBuilder().setOperator("EQ").setFieldType("STRING").setValue("John").build())
+            .build());
+    bucketPredicates.put(
+        "age_adult",
+        BucketPredicate.newBuilder()
+            .setComparison(
+                ComparisonPredicate.newBuilder().setOperator("GTE").setFieldType("INT").setValue("18").build())
+            .build());
+
+    Map<String, Map<String, Integer>> bucketCounts =
+        CountByBucketUtils.initializeBucketCounts(fieldNames, new ArrayList<>(bucketPredicates.keySet()));
+
+    // Create a test record
+    GenericRecord testRecord = new GenericData.Record(recordSchema);
+    testRecord.put("name", new Utf8("John"));
+    testRecord.put("age", 25);
+
+    RecordDeserializer<Object> mockDeserializer = mock(RecordDeserializer.class);
+    when(mockDeserializer.deserialize(any(ByteBuffer.class))).thenReturn(testRecord);
+
+    AvroStoreDeserializerCache<Object> mockCache = mock(AvroStoreDeserializerCache.class);
+    when(mockCache.getDeserializer(1, 1)).thenReturn(mockDeserializer);
+
+    byte[] valueBytes = new byte[] { 1, 2, 3, 4 };
+
+    // Process record value
+    CountByBucketUtils.processValueForBuckets(
+        valueBytes,
+        fieldNames,
+        bucketPredicates,
+        recordSchema,
+        recordSchemaEntry,
+        CompressionStrategy.NO_OP,
+        null,
+        mockCache,
+        bucketCounts);
+
+    // Both predicates should match
+    assertEquals(bucketCounts.get("name").get("name_john"), Integer.valueOf(1));
+    assertEquals(bucketCounts.get("age").get("age_adult"), Integer.valueOf(1));
+  }
+
+  @Test
+  public void testProcessValueForBucketsWithNullFieldValue() {
+    // Test handling of null field values in records
+    Schema recordSchema = Schema.createRecord("TestRecord", null, null, false);
+    recordSchema.setFields(
+        Arrays.asList(
+            new Schema.Field("name", Schema.create(Schema.Type.STRING), null, null),
+            new Schema.Field(
+                "age",
+                Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.INT))),
+                null,
+                null)));
+    SchemaEntry recordSchemaEntry = new SchemaEntry(1, recordSchema);
+
+    List<String> fieldNames = Arrays.asList("name", "age");
+    Map<String, BucketPredicate> bucketPredicates = new HashMap<>();
+    bucketPredicates.put(
+        "has_age",
+        BucketPredicate.newBuilder()
+            .setComparison(ComparisonPredicate.newBuilder().setOperator("GT").setFieldType("INT").setValue("0").build())
+            .build());
+
+    Map<String, Map<String, Integer>> bucketCounts =
+        CountByBucketUtils.initializeBucketCounts(fieldNames, new ArrayList<>(bucketPredicates.keySet()));
+
+    // Create a test record with null age
+    GenericRecord testRecord = new GenericData.Record(recordSchema);
+    testRecord.put("name", "Test");
+    testRecord.put("age", null); // Null value
+
+    RecordDeserializer<Object> mockDeserializer = mock(RecordDeserializer.class);
+    when(mockDeserializer.deserialize(any(ByteBuffer.class))).thenReturn(testRecord);
+
+    AvroStoreDeserializerCache<Object> mockCache = mock(AvroStoreDeserializerCache.class);
+    when(mockCache.getDeserializer(1, 1)).thenReturn(mockDeserializer);
+
+    byte[] valueBytes = new byte[] { 1, 2, 3, 4 };
+
+    // Process record with null field
+    CountByBucketUtils.processValueForBuckets(
+        valueBytes,
+        fieldNames,
+        bucketPredicates,
+        recordSchema,
+        recordSchemaEntry,
+        CompressionStrategy.NO_OP,
+        null,
+        mockCache,
+        bucketCounts);
+
+    // Null field should not match any bucket
+    assertEquals(bucketCounts.get("age").get("has_age"), Integer.valueOf(0));
+  }
+
+  @Test
+  public void testProcessValueForBucketsWithNonExistentField() {
+    // Test handling when field doesn't exist in record
+    Schema recordSchema = Schema.createRecord("TestRecord", null, null, false);
+    recordSchema.setFields(Arrays.asList(new Schema.Field("name", Schema.create(Schema.Type.STRING), null, null)));
+    SchemaEntry recordSchemaEntry = new SchemaEntry(1, recordSchema);
+
+    // Try to access non-existent field
+    List<String> fieldNames = Arrays.asList("age"); // Field doesn't exist in schema
+    Map<String, BucketPredicate> bucketPredicates = new HashMap<>();
+    bucketPredicates.put(
+        "any_age",
+        BucketPredicate.newBuilder()
+            .setComparison(ComparisonPredicate.newBuilder().setOperator("GT").setFieldType("INT").setValue("0").build())
+            .build());
+
+    Map<String, Map<String, Integer>> bucketCounts =
+        CountByBucketUtils.initializeBucketCounts(fieldNames, new ArrayList<>(bucketPredicates.keySet()));
+
+    GenericRecord testRecord = new GenericData.Record(recordSchema);
+    testRecord.put("name", "Test");
+
+    RecordDeserializer<Object> mockDeserializer = mock(RecordDeserializer.class);
+    when(mockDeserializer.deserialize(any(ByteBuffer.class))).thenReturn(testRecord);
+
+    AvroStoreDeserializerCache<Object> mockCache = mock(AvroStoreDeserializerCache.class);
+    when(mockCache.getDeserializer(1, 1)).thenReturn(mockDeserializer);
+
+    byte[] valueBytes = new byte[] { 1, 2, 3, 4 };
+
+    // Process should handle gracefully
+    CountByBucketUtils.processValueForBuckets(
+        valueBytes,
+        fieldNames,
+        bucketPredicates,
+        recordSchema,
+        recordSchemaEntry,
+        CompressionStrategy.NO_OP,
+        null,
+        mockCache,
+        bucketCounts);
+
+    // Non-existent field should not match any bucket
+    assertEquals(bucketCounts.get("age").get("any_age"), Integer.valueOf(0));
+  }
+
+  @Test
+  public void testMergePartitionResponsesWithNullFieldCounts() {
+    // Test merge when some fields are missing from responses
+    List<String> fieldNames = Arrays.asList("age", "location");
+    List<String> bucketNames = Arrays.asList("young", "old");
+
+    // Create response with only age field (location missing)
+    BucketCount ageCount = BucketCount.newBuilder().putBucketToCounts("young", 5).putBucketToCounts("old", 3).build();
+
+    CountByBucketResponse response1 = CountByBucketResponse.newBuilder()
+        .putFieldToBucketCounts("age", ageCount)
+        // location field is missing
+        .build();
+
+    List<CountByBucketResponse> responses = Arrays.asList(response1);
+
+    Map<String, Map<String, Integer>> merged =
+        CountByBucketUtils.mergePartitionResponses(responses, fieldNames, bucketNames);
+
+    // Age field should have counts
+    assertEquals(merged.get("age").get("young"), Integer.valueOf(5));
+    assertEquals(merged.get("age").get("old"), Integer.valueOf(3));
+
+    // Location field should still exist with 0 counts
+    assertEquals(merged.get("location").get("young"), Integer.valueOf(0));
+    assertEquals(merged.get("location").get("old"), Integer.valueOf(0));
   }
 }

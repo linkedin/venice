@@ -1,7 +1,19 @@
 package com.linkedin.venice.utils;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.protocols.CountByValueResponse;
+import com.linkedin.venice.response.VeniceReadResponseStatus;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -289,4 +301,182 @@ public class CountByValueUtilsTest {
     Assert.assertEquals(mergedLocationCounts.get("onsite"), Integer.valueOf(1)); // 1 + 0
     Assert.assertEquals(mergedLocationCounts.get("hybrid"), Integer.valueOf(2)); // 0 + 2
   }
+
+  @Test
+  public void testProcessValueWithStringSchema() {
+    // Test processing a string value with normal buffer (>= 4 bytes)
+    Schema stringSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry schemaEntry = new SchemaEntry(1, stringSchema);
+    List<String> fieldNames = Arrays.asList("value", "_value");
+    Map<String, Map<String, Integer>> fieldCounts = CountByValueUtils.initializeFieldCounts(fieldNames);
+
+    // Create a buffer with schema ID + data
+    ByteBuffer buffer = ByteBuffer.allocate(20);
+    buffer.putInt(2); // Writer schema ID
+    buffer.put("test_value".getBytes());
+    buffer.flip();
+
+    RecordDeserializer<Object> mockDeserializer = mock(RecordDeserializer.class);
+    when(mockDeserializer.deserialize(any(ByteBuffer.class))).thenReturn("test_value");
+
+    AvroStoreDeserializerCache<Object> mockCache = mock(AvroStoreDeserializerCache.class);
+    when(mockCache.getDeserializer(2, 1)).thenReturn(mockDeserializer);
+
+    // Process value
+    CountByValueUtils.processValue(
+        buffer.array(),
+        fieldNames,
+        stringSchema,
+        schemaEntry,
+        CompressionStrategy.NO_OP,
+        null,
+        mockCache,
+        fieldCounts);
+
+    // Both "value" and "_value" should have the same count
+    Assert.assertEquals(fieldCounts.get("value").get("test_value"), Integer.valueOf(1));
+    Assert.assertEquals(fieldCounts.get("_value").get("test_value"), Integer.valueOf(1));
+  }
+
+  @Test
+  public void testProcessValueWithRecordSchema() {
+    // Test processing a record value
+    Schema recordSchema = Schema.createRecord("TestRecord", null, null, false);
+    recordSchema.setFields(
+        Arrays.asList(
+            AvroCompatibilityHelper.createSchemaField("name", Schema.create(Schema.Type.STRING), null, null),
+            AvroCompatibilityHelper.createSchemaField("age", Schema.create(Schema.Type.INT), null, null)));
+    SchemaEntry schemaEntry = new SchemaEntry(1, recordSchema);
+    List<String> fieldNames = Arrays.asList("name", "age");
+    Map<String, Map<String, Integer>> fieldCounts = CountByValueUtils.initializeFieldCounts(fieldNames);
+
+    // Create test record
+    GenericRecord testRecord = new GenericData.Record(recordSchema);
+    testRecord.put("name", new Utf8("John"));
+    testRecord.put("age", 25);
+
+    RecordDeserializer<Object> mockDeserializer = mock(RecordDeserializer.class);
+    when(mockDeserializer.deserialize(any(ByteBuffer.class))).thenReturn(testRecord);
+
+    AvroStoreDeserializerCache<Object> mockCache = mock(AvroStoreDeserializerCache.class);
+    when(mockCache.getDeserializer(1, 1)).thenReturn(mockDeserializer);
+
+    byte[] valueBytes = new byte[] { 1, 2, 3, 4 };
+
+    // Process value
+    CountByValueUtils.processValue(
+        valueBytes,
+        fieldNames,
+        recordSchema,
+        schemaEntry,
+        CompressionStrategy.NO_OP,
+        null,
+        mockCache,
+        fieldCounts);
+
+    Assert.assertEquals(fieldCounts.get("name").get("John"), Integer.valueOf(1));
+    Assert.assertEquals(fieldCounts.get("age").get("25"), Integer.valueOf(1));
+  }
+
+  @Test
+  public void testProcessValueWithCompressionException() {
+    // Test compression exception handling
+    Schema stringSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry schemaEntry = new SchemaEntry(1, stringSchema);
+    List<String> fieldNames = Arrays.asList("value");
+    Map<String, Map<String, Integer>> fieldCounts = CountByValueUtils.initializeFieldCounts(fieldNames);
+
+    VeniceCompressor mockCompressor = mock(VeniceCompressor.class);
+    try {
+      when(mockCompressor.decompress(any(ByteBuffer.class))).thenThrow(new RuntimeException("Compression error"));
+    } catch (Exception e) {
+      // This won't happen in test setup
+    }
+
+    byte[] compressedData = new byte[] { 1, 2, 3, 4 };
+
+    // Process value with compression error
+    CountByValueUtils.processValue(
+        compressedData,
+        fieldNames,
+        stringSchema,
+        schemaEntry,
+        CompressionStrategy.GZIP,
+        mockCompressor,
+        null,
+        fieldCounts);
+
+    // Should handle exception gracefully, counts remain empty
+    Assert.assertTrue(fieldCounts.get("value").isEmpty());
+  }
+
+  @Test
+  public void testProcessValueWithDeserializationException() {
+    // Test deserialization exception handling
+    Schema stringSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry schemaEntry = new SchemaEntry(1, stringSchema);
+    List<String> fieldNames = Arrays.asList("value");
+    Map<String, Map<String, Integer>> fieldCounts = CountByValueUtils.initializeFieldCounts(fieldNames);
+
+    RecordDeserializer<Object> mockDeserializer = mock(RecordDeserializer.class);
+    when(mockDeserializer.deserialize(any(ByteBuffer.class))).thenThrow(new RuntimeException("Deserialization error"));
+
+    AvroStoreDeserializerCache<Object> mockCache = mock(AvroStoreDeserializerCache.class);
+    when(mockCache.getDeserializer(anyInt(), anyInt())).thenReturn(mockDeserializer);
+
+    byte[] valueBytes = new byte[] { 1, 2, 3, 4 };
+
+    // Process value with deserialization error
+    CountByValueUtils.processValue(
+        valueBytes,
+        fieldNames,
+        stringSchema,
+        schemaEntry,
+        CompressionStrategy.NO_OP,
+        null,
+        mockCache,
+        fieldCounts);
+
+    // Should handle exception gracefully, counts remain empty
+    Assert.assertTrue(fieldCounts.get("value").isEmpty());
+  }
+
+  @Test
+  public void testValidateFieldsWithStringSchema() {
+    Schema stringSchema = Schema.create(Schema.Type.STRING);
+
+    // Valid field names for string schema
+    List<String> validFieldNames = Arrays.asList("value", "_value");
+    CountByValueResponse response = CountByValueUtils.validateFields(validFieldNames, stringSchema, TEST_STORE_NAME);
+    Assert.assertNull(response);
+
+    // Invalid field name for string schema
+    List<String> invalidFieldNames = Arrays.asList("invalid_field");
+    response = CountByValueUtils.validateFields(invalidFieldNames, stringSchema, TEST_STORE_NAME);
+    Assert.assertNotNull(response);
+    Assert.assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
+    Assert.assertTrue(response.getErrorMessage().contains("only 'value' or '_value' field names are supported"));
+  }
+
+  @Test
+  public void testValidateFieldsWithRecordSchema() {
+    Schema recordSchema = Schema.createRecord("TestRecord", null, null, false);
+    recordSchema.setFields(
+        Arrays.asList(
+            AvroCompatibilityHelper.createSchemaField("name", Schema.create(Schema.Type.STRING), null, null),
+            AvroCompatibilityHelper.createSchemaField("age", Schema.create(Schema.Type.INT), null, null)));
+
+    // Valid field names
+    List<String> validFieldNames = Arrays.asList("name", "age");
+    CountByValueResponse response = CountByValueUtils.validateFields(validFieldNames, recordSchema, TEST_STORE_NAME);
+    Assert.assertNull(response);
+
+    // Invalid field name
+    List<String> invalidFieldNames = Arrays.asList("nonexistent_field");
+    response = CountByValueUtils.validateFields(invalidFieldNames, recordSchema, TEST_STORE_NAME);
+    Assert.assertNotNull(response);
+    Assert.assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
+    Assert.assertTrue(response.getErrorMessage().contains("Field 'nonexistent_field' not found"));
+  }
+
 }
