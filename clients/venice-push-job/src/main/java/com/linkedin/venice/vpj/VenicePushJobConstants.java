@@ -342,4 +342,10 @@ public final class VenicePushJobConstants {
   public static final String DATA_WRITER_COMPUTE_JOB_CLASS = "data.writer.compute.job.class";
 
   public static final String PUSH_TO_SEPARATE_REALTIME_TOPIC = "push.to.separate.realtime.topic";
+  /**
+   * Currently regular batch pushes are not compatible with TTL re-push enabled stores. This is because a regular batch
+   * push does not provide any RMD to be used for TTL. You can use the TIMESTAMP_FIELD_PROP to provide record level
+   * timestamp to perform compatible batch push or use this setting to override the batch push and TTL re-push check.
+   */
+  public static final String ALLOW_REGULAR_PUSH_WITH_TTL_REPUSH = "allow.regular.push.with.ttl.repush";
 }

@@ -2,10 +2,13 @@ package com.linkedin.venice.pubsub.mock;
 
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 
 
 public class InMemoryPubSubPosition implements PubSubPosition {
+  public static final int INMEMORY_PUBSUB_POSITION_TYPE_ID = -42;
+
   private final long internalOffset;
 
   private InMemoryPubSubPosition(long offset) {
@@ -33,10 +36,17 @@ public class InMemoryPubSubPosition implements PubSubPosition {
     return new InMemoryPubSubPosition(offset);
   }
 
+  public static InMemoryPubSubPosition of(ByteBuffer buffer) {
+    if (buffer == null || buffer.limit() < Long.BYTES) {
+      throw new IllegalArgumentException("Buffer must contain at least " + Long.BYTES + " bytes");
+    }
+    return of(ByteUtils.readLong(ByteUtils.extractByteArray(buffer), 0)); // peek without advancing
+  }
+
   @Override
   public PubSubPositionWireFormat getPositionWireFormat() {
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
-    wireFormat.type = -42;
+    wireFormat.type = INMEMORY_PUBSUB_POSITION_TYPE_ID;
     ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
     buffer.putLong(internalOffset);
     buffer.flip();

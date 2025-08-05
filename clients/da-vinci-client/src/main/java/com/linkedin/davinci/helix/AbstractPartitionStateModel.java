@@ -3,6 +3,7 @@ package com.linkedin.davinci.helix;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixPartitionStatusAccessor;
 import com.linkedin.venice.helix.HelixState;
@@ -64,6 +65,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
   private final String storePartitionDescription;
   private final CompletableFuture<HelixPartitionStatusAccessor> partitionStatusAccessorFuture;
   private final String instanceName;
+  private final ParticipantStateTransitionStats stateTransitionStats;
 
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
 
@@ -73,7 +75,8 @@ public abstract class AbstractPartitionStateModel extends StateModel {
       VeniceStoreVersionConfig storeAndServerConfigs,
       int partition,
       CompletableFuture<HelixPartitionStatusAccessor> accessorFuture,
-      String instanceName) {
+      String instanceName,
+      ParticipantStateTransitionStats stateTransitionStats) {
     this.ingestionBackend = ingestionBackend;
     this.storeRepository = storeRepository;
     this.storeAndServerConfigs = storeAndServerConfigs;
@@ -85,6 +88,7 @@ public abstract class AbstractPartitionStateModel extends StateModel {
      */
     this.partitionStatusAccessorFuture = accessorFuture;
     this.instanceName = instanceName;
+    this.stateTransitionStats = stateTransitionStats;
   }
 
   protected void executeStateTransition(Message message, NotificationContext context, Runnable handler) {
@@ -102,13 +106,14 @@ public abstract class AbstractPartitionStateModel extends StateModel {
     // Change name to indicate which st is occupied this thread.
     Thread.currentThread().setName("Helix-ST-" + message.getResourceName() + "-" + partition + "-" + from + "->" + to);
     try {
-      LogContext.setStructuredLogContext(storeAndServerConfigs.getLogContext());
+      LogContext.setLogContext(storeAndServerConfigs.getLogContext());
+      stateTransitionStats.trackStateTransitionStarted(from, to);
       handler.run();
+      stateTransitionStats.trackStateTransitionCompleted(from, to);
       logCompletion(from, to, message, context, rollback);
     } finally {
       // Once st is terminated, change the name to indicate this thread will not be occupied by this st.
       Thread.currentThread().setName("Inactive ST thread.");
-      LogContext.clearLogContext();
     }
   }
 

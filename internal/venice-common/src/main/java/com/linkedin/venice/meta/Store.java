@@ -357,4 +357,12 @@ public interface Store {
   boolean isGlobalRtDivEnabled();
 
   void setGlobalRtDivEnabled(boolean globalRtDivEnabled);
+
+  boolean isTTLRepushEnabled();
+
+  void setTTLRepushEnabled(boolean ttlRepushEnabled);
+
+  boolean isEnumSchemaEvolutionAllowed();
+
+  void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed);
 }

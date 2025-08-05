@@ -30,6 +30,7 @@ import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -49,6 +50,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
@@ -854,6 +856,90 @@ public class TestParentControllerWithMultiDataCenter {
         });
       }
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testSelfManagedTTLRepushEnabledStoreProperty() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("testTTLRepushEnabled");
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+      // ttlRepushEnabled flag should be false by default
+      getAndAssertTTLRepushEnabledFlag(parentControllerClient, storeName, false);
+      for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
+        try (ControllerClient childControllerClient =
+            new ControllerClient(clusterName, veniceMultiClusterWrapper.getControllerConnectString())) {
+          getAndAssertTTLRepushEnabledFlag(childControllerClient, storeName, false);
+        }
+      }
+      // A TTL re-push should enable the flag
+      String ttlRePushId = Version.generateTTLRePushId("test-ttl-re-push");
+      VersionCreationResponse ttlRePushVersionCreation =
+          mimicVPJPushVersionCreation(parentControllerClient, storeName, ttlRePushId);
+      getAndAssertTTLRepushEnabledFlag(parentControllerClient, storeName, true);
+      for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
+        try (ControllerClient childControllerClient =
+            new ControllerClient(clusterName, veniceMultiClusterWrapper.getControllerConnectString())) {
+          TestUtils.waitForNonDeterministicAssertion(
+              10,
+              TimeUnit.SECONDS,
+              () -> getAndAssertTTLRepushEnabledFlag(childControllerClient, storeName, true));
+        }
+      }
+      parentControllerClient.killOfflinePushJob(ttlRePushVersionCreation.getKafkaTopic());
+      // The override batch push should disable the flag
+      String overrideRegularPushId = Version.generateRegularPushWithTTLRePushId("regular-test-push-on-ttl-re-push");
+      mimicVPJPushVersionCreation(parentControllerClient, storeName, overrideRegularPushId);
+      getAndAssertTTLRepushEnabledFlag(parentControllerClient, storeName, false);
+      for (VeniceMultiClusterWrapper veniceMultiClusterWrapper: multiRegionMultiClusterWrapper.getChildRegions()) {
+        try (ControllerClient childControllerClient =
+            new ControllerClient(clusterName, veniceMultiClusterWrapper.getControllerConnectString())) {
+          TestUtils.waitForNonDeterministicAssertion(
+              10,
+              TimeUnit.SECONDS,
+              () -> getAndAssertTTLRepushEnabledFlag(childControllerClient, storeName, false));
+        }
+      }
+    }
+  }
+
+  private void getAndAssertTTLRepushEnabledFlag(
+      ControllerClient controllerClient,
+      String storeName,
+      boolean expectedTTLRepushEnabled) {
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    Assert.assertFalse(storeResponse.isError());
+    Assert.assertEquals(storeResponse.getStore().isTTLRepushEnabled(), expectedTTLRepushEnabled);
+  }
+
+  private VersionCreationResponse mimicVPJPushVersionCreation(
+      ControllerClient controllerClient,
+      String storeName,
+      String pushId) {
+    return controllerClient.retryableRequest(
+        5,
+        c -> c.requestTopicForWrites(
+            storeName,
+            1000,
+            Version.PushType.BATCH,
+            pushId,
+            true,
+            true,
+            false,
+            Optional.of(DefaultVenicePartitioner.class.getName()),
+            Optional.empty(),
+            Optional.ofNullable(multiRegionMultiClusterWrapper.getChildRegions().get(0).getRegionName()),
+            false,
+            -1,
+            false,
+            null,
+            0,
+            false));
   }
 
   private void emptyPushToStore(

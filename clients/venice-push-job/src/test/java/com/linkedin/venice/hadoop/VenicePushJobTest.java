@@ -1278,6 +1278,40 @@ public class VenicePushJobTest {
     }
   }
 
+  @Test
+  public void testValidateRegularPushWithTTLRepush() {
+    ControllerClient mockControllerClient = mock(ControllerClient.class);
+    StoreResponse mockStoreResponse = mock(StoreResponse.class);
+    doReturn(mockStoreResponse).when(mockControllerClient).getStore(anyString());
+    doReturn(false).when(mockStoreResponse).isError();
+    StoreInfo mockStoreInfo = mock(StoreInfo.class);
+    doReturn(mockStoreInfo).when(mockStoreResponse).getStore();
+    doReturn(true).when(mockStoreInfo).isTTLRepushEnabled();
+    // Re-push, incremental and empty pushes should be allowed
+    Properties props = getVpjRequiredProperties();
+    VenicePushJob venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    PushJobSetting pushJobSetting = venicePushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = true;
+    pushJobSetting.isIncrementalPush = true;
+    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    pushJobSetting = venicePushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = true;
+    pushJobSetting.isSourceKafka = true;
+    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    venicePushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    pushJobSetting = venicePushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = false;
+    venicePushJob.checkRegularPushWithTTLRepush(mockControllerClient, venicePushJob.getPushJobSetting());
+    // Regular batch push should be rejected
+    final VenicePushJob failPushJob = new VenicePushJob(PUSH_JOB_ID, props);
+    pushJobSetting = failPushJob.getPushJobSetting();
+    pushJobSetting.inputHasRecords = true;
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> failPushJob.checkRegularPushWithTTLRepush(mockControllerClient, failPushJob.getPushJobSetting()));
+  }
+
   private SchemaResponse getKeySchemaResponse() {
     SchemaResponse response = new SchemaResponse();
     response.setId(1);

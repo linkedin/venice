@@ -58,7 +58,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
   private final AtomicLong leaderSessionId = new AtomicLong(0L);
 
   private final LeaderFollowerIngestionProgressNotifier notifier;
-  private final ParticipantStateTransitionStats threadPoolStats;
+  private final ParticipantStateTransitionStats stateTransitionStats;
 
   private final HeartbeatMonitoringService heartbeatMonitoringService;
 
@@ -70,7 +70,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       ReadOnlyStoreRepository metadataRepo,
       CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture,
       String instanceName,
-      ParticipantStateTransitionStats threadPoolStats,
+      ParticipantStateTransitionStats stateTransitionStats,
       HeartbeatMonitoringService heartbeatMonitoringService) {
     super(
         ingestionBackend,
@@ -78,9 +78,10 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         storeAndServerConfigs,
         partition,
         partitionPushStatusAccessorFuture,
-        instanceName);
+        instanceName,
+        stateTransitionStats);
     this.notifier = notifier;
-    this.threadPoolStats = threadPoolStats;
+    this.stateTransitionStats = stateTransitionStats;
     this.heartbeatMonitoringService = heartbeatMonitoringService;
   }
 
@@ -98,7 +99,6 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       // PUSHED is set for future versions of a target region push with deferred swap
       // ONLINE is set for future versions of a push with deferred swap
       boolean isFutureVersionReady = Utils.isFutureVersionReady(resourceName, getStoreRepo());
-
       /**
        * For current version and already completed future versions, firstly create a latch, then start ingestion and wait
        * for ingestion completion to make sure that the state transition waits until this new replica finished consuming
@@ -122,11 +122,11 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         }
         throw e;
       }
+      heartbeatMonitoringService
+          .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
       if (isCurrentVersion || isFutureVersionReady) {
         waitConsumptionCompleted(resourceName, notifier);
       }
-      heartbeatMonitoringService
-          .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.SET_FOLLOWER_MONITOR);
     });
   }
 
@@ -175,20 +175,20 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
       if (isCurrentVersion) {
         // Only do graceful drop for current version resources that are being queried
         try {
-          this.threadPoolStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+          this.stateTransitionStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
           // Gracefully drop partition to drain the requests to this partition
           Thread.sleep(TimeUnit.SECONDS.toMillis(getStoreAndServerConfigs().getPartitionGracefulDropDelaySeconds()));
         } catch (InterruptedException e) {
           throw new VeniceException("Got interrupted while waiting for graceful drop delay of serving version", e);
         } finally {
-          this.threadPoolStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+          this.stateTransitionStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
         }
       }
       CompletableFuture<Void> dropPartitionFuture = removePartitionFromStoreGracefully();
       boolean waitForDropPartition = !dropPartitionFuture.isDone();
       try {
         if (waitForDropPartition) {
-          this.threadPoolStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
+          this.stateTransitionStats.incrementThreadBlockedOnOfflineToDroppedTransitionCount();
         }
         dropPartitionFuture.get(WAIT_DROP_PARTITION_TIME_OUT_MS, TimeUnit.MILLISECONDS);
       } catch (InterruptedException e) {
@@ -200,7 +200,7 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
         throw new VeniceException("Got exception while waiting for drop partition future to complete", e);
       } finally {
         if (waitForDropPartition) {
-          this.threadPoolStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
+          this.stateTransitionStats.decrementThreadBlockedOnOfflineToDroppedTransitionCount();
         }
       }
     });

@@ -70,7 +70,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
       String clusterName,
       ZkClient zkClient,
       HelixAdapterSerializer adapter,
-      Object logContext,
+      LogContext logContext,
       int refreshAttemptsForZkReconnect) {
     this.clusterName = clusterName;
     this.offlinePushStatusParentPath = getOfflinePushStatuesParentPath();
@@ -466,9 +466,9 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
    * change event and broadcast this event to Venice subscriber.
    */
   private class PartitionStatusZkListener implements IZkDataListener {
-    private final Object logContext;
+    private final LogContext logContext;
 
-    PartitionStatusZkListener(Object logContext) {
+    PartitionStatusZkListener(LogContext logContext) {
       this.logContext = logContext;
     }
 

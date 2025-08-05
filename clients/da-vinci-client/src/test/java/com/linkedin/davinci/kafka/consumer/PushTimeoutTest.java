@@ -18,6 +18,7 @@ import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ExceptionCaptorNotifier;
@@ -57,7 +58,7 @@ public class PushTimeoutTest {
         .setLeaderFollowerNotifiersQueue(notifiers)
         .setServerConfig(mockVeniceServerConfig)
         .setHostLevelIngestionStats(mockAggStoreIngestionStats)
-        .setPubSubTopicRepository(pubSubTopicRepository);
+        .setPubSubContext(new PubSubContext.Builder().setPubSubTopicRepository(pubSubTopicRepository).build());
 
     StorageService storageService = mock(StorageService.class);
     doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(storageService)
@@ -124,7 +125,7 @@ public class PushTimeoutTest {
         .setStorageMetadataService(mockStorageMetadataService)
         .setServerConfig(mockVeniceServerConfig)
         .setHostLevelIngestionStats(mockAggStoreIngestionStats)
-        .setPubSubTopicRepository(pubSubTopicRepository);
+        .setPubSubContext(new PubSubContext.Builder().setPubSubTopicRepository(pubSubTopicRepository).build());
 
     StorageService storageService = mock(StorageService.class);
     doReturn(new ReferenceCounted<>(mock(StorageEngine.class), se -> {})).when(storageService)
