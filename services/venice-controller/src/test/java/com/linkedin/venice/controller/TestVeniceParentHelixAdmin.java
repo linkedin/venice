@@ -313,17 +313,22 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
+
+    // To support the store update during store creation.
+    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
     parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
     verify(internalAdmin)
         .checkPreConditionForCreateStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false, false);
-    verify(veniceWriter).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
-    verify(zkClient, times(2)).readData(zkMetadataNodePath, null);
+    verify(veniceWriter, times(2)).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+    verify(zkClient, times(3)).readData(zkMetadataNodePath, null);
 
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-    verify(veniceWriter).put(
+    verify(veniceWriter, times(2)).put(
         keyCaptor.capture(),
         valueCaptor.capture(),
         schemaCaptor.capture(),
@@ -335,9 +340,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         any(),
         any());
 
-    byte[] keyBytes = keyCaptor.getValue();
-    byte[] valueBytes = valueCaptor.getValue();
-    int schemaId = schemaCaptor.getValue();
+    byte[] keyBytes = keyCaptor.getAllValues().get(0);
+    byte[] valueBytes = valueCaptor.getAllValues().get(0);
+    int schemaId = schemaCaptor.getAllValues().get(0);
     assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     assertEquals(keyBytes.length, 0);
 
@@ -411,16 +416,20 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
             return future;
           });
 
+      // To support the store update during store creation.
+      Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+      doReturn(store).when(internalAdmin).getStore(cluster, storeName);
+
       parentAdmin.createStore(cluster, storeName, owner, keySchemaStr, valueSchemaStr);
 
       verify(internalAdmin)
           .checkPreConditionForCreateStore(cluster, storeName, keySchemaStr, valueSchemaStr, false, false);
-      verify(veniceWriter).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
-      verify(zkClient, times(2)).readData(metadataPath, null);
+      verify(veniceWriter, times(2)).put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
+      verify(zkClient, times(3)).readData(metadataPath, null);
       ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-      verify(veniceWriter).put(
+      verify(veniceWriter, times(2)).put(
           keyCaptor.capture(),
           valueCaptor.capture(),
           schemaCaptor.capture(),
@@ -431,9 +440,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           any(),
           any(),
           any());
-      byte[] keyBytes = keyCaptor.getValue();
-      byte[] valueBytes = valueCaptor.getValue();
-      int schemaId = schemaCaptor.getValue();
+      byte[] keyBytes = keyCaptor.getAllValues().get(0);
+      byte[] valueBytes = valueCaptor.getAllValues().get(0);
+      int schemaId = schemaCaptor.getAllValues().get(0);
       assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
       assertEquals(keyBytes.length, 0);
       AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
@@ -468,6 +477,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testCreateStoreWhenLastExceptionIsNotNull() {
     String storeName = "test-store";
     when(internalAdmin.getLastExceptionForStore(clusterName, storeName)).thenReturn(null)
+        .thenReturn(null)
         .thenReturn(new VeniceException("mock exception"));
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(
@@ -481,13 +491,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
     parentAdmin.initStorageCluster(clusterName);
+    // To support the store update during store creation.
+    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
     // Add store again now with an existing exception
     assertThrows(
         VeniceException.class,
         () -> parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
-    verify(zkClient, times(2)).readData(zkMetadataNodePath, null);
+    verify(zkClient, times(3)).readData(zkMetadataNodePath, null);
   }
 
   @Test
@@ -505,13 +518,16 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
     parentAdmin.initStorageCluster(clusterName);
+    // To support the store update during store creation.
+    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
     parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM);
     assertThrows(
         ConfigurationException.class,
         () -> parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM + 1));
     assertThrows(ConfigurationException.class, () -> parentAdmin.setStorePartitionCount(clusterName, storeName, -1));
-    verify(zkClient, times(3)).readData(zkMetadataNodePath, null);
+    verify(zkClient, times(4)).readData(zkMetadataNodePath, null);
   }
 
   @Test
@@ -3066,10 +3082,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
+    // To support the store update during store creation.
+    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
     doReturn(clusterLockManager).when(resources).getClusterLockManager();
-    verify(clusterLockManager).createClusterReadLock();
-    verify(zkClient, times(2)).readData(zkMetadataNodePath, null);
+    verify(clusterLockManager, times(2)).createClusterReadLock();
+    verify(zkClient, times(3)).readData(zkMetadataNodePath, null);
   }
 
   @Test

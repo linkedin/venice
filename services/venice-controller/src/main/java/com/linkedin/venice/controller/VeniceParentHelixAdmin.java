@@ -1000,6 +1000,15 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
+
+    /**
+     * Enable storage quota by default for the new store creation.
+     * For store migration use cases, the destination store will be created with storage quota enabled, and
+     * if the source store has storage quota disabled, the storage quota will be disabled in the destination store
+     * by a following store update.
+     * Check {@link VeniceHelixAdmin#migrateStore} for more details.
+      */
+    updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true));
   }
 
   private void sendStoreCreationAdminMessage(
