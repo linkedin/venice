@@ -286,6 +286,7 @@
             {"name": "isDaVinciHeartBeatReported", "type": "boolean", "default": false, "doc": "Flag to indicate whether DVC is bootstrapping and sending heartbeats"},
             {"name": "globalRtDivEnabled", "type":  "boolean", "default": false, "doc": "Flag to indicate whether the Global RT DIV feature is on. The DIV will be centralized in the ConsumptionTask, and leaders will periodically replicate the RT DIV to followers via VT."},
             {"name": "ttlRepushEnabled", "type": "boolean", "default": false, "doc": "Self-managed (by controller) flag to indicate whether TTL re-push is enabled or not"},
+            {"name": "enumSchemaEvolutionAllowed", "type": "boolean", "default": false, "doc": "Whether enum schema evolution is allowed or not and this requires the store readers to use Avro-1.9+"},
             {
               "name": "StoreLifecycleHooks",
               "doc": "List of store lifecycle hooks",
