@@ -1,5 +1,9 @@
 package com.linkedin.davinci.helix;
 
+import static com.linkedin.venice.helix.HelixState.DROPPED_STATE;
+import static com.linkedin.venice.helix.HelixState.LEADER_STATE;
+import static com.linkedin.venice.helix.HelixState.OFFLINE_STATE;
+import static com.linkedin.venice.helix.HelixState.STANDBY_STATE;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -36,7 +40,7 @@ public class LeaderFollowerPartitionStateModelTest {
   private LeaderFollowerIngestionProgressNotifier notifier;
   private ReadOnlyStoreRepository metadataRepo;
   private CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture;
-  private ParticipantStateTransitionStats threadPoolStats;
+  private ParticipantStateTransitionStats stateTransitionStats;
   private HeartbeatMonitoringService heartbeatMonitoringService;
   private LeaderFollowerPartitionStateModel leaderFollowerPartitionStateModel;
   private static final String storeName = "store_85c9234588_1cce12d5";
@@ -50,12 +54,14 @@ public class LeaderFollowerPartitionStateModelTest {
     storeIngestionService = mock(KafkaStoreIngestionService.class);
     doReturn(storeIngestionService).when(ingestionBackend).getStoreIngestionService();
     doReturn(CompletableFuture.completedFuture(null)).when(ingestionBackend).stopConsumption(any(), anyInt());
+    doReturn(CompletableFuture.completedFuture(null)).when(ingestionBackend)
+        .dropStoragePartitionGracefully(any(), anyInt(), anyInt());
 
     storeAndServerConfigs = mock(VeniceStoreVersionConfig.class);
     notifier = mock(LeaderFollowerIngestionProgressNotifier.class);
     metadataRepo = mock(ReadOnlyStoreRepository.class);
     partitionPushStatusAccessorFuture = CompletableFuture.completedFuture(mock(HelixPartitionStatusAccessor.class));
-    threadPoolStats = mock(ParticipantStateTransitionStats.class);
+    stateTransitionStats = mock(ParticipantStateTransitionStats.class);
     heartbeatMonitoringService = mock(HeartbeatMonitoringService.class);
     leaderFollowerPartitionStateModel = new LeaderFollowerPartitionStateModel(
         ingestionBackend,
@@ -65,7 +71,7 @@ public class LeaderFollowerPartitionStateModelTest {
         metadataRepo,
         partitionPushStatusAccessorFuture,
         "instanceName",
-        threadPoolStats,
+        stateTransitionStats,
         heartbeatMonitoringService);
   }
 
@@ -99,5 +105,52 @@ public class LeaderFollowerPartitionStateModelTest {
     leaderFollowerPartitionStateModelSpy.onBecomeOfflineFromStandby(message, context);
     verify(heartbeatMonitoringService)
         .updateLagMonitor(eq(resourceName), eq(partition), eq(HeartbeatLagMonitorAction.REMOVE_MONITOR));
+  }
+
+  @Test
+  public void testStateModelStats() {
+    Message message = mock(Message.class);
+    NotificationContext context = mock(NotificationContext.class);
+    when(message.getResourceName()).thenReturn(resourceName);
+    Store store = mock(Store.class);
+    when(store.getVersionStatus(anyInt())).thenReturn(VersionStatus.STARTED);
+    doReturn(store).when(metadataRepo).getStoreOrThrow(anyString());
+
+    LeaderFollowerPartitionStateModel leaderFollowerPartitionStateModelSpy = spy(leaderFollowerPartitionStateModel);
+
+    // OFFLINE->STANDBY
+    doReturn(OFFLINE_STATE).when(message).getFromState();
+    doReturn(STANDBY_STATE).when(message).getToState();
+    leaderFollowerPartitionStateModelSpy.onBecomeStandbyFromOffline(message, context);
+    verify(stateTransitionStats).trackStateTransitionStarted(OFFLINE_STATE, STANDBY_STATE);
+    verify(stateTransitionStats).trackStateTransitionCompleted(OFFLINE_STATE, STANDBY_STATE);
+
+    // STANDBY->LEADER
+    doReturn(STANDBY_STATE).when(message).getFromState();
+    doReturn(LEADER_STATE).when(message).getToState();
+    leaderFollowerPartitionStateModelSpy.onBecomeLeaderFromStandby(message, context);
+    verify(stateTransitionStats).trackStateTransitionStarted(STANDBY_STATE, LEADER_STATE);
+    verify(stateTransitionStats).trackStateTransitionCompleted(STANDBY_STATE, LEADER_STATE);
+
+    // LEADER->STANDBY
+    doReturn(LEADER_STATE).when(message).getFromState();
+    doReturn(STANDBY_STATE).when(message).getToState();
+    leaderFollowerPartitionStateModelSpy.onBecomeStandbyFromLeader(message, context);
+    verify(stateTransitionStats).trackStateTransitionStarted(LEADER_STATE, STANDBY_STATE);
+    verify(stateTransitionStats).trackStateTransitionCompleted(LEADER_STATE, STANDBY_STATE);
+
+    // STANDBY->OFFLINE
+    doReturn(STANDBY_STATE).when(message).getFromState();
+    doReturn(OFFLINE_STATE).when(message).getToState();
+    leaderFollowerPartitionStateModelSpy.onBecomeOfflineFromStandby(message, context);
+    verify(stateTransitionStats).trackStateTransitionStarted(STANDBY_STATE, OFFLINE_STATE);
+    verify(stateTransitionStats).trackStateTransitionCompleted(STANDBY_STATE, OFFLINE_STATE);
+
+    // OFFLINE -> DROPPED
+    doReturn(OFFLINE_STATE).when(message).getFromState();
+    doReturn(DROPPED_STATE).when(message).getToState();
+    leaderFollowerPartitionStateModelSpy.onBecomeDroppedFromOffline(message, context);
+    verify(stateTransitionStats).trackStateTransitionStarted(OFFLINE_STATE, DROPPED_STATE);
+    verify(stateTransitionStats).trackStateTransitionCompleted(OFFLINE_STATE, DROPPED_STATE);
   }
 }
