@@ -297,7 +297,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
@@ -1346,7 +1345,7 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean isIncrementalPush,
       boolean isRepush) {
     VeniceControllerClusterConfig controllerConfig =
-        veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig();
+        getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig();
     ConcurrentPushDetectionStrategy pushDetectionStrategy = controllerConfig.getConcurrentPushDetectionStrategy();
     if (ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY.equals(pushDetectionStrategy)) {
       return getTopicForCurrentPushJobTopicBasedTracking(clusterName, storeName, isIncrementalPush, isRepush);
@@ -1521,32 +1520,27 @@ public class VeniceParentHelixAdmin implements Admin {
        * If the job is still running, Parent Controller will block current push.
        */
       final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
-      AtomicReference<ExecutionStatus> jobStatus = new AtomicReference<>(ExecutionStatus.PROGRESS);
-      AtomicReference<Map<String, String>> extraInfo = new AtomicReference<>(new HashMap<>());
+      ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;
+      Map<String, String> extraInfo = new HashMap<>();
 
       int retryTimes = 5;
-      RetryUtils.executeWithMaxAttempt(() -> {
+      int current = 0;
+      while (current++ < retryTimes) {
         OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, latestTopicName);
-        jobStatus.set(offlineJobStatus.getExecutionStatus());
-        extraInfo.set(offlineJobStatus.getExtraInfo());
-        if (extraInfo.get().containsValue(ExecutionStatus.UNKNOWN.toString())) {
-          throw new VeniceException("Found UNKNOWN satus for offline push status of {}" + latestTopicName);
+        jobStatus = offlineJobStatus.getExecutionStatus();
+        extraInfo = offlineJobStatus.getExtraInfo();
+        if (!extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
+          break;
         }
-      }, retryTimes, Duration.ofMillis(SLEEP_MS_BETWEEN_RETRY), RETRY_FAILURE_TYPES);
-      if (extraInfo.get().containsValue(ExecutionStatus.UNKNOWN.toString())) {
-        // TODO: Do we need to throw exception here??
-        LOGGER.error(
-            "Failed to get job status for topic: {} after retrying {} times, extra info: {}",
-            latestTopicName,
-            retryTimes,
-            extraInfo);
+        // Retry since there is a connection failure when querying job status against each datacenter
+        try {
+          timer.sleep(SLEEP_MS_BETWEEN_RETRY);
+        } catch (InterruptedException e) {
+          throw new VeniceException("Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
+        }
       }
-      if (!jobStatus.get().isTerminal()) {
-        LOGGER.info(
-            "Job status: {} for Kafka topic: {} is not terminal, extra info: {}",
-            jobStatus,
-            latestTopicName,
-            extraInfo);
+      if (!jobStatus.isTerminal()) {
+        LOGGER.info("Job status: {} for {} is not terminal, extra info: {}", jobStatus, latestTopicName, extraInfo);
         return latestTopic;
       }
     }
