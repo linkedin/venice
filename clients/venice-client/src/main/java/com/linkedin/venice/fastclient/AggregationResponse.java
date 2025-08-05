@@ -14,6 +14,12 @@ public interface AggregationResponse {
   Map<String, Map<String, Integer>> getFieldToValueCounts();
 
   /**
+   * Get the aggregated bucket counts for multiple fields in countByBucket operations.
+   * @return A map where keys are field names and values are maps of bucket names to counts
+   */
+  Map<String, Map<String, Integer>> getFieldToBucketCounts();
+
+  /**
    * Get the total number of keys processed.
    * @return The number of keys processed
    */

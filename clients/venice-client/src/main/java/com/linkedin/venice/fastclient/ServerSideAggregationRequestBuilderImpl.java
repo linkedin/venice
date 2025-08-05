@@ -6,10 +6,14 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.protocols.BucketPredicate;
+import com.linkedin.venice.protocols.CountByBucketRequest;
+import com.linkedin.venice.protocols.CountByBucketResponse;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.CountByBucketUtils;
 import com.linkedin.venice.utils.CountByValueUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -32,6 +36,9 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
 
   private List<String> fieldNames = new ArrayList<>();
   private int topK;
+  private Map<String, BucketPredicate> bucketPredicates = new HashMap<>();
+  private boolean isCountByValue = false;
+  private boolean isCountByBucket = false;
 
   public ServerSideAggregationRequestBuilderImpl(
       StoreMetadata metadata,
@@ -55,10 +62,51 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
     if (topK <= 0) {
       throw new VeniceClientException("TopK must be positive");
     }
-    this.fieldNames.clear();
+
+    resetState();
     this.fieldNames.addAll(fieldNames);
     this.topK = topK;
+    this.isCountByValue = true;
     return this;
+  }
+
+  @Override
+  public ServerSideAggregationRequestBuilder<K> countByBucket(
+      List<String> fieldNames,
+      Map<String, BucketPredicate> bucketPredicates) {
+    if (fieldNames == null || fieldNames.isEmpty()) {
+      throw new VeniceClientException("Field names cannot be null or empty");
+    }
+    for (String fieldName: fieldNames) {
+      if (fieldName == null || fieldName.isEmpty()) {
+        throw new VeniceClientException("Field name cannot be null or empty");
+      }
+    }
+    if (bucketPredicates == null || bucketPredicates.isEmpty()) {
+      throw new VeniceClientException("Bucket predicates cannot be null or empty");
+    }
+    for (Map.Entry<String, BucketPredicate> entry: bucketPredicates.entrySet()) {
+      if (entry.getKey() == null || entry.getKey().isEmpty()) {
+        throw new VeniceClientException("Bucket name cannot be null or empty");
+      }
+      if (entry.getValue() == null) {
+        throw new VeniceClientException("Bucket predicate cannot be null");
+      }
+    }
+
+    resetState();
+    this.fieldNames.addAll(fieldNames);
+    this.bucketPredicates.putAll(bucketPredicates);
+    this.isCountByBucket = true;
+    return this;
+  }
+
+  private void resetState() {
+    this.fieldNames.clear();
+    this.bucketPredicates.clear();
+    this.isCountByValue = false;
+    this.isCountByBucket = false;
+    this.topK = 0;
   }
 
   @Override
@@ -68,9 +116,25 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
     }
 
     if (fieldNames.isEmpty()) {
-      throw new VeniceClientException("Must call countByValue() before execute()");
+      throw new VeniceClientException("Must call countByValue() or countByBucket() before execute()");
     }
 
+    if (!isCountByValue && !isCountByBucket) {
+      throw new VeniceClientException("Must call countByValue() or countByBucket() before execute()");
+    }
+
+    if (isCountByValue && isCountByBucket) {
+      throw new VeniceClientException("Cannot call both countByValue() and countByBucket() in the same request");
+    }
+
+    if (isCountByValue) {
+      return executeCountByValue(keys);
+    } else {
+      return executeCountByBucket(keys);
+    }
+  }
+
+  private CompletableFuture<AggregationResponse> executeCountByValue(Set<K> keys) {
     int currentVersion = metadata.getCurrentStoreVersion();
     String resourceName = Version.composeKafkaTopic(metadata.getStoreName(), currentVersion);
 
@@ -131,7 +195,66 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
 
     // Step 3: Aggregate results from all partitions and compute TopK on client side
     return CompletableFuture.allOf(partitionFutures.toArray(new CompletableFuture[0]))
-        .thenApply(v -> aggregatePartitionResults(partitionFutures));
+        .thenApply(v -> aggregateCountByValueResults(partitionFutures));
+  }
+
+  private CompletableFuture<AggregationResponse> executeCountByBucket(Set<K> keys) {
+    int currentVersion = metadata.getCurrentStoreVersion();
+    String resourceName = Version.composeKafkaTopic(metadata.getStoreName(), currentVersion);
+
+    // Step 1: Partition keys by their target partitions (client-side partitioning)
+    Map<Integer, List<K>> partitionToKeysMap = partitionKeys(keys, currentVersion);
+
+    // Step 2: Send requests to each partition server in parallel
+    List<CompletableFuture<CountByBucketResponse>> partitionFutures = new ArrayList<>();
+
+    for (Map.Entry<Integer, List<K>> entry: partitionToKeysMap.entrySet()) {
+      int partitionId = entry.getKey();
+      List<K> partitionKeys = entry.getValue();
+
+      // Get server address for this partition
+      String serverAddress = metadata
+          .getReplica(System.currentTimeMillis(), 0, currentVersion, partitionId, java.util.Collections.emptySet());
+
+      if (serverAddress == null) {
+        throw new VeniceClientException(
+            "No available replicas found for partition " + partitionId + " in store: " + metadata.getStoreName());
+      }
+
+      // Serialize keys for this partition
+      List<ByteString> serializedKeys = partitionKeys.stream()
+          .map(key -> ByteString.copyFrom(keySerializer.serialize(key)))
+          .collect(Collectors.toList());
+
+      // Build CountByBucket request for this partition
+      CountByBucketRequest request = CountByBucketRequest.newBuilder()
+          .setResourceName(resourceName)
+          .addAllKeys(serializedKeys)
+          .addAllFieldNames(fieldNames)
+          .putAllBucketPredicates(bucketPredicates)
+          .build();
+
+      // Send request to partition server
+      CompletableFuture<CountByBucketResponse> future =
+          grpcTransportClient.countByBucket(serverAddress, request).thenApply(response -> {
+            if (response.getErrorCode() != VeniceReadResponseStatus.OK) {
+              String errorMessage = response.getErrorMessage();
+              throw new VeniceClientException(
+                  String.format(
+                      "Partition %d aggregation failed with error code %d: %s",
+                      partitionId,
+                      response.getErrorCode(),
+                      errorMessage.isEmpty() ? "Unknown error" : errorMessage));
+            }
+            return response;
+          });
+
+      partitionFutures.add(future);
+    }
+
+    // Step 3: Aggregate results from all partitions
+    return CompletableFuture.allOf(partitionFutures.toArray(new CompletableFuture[0]))
+        .thenApply(v -> aggregateCountByBucketResults(partitionFutures));
   }
 
   /**
@@ -150,9 +273,9 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
   }
 
   /**
-   * Aggregate results from all partition servers and compute TopK on client side.
+   * Aggregate CountByValue results from all partition servers and compute TopK on client side.
    */
-  private AggregationResponse aggregatePartitionResults(List<CompletableFuture<CountByValueResponse>> futures) {
+  private AggregationResponse aggregateCountByValueResults(List<CompletableFuture<CountByValueResponse>> futures) {
     try {
       // Extract responses from futures
       List<CountByValueResponse> responses = futures.stream().map(future -> {
@@ -183,6 +306,34 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
 
     } catch (Exception e) {
       throw new VeniceClientException("Failed to aggregate partition results", e);
+    }
+  }
+
+  /**
+   * Aggregate CountByBucket results from all partition servers.
+   */
+  private AggregationResponse aggregateCountByBucketResults(List<CompletableFuture<CountByBucketResponse>> futures) {
+    try {
+      // Extract responses from futures
+      List<CountByBucketResponse> responses = futures.stream().map(future -> {
+        try {
+          return future.get();
+        } catch (Exception e) {
+          throw new RuntimeException("Failed to get partition response", e);
+        }
+      }).collect(Collectors.toList());
+
+      // Merge partition responses using shared utility
+      List<String> bucketNames = new ArrayList<>(bucketPredicates.keySet());
+      Map<String, Map<String, Integer>> globalBucketCounts =
+          CountByBucketUtils.mergePartitionResponses(responses, fieldNames, bucketNames);
+
+      // Build response using shared utility
+      CountByBucketResponse response = CountByBucketUtils.buildResponse(fieldNames, globalBucketCounts);
+      return new AggregationResponseImpl(response);
+
+    } catch (Exception e) {
+      throw new VeniceClientException("Failed to aggregate bucket partition results", e);
     }
   }
 }

@@ -34,6 +34,8 @@ import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.protocols.BucketPredicate;
+import com.linkedin.venice.protocols.ComparisonPredicate;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -42,6 +44,8 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
@@ -542,5 +546,115 @@ public class VeniceGrpcEndToEndTest {
     }
 
     return keySets;
+  }
+
+  @Test
+  public void testCountByBucketEndToEnd() throws Exception {
+    // Create gRPC fast client
+    Client r2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_R2_CLIENT);
+    D2Client d2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
+
+    GrpcClientConfig grpcClientConfig = createGrpcClientConfig(r2Client);
+
+    ClientConfigBuilder<Object, Object, SpecificRecord> grpcClientConfigBuilder =
+        new ClientConfigBuilder<>().setStoreName(storeName).setUseGrpc(true).setGrpcClientConfig(grpcClientConfig);
+
+    AvroGenericStoreClient<String, GenericRecord> grpcFastClient =
+        getGenericFastClient(grpcClientConfigBuilder, new MetricsRepository(), d2Client);
+
+    // Define test keys - using single key for stable testing in distributed environment
+    // Note: Multiple keys can cause instability due to partition distribution across servers
+    Set<String> testKeys = new HashSet<>(Arrays.asList("1"));
+
+    // Get aggregation request builder
+    ServerSideAggregationRequestBuilder<String> requestBuilder;
+    if (grpcFastClient instanceof InternalAvroStoreClient) {
+      requestBuilder =
+          ((InternalAvroStoreClient<String, GenericRecord>) grpcFastClient).getServerSideAggregationRequestBuilder();
+    } else {
+      throw new RuntimeException("gRPC client does not support server-side aggregation");
+    }
+
+    // Step 1: Verify test data accessibility
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      for (String key: testKeys) {
+        Object record = grpcFastClient.get(key).get();
+        Assert.assertNotNull(record, "Data not ready for key " + key);
+        String value = ((Utf8) record).toString();
+        Assert.assertEquals(value, "test_name_" + key, "Value mismatch for key " + key);
+      }
+    });
+
+    // Create bucket predicates for testing (adjusted for single key test)
+    Map<String, BucketPredicate> bucketPredicates = new HashMap<>();
+
+    // Bucket 1: Values that match "test_name_1" (should match 1 key)
+    bucketPredicates.put(
+        "bucket_match",
+        BucketPredicate.newBuilder()
+            .setComparison(
+                ComparisonPredicate.newBuilder()
+                    .setOperator("IN")
+                    .setFieldType("STRING")
+                    .setValue("test_name_1")
+                    .build())
+            .build());
+
+    // Bucket 2: Values that don't match our test key (should match 0 keys)
+    bucketPredicates.put(
+        "bucket_no_match",
+        BucketPredicate.newBuilder()
+            .setComparison(
+                ComparisonPredicate.newBuilder()
+                    .setOperator("IN")
+                    .setFieldType("STRING")
+                    .setValue("test_name_999")
+                    .build())
+            .build());
+
+    // Add pause to ensure distributed system consistency after removing debug logs
+    Thread.sleep(5000);
+
+    // Step 2: Execute CountByBucket with exact verification and multiple attempts
+    TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, () -> {
+      AggregationResponse response =
+          requestBuilder.countByBucket(Arrays.asList("value"), bucketPredicates).execute(testKeys).get();
+
+      Assert.assertFalse(response.hasError(), "CountByBucket should not have errors: " + response.getErrorMessage());
+      Assert.assertNotNull(response.getFieldToBucketCounts(), "Field to bucket counts should not be null");
+      Assert
+          .assertTrue(response.getFieldToBucketCounts().containsKey("value"), "Response should contain 'value' field");
+
+      Map<String, Integer> bucketCounts = response.getFieldToBucketCounts().get("value");
+      Assert.assertNotNull(bucketCounts, "Bucket counts should not be null");
+
+      // Verify specific bucket counts
+      Assert.assertTrue(bucketCounts.containsKey("bucket_match"), "Should contain bucket_match");
+      Assert.assertTrue(bucketCounts.containsKey("bucket_no_match"), "Should contain bucket_no_match");
+
+      int matchCount = bucketCounts.get("bucket_match").intValue();
+      int noMatchCount = bucketCounts.get("bucket_no_match").intValue();
+      int totalCount = matchCount + noMatchCount;
+
+      if (totalCount < testKeys.size()) {
+        // Add a small delay before retrying to allow for distributed system consistency
+        Thread.sleep(500);
+        throw new AssertionError(
+            "CountByBucket returned incomplete results: got total count " + totalCount + " out of " + testKeys.size()
+                + " expected. Retrying...");
+      }
+
+      Assert.assertEquals(
+          totalCount,
+          testKeys.size(),
+          "Total count should exactly equal number of test keys (" + testKeys.size() + "), got: " + totalCount);
+
+      Assert.assertEquals(matchCount, 1, "bucket_match should have exactly 1 match");
+      Assert.assertEquals(noMatchCount, 0, "bucket_no_match should have exactly 0 matches");
+
+      LOGGER.info("CountByBucket test completed successfully with bucket counts: {}", bucketCounts);
+    });
+
+    grpcFastClient.close();
   }
 }

@@ -5,6 +5,8 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.listener.grpc.GrpcRequestContext;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.protocols.CountByBucketRequest;
+import com.linkedin.venice.protocols.CountByBucketResponse;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
@@ -26,6 +28,7 @@ public class VeniceServerGrpcRequestProcessor {
   private final ThreadPoolExecutor executor;
   private final StorageEngineBackedCompressorFactory compressorFactory;
   private final CountByValueProcessor countByValueProcessor;
+  private final CountByBucketProcessor countByBucketProcessor;
 
   // Default constructor for backward compatibility with existing tests
   public VeniceServerGrpcRequestProcessor() {
@@ -35,6 +38,7 @@ public class VeniceServerGrpcRequestProcessor {
     this.executor = null;
     this.compressorFactory = null;
     this.countByValueProcessor = null;
+    this.countByBucketProcessor = null;
   }
 
   // Main constructor with direct dependency injection
@@ -53,9 +57,12 @@ public class VeniceServerGrpcRequestProcessor {
     if (this.storageEngineRepository != null && this.schemaRepository != null && this.storeRepository != null) {
       this.countByValueProcessor =
           new CountByValueProcessor(storageEngineRepository, schemaRepository, storeRepository, compressorFactory);
+      this.countByBucketProcessor =
+          new CountByBucketProcessor(storageEngineRepository, schemaRepository, storeRepository, compressorFactory);
     } else {
-      LOGGER.warn("Some dependencies are null, countByValue functionality will not be available");
+      LOGGER.warn("Some dependencies are null, countByValue and countByBucket functionality will not be available");
       this.countByValueProcessor = null;
+      this.countByBucketProcessor = null;
     }
   }
 
@@ -91,5 +98,19 @@ public class VeniceServerGrpcRequestProcessor {
           .build();
     }
     return countByValueProcessor.processCountByValue(request);
+  }
+
+  /**
+   * Process countByBucket aggregation request with real data processing.
+   */
+  public CountByBucketResponse processCountByBucket(CountByBucketRequest request) {
+    if (countByBucketProcessor == null) {
+      LOGGER.warn("CountByBucket dependencies not available");
+      return CountByBucketResponse.newBuilder()
+          .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
+          .setErrorMessage("CountByBucket dependencies not available")
+          .build();
+    }
+    return countByBucketProcessor.processCountByBucket(request);
   }
 }

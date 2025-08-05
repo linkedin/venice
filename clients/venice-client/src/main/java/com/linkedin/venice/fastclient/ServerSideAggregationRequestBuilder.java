@@ -1,7 +1,9 @@
 package com.linkedin.venice.fastclient;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.protocols.BucketPredicate;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -19,6 +21,17 @@ public interface ServerSideAggregationRequestBuilder<K> {
    * @return This builder for chaining
    */
   ServerSideAggregationRequestBuilder<K> countByValue(List<String> fieldNames, int topK);
+
+  /**
+   * Count and group by field values into predefined buckets.
+   * 
+   * @param fieldNames The list of fields to count values for
+   * @param bucketPredicates Map of bucket names to their corresponding predicates
+   * @return This builder for chaining
+   */
+  ServerSideAggregationRequestBuilder<K> countByBucket(
+      List<String> fieldNames,
+      Map<String, BucketPredicate> bucketPredicates);
 
   /**
    * Execute the aggregation request on the server side using gRPC.

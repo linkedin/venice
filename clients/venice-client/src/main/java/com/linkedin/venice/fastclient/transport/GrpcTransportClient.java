@@ -13,6 +13,8 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.fastclient.GrpcClientConfig;
 import com.linkedin.venice.grpc.GrpcUtils;
+import com.linkedin.venice.protocols.CountByBucketRequest;
+import com.linkedin.venice.protocols.CountByBucketResponse;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.protocols.VeniceClientRequest;
@@ -124,6 +126,37 @@ public class GrpcTransportClient extends InternalTransportClient {
       @Override
       public void onCompleted() {
         LOGGER.debug("Completed countByValue gRPC request");
+      }
+    });
+
+    return responseFuture;
+  }
+
+  /**
+   * Performs a countByBucket aggregation request using gRPC.
+   * @param serverAddress The server address to send the request to
+   * @param request The countByBucket request containing keys, field names, and bucket predicates
+   * @return A future containing the aggregation response
+   */
+  public CompletableFuture<CountByBucketResponse> countByBucket(String serverAddress, CountByBucketRequest request) {
+    CompletableFuture<CountByBucketResponse> responseFuture = new CompletableFuture<>();
+    VeniceReadServiceGrpc.VeniceReadServiceStub clientStub = getOrCreateStub(serverAddress);
+
+    clientStub.countByBucket(request, new StreamObserver<CountByBucketResponse>() {
+      @Override
+      public void onNext(CountByBucketResponse response) {
+        responseFuture.complete(response);
+      }
+
+      @Override
+      public void onError(Throwable t) {
+        LOGGER.error("Error in countByBucket request", t);
+        responseFuture.completeExceptionally(t);
+      }
+
+      @Override
+      public void onCompleted() {
+        LOGGER.debug("Completed countByBucket gRPC request");
       }
     });
 

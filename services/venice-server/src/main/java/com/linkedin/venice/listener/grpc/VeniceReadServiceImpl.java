@@ -1,6 +1,8 @@
 package com.linkedin.venice.listener.grpc;
 
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcRequestProcessor;
+import com.linkedin.venice.protocols.CountByBucketRequest;
+import com.linkedin.venice.protocols.CountByBucketResponse;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.protocols.VeniceClientRequest;
@@ -52,6 +54,33 @@ public class VeniceReadServiceImpl extends VeniceReadServiceGrpc.VeniceReadServi
     } catch (Exception e) {
       LOGGER.error("Error processing countByValue request", e);
       CountByValueResponse errorResponse = CountByValueResponse.newBuilder()
+          .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
+          .setErrorMessage("Internal error: " + e.getMessage())
+          .build();
+      responseObserver.onNext(errorResponse);
+      responseObserver.onCompleted();
+    }
+  }
+
+  @Override
+  public void countByBucket(CountByBucketRequest request, StreamObserver<CountByBucketResponse> responseObserver) {
+    try {
+      CountByBucketResponse response = requestProcessor.processCountByBucket(request);
+
+      // Ensure response has a valid error code
+      if (response.getErrorCode() == 0) {
+        LOGGER.warn("Response has undefined error code 0, setting to INTERNAL_ERROR");
+        response = response.toBuilder()
+            .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
+            .setErrorMessage(response.getErrorMessage().isEmpty() ? "Undefined error code" : response.getErrorMessage())
+            .build();
+      }
+
+      responseObserver.onNext(response);
+      responseObserver.onCompleted();
+    } catch (Exception e) {
+      LOGGER.error("Error processing countByBucket request", e);
+      CountByBucketResponse errorResponse = CountByBucketResponse.newBuilder()
           .setErrorCode(VeniceReadResponseStatus.INTERNAL_ERROR)
           .setErrorMessage("Internal error: " + e.getMessage())
           .build();
