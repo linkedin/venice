@@ -6,6 +6,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -77,11 +78,12 @@ public class TestStoreBackupVersionCleanupService {
       Version v = mock(Version.class);
       doReturn(n).when(v).getNumber();
       doReturn(s).when(v).getStatus();
+      doReturn(System.currentTimeMillis()).when(v).getCreatedTime();
       versionList.add(v);
     });
     doReturn(versionList).when(store).getVersions();
-    for (int i = 0; i < versionList.size(); i++) {
-      doReturn(versionList.get(i)).when(store).getVersion(i + 1);
+    for (Version version: versionList) {
+      when(store.getVersion(version.getNumber())).thenReturn(version);
     }
     doReturn(versionList.get(versionList.size() - 1)).when(store).getVersionOrThrow(currentVersion);
     return store;
@@ -225,6 +227,8 @@ public class TestStoreBackupVersionCleanupService {
     doReturn(clusterManager).when(mockClusterResource).getRoutersClusterManager();
     StoreBackupVersionCleanupService service =
         new StoreBackupVersionCleanupService(admin, config, mock(MetricsRepository.class));
+    long waitTimeDeleteRepushSourceVersion = 100;
+    StoreBackupVersionCleanupService.setWaitTimeDeleteRepushSourceVersion(waitTimeDeleteRepushSourceVersion);
 
     String clusterName = "test_cluster";
     // Store is not qualified because of short life time of backup version
@@ -254,16 +258,51 @@ public class TestStoreBackupVersionCleanupService {
     versions.put(1, VersionStatus.ONLINE);
     versions.put(3, VersionStatus.ONLINE);
     Store storeLingeringVersion = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 3);
-    version = storeLingeringVersion.getVersion(2);
+    version = storeLingeringVersion.getVersion(3);
     doReturn(2).when(version).getRepushSourceVersion();
+    version = storeLingeringVersion.getVersion(1);
     doReturn(1L).when(version).getCreatedTime();
 
-    // should delete version 1 as its lingerning and not a repush source version.
+    // should delete version 1 as it's lingering and not a repush source version.
     Assert.assertTrue(service.cleanupBackupVersion(storeLingeringVersion, clusterName));
     TestUtils.waitForNonDeterministicAssertion(
         1,
         TimeUnit.SECONDS,
         () -> verify(admin, atLeast(1)).deleteOldVersionInStore(clusterName, storeLingeringVersion.getName(), 1));
+
+    // Test case: Store with multiple repushed versions
+    // Version 2 is repushed from Version 3 until Version 10
+    versions.clear();
+    int minRepushedVersion = 3;
+    int maxRepushedVersion = 10;
+    for (int v = 1; v <= maxRepushedVersion; v++) {
+      versions.put(v, VersionStatus.ONLINE);
+    }
+    Store repushedStore = mockStore(-1, System.currentTimeMillis(), versions, maxRepushedVersion);
+    for (int v = minRepushedVersion; v <= maxRepushedVersion; v++) {
+      version = repushedStore.getVersion(v);
+      doReturn(v - 1).when(version).getRepushSourceVersion();
+    }
+
+    // Cleanup service should not run, since it hasn't been long enough since the latest version was promoted to current
+    Assert.assertFalse(service.cleanupBackupVersion(repushedStore, clusterName), "No versions should be cleaned up");
+    for (int v = minRepushedVersion; v < maxRepushedVersion; v++) {
+      verify(admin, never()).deleteOldVersionInStore(clusterName, repushedStore.getName(), v);
+    }
+
+    // Versions 2..9 should be deleted, but not Version 1 or Version 10
+    doReturn(System.currentTimeMillis() - 2 * waitTimeDeleteRepushSourceVersion).when(repushedStore)
+        .getLatestVersionPromoteToCurrentTimestamp(); // cleanup service can run again
+    Assert.assertTrue(service.cleanupBackupVersion(repushedStore, clusterName));
+    verify(admin, never()).deleteOldVersionInStore(clusterName, repushedStore.getName(), 1);
+    for (int v = minRepushedVersion - 1; v < maxRepushedVersion; v++) { // version 2, 3, 4, ..., 9
+      int versionNumber = v; // for compiler warning
+      TestUtils.waitForNonDeterministicAssertion(
+          1,
+          TimeUnit.SECONDS,
+          () -> verify(admin, atLeast(1)).deleteOldVersionInStore(clusterName, repushedStore.getName(), versionNumber));
+    }
+    verify(admin, never()).deleteOldVersionInStore(clusterName, repushedStore.getName(), maxRepushedVersion);
   }
 
   @Test
