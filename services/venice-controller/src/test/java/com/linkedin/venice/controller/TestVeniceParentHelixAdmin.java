@@ -3098,8 +3098,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testTargetedRegionValidation() {
     try {
+      HelixVeniceClusterResources clusterResources = internalAdmin.getHelixVeniceClusterResources(clusterName);
+      doReturn(clusterResources).when(internalAdmin).getHelixVeniceClusterResources(clusterName);
       parentAdmin.incrementVersionIdempotent(
-          "test",
+          clusterName,
           "test",
           "test",
           1,
@@ -3117,7 +3119,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           -1);
       Assert.fail("Test should fail, but doesn't");
     } catch (VeniceException e) {
-      assertEquals(e.getMessage(), "One of the targeted region invalidRegion is not a valid region in cluster test");
+      assertEquals(
+          e.getMessage(),
+          "One of the targeted region invalidRegion is not a valid region in cluster test-cluster");
     }
   }
 
