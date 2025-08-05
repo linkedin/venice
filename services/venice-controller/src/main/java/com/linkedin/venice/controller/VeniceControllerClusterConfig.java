@@ -27,6 +27,7 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONCURRENT_PUSH_DETECTION_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_GRPC_PORT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_SECURE_GRPC_PORT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
@@ -99,7 +100,6 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLIN
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_NO_REPORT_RETRY_MAX_ATTEMPTS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_THREAD_NUMBER;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_CONCURRENT_PUSH_DETECTION_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_RECORD_SIZE_BYTES;
@@ -656,9 +656,9 @@ public class VeniceControllerClusterConfig {
       this.persistenceType = PersistenceType.IN_MEMORY;
     }
 
-    if (props.containsKey(DEFAULT_CONCURRENT_PUSH_DETECTION_STRATEGY)) {
+    if (props.containsKey(CONCURRENT_PUSH_DETECTION_STRATEGY)) {
       this.concurrentPushDetectionStrategy =
-          ConcurrentPushDetectionStrategy.valueOf(props.getString(DEFAULT_CONCURRENT_PUSH_DETECTION_STRATEGY));
+          ConcurrentPushDetectionStrategy.valueOf(props.getString(CONCURRENT_PUSH_DETECTION_STRATEGY));
     } else {
       this.concurrentPushDetectionStrategy = ConcurrentPushDetectionStrategy.DUAL;
     }

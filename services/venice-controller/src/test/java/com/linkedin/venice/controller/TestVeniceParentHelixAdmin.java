@@ -2571,7 +2571,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new VeniceControllerMultiClusterConfig(configMap)).when(mockParentAdmin).getMultiClusterConfigs();
 
     doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false, false);
-    doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJobParentVersionStatusBased(clusterName, storeName);
+    doCallRealMethod().when(mockParentAdmin)
+        .getTopicForCurrentPushJobParentVersionStatusBasedTracking(clusterName, storeName);
 
     Store store = new ZKStore(
         storeName,

@@ -78,6 +78,7 @@ import static com.linkedin.venice.meta.Version.VERSION_SEPARATOR;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.KILLED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
+import static com.linkedin.venice.meta.VersionStatus.PARTIALLY_ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
@@ -296,6 +297,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
@@ -1343,28 +1345,31 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName,
       boolean isIncrementalPush,
       boolean isRepush) {
-    if (getMultiClusterConfigs().getConcurrentPushDetectionStrategy()
-        .equals(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY)) {
-      return getTopicForCurrentPushJobTopicBased(clusterName, storeName, isIncrementalPush, isRepush);
-    } else if (getMultiClusterConfigs().getConcurrentPushDetectionStrategy()
-        .equals(ConcurrentPushDetectionStrategy.DUAL)) {
+    VeniceControllerClusterConfig controllerConfig =
+        veniceHelixAdmin.getHelixVeniceClusterResources(clusterName).getConfig();
+    ConcurrentPushDetectionStrategy pushDetectionStrategy = controllerConfig.getConcurrentPushDetectionStrategy();
+    if (ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY.equals(pushDetectionStrategy)) {
+      return getTopicForCurrentPushJobTopicBasedTracking(clusterName, storeName, isIncrementalPush, isRepush);
+    } else if (ConcurrentPushDetectionStrategy.DUAL.equals(pushDetectionStrategy)) {
       Optional<String> topicBased =
-          getTopicForCurrentPushJobTopicBased(clusterName, storeName, isIncrementalPush, isRepush);
-      Optional<String> versionStatusBased = getTopicForCurrentPushJobParentVersionStatusBased(clusterName, storeName);
+          getTopicForCurrentPushJobTopicBasedTracking(clusterName, storeName, isIncrementalPush, isRepush);
+      Optional<String> versionStatusBased =
+          getTopicForCurrentPushJobParentVersionStatusBasedTracking(clusterName, storeName);
       if (!topicBased.equals(versionStatusBased)) {
         LOGGER.error(
-            "getTopicForCurrentPushJob returns different value for store {}, topicBased: {}, versionStatusBased: {}",
+            "getTopicForCurrentPushJob returns different value for store {} in cluster {}, topicBased: {}, versionStatusBased: {}",
             storeName,
+            clusterName,
             topicBased,
             versionStatusBased);
       }
       return topicBased;
     } else {
-      return getTopicForCurrentPushJobParentVersionStatusBased(clusterName, storeName);
+      return getTopicForCurrentPushJobParentVersionStatusBasedTracking(clusterName, storeName);
     }
   }
 
-  Optional<String> getTopicForCurrentPushJobTopicBased(
+  Optional<String> getTopicForCurrentPushJobTopicBasedTracking(
       String clusterName,
       String storeName,
       boolean isIncrementalPush,
@@ -1376,9 +1381,6 @@ public class VeniceParentHelixAdmin implements Admin {
       latestTopic = Optional.of(versionTopics.get(0));
     }
 
-    /**
-     * Check current topic retention to decide whether the previous job is already done or not
-     */
     if (latestTopic.isPresent()) {
       LOGGER.debug("Latest kafka topic for store: {} is {}", storeName, latestTopic.get());
       final String latestTopicName = latestTopic.get().getName();
@@ -1484,7 +1486,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return Optional.empty();
   }
 
-  Optional<String> getTopicForCurrentPushJobParentVersionStatusBased(String clusterName, String storeName) {
+  Optional<String> getTopicForCurrentPushJobParentVersionStatusBasedTracking(String clusterName, String storeName) {
     Store store = getStore(clusterName, storeName);
     if (store == null) {
       return Optional.empty();
@@ -1493,7 +1495,7 @@ public class VeniceParentHelixAdmin implements Admin {
     Version lastVersion = lastVersionNum > 0 ? store.getVersion(lastVersionNum) : null;
     Optional<String> latestTopic = Optional.empty();
     if (lastVersion != null && lastVersion.getStatus() != ERROR && lastVersion.getStatus() != KILLED
-        && lastVersion.getStatus() != ONLINE) {
+        && lastVersion.getStatus() != ONLINE && lastVersion.getStatus() != PARTIALLY_ONLINE) {
       latestTopic = Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
     }
     /**
@@ -1519,26 +1521,19 @@ public class VeniceParentHelixAdmin implements Admin {
        * If the job is still running, Parent Controller will block current push.
        */
       final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
-      ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;
-      Map<String, String> extraInfo = new HashMap<>();
+      AtomicReference<ExecutionStatus> jobStatus = new AtomicReference<>(ExecutionStatus.PROGRESS);
+      AtomicReference<Map<String, String>> extraInfo = new AtomicReference<>(new HashMap<>());
 
       int retryTimes = 5;
-      int current = 0;
-      while (current++ < retryTimes) {
+      RetryUtils.executeWithMaxAttempt(() -> {
         OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, latestTopicName);
-        jobStatus = offlineJobStatus.getExecutionStatus();
-        extraInfo = offlineJobStatus.getExtraInfo();
-        if (!extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
-          break;
+        jobStatus.set(offlineJobStatus.getExecutionStatus());
+        extraInfo.set(offlineJobStatus.getExtraInfo());
+        if (extraInfo.get().containsValue(ExecutionStatus.UNKNOWN.toString())) {
+          throw new VeniceException("Found UNKNOWN satus for offline push status of {}" + latestTopicName);
         }
-        // Retry since there is a connection failure when querying job status against each datacenter
-        try {
-          timer.sleep(SLEEP_MS_BETWEEN_RETRY);
-        } catch (InterruptedException e) {
-          throw new VeniceException("Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
-        }
-      }
-      if (extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
+      }, retryTimes, Duration.ofMillis(SLEEP_MS_BETWEEN_RETRY), RETRY_FAILURE_TYPES);
+      if (extraInfo.get().containsValue(ExecutionStatus.UNKNOWN.toString())) {
         // TODO: Do we need to throw exception here??
         LOGGER.error(
             "Failed to get job status for topic: {} after retrying {} times, extra info: {}",
@@ -1546,7 +1541,7 @@ public class VeniceParentHelixAdmin implements Admin {
             retryTimes,
             extraInfo);
       }
-      if (!jobStatus.isTerminal()) {
+      if (!jobStatus.get().isTerminal()) {
         LOGGER.info(
             "Job status: {} for Kafka topic: {} is not terminal, extra info: {}",
             jobStatus,
@@ -2348,7 +2343,14 @@ public class VeniceParentHelixAdmin implements Admin {
           "Truncating topic {} after child controllers tried to roll forward to not block new versions",
           kafkaTopic);
       truncateKafkaTopic(kafkaTopic);
-
+      HelixVeniceClusterResources resources = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName);
+      try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+        Store parentStore = repository.getStore(storeName);
+        int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+        parentStore.updateVersionStatus(version, ONLINE);
+        repository.updateStore(parentStore);
+      }
       LOGGER.info(
           "Roll forward to future version {} is successful in all regions for store {}",
           futureVersionBeforeRollForward,
@@ -4160,20 +4162,10 @@ public class VeniceParentHelixAdmin implements Admin {
 
     boolean isTargetRegionPush = !StringUtils.isEmpty(targetedRegions);
 
-    if (multiClusterConfigs.getConcurrentPushDetectionStrategy().isTopicWriteNeeded() && (!isTargetRegionPush // Push is
-                                                                                                              // complete
-                                                                                                              // for a
-                                                                                                              // normal
-                                                                                                              // batch
-                                                                                                              // push
-                                                                                                              // w/o
-                                                                                                              // target
-                                                                                                              // region
-                                                                                                              // push
-        || isPushCompleteInAllRegionsForTargetRegionPush // Push is complete in all regions for a target region push
-                                                         // w/o
-        // deferred swap
-        || isHybridStore) // Push is to a hybrid store
+    if (!isTargetRegionPush // Push is complete for normal batchpush w/o target region push
+        || isPushCompleteInAllRegionsForTargetRegionPush // Push is complete in all regions for a target region push w/o
+                                                         // deferred swap
+        || isHybridStore // Push is to a hybrid store
     ) {
       LOGGER.info("Truncating parent VT {} after push status {}", kafkaTopic, currentReturnStatus.getRootStatus());
       truncateTopicsOptionally(
