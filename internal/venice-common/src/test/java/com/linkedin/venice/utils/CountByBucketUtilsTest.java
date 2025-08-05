@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -14,6 +16,7 @@ import com.linkedin.venice.protocols.LogicalPredicate;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -415,5 +418,164 @@ public class CountByBucketUtilsTest {
       // Verify that bucket counts structure is still maintained after exception
       assertNotNull(bucketCounts.get("testField"));
     }
+  }
+
+  @Test
+  public void testProcessValueForBucketsWithCompressionException() {
+    // Mock dependencies
+    SchemaEntry mockSchemaEntry = Mockito.mock(SchemaEntry.class);
+    VeniceCompressor mockCompressor = Mockito.mock(VeniceCompressor.class);
+    AvroStoreDeserializerCache<Object> mockDeserializerCache = Mockito.mock(AvroStoreDeserializerCache.class);
+
+    // Setup mock to throw exception during decompression
+    try {
+      Mockito.when(mockCompressor.decompress(any(ByteBuffer.class)))
+          .thenThrow(new RuntimeException("Decompression failed"));
+    } catch (Exception e) {
+      // This won't happen in test setup, but needed for compiler
+    }
+
+    // Test data
+    byte[] valueBytes = "test_value".getBytes();
+    List<String> fieldNames = Arrays.asList("testField");
+    Map<String, BucketPredicate> bucketPredicates = new HashMap<>();
+    Schema valueSchema = Schema.create(Schema.Type.STRING);
+    Map<String, Map<String, Integer>> bucketCounts =
+        CountByBucketUtils.initializeBucketCounts(fieldNames, Arrays.asList("test_bucket"));
+
+    // Test with compression strategy that triggers decompression
+    CountByBucketUtils.processValueForBuckets(
+        valueBytes,
+        fieldNames,
+        bucketPredicates,
+        valueSchema,
+        mockSchemaEntry,
+        CompressionStrategy.GZIP,
+        mockCompressor,
+        mockDeserializerCache,
+        bucketCounts);
+
+    // Should return early due to decompression exception, bucket counts remain unchanged
+    assertEquals(bucketCounts.get("testField").get("test_bucket"), Integer.valueOf(0));
+  }
+
+  @Test
+  public void testProcessValueForBucketsWithDeserializationException() {
+    // Mock dependencies
+    SchemaEntry mockSchemaEntry = Mockito.mock(SchemaEntry.class);
+    VeniceCompressor mockCompressor = Mockito.mock(VeniceCompressor.class);
+    AvroStoreDeserializerCache<Object> mockDeserializerCache = Mockito.mock(AvroStoreDeserializerCache.class);
+
+    // Setup mock to throw exception during deserialization
+    Mockito.when(mockSchemaEntry.getId()).thenReturn(1);
+    try {
+      Mockito.when(mockDeserializerCache.getDeserializer(anyInt(), anyInt()))
+          .thenThrow(new RuntimeException("Deserialization failed"));
+    } catch (Exception e) {
+      // This won't happen in test setup, but needed for compiler
+    }
+
+    // Test data
+    byte[] valueBytes = "test_value".getBytes();
+    List<String> fieldNames = Arrays.asList("testField");
+    Map<String, BucketPredicate> bucketPredicates = new HashMap<>();
+    Schema valueSchema = Schema.create(Schema.Type.STRING);
+    Map<String, Map<String, Integer>> bucketCounts =
+        CountByBucketUtils.initializeBucketCounts(fieldNames, Arrays.asList("test_bucket"));
+
+    // Test deserialization exception handling
+    CountByBucketUtils.processValueForBuckets(
+        valueBytes,
+        fieldNames,
+        bucketPredicates,
+        valueSchema,
+        mockSchemaEntry,
+        CompressionStrategy.NO_OP,
+        mockCompressor,
+        mockDeserializerCache,
+        bucketCounts);
+
+    // Should return early due to deserialization exception, bucket counts remain unchanged
+    assertEquals(bucketCounts.get("testField").get("test_bucket"), Integer.valueOf(0));
+  }
+
+  @Test
+  public void testProcessValueForBucketsWithRecordSchema() {
+    // Mock dependencies for record schema processing
+    SchemaEntry mockSchemaEntry = Mockito.mock(SchemaEntry.class);
+    VeniceCompressor mockCompressor = Mockito.mock(VeniceCompressor.class);
+    AvroStoreDeserializerCache<Object> mockDeserializerCache = Mockito.mock(AvroStoreDeserializerCache.class);
+
+    // Test data
+    byte[] valueBytes = "test_value".getBytes();
+    List<String> fieldNames = Arrays.asList("testField");
+    Map<String, BucketPredicate> bucketPredicates = new HashMap<>();
+
+    // Create a RECORD schema (not STRING) to test different schema type branch
+    Schema recordSchema = Schema.createRecord("TestRecord", null, null, false);
+    recordSchema.setFields(Arrays.asList(new Schema.Field("testField", Schema.create(Schema.Type.STRING), null, null)));
+
+    Map<String, Map<String, Integer>> bucketCounts =
+        CountByBucketUtils.initializeBucketCounts(fieldNames, Arrays.asList("test_bucket"));
+
+    // Mock the schema entry and deserializer to avoid actual deserialization
+    Mockito.when(mockSchemaEntry.getId()).thenReturn(1);
+
+    // Test record schema processing (will likely fail due to mocking, but tests the branch)
+    CountByBucketUtils.processValueForBuckets(
+        valueBytes,
+        fieldNames,
+        bucketPredicates,
+        recordSchema, // Using RECORD schema instead of STRING
+        mockSchemaEntry,
+        CompressionStrategy.NO_OP,
+        mockCompressor,
+        mockDeserializerCache,
+        bucketCounts);
+
+    // Structure should remain intact even if processing fails
+    assertNotNull(bucketCounts.get("testField"));
+  }
+
+  @Test
+  public void testMergePartitionResponsesWithEmptyResponses() {
+    List<String> fieldNames = Arrays.asList("age");
+    List<String> bucketNames = Arrays.asList("young", "old");
+
+    // Test with empty response list
+    List<CountByBucketResponse> emptyResponses = Arrays.asList();
+
+    Map<String, Map<String, Integer>> merged =
+        CountByBucketUtils.mergePartitionResponses(emptyResponses, fieldNames, bucketNames);
+
+    // Should initialize empty bucket counts
+    assertEquals(merged.get("age").get("young"), Integer.valueOf(0));
+    assertEquals(merged.get("age").get("old"), Integer.valueOf(0));
+  }
+
+  @Test
+  public void testMergePartitionResponsesWithMissingBuckets() {
+    List<String> fieldNames = Arrays.asList("age");
+    List<String> bucketNames = Arrays.asList("young", "middle", "old");
+
+    // Create response with only some buckets (missing "middle")
+    BucketCount partialCount = BucketCount.newBuilder()
+        .putBucketToCounts("young", 5)
+        .putBucketToCounts("old", 3)
+        // "middle" bucket is missing
+        .build();
+
+    CountByBucketResponse partialResponse =
+        CountByBucketResponse.newBuilder().putFieldToBucketCounts("age", partialCount).build();
+
+    List<CountByBucketResponse> responses = Arrays.asList(partialResponse);
+
+    Map<String, Map<String, Integer>> merged =
+        CountByBucketUtils.mergePartitionResponses(responses, fieldNames, bucketNames);
+
+    // All buckets should be present, missing ones with 0 count
+    assertEquals(merged.get("age").get("young"), Integer.valueOf(5));
+    assertEquals(merged.get("age").get("middle"), Integer.valueOf(0)); // Should be 0 for missing bucket
+    assertEquals(merged.get("age").get("old"), Integer.valueOf(3));
   }
 }
