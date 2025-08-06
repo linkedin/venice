@@ -10,7 +10,6 @@ import static com.linkedin.venice.router.stats.RouterMetricEntity.KEY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.KEY_SIZE;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.RETRY_COUNT;
 import static com.linkedin.venice.router.stats.RouterMetricEntity.RETRY_DELAY;
-import static com.linkedin.venice.stats.AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusCodeCategory.getVeniceHttpResponseStatusCodeCategory;
 import static com.linkedin.venice.stats.dimensions.HttpResponseStatusEnum.transformHttpResponseStatusToHttpResponseStatusEnum;
 import static com.linkedin.venice.stats.dimensions.RequestRetryAbortReason.DELAY_CONSTRAINT;
@@ -471,77 +470,39 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     inFlightRequestSensor = registerSensor("in_flight_request_count", new Min(), new Max(0), new Avg());
 
     if (isKeyValueProfilingEnabled) {
-      if (storeName.equals(STORE_NAME_FOR_TOTAL_STAT)) {
-        // Record only Tehuti metrics when storeName is total stats.
-        keySizeMetric = MetricEntityStateBase.create(
-            KEY_SIZE.getMetricEntity(),
-            null, // no OTEL repository/metrics
-            this::registerSensorFinal,
-            RouterTehutiMetricNameEnum.KEY_SIZE_IN_BYTE,
-            Arrays.asList(
-                new Avg(),
-                new Max(),
-                TehutiUtils.getFineGrainedPercentileStat(
-                    getName(),
-                    getFullMetricName(RouterTehutiMetricNameEnum.KEY_SIZE_IN_BYTE.getMetricName()))),
-            baseDimensionsMap,
-            baseAttributes);
-
-        // Record only Tehuti for response size metrics too
-        responseSizeMetric = MetricEntityStateOneEnum.create(
-            CALL_SIZE.getMetricEntity(),
-            null, // no OTEL repository/metrics
-            this::registerSensorFinal,
-            RouterTehutiMetricNameEnum.RESPONSE_SIZE,
-            Arrays.asList(
-                new Avg(),
-                new Max(),
-                TehutiUtils.getFineGrainedPercentileStat(
-                    getName(),
-                    getFullMetricName(RouterTehutiMetricNameEnum.RESPONSE_SIZE.getMetricName()))),
-            baseDimensionsMap,
-            MessageType.class);
-      } else {
-        // Record only OTel metrics when storeName is not total stats.
-        keySizeMetric =
-            MetricEntityStateBase.create(KEY_SIZE.getMetricEntity(), otelRepository, baseDimensionsMap, baseAttributes);
-
-        // You can record both Tehuti and OTel for response size, or only OTel if that's required.
-        responseSizeMetric = MetricEntityStateOneEnum.create(
-            CALL_SIZE.getMetricEntity(),
-            otelRepository,
-            this::registerSensorFinal,
-            // Pass null Tehuti metric name if you want OTel only,
-            // or keep both if you want dual record:
-            RouterTehutiMetricNameEnum.RESPONSE_SIZE,
-            Arrays.asList(
-                new Avg(),
-                new Max(),
-                TehutiUtils.getFineGrainedPercentileStat(
-                    getName(),
-                    getFullMetricName(RouterTehutiMetricNameEnum.RESPONSE_SIZE.getMetricName()))),
-            baseDimensionsMap,
-            MessageType.class);
-      }
-    } else {
-      // If key size/key profiling is not enabled, do not record key size metrics.
-      keySizeMetric = null;
-
-      // Still record OTel response size for all cases.
-      responseSizeMetric = MetricEntityStateOneEnum.create(
-          CALL_SIZE.getMetricEntity(),
+      // 1. emit otel metric if the store is not total: otelRepository will be null for total
+      // 2. emit tehuti metrics if the store is total (keeping existing behavior)
+      keySizeMetric = MetricEntityStateBase.create(
+          KEY_SIZE.getMetricEntity(),
           otelRepository,
           this::registerSensorFinal,
-          RouterTehutiMetricNameEnum.RESPONSE_SIZE,
-          Arrays.asList(
-              new Avg(),
-              new Max(),
-              TehutiUtils.getPercentileStat(
-                  getName(),
-                  getFullMetricName(RouterTehutiMetricNameEnum.RESPONSE_SIZE.getMetricName()))),
+          RouterTehutiMetricNameEnum.KEY_SIZE_IN_BYTE,
+          isTotalStats()
+              ? null
+              : Arrays.asList(
+                  new Avg(),
+                  new Max(),
+                  TehutiUtils.getPercentileStat(
+                      getName(),
+                      getFullMetricName(RouterTehutiMetricNameEnum.KEY_SIZE_IN_BYTE.getMetricName()))),
           baseDimensionsMap,
-          MessageType.class);
+          baseAttributes);
+    } else {
+      keySizeMetric = null;
     }
+    responseSizeMetric = MetricEntityStateOneEnum.create(
+        CALL_SIZE.getMetricEntity(),
+        otelRepository,
+        this::registerSensorFinal,
+        RouterTehutiMetricNameEnum.RESPONSE_SIZE,
+        Arrays.asList(
+            new Avg(),
+            new Max(),
+            TehutiUtils.getPercentileStat(
+                getName(),
+                getFullMetricName(RouterTehutiMetricNameEnum.RESPONSE_SIZE.getMetricName()))),
+        baseDimensionsMap,
+        MessageType.class);
 
     // Initialize the in-flight request counter
     currentInFlightRequest = new AtomicInteger();
