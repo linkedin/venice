@@ -5,6 +5,8 @@ import static org.testng.Assert.assertNull;
 
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -39,7 +41,7 @@ public class TestOffsetRecord {
     Assert.assertEquals(offsetRecord2, offsetRecord1);
 
     offsetRecord1 = TestUtils.getOffsetRecord(100);
-    offsetRecord1.endOfPushReceived(100);
+    offsetRecord1.endOfPushReceived(ApacheKafkaOffsetPosition.of(100L));
     offsetRecord2 = new OffsetRecord(offsetRecord1.toBytes(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     Assert.assertEquals(offsetRecord2, offsetRecord1);
   }
@@ -47,16 +49,18 @@ public class TestOffsetRecord {
   @Test
   public void testResetUpstreamOffsetMap() {
     OffsetRecord offsetRecord = TestUtils.getOffsetRecord(100);
-    offsetRecord.setLeaderUpstreamOffset(TEST_KAFKA_URL1, 1L);
+    PubSubPosition p1 = ApacheKafkaOffsetPosition.of(1L);
+    PubSubPosition p2 = ApacheKafkaOffsetPosition.of(2L);
+    offsetRecord.setLeaderUpstreamOffset(TEST_KAFKA_URL1, p1);
 
-    Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL1), 1L);
+    Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL1), p1);
 
-    Map<String, Long> testMap = new HashMap<>();
-    testMap.put(TEST_KAFKA_URL2, 2L);
+    Map<String, PubSubPosition> testMap = new HashMap<>();
+    testMap.put(TEST_KAFKA_URL2, p2);
     offsetRecord.updateUpstreamOffsets(testMap);
     // no upstream found for it so fall back to use the leaderOffset which is 1
-    Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL1), 1L);
-    Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL2), 2L);
+    Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL1), p1);
+    Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL2), p2);
   }
 
   @Test

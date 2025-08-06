@@ -154,7 +154,7 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   synchronized void subscribe(
       PubSubTopic versionTopic,
       PubSubTopicPartition topicPartitionToSubscribe,
-      long lastReadOffset) {
+      PubSubPosition lastReadOffset) {
     long delegateSubscribeStartTime = System.currentTimeMillis();
     this.delegate.subscribe(topicPartitionToSubscribe, lastReadOffset);
     PubSubTopic previousVersionTopic =
