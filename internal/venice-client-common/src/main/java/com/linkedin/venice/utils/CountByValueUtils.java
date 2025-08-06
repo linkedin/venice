@@ -208,19 +208,7 @@ public class CountByValueUtils {
       return normalizeValue(value);
     }
 
-    // For record-valued stores, extract the specific field
-    if (value instanceof GenericRecord) {
-      GenericRecord record = (GenericRecord) value;
-      // Check if field exists in schema before trying to get it
-      if (record.getSchema().getField(fieldName) != null) {
-        Object fieldValue = record.get(fieldName);
-        if (fieldValue != null) {
-          return normalizeValue(fieldValue);
-        }
-      }
-    }
-
-    // For ComputeGenericRecord (thin-client), just extract directly
+    // For ComputeGenericRecord (thin-client), extract directly using reflection
     if (hasGetMethod(value)) {
       try {
         Object fieldValue = value.getClass().getMethod("get", String.class).invoke(value, fieldName);
@@ -228,7 +216,20 @@ public class CountByValueUtils {
           return normalizeValue(fieldValue);
         }
       } catch (Exception e) {
-        // Fall back to return null
+        // Fall back to GenericRecord check
+      }
+    }
+
+    // For record-valued stores, extract the specific field
+    if (value instanceof GenericRecord) {
+      GenericRecord record = (GenericRecord) value;
+      // Check if field exists in schema before trying to get it
+      Schema schema = record.getSchema();
+      if (schema != null && schema.getField(fieldName) != null) {
+        Object fieldValue = record.get(fieldName);
+        if (fieldValue != null) {
+          return normalizeValue(fieldValue);
+        }
       }
     }
 
