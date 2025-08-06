@@ -3,6 +3,7 @@ package com.linkedin.venice.pubsub.mock.adapter.consumer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -21,7 +22,10 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -37,6 +41,8 @@ import java.util.Set;
  *
  */
 public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
+  private static final Logger LOGGER = LogManager.getLogger(MockInMemoryConsumerAdapter.class);
+
   private final InMemoryPubSubBroker broker;
   private final Map<PubSubTopicPartition, InMemoryPubSubPosition> offsets = new VeniceConcurrentHashMap<>();
   private final PollStrategy pollStrategy;
@@ -66,6 +72,12 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
 
   @Override
   public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition lastReadPubSubPosition) {
+    Objects.requireNonNull(pubSubTopicPartition, "pubSubTopicPartition cannot be null");
+    Objects.requireNonNull(lastReadPubSubPosition, "lastReadPubSubPosition cannot be null");
+    LOGGER.info(
+        "Requested to subscribe to topic partition: {}, last read position: {}",
+        pubSubTopicPartition,
+        lastReadPubSubPosition);
     InMemoryPubSubPosition lastReadPosition;
     if (lastReadPubSubPosition == PubSubSymbolicPosition.EARLIEST) {
       lastReadPosition = InMemoryPubSubPosition.of(-1L);
@@ -73,6 +85,9 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
       lastReadPosition = (InMemoryPubSubPosition) endPosition(pubSubTopicPartition);
     } else if (lastReadPubSubPosition instanceof InMemoryPubSubPosition) {
       lastReadPosition = (InMemoryPubSubPosition) lastReadPubSubPosition;
+    } else if (lastReadPubSubPosition instanceof ApacheKafkaOffsetPosition) {
+      lastReadPosition =
+          InMemoryPubSubPosition.of(((ApacheKafkaOffsetPosition) lastReadPubSubPosition).getInternalOffset());
     } else {
       throw new IllegalArgumentException("Unsupported PubSubPosition type: " + lastReadPubSubPosition.getClass());
     }
@@ -80,6 +95,7 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
     pausedTopicPartitions.remove(pubSubTopicPartition);
     delegate.subscribe(pubSubTopicPartition, lastReadPosition);
     offsets.put(pubSubTopicPartition, lastReadPosition);
+    LOGGER.info("Subscribed to topic partition: {}, last read position: {}", pubSubTopicPartition, lastReadPosition);
   }
 
   @Override

@@ -70,6 +70,6 @@ final class LatestPosition implements PubSubPosition {
 
   @Override
   public long getNumericOffset() {
-    throw new UnsupportedOperationException("Cannot get numeric offset for LATEST position");
+    return Long.MAX_VALUE;
   }
 }

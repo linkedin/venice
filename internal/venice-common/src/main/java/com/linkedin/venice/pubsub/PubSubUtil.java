@@ -7,6 +7,7 @@ import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CLIENT_CONFIG_PREFIX;
 
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
@@ -14,6 +15,7 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.nio.ByteBuffer;
 import java.util.Properties;
 
 
@@ -284,5 +286,23 @@ public final class PubSubUtil {
       return consumerAdapter.endPosition(partition);
     }
     return position;
+  }
+
+  /**
+   * Get the Kafka offset position buffer for the given offset.
+   * This is temporarily used to convert the offset to a buffer during the transition to using
+   * {@link com.linkedin.venice.pubsub.api.PubSubPosition} in the OffsetRecord.
+   * @param offset the offset to convert
+   * @return a ByteBuffer representing the Kafka offset position
+   */
+  public static ByteBuffer toKafkaPositionWf(long offset) {
+    return ApacheKafkaOffsetPosition.of(offset).toWireFormatBuffer();
+  }
+
+  public static PubSubPosition fromKafkaOffset(long offset) {
+    if (offset == -1) {
+      return PubSubSymbolicPosition.EARLIEST; // -1 is start offset
+    }
+    return ApacheKafkaOffsetPosition.of(offset);
   }
 }
