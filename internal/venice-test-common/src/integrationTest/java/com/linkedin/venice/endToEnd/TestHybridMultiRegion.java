@@ -270,11 +270,7 @@ public class TestHybridMultiRegion {
             stringSerializer.serialize("value_writer_1"),
             1,
             null,
-            new LeaderMetadataWrapper(
-                upstreamPosition1.getNumericOffset(),
-                0,
-                DEFAULT_TERM_ID,
-                upstreamPosition1.toWireFormatBuffer()));
+            new LeaderMetadataWrapper(upstreamPosition1, 0, DEFAULT_TERM_ID));
         veniceWriter1.flush();
 
         PubSubPosition upstreamPosition2 = new ApacheKafkaOffsetPosition(1);
@@ -283,11 +279,7 @@ public class TestHybridMultiRegion {
             stringSerializer.serialize("value_writer_2"),
             1,
             null,
-            new LeaderMetadataWrapper(
-                upstreamPosition2.getNumericOffset(),
-                0,
-                DEFAULT_TERM_ID,
-                upstreamPosition2.toWireFormatBuffer()));
+            new LeaderMetadataWrapper(upstreamPosition2, 0, DEFAULT_TERM_ID));
         veniceWriter2.flush();
 
         PubSubPosition upstreamPositionIPlusFive;
@@ -298,11 +290,7 @@ public class TestHybridMultiRegion {
               stringSerializer.serialize("value_" + i),
               1,
               null,
-              new LeaderMetadataWrapper(
-                  upstreamPositionIPlusFive.getNumericOffset(),
-                  0,
-                  DEFAULT_TERM_ID,
-                  upstreamPositionIPlusFive.toWireFormatBuffer()));
+              new LeaderMetadataWrapper(upstreamPositionIPlusFive, 0, DEFAULT_TERM_ID));
         }
         veniceWriter1.flush();
 
@@ -312,11 +300,7 @@ public class TestHybridMultiRegion {
             stringSerializer.serialize("value_x"),
             1,
             null,
-            new LeaderMetadataWrapper(
-                upstreamPosition3.getNumericOffset(),
-                0,
-                DEFAULT_TERM_ID,
-                upstreamPosition3.toWireFormatBuffer()));
+            new LeaderMetadataWrapper(upstreamPosition3, 0, DEFAULT_TERM_ID));
 
         for (int i = 5; i < 10; ++i) {
           upstreamPositionIPlusFive = new ApacheKafkaOffsetPosition(i + 5);
@@ -325,11 +309,7 @@ public class TestHybridMultiRegion {
               stringSerializer.serialize("value_" + i),
               1,
               null,
-              new LeaderMetadataWrapper(
-                  upstreamPositionIPlusFive.getNumericOffset(),
-                  0,
-                  DEFAULT_TERM_ID,
-                  upstreamPositionIPlusFive.toWireFormatBuffer()));
+              new LeaderMetadataWrapper(upstreamPositionIPlusFive, 0, DEFAULT_TERM_ID));
         }
         veniceWriter2.flush();
         veniceWriter1.broadcastEndOfPush(Collections.emptyMap());

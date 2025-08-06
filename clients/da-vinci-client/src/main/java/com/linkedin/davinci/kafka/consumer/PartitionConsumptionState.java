@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
+import static com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.EARLIEST;
 
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.utils.ByteArrayKey;
@@ -14,6 +15,7 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -54,7 +56,7 @@ public class PartitionConsumptionState {
 
   /**
    * whether the ingestion of current partition is deferred-write.
-   * Refer {@link com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition#deferredWrite}
+   * Refer {@code com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition#deferredWrite}
    */
   private boolean deferredWrite;
   private boolean errorReported;
@@ -178,12 +180,12 @@ public class PartitionConsumptionState {
    * Key: source Kafka url
    * Value: Latest upstream RT offsets of a specific source consumed by leader
    */
-  private final ConcurrentMap<String, Long> consumedUpstreamRTOffsetMap;
+  private final ConcurrentMap<String, PubSubPosition> consumedUpstreamRTOffsetMap;
 
   /**
    * For Global RT DIV. When the RT DIV is loaded from disk, the LCRO must remain in-memory before the subscribe().
    */
-  private final ConcurrentMap<String, Long> latestConsumedRtOffsetMap;
+  private final ConcurrentMap<String, PubSubPosition> latestConsumedRtOffsetMap;
 
   // stores the SOP control message's producer timestamp.
   private long startOfPushTimestamp = 0;
@@ -194,18 +196,18 @@ public class PartitionConsumptionState {
   /**
    * Latest local version topic offset processed by drainer.
    */
-  private long latestProcessedLocalVersionTopicOffset;
+  private PubSubPosition latestProcessedLocalVersionTopicOffset;
   /**
    * Latest upstream version topic offset processed by drainer; if batch native replication source is the same as local
    * region, this tracking offset should remain as -1.
    */
-  private long latestProcessedUpstreamVersionTopicOffset;
+  private PubSubPosition latestProcessedUpstreamVersionTopicOffset;
 
   /**
    * Key: source Kafka url
    * Value: Latest upstream RT offsets of a specific source processed by drainer
    */
-  private final Map<String, Long> latestProcessedUpstreamRTOffsetMap;
+  private final Map<String, PubSubPosition> latestProcessedUpstreamRTOffsetMap;
 
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
@@ -296,7 +298,7 @@ public class PartitionConsumptionState {
   }
 
   public boolean isStarted() {
-    return getLatestProcessedLocalVersionTopicOffset() > 0;
+    return getLatestProcessedLocalVersionTopicOffset() != EARLIEST;
   }
 
   public final boolean isEndOfPushReceived() {
@@ -699,29 +701,31 @@ public class PartitionConsumptionState {
     }
   }
 
-  public void updateLeaderConsumedUpstreamRTOffset(String kafkaUrl, long offset) {
+  public void updateLeaderConsumedUpstreamRTOffset(String kafkaUrl, PubSubPosition offset) {
     consumedUpstreamRTOffsetMap.put(kafkaUrl, offset);
   }
 
-  public long getLeaderConsumedUpstreamRTOffset(String kafkaUrl) {
-    return consumedUpstreamRTOffsetMap.getOrDefault(kafkaUrl, 0L);
+  public PubSubPosition getLeaderConsumedUpstreamRTOffset(String kafkaUrl) {
+    // TODO(sushantmane): We changed default value from 0L to EARLIEST
+    return consumedUpstreamRTOffsetMap.getOrDefault(kafkaUrl, PubSubSymbolicPosition.EARLIEST);
   }
 
-  public void updateLatestConsumedRtOffset(String brokerUrl, long offset) {
+  public void updateLatestConsumedRtOffset(String brokerUrl, PubSubPosition offset) {
     latestConsumedRtOffsetMap.put(brokerUrl, offset);
   }
 
-  public long getLatestConsumedRtOffset(String brokerUrl) {
-    return latestConsumedRtOffsetMap.getOrDefault(brokerUrl, -1L);
+  public PubSubPosition getLatestConsumedRtOffset(String brokerUrl) {
+    return latestConsumedRtOffsetMap.getOrDefault(brokerUrl, PubSubSymbolicPosition.EARLIEST);
   }
 
-  public void updateLatestProcessedUpstreamRTOffset(String kafkaUrl, long offset) {
+  public void updateLatestProcessedUpstreamRTOffset(String kafkaUrl, PubSubPosition offset) {
     latestProcessedUpstreamRTOffsetMap.put(kafkaUrl, offset);
   }
 
-  public long getLatestProcessedUpstreamRTOffset(String kafkaUrl) {
-    long latestProcessedUpstreamRTOffset = getLatestProcessedUpstreamRTOffsetMap().getOrDefault(kafkaUrl, -1L);
-    if (latestProcessedUpstreamRTOffset < 0) {
+  public PubSubPosition getLatestProcessedUpstreamRTOffset(String kafkaUrl) {
+    PubSubPosition latestProcessedUpstreamRTOffset =
+        getLatestProcessedUpstreamRTOffsetMap().getOrDefault(kafkaUrl, PubSubSymbolicPosition.EARLIEST);
+    if (latestProcessedUpstreamRTOffset == PubSubSymbolicPosition.EARLIEST) {
       /**
        * When processing {@link TopicSwitch} control message, only the checkpoint upstream offset maps in {@link OffsetRecord}
        * will be updated, since those offset are not processed yet; so when leader try to get the upstream offsets for the very
@@ -732,7 +736,7 @@ public class PartitionConsumptionState {
     return latestProcessedUpstreamRTOffset;
   }
 
-  public long getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository) {
+  public PubSubPosition getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository) {
     return getLeaderOffset(kafkaURL, pubSubTopicRepository, false);
   }
 
@@ -743,7 +747,7 @@ public class PartitionConsumptionState {
    * 2. if currently leader should consume from version topic, return either remote VT offset or local VT offset, depending
    *    on whether the remote consumption flag is on.
    */
-  public long getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository, boolean useLcro) {
+  public PubSubPosition getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository, boolean useLcro) {
     PubSubTopic leaderTopic = getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     if (leaderTopic != null && !leaderTopic.isVersionTopic()) {
       // consumed corresponds to messages seen by consumer, processed corresponds to messages seen by drainer
@@ -771,23 +775,23 @@ public class PartitionConsumptionState {
     return endOfPushTimestamp;
   }
 
-  public void updateLatestProcessedLocalVersionTopicOffset(long offset) {
+  public void updateLatestProcessedLocalVersionTopicOffset(PubSubPosition offset) {
     this.latestProcessedLocalVersionTopicOffset = offset;
   }
 
-  public long getLatestProcessedLocalVersionTopicOffset() {
+  public PubSubPosition getLatestProcessedLocalVersionTopicOffset() {
     return this.latestProcessedLocalVersionTopicOffset;
   }
 
-  public long getLatestConsumedVtOffset() {
+  public PubSubPosition getLatestConsumedVtOffset() {
     return offsetRecord.getLatestConsumedVtOffset();
   }
 
-  public void updateLatestProcessedUpstreamVersionTopicOffset(long offset) {
+  public void updateLatestProcessedUpstreamVersionTopicOffset(PubSubPosition offset) {
     this.latestProcessedUpstreamVersionTopicOffset = offset;
   }
 
-  public long getLatestProcessedUpstreamVersionTopicOffset() {
+  public PubSubPosition getLatestProcessedUpstreamVersionTopicOffset() {
     return this.latestProcessedUpstreamVersionTopicOffset;
   }
 
@@ -799,7 +803,7 @@ public class PartitionConsumptionState {
     return isDataRecoveryCompleted;
   }
 
-  public Map<String, Long> getLatestProcessedUpstreamRTOffsetMap() {
+  public Map<String, PubSubPosition> getLatestProcessedUpstreamRTOffsetMap() {
     return this.latestProcessedUpstreamRTOffsetMap;
   }
 

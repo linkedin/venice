@@ -39,9 +39,11 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicAuthorizationException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
@@ -188,14 +190,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * when reading records that don't have those fields, typically when we deserialize a record from older version to
    * newer version.
    */
-  public static final long DEFAULT_UPSTREAM_OFFSET =
-      (long) AvroCompatibilityHelper.getSpecificDefaultValue(LeaderMetadata.SCHEMA$.getField("upstreamOffset"));
+  public static final PubSubPosition DEFAULT_UPSTREAM_PUBSUB_POSITION = PubSubSymbolicPosition.EARLIEST;
 
   public static final int DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID =
       (int) AvroCompatibilityHelper.getSpecificDefaultValue(LeaderMetadata.SCHEMA$.getField("upstreamKafkaClusterId"));
-
-  public static final ByteBuffer DEFAULT_UPSTREAM_PUBSUB_POSITION = (ByteBuffer) AvroCompatibilityHelper
-      .getSpecificDefaultValue(LeaderMetadata.SCHEMA$.getField("upstreamPubSubPosition"));
 
   public static final long DEFAULT_TERM_ID =
       (long) AvroCompatibilityHelper.getSpecificDefaultValue(LeaderMetadata.SCHEMA$.getField("termId"));
@@ -240,11 +238,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   public static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(EMPTY_BYTE_ARRAY);
 
-  public static final LeaderMetadataWrapper DEFAULT_LEADER_METADATA_WRAPPER = new LeaderMetadataWrapper(
-      DEFAULT_UPSTREAM_OFFSET,
-      DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
-      DEFAULT_TERM_ID,
-      DEFAULT_UPSTREAM_PUBSUB_POSITION);
+  public static final LeaderMetadataWrapper DEFAULT_LEADER_METADATA_WRAPPER =
+      new LeaderMetadataWrapper(DEFAULT_UPSTREAM_PUBSUB_POSITION, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID, DEFAULT_TERM_ID);
 
   // Immutable state
   private final PubSubMessageHeader protocolSchemaHeader;
@@ -286,8 +281,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static class DefaultLeaderMetadata extends LeaderMetadata {
     public DefaultLeaderMetadata(CharSequence hostName) {
       this.hostName = hostName;
-      this.upstreamOffset = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamOffset();
-      this.upstreamPubSubPosition = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamPubSubPosition();
+      this.upstreamOffset = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamPosition().getNumericOffset();
+      this.upstreamPubSubPosition = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamPosition().toWireFormatBuffer();
       this.upstreamKafkaClusterId = DEFAULT_LEADER_METADATA_WRAPPER.getUpstreamKafkaClusterId();
       this.termId = DEFAULT_LEADER_METADATA_WRAPPER.getTermId();
     }
@@ -1178,8 +1173,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       KafkaMessageEnvelope kafkaMessageEnvelope,
       LeaderMetadataWrapper leaderMetadataWrapper) {
     LeaderMetadata leaderMetadata = new LeaderMetadata();
-    leaderMetadata.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
-    leaderMetadata.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPubSubPosition();
+    leaderMetadata.upstreamOffset = leaderMetadataWrapper.getUpstreamPosition().getNumericOffset();
+    leaderMetadata.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
     leaderMetadata.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
     leaderMetadata.termId = leaderMetadataWrapper.getTermId();
     leaderMetadata.hostName = writerId;
@@ -1701,10 +1696,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         leaderMetadataWrapper.getViewPartitionMap() == null
             ? DEFAULT_LEADER_METADATA_WRAPPER
             : new LeaderMetadataWrapper(
-                DEFAULT_UPSTREAM_OFFSET,
+                DEFAULT_UPSTREAM_PUBSUB_POSITION,
                 DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
                 DEFAULT_TERM_ID,
-                DEFAULT_UPSTREAM_PUBSUB_POSITION,
                 leaderMetadataWrapper.getViewPartitionMap());
     MessageType keyMessageType = (isPutMessage) ? MessageType.PUT : MessageType.GLOBAL_RT_DIV;
     int schemaId =
@@ -2136,8 +2130,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     LeaderMetadata leaderMetadataFooter = new LeaderMetadata();
     leaderMetadataFooter.hostName = writerId;
-    leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
-    leaderMetadataFooter.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPubSubPosition();
+    leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamPosition().getNumericOffset();
+    leaderMetadataFooter.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
     leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
     leaderMetadataFooter.termId = leaderMetadataWrapper.getTermId();
 
@@ -2259,8 +2253,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     } else {
       kafkaValue.leaderMetadataFooter = new LeaderMetadata();
       kafkaValue.leaderMetadataFooter.hostName = writerId;
-      kafkaValue.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
-      kafkaValue.leaderMetadataFooter.upstreamPubSubPosition = leaderMetadataWrapper.getUpstreamPubSubPosition();
+      kafkaValue.leaderMetadataFooter.upstreamOffset = leaderMetadataWrapper.getUpstreamPosition().getNumericOffset();
+      kafkaValue.leaderMetadataFooter.upstreamPubSubPosition =
+          leaderMetadataWrapper.getUpstreamPosition().toWireFormatBuffer();
       kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
       kafkaValue.leaderMetadataFooter.termId = leaderMetadataWrapper.getTermId();
     }

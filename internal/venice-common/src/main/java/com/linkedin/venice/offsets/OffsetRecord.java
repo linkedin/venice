@@ -1,6 +1,7 @@
 package com.linkedin.venice.offsets;
 
-import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_OFFSET;
+import static com.linkedin.venice.pubsub.PubSubUtil.fromKafkaOffset;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_PUBSUB_POSITION;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -8,12 +9,13 @@ import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -71,16 +73,16 @@ public class OffsetRecord {
     emptyPartitionState.lastUpdate = 0;
     emptyPartitionState.databaseInfo = new VeniceConcurrentHashMap<>();
     emptyPartitionState.previousStatuses = new VeniceConcurrentHashMap<>();
-    emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_OFFSET;
+    emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_PUBSUB_POSITION.getNumericOffset();
     emptyPartitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
-    emptyPartitionState.upstreamVersionTopicOffset = DEFAULT_UPSTREAM_OFFSET;
+    emptyPartitionState.upstreamVersionTopicOffset = DEFAULT_UPSTREAM_PUBSUB_POSITION.getNumericOffset();
     emptyPartitionState.pendingReportIncrementalPushVersions = new ArrayList<>();
     emptyPartitionState.setRealtimeTopicProducerStates(new VeniceConcurrentHashMap<>());
-    emptyPartitionState.currentTermStartPubSubPosition = ByteBuffer.allocate(0);
-    emptyPartitionState.lastProcessedVersionTopicPubSubPosition = ByteBuffer.allocate(0);
-    emptyPartitionState.lastConsumedVersionTopicPubSubPosition = ByteBuffer.allocate(0);
     emptyPartitionState.upstreamRealTimeTopicPubSubPositionMap = new VeniceConcurrentHashMap<>();
-    emptyPartitionState.upstreamVersionTopicPubSubPosition = ByteBuffer.allocate(0);
+    emptyPartitionState.currentTermStartPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    emptyPartitionState.lastProcessedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    emptyPartitionState.lastConsumedVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
+    emptyPartitionState.upstreamVersionTopicPubSubPosition = PubSubSymbolicPosition.EARLIEST.toWireFormatBuffer();
     return emptyPartitionState;
   }
 
@@ -88,8 +90,8 @@ public class OffsetRecord {
     return serializer.deserialize(PARTITION_STATE_STRING, bytes);
   }
 
-  public long getLocalVersionTopicOffset() {
-    return this.partitionState.offset;
+  public PubSubPosition getLocalVersionTopicOffset() {
+    return fromKafkaOffset(this.partitionState.offset);
   }
 
   public void setPreviousStatusesEntry(String key, String value) {
@@ -100,16 +102,24 @@ public class OffsetRecord {
     return partitionState.getPreviousStatuses().getOrDefault(key, NULL_STRING).toString();
   }
 
-  public void setCheckpointLocalVersionTopicOffset(long offset) {
-    this.partitionState.offset = offset;
+  public void setCheckpointLocalVersionTopicOffset(PubSubPosition offset) {
+    if (offset == null) {
+      throw new IllegalArgumentException("Offset cannot be null.");
+    }
+    if (offset.getPositionWireFormat() == null) {
+      throw new IllegalArgumentException("Offset cannot be symbolic." + offset);
+    }
+    this.partitionState.lastProcessedVersionTopicPubSubPosition = offset.toWireFormatBuffer();
+    this.partitionState.offset = offset.getNumericOffset();
   }
 
-  public long getCheckpointUpstreamVersionTopicOffset() {
-    return this.partitionState.upstreamVersionTopicOffset;
+  public PubSubPosition getCheckpointUpstreamVersionTopicOffset() {
+    return fromKafkaOffset(this.partitionState.upstreamVersionTopicOffset);
   }
 
-  public void setCheckpointUpstreamVersionTopicOffset(long upstreamVersionTopicOffset) {
-    this.partitionState.upstreamVersionTopicOffset = upstreamVersionTopicOffset;
+  public void setCheckpointUpstreamVersionTopicOffset(PubSubPosition upstreamVersionTopicOffset) {
+    this.partitionState.upstreamVersionTopicPubSubPosition = upstreamVersionTopicOffset.toWireFormatBuffer();
+    this.partitionState.upstreamVersionTopicOffset = upstreamVersionTopicOffset.getNumericOffset();
   }
 
   public long getOffsetLag() {
@@ -155,11 +165,7 @@ public class OffsetRecord {
     this.partitionState.lastUpdate = updateTimeInMs;
   }
 
-  public void endOfPushReceived(long endOfPushOffset) {
-    if (endOfPushOffset < 1) {
-      // Even an empty push should have a SOP and EOP, so offset 1 is the absolute minimum.
-      throw new IllegalArgumentException("endOfPushOffset cannot be < 1.");
-    }
+  public void endOfPushReceived() {
     this.partitionState.endOfPush = true;
   }
 
@@ -233,8 +239,9 @@ public class OffsetRecord {
     this.leaderPubSubTopic = leaderTopic;
   }
 
-  public void setLeaderUpstreamOffset(String upstreamKafkaURL, long leaderOffset) {
-    partitionState.upstreamOffsetMap.put(upstreamKafkaURL, leaderOffset);
+  public void setLeaderUpstreamOffset(String upstreamKafkaURL, PubSubPosition leaderOffset) {
+    partitionState.upstreamRealTimeTopicPubSubPositionMap.put(upstreamKafkaURL, leaderOffset.toWireFormatBuffer());
+    partitionState.upstreamOffsetMap.put(upstreamKafkaURL, leaderOffset.getNumericOffset());
   }
 
   public void setLeaderGUID(GUID guid) {
@@ -269,18 +276,27 @@ public class OffsetRecord {
    * leader is still consuming VT, so it would return VT offset; users should
    * call this API to get the latest upstream offset.
    */
-  public long getUpstreamOffset(String kafkaURL) {
-    return partitionState.upstreamOffsetMap.getOrDefault(kafkaURL, -1L);
+  public PubSubPosition getUpstreamOffset(String kafkaURL) {
+    Long offset = partitionState.upstreamOffsetMap.get(kafkaURL);
+    if (offset == null) {
+      // If the offset is not set, return EARLIEST symbolic position.
+      return PubSubSymbolicPosition.EARLIEST;
+    }
+    return fromKafkaOffset(offset);
   }
 
   /**
    * Clone the checkpoint upstream offset map to another map provided as the input.
    */
-  public void cloneUpstreamOffsetMap(@Nonnull Map<String, Long> checkpointUpstreamOffsetMapReceiver) {
+  public void cloneUpstreamOffsetMap(@Nonnull Map<String, PubSubPosition> checkpointUpstreamOffsetMapReceiver) {
     if (partitionState.upstreamOffsetMap != null && !partitionState.upstreamOffsetMap.isEmpty()) {
       Validate.notNull(checkpointUpstreamOffsetMapReceiver);
       checkpointUpstreamOffsetMapReceiver.clear();
-      checkpointUpstreamOffsetMapReceiver.putAll(partitionState.upstreamOffsetMap);
+      for (Map.Entry<String, Long> offsetEntry: partitionState.upstreamOffsetMap.entrySet()) {
+        String kafkaURL = offsetEntry.getKey();
+        long offset = offsetEntry.getValue();
+        checkpointUpstreamOffsetMapReceiver.put(kafkaURL, fromKafkaOffset(offset));
+      }
     }
   }
 
@@ -288,9 +304,9 @@ public class OffsetRecord {
    * Update the checkpoint upstream offset map with new values from another map provided as the input.
    * @param newUpstreamOffsetMap
    */
-  public void updateUpstreamOffsets(@Nonnull Map<String, Long> newUpstreamOffsetMap) {
+  public void updateUpstreamOffsets(@Nonnull Map<String, PubSubPosition> newUpstreamOffsetMap) {
     Validate.notNull(newUpstreamOffsetMap);
-    for (Map.Entry<String, Long> offsetEntry: newUpstreamOffsetMap.entrySet()) {
+    for (Map.Entry<String, PubSubPosition> offsetEntry: newUpstreamOffsetMap.entrySet()) {
       // leader offset can be the topic offset from any colo
       this.setLeaderUpstreamOffset(offsetEntry.getKey(), offsetEntry.getValue());
     }
@@ -326,12 +342,13 @@ public class OffsetRecord {
     this.partitionState.setRecordTransformerClassHash(classHash);
   }
 
-  public void setLatestConsumedVtOffset(long latestConsumedVtOffset) {
-    this.partitionState.setLastConsumedVersionTopicOffset(latestConsumedVtOffset);
+  public void setLatestConsumedVtOffset(PubSubPosition latestConsumedVtOffset) {
+    this.partitionState.setLastConsumedVersionTopicPubSubPosition(latestConsumedVtOffset.toWireFormatBuffer());
+    this.partitionState.setLastConsumedVersionTopicOffset(latestConsumedVtOffset.getNumericOffset());
   }
 
-  public long getLatestConsumedVtOffset() {
-    return this.partitionState.getLastConsumedVersionTopicOffset();
+  public PubSubPosition getLatestConsumedVtOffset() {
+    return fromKafkaOffset(this.partitionState.getLastConsumedVersionTopicOffset());
   }
 
   /**
@@ -352,7 +369,11 @@ public class OffsetRecord {
         + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
         + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
         + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + ", recordTransformerClassHash="
-        + getRecordTransformerClassHash() + '}';
+        + getRecordTransformerClassHash() + ", pubSubPosition={" + "currentTermStartPubSubPosition="
+        + partitionState.getCurrentTermStartPubSubPosition() + ", lastProcessedVersionTopicPubSubPosition="
+        + partitionState.getLastProcessedVersionTopicPubSubPosition() + ", lastConsumedVersionTopicPubSubPosition="
+        + partitionState.getLastConsumedVersionTopicPubSubPosition() + ", upstreamVersionTopicPubSubPosition="
+        + partitionState.getUpstreamVersionTopicPubSubPosition() + "}";
   }
 
   /**

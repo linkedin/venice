@@ -14,6 +14,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
+import static com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.EARLIEST;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.closeQuietlyWithErrorLogged;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
@@ -100,6 +101,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
@@ -910,7 +912,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState) {
     String replicaId = getReplicaId(topic, partitionId);
     boolean returnStatus = true;
-    if (offsetRecord.getLocalVersionTopicOffset() > 0) {
+    if (offsetRecord.getLocalVersionTopicOffset() != EARLIEST) {
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
       if (storeVersionState != null) {
         LOGGER.info("Found storeVersionState for replica: {}: checkDatabaseIntegrity will proceed", replicaId);
@@ -2143,7 +2145,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Once storage node restart, send the "START" status to controller to rebuild the task status.
     // If this storage node has never consumed data from this topic, instead of sending "START" here, we send it
     // once START_OF_PUSH message has been read.
-    if (offsetRecord.getLocalVersionTopicOffset() > 0) {
+    if (offsetRecord.getLocalVersionTopicOffset() != EARLIEST) {
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
       if (storeVersionState != null) {
         boolean sorted = storeVersionState.sorted;
@@ -2249,7 +2251,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         updateLeaderTopicOnFollower(newPartitionConsumptionState);
 
         // Subscribe to local version topic.
-        long subscribeOffset = getLocalVtSubscribeOffset(newPartitionConsumptionState);
+        PubSubPosition subscribeOffset = getLocalVtSubscribeOffset(newPartitionConsumptionState);
         consumerSubscribe(
             topicPartition.getPubSubTopic(),
             newPartitionConsumptionState,
@@ -2891,7 +2893,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long currentOffset,
       Function<String, TopicManager> topicManagerProvider) {
     if (currentOffset < OffsetRecord.LOWEST_OFFSET) {
-      // -1 is a valid offset, which means that nothing was consumed yet, but anything below that is invalid.
+      // EARLIEST is a valid offset, which means that nothing was consumed yet, but anything below that is invalid.
       return Long.MAX_VALUE;
     }
     TopicManager tm = topicManagerProvider.apply(pubSubServerName);
@@ -3073,7 +3075,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected void processEndOfPush(
       KafkaMessageEnvelope endOfPushKME,
-      long offset,
+      PubSubPosition offset,
       PartitionConsumptionState partitionConsumptionState) {
 
     // Do not process duplication EOP messages.
@@ -3086,7 +3088,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     // We need to keep track of when the EOP happened, as that is used within Hybrid Stores' lag measurement
-    partitionConsumptionState.getOffsetRecord().endOfPushReceived(offset);
+    partitionConsumptionState.getOffsetRecord().endOfPushReceived();
     /*
      * Right now, we assume there are no sorted message after EndOfPush control message.
      * TODO: if this behavior changes in the future, the logic needs to be adjusted as well.
@@ -3173,7 +3175,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void processTopicSwitch(
       ControlMessage controlMessage,
       int partition,
-      long offset,
+      PubSubPosition offset,
       PartitionConsumptionState partitionConsumptionState) {
     throw new VeniceException(
         ControlMessageType.TOPIC_SWITCH.name() + " control message should not be received in"
@@ -3189,7 +3191,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
-      long offset,
+      PubSubPosition offset,
       PartitionConsumptionState partitionConsumptionState) {
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
@@ -3328,7 +3330,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             kafkaValue,
             controlMessage,
             consumerRecord.getTopicPartition().getPartitionNumber(),
-            consumerRecord.getPosition().getNumericOffset(),
+            consumerRecord.getPosition(),
             partitionConsumptionState);
         try {
           if (controlMessage.controlMessageType == START_OF_SEGMENT.getValue()
@@ -3738,14 +3740,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public void consumerSubscribe(
       PubSubTopic pubSubTopic,
       PartitionConsumptionState partitionConsumptionState,
-      long startOffset,
+      PubSubPosition startOffset,
       String kafkaURL) {
     PubSubTopicPartition resolvedTopicPartition =
         resolveTopicPartitionWithKafkaURL(pubSubTopic, partitionConsumptionState, kafkaURL);
     consumerSubscribe(resolvedTopicPartition, startOffset, kafkaURL);
   }
 
-  void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, long startOffset, String kafkaURL) {
+  void consumerSubscribe(PubSubTopicPartition pubSubTopicPartition, PubSubPosition startOffset, String kafkaURL) {
     String resolvedKafkaURL = kafkaClusterUrlResolver != null ? kafkaClusterUrlResolver.apply(kafkaURL) : kafkaURL;
     if (!Objects.equals(resolvedKafkaURL, kafkaURL) && !isSeparatedRealtimeTopicEnabled()
         && pubSubTopicPartition.getPubSubTopic().isRealTime()) {
@@ -4819,7 +4821,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * When Global RT DIV is enabled, the latest consumed VT offset (LCVO) should be used during subscription.
    * Otherwise, the drainer's latest processed VT offset is traditionally used.
    */
-  long getLocalVtSubscribeOffset(PartitionConsumptionState pcs) {
+  PubSubPosition getLocalVtSubscribeOffset(PartitionConsumptionState pcs) {
     return (isGlobalRtDivEnabled()) ? pcs.getLatestConsumedVtOffset() : pcs.getLatestProcessedLocalVersionTopicOffset();
   }
 

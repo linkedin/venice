@@ -20,6 +20,8 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -132,9 +134,10 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     ProducerPartitionState ppState = createProducerPartitionState(segment, sequence);
     GUID guid = new GUID();
     offsetRecord.setRealtimeTopicProducerState(kafkaUrl, guid, ppState);
-    offsetRecord.setCheckpointLocalVersionTopicOffset(666L);
+    PubSubPosition p666 = ApacheKafkaOffsetPosition.of(666L);
+    offsetRecord.setCheckpointLocalVersionTopicOffset(p666);
     rocksDBStorageEngine.putPartitionOffset(PARTITION_ID, offsetRecord);
-    Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getLocalVersionTopicOffset(), 666L);
+    Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getLocalVersionTopicOffset(), p666);
     ProducerPartitionState ppStateFromRocksDB =
         rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getRealTimeProducerState(kafkaUrl, guid);
     Assert.assertEquals(ppStateFromRocksDB.getSegmentNumber(), segment);

@@ -23,6 +23,8 @@ import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -37,7 +39,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
@@ -81,7 +83,8 @@ public class PartitionTracker {
   /**
    * The equivalent for RT is not stored. It's the instantaneous offset when a DIV sync is triggered.
    */
-  private final AtomicLong latestConsumedVtOffset = new AtomicLong(0L);
+  private final AtomicReference<PubSubPosition> latestConsumedVtOffset =
+      new AtomicReference(PubSubSymbolicPosition.EARLIEST);
 
   /**
    * rtSegments is a map of source broker URL to a map of GUID to Segment.
@@ -104,11 +107,11 @@ public class PartitionTracker {
     return partition;
   }
 
-  public long getLatestConsumedVtOffset() {
+  public PubSubPosition getLatestConsumedVtOffset() {
     return latestConsumedVtOffset.get();
   }
 
-  public void updateLatestConsumedVtOffset(long offset) {
+  public void updateLatestConsumedVtOffset(PubSubPosition offset) {
     latestConsumedVtOffset.updateAndGet(current -> offset);
   }
 
