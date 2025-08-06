@@ -1,17 +1,13 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.davinci.stats.IngestionStats.BATCH_FOLLOWER_OFFSET_LAG;
-import static com.linkedin.davinci.stats.IngestionStats.BATCH_LEADER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST;
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_ERROR;
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_RECORDS;
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_PROCESSING_REQUEST_SIZE;
-import static com.linkedin.davinci.stats.IngestionStats.BATCH_REPLICATION_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.BYTES_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_BYTES_CONSUMED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_RECORDS_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.IDLE_TIME;
 import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_ERROR_GAUGE;
@@ -19,7 +15,6 @@ import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_PUSH_TIME
 import static com.linkedin.davinci.stats.IngestionStats.INTERNAL_PREPROCESSING_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_BYTES_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_BYTES_PRODUCED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.LEADER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_PREPROCESSING_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_PRODUCED_METRIC_NAME;
@@ -83,10 +78,6 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
             WRITE_COMPUTE_OPERATION_FAILURE));
 
     registerSensor(new IngestionStatsGauge(this, () -> getStats().getStorageQuotaUsed(), 0, STORAGE_QUOTA_USED));
-
-    registerSensor(
-        new IngestionStatsGauge(this, () -> (double) getStats().getFollowerOffsetLag(), 0, FOLLOWER_OFFSET_LAG));
-    registerSensor(new IngestionStatsGauge(this, () -> (double) getStats().getLeaderOffsetLag(), 0, LEADER_OFFSET_LAG));
 
     registerSensor(
         new IngestionStatsGauge(
@@ -196,22 +187,6 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
               () -> getStats().getInternalPreprocessingLatencyAvg(),
               0,
               INTERNAL_PREPROCESSING_LATENCY + "_avg"));
-
-      registerSensor(
-          new IngestionStatsGauge(this, () -> (double) getStats().getBatchReplicationLag(), 0, BATCH_REPLICATION_LAG));
-      registerSensor(
-          new IngestionStatsGauge(
-              this,
-              () -> (double) getStats().getBatchLeaderOffsetLag(),
-              0,
-              BATCH_LEADER_OFFSET_LAG));
-      registerSensor(
-          new IngestionStatsGauge(
-              this,
-              () -> (double) getStats().getBatchFollowerOffsetLag(),
-              0,
-              BATCH_FOLLOWER_OFFSET_LAG));
-
       registerLatencySensor("producer_to_source_broker", IngestionStats::getProducerSourceBrokerLatencySensor);
       registerLatencySensor(
           "source_broker_to_leader_consumer",

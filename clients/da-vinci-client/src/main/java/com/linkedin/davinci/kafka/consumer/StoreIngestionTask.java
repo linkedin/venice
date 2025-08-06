@@ -2905,12 +2905,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract double calculateAssembledRecordSizeRatio(long recordSize);
 
-  public abstract long getBatchReplicationLag();
-
-  public abstract long getLeaderOffsetLag();
-
-  public abstract long getBatchLeaderOffsetLag();
-
   /**
    * @param pubSubServerName Pub Sub deployment to interrogate
    * @param topic topic to measure
@@ -2961,13 +2955,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     return endOffset - 1 - currentOffset;
   }
-
-  /**
-   * Measure the offset lag between follower and leader
-   */
-  public abstract long getFollowerOffsetLag();
-
-  public abstract long getBatchFollowerOffsetLag();
 
   public abstract int getWriteComputeErrorCode();
 
