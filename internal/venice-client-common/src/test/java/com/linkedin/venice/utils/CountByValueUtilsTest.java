@@ -409,11 +409,8 @@ public class CountByValueUtilsTest {
   }
 
   private Schema createRecordSchema() {
-    Schema recordSchema = Schema.createRecord("TestRecord", null, null, false);
-    recordSchema.setFields(
-        Arrays.asList(
-            new Schema.Field("name", Schema.create(Schema.Type.STRING), null, null),
-            new Schema.Field("age", Schema.create(Schema.Type.INT), null, null)));
-    return recordSchema;
+    String schemaStr = "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":["
+        + "{\"name\":\"name\",\"type\":\"string\"}," + "{\"name\":\"age\",\"type\":\"int\"}" + "]}";
+    return new Schema.Parser().parse(schemaStr);
   }
 }

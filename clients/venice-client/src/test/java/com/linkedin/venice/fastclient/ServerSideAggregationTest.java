@@ -49,8 +49,9 @@ public class ServerSideAggregationTest {
     when(mockMetadata.getCurrentStoreVersion()).thenReturn(1);
 
     // Setup schema mock for validation
-    Schema testSchema = Schema.createRecord("TestRecord", null, null, false);
-    testSchema.setFields(Arrays.asList(new Schema.Field("testField", Schema.create(Schema.Type.STRING), null, null)));
+    String schemaStr = "{\"type\":\"record\",\"name\":\"TestRecord\",\"fields\":["
+        + "{\"name\":\"testField\",\"type\":\"string\"}" + "]}";
+    Schema testSchema = new Schema.Parser().parse(schemaStr);
     when(mockMetadata.getLatestValueSchemaId()).thenReturn(1);
     when(mockMetadata.getValueSchema(1)).thenReturn(testSchema);
 
