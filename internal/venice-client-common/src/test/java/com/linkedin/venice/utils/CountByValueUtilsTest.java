@@ -413,4 +413,6 @@ public class CountByValueUtilsTest {
         + "{\"name\":\"name\",\"type\":\"string\"}," + "{\"name\":\"age\",\"type\":\"int\"}" + "]}";
     return new Schema.Parser().parse(schemaStr);
   }
+
+  // Fixed SpotBugs SCHEMAFIELD_INSTANTIATION violations
 }
