@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import org.apache.avro.Schema;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -46,6 +47,12 @@ public class ServerSideAggregationTest {
     // Setup default metadata behavior
     when(mockMetadata.getStoreName()).thenReturn("test_store");
     when(mockMetadata.getCurrentStoreVersion()).thenReturn(1);
+
+    // Setup schema mock for validation
+    Schema testSchema = Schema.createRecord("TestRecord", null, null, false);
+    testSchema.setFields(Arrays.asList(new Schema.Field("testField", Schema.create(Schema.Type.STRING), null, null)));
+    when(mockMetadata.getLatestValueSchemaId()).thenReturn(1);
+    when(mockMetadata.getValueSchema(1)).thenReturn(testSchema);
 
     // Setup default serializer behavior
     when(mockKeySerializer.serialize(any(String.class)))

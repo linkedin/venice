@@ -430,11 +430,80 @@ public class VeniceGrpcEndToEndTest {
       }
     });
 
-    // Add pause to ensure distributed system consistency after removing debug logs
-    Thread.sleep(5000);
+    // Step 2: Ensure CountByValue infrastructure is ready with progressive retry strategy
+    // This helps ensure all partition storage engines are ready and data is fully synced
+    TestUtils.waitForNonDeterministicAssertion(180, TimeUnit.SECONDS, () -> {
+      // First try a simple CountByValue to see if infrastructure is working
+      try {
+        AggregationResponse response =
+            requestBuilder.countByValue(java.util.Arrays.asList("value"), 10).execute(testKeys).get();
 
-    // Step 2: Execute CountByValue with exact verification and multiple attempts
-    TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, () -> {
+        // Check for storage engine errors first
+        if (response.hasError()) {
+          String errorMsg = response.getErrorMessage();
+          if (errorMsg.contains("Storage engine not found") || errorMsg.contains("dependencies not available")) {
+            Thread.sleep(2000); // Wait longer for storage engine initialization
+            throw new AssertionError("CountByValue infrastructure not ready: " + errorMsg + ". Retrying...");
+          } else {
+            throw new AssertionError("CountByValue failed with error: " + errorMsg);
+          }
+        }
+
+        // Infrastructure is working, now check data completeness
+        Assert.assertNotNull(response.getFieldToValueCounts(), "Field to value counts should not be null");
+        Assert
+            .assertTrue(response.getFieldToValueCounts().containsKey("value"), "Response should contain 'value' field");
+
+        Map<String, Integer> valueCounts = response.getFieldToValueCounts().get("value");
+        Assert.assertNotNull(valueCounts, "Value counts should not be null");
+
+        int totalCount = valueCounts.values().stream().mapToInt(Integer::intValue).sum();
+
+        if (totalCount < testKeys.size()) {
+          // Data not fully replicated yet, use progressive backoff strategy
+          LOGGER.info(
+              "CountByValue returned {} out of {} expected records, waiting for data sync...",
+              totalCount,
+              testKeys.size());
+          Thread.sleep(2000); // Longer wait for data sync
+          throw new AssertionError(
+              "CountByValue returned incomplete results: got " + totalCount + " out of " + testKeys.size()
+                  + " expected. Data still syncing...");
+        }
+
+        // Success! Infrastructure is ready and data is complete
+        LOGGER.info("CountByValue infrastructure verified - got {} records", totalCount);
+
+        // Additional validation: verify data consistency by running another query
+        AggregationResponse verificationResponse =
+            requestBuilder.countByValue(java.util.Arrays.asList("value"), 10).execute(testKeys).get();
+
+        if (verificationResponse.hasError()) {
+          throw new AssertionError("Verification query failed: " + verificationResponse.getErrorMessage());
+        }
+
+        Map<String, Integer> verificationCounts = verificationResponse.getFieldToValueCounts().get("value");
+        int verificationTotal = verificationCounts.values().stream().mapToInt(Integer::intValue).sum();
+
+        if (verificationTotal != totalCount) {
+          Thread.sleep(1000);
+          throw new AssertionError(
+              "Data consistency check failed: got " + verificationTotal + " vs " + totalCount
+                  + " expected. Retrying...");
+        }
+
+        LOGGER.info("CountByValue consistency verified - infrastructure is stable and ready");
+
+      } catch (AssertionError e) {
+        throw e; // Re-throw our custom assertion errors for retry logic
+      } catch (Exception e) {
+        // Convert any other exception to assertion error for retry
+        throw new AssertionError("CountByValue test failed with exception: " + e.getMessage(), e);
+      }
+    });
+
+    // Step 3: Final verification with exact counts
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       AggregationResponse response =
           requestBuilder.countByValue(java.util.Arrays.asList("value"), testKeys.size() + 2).execute(testKeys).get();
 
@@ -446,14 +515,6 @@ public class VeniceGrpcEndToEndTest {
       Assert.assertNotNull(valueCounts, "Value counts should not be null");
 
       int totalCount = valueCounts.values().stream().mapToInt(Integer::intValue).sum();
-
-      if (totalCount < testKeys.size()) {
-        // Add a small delay before retrying to allow for distributed system consistency
-        Thread.sleep(500);
-        throw new AssertionError(
-            "CountByValue returned incomplete results: got " + totalCount + " out of " + testKeys.size()
-                + " expected. Retrying...");
-      }
 
       Assert.assertEquals(
           totalCount,

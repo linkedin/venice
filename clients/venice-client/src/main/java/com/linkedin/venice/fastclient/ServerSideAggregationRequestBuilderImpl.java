@@ -8,6 +8,7 @@ import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
+import com.linkedin.venice.protocols.ValueCount;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.CountByValueUtils;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
+import org.apache.avro.Schema;
 
 
 /**
@@ -44,14 +46,14 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
 
   @Override
   public ServerSideAggregationRequestBuilder<K> countByValue(List<String> fieldNames, int topK) {
-    if (fieldNames == null || fieldNames.isEmpty()) {
-      throw new VeniceClientException("Field names cannot be null or empty");
+    // Use shared utility for complete field validation with schema (same as thin-client)
+    try {
+      Schema valueSchema = metadata.getValueSchema(metadata.getLatestValueSchemaId());
+      CountByValueUtils.validateFieldNames(fieldNames.toArray(new String[0]), valueSchema);
+    } catch (IllegalArgumentException e) {
+      throw new VeniceClientException(e.getMessage(), e);
     }
-    for (String fieldName: fieldNames) {
-      if (fieldName == null || fieldName.isEmpty()) {
-        throw new VeniceClientException("Field name cannot be null or empty");
-      }
-    }
+
     if (topK <= 0) {
       throw new VeniceClientException("TopK must be positive");
     }
@@ -163,26 +165,73 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
         }
       }).collect(Collectors.toList());
 
-      // Merge partition responses using shared utility
-      Map<String, Map<String, Integer>> globalFieldCounts =
-          CountByValueUtils.mergePartitionResponses(responses, fieldNames);
+      // Merge partition responses
+      Map<String, Map<String, Integer>> globalFieldCounts = mergePartitionResponses(responses, fieldNames);
 
       // Apply TopK filtering using shared utility
       for (String fieldName: fieldNames) {
         Map<String, Integer> fieldCounts = globalFieldCounts.get(fieldName);
-        if (fieldCounts != null) {
-          // Use shared utility for TopK filtering
-          Map<String, Integer> topKCounts = CountByValueUtils.filterTopKValues(fieldCounts, topK);
+        if (fieldCounts != null && !fieldCounts.isEmpty()) {
+          // Use shared utility for TopK filtering (same as thin-client)
+          Map<String, Integer> topKCounts = CountByValueUtils.filterTopKValuesGeneric(fieldCounts, topK);
           globalFieldCounts.put(fieldName, topKCounts);
         }
       }
 
-      // Build response using shared utility
-      CountByValueResponse response = CountByValueUtils.buildResponse(fieldNames, globalFieldCounts);
+      // Build response
+      CountByValueResponse response = buildCountByValueResponse(fieldNames, globalFieldCounts);
       return new AggregationResponseImpl(response);
 
     } catch (Exception e) {
       throw new VeniceClientException("Failed to aggregate partition results", e);
     }
+  }
+
+  /**
+   * Merge multiple partition CountByValue responses into a single result.
+   */
+  private Map<String, Map<String, Integer>> mergePartitionResponses(
+      List<CountByValueResponse> responses,
+      List<String> fieldNames) {
+
+    Map<String, Map<String, Integer>> globalFieldCounts = new HashMap<>();
+    for (String fieldName: fieldNames) {
+      globalFieldCounts.put(fieldName, new HashMap<>());
+    }
+
+    for (CountByValueResponse response: responses) {
+      for (Map.Entry<String, ValueCount> entry: response.getFieldToValueCountsMap().entrySet()) {
+        String fieldName = entry.getKey();
+        Map<String, Integer> partitionFieldCounts = entry.getValue().getValueToCountsMap();
+
+        Map<String, Integer> globalFieldCount = globalFieldCounts.get(fieldName);
+        if (globalFieldCount != null) {
+          // Merge partition counts into global counts
+          for (Map.Entry<String, Integer> countEntry: partitionFieldCounts.entrySet()) {
+            globalFieldCount.merge(countEntry.getKey(), countEntry.getValue(), Integer::sum);
+          }
+        }
+      }
+    }
+
+    return globalFieldCounts;
+  }
+
+  /**
+   * Build CountByValueResponse from field counts.
+   */
+  private CountByValueResponse buildCountByValueResponse(
+      List<String> fieldNames,
+      Map<String, Map<String, Integer>> fieldCounts) {
+    CountByValueResponse.Builder responseBuilder = CountByValueResponse.newBuilder();
+    for (String fieldName: fieldNames) {
+      Map<String, Integer> counts = fieldCounts.get(fieldName);
+      if (counts != null && !counts.isEmpty()) {
+        responseBuilder.putFieldToValueCounts(fieldName, ValueCount.newBuilder().putAllValueToCounts(counts).build());
+      } else {
+        responseBuilder.putFieldToValueCounts(fieldName, ValueCount.newBuilder().build());
+      }
+    }
+    return responseBuilder.setErrorCode(VeniceReadResponseStatus.OK).build();
   }
 }
