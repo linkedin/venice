@@ -414,5 +414,4 @@ public class CountByValueUtilsTest {
     return new Schema.Parser().parse(schemaStr);
   }
 
-  // Fixed SpotBugs SCHEMAFIELD_INSTANTIATION violations
 }
