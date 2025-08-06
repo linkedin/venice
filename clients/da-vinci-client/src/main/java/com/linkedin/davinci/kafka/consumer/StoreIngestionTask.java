@@ -2911,8 +2911,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public abstract long getBatchLeaderOffsetLag();
 
-  public abstract long getHybridLeaderOffsetLag();
-
   /**
    * @param pubSubServerName Pub Sub deployment to interrogate
    * @param topic topic to measure
@@ -2970,10 +2968,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public abstract long getFollowerOffsetLag();
 
   public abstract long getBatchFollowerOffsetLag();
-
-  public abstract long getHybridFollowerOffsetLag();
-
-  public abstract long getRegionHybridOffsetLag(int regionId);
 
   public abstract int getWriteComputeErrorCode();
 

@@ -2888,8 +2888,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       pcs -> pcs.getLeaderFollowerState().equals(LEADER);
   private static final Predicate<? super PartitionConsumptionState> BATCH_LEADER_OFFSET_LAG_FILTER =
       pcs -> !pcs.isEndOfPushReceived() && pcs.getLeaderFollowerState().equals(LEADER);
-  private static final Predicate<? super PartitionConsumptionState> HYBRID_LEADER_OFFSET_LAG_FILTER =
-      pcs -> pcs.isEndOfPushReceived() && pcs.isHybrid() && pcs.getLeaderFollowerState().equals(LEADER);
 
   /** used for metric purposes **/
   private long getLeaderOffsetLag(Predicate<? super PartitionConsumptionState> partitionConsumptionStateFilter) {
@@ -2956,20 +2954,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return getLeaderOffsetLag(BATCH_LEADER_OFFSET_LAG_FILTER);
   }
 
-  @Override
-  public long getHybridLeaderOffsetLag() {
-    return getLeaderOffsetLag(HYBRID_LEADER_OFFSET_LAG_FILTER);
-  }
-
   private final Predicate<? super PartitionConsumptionState> FOLLOWER_OFFSET_LAG_FILTER =
       pcs -> pcs.getLatestProcessedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY) != -1
           && !pcs.getLeaderFollowerState().equals(LEADER);
   private final Predicate<? super PartitionConsumptionState> BATCH_FOLLOWER_OFFSET_LAG_FILTER =
       pcs -> !pcs.isEndOfPushReceived()
-          && pcs.getLatestProcessedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY) != -1
-          && !pcs.getLeaderFollowerState().equals(LEADER);
-  private final Predicate<? super PartitionConsumptionState> HYBRID_FOLLOWER_OFFSET_LAG_FILTER =
-      pcs -> pcs.isEndOfPushReceived() && pcs.isHybrid()
           && pcs.getLatestProcessedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY) != -1
           && !pcs.getLeaderFollowerState().equals(LEADER);
 
@@ -3072,16 +3061,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   public long getBatchFollowerOffsetLag() {
     return getFollowerOffsetLag(BATCH_FOLLOWER_OFFSET_LAG_FILTER);
-  }
-
-  @Override
-  public long getHybridFollowerOffsetLag() {
-    return getFollowerOffsetLag(HYBRID_FOLLOWER_OFFSET_LAG_FILTER);
-  }
-
-  @Override
-  public long getRegionHybridOffsetLag(int regionId) {
-    return StatsErrorCode.ACTIVE_ACTIVE_NOT_ENABLED.code;
   }
 
   /**

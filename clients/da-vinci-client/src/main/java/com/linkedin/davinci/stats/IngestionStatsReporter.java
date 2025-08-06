@@ -13,8 +13,6 @@ import static com.linkedin.davinci.stats.IngestionStats.CONSUMED_RECORD_END_TO_E
 import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_BYTES_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_RECORDS_CONSUMED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.HYBRID_FOLLOWER_OFFSET_LAG;
-import static com.linkedin.davinci.stats.IngestionStats.HYBRID_LEADER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.IDLE_TIME;
 import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_ERROR_GAUGE;
 import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_PUSH_TIMEOUT_GAUGE;
@@ -25,7 +23,6 @@ import static com.linkedin.davinci.stats.IngestionStats.LEADER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_PREPROCESSING_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_PRODUCED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.LEADER_STALLED_HYBRID_INGESTION_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.OFFSET_REGRESSION_DCR_ERROR;
@@ -91,18 +88,6 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
         new IngestionStatsGauge(this, () -> (double) getStats().getFollowerOffsetLag(), 0, FOLLOWER_OFFSET_LAG));
     registerSensor(new IngestionStatsGauge(this, () -> (double) getStats().getLeaderOffsetLag(), 0, LEADER_OFFSET_LAG));
 
-    registerSensor(
-        new IngestionStatsGauge(
-            this,
-            () -> (double) getStats().getHybridLeaderOffsetLag(),
-            0,
-            HYBRID_LEADER_OFFSET_LAG));
-    registerSensor(
-        new IngestionStatsGauge(
-            this,
-            () -> (double) getStats().getHybridFollowerOffsetLag(),
-            0,
-            HYBRID_FOLLOWER_OFFSET_LAG));
     registerSensor(
         new IngestionStatsGauge(
             this,
@@ -283,12 +268,6 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
     registerSensor(
         new IngestionStatsGauge(
             this,
-            () -> getStats().getLeaderStalledHybridIngestion(),
-            0,
-            LEADER_STALLED_HYBRID_INGESTION_METRIC_NAME));
-    registerSensor(
-        new IngestionStatsGauge(
-            this,
             () -> getStats().getReadyToServeWithRTLag(),
             0,
             READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME));
@@ -364,12 +343,6 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
         String regionNamePrefix = RegionUtils.getRegionSpecificMetricPrefix(
             getStats().getIngestionTask().getServerConfig().getRegionName(),
             entry.getValue());
-        registerSensor(
-            new IngestionStatsGauge(
-                this,
-                () -> (double) getStats().getRegionHybridOffsetLag(regionId),
-                0,
-                regionNamePrefix + "_rt_lag"));
         registerSensor(
             new IngestionStatsGauge(
                 this,
