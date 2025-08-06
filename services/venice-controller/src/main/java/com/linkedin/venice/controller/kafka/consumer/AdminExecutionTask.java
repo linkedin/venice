@@ -502,7 +502,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)
         .setTargetRegionSwapWaitTime(message.targetSwapRegionWaitTime)
         .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported)
-        .setGlobalRtDivEnabled(message.globalRtDivEnabled);
+        .setGlobalRtDivEnabled(message.globalRtDivEnabled)
+        .setEnumSchemaEvolutionAllowed(message.enumSchemaEvolutionAllowed);
 
     if (message.targetSwapRegion != null) {
       params.setTargetRegionSwap(message.getTargetSwapRegion().toString());
@@ -551,6 +552,8 @@ public class AdminExecutionTask implements Callable<Void> {
     }
 
     params.setStorageNodeReadQuotaEnabled(message.storageNodeReadQuotaEnabled);
+    params.setCompactionEnabled(message.compactionEnabled);
+    params.setCompactionThresholdMilliseconds(message.compactionThresholdMilliseconds);
     params.setMinCompactionLagSeconds(message.minCompactionLagSeconds);
     params.setMaxCompactionLagSeconds(message.maxCompactionLagSeconds);
     params.setMaxRecordSizeBytes(message.maxRecordSizeBytes);

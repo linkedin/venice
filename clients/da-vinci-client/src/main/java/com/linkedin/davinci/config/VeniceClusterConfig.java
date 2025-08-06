@@ -54,7 +54,7 @@ import org.apache.logging.log4j.Logger;
  * class that maintains config very specific to a Venice cluster
  */
 public class VeniceClusterConfig {
-  private static final Logger LOGGER = LogManager.getLogger(VeniceServerConfig.class);
+  private static final Logger LOGGER = LogManager.getLogger(VeniceClusterConfig.class);
 
   private final String clusterName;
   private final String zookeeperAddress;

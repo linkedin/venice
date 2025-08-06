@@ -8,6 +8,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -42,6 +43,7 @@ public class PartitionConsumptionState {
   private final int partition;
   private final boolean hybrid;
   private final OffsetRecord offsetRecord;
+  private final PubSubContext pubSubContext;
 
   private GUID leaderGUID;
 
@@ -212,11 +214,17 @@ public class PartitionConsumptionState {
 
   private BooleanSupplier isCurrentVersion;
 
-  public PartitionConsumptionState(String replicaId, int partition, OffsetRecord offsetRecord, boolean hybrid) {
+  public PartitionConsumptionState(
+      String replicaId,
+      int partition,
+      OffsetRecord offsetRecord,
+      PubSubContext pubSubContext,
+      boolean hybrid) {
     this.replicaId = replicaId;
     this.partition = partition;
     this.hybrid = hybrid;
     this.offsetRecord = offsetRecord;
+    this.pubSubContext = pubSubContext;
     this.errorReported = false;
     this.lagCaughtUp = false;
     this.lagCaughtUpTimeInMs = 0;
@@ -851,5 +859,9 @@ public class PartitionConsumptionState {
   public void clearPendingReportIncPushVersionList() {
     pendingReportIncPushVersionList.clear();
     offsetRecord.setPendingReportIncPushVersionList(pendingReportIncPushVersionList);
+  }
+
+  public PubSubContext getPubSubContext() {
+    return pubSubContext;
   }
 }

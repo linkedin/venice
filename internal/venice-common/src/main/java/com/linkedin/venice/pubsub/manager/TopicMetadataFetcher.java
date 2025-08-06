@@ -21,6 +21,7 @@ import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
@@ -37,6 +38,7 @@ import it.unimi.dsi.fastutil.ints.Int2LongMaps;
 import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -133,7 +135,7 @@ class TopicMetadataFetcher implements Closeable {
         15L,
         TimeUnit.MINUTES,
         new LinkedBlockingQueue<>(),
-        new DaemonThreadFactory("TopicMetadataFetcherThreadPool"));
+        new DaemonThreadFactory("TopicMetadataFetcherThreadPool", topicManagerContext.getLogContext()));
     threadPoolExecutor.allowCoreThreadTimeOut(true);
 
     stats.registerTopicMetadataFetcherSensors(this);
@@ -674,6 +676,33 @@ class TopicMetadataFetcher implements Closeable {
         assignedPartitions,
         this);
     pubSubConsumerAdapter.batchUnsubscribe(assignedPartitions);
+  }
+
+  public PubSubPosition resolvePosition(PubSubTopicPartition partition, int positionTypeId, ByteBuffer buffer) {
+    PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
+    try {
+      return pubSubConsumerAdapter.decodePosition(partition, positionTypeId, buffer);
+    } finally {
+      releaseConsumer(pubSubConsumerAdapter);
+    }
+  }
+
+  public long diffPosition(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
+    try {
+      return pubSubConsumerAdapter.positionDifference(partition, position1, position2);
+    } finally {
+      releaseConsumer(pubSubConsumerAdapter);
+    }
+  }
+
+  public long comparePosition(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
+    try {
+      return pubSubConsumerAdapter.comparePositions(partition, position1, position2);
+    } finally {
+      releaseConsumer(pubSubConsumerAdapter);
+    }
   }
 
   void invalidateKey(PubSubTopicPartition pubSubTopicPartition) {

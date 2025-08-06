@@ -633,6 +633,7 @@ public class VeniceParentHelixAdminTest {
         testWriteComputeSchemaAutoGenerationFailure(parentControllerClient);
         testSupersetSchemaGenerationWithUpdateDefaultValue(parentControllerClient);
         testUpdateConfigs(parentControllerClient, childControllerClient);
+        testEnumSchemaEvolution(parentControllerClient, childControllerClient);
       }
     }
   }
@@ -937,6 +938,9 @@ public class VeniceParentHelixAdminTest {
     testUpdateNearlineProducerConfig(parentControllerClient, childControllerClient);
     testUpdateTargetSwapRegion(parentControllerClient, childControllerClient);
     testUpdateGlobalRtDivEnabled(parentControllerClient, childControllerClient);
+    testUpdateCompactionEnabled(parentControllerClient, childControllerClient);
+    testUpdateCompactionThreshold(parentControllerClient, childControllerClient);
+    testUpdateEnumSchemaEvolution(parentControllerClient, childControllerClient);
   }
 
   /**
@@ -1049,6 +1053,36 @@ public class VeniceParentHelixAdminTest {
         childClient,
         params -> params.setGlobalRtDivEnabled(true),
         response -> Assert.assertTrue(response.getStore().isGlobalRtDivEnabled()));
+  }
+
+  private void testUpdateCompactionEnabled(ControllerClient parentClient, ControllerClient childClient) {
+    final boolean expectedCompactionEnabled = false;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setCompactionEnabled(expectedCompactionEnabled);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert.assertEquals(response.getStore().isCompactionEnabled(), expectedCompactionEnabled);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+  }
+
+  private void testUpdateCompactionThreshold(ControllerClient parentClient, ControllerClient childClient) {
+    final long expectedCompactionThreshold = 1000;
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> {
+      params.setCompactionThresholdMilliseconds(expectedCompactionThreshold);
+    };
+    Consumer<StoreResponse> responseConsumer = response -> {
+      Assert.assertEquals(response.getStore().getCompactionThreshold(), expectedCompactionThreshold);
+    };
+    testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+  }
+
+  private void testUpdateEnumSchemaEvolution(ControllerClient parentClient, ControllerClient childClient) {
+    testUpdateConfig(
+        parentClient,
+        childClient,
+        params -> params.setEnumSchemaEvolutionAllowed(true),
+        response -> Assert.assertTrue(response.getStore().isEnumSchemaEvolutionAllowed()));
   }
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {
@@ -1248,6 +1282,49 @@ public class VeniceParentHelixAdminTest {
         () -> Assert
             .assertEquals(parentControllerClient.getStore(storeName).getStore().getLatestSuperSetValueSchemaId(), 3));
 
+  }
+
+  private void testEnumSchemaEvolution(
+      ControllerClient parentControllerClient,
+      ControllerClient childControllerClient) {
+    String storeName = Utils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String valueSchemaWithEnumDefaultDefined = "{\n" + "  \"name\": \"EnumTestRecord\",\n"
+        + "  \"namespace\": \"com.linkedin.avro.fastserde.generated.avro\",\n" + "  \"type\": \"record\",\n"
+        + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"testEnum\",\n" + "      \"type\": {\n"
+        + "        \"type\": \"enum\",\n" + "        \"name\": \"TestEnum\",\n"
+        + "        \"symbols\": [\"A\", \"B\", \"C\"],\n" + "        \"default\": \"A\"\n" + "      }\n" + "    }\n"
+        + "  ]\n" + "}";
+    String valueSchemaWithEnumEvolved = "{\n" + "  \"name\": \"EnumTestRecord\",\n"
+        + "  \"namespace\": \"com.linkedin.avro.fastserde.generated.avro\",\n" + "  \"type\": \"record\",\n"
+        + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"testEnum\",\n" + "      \"type\": {\n"
+        + "        \"type\": \"enum\",\n" + "        \"name\": \"TestEnum\",\n"
+        + "        \"symbols\": [\"A\", \"B\", \"C\", \"D\", \"E\"],\n" + "        \"default\": \"A\"\n" + "      }\n"
+        + "    }\n" + "  ]\n" + "}";
+    // Create a store with value schema with enum default defined
+    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaWithEnumDefaultDefined);
+    // Try to evolve the enum field in the value schema
+    StoreInfo store = parentControllerClient.getStore(storeName).getStore();
+    assertFalse(store.isEnumSchemaEvolutionAllowed());
+    SchemaResponse schemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaWithEnumEvolved);
+    assertTrue(schemaResponse.isError(), "Enum schema evolution should not be allowed by default.");
+    MultiSchemaResponse allValueSchemaResponse = childControllerClient.getAllValueSchema(storeName);
+    assertEquals(allValueSchemaResponse.getSchemas().length, 1);
+    // Enable enum schema evolution
+    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams();
+    updateStoreQueryParams.setEnumSchemaEvolutionAllowed(true);
+    parentControllerClient.updateStore(storeName, updateStoreQueryParams);
+    // Try to evolve the enum field in the value schema again
+    store = parentControllerClient.getStore(storeName).getStore();
+    assertTrue(store.isEnumSchemaEvolutionAllowed());
+    schemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaWithEnumEvolved);
+    assertFalse(schemaResponse.isError(), "Enum schema evolution should be allowed now.");
+    // Make sure the child region has the evolved schema too
+    store = childControllerClient.getStore(storeName).getStore();
+    assertTrue(store.isEnumSchemaEvolutionAllowed());
+    allValueSchemaResponse = childControllerClient.getAllValueSchema(storeName);
+    assertEquals(allValueSchemaResponse.getSchemas().length, 2);
   }
 
   private List<MultiSchemaResponse.Schema> getWriteComputeSchemaStrs(MultiSchemaResponse.Schema[] registeredSchemas) {

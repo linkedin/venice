@@ -318,21 +318,23 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * Decodes the given type-encoded byte array into a {@link PubSubPosition} for the specified topic partition.
    *
    * @param partition The topic partition this position belongs to.
+   * @param positionTypeId The type ID of the position, which indicates how to decode the byte array.
    * @param data The byte array containing the encoded position.
    * @return The decoded {@link PubSubPosition}.
    * @throws IllegalArgumentException if the data cannot be decoded into a valid {@link PubSubPosition}.
    */
-  default PubSubPosition decodePosition(PubSubTopicPartition partition, byte[] data) {
-    return decodePosition(partition, ByteBuffer.wrap(data));
+  default PubSubPosition decodePosition(PubSubTopicPartition partition, int positionTypeId, byte[] data) {
+    return decodePosition(partition, positionTypeId, ByteBuffer.wrap(data));
   }
 
   /**
    * Decodes the given {@link ByteBuffer} into a {@link PubSubPosition} for the specified topic partition.
    *
    * @param partition The topic partition this position belongs to.
+   * @param positionTypeId The type ID of the position, which indicates how to decode the byte buffer.
    * @param buffer The {@link ByteBuffer} containing the encoded position.
    * @return The decoded {@link PubSubPosition}.
    * @throws IllegalArgumentException if the buffer cannot be decoded into a valid {@link PubSubPosition}.
    */
-  PubSubPosition decodePosition(PubSubTopicPartition partition, ByteBuffer buffer);
+  PubSubPosition decodePosition(PubSubTopicPartition partition, int positionTypeId, ByteBuffer buffer);
 }

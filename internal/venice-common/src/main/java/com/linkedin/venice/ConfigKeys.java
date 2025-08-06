@@ -442,8 +442,7 @@ public class ConfigKeys {
   /**
    * Time since last log compaction before a store is considered for log compaction
    */
-  public static final String TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS =
-      "log.compaction.time.since.last.compaction.threshold.ms";
+  public static final String LOG_COMPACTION_THRESHOLD_MS = "log.compaction.threshold.ms";
 
   /**
    * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
@@ -1071,12 +1070,6 @@ public class ConfigKeys {
       "freeze.ingestion.if.ready.to.serve.or.local.data.exists";
 
   /**
-   * a comma seperated list of kafka producer metrics that will be reported.
-   * For ex. "outgoing-byte-rate,record-send-rate,batch-size-max,batch-size-avg,buffer-available-bytes,buffer-exhausted-rate"
-   */
-  public static final String KAFKA_PRODUCER_METRICS = "list.of.producer.metrics.from.kafka";
-
-  /**
    * Whether to print logs that are used for troubleshooting only.
    */
   public static final String SERVER_DEBUG_LOGGING_ENABLED = "server.debug.logging.enabled";
@@ -1634,6 +1627,12 @@ public class ConfigKeys {
    * The name of the cluster that the internal store for storing push job details records belongs to.
    */
   public static final String PUSH_JOB_STATUS_STORE_CLUSTER_NAME = "controller.push.job.status.store.cluster.name";
+
+  /**
+   * The name of the cluster that the internal store for storing controller parent metadata belongs to.
+   */
+  public static final String PARENT_CONTROLLER_METADATA_STORE_CLUSTER_NAME =
+      "parent.controller.metadata.store.cluster.name";
 
   /**
    * The most-significant-bits of the producer GUID used by {@code VenicePushJob} encoded as a {@code long}.

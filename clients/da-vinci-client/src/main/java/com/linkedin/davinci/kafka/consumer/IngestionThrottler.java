@@ -245,7 +245,7 @@ public class IngestionThrottler implements Closeable {
           false,
           EventThrottler.BLOCK_STRATEGY);
       this.eventThrottlerUpdateService = Executors.newSingleThreadScheduledExecutor(
-          new DaemonThreadFactory("Ingestion_Event_Throttler_update", serverConfig.getRegionName()));
+          new DaemonThreadFactory("Ingestion_Event_Throttler_update", serverConfig.getLogContext()));
       this.eventThrottlerUpdateService.scheduleAtFixedRate(() -> {
         Map<String, StoreIngestionTask> ongoingStoreIngestionTaskMap = ongoingIngestionTaskMapSupplier.get();
         boolean hasCurrentVersionBootstrapping = false;

@@ -1,6 +1,7 @@
 package com.linkedin.venice.client.stats;
 
 import static com.linkedin.venice.client.stats.BasicClientStats.CLIENT_METRIC_ENTITIES;
+import static com.linkedin.venice.client.stats.ClientMetricEntity.RETRY_KEY_COUNT;
 import static com.linkedin.venice.read.RequestType.SINGLE_GET;
 import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 import static com.linkedin.venice.stats.ClientType.THIN_CLIENT;
@@ -17,6 +18,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_STORE_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory.SUCCESS;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
+import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointDataFromCounter;
 import static org.apache.http.HttpStatus.SC_OK;
 import static org.testng.Assert.assertEquals;
@@ -207,6 +209,54 @@ public class BasicClientStatsTest {
         1);
   }
 
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testRetryKeyCountMetrics(boolean isRequest) {
+    for (ClientType client: ClientType.values()) {
+      // verify that the following works for all client types.
+      InMemoryMetricReader inMemoryMetricReader = InMemoryMetricReader.create();
+      ClientStats stats = createClientStats(inMemoryMetricReader, client);
+
+      int keyCount = 10;
+
+      if (isRequest) {
+        stats.recordRetryRequestKeyCount(keyCount);
+      } else {
+        stats.recordRetryRequestSuccessKeyCount(keyCount);
+      }
+
+      // Check Tehuti metrics
+      Map<String, ? extends Metric> metrics = stats.getMetricsRepository().metrics();
+      String storeName = "test_store";
+      if (isRequest) {
+        Assert.assertEquals(
+            (int) metrics.get(String.format(".%s--retry_request_key_count.Max", storeName)).value(),
+            keyCount);
+        Assert.assertEquals(
+            (int) metrics.get(String.format(".%s--retry_request_key_count.Avg", storeName)).value(),
+            keyCount);
+      } else {
+        Assert.assertEquals(
+            (int) metrics.get(String.format(".%s--retry_request_success_key_count.Max", storeName)).value(),
+            keyCount);
+        Assert.assertEquals(
+            (int) metrics.get(String.format(".%s--retry_request_success_key_count.Avg", storeName)).value(),
+            keyCount);
+      }
+
+      // Check OpenTelemetry metrics
+      Attributes expectedAttr = getAttributes(storeName, isRequest ? REQUEST : RESPONSE);
+      validateHistogramPointData(
+          inMemoryMetricReader,
+          keyCount,
+          keyCount,
+          1,
+          keyCount,
+          expectedAttr,
+          RETRY_KEY_COUNT.getMetricEntity().getMetricName(),
+          client.getMetricsPrefix());
+    }
+  }
+
   private BasicClientStats createStats(InMemoryMetricReader inMemoryMetricReader, ClientType clientType) {
     String storeName = "test_store";
     VeniceMetricsRepository metricsRepository =
@@ -354,6 +404,14 @@ public class BasicClientStatsTest {
             MetricUnit.NUMBER,
             "Count of all retry requests for client",
             Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_REQUEST_RETRY_TYPE)));
+    expectedMetrics.put(
+        RETRY_KEY_COUNT,
+        new MetricEntity(
+            "retry_key_count",
+            MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+            MetricUnit.NUMBER,
+            "Key count of retry requests for client",
+            Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD, VENICE_MESSAGE_TYPE)));
 
     Set<String> uniqueMetricEntitiesNames = new HashSet<>();
 

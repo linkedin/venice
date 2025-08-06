@@ -799,7 +799,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
         this.compactionManager = new CompactionManager(
             repushOrchestrator,
-            multiClusterConfigs.getTimeSinceLastLogCompactionThresholdMS(),
+            multiClusterConfigs.getLogCompactionThresholdMS(),
             logCompactionStatsMap);
       } catch (Exception e) {
         LOGGER.error(
@@ -3162,6 +3162,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               }
             }
           }
+          // Check the push job id to self-manage the ttlRepushEnabled store property.
+          if (Version.isPushIdTTLRePush(pushJobId) && !store.isTTLRepushEnabled()) {
+            store.setTTLRepushEnabled(true);
+            repository.updateStore(store);
+          } else if (Version.isPushIdRegularPushWithTTLRePush(pushJobId) && store.isTTLRepushEnabled()) {
+            store.setTTLRepushEnabled(false);
+            repository.updateStore(store);
+          }
           if (startIngestion) {
             // We need to prepare to monitor before creating helix resource.
             startMonitorOfflinePush(
@@ -5474,6 +5482,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Map<String, String>> storeViews = params.getStoreViews();
     Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
     Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
+    Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
+    Optional<Long> compactionThresholdMilliseconds = params.getCompactionThresholdMilliseconds();
     Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
     Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
     Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -5486,6 +5496,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Integer> targetSwapRegionWaitTime = params.getTargetRegionSwapWaitTime();
     Optional<Boolean> isDavinciHeartbeatReported = params.getIsDavinciHeartbeatReported();
     Optional<Boolean> globalRtDivEnabled = params.isGlobalRtDivEnabled();
+    Optional<Boolean> ttlRepushEnabled = params.isTTLRepushEnabled();
+    Optional<Boolean> enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -5738,12 +5750,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         setLatestSupersetSchemaId(clusterName, storeName, latestSupersetSchemaId.get());
       }
 
+      compactionEnabled.ifPresent(aBoolean -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setCompactionEnabled(aBoolean);
+        return store;
+      }));
+
+      compactionThresholdMilliseconds.ifPresent(aLong -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setCompactionThresholdMilliseconds(aLong);
+        return store;
+      }));
+
       if (minCompactionLagSeconds.isPresent()) {
         storeMetadataUpdate(clusterName, storeName, store -> {
           store.setMinCompactionLagSeconds(minCompactionLagSeconds.get());
           return store;
         });
       }
+
       if (maxCompactionLagSeconds.isPresent()) {
         storeMetadataUpdate(clusterName, storeName, store -> {
           store.setMaxCompactionLagSeconds(maxCompactionLagSeconds.get());
@@ -5801,6 +5824,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       globalRtDivEnabled.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
         store.setGlobalRtDivEnabled(aBool);
+        return store;
+      }));
+
+      ttlRepushEnabled.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setTTLRepushEnabled(aBool);
+        return store;
+      }));
+
+      enumSchemaEvolutionAllowed.ifPresent(aBool -> storeMetadataUpdate(clusterName, storeName, store -> {
+        store.setEnumSchemaEvolutionAllowed(aBool);
         return store;
       }));
 

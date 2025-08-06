@@ -973,6 +973,8 @@ public class ReadOnlyStore implements Store {
     storeProperties.setDaVinciPushStatusStoreEnabled(isDaVinciPushStatusStoreEnabled());
     storeProperties.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     // storeProperties.setApplyTargetVersionFilterForIncPush(isApplyTargetVersionFilterForIncPush());
+    storeProperties.setCompactionEnabled(isCompactionEnabled());
+    storeProperties.setCompactionThresholdMilliseconds(getCompactionThresholdMilliseconds());
     storeProperties.setMinCompactionLagSeconds(getMinCompactionLagSeconds());
     storeProperties.setMaxCompactionLagSeconds(getMaxCompactionLagSeconds());
     storeProperties.setMaxRecordSizeBytes(getMaxRecordSizeBytes());
@@ -1493,6 +1495,26 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public boolean isCompactionEnabled() {
+    return this.delegate.isCompactionEnabled();
+  }
+
+  @Override
+  public void setCompactionEnabled(boolean compactionEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public long getCompactionThresholdMilliseconds() {
+    return this.delegate.getCompactionThresholdMilliseconds();
+  }
+
+  @Override
+  public void setCompactionThresholdMilliseconds(long compactionThreshold) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public long getMinCompactionLagSeconds() {
     return this.delegate.getMinCompactionLagSeconds();
   }
@@ -1614,6 +1636,26 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isTTLRepushEnabled() {
+    return delegate.isTTLRepushEnabled();
+  }
+
+  @Override
+  public void setTTLRepushEnabled(boolean ttlRepushEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isEnumSchemaEvolutionAllowed() {
+    return delegate.isEnumSchemaEvolutionAllowed();
+  }
+
+  @Override
+  public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
     throw new UnsupportedOperationException();
   }
 

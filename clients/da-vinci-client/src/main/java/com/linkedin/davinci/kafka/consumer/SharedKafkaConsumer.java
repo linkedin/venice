@@ -427,7 +427,10 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public synchronized PubSubPosition decodePosition(PubSubTopicPartition partition, ByteBuffer buffer) {
-    return delegate.decodePosition(partition, buffer);
+  public synchronized PubSubPosition decodePosition(
+      PubSubTopicPartition partition,
+      int positionTypeId,
+      ByteBuffer buffer) {
+    return delegate.decodePosition(partition, positionTypeId, buffer);
   }
 }

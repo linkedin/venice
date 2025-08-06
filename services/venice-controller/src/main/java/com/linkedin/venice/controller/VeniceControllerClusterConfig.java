@@ -146,6 +146,7 @@ import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_SCHEDULING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THREAD_COUNT;
+import static com.linkedin.venice.ConfigKeys.LOG_COMPACTION_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_CONCURRENCY;
 import static com.linkedin.venice.ConfigKeys.META_STORE_WRITER_CLOSE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE;
@@ -158,6 +159,7 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP;
+import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_METADATA_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
@@ -182,7 +184,6 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA_LEGACY;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
-import static com.linkedin.venice.ConfigKeys.TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
@@ -300,6 +301,7 @@ public class VeniceControllerClusterConfig {
   private final int minNumberOfStoreVersionsToPreserve;
   private final int parentControllerMaxErroredTopicNumToKeep;
   private final String pushJobStatusStoreClusterName;
+  private final String parentControllerMetadataStoreClusterName;
   private final boolean participantMessageStoreEnabled;
   private final String systemSchemaClusterName;
   private final boolean adminHelixMessagingChannelEnabled;
@@ -595,7 +597,7 @@ public class VeniceControllerClusterConfig {
   private final boolean isLogCompactionSchedulingEnabled;
   private final int logCompactionThreadCount;
   private final long logCompactionIntervalMS;
-  private final long timeSinceLastLogCompactionThresholdMS;
+  private final long logCompactionThresholdMS;
 
   /**
    * Configs for Dead Store Endpoint
@@ -912,6 +914,8 @@ public class VeniceControllerClusterConfig {
     this.parentControllerMaxErroredTopicNumToKeep = props.getInt(PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP, 0);
 
     this.pushJobStatusStoreClusterName = props.getString(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, "");
+
+    this.parentControllerMetadataStoreClusterName = props.getString(PARENT_CONTROLLER_METADATA_STORE_CLUSTER_NAME, "");
     this.participantMessageStoreEnabled = props.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, true);
     this.adminHelixMessagingChannelEnabled = props.getBoolean(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, false);
     if (!adminHelixMessagingChannelEnabled && !participantMessageStoreEnabled) {
@@ -1080,8 +1084,7 @@ public class VeniceControllerClusterConfig {
     this.repushOrchestratorConfigs = props.clipAndFilterNamespace(CONTROLLER_REPUSH_PREFIX);
     this.logCompactionThreadCount = props.getInt(LOG_COMPACTION_THREAD_COUNT, 1);
     this.logCompactionIntervalMS = props.getLong(LOG_COMPACTION_INTERVAL_MS, TimeUnit.HOURS.toMillis(1));
-    this.timeSinceLastLogCompactionThresholdMS =
-        props.getLong(TIME_SINCE_LAST_LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
+    this.logCompactionThresholdMS = props.getLong(LOG_COMPACTION_THRESHOLD_MS, TimeUnit.HOURS.toMillis(24));
 
     this.isDeadStoreEndpointEnabled = props.getBoolean(ConfigKeys.CONTROLLER_DEAD_STORE_ENDPOINT_ENABLED, false);
     this.deadStoreStatsClassName = props.getString(ConfigKeys.CONTROLLER_DEAD_STORE_STATS_CLASS_NAME, "");
@@ -1607,6 +1610,10 @@ public class VeniceControllerClusterConfig {
     return pushJobStatusStoreClusterName;
   }
 
+  public String getParentControllerMetadataStoreClusterName() {
+    return parentControllerMetadataStoreClusterName;
+  }
+
   public boolean isParticipantMessageStoreEnabled() {
     return participantMessageStoreEnabled;
   }
@@ -2075,8 +2082,8 @@ public class VeniceControllerClusterConfig {
     return logCompactionIntervalMS;
   }
 
-  public long getTimeSinceLastLogCompactionThresholdMS() {
-    return timeSinceLastLogCompactionThresholdMS;
+  public long getLogCompactionThresholdMS() {
+    return logCompactionThresholdMS;
   }
 
   public boolean isDeadStoreEndpointEnabled() {

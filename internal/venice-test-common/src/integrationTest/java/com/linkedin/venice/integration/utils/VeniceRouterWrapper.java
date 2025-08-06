@@ -30,6 +30,7 @@ import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_M
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE;
 import static com.linkedin.venice.stats.VeniceMetricsConfig.OTEL_VENICE_METRICS_ENABLED;
 
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
@@ -40,6 +41,7 @@ import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
 import com.linkedin.venice.tehuti.MetricsAware;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -63,7 +65,7 @@ import org.apache.logging.log4j.Logger;
  * A wrapper for the {@link RouterServer}.
  */
 public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware {
-  public static final String SERVICE_NAME = "VeniceRouter";
+  public static final String SERVICE_NAME = VeniceComponent.ROUTER.getName();
   public static final String CLUSTER_DISCOVERY_D2_SERVICE_NAME =
       ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME + "_test";
   private static final String ROUTER_SERVICE_NAME = "venice-router";
@@ -267,8 +269,12 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   }
 
   @Override
-  public String getComponentTagForLogging() {
-    return new StringBuilder(getComponentTagPrefix(regionName)).append(super.getComponentTagForLogging()).toString();
+  public LogContext getComponentTagForLogging() {
+    return LogContext.newBuilder()
+        .setRegionName(regionName)
+        .setComponentName(VeniceComponent.ROUTER.name())
+        .setInstanceName(Utils.getHelixNodeIdentifier(getHost(), getPort()))
+        .build();
   }
 
   public HelixBaseRoutingRepository getRoutingDataRepository() {

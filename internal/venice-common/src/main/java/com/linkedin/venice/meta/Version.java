@@ -37,6 +37,12 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   String VENICE_RE_PUSH_PUSH_ID_PREFIX = "venice_re_push_";
 
   String VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX = "venice_ttl_re_push_";
+
+  /**
+   * Prefix used in push id to indicate a regular batch push is made to a store with TTL re-push enabled. This disables
+   * the TTL re-push enabled flag for the corresponding store.
+   */
+  String VENICE_REGULAR_PUSH_WITH_TTL_RE_PUSH_PREFIX = "venice_regular_push_with_ttl_re_push_";
   int DEFAULT_RT_VERSION_NUMBER = 0;
 
   /**
@@ -522,6 +528,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     return VENICE_TTL_RE_PUSH_PUSH_ID_PREFIX + pushId;
   }
 
+  static String generateRegularPushWithTTLRePushId(String pushId) {
+    return VENICE_REGULAR_PUSH_WITH_TTL_RE_PUSH_PREFIX + pushId;
+  }
+
   static boolean isPushIdTTLRePush(String pushId) {
     if (pushId == null || pushId.isEmpty()) {
       return false;
@@ -534,6 +544,13 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
       return false;
     }
     return pushId.startsWith(VENICE_RE_PUSH_PUSH_ID_PREFIX);
+  }
+
+  static boolean isPushIdRegularPushWithTTLRePush(String pushId) {
+    if (pushId == null || pushId.isEmpty()) {
+      return false;
+    }
+    return pushId.startsWith(VENICE_REGULAR_PUSH_WITH_TTL_RE_PUSH_PREFIX);
   }
 
   static boolean containsHybridVersion(List<Version> versions) {

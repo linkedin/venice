@@ -224,6 +224,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setViewConfigs(store.getViewConfigs());
     setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
     setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
+    setCompactionEnabled(store.isCompactionEnabled());
+    setCompactionThresholdMilliseconds(store.getCompactionThresholdMilliseconds());
     setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
@@ -235,6 +237,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setTargetSwapRegionWaitTime(store.getTargetSwapRegionWaitTime());
     setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
     setGlobalRtDivEnabled(store.isGlobalRtDivEnabled());
+    setTTLRepushEnabled(store.isTTLRepushEnabled());
+    setEnumSchemaEvolutionAllowed(store.isEnumSchemaEvolutionAllowed());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -870,6 +874,26 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public void setCompactionEnabled(boolean compactionEnabled) {
+    this.storeProperties.compactionEnabled = compactionEnabled;
+  }
+
+  @Override
+  public boolean isCompactionEnabled() {
+    return this.storeProperties.compactionEnabled;
+  }
+
+  @Override
+  public void setCompactionThresholdMilliseconds(long compactionThresholdMilliseconds) {
+    this.storeProperties.compactionThresholdMilliseconds = compactionThresholdMilliseconds;
+  }
+
+  @Override
+  public long getCompactionThresholdMilliseconds() {
+    return this.storeProperties.compactionThresholdMilliseconds;
+  }
+
+  @Override
   public void setMinCompactionLagSeconds(long minCompactionLagSeconds) {
     this.storeProperties.minCompactionLagSeconds = minCompactionLagSeconds;
   }
@@ -977,6 +1001,26 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
     this.storeProperties.globalRtDivEnabled = globalRtDivEnabled;
+  }
+
+  @Override
+  public boolean isTTLRepushEnabled() {
+    return this.storeProperties.ttlRepushEnabled;
+  }
+
+  @Override
+  public void setTTLRepushEnabled(boolean ttlRepushEnabled) {
+    this.storeProperties.ttlRepushEnabled = ttlRepushEnabled;
+  }
+
+  @Override
+  public boolean isEnumSchemaEvolutionAllowed() {
+    return this.storeProperties.enumSchemaEvolutionAllowed;
+  }
+
+  @Override
+  public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    this.storeProperties.enumSchemaEvolutionAllowed = enumSchemaEvolutionAllowed;
   }
 
   @Override

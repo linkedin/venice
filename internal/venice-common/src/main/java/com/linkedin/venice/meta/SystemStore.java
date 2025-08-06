@@ -632,6 +632,26 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isCompactionEnabled() {
+    return zkSharedStore.isCompactionEnabled();
+  }
+
+  @Override
+  public void setCompactionEnabled(boolean compactionEnabled) {
+    throwUnsupportedOperationException("setCompactionEnabled");
+  }
+
+  @Override
+  public long getCompactionThresholdMilliseconds() {
+    return zkSharedStore.getCompactionThresholdMilliseconds();
+  }
+
+  @Override
+  public void setCompactionThresholdMilliseconds(long compactionThreshold) {
+    throwUnsupportedOperationException("setCompactionThresholdMilliseconds");
+  }
+
+  @Override
   public long getMinCompactionLagSeconds() {
     return zkSharedStore.getMinCompactionLagSeconds();
   }
@@ -744,6 +764,26 @@ public class SystemStore extends AbstractStore {
   @Override
   public void setGlobalRtDivEnabled(boolean globalRtDivEnabled) {
     throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isTTLRepushEnabled() {
+    return zkSharedStore.isTTLRepushEnabled();
+  }
+
+  @Override
+  public void setTTLRepushEnabled(boolean ttlRepushEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isEnumSchemaEvolutionAllowed() {
+    return false;
+  }
+
+  @Override
+  public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    throwUnsupportedOperationException("setEnumSchemaEvolutionAllowed");
   }
 
   @Override

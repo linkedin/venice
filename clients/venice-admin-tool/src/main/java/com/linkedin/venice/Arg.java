@@ -258,6 +258,10 @@ public enum Arg {
   EXTRA_COMMAND_ARGS("extra-command-args", "eca", true, "extra command arguments"),
   ENABLE_DISABLED_REPLICA("enable-disabled-replicas", "edr", true, "Reenable disabled replicas"),
   NON_INTERACTIVE("non-interactive", "nita", false, "non-interactive mode"),
+  ENABLE_COMPACTION("enable-compaction", "ec", true, "Enable compaction"),
+  COMPACTION_THRESHOLD_MILLISECONDS(
+      "compaction-threshold-milliseconds", "ctms", true, "Set compaction threshold in milliseconds"
+  ),
   MIN_COMPACTION_LAG_SECONDS(
       "min-compaction-lag-seconds", "mcls", true, "Min compaction lag seconds for version topic of hybrid stores"
   ),
@@ -308,7 +312,9 @@ public enum Arg {
   ADMIN_OPERATION_PROTOCOL_VERSION(
       "admin-operation-protocol-version", "aopv", true, "Admin operation protocol version"
   ), GLOBAL_RT_DIV_ENABLED("global-rt-div-enabled", "grde", true, "Enable Global RT DIV for a store"),
-  INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
+  ENUM_SCHEMA_EVOLUTION_ALLOWED(
+      "enum-schema-evolution-allowed", "esea", true, "Allow enum schema evolution for a store"
+  ), INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
   ABORT_ON_FAILURE("abort-on-failure", "aof", true, "Abort the auto store migration if any step fails"),;
 
   private final String argName;

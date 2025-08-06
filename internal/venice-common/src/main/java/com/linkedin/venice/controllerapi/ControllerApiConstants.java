@@ -248,8 +248,9 @@ public class ControllerApiConstants {
 
   public static final String STORAGE_NODE_READ_QUOTA_ENABLED = "storage_node_read_quota_enabled";
 
+  public static final String COMPACTION_ENABLED = "compaction_enabled";
+  public static final String COMPACTION_THRESHOLD_MILLISECONDS = "compaction_threshold_milliseconds";
   public static final String MIN_COMPACTION_LAG_SECONDS = "min_compaction_lag_seconds";
-
   public static final String MAX_COMPACTION_LAG_SECONDS = "max_compaction_lag_seconds";
 
   public static final String MAX_RECORD_SIZE_BYTES = "max_record_size_bytes";
@@ -267,9 +268,11 @@ public class ControllerApiConstants {
   public static final String TARGET_SWAP_REGION_WAIT_TIME = "target_swap_region_wait_time";
   public static final String IS_DAVINCI_HEARTBEAT_REPORTED = "is_davinci_heartbeat_reported";
   public static final String GLOBAL_RT_DIV_ENABLED = "global_rt_div_enabled";
+  public static final String ENUM_SCHEMA_EVOLUTION_ALLOWED = "enum_schema_evolution_allowed";
 
   /**
    * Params for repush job
    */
   public static final String SOURCE_REGION = "source_region";
+  public static final String TTL_REPUSH_ENABLED = "ttl_repush_enabled";
 }

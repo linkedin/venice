@@ -58,6 +58,8 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -170,6 +172,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final boolean isIsolatedIngestion;
 
   private final TopicManagerRepository topicManagerRepository;
+
   private ExecutorService participantStoreConsumerExecutorService;
 
   private ExecutorService ingestionExecutorService;
@@ -192,6 +195,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ResourceAutoClosableLockManager<String> topicLockManager;
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubContext pubSubContext;
   private final KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
   private final ExecutorService aaWCWorkLoadProcessingThreadPool;
@@ -302,6 +306,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             .build();
     this.topicManagerRepository =
         new TopicManagerRepository(topicManagerContext, serverConfig.getKafkaBootstrapServers());
+    this.pubSubContext = new PubSubContext.Builder().setTopicManagerRepository(topicManagerRepository)
+        .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry())
+        .setPubSubPositionDeserializer(new PubSubPositionDeserializer(serverConfig.getPubSubPositionTypeRegistry()))
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .build();
 
     VeniceNotifier notifier = new LogNotifier();
     this.leaderFollowerNotifiers.add(notifier);
@@ -352,7 +361,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           serverConfig.getStoreWriterBufferMemoryCapacity(),
           serverConfig.getStoreWriterBufferNotifyDelta(),
           serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
-          serverConfig.getRegionName(),
+          serverConfig.getLogContext(),
           metricsRepository,
           true);
     }
@@ -459,7 +468,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
       this.aaWCWorkLoadProcessingThreadPool = Executors.newFixedThreadPool(
           serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize(),
-          new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING", serverConfig.getRegionName()));
+          new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING", serverConfig.getLogContext()));
     } else {
       this.aaWCWorkLoadProcessingThreadPool = null;
     }
@@ -467,12 +476,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.idleStoreIngestionTaskKillerExecutor = serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds() > 0
         ? Executors.newScheduledThreadPool(
             1,
-            new DaemonThreadFactory("idle-store-ingestion-task-clean-up-thread", serverConfig.getRegionName()))
+            new DaemonThreadFactory("idle-store-ingestion-task-clean-up-thread", serverConfig.getLogContext()))
         : null;
 
     this.aaWCIngestionStorageLookupThreadPool = Executors.newFixedThreadPool(
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize(),
-        new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP", serverConfig.getRegionName()));
+        new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP", serverConfig.getLogContext()));
     LOGGER.info(
         "Enabled a thread pool for AA/WC ingestion lookup with {} threads.",
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize());
@@ -487,12 +496,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         serverConfig.getIngestionTaskReusableObjectsStrategy().supplier();
 
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
+        .setPubSubContext(pubSubContext)
         .setVeniceWriterFactory(veniceWriterFactory)
         .setStorageMetadataService(storageMetadataService)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
         .setSchemaRepository(schemaRepo)
         .setMetadataRepository(metadataRepo)
-        .setTopicManagerRepository(topicManagerRepository)
         .setHostLevelIngestionStats(hostLevelIngestionStats)
         .setVersionedDIVStats(versionedDIVStats)
         .setDaVinciRecordTransformerStats(recordTransformerStats)
@@ -507,7 +516,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setMetaStoreWriter(metaStoreWriter)
         .setCompressorFactory(compressorFactory)
         .setVeniceViewWriterFactory(viewWriterFactory)
-        .setPubSubTopicRepository(pubSubTopicRepository)
         .setRunnableForKillIngestionTasksForNonCurrentVersions(
             serverConfig.getIngestionMemoryLimit() > 0 ? () -> killConsumptionTaskForNonCurrentVersions() : null)
         .setHeartbeatMonitoringService(heartbeatMonitoringService)
@@ -556,7 +564,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
     if (participantStoreConsumptionTask != null) {
       participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor(
-          new DaemonThreadFactory("ParticipantStoreConsumptionTask", serverConfig.getRegionName()));
+          new DaemonThreadFactory("ParticipantStoreConsumptionTask", serverConfig.getLogContext()));
       participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
       LOGGER.info("{} submitted.", ParticipantStoreConsumptionTask.class.getSimpleName());
     } else {
@@ -1405,6 +1413,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public final ReadOnlyStoreRepository getMetadataRepo() {
     return metadataRepo;
+  }
+
+  public PubSubContext getPubSubContext() {
+    return pubSubContext;
   }
 
   private boolean ingestionTaskHasAnySubscription(String topic) {

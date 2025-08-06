@@ -14,7 +14,7 @@ public class RandomAccessDaemonThreadFactory extends DaemonThreadFactory {
    */
   private final Map<Integer, Thread> activeThreads = new VeniceConcurrentHashMap<>();
 
-  public RandomAccessDaemonThreadFactory(String threadNamePrefix, String logContext) {
+  public RandomAccessDaemonThreadFactory(String threadNamePrefix, LogContext logContext) {
     super(threadNamePrefix, logContext);
   }
 

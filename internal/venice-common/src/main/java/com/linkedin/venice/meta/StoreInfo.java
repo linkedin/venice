@@ -71,6 +71,8 @@ public class StoreInfo {
     storeInfo.setReplicationMetadataVersionId(store.getRmdVersion());
     storeInfo.setViewConfigs(store.getViewConfigs());
     storeInfo.setStorageNodeReadQuotaEnabled(store.isStorageNodeReadQuotaEnabled());
+    storeInfo.setCompactionEnabled(store.isCompactionEnabled());
+    storeInfo.setCompactionThreshold(store.getCompactionThresholdMilliseconds());
     storeInfo.setMinCompactionLagSeconds(store.getMinCompactionLagSeconds());
     storeInfo.setMaxCompactionLagSeconds(store.getMaxCompactionLagSeconds());
     storeInfo.setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
@@ -83,6 +85,8 @@ public class StoreInfo {
     storeInfo.setTargetRegionSwapWaitTime(store.getTargetSwapRegionWaitTime());
     storeInfo.setIsDavinciHeartbeatReported(store.getIsDavinciHeartbeatReported());
     storeInfo.setGlobalRtDivEnabled(store.isGlobalRtDivEnabled());
+    storeInfo.setTTLRepushEnabled(store.isTTLRepushEnabled());
+    storeInfo.setEnumSchemaEvolutionAllowed(store.isEnumSchemaEvolutionAllowed());
     return storeInfo;
   }
 
@@ -334,6 +338,10 @@ public class StoreInfo {
    */
   private boolean isStoreDead;
 
+  private boolean compactionEnabled;
+
+  private long compactionThreshold;
+
   private long minCompactionLagSeconds;
 
   private long maxCompactionLagSeconds;
@@ -352,6 +360,11 @@ public class StoreInfo {
   private int targetRegionSwapWaitTime;
   private boolean isDavinciHeartbeatReported;
   private boolean globalRtDivEnabled = false;
+  /**
+   * Self-managed config that's set to true once there is a TTL re-push.
+   */
+  private boolean ttlRepushEnabled = false;
+  private boolean enumSchemaEvolutionAllowed = false;
 
   public StoreInfo() {
   }
@@ -802,6 +815,22 @@ public class StoreInfo {
     this.storageNodeReadQuotaEnabled = storageNodeReadQuotaEnabled;
   }
 
+  public boolean isCompactionEnabled() {
+    return this.compactionEnabled;
+  }
+
+  public void setCompactionEnabled(boolean compactionEnabled) {
+    this.compactionEnabled = compactionEnabled;
+  }
+
+  public long getCompactionThreshold() {
+    return this.compactionThreshold;
+  }
+
+  public void setCompactionThreshold(long compactionThreshold) {
+    this.compactionThreshold = compactionThreshold;
+  }
+
   public long getMinCompactionLagSeconds() {
     return minCompactionLagSeconds;
   }
@@ -912,5 +941,21 @@ public class StoreInfo {
 
   public boolean isGlobalRtDivEnabled() {
     return this.globalRtDivEnabled;
+  }
+
+  public void setTTLRepushEnabled(boolean ttlRepushEnabled) {
+    this.ttlRepushEnabled = ttlRepushEnabled;
+  }
+
+  public boolean isTTLRepushEnabled() {
+    return this.ttlRepushEnabled;
+  }
+
+  public boolean isEnumSchemaEvolutionAllowed() {
+    return enumSchemaEvolutionAllowed;
+  }
+
+  public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    this.enumSchemaEvolutionAllowed = enumSchemaEvolutionAllowed;
   }
 }

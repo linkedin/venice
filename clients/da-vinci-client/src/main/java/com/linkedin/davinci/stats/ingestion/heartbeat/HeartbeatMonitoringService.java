@@ -72,8 +72,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     this.regionNames = serverConfig.getRegionNames();
     this.localRegionName = serverConfig.getRegionName();
     this.maxWaitForVersionInfo = serverConfig.getServerMaxWaitForVersionInfo();
-    this.reportingThread = new HeartbeatReporterThread();
-    this.lagLoggingThread = new HeartbeatLagLoggingThread();
+    this.reportingThread = new HeartbeatReporterThread(serverConfig);
+    this.lagLoggingThread = new HeartbeatLagLoggingThread(serverConfig);
     this.followerHeartbeatTimeStamps = new VeniceConcurrentHashMap<>();
     this.leaderHeartbeatTimeStamps = new VeniceConcurrentHashMap<>();
     this.metadataRepository = metadataRepository;
@@ -593,12 +593,16 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   private class HeartbeatReporterThread extends Thread {
-    HeartbeatReporterThread() {
+    private final LogContext logContext;
+
+    HeartbeatReporterThread(VeniceServerConfig serverConfig) {
       super("Ingestion-Heartbeat-Reporter-Service-Thread");
+      this.logContext = serverConfig.getLogContext();
     }
 
     @Override
     public void run() {
+      LogContext.setLogContext(logContext);
       while (!Thread.interrupted()) {
         try {
           heartbeatMonitoringServiceStats.recordReporterHeartbeat();
@@ -619,13 +623,16 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   }
 
   private class HeartbeatLagLoggingThread extends Thread {
-    HeartbeatLagLoggingThread() {
+    private final LogContext logContext;
+
+    HeartbeatLagLoggingThread(VeniceServerConfig serverConfig) {
       super("Ingestion-Heartbeat-Lag-Logging-Service-Thread");
+      this.logContext = serverConfig.getLogContext();
     }
 
     @Override
     public void run() {
-      LogContext.setRegionLogContext(localRegionName);
+      LogContext.setLogContext(logContext);
       while (!Thread.interrupted()) {
         try {
           heartbeatMonitoringServiceStats.recordLoggerHeartbeat();

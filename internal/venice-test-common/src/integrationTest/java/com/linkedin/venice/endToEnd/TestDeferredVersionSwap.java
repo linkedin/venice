@@ -25,6 +25,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -525,7 +526,7 @@ public class TestDeferredVersionSwap {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testDeferredVersionSwapWithParentVersionMismatch() throws IOException {
+  public void testDeferredVersionSwapWithVersionMismatch() throws IOException {
     File inputDir = getTempDataDirectory();
     TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
     // Setup job properties
@@ -571,19 +572,19 @@ public class TestDeferredVersionSwap {
         Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.PUSHED);
       });
 
-      // Forcibly mark parent version status as ONLINE to confirm that version swap will still happen if non target
+      // Forcibly mark parent version and child status as ONLINE to confirm that version swap will still happen if non
+      // target
       // regions are not swapped yet
       Admin admin =
           multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(CLUSTER_NAMES[0]).getVeniceAdmin();
-      ReadWriteStoreRepository storeRepository =
-          admin.getHelixVeniceClusterResources(CLUSTER_NAMES[0]).getStoreMetadataRepository();
-      Store store1 = storeRepository.getStore(storeName);
-      store1.updateVersionStatus(1, VersionStatus.ONLINE);
-      storeRepository.updateStore(store1);
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.ONLINE);
-      });
+      updateVersionStatus(admin, storeName, VersionStatus.ONLINE, parentControllerClient);
+
+      for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
+        VeniceHelixAdmin childAdmin = childDatacenter.getLeaderController(CLUSTER_NAMES[0]).getVeniceHelixAdmin();
+        ControllerClient childControllerClient =
+            new ControllerClient(CLUSTER_NAMES[0], childDatacenter.getControllerConnectString());
+        updateVersionStatus(childAdmin, storeName, VersionStatus.ONLINE, childControllerClient);
+      }
 
       // Version should be swapped in all regions
       TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
@@ -605,6 +606,22 @@ public class TestDeferredVersionSwap {
         assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
       }
     }
+  }
+
+  private void updateVersionStatus(
+      Admin admin,
+      String storeName,
+      VersionStatus status,
+      ControllerClient controllerClient) {
+    ReadWriteStoreRepository storeRepository =
+        admin.getHelixVeniceClusterResources(CLUSTER_NAMES[0]).getStoreMetadataRepository();
+    Store store = storeRepository.getStore(storeName);
+    store.updateVersionStatus(1, status);
+    storeRepository.updateStore(store);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreInfo parentStore = controllerClient.getStore(storeName).getStore();
+      Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), status);
+    });
   }
 
   private void verifyThatPushStatusStoreIsOnline(String storeName) {

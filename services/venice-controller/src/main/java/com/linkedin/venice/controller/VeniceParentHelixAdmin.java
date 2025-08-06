@@ -15,6 +15,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLIENT_DECOMPRESSION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPACTION_THRESHOLD_MILLISECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DATA_REPLICATION_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_DAVINCI_PUSH_STATUS_STORE;
@@ -22,6 +24,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_M
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
@@ -78,6 +81,7 @@ import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARENT_CONTROLLER_METADATA_SYSTEM_STORE_VALUE;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 import static com.linkedin.venice.utils.RegionUtils.isRegionPartOfRegionsFilterList;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
@@ -430,6 +434,7 @@ public class VeniceParentHelixAdmin implements Admin {
         new PubSubTopicRepository(),
         null,
         null,
+        null,
         metricsRepository);
   }
 
@@ -446,7 +451,9 @@ public class VeniceParentHelixAdmin implements Admin {
       PubSubTopicRepository pubSubTopicRepository,
       DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore,
       DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore,
+      DelegatingClusterLeaderInitializationRoutine initRoutineForParentControllerMetadataSystemStore,
       MetricsRepository metricsRepository) {
+
     Validate.notNull(lingeringStoreVersionChecker);
     Validate.notNull(writeComputeSchemaConverter);
     this.veniceHelixAdmin = veniceHelixAdmin;
@@ -555,6 +562,28 @@ public class VeniceParentHelixAdmin implements Admin {
         initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       }
     }
+
+    String parentControllerMetadataStoreClusterName =
+        getMultiClusterConfigs().getParentControllerMetadataStoreClusterName();
+    boolean initializeParentControllerMetadataStore = !StringUtils.isEmpty(parentControllerMetadataStoreClusterName);
+    if (initRoutineForParentControllerMetadataSystemStore != null) {
+      if (initializeParentControllerMetadataStore) {
+        UpdateStoreQueryParams updateStoreQueryParamsForParentControllerMetadataStore =
+            new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
+        initRoutineForParentControllerMetadataSystemStore.setDelegate(
+            new SharedInternalRTStoreInitializationRoutine(
+                parentControllerMetadataStoreClusterName,
+                VeniceSystemStoreUtils
+                    .getParentControllerMetadataStoreNameForCluster(parentControllerMetadataStoreClusterName),
+                PARENT_CONTROLLER_METADATA_SYSTEM_STORE_VALUE,
+                multiClusterConfigs,
+                this,
+                Schema.create(Schema.Type.STRING),
+                updateStoreQueryParamsForParentControllerMetadataStore));
+      } else {
+        initRoutineForParentControllerMetadataSystemStore.setAllowEmptyDelegateInitializationToSucceed();
+      }
+    }
   }
 
   // For testing purpose.
@@ -587,6 +616,7 @@ public class VeniceParentHelixAdmin implements Admin {
      */
 
     // Check whether the admin topic exists or not.
+    // eg. venice_admin_cluster_1
     PubSubTopic topicName = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
     TopicManager topicManager = getTopicManager();
     if (topicManager.containsTopicAndAllPartitionsAreOnline(topicName)) {
@@ -2450,6 +2480,8 @@ public class VeniceParentHelixAdmin implements Admin {
        */
       Optional<Boolean> replicateAll = params.getReplicateAllConfigs();
       Optional<Boolean> storageNodeReadQuotaEnabled = params.getStorageNodeReadQuotaEnabled();
+      Optional<Boolean> compactionEnabled = params.getCompactionEnabled();
+      Optional<Long> compactionThreshold = params.getCompactionThresholdMilliseconds();
       Optional<Long> minCompactionLagSeconds = params.getMinCompactionLagSeconds();
       Optional<Long> maxCompactionLagSeconds = params.getMaxCompactionLagSeconds();
       Optional<Integer> maxRecordSizeBytes = params.getMaxRecordSizeBytes();
@@ -2823,6 +2855,10 @@ public class VeniceParentHelixAdmin implements Admin {
           .map(addToUpdatedConfigList(updatedConfigsList, GLOBAL_RT_DIV_ENABLED))
           .orElseGet((currStore::isGlobalRtDivEnabled));
 
+      setStore.enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed()
+          .map(addToUpdatedConfigList(updatedConfigsList, ENUM_SCHEMA_EVOLUTION_ALLOWED))
+          .orElseGet((currStore::isEnumSchemaEvolutionAllowed));
+
       // Check whether the passed param is valid or not
       if (latestSupersetSchemaId.isPresent()) {
         if (latestSupersetSchemaId.get() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
@@ -2832,6 +2868,7 @@ public class VeniceParentHelixAdmin implements Admin {
           }
         }
       }
+
       setStore.latestSuperSetValueSchemaId =
           latestSupersetSchemaId.map(addToUpdatedConfigList(updatedConfigsList, LATEST_SUPERSET_SCHEMA_ID))
               .orElseGet(currStore::getLatestSuperSetValueSchemaId);
@@ -2841,6 +2878,11 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.unusedSchemaDeletionEnabled =
           unusedSchemaDeletionEnabled.map(addToUpdatedConfigList(updatedConfigsList, UNUSED_SCHEMA_DELETION_ENABLED))
               .orElseGet(currStore::isUnusedSchemaDeletionEnabled);
+      setStore.compactionEnabled = compactionEnabled.map(addToUpdatedConfigList(updatedConfigsList, COMPACTION_ENABLED))
+          .orElseGet(currStore::isCompactionEnabled);
+      setStore.compactionThresholdMilliseconds =
+          compactionThreshold.map(addToUpdatedConfigList(updatedConfigsList, COMPACTION_THRESHOLD_MILLISECONDS))
+              .orElseGet(currStore::getCompactionThresholdMilliseconds);
       setStore.minCompactionLagSeconds =
           minCompactionLagSeconds.map(addToUpdatedConfigList(updatedConfigsList, MIN_COMPACTION_LAG_SECONDS))
               .orElseGet(currStore::getMinCompactionLagSeconds);

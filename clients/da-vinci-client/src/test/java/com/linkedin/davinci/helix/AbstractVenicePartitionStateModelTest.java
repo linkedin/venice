@@ -52,7 +52,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
   protected ParticipantStateTransitionStats mockParticipantStateTransitionStats;
 
   @BeforeMethod
-  public void setUp() {
+  public void setUp() throws InterruptedException {
     this.storeName = Utils.getUniqueString("stateModelTestStore");
     this.systemStoreName =
         VeniceSystemStoreUtils.getDaVinciPushStatusStoreName(Utils.getUniqueString("stateModelTestStore"));
@@ -108,5 +108,5 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
 
   protected abstract MODEL_TYPE getParticipantStateModel();
 
-  protected abstract NOTIFIER_TYPE getNotifier();
+  protected abstract NOTIFIER_TYPE getNotifier() throws InterruptedException;
 }
