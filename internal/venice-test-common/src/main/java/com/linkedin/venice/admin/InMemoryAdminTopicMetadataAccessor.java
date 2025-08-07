@@ -13,6 +13,7 @@ import org.apache.logging.log4j.Logger;
 public class InMemoryAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
   private static final Logger LOGGER = LogManager.getLogger(InMemoryAdminTopicMetadataAccessor.class);
   private Map<String, Long> inMemoryMetadata = new HashMap<>();
+  private Map<String, Position> inMemoryPositionMetadata = new HashMap<>();
 
   @Override
   public void updateMetadata(String clusterName, Map<String, Long> metadata) {
@@ -21,7 +22,17 @@ public class InMemoryAdminTopicMetadataAccessor extends AdminTopicMetadataAccess
   }
 
   @Override
+  public void updatePositionMetadata(String clusterName, Map<String, Position> positionMetadata) {
+    inMemoryPositionMetadata.putAll(positionMetadata);
+  }
+
+  @Override
   public Map<String, Long> getMetadata(String clusterName) {
     return inMemoryMetadata;
+  }
+
+  @Override
+  public Map<String, AdminTopicMetadataAccessor.Position> getPositionMetadata(String clusterName) {
+    return inMemoryPositionMetadata;
   }
 }

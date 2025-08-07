@@ -24,6 +24,10 @@ public class TestZkAdminTopicMetadataAccessor {
   private ZkClient zkClient;
   private HelixAdapterSerializer adapterSerializer;
   private ZkAdminTopicMetadataAccessor zkAdminTopicMetadataAccessor;
+  private final static AdminTopicMetadataAccessor.Position dummyPosition =
+      AdminTopicMetadataAccessor.Position.parseFrom(2, "localDummy".getBytes());
+  private final static AdminTopicMetadataAccessor.Position dummyUpstreamPosition =
+      AdminTopicMetadataAccessor.Position.parseFrom(2, "remoteDummy".getBytes());
 
   @BeforeMethod
   public void setUp() {
@@ -39,6 +43,9 @@ public class TestZkAdminTopicMetadataAccessor {
     // metadata that we are trying to update
     Map<String, Long> metadataDelta = new HashMap<>();
     metadataDelta.put("offset", 100L);
+    Map<String, AdminTopicMetadataAccessor.Position> positionMetadataDelta = new HashMap<>();
+    positionMetadataDelta.put(AdminTopicMetadataAccessor.POSITION_KEY, dummyPosition);
+    positionMetadataDelta.put(AdminTopicMetadataAccessor.UPSTREAM_POSITION_KEY, dummyUpstreamPosition);
 
     String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
     try (MockedStatic<DataTree> dataTreeMockedStatic = Mockito.mockStatic(DataTree.class)) {
@@ -50,13 +57,14 @@ public class TestZkAdminTopicMetadataAccessor {
 
       // Update the metadata
       zkAdminTopicMetadataAccessor.updateMetadata(clusterName, metadataDelta);
+      zkAdminTopicMetadataAccessor.updatePositionMetadata(clusterName, positionMetadataDelta);
 
       // Verify that the metadata path got read 1 time
-      verify(zkClient, times(1)).readData(metadataPath, readStat);
+      verify(zkClient, times(2)).readData(metadataPath, readStat);
 
-      // Verify that the metadata path got read 1 time with the metadataDelta map
-      // When the metadata is empty, the metadataDelta should be written as is
+      // Verify that the metadata path got read 1 time with the metadataDelta map and 1 time with positionMetadataDelta
       verify(zkClient, times(1)).writeDataGetStat(metadataPath, metadataDelta, 0);
+      verify(zkClient, times(1)).writeDataGetStat(metadataPath, positionMetadataDelta, 0);
     }
   }
 
@@ -101,9 +109,14 @@ public class TestZkAdminTopicMetadataAccessor {
     String clusterName = "test-cluster";
     Map<String, Long> currentMetadata = AdminTopicMetadataAccessor
         .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
+    Map<String, AdminTopicMetadataAccessor.Position> currentPositionMetadata =
+        AdminTopicMetadataAccessor.generatePositionMetadataMap(dummyPosition, dummyUpstreamPosition);
+    Map<String, Object> allMetadata = new HashMap<>();
+    allMetadata.putAll(currentMetadata);
+    allMetadata.putAll(currentPositionMetadata);
     String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
 
-    when(zkClient.readData(metadataPath, null)).thenReturn(null).thenReturn(currentMetadata);
+    when(zkClient.readData(metadataPath, null)).thenReturn(null).thenReturn(allMetadata);
 
     // Case 1: when there is no metadata
     Map<String, Long> metadata = zkAdminTopicMetadataAccessor.getMetadata(clusterName);
@@ -112,5 +125,8 @@ public class TestZkAdminTopicMetadataAccessor {
     // Case 2: the metadata is not null
     metadata = zkAdminTopicMetadataAccessor.getMetadata(clusterName);
     assertEquals(metadata, currentMetadata);
+    Map<String, AdminTopicMetadataAccessor.Position> positionMetadata =
+        zkAdminTopicMetadataAccessor.getPositionMetadata(clusterName);
+    assertEquals(positionMetadata, currentPositionMetadata);
   }
 }
