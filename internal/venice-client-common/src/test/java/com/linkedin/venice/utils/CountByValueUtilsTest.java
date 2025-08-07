@@ -388,20 +388,23 @@ public class CountByValueUtilsTest {
   @Test
   public void testExtractFieldValueGenericWithComputeGenericRecord() {
     // Create a mock object that has a get method (simulating ComputeGenericRecord)
-    Object mockRecord = new Object() {
-      public Object get(String fieldName) {
-        if ("test_field".equals(fieldName)) {
-          return "test_value";
-        }
-        return null;
-      }
-    };
+    MockComputeRecord mockRecord = new MockComputeRecord();
 
     Object result = CountByValueUtils.extractFieldValueGeneric(mockRecord, "test_field");
     Assert.assertEquals("test_value", result);
 
     result = CountByValueUtils.extractFieldValueGeneric(mockRecord, "non_existent");
     Assert.assertNull(result);
+  }
+
+  // Helper class for testing - simulates ComputeGenericRecord
+  private static class MockComputeRecord {
+    public Object get(String fieldName) {
+      if ("test_field".equals(fieldName)) {
+        return "test_value";
+      }
+      return null;
+    }
   }
 
   private Schema createStringSchema() {
