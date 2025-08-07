@@ -84,4 +84,5 @@ public class PubSubPositionDeserializerTest {
   public void testGetPositionFromWireFormatBytesThrowsExceptionWhenWireFormatBytesIsNull1() {
     PubSubPositionDeserializer.getPositionFromWireFormat((PubSubPositionWireFormat) null);
   }
+
 }

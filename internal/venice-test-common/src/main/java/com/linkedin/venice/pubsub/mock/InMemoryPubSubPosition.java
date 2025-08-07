@@ -1,5 +1,6 @@
 package com.linkedin.venice.pubsub.mock;
 
+import com.linkedin.venice.pubsub.PubSubPositionFactory;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.utils.ByteUtils;
@@ -52,6 +53,11 @@ public class InMemoryPubSubPosition implements PubSubPosition {
     buffer.flip();
     wireFormat.rawBytes = buffer;
     return wireFormat;
+  }
+
+  @Override
+  public Class<? extends PubSubPositionFactory> getFactoryClass() {
+    return InMemoryPubSubPositionFactory.class;
   }
 
   @Override

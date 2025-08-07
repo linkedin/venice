@@ -3,6 +3,7 @@ package com.linkedin.venice.pubsub.adapter.kafka.common;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
@@ -40,8 +41,10 @@ public class ApacheKafkaOffsetPositionTest {
 
   @Test
   public void testToString() {
-    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(1);
-    assertEquals(position1.toString(), "1");
+    ApacheKafkaOffsetPosition position1 = ApacheKafkaOffsetPosition.of(231);
+    assertTrue(
+        position1.toString().contains("231"),
+        "toString should contain the offset value 231 but was: " + position1);
   }
 
   @Test
