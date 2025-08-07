@@ -42,6 +42,7 @@ import static com.linkedin.venice.utils.Time.MS_PER_HOUR;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_NOT_COMPLETED;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
+import static com.linkedin.venice.writer.VeniceWriter.LEADER_COMPLETE_STATE_HEADERS;
 import static com.linkedin.venice.writer.VeniceWriter.generateHeartbeatMessage;
 import static com.linkedin.venice.writer.VeniceWriter.getHeartbeatKME;
 import static org.mockito.ArgumentMatchers.any;
@@ -3815,7 +3816,7 @@ public abstract class StoreIngestionTaskTest {
         getHeartbeatKME(producerTimestamp, mockLeaderMetadataWrapper, generateHeartbeatMessage(CheckSumType.NONE), "0");
 
     PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
-    pubSubMessageHeaders.add(VeniceWriter.getLeaderCompleteStateHeader(LEADER_COMPLETED));
+    pubSubMessageHeaders.add(LEADER_COMPLETE_STATE_HEADERS.get(LEADER_COMPLETED));
     DefaultPubSubMessage pubSubMessage = new ImmutablePubSubMessage(
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
