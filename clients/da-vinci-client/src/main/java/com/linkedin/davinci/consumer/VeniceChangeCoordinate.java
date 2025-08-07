@@ -6,6 +6,7 @@ import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.Externalizable;
@@ -110,10 +111,9 @@ public class VeniceChangeCoordinate implements Externalizable {
           throw new VeniceException("Unsupported VeniceChangeCoordinate version: " + version);
       }
       LOGGER.info(
-          "Deserialized VeniceChangeCoordinate from {} format: topic: {}, partition: {}, position: {}",
+          "Deserialized VeniceChangeCoordinate from {} format: topic-partition: {}, position: {}",
           version,
-          topic,
-          partition,
+          Utils.getReplicaId(topic, partition),
           pubSubPosition);
     } catch (IOException e) {
       LOGGER.warn("Falling back to v1 deserialization due to error: {}", e.toString());
@@ -122,9 +122,8 @@ public class VeniceChangeCoordinate implements Externalizable {
           ? pubSubPositionDeserializer.toPosition(positionWf)
           : PubSubPositionDeserializer.DEFAULT_DESERIALIZER.toPosition(positionWf);
       LOGGER.info(
-          "Deserialized VeniceChangeCoordinate from v1 format: topic={}, partition={}, position={}",
-          topic,
-          partition,
+          "Deserialized VeniceChangeCoordinate from v1 format: topic-partition: {}, position: {}",
+          Utils.getReplicaId(topic, partition),
           pubSubPosition);
     }
   }
@@ -196,5 +195,29 @@ public class VeniceChangeCoordinate implements Externalizable {
     restoredCoordinate.setPubSubPositionDeserializer(deserializer);
     restoredCoordinate.readExternal(objectInputStream);
     return restoredCoordinate;
+  }
+
+  @Override
+  public String toString() {
+    return "VeniceChangeCoordinate{topic-partition=" + Utils.getReplicaId(topic, partition) + ", pubSubPosition="
+        + pubSubPosition + '}';
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+    if (obj == null || getClass() != obj.getClass()) {
+      return false;
+    }
+    VeniceChangeCoordinate that = (VeniceChangeCoordinate) obj;
+    return Objects.equals(topic, that.topic) && Objects.equals(partition, that.partition)
+        && Objects.equals(pubSubPosition, that.pubSubPosition);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(topic, partition, pubSubPosition);
   }
 }
