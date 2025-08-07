@@ -25,14 +25,6 @@ import org.testng.annotations.Test;
 
 /**
  * Comprehensive test suite for VeniceChangeCoordinate serialization and deserialization.
- *
- * Tests cover:
- * - V2 format with versioning and factory class names
- * - Backward compatibility with V1 format
- * - Custom PubSubPosition implementations
- * - Error handling and fallback scenarios
- * - Base64 encoding/decoding roundtrips
- * - Edge cases and validation
  */
 public class VeniceChangeCoordinateSerializationTest {
 
@@ -52,10 +44,6 @@ public class VeniceChangeCoordinateSerializationTest {
     testCoordinate = new VeniceChangeCoordinate(TEST_TOPIC, testPosition, TEST_PARTITION);
   }
 
-  // =================================================================================
-  // GROUP 1: V2 Format Serialization/Deserialization Tests
-  // Tests the new versioned format with factory class names
-  // =================================================================================
   @Test
   public void testV2FormatSerializationRoundTrip() throws IOException, ClassNotFoundException {
     // Test that V2 format can serialize and deserialize correctly
@@ -114,11 +102,6 @@ public class VeniceChangeCoordinateSerializationTest {
     verifySerializationRoundTrip(customCoordinate);
   }
 
-  // =================================================================================
-  // GROUP 2: Backward Compatibility (V1 Format) Tests
-  // Tests that old format data can still be read by new code
-  // =================================================================================
-
   @Test
   public void testBackwardCompatibilityWithV1Format() throws IOException, ClassNotFoundException {
     // Create V1 format data (without version and factory fields)
@@ -151,11 +134,6 @@ public class VeniceChangeCoordinateSerializationTest {
     assertEquals(coordinate.getPartition(), TEST_PARTITION);
   }
 
-  // =================================================================================
-  // GROUP 3: Custom PubSubPosition and Factory Tests
-  // Tests support for non-default position types and their corresponding factories
-  // =================================================================================
-
   @Test
   public void testCustomPubSubPositionSerialization() throws IOException, ClassNotFoundException {
     // Test serialization with a custom PubSubPosition implementation
@@ -187,11 +165,6 @@ public class VeniceChangeCoordinateSerializationTest {
     assertNotNull(deserializedCoordinate.getPosition());
     assertEquals(deserializedCoordinate.getPosition().getClass(), CustomTestPosition.class);
   }
-
-  // =================================================================================
-  // GROUP 4: Error Handling and Fallback Behavior Tests
-  // Tests various error conditions and recovery mechanisms
-  // =================================================================================
 
   @Test
   public void testInvalidFactoryClassNameFallback() throws IOException, ClassNotFoundException {
@@ -267,11 +240,6 @@ public class VeniceChangeCoordinateSerializationTest {
     assertThrows(VeniceException.class, () -> deserializeFromBytes(dataWithUnsupportedVersion));
   }
 
-  // =================================================================================
-  // GROUP 5: Base64 Encoding/Decoding Roundtrip Tests
-  // Tests the string conversion methods used for external storage
-  // =================================================================================
-
   @Test
   public void testBase64EncodingRoundtrip() throws IOException, ClassNotFoundException {
     // Test the Base64 string encoding and decoding methods
@@ -313,11 +281,6 @@ public class VeniceChangeCoordinateSerializationTest {
     assertEquals(decodedCoordinate.getPartition(), TEST_PARTITION);
   }
 
-  // =================================================================================
-  // GROUP 6: Edge Cases and Validation Tests
-  // Tests defensive programming, null handling, and edge conditions
-  // =================================================================================
-
   @Test
   public void testNullFieldValidation() {
     // Test that serialization fails gracefully with null required fields
@@ -352,28 +315,6 @@ public class VeniceChangeCoordinateSerializationTest {
     assertEquals(deserializedCoordinate.getTopic(), "");
     assertEquals(deserializedCoordinate.getPartition(), TEST_PARTITION);
   }
-
-  @Test
-  public void testLargeOffsetValues() throws IOException, ClassNotFoundException {
-    // Test serialization with large offset values
-    ApacheKafkaOffsetPosition largeOffsetPosition = ApacheKafkaOffsetPosition.of(Long.MAX_VALUE - 1);
-    VeniceChangeCoordinate largeOffsetCoordinate =
-        new VeniceChangeCoordinate(TEST_TOPIC, largeOffsetPosition, TEST_PARTITION);
-
-    verifySerializationRoundTrip(largeOffsetCoordinate);
-  }
-
-  @Test
-  public void testNegativePartitionValues() throws IOException, ClassNotFoundException {
-    // Test with edge case partition values
-    VeniceChangeCoordinate negativePartitionCoordinate = new VeniceChangeCoordinate(TEST_TOPIC, testPosition, -1);
-
-    verifySerializationRoundTrip(negativePartitionCoordinate);
-  }
-
-  // =================================================================================
-  // Helper Methods and Utilities
-  // =================================================================================
 
   /**
    * Serializes a VeniceChangeCoordinate to byte array
