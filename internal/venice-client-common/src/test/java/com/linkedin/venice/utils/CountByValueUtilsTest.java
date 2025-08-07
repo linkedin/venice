@@ -17,6 +17,18 @@ import org.testng.annotations.Test;
  * Test for the shared CountByValueUtils methods used by both thin-client and fast-client.
  */
 public class CountByValueUtilsTest {
+  private static class MockRecord {
+    private final Map<String, Object> data = new HashMap<>();
+
+    public MockRecord(Map<String, Object> testData) {
+      this.data.putAll(testData);
+    }
+
+    public Object get(String fieldName) {
+      return data.get(fieldName);
+    }
+  }
+
   @Test
   public void testNormalizeValue() {
     // Test Utf8 conversion
@@ -43,14 +55,14 @@ public class CountByValueUtilsTest {
 
   @Test
   public void testAggregateValues() {
-    List<String> values = Arrays.asList("apple", "banana", "apple", "cherry", "banana", "apple");
+    List<String> values = Arrays.asList("user123", "member456", "user123", "record789", "member456", "user123");
 
     Map<String, Integer> result = CountByValueUtils.aggregateValues(values);
 
     Assert.assertEquals(result.size(), 3);
-    Assert.assertEquals(result.get("apple"), Integer.valueOf(3));
-    Assert.assertEquals(result.get("banana"), Integer.valueOf(2));
-    Assert.assertEquals(result.get("cherry"), Integer.valueOf(1));
+    Assert.assertEquals(result.get("user123"), Integer.valueOf(3));
+    Assert.assertEquals(result.get("member456"), Integer.valueOf(2));
+    Assert.assertEquals(result.get("record789"), Integer.valueOf(1));
   }
 
   @Test
@@ -65,18 +77,18 @@ public class CountByValueUtilsTest {
   @Test
   public void testFilterTopKValuesGeneric() {
     Map<String, Integer> fieldCounts = new HashMap<>();
-    fieldCounts.put("apple", 5);
-    fieldCounts.put("banana", 3);
-    fieldCounts.put("cherry", 8);
-    fieldCounts.put("date", 1);
-    fieldCounts.put("elderberry", 4);
+    fieldCounts.put("userId_1001", 5);
+    fieldCounts.put("memberId_2002", 3);
+    fieldCounts.put("recordId_3003", 8);
+    fieldCounts.put("searchId_4004", 1);
+    fieldCounts.put("sessionId_5005", 4);
 
     // Test normal TopK
     Map<String, Integer> result = CountByValueUtils.filterTopKValuesGeneric(fieldCounts, 3);
     Assert.assertEquals(result.size(), 3);
-    Assert.assertTrue(result.containsKey("cherry")); // count 8
-    Assert.assertTrue(result.containsKey("apple")); // count 5
-    Assert.assertTrue(result.containsKey("elderberry")); // count 4
+    Assert.assertTrue(result.containsKey("recordId_3003")); // count 8
+    Assert.assertTrue(result.containsKey("userId_1001")); // count 5
+    Assert.assertTrue(result.containsKey("sessionId_5005")); // count 4
 
     // Test TopK larger than available items
     result = CountByValueUtils.filterTopKValuesGeneric(fieldCounts, 10);
@@ -86,35 +98,35 @@ public class CountByValueUtilsTest {
     // Test TopK = 1
     result = CountByValueUtils.filterTopKValuesGeneric(fieldCounts, 1);
     Assert.assertEquals(result.size(), 1);
-    Assert.assertTrue(result.containsKey("cherry"));
-    Assert.assertEquals(result.get("cherry"), Integer.valueOf(8));
+    Assert.assertTrue(result.containsKey("recordId_3003"));
+    Assert.assertEquals(result.get("recordId_3003"), Integer.valueOf(8));
   }
 
   @Test
   public void testFilterTopKValuesGenericWithTies() {
     Map<String, Integer> fieldCounts = new HashMap<>();
-    fieldCounts.put("apple", 3);
-    fieldCounts.put("banana", 3);
-    fieldCounts.put("cherry", 5);
+    fieldCounts.put("userId_1001", 3);
+    fieldCounts.put("memberId_2002", 3);
+    fieldCounts.put("recordId_3003", 5);
 
     Map<String, Integer> result = CountByValueUtils.filterTopKValuesGeneric(fieldCounts, 2);
     Assert.assertEquals(result.size(), 2);
-    Assert.assertTrue(result.containsKey("cherry")); // highest count
-    // Between apple and banana (both count 3), should be deterministic based on key comparison
-    Assert.assertTrue(result.containsKey("apple") || result.containsKey("banana"));
+    Assert.assertTrue(result.containsKey("recordId_3003")); // highest count
+    // Between userId and memberId (both count 3), should be deterministic based on key comparison
+    Assert.assertTrue(result.containsKey("userId_1001") || result.containsKey("memberId_2002"));
   }
 
   @Test
   public void testFilterTopKValuesGenericWithNullKeys() {
     Map<String, Integer> fieldCounts = new HashMap<>();
-    fieldCounts.put("apple", 5);
+    fieldCounts.put("userId_1001", 5);
     fieldCounts.put(null, 3);
-    fieldCounts.put("cherry", 8);
+    fieldCounts.put("recordId_3003", 8);
 
     Map<String, Integer> result = CountByValueUtils.filterTopKValuesGeneric(fieldCounts, 2);
     Assert.assertEquals(result.size(), 2);
-    Assert.assertTrue(result.containsKey("cherry")); // count 8
-    Assert.assertTrue(result.containsKey("apple")); // count 5
+    Assert.assertTrue(result.containsKey("recordId_3003")); // count 8
+    Assert.assertTrue(result.containsKey("userId_1001")); // count 5
     // null should come last due to null handling in comparator
   }
 
@@ -278,40 +290,40 @@ public class CountByValueUtilsTest {
     // Create test data
     Map<String, Map<Object, Integer>> fieldToValueCounts = new HashMap<>();
 
-    // Field 1: names with different counts
-    Map<Object, Integer> nameCounts = new HashMap<>();
-    nameCounts.put("John", 5);
-    nameCounts.put("Jane", 3);
-    nameCounts.put("Bob", 8);
-    nameCounts.put("Alice", 2);
-    fieldToValueCounts.put("name", nameCounts);
+    // Field 1: user IDs with different counts
+    Map<Object, Integer> userIdCounts = new HashMap<>();
+    userIdCounts.put("user_1001", 5);
+    userIdCounts.put("user_2002", 3);
+    userIdCounts.put("user_3003", 8);
+    userIdCounts.put("user_4004", 2);
+    fieldToValueCounts.put("userId", userIdCounts);
 
-    // Field 2: ages with different counts
-    Map<Object, Integer> ageCounts = new HashMap<>();
-    ageCounts.put(25, 10);
-    ageCounts.put(30, 5);
-    ageCounts.put(35, 3);
-    ageCounts.put(40, 1);
-    fieldToValueCounts.put("age", ageCounts);
+    // Field 2: member IDs with different counts
+    Map<Object, Integer> memberIdCounts = new HashMap<>();
+    memberIdCounts.put("member_5001", 10);
+    memberIdCounts.put("member_5002", 5);
+    memberIdCounts.put("member_5003", 3);
+    memberIdCounts.put("member_5004", 1);
+    fieldToValueCounts.put("memberId", memberIdCounts);
 
     // Apply TopK with k=2
     Map<String, Map<Object, Integer>> result = CountByValueUtils.applyTopKToFieldCounts(fieldToValueCounts, 2);
 
-    // Verify name field - should have top 2: Bob(8), John(5)
-    Map<Object, Integer> nameResult = result.get("name");
-    Assert.assertEquals(2, nameResult.size());
-    Assert.assertEquals(Integer.valueOf(8), nameResult.get("Bob"));
-    Assert.assertEquals(Integer.valueOf(5), nameResult.get("John"));
-    Assert.assertFalse(nameResult.containsKey("Jane"));
-    Assert.assertFalse(nameResult.containsKey("Alice"));
+    // Verify userId field - should have top 2: user_3003(8), user_1001(5)
+    Map<Object, Integer> userIdResult = result.get("userId");
+    Assert.assertEquals(2, userIdResult.size());
+    Assert.assertEquals(Integer.valueOf(8), userIdResult.get("user_3003"));
+    Assert.assertEquals(Integer.valueOf(5), userIdResult.get("user_1001"));
+    Assert.assertFalse(userIdResult.containsKey("user_2002"));
+    Assert.assertFalse(userIdResult.containsKey("user_4004"));
 
-    // Verify age field - should have top 2: 25(10), 30(5)
-    Map<Object, Integer> ageResult = result.get("age");
-    Assert.assertEquals(2, ageResult.size());
-    Assert.assertEquals(Integer.valueOf(10), ageResult.get(25));
-    Assert.assertEquals(Integer.valueOf(5), ageResult.get(30));
-    Assert.assertFalse(ageResult.containsKey(35));
-    Assert.assertFalse(ageResult.containsKey(40));
+    // Verify memberId field - should have top 2: member_5001(10), member_5002(5)
+    Map<Object, Integer> memberIdResult = result.get("memberId");
+    Assert.assertEquals(2, memberIdResult.size());
+    Assert.assertEquals(Integer.valueOf(10), memberIdResult.get("member_5001"));
+    Assert.assertEquals(Integer.valueOf(5), memberIdResult.get("member_5002"));
+    Assert.assertFalse(memberIdResult.containsKey("member_5003"));
+    Assert.assertFalse(memberIdResult.containsKey("member_5004"));
   }
 
   @Test
@@ -388,19 +400,14 @@ public class CountByValueUtilsTest {
   @Test
   public void testExtractFieldValueGenericWithComputeGenericRecord() {
     // Create a mock object that has a get method (simulating ComputeGenericRecord)
-    Object mockRecord = new Object() {
-      public Object get(String fieldName) {
-        if ("test_field".equals(fieldName)) {
-          return "test_value";
-        }
-        return null;
-      }
-    };
+    Map<String, Object> testData = new HashMap<>();
+    testData.put("userId", "user_12345");
+    MockRecord mockRecord = new MockRecord(testData);
 
-    Object result = CountByValueUtils.extractFieldValueGeneric(mockRecord, "test_field");
-    Assert.assertEquals("test_value", result);
+    Object result = CountByValueUtils.extractFieldValueGeneric(mockRecord, "userId");
+    Assert.assertEquals("user_12345", result);
 
-    result = CountByValueUtils.extractFieldValueGeneric(mockRecord, "non_existent");
+    result = CountByValueUtils.extractFieldValueGeneric(mockRecord, "memberId");
     Assert.assertNull(result);
   }
 
