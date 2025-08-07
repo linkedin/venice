@@ -35,13 +35,13 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -777,16 +777,18 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     Put put = (Put) kafkaValue.payloadUnion;
     AdminOperation adminOperation = deserializer.deserialize(put.putValue, put.schemaId);
     PubSubMessageHeader header = record.getPubSubMessageHeaders().get(PubSubMessageHeaders.EXECUTION_ID_KEY);
-    long executionId;
-    try {
-      if (header != null) {
-        executionId = ObjectMapperFactory.getInstance().readValue(header.value(), Long.class);
-      } else {
-        // Fallback for backward compatibility
-        executionId = adminOperation.executionId;
+    long executionId = adminOperation.executionId; // fallback default
+    if (header != null) {
+      try {
+        executionId = ByteBuffer.wrap(header.value()).getLong();
+        if (executionId != adminOperation.executionId) {
+          LOGGER.error(
+              "Execution id in header does not match the one in the message payload. Fallback to reading it from the payload");
+          executionId = adminOperation.executionId;
+        }
+      } catch (Exception e) {
+        LOGGER.error("Failed to read execution id from the message header, fallback to reading it from the payload", e);
       }
-    } catch (IOException e) {
-      throw new RuntimeException(e);
     }
     try {
       checkAndValidateMessage(adminOperation, record);

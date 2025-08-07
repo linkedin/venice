@@ -1137,8 +1137,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         producerMetadata -> kafkaKey,
         MessageType.PUT,
         putPayload,
+        false,
         partition,
         callback,
+        true,
         leaderMetadataWrapper,
         logicalTs,
         pubSubMessageHeaders);
@@ -1493,30 +1495,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           leaderMetadataWrapper,
           logicalTs,
           EmptyPubSubMessageHeaders.SINGLETON);
-    }
-  }
-
-  protected CompletableFuture<PubSubProduceResult> sendMessage(
-      KeyProvider keyProvider,
-      MessageType messageType,
-      Object payload,
-      int partition,
-      PubSubProducerCallback callback,
-      LeaderMetadataWrapper leaderMetadataWrapper,
-      long logicalTs,
-      PubSubMessageHeaders pubSubMessageHeaders) {
-    synchronized (this.partitionLocks[partition]) {
-      return sendMessage(
-          keyProvider,
-          messageType,
-          payload,
-          false,
-          partition,
-          callback,
-          true,
-          leaderMetadataWrapper,
-          logicalTs,
-          pubSubMessageHeaders);
     }
   }
 

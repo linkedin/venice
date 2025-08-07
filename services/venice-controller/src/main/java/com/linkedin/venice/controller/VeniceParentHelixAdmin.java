@@ -272,6 +272,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -695,7 +696,7 @@ public class VeniceParentHelixAdmin implements Admin {
           pubSubMessageHeaders.add(
               new PubSubMessageHeader(
                   PubSubMessageHeaders.EXECUTION_ID_KEY,
-                  ObjectMapperFactory.getInstance().writeValueAsBytes(message.executionId)));
+                  ByteBuffer.allocate(Long.BYTES).putLong(message.executionId).array()));
           Future<PubSubProduceResult> future = veniceWriter.put(
               emptyKeyByteArr,
               serializedValue,
