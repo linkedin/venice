@@ -515,10 +515,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     aggStats.recordTotalSubscribedPartitionsNum(totalPartitions);
   }
 
-  public long getOffsetLagBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    return getSomeOffsetFor(versionTopic, pubSubTopicPartition, PubSubConsumerAdapter::getOffsetLag);
-  }
-
   public long getLatestOffsetBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     return getSomeOffsetFor(versionTopic, pubSubTopicPartition, PubSubConsumerAdapter::getLatestOffset);
   }
