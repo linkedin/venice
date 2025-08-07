@@ -1,4 +1,4 @@
-ext.mavenPublishing = [
+ext.publishing = [
     configureArtifactPublishing: { currentProject, testJar ->
       publishing {
         publications {
@@ -36,28 +36,52 @@ ext.mavenPublishing = [
       }
     },
 
-    getMavenLocalPublicationTaskSuffix: {
-      return "PublicationToMavenLocal"
-    },
+    ensureCatchAllModuleGetsPublishedLast: {
+      // Ensure that the 'all-modules' module is published last
+      publishing.repositories.each { repo ->
+        def allModulesMavenRepoTaskName = getPublishingTaskForRepo('all-modules', repo.name)
+        tasks.named(allModulesMavenRepoTaskName) {
+          dependsOn tasks.matching {
+            it.name != allModulesMavenRepoTaskName
+                && it.name.startsWith('publish')
+                && it.name.endsWith(getMavenRepositoryPublicationTaskSuffix(repo.name))
+          }
+        }
+      }
 
-    getMavenRepositoryPublicationTaskSuffix: { repositoryName ->
-      return "PublicationTo${repositoryName}Repository"
-    },
-
-    getPublishingTaskForMavenLocal: { moduleName ->
-      def moduleNameCapitalized = capitalizeFirstLetter(moduleName)
-      return "publish${moduleNameCapitalized}${mavenPublishing.getMavenLocalPublicationTaskSuffix()}"
-    },
-
-    getPublishingTaskForRepo: { moduleName, repositoryName ->
-      def moduleNameCapitalized = capitalizeFirstLetter(moduleName)
-      return "publish${moduleNameCapitalized}${mavenPublishing.getMavenRepositoryPublicationTaskSuffix(repositoryName)}"
+      tasks.matching { it.name.startsWith("publish") }.each { task ->
+        task.doLast {
+          println "✅ Published: ${task.name}"
+        }
+      }
     }
 ]
 
-def capitalizeFirstLetter(String str) {
+static def getMavenRepositoryPublicationTaskSuffix(String repositoryName) {
+  if (!repositoryName) {
+    throw new IllegalArgumentException("Repository name must not be null or empty")
+  }
+
+  if (repositoryName == 'MavenLocal') {
+    return 'PublicationToMavenLocal'
+  }
+
+  return "PublicationTo${repositoryName}Repository"
+}
+
+static def capitalizeFirstLetter(String str) {
   if (!str || str.isEmpty()) {
     return str
   }
   return str[0].toUpperCase() + str.substring(1)
+}
+
+static def getPublishingTaskForRepo(String moduleName, String repositoryName) {
+  if (!repositoryName) {
+    throw new IllegalArgumentException("Repository name must not be null or empty")
+  }
+
+  def moduleNameCapitalized = capitalizeFirstLetter(moduleName)
+  def repositoryPublicationTaskSuffix = getMavenRepositoryPublicationTaskSuffix(repositoryName)
+  return "publish${moduleNameCapitalized}${repositoryPublicationTaskSuffix}"
 }

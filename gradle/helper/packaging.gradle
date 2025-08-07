@@ -5,13 +5,13 @@ ext.packaging = [
 ]
 
 // workaround for missing gradle shadow plugin feature, see https://github.com/johnrengelman/shadow/issues/41
-private Set<SourceDirectorySet> collectSourceSetsIncludingSubmodules(Project project){
+private static Set<SourceDirectorySet> collectSourceSetsIncludingSubmodules(Project project){
   Set<SourceDirectorySet> result = [].toSet()
   recursiveCollectSourceSets(project, [].toSet(), result)
   return result
 }
 
-private void recursiveCollectSourceSets(Project visitingProject,
+private static void recursiveCollectSourceSets(Project visitingProject,
     Set<Project> visitedProjects,
     Set<SourceDirectorySet> collectedSourceSets) {
   if (!visitedProjects.contains(visitingProject)) {

@@ -174,28 +174,7 @@ publishing {
 }
 
 afterEvaluate {
-  // Make all-modules get published after all other modules are published
-  def allModulesMavenLocalTaskName = mavenPublishing.getPublishingTaskForMavenLocal('all-modules')
-  tasks.named(allModulesMavenLocalTaskName) {
-    dependsOn tasks.matching {
-      it.name != allModulesMavenLocalTaskName
-        && it.name.startsWith('publish')
-        && it.name.endsWith(mavenPublishing.getMavenLocalPublicationTaskSuffix())
-    }
-  }
-
-  publishing.repositories.findAll { it.name != 'MavenLocal' }
-      .each { repo ->
-        def repoName = repo.name
-        def allModulesMavenRepoTaskName = mavenPublishing.getPublishingTaskForRepo('all-modules', repoName)
-        tasks.named(allModulesMavenRepoTaskName) {
-          dependsOn tasks.matching {
-            it.name != allModulesMavenLocalTaskName
-                && it.name.startsWith('publish')
-                && it.name.endsWith(mavenPublishing.getMavenRepositoryPublicationTaskSuffix(repoName))
-      }
-    }
-  }
+  publishing.ensureCatchAllModuleGetsPublishedLast()
 }
 
 def parser = new XmlSlurper()
@@ -621,7 +600,7 @@ subprojects {
 
   // Only publish artifacts for projects that are at the leaf level
   if (isLeafSubModule) {
-    mavenPublishing.configureArtifactPublishing(project, testJar)
+    publishing.configureArtifactPublishing(project, testJar)
   }
 }
 
