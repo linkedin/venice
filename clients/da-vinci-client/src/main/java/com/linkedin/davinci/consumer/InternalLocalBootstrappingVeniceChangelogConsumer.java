@@ -496,7 +496,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
                 offsetRecord.getLocalVersionTopicOffset());
             localCheckpoint = new VeniceChangeCoordinate(
                 getTopicPartition(partition).getPubSubTopic().getName(),
-                new ApacheKafkaOffsetPosition(offsetRecord.getLocalVersionTopicOffset()),
+                offsetRecord.getLocalVersionTopicOffset(),
                 partition);
           } else {
             localCheckpoint = VeniceChangeCoordinate

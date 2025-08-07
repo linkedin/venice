@@ -69,6 +69,6 @@ final class EarliestPosition implements PubSubPosition {
 
   @Override
   public long getNumericOffset() {
-    throw new UnsupportedOperationException("Cannot get numeric offset for EARLIEST position");
+    return -1L;
   }
 }

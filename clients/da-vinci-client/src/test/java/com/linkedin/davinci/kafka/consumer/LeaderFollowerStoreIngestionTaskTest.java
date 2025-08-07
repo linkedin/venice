@@ -601,7 +601,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
 
     // delegateConsumerRecord() should cause updateLatestConsumedVtOffset() to be called
     mockIngestionTask.delegateConsumerRecord(cm, 0, "testURL", 0, 0, 0);
-    verify(consumerDiv, times(1)).updateLatestConsumedVtOffset(0, 1L);
+    verify(consumerDiv, times(1)).updateLatestConsumedVtOffset(0, cm.getMessage().getPosition());
   }
 
   @Test

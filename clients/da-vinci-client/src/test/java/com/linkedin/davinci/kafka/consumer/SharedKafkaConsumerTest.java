@@ -12,6 +12,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.SystemTime;
@@ -53,7 +54,7 @@ public class SharedKafkaConsumerTest {
     PubSubTopicPartition nonExistentPubSubTopicPartition = new PubSubTopicPartitionImpl(nonExistingTopic1, 1);
     assignmentReturnedConsumer.add(nonExistentPubSubTopicPartition);
     when(consumer.getAssignment()).thenReturn(assignmentReturnedConsumer);
-    sharedConsumer.subscribe(nonExistingTopic1, nonExistentPubSubTopicPartition, -1);
+    sharedConsumer.subscribe(nonExistingTopic1, nonExistentPubSubTopicPartition, PubSubSymbolicPosition.EARLIEST);
 
     Map<PubSubTopicPartition, List<DefaultPubSubMessage>> pubSubMessagesReturnedByConsumer = new HashMap<>();
     doReturn(pubSubMessagesReturnedByConsumer).when(consumer).poll(anyLong());

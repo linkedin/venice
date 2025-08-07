@@ -82,6 +82,8 @@ import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -694,14 +696,16 @@ public class TestUtils {
   }
 
   public static OffsetRecord getOffsetRecord(long currentOffset) {
-    return getOffsetRecord(currentOffset, Optional.empty());
+    return getOffsetRecord(ApacheKafkaOffsetPosition.of(currentOffset), Optional.empty());
   }
 
   public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete) {
-    return getOffsetRecord(currentOffset, complete ? Optional.of(1000L) : Optional.of(0L));
+    return getOffsetRecord(
+        ApacheKafkaOffsetPosition.of(currentOffset),
+        complete ? Optional.of(ApacheKafkaOffsetPosition.of(1000L)) : Optional.of(ApacheKafkaOffsetPosition.of(0L)));
   }
 
-  public static OffsetRecord getOffsetRecord(long currentOffset, Optional<Long> endOfPushOffset) {
+  public static OffsetRecord getOffsetRecord(PubSubPosition currentOffset, Optional<PubSubPosition> endOfPushOffset) {
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
     offsetRecord.setCheckpointLocalVersionTopicOffset(currentOffset);
     if (endOfPushOffset.isPresent()) {

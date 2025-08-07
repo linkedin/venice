@@ -26,7 +26,8 @@ public class InMemoryOffsetManager implements OffsetManager {
         return newMap;
       } else {
         map.compute(partitionId, (partition, oldRecord) -> {
-          if (oldRecord == null || oldRecord.getLocalVersionTopicOffset() < record.getLocalVersionTopicOffset()) {
+          if (oldRecord == null || oldRecord.getLocalVersionTopicOffset()
+              .getNumericOffset() < record.getLocalVersionTopicOffset().getNumericOffset()) {
             return record;
           } else {
             return oldRecord;
