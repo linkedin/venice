@@ -4,7 +4,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
@@ -888,25 +887,6 @@ public class AvroComputeAggregationResponseTest {
     data.put("job4", job4);
 
     return data;
-  }
-
-  // AggregationUtils tests
-  @Test(description = "Should test AggregationUtils normalizeValue for Utf8")
-  public void testAggregationUtilsNormalizeUtf8() {
-    // Test Utf8 normalization
-    Utf8 utf8Value = new Utf8("test-string");
-    Object normalized = AggregationUtils.normalizeValue(utf8Value);
-    assertEquals(normalized, "test-string");
-    assertTrue(normalized instanceof String);
-
-    // Test non-Utf8 values pass through unchanged
-    String stringValue = "plain-string";
-    assertEquals(AggregationUtils.normalizeValue(stringValue), stringValue);
-
-    Integer intValue = 42;
-    assertEquals(AggregationUtils.normalizeValue(intValue), intValue);
-
-    assertNull(AggregationUtils.normalizeValue(null));
   }
 
 }

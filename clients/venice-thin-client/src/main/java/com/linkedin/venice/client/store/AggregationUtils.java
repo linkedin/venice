@@ -19,20 +19,6 @@ import org.apache.avro.util.Utf8;
  */
 public class AggregationUtils {
   /**
-   * Convert Utf8 objects to String to ensure consistent behavior.
-   * This method is shared by both thin-client and fast-client for handling Avro Utf8 values.
-   * 
-   * @param value The value to convert
-   * @return String representation if value is Utf8, otherwise returns the value as-is
-   */
-  public static Object normalizeValue(Object value) {
-    if (value instanceof Utf8) {
-      return value.toString();
-    }
-    return value;
-  }
-
-  /**
    * Get value counts for a single field with TopK filtering.
    * This is the original logic from AvroComputeAggregationResponse.getValueToCount() moved to Utils.
    * 
@@ -49,7 +35,11 @@ public class AggregationUtils {
     Map<T, Integer> valueToCount = new HashMap<>();
 
     for (ComputeGenericRecord record: computeResults) {
-      Object value = normalizeValue(record.get(field));
+      Object value = record.get(field);
+      // Convert Utf8 to String for consistent behavior
+      if (value instanceof Utf8) {
+        value = value.toString();
+      }
       @SuppressWarnings("unchecked")
       T key = (T) value;
       valueToCount.merge(key, 1, Integer::sum);
@@ -96,8 +86,11 @@ public class AggregationUtils {
         continue;
       }
 
-      // Convert field value if needed (Utf8 to String) using shared utility
-      Object convertedValue = normalizeValue(fieldValue);
+      // Convert field value if needed (Utf8 to String)
+      Object convertedValue = fieldValue;
+      if (fieldValue instanceof Utf8) {
+        convertedValue = fieldValue.toString();
+      }
 
       // Check which bucket(s) this value falls into
       for (Map.Entry<String, Predicate> bucketEntry: buckets.entrySet()) {
