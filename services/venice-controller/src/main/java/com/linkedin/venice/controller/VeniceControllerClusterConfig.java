@@ -77,6 +77,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEAR
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_VERSION_REFRESH_THRESHOLD_IN_DAYS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
@@ -428,6 +429,8 @@ public class VeniceControllerClusterConfig {
   private final int parentSystemStoreHeartbeatCheckWaitTimeSeconds;
 
   private final int parentSystemStoreRepairRetryCount;
+
+  private final int parentSystemStoreVersionRefreshThresholdInDays;
 
   private final boolean parentExternalSupersetSchemaGenerationEnabled;
 
@@ -1044,6 +1047,8 @@ public class VeniceControllerClusterConfig {
     this.parentSystemStoreHeartbeatCheckWaitTimeSeconds =
         props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS, 600);
     this.parentSystemStoreRepairRetryCount = props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT, 1);
+    this.parentSystemStoreVersionRefreshThresholdInDays =
+        props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_VERSION_REFRESH_THRESHOLD_IN_DAYS, 30);
     this.clusterDiscoveryD2ServiceName =
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     this.parentExternalSupersetSchemaGenerationEnabled =
@@ -1867,6 +1872,10 @@ public class VeniceControllerClusterConfig {
 
   public int getParentSystemStoreRepairRetryCount() {
     return parentSystemStoreRepairRetryCount;
+  }
+
+  public int getParentSystemStoreVersionRefreshThresholdInDays() {
+    return parentSystemStoreVersionRefreshThresholdInDays;
   }
 
   public boolean isParentExternalSupersetSchemaGenerationEnabled() {
