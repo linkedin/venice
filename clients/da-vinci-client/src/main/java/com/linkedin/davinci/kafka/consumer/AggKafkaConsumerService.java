@@ -456,16 +456,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     return dataReceiver;
   }
 
-  public long getOffsetLagBasedOnMetrics(
-      final String kafkaURL,
-      PubSubTopic versionTopic,
-      PubSubTopicPartition pubSubTopicPartition) {
-    AbstractKafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
-    return consumerService == null
-        ? -1
-        : consumerService.getOffsetLagBasedOnMetrics(versionTopic, pubSubTopicPartition);
-  }
-
   public long getLatestOffsetBasedOnMetrics(
       final String kafkaURL,
       PubSubTopic versionTopic,

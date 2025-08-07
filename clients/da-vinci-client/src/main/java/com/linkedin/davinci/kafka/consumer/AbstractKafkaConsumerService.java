@@ -36,8 +36,6 @@ public abstract class AbstractKafkaConsumerService extends AbstractVeniceService
       long lastReadOffset,
       ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver);
 
-  public abstract long getOffsetLagBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition);
-
   public abstract long getLatestOffsetBasedOnMetrics(
       PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition);

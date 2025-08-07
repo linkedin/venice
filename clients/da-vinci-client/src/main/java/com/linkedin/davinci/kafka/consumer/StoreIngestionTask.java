@@ -2464,11 +2464,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  protected long getPartitionOffsetLagBasedOnMetrics(String kafkaSourceAddress, PubSubTopic topic, int partition) {
-    return aggKafkaConsumerService
-        .getOffsetLagBasedOnMetrics(kafkaSourceAddress, versionTopic, new PubSubTopicPartitionImpl(topic, partition));
-  }
-
   protected abstract void checkLongRunningTaskState() throws InterruptedException;
 
   protected abstract void processConsumerAction(ConsumerAction message, Store store) throws InterruptedException;
@@ -2905,14 +2900,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract double calculateAssembledRecordSizeRatio(long recordSize);
 
-  public abstract long getBatchReplicationLag();
-
-  public abstract long getLeaderOffsetLag();
-
-  public abstract long getBatchLeaderOffsetLag();
-
-  public abstract long getHybridLeaderOffsetLag();
-
   /**
    * @param pubSubServerName Pub Sub deployment to interrogate
    * @param topic topic to measure
@@ -2963,17 +2950,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     return endOffset - 1 - currentOffset;
   }
-
-  /**
-   * Measure the offset lag between follower and leader
-   */
-  public abstract long getFollowerOffsetLag();
-
-  public abstract long getBatchFollowerOffsetLag();
-
-  public abstract long getHybridFollowerOffsetLag();
-
-  public abstract long getRegionHybridOffsetLag(int regionId);
 
   public abstract int getWriteComputeErrorCode();
 
