@@ -300,13 +300,17 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     // 3. Current version is not repush and is older than retention, delete any versions < current version.
     int repushSourceVersionNumber = store.getVersionOrThrow(currentVersion).getRepushSourceVersion();
     boolean isRepush = repushSourceVersionNumber > NON_EXISTING_VERSION;
-    HashSet<Integer> repushChainVersions = getRepushChainVersions(isRepush, store, repushSourceVersionNumber);
+    HashSet<Integer> repushChainVersions = new HashSet<>(); // all versions repushed into the current version
     List<Version> readyToBeRemovedVersions = versions.stream()
-        .filter(
-            v -> isRepush
-                ? (repushChainVersions.contains(v.getNumber()) || (v.getNumber() < currentVersion
-                    && v.getCreatedTime() + defaultBackupVersionRetentionMs < time.getMilliseconds()))
-                : v.getNumber() < currentVersion)
+        .sorted((v1, v2) -> Integer.compare(v2.getNumber(), v1.getNumber())) // sort in descending order
+        .filter(v -> {
+          if (!isRepush) {
+            return v.getNumber() < currentVersion;
+          }
+          repushChainVersions.add(v.getRepushSourceVersion()); // descending order, so source can only appear later
+          return repushChainVersions.contains(v.getNumber()) || (v.getNumber() < currentVersion
+              && v.getCreatedTime() + defaultBackupVersionRetentionMs < time.getMilliseconds());
+        })
         .collect(Collectors.toList());
 
     if (readyToBeRemovedVersions.isEmpty()) {
@@ -341,19 +345,6 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
         storeName,
         clusterName);
     return true;
-  }
-
-  private static HashSet<Integer> getRepushChainVersions(boolean isRepush, Store store, int repushSourceVersionNumber) {
-    HashSet<Integer> repushChainVersions = new HashSet<>(); // all versions repushed into the current version
-    if (isRepush) {
-      Version repushSourceVersion = store.getVersion(repushSourceVersionNumber);
-      int maxIterations = 50; // Prevent infinite loop, in case the metadata was corrupted
-      while (repushSourceVersion != null && maxIterations-- > 0) {
-        repushChainVersions.add(repushSourceVersion.getNumber());
-        repushSourceVersion = store.getVersion(repushSourceVersion.getRepushSourceVersion());
-      }
-    }
-    return repushChainVersions;
   }
 
   private class StoreBackupVersionCleanupTask implements Runnable {
