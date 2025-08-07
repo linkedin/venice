@@ -89,6 +89,7 @@ import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
+import static java.lang.Thread.currentThread;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -1445,6 +1446,7 @@ public class VeniceParentHelixAdmin implements Admin {
           try {
             timer.sleep(SLEEP_MS_BETWEEN_RETRY);
           } catch (InterruptedException e) {
+            currentThread().interrupt();
             throw new VeniceException(
                 "Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
           }
@@ -1515,8 +1517,6 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       /**
-       * If Parent Controller could not infer the job status from topic retention policy, it will check the actual
-       * job status by sending requests to each individual datacenter.
        * If the job is still running, Parent Controller will block current push.
        */
       final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
@@ -1536,6 +1536,7 @@ public class VeniceParentHelixAdmin implements Admin {
         try {
           timer.sleep(SLEEP_MS_BETWEEN_RETRY);
         } catch (InterruptedException e) {
+          currentThread().interrupt();
           throw new VeniceException("Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
         }
       }

@@ -1,8 +1,5 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicPushCompletion;
 import static org.testng.Assert.assertEquals;
@@ -28,6 +25,9 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
+/**
+ * Test cluster level config for native replication.
+ */
 public class TestClusterLevelConfigForNativeReplication {
   private static final long TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
 
@@ -38,10 +38,10 @@ public class TestClusterLevelConfigForNativeReplication {
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties parentControllerProps = new Properties();
-    parentControllerProps
-        .setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, CHILD_REGION_NAME_PREFIX + 0);
-    parentControllerProps
-        .setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, CHILD_REGION_NAME_PREFIX + 0);
+    // parentControllerProps
+    // .setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, CHILD_REGION_NAME_PREFIX + 0);
+    // parentControllerProps
+    // .setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, CHILD_REGION_NAME_PREFIX + 0);
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
             .numberOfParentControllers(1)
@@ -65,6 +65,7 @@ public class TestClusterLevelConfigForNativeReplication {
   public void testClusterLevelNativeReplicationConfigForNewStores() {
     String storeName = Utils.getUniqueString("test-store");
     String pushJobId1 = "test-push-job-id-1";
+    String dcName = multiRegionMultiClusterWrapper.getChildRegionNames().get(0);
     parentControllerClient.createNewStore(storeName, "test-owner", "\"string\"", "\"string\"");
     parentControllerClient.emptyPush(storeName, pushJobId1, 1);
     waitForNonDeterministicPushCompletion(
@@ -82,20 +83,22 @@ public class TestClusterLevelConfigForNativeReplication {
         parentControllerClient.updateStore(
             storeName,
             new UpdateStoreQueryParams().setHybridRewindSeconds(1L).setHybridOffsetLagThreshold(1L)));
-    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(
-          parentControllerClient.getStore(storeName).getStore().getNativeReplicationSourceFabric(),
-          "dc-0");
-    });
+    TestUtils.waitForNonDeterministicAssertion(
+        TEST_TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(
+            parentControllerClient.getStore(storeName).getStore().getNativeReplicationSourceFabric(),
+            dcName));
     assertCommand(
         parentControllerClient.updateStore(
             storeName,
             new UpdateStoreQueryParams().setHybridRewindSeconds(-1L).setHybridOffsetLagThreshold(-1L)));
-    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(
-          parentControllerClient.getStore(storeName).getStore().getNativeReplicationSourceFabric(),
-          "dc-0");
-    });
+    TestUtils.waitForNonDeterministicAssertion(
+        TEST_TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(
+            parentControllerClient.getStore(storeName).getStore().getNativeReplicationSourceFabric(),
+            dcName));
     assertCommand(
         parentControllerClient.updateStore(
             storeName,
@@ -103,11 +106,12 @@ public class TestClusterLevelConfigForNativeReplication {
                 .setActiveActiveReplicationEnabled(true)
                 .setHybridRewindSeconds(1L)
                 .setHybridOffsetLagThreshold(10)));
-    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(
-          parentControllerClient.getStore(storeName).getStore().getNativeReplicationSourceFabric(),
-          "dc-0");
-    });
+    TestUtils.waitForNonDeterministicAssertion(
+        TEST_TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(
+            parentControllerClient.getStore(storeName).getStore().getNativeReplicationSourceFabric(),
+            dcName));
   }
 
   @Test(timeOut = TEST_TIMEOUT)
