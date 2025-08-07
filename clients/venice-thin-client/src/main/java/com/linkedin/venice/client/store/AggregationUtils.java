@@ -9,32 +9,30 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 
 
 /**
  * Utility class for server-side aggregation operations (CountByValue and CountByBucket).
  * This class provides shared implementation for processing values and counting field occurrences
- * that can be used by both thin-client and fast-client components.
+ * that can be used by thin-client, fast-client, and server components.
  */
 public class AggregationUtils {
   /**
    * Get value counts for a single field with TopK filtering.
    * This is the original logic from AvroComputeAggregationResponse.getValueToCount() moved to Utils.
    * 
-   * @param computeResults Collection of ComputeGenericRecord results
+   * @param records Collection of GenericRecord results (supports both ComputeGenericRecord and server GenericRecord)
    * @param field The field name to count
    * @param topK Maximum number of top values to return  
    * @return Map of values to their counts, limited to topK entries
    */
-  public static <T> Map<T, Integer> getValueToCount(
-      Iterable<ComputeGenericRecord> computeResults,
-      String field,
-      int topK) {
+  public static <T> Map<T, Integer> getValueToCount(Iterable<? extends GenericRecord> records, String field, int topK) {
 
     Map<T, Integer> valueToCount = new HashMap<>();
 
-    for (ComputeGenericRecord record: computeResults) {
+    for (GenericRecord record: records) {
       Object value = record.get(field);
       // Convert Utf8 to String for consistent behavior
       if (value instanceof Utf8) {
@@ -59,13 +57,13 @@ public class AggregationUtils {
    * Get bucket counts for a single field with predicate-based bucketing.
    * This is the original logic from AvroComputeAggregationResponse.getBucketNameToCount() moved to Utils.
    * 
-   * @param computeResults Collection of ComputeGenericRecord results
+   * @param records Collection of GenericRecord results (supports both ComputeGenericRecord and server GenericRecord)
    * @param fieldName The field name to count
    * @param buckets Map of bucket names to their predicates
    * @return Map of bucket names to their counts
    */
   public static Map<String, Integer> getBucketNameToCount(
-      Iterable<ComputeGenericRecord> computeResults,
+      Iterable<? extends GenericRecord> records,
       String fieldName,
       Map<String, Predicate> buckets) {
 
@@ -76,7 +74,7 @@ public class AggregationUtils {
     }
 
     // Process all records and count bucket matches
-    for (ComputeGenericRecord record: computeResults) {
+    for (GenericRecord record: records) {
       if (record == null) {
         continue;
       }
