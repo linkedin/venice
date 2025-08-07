@@ -4,6 +4,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
@@ -887,5 +888,91 @@ public class AvroComputeAggregationResponseTest {
     data.put("job4", job4);
 
     return data;
+  }
+
+  // AggregationUtils tests
+  @Test(description = "Should test AggregationUtils normalizeValue for Utf8")
+  public void testAggregationUtilsNormalizeUtf8() {
+    // Test Utf8 normalization
+    Utf8 utf8Value = new Utf8("test-string");
+    Object normalized = AggregationUtils.normalizeValue(utf8Value);
+    assertEquals(normalized, "test-string");
+    assertTrue(normalized instanceof String);
+
+    // Test non-Utf8 values pass through unchanged
+    String stringValue = "plain-string";
+    assertEquals(AggregationUtils.normalizeValue(stringValue), stringValue);
+
+    Integer intValue = 42;
+    assertEquals(AggregationUtils.normalizeValue(intValue), intValue);
+
+    assertNull(AggregationUtils.normalizeValue(null));
+  }
+
+  @Test(description = "Should test AggregationUtils filterTopKValues")
+  public void testAggregationUtilsFilterTopK() {
+    Map<Object, Integer> valueCounts = new HashMap<>();
+    valueCounts.put("a", 10);
+    valueCounts.put("b", 20);
+    valueCounts.put("c", 15);
+    valueCounts.put("d", 5);
+    valueCounts.put("e", 25);
+
+    // Test topK = 3
+    Map<Object, Integer> top3 = AggregationUtils.filterTopKValues(valueCounts, 3);
+    assertEquals(top3.size(), 3);
+
+    // Verify order (descending by count)
+    List<Map.Entry<Object, Integer>> entries = new ArrayList<>(top3.entrySet());
+    assertEquals(entries.get(0).getKey(), "e"); // 25
+    assertEquals(entries.get(0).getValue(), Integer.valueOf(25));
+    assertEquals(entries.get(1).getKey(), "b"); // 20
+    assertEquals(entries.get(1).getValue(), Integer.valueOf(20));
+    assertEquals(entries.get(2).getKey(), "c"); // 15
+    assertEquals(entries.get(2).getValue(), Integer.valueOf(15));
+
+    // Test topK larger than size
+    Map<Object, Integer> all = AggregationUtils.filterTopKValues(valueCounts, 10);
+    assertEquals(all.size(), 5);
+  }
+
+  @Test(description = "Should test AggregationUtils filterTopKValues with null keys")
+  public void testAggregationUtilsFilterTopKWithNulls() {
+    Map<Object, Integer> valueCounts = new HashMap<>();
+    valueCounts.put(null, 30);
+    valueCounts.put("a", 20);
+    valueCounts.put("b", 10);
+
+    Map<Object, Integer> top2 = AggregationUtils.filterTopKValues(valueCounts, 2);
+    assertEquals(top2.size(), 2);
+
+    // null should be included as it has highest count
+    List<Map.Entry<Object, Integer>> entries = new ArrayList<>(top2.entrySet());
+    assertNull(entries.get(0).getKey());
+    assertEquals(entries.get(0).getValue(), Integer.valueOf(30));
+    assertEquals(entries.get(1).getKey(), "a");
+    assertEquals(entries.get(1).getValue(), Integer.valueOf(20));
+  }
+
+  @Test(description = "Should test AggregationUtils extractFieldValueGeneric")
+  public void testAggregationUtilsExtractFieldValue() {
+    // Test with ComputeGenericRecord
+    ComputeGenericRecord record = mock(ComputeGenericRecord.class);
+    when(record.get("field1")).thenReturn("value1");
+    when(record.get("field2")).thenReturn(new Utf8("value2"));
+    when(record.get("field3")).thenReturn(null);
+
+    assertEquals(AggregationUtils.extractFieldValueGeneric(record, "field1"), "value1");
+    assertEquals(AggregationUtils.extractFieldValueGeneric(record, "field2"), "value2");
+    assertNull(AggregationUtils.extractFieldValueGeneric(record, "field3"));
+    assertNull(AggregationUtils.extractFieldValueGeneric(record, "nonexistent"));
+
+    // Test with string-valued stores
+    assertEquals(AggregationUtils.extractFieldValueGeneric("string-value", "value"), "string-value");
+    assertEquals(AggregationUtils.extractFieldValueGeneric("string-value", "_value"), "string-value");
+    assertEquals(AggregationUtils.extractFieldValueGeneric(new Utf8("utf8-value"), "value"), "utf8-value");
+
+    // Test with null
+    assertNull(AggregationUtils.extractFieldValueGeneric(null, "any"));
   }
 }

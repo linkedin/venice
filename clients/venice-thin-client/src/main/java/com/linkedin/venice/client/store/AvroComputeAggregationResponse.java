@@ -5,7 +5,6 @@ import com.linkedin.venice.client.store.predicate.FloatPredicate;
 import com.linkedin.venice.client.store.predicate.IntPredicate;
 import com.linkedin.venice.client.store.predicate.LongPredicate;
 import com.linkedin.venice.client.store.predicate.Predicate;
-import com.linkedin.venice.utils.CountByValueUtils;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -46,15 +45,15 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
 
     // Use shared utility to extract field-to-value counts for this specific field
     List<String> singleFieldList = Arrays.asList(field);
-    CountByValueUtils.FieldValueExtractor<ComputeGenericRecord> extractor = CountByValueUtils::extractFieldValueGeneric;
+    AggregationUtils.FieldValueExtractor<ComputeGenericRecord> extractor = AggregationUtils::extractFieldValueGeneric;
 
     Map<String, Map<Object, Integer>> fieldToValueCounts =
-        CountByValueUtils.extractFieldToValueCounts(computeResults.values(), singleFieldList, extractor);
+        AggregationUtils.extractFieldToValueCounts(computeResults.values(), singleFieldList, extractor);
 
     // Apply TopK filtering using shared utility
     int topK = fieldTopKMap.get(field);
     Map<String, Map<Object, Integer>> filteredCounts =
-        CountByValueUtils.applyTopKToFieldCounts(fieldToValueCounts, topK);
+        AggregationUtils.applyTopKToFieldCounts(fieldToValueCounts, topK);
 
     // Convert result back to the expected generic type
     Map<Object, Integer> objectValueCounts = filteredCounts.get(field);
@@ -101,7 +100,7 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
       }
 
       // Convert field value if needed (Utf8 to String) using shared utility
-      Object convertedValue = CountByValueUtils.normalizeValue(fieldValue);
+      Object convertedValue = AggregationUtils.normalizeValue(fieldValue);
 
       // Check which bucket(s) this value falls into
       for (Map.Entry<String, Predicate> bucketEntry: buckets.entrySet()) {

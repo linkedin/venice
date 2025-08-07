@@ -3,7 +3,6 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.schema.SchemaReader;
-import com.linkedin.venice.utils.CountByValueUtils;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -30,12 +29,12 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
 
   /**
    * Validates that the given field names exist in the schema and are not null or empty.
-   * Uses shared utility method from CountByValueUtils.
+   * Uses shared utility method from AggregationUtils.
    */
   private void validateFieldNames(String... fieldNames) {
     Schema valueSchema = schemaReader.getValueSchema(schemaReader.getLatestValueSchemaId());
     try {
-      CountByValueUtils.validateFieldNames(fieldNames, valueSchema);
+      AggregationUtils.validateFieldNames(fieldNames, valueSchema);
     } catch (IllegalArgumentException e) {
       throw new VeniceClientException(e.getMessage(), e);
     }

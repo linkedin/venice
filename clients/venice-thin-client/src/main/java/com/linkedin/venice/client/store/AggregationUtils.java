@@ -1,4 +1,4 @@
-package com.linkedin.venice.utils;
+package com.linkedin.venice.client.store;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -10,15 +10,11 @@ import org.apache.avro.util.Utf8;
 
 
 /**
- * Utility class for CountByValue aggregation operations.
+ * Utility class for server-side aggregation operations (CountByValue and CountByBucket).
  * This class provides shared implementation for processing values and counting field occurrences
  * that can be used by both thin-client and fast-client components.
  */
-public class CountByValueUtils {
-  private CountByValueUtils() {
-    // Utility class
-  }
-
+public class AggregationUtils {
   /**
    * Convert Utf8 objects to String to ensure consistent behavior.
    * This method is shared by both thin-client and fast-client for handling Avro Utf8 values.
@@ -34,33 +30,14 @@ public class CountByValueUtils {
   }
 
   /**
-   * Generic method to aggregate field values with counting.
-   * Used by thin-client for local aggregation of compute results.
+   * Filter top K values from a value-count map.
+   * This is the original implementation from the thin-client.
    * 
-   * @param <T> The type of the field values
-   * @param values Iterable collection of values to count
-   * @return Map of values to their counts
-   */
-  public static <T> Map<T, Integer> aggregateValues(Iterable<T> values) {
-    Map<T, Integer> counts = new HashMap<>();
-    for (T value: values) {
-      counts.merge(value, 1, Integer::sum);
-    }
-    return counts;
-  }
-
-  /**
-   * Generic version of filterTopKValues that works with any comparable key type.
-   * This method is shared by both thin-client and fast-client implementations.
-   * 
-   * @param <T> The type of the field values (must be Comparable)
    * @param fieldCounts Map of field values to counts
    * @param topK Number of top values to keep
    * @return Filtered map with at most topK entries, sorted by count descending
    */
-  public static <T extends Comparable<T>> Map<T, Integer> filterTopKValuesGeneric(
-      Map<T, Integer> fieldCounts,
-      int topK) {
+  public static Map<Object, Integer> filterTopKValues(Map<Object, Integer> fieldCounts, int topK) {
     if (fieldCounts.size() <= topK) {
       return new LinkedHashMap<>(fieldCounts);
     }
@@ -81,7 +58,19 @@ public class CountByValueUtils {
       if (e2.getKey() == null) {
         return -1; // null comes last
       }
-      return e1.getKey().compareTo(e2.getKey());
+      // For comparable keys, use natural ordering
+      if (e1.getKey() instanceof Comparable && e2.getKey() instanceof Comparable) {
+        try {
+          @SuppressWarnings("unchecked")
+          Comparable<Object> c1 = (Comparable<Object>) e1.getKey();
+          @SuppressWarnings("unchecked")
+          Comparable<Object> c2 = (Comparable<Object>) e2.getKey();
+          return c1.compareTo(c2);
+        } catch (ClassCastException e) {
+          // Fall back to string comparison
+        }
+      }
+      return e1.getKey().toString().compareTo(e2.getKey().toString());
     }).limit(topK).collect(LinkedHashMap::new, (map, entry) -> map.put(entry.getKey(), entry.getValue()), Map::putAll);
   }
 
@@ -145,26 +134,8 @@ public class CountByValueUtils {
       if (valueCounts.isEmpty()) {
         result.put(fieldName, new HashMap<>());
       } else {
-        // Convert to a comparable map for filtering, then convert back
-        Map<String, Integer> stringKeyCounts = new HashMap<>();
-        Map<String, Object> keyMapping = new HashMap<>();
-
-        for (Map.Entry<Object, Integer> valueEntry: valueCounts.entrySet()) {
-          Object key = valueEntry.getKey();
-          String stringKey = (key == null) ? "null" : key.toString();
-          stringKeyCounts.put(stringKey, valueEntry.getValue());
-          keyMapping.put(stringKey, key);
-        }
-
-        Map<String, Integer> topKStringValues = filterTopKValuesGeneric(stringKeyCounts, topK);
-
-        // Convert back to Object keys
-        Map<Object, Integer> topKValues = new LinkedHashMap<>();
-        for (Map.Entry<String, Integer> stringEntry: topKStringValues.entrySet()) {
-          Object originalKey = keyMapping.get(stringEntry.getKey());
-          topKValues.put(originalKey, stringEntry.getValue());
-        }
-
+        // Use the filterTopKValues method directly
+        Map<Object, Integer> topKValues = filterTopKValues(valueCounts, topK);
         result.put(fieldName, topKValues);
       }
     }
@@ -247,8 +218,6 @@ public class CountByValueUtils {
       return false;
     }
   }
-
-  // Removed unused methods - both clients now use the shared generic versions
 
   /**
    * Validate field names exist in schema (generic version for both clients).
