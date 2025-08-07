@@ -38,10 +38,6 @@ public class TestClusterLevelConfigForNativeReplication {
   public void setUp() {
     Utils.thisIsLocalhost();
     Properties parentControllerProps = new Properties();
-    // parentControllerProps
-    // .setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, CHILD_REGION_NAME_PREFIX + 0);
-    // parentControllerProps
-    // .setProperty(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, CHILD_REGION_NAME_PREFIX + 0);
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(1)
             .numberOfParentControllers(1)

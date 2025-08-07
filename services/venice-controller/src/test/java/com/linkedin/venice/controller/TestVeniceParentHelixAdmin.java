@@ -63,6 +63,7 @@ import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -1108,8 +1109,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testIdempotentIncrementVersionWhenPreviousTopicsExistButTruncated() {
     String storeName = Utils.getUniqueString("test_store");
     String pushJobId = Utils.getUniqueString("push_job_id");
-    // PubSubTopic previousPubSubTopic = pubSubTopicRepository.getTopic(storeName + "_v1");
-    // doReturn(new HashSet<>(Arrays.asList(previousPubSubTopic))).when(topicManager).listTopics();
     Store store = new ZKStore(
         storeName,
         "owner",
@@ -1121,7 +1120,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         1);
     Version version = new VersionImpl(storeName, 1, pushJobId + "_different");
     store.addVersion(version);
-    // doReturn(true).when(internalAdmin).isTopicTruncated(previousPubSubTopic.getName());
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(new Pair<>(true, new VersionImpl(storeName, 1, pushJobId))).when(internalAdmin)
         .addVersionAndTopicOnly(
@@ -1178,26 +1176,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
           false,
           null,
           -1);
-      /* verify(internalAdmin).addVersionAndTopicOnly(
-          clusterName,
-          storeName,
-          pushJobId,
-          VERSION_ID_UNSET,
-          1,
-          1,
-          false,
-          false,
-          Version.PushType.BATCH,
-          null,
-          null,
-          Optional.empty(),
-          -1,
-          1,
-          Optional.empty(),
-          false,
-          null,
-          -1,
-          DEFAULT_RT_VERSION_NUMBER);*/
       verify(zkClient, times(2)).readData(zkMetadataNodePath, null);
     }
   }
@@ -2601,8 +2579,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .getOffLinePushStatus(clusterName, latestTopic);
     doReturn(false).when(mockParentAdmin).isTopicTruncated(latestTopic);
     Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false).isPresent());
-    // verify(mockParentAdmin).getOffLinePushStatus(clusterName, latestTopic);
-
     // When there is a regular topic and the job status is not terminal
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS)).when(mockParentAdmin)
         .getOffLinePushStatus(clusterName, latestTopic);
@@ -2720,8 +2696,9 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v3");
   }
 
-  @Test(enabled = false, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAdminCanKillLingeringVersion(boolean isIncrementalPush) {
+    doReturn(ConcurrentPushDetectionStrategy.TOPIC_BASED_ONLY).when(config).getConcurrentPushDetectionStrategy();
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       long startTime = System.currentTimeMillis();
