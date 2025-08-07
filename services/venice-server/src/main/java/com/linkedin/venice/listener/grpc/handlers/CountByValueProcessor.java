@@ -11,8 +11,6 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.protocols.CountByValueRequest;
 import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.protocols.ValueCount;
@@ -24,6 +22,7 @@ import com.linkedin.venice.utils.CountByValueUtils;
 import com.linkedin.venice.utils.StoreVersionStateUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +46,6 @@ public class CountByValueProcessor {
   private final ReadOnlyStoreRepository storeRepository;
   private final StorageEngineBackedCompressorFactory compressorFactory;
   private final Map<String, AvroStoreDeserializerCache<Object>> storeDeserializerCacheMap;
-  private final VenicePartitioner partitioner;
 
   public CountByValueProcessor(
       StorageEngineRepository storageEngineRepository,
@@ -59,7 +57,6 @@ public class CountByValueProcessor {
     this.storeRepository = storeRepository;
     this.compressorFactory = compressorFactory;
     this.storeDeserializerCacheMap = new VeniceConcurrentHashMap<>();
-    this.partitioner = new DefaultVenicePartitioner();
   }
 
   /**
@@ -200,48 +197,44 @@ public class CountByValueProcessor {
       String storeName) {
 
     try {
-      // Get all partition IDs available on this server
-      Set<Integer> availablePartitions = storageEngine.getPersistedPartitionIds();
+      // Get the partition ID from the request
+      int partitionId = request.getPartition();
 
-      // Get total partition count for this store version
-      int versionNumber = Version.parseVersionFromKafkaTopicName(request.getResourceName());
-      Store store = storeRepository.getStoreOrThrow(storeName);
-      Version version = store.getVersion(versionNumber);
-      int totalPartitions = version.getPartitionCount();
+      // Check if this server has the requested partition
+      Set<Integer> availablePartitions = storageEngine.getPersistedPartitionIds();
+      if (!availablePartitions.contains(partitionId)) {
+        LOGGER.debug(
+            "Partition {} not available on this server for store: {}, returning empty results",
+            partitionId,
+            storeName);
+        // Return OK with empty results when partition is not available
+        return buildCountByValueResponse(fieldNames, new HashMap<>());
+      }
 
       // Collect deserialized values for shared processing
       List<Object> deserializedValues = new java.util.ArrayList<>();
 
-      // Process all keys sent by client to collect values
+      // Process all keys sent by client (they all belong to the same partition)
       for (int i = 0; i < request.getKeysCount(); i++) {
         byte[] keyBytes = request.getKeys(i).toByteArray();
 
         try {
-          // Calculate the correct partition for this key using the same algorithm as client
-          int targetPartition = partitioner.getPartitionId(keyBytes, totalPartitions);
-
-          // Check if this server has the target partition
-          if (availablePartitions.contains(targetPartition)) {
-            try {
-              byte[] valueBytes = storageEngine.get(targetPartition, keyBytes);
-              if (valueBytes != null) {
-                Object deserializedValue = deserializeValue(
-                    valueBytes,
-                    valueSchema,
-                    valueSchemaEntry,
-                    compressionStrategy,
-                    compressor,
-                    deserializerCache);
-                if (deserializedValue != null) {
-                  deserializedValues.add(deserializedValue);
-                }
-              }
-            } catch (Exception e) {
-              LOGGER.warn("Error getting key {} from partition {}: {}", i, targetPartition, e.getMessage());
+          // Get value from the specified partition
+          byte[] valueBytes = storageEngine.get(partitionId, keyBytes);
+          if (valueBytes != null) {
+            Object deserializedValue = deserializeValue(
+                valueBytes,
+                valueSchema,
+                valueSchemaEntry,
+                compressionStrategy,
+                compressor,
+                deserializerCache);
+            if (deserializedValue != null) {
+              deserializedValues.add(deserializedValue);
             }
           }
         } catch (Exception e) {
-          LOGGER.warn("Error processing key {}: {}", i, e.getMessage());
+          LOGGER.warn("Error getting key {} from partition {}: {}", i, partitionId, e.getMessage());
         }
       }
 

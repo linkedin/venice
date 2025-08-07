@@ -111,6 +111,7 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
           .addAllKeys(serializedKeys)
           .addAllFieldNames(fieldNames)
           .setTopK(Integer.MAX_VALUE) // Request all counts from each partition
+          .setPartition(partitionId) // Include partition ID in request
           .build();
 
       // Send request to partition server

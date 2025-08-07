@@ -37,6 +37,7 @@ message CountByValueRequest {
   string resourceName = 2;
   int32 topK = 3;
   repeated string fieldNames = 4;
+  int32 partition = 5;  // The partition ID these keys belong to
 }
 
 message CountByValueResponse {

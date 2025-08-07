@@ -121,7 +121,8 @@ public class VeniceServerGrpcRequestProcessorTest {
         .setResourceName(DEFAULT_RESOURCE_NAME)
         .addFieldNames(DEFAULT_FIELD_NAME)
         .setTopK(DEFAULT_TOP_K)
-        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()));
+        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()))
+        .setPartition(0); // Default to partition 0 for tests
   }
 
   /**
@@ -138,7 +139,8 @@ public class VeniceServerGrpcRequestProcessorTest {
     CountByValueRequest.Builder builder = CountByValueRequest.newBuilder()
         .setResourceName(DEFAULT_RESOURCE_NAME)
         .setTopK(DEFAULT_TOP_K)
-        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()));
+        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()))
+        .setPartition(0); // Default to partition 0 for tests
 
     for (String fieldName: fieldNames) {
       builder.addFieldNames(fieldName);
@@ -161,6 +163,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .setResourceName(DEFAULT_RESOURCE_NAME)
         .setTopK(DEFAULT_TOP_K)
         .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()))
+        .setPartition(0) // Default to partition 0 for tests
         .build();
   }
 
@@ -172,6 +175,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .setResourceName(DEFAULT_RESOURCE_NAME)
         .addFieldNames(DEFAULT_FIELD_NAME)
         .setTopK(DEFAULT_TOP_K)
+        .setPartition(0) // Default to partition 0 for tests
         .build();
   }
 
@@ -280,6 +284,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .setResourceName(DEFAULT_RESOURCE_NAME)
         .addFieldNames(DEFAULT_FIELD_NAME)
         .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -316,6 +321,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -333,6 +339,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -350,6 +357,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -369,6 +377,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -394,6 +403,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -412,6 +422,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -467,6 +478,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -490,6 +502,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -512,6 +525,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -530,6 +544,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = defaultProcessor.processCountByValue(request);
@@ -669,6 +684,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -703,6 +719,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -741,6 +758,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
@@ -790,6 +808,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         .addFieldNames("category")
         .setTopK(5)
         .addKeys(ByteString.copyFrom("key1".getBytes()))
+        .setPartition(0)
         .build();
 
     CountByValueResponse response = processor.processCountByValue(request);
