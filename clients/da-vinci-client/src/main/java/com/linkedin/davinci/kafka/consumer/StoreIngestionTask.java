@@ -28,6 +28,7 @@ import com.linkedin.davinci.client.DaVinciRecordTransformer;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
 import com.linkedin.davinci.client.DaVinciRecordTransformerResult;
 import com.linkedin.davinci.client.InternalDaVinciRecordTransformer;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -286,7 +287,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final HostLevelIngestionStats hostLevelIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
   protected final AggVersionedIngestionStats versionedIngestionStats;
-  protected AggVersionedDaVinciRecordTransformerStats daVinciRecordTransformerStats;
+  protected AggVersionedDaVinciRecordTransformerStats recordTransformerStats;
   protected final BooleanSupplier isCurrentVersion;
   protected final Optional<HybridStoreConfig> hybridStoreConfig;
   protected final Consumer<DataValidationException> divErrorMetricCallback;
@@ -416,7 +417,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int errorPartitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerConfig recordTransformerConfig,
+      InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
       Queue<VeniceNotifier> notifiers,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
     this.storeVersionConfig = storeVersionConfig;
@@ -528,8 +529,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.missingSOPCheckExecutor.execute(() -> waitForStateVersion(kafkaVersionTopic));
     this.cacheBackend = cacheBackend;
 
-    this.recordTransformerConfig = recordTransformerConfig;
-    if (recordTransformerConfig != null && recordTransformerConfig.getRecordTransformerFunction() != null) {
+    if (internalRecordTransformerConfig != null) {
+      this.recordTransformerConfig = internalRecordTransformerConfig.getRecordTransformerConfig();
       this.chunkAssembler = new InMemoryChunkAssembler(new InMemoryStorageEngine(storeName));
 
       Schema keySchema = schemaRepository.getKeySchema(storeName).getSchema();
@@ -562,13 +563,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           keySchema,
           this.recordTransformerInputValueSchema,
           outputValueSchema,
-          recordTransformerConfig);
+          internalRecordTransformerConfig);
       this.recordTransformerOnRecoveryThreadPool =
           Executors.newFixedThreadPool(serverConfig.getDaVinciRecordTransformerOnRecoveryThreadPoolSize());
       this.recordTransformerPausedConsumptionQueue = new ConcurrentLinkedQueue<>();
       this.schemaIdToSchemaMap = new VeniceConcurrentHashMap<>();
 
-      daVinciRecordTransformerStats = builder.getDaVinciRecordTransformerStats();
+      this.recordTransformerStats = internalRecordTransformerConfig.getRecordTransformerStats();
 
       // onStartVersionIngestion called here instead of run() because this needs to finish running
       // before bootstrapping starts
@@ -580,6 +581,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           storeVersionName);
     } else {
       this.schemaIdToSchemaMap = null;
+      this.recordTransformerConfig = null;
       this.recordTransformerKeyDeserializer = null;
       this.recordTransformerInputValueSchema = null;
       this.chunkAssembler = null;
@@ -3921,7 +3923,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           try {
             transformerResult = recordTransformer.transformAndProcessPut(lazyKey, lazyValue, producedPartition);
           } catch (Exception e) {
-            daVinciRecordTransformerStats.recordPutError(storeName, versionNumber, currentTimeMs);
+            recordTransformerStats.recordPutError(storeName, versionNumber, currentTimeMs);
             String errorMessage =
                 "DaVinciRecordTransformer experienced an error when processing value: " + assembledObject;
 
@@ -3945,7 +3947,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
 
           put.putValue = transformedBytes;
-          daVinciRecordTransformerStats.recordPutLatency(
+          recordTransformerStats.recordPutLatency(
               storeName,
               versionNumber,
               LatencyUtils.getElapsedTimeFromNSToMS(recordTransformerStartTime),
@@ -3988,12 +3990,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           try {
             recordTransformer.processDelete(lazyKey, producedPartition);
           } catch (Exception e) {
-            daVinciRecordTransformerStats.recordDeleteError(storeName, versionNumber, currentTimeMs);
+            recordTransformerStats.recordDeleteError(storeName, versionNumber, currentTimeMs);
             String errorMessage = "DaVinciRecordTransformer experienced an error when deleting key: " + lazyKey.get();
 
             throw new VeniceMessageException(errorMessage, e);
           }
-          daVinciRecordTransformerStats.recordDeleteLatency(
+          recordTransformerStats.recordDeleteLatency(
               storeName,
               versionNumber,
               LatencyUtils.getElapsedTimeFromNSToMS(startTime),
