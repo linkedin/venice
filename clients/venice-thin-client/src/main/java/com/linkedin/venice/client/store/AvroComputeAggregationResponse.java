@@ -5,11 +5,13 @@ import com.linkedin.venice.client.store.predicate.FloatPredicate;
 import com.linkedin.venice.client.store.predicate.IntPredicate;
 import com.linkedin.venice.client.store.predicate.LongPredicate;
 import com.linkedin.venice.client.store.predicate.Predicate;
+import com.linkedin.venice.utils.CountByValueUtils;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import org.apache.avro.util.Utf8;
 
 
 /**
@@ -42,23 +44,33 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
       return Collections.emptyMap();
     }
 
-    Map<T, Integer> valueToCount = new HashMap<>();
+    // Use shared utility to extract field-to-value counts for this specific field
+    List<String> singleFieldList = Arrays.asList(field);
+    CountByValueUtils.FieldValueExtractor<ComputeGenericRecord> extractor = CountByValueUtils::extractFieldValueGeneric;
 
-    for (ComputeGenericRecord record: computeResults.values()) {
-      Object value = convertUtf8ToString(record.get(field));
-      @SuppressWarnings("unchecked")
-      T key = (T) value;
-      valueToCount.merge(key, 1, Integer::sum);
+    Map<String, Map<Object, Integer>> fieldToValueCounts =
+        CountByValueUtils.extractFieldToValueCounts(computeResults.values(), singleFieldList, extractor);
+
+    // Apply TopK filtering using shared utility
+    int topK = fieldTopKMap.get(field);
+    Map<String, Map<Object, Integer>> filteredCounts =
+        CountByValueUtils.applyTopKToFieldCounts(fieldToValueCounts, topK);
+
+    // Convert result back to the expected generic type
+    Map<Object, Integer> objectValueCounts = filteredCounts.get(field);
+    if (objectValueCounts == null || objectValueCounts.isEmpty()) {
+      return Collections.emptyMap();
     }
 
-    // Sort by count in descending order
-    Map<T, Integer> sortedMap = valueToCount.entrySet()
-        .stream()
-        .sorted(Map.Entry.<T, Integer>comparingByValue().reversed())
-        .limit(fieldTopKMap.get(field))
-        .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), Map::putAll);
+    // Convert Object keys back to the expected type T (preserving original types)
+    Map<T, Integer> result = new LinkedHashMap<>();
+    for (Map.Entry<Object, Integer> entry: objectValueCounts.entrySet()) {
+      @SuppressWarnings("unchecked")
+      T typedKey = (T) entry.getKey(); // Cast back to the expected type
+      result.put(typedKey, entry.getValue());
+    }
 
-    return sortedMap;
+    return result;
   }
 
   @Override
@@ -88,8 +100,8 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
         continue;
       }
 
-      // Convert field value if needed (Utf8 to String)
-      Object convertedValue = convertUtf8ToString(fieldValue);
+      // Convert field value if needed (Utf8 to String) using shared utility
+      Object convertedValue = CountByValueUtils.normalizeValue(fieldValue);
 
       // Check which bucket(s) this value falls into
       for (Map.Entry<String, Predicate> bucketEntry: buckets.entrySet()) {
@@ -123,18 +135,6 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
     }
 
     return bucketCounts;
-  }
-
-  /**
-   * Convert Utf8 objects to String to ensure consistent behavior between unit tests and integration tests.
-   * In integration tests, Avro deserialization produces Utf8 objects for string fields,
-   * while unit tests with mocked data use String objects directly.
-   */
-  private Object convertUtf8ToString(Object value) {
-    if (value instanceof Utf8) {
-      return value.toString();
-    }
-    return value;
   }
 
   /**

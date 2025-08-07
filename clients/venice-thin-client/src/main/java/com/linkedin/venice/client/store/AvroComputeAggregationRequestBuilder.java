@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.utils.CountByValueUtils;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -29,26 +30,14 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
 
   /**
    * Validates that the given field names exist in the schema and are not null or empty.
-   * This method is shared between countGroupByValue and countGroupByBucket to avoid code duplication.
+   * Uses shared utility method from CountByValueUtils.
    */
   private void validateFieldNames(String... fieldNames) {
-    if (fieldNames == null || fieldNames.length == 0) {
-      throw new VeniceClientException("fieldNames cannot be null or empty");
-    }
-
     Schema valueSchema = schemaReader.getValueSchema(schemaReader.getLatestValueSchemaId());
-    for (String fieldName: fieldNames) {
-      if (fieldName == null) {
-        throw new VeniceClientException("Field name cannot be null");
-      }
-      if (fieldName.isEmpty()) {
-        throw new VeniceClientException("Field name cannot be empty");
-      }
-
-      Schema.Field field = valueSchema.getField(fieldName);
-      if (field == null) {
-        throw new VeniceClientException("Field not found in schema: " + fieldName);
-      }
+    try {
+      CountByValueUtils.validateFieldNames(fieldNames, valueSchema);
+    } catch (IllegalArgumentException e) {
+      throw new VeniceClientException(e.getMessage(), e);
     }
   }
 
