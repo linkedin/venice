@@ -821,6 +821,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return true;
   }
 
+  /**
+   *  TODO: Replace this mechanism with loopback logic.
+   *  The leader replica should append a special message (e.g., Declaration of Leadership with term info)
+   *  at the end of the local version topic (VT), then wait until it consumes the message back from VT.
+   *  Only after this confirmation should it switch to consuming from the real-time (RT) topic.
+   *  This is part of the fast leadership handover project.
+   */
   private boolean canSwitchToLeaderTopic(PartitionConsumptionState pcs) {
     /**
      * Potential risk: it's possible that Kafka consumer would starve one of the partitions for a long

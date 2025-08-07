@@ -2464,11 +2464,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  protected long getPartitionOffsetLagBasedOnMetrics(String kafkaSourceAddress, PubSubTopic topic, int partition) {
-    return aggKafkaConsumerService
-        .getOffsetLagBasedOnMetrics(kafkaSourceAddress, versionTopic, new PubSubTopicPartitionImpl(topic, partition));
-  }
-
   protected abstract void checkLongRunningTaskState() throws InterruptedException;
 
   protected abstract void processConsumerAction(ConsumerAction message, Store store) throws InterruptedException;
