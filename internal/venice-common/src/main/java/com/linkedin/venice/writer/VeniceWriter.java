@@ -2193,7 +2193,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         partitionNumber,
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
-        getHeaders(kafkaMessageEnvelope.getProducerMetadata(), addLeaderCompleteState, leaderCompleteState, null),
+        getHeaders(
+            kafkaMessageEnvelope.getProducerMetadata(),
+            addLeaderCompleteState,
+            leaderCompleteState,
+            EmptyPubSubMessageHeaders.SINGLETON),
         callback);
   }
 
