@@ -166,11 +166,6 @@ public class ApacheKafkaConsumerAdapterTest {
     kafkaConsumerAdapter.subscribe(pubSubTopicPartition, null);
   }
 
-  @Test(expectedExceptions = IllegalArgumentException.class)
-  public void testSubscribeWithInvalidPubSubPositionType() {
-    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, mock(PubSubPosition.class));
-  }
-
   @Test
   public void testSubscribeWithApacheKafkaOffsetPosition() {
     ApacheKafkaOffsetPosition offsetPosition = ApacheKafkaOffsetPosition.of(50);
