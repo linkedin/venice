@@ -2,6 +2,7 @@ package com.linkedin.venice.pubsub.api;
 
 import com.linkedin.venice.annotation.RestrictedApi;
 import com.linkedin.venice.memory.Measurable;
+import com.linkedin.venice.pubsub.PubSubPositionFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import java.nio.ByteBuffer;
@@ -49,5 +50,19 @@ public interface PubSubPosition extends Measurable {
    */
   default byte[] toWireFormatBytes() {
     return PUBSUB_POSITION_WIRE_FORMAT_SERIALIZER.serialize(null, getPositionWireFormat());
+  }
+
+  /**
+   * Returns the factory class responsible for creating this position type.
+   *
+   * This enables strong type checking and reflection-based instantiation without
+   * requiring the actual factory instance to be returned.
+   *
+   * @return the class object of the factory that can construct this position
+   */
+  Class<? extends PubSubPositionFactory> getFactoryClass();
+
+  default String getFactoryClassName() {
+    return getFactoryClass().getName();
   }
 }

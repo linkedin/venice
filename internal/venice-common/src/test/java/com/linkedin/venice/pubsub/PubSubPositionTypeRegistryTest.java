@@ -128,12 +128,12 @@ public class PubSubPositionTypeRegistryTest {
     }
 
     @Override
-    public PubSubPosition createFromWireFormat(PubSubPositionWireFormat positionWireFormat) {
+    public PubSubPosition fromPositionRawBytes(PubSubPositionWireFormat positionWireFormat) {
       return null;
     }
 
     @Override
-    public PubSubPosition createFromByteBuffer(ByteBuffer buffer) {
+    public PubSubPosition fromPositionRawBytes(ByteBuffer buffer) {
       return null;
     }
 

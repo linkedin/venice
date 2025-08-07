@@ -53,6 +53,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubPositionFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
@@ -339,6 +340,11 @@ public class VeniceChangelogConsumerImplTest {
       }
 
       @Override
+      public Class<? extends PubSubPositionFactory> getFactoryClass() {
+        return null;
+      }
+
+      @Override
       public int getHeapSize() {
         return 0;
       }
@@ -352,6 +358,11 @@ public class VeniceChangelogConsumerImplTest {
 
       @Override
       public PubSubPositionWireFormat getPositionWireFormat() {
+        return null;
+      }
+
+      @Override
+      public Class<? extends PubSubPositionFactory> getFactoryClass() {
         return null;
       }
 
@@ -381,6 +392,11 @@ public class VeniceChangelogConsumerImplTest {
 
       @Override
       public PubSubPositionWireFormat getPositionWireFormat() {
+        return null;
+      }
+
+      @Override
+      public Class<? extends PubSubPositionFactory> getFactoryClass() {
         return null;
       }
 

@@ -35,27 +35,43 @@ public abstract class PubSubPositionFactory {
    * This method validates that the type ID in the wire format matches the expected type ID for this factory.
    * If the type ID does not match, an exception is thrown to prevent incorrect deserialization.
    * <p>
-   * Internally, this delegates to {@link #createFromByteBuffer(ByteBuffer)} to perform the actual decoding.
+   * Internally, this delegates to {@link #fromPositionRawBytes(ByteBuffer)} to perform the actual decoding.
    *
    * @param positionWireFormat the wire format containing the type ID and raw encoded bytes
    * @return a new {@link PubSubPosition} instance reconstructed from the wire format
    * @throws VeniceException if the type ID does not match the factory's expected type
    */
-  public PubSubPosition createFromWireFormat(PubSubPositionWireFormat positionWireFormat) {
+  public PubSubPosition fromPositionRawBytes(PubSubPositionWireFormat positionWireFormat) {
     if (positionWireFormat.getType() != positionTypeId) {
       throw new VeniceException(
           "Position type ID mismatch: expected " + positionTypeId + ", but got " + positionWireFormat.getType());
     }
-    return createFromByteBuffer(positionWireFormat.getRawBytes());
+    return fromPositionRawBytes(positionWireFormat.getRawBytes());
+  }
+
+  @Deprecated
+  /**
+   * Use {@link #fromPositionRawBytes(PubSubPositionWireFormat)} instead.
+   */
+  public PubSubPosition createFromWireFormat(PubSubPositionWireFormat wireFormat) {
+    return fromPositionRawBytes(wireFormat);
   }
 
   /**
    * Deserializes a {@link PubSubPosition} from the given byte buffer.
    *
-   * @param buffer the byte buffer containing the serialized position
+   * @param positionRawBytes the byte buffer containing the serialized position (does not include type ID)
    * @return a new {@link PubSubPosition} instance
    */
-  public abstract PubSubPosition createFromByteBuffer(ByteBuffer buffer);
+  public abstract PubSubPosition fromPositionRawBytes(ByteBuffer positionRawBytes);
+
+  @Deprecated
+  /**
+   * Use {@link #fromPositionRawBytes(ByteBuffer)} instead.
+   */
+  public PubSubPosition createFromByteBuffer(ByteBuffer positionRawBytes) {
+    return fromPositionRawBytes(positionRawBytes);
+  }
 
   /**
    * Returns the fully qualified class name of the {@link PubSubPosition} implementation handled by this factory.

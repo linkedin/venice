@@ -3,7 +3,6 @@ package com.linkedin.venice.pubsub.api;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
-import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import java.lang.reflect.Constructor;
@@ -64,6 +63,6 @@ public class LatestPositionTest {
   @Test
   public void testNumericOffset() {
     LatestPosition instance = LatestPosition.getInstance();
-    assertThrows(UnsupportedOperationException.class, () -> instance.getNumericOffset());
+    assertEquals(instance.getNumericOffset(), Long.MAX_VALUE, "Numeric offset should be Long.MAX_VALUE");
   }
 }
