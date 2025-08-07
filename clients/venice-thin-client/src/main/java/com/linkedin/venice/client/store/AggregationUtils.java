@@ -1,11 +1,14 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.venice.client.store.predicate.DoublePredicate;
+import com.linkedin.venice.client.store.predicate.FloatPredicate;
+import com.linkedin.venice.client.store.predicate.IntPredicate;
+import com.linkedin.venice.client.store.predicate.LongPredicate;
+import com.linkedin.venice.client.store.predicate.Predicate;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 
 
@@ -30,193 +33,165 @@ public class AggregationUtils {
   }
 
   /**
-   * Filter top K values from a value-count map.
-   * This is the original implementation from the thin-client.
+   * Get value counts for a single field with TopK filtering.
+   * This is the original logic from AvroComputeAggregationResponse.getValueToCount() moved to Utils.
    * 
-   * @param fieldCounts Map of field values to counts
-   * @param topK Number of top values to keep
-   * @return Filtered map with at most topK entries, sorted by count descending
+   * @param computeResults Collection of ComputeGenericRecord results
+   * @param field The field name to count
+   * @param topK Maximum number of top values to return  
+   * @return Map of values to their counts, limited to topK entries
    */
-  public static Map<Object, Integer> filterTopKValues(Map<Object, Integer> fieldCounts, int topK) {
-    if (fieldCounts.size() <= topK) {
-      return new LinkedHashMap<>(fieldCounts);
+  public static <T> Map<T, Integer> getValueToCount(
+      Iterable<ComputeGenericRecord> computeResults,
+      String field,
+      int topK) {
+
+    Map<T, Integer> valueToCount = new HashMap<>();
+
+    for (ComputeGenericRecord record: computeResults) {
+      Object value = normalizeValue(record.get(field));
+      @SuppressWarnings("unchecked")
+      T key = (T) value;
+      valueToCount.merge(key, 1, Integer::sum);
     }
 
-    // Sort by count descending, then by key for deterministic results
-    return fieldCounts.entrySet().stream().sorted((e1, e2) -> {
-      int countCompare = e2.getValue().compareTo(e1.getValue());
-      if (countCompare != 0) {
-        return countCompare;
-      }
-      // Handle null keys safely
-      if (e1.getKey() == null && e2.getKey() == null) {
-        return 0;
-      }
-      if (e1.getKey() == null) {
-        return 1; // null comes last
-      }
-      if (e2.getKey() == null) {
-        return -1; // null comes last
-      }
-      // For comparable keys, use natural ordering
-      if (e1.getKey() instanceof Comparable && e2.getKey() instanceof Comparable) {
-        try {
-          @SuppressWarnings("unchecked")
-          Comparable<Object> c1 = (Comparable<Object>) e1.getKey();
-          @SuppressWarnings("unchecked")
-          Comparable<Object> c2 = (Comparable<Object>) e2.getKey();
-          return c1.compareTo(c2);
-        } catch (ClassCastException e) {
-          // Fall back to string comparison
-        }
-      }
-      return e1.getKey().toString().compareTo(e2.getKey().toString());
-    }).limit(topK).collect(LinkedHashMap::new, (map, entry) -> map.put(entry.getKey(), entry.getValue()), Map::putAll);
+    // Sort by count in descending order
+    Map<T, Integer> sortedMap = valueToCount.entrySet()
+        .stream()
+        .sorted(Map.Entry.<T, Integer>comparingByValue().reversed())
+        .limit(topK)
+        .collect(LinkedHashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), Map::putAll);
+
+    return sortedMap;
   }
 
   /**
-   * Extract value to count mapping from a collection of records.
-   * This method handles both single partition data (server-side) and entire store data (client-side).
+   * Get bucket counts for a single field with predicate-based bucketing.
+   * This is the original logic from AvroComputeAggregationResponse.getBucketNameToCount() moved to Utils.
    * 
-   * @param records Iterable collection of records (can be GenericRecord, String, or any object)
-   * @param fieldNames List of field names to extract and count
-   * @param valueExtractor Function to extract field value from a record
-   * @return Map from field name to (value -> count) mapping
+   * @param computeResults Collection of ComputeGenericRecord results
+   * @param fieldName The field name to count
+   * @param buckets Map of bucket names to their predicates
+   * @return Map of bucket names to their counts
    */
-  public static <R> Map<String, Map<Object, Integer>> extractFieldToValueCounts(
-      Iterable<R> records,
-      List<String> fieldNames,
-      FieldValueExtractor<R> valueExtractor) {
+  public static Map<String, Integer> getBucketNameToCount(
+      Iterable<ComputeGenericRecord> computeResults,
+      String fieldName,
+      Map<String, Predicate> buckets) {
 
-    Map<String, Map<Object, Integer>> fieldToValueCounts = new HashMap<>();
-    for (String fieldName: fieldNames) {
-      fieldToValueCounts.put(fieldName, new HashMap<>());
+    // Initialize bucket counts
+    Map<String, Integer> bucketCounts = new LinkedHashMap<>();
+    for (String bucketName: buckets.keySet()) {
+      bucketCounts.put(bucketName, 0);
     }
 
-    for (R record: records) {
+    // Process all records and count bucket matches
+    for (ComputeGenericRecord record: computeResults) {
       if (record == null) {
         continue;
       }
 
-      for (String fieldName: fieldNames) {
-        Object fieldValue = valueExtractor.extractFieldValue(record, fieldName);
-        // Count both null and non-null values
-        Object normalizedValue;
-        if (fieldValue == null) {
-          normalizedValue = null;
-        } else {
-          normalizedValue = normalizeValue(fieldValue);
+      Object fieldValue = record.get(fieldName);
+      if (fieldValue == null) {
+        continue;
+      }
+
+      // Convert field value if needed (Utf8 to String) using shared utility
+      Object convertedValue = normalizeValue(fieldValue);
+
+      // Check which bucket(s) this value falls into
+      for (Map.Entry<String, Predicate> bucketEntry: buckets.entrySet()) {
+        String bucketName = bucketEntry.getKey();
+        Predicate predicate = bucketEntry.getValue();
+
+        try {
+          // Handle type conversion for numeric predicates
+          Object valueToEvaluate = convertedValue;
+          if (predicate instanceof LongPredicate) {
+            valueToEvaluate = convertToType(convertedValue, Long.class);
+          } else if (predicate instanceof IntPredicate) {
+            valueToEvaluate = convertToType(convertedValue, Integer.class);
+          } else if (predicate instanceof FloatPredicate) {
+            valueToEvaluate = convertToType(convertedValue, Float.class);
+          } else if (predicate instanceof DoublePredicate) {
+            valueToEvaluate = convertToType(convertedValue, Double.class);
+          }
+
+          if (valueToEvaluate != null) {
+            boolean matches = predicate.evaluate(valueToEvaluate);
+            if (matches) {
+              bucketCounts.merge(bucketName, 1, Integer::sum);
+            }
+          }
+        } catch (ClassCastException | NumberFormatException e) {
+          // If type conversion fails, skip this bucket for this record
+          continue;
         }
-        fieldToValueCounts.get(fieldName).merge(normalizedValue, 1, Integer::sum);
       }
     }
 
-    return fieldToValueCounts;
+    return bucketCounts;
   }
 
   /**
-   * Apply TopK filtering to field-to-value-counts mapping.
-   * 
-   * @param fieldToValueCounts Map from field name to (value -> count) mapping  
-   * @param topK Number of top values to keep for each field
-   * @return Filtered map with at most topK values per field, sorted by count descending
+   * Generic method to convert value to the target type for predicate evaluation.
+   * Supports Integer, Long, Float, and Double conversions.
    */
-  public static Map<String, Map<Object, Integer>> applyTopKToFieldCounts(
-      Map<String, Map<Object, Integer>> fieldToValueCounts,
-      int topK) {
-
-    Map<String, Map<Object, Integer>> result = new HashMap<>();
-
-    for (Map.Entry<String, Map<Object, Integer>> entry: fieldToValueCounts.entrySet()) {
-      String fieldName = entry.getKey();
-      Map<Object, Integer> valueCounts = entry.getValue();
-
-      if (valueCounts.isEmpty()) {
-        result.put(fieldName, new HashMap<>());
-      } else {
-        // Use the filterTopKValues method directly
-        Map<Object, Integer> topKValues = filterTopKValues(valueCounts, topK);
-        result.put(fieldName, topKValues);
-      }
-    }
-
-    return result;
-  }
-
-  /**
-   * Functional interface for extracting field values from different record types.
-   * This allows the shared logic to work with GenericRecord, ComputeGenericRecord, or any other type.
-   */
-  @FunctionalInterface
-  public interface FieldValueExtractor<R> {
-    /**
-     * Extract the value of the specified field from the given record.
-     * 
-     * @param record The record to extract from
-     * @param fieldName The field name to extract
-     * @return The field value, or null if not found/not applicable
-     */
-    Object extractFieldValue(R record, String fieldName);
-  }
-
-  /**
-   * Generic field value extractor that handles both string-valued and record-valued stores.
-   * This method can be used by both server and client implementations.
-   * 
-   * @param value The value object (can be String, Utf8, or GenericRecord)
-   * @param fieldName The field name to extract
-   * @return The normalized field value, or null if not found
-   */
-  public static Object extractFieldValueGeneric(Object value, String fieldName) {
+  @SuppressWarnings("unchecked")
+  public static <T> T convertToType(Object value, Class<T> targetType) {
     if (value == null) {
       return null;
     }
 
-    // For string-valued stores, when the field name is "value" or "_value",
-    // the entire deserialized value IS the field value we want
-    if ((value instanceof String || value instanceof Utf8)
-        && ("value".equals(fieldName) || "_value".equals(fieldName))) {
-      return normalizeValue(value);
+    // If already the target type, return as is
+    if (targetType.isInstance(value)) {
+      return (T) value;
     }
 
-    // For ComputeGenericRecord (thin-client), extract directly using reflection
-    if (hasGetMethod(value)) {
-      try {
-        Object fieldValue = value.getClass().getMethod("get", String.class).invoke(value, fieldName);
-        if (fieldValue != null) {
-          return normalizeValue(fieldValue);
+    // Handle numeric conversions
+    if (targetType == Integer.class) {
+      if (value instanceof Long) {
+        return (T) Integer.valueOf(((Long) value).intValue());
+      } else if (value instanceof String) {
+        try {
+          return (T) Integer.valueOf(Integer.parseInt((String) value));
+        } catch (NumberFormatException e) {
+          return null;
         }
-      } catch (Exception e) {
-        // Fall back to GenericRecord check
       }
-    }
-
-    // For record-valued stores, extract the specific field
-    if (value instanceof GenericRecord) {
-      GenericRecord record = (GenericRecord) value;
-      // Check if field exists in schema before trying to get it
-      Schema schema = record.getSchema();
-      if (schema != null && schema.getField(fieldName) != null) {
-        Object fieldValue = record.get(fieldName);
-        if (fieldValue != null) {
-          return normalizeValue(fieldValue);
+    } else if (targetType == Long.class) {
+      if (value instanceof Integer) {
+        return (T) Long.valueOf(((Integer) value).longValue());
+      } else if (value instanceof String) {
+        try {
+          return (T) Long.valueOf(Long.parseLong((String) value));
+        } catch (NumberFormatException e) {
+          return null;
+        }
+      }
+    } else if (targetType == Float.class) {
+      if (value instanceof Integer) {
+        return (T) Float.valueOf(((Integer) value).floatValue());
+      } else if (value instanceof String) {
+        try {
+          return (T) Float.valueOf(Float.parseFloat((String) value));
+        } catch (NumberFormatException e) {
+          return null;
+        }
+      }
+    } else if (targetType == Double.class) {
+      if (value instanceof Integer) {
+        return (T) Double.valueOf(((Integer) value).doubleValue());
+      } else if (value instanceof String) {
+        try {
+          return (T) Double.valueOf(Double.parseDouble((String) value));
+        } catch (NumberFormatException e) {
+          return null;
         }
       }
     }
 
     return null;
-  }
-
-  /**
-   * Check if an object has a get method (like ComputeGenericRecord).
-   */
-  private static boolean hasGetMethod(Object obj) {
-    try {
-      obj.getClass().getMethod("get", String.class);
-      return true;
-    } catch (NoSuchMethodException e) {
-      return false;
-    }
   }
 
   /**
