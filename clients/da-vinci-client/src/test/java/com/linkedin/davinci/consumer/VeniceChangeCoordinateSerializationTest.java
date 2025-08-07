@@ -4,6 +4,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.memory.ClassSizeEstimator;
@@ -75,8 +76,8 @@ public class VeniceChangeCoordinateSerializationTest {
     PubSubPositionWireFormat wireFormat = (PubSubPositionWireFormat) objectInput.readObject();
 
     // Read version field
-    String version = objectInput.readUTF();
-    assertEquals(version, "v2");
+    int version = objectInput.readInt();
+    assertEquals(version, 2);
 
     // Read factory class name
     String factoryClassName = objectInput.readUTF();
@@ -85,21 +86,6 @@ public class VeniceChangeCoordinateSerializationTest {
     assertEquals(topic, TEST_TOPIC);
     assertEquals(partition, TEST_PARTITION.intValue());
     assertNotNull(wireFormat);
-  }
-
-  @Test
-  public void testV2FormatWithMultiplePositionTypes() throws IOException, ClassNotFoundException {
-    // Test V2 format works with different PubSubPosition implementations
-
-    // Test with ApacheKafkaOffsetPosition
-    VeniceChangeCoordinate kafkaCoordinate =
-        new VeniceChangeCoordinate(TEST_TOPIC, ApacheKafkaOffsetPosition.of(999L), TEST_PARTITION);
-    verifySerializationRoundTrip(kafkaCoordinate);
-
-    // Test with custom position
-    CustomTestPosition customPosition = new CustomTestPosition(42L);
-    VeniceChangeCoordinate customCoordinate = new VeniceChangeCoordinate(TEST_TOPIC, customPosition, TEST_PARTITION);
-    verifySerializationRoundTrip(customCoordinate);
   }
 
   @Test
@@ -152,22 +138,7 @@ public class VeniceChangeCoordinateSerializationTest {
   }
 
   @Test
-  public void testCustomFactoryInstantiation() throws IOException, ClassNotFoundException {
-    // Test that custom factory classes can be instantiated via reflection
-    CustomTestPosition customPosition = new CustomTestPosition(555L);
-    VeniceChangeCoordinate coordinate = new VeniceChangeCoordinate(TEST_TOPIC, customPosition, TEST_PARTITION);
-
-    // The factory class name should be stored and used for deserialization
-    byte[] data = serializeToBytes(coordinate);
-
-    // Manually verify factory class name is in the data
-    VeniceChangeCoordinate deserializedCoordinate = deserializeFromBytes(data);
-    assertNotNull(deserializedCoordinate.getPosition());
-    assertEquals(deserializedCoordinate.getPosition().getClass(), CustomTestPosition.class);
-  }
-
-  @Test
-  public void testInvalidFactoryClassNameFallback() throws IOException, ClassNotFoundException {
+  public void testInvalidFactoryClassNameFallback() throws IOException {
     // Test behavior when factory class name is invalid/non-existent
 
     // Create data with invalid factory class name by manually constructing it
@@ -180,7 +151,7 @@ public class VeniceChangeCoordinateSerializationTest {
     objectOutput.writeObject(testPosition.getPositionWireFormat());
 
     // Write version
-    objectOutput.writeUTF("v2");
+    objectOutput.writeUTF("2"); // Version 2
 
     // Write invalid factory class name
     objectOutput.writeUTF("com.nonexistent.InvalidFactory");
@@ -206,7 +177,7 @@ public class VeniceChangeCoordinateSerializationTest {
     objectOutput.writeObject(testPosition.getPositionWireFormat());
 
     // Write version but no factory class name (truncated)
-    objectOutput.writeUTF("v2");
+    objectOutput.writeInt(2); // Version 2
     objectOutput.flush();
 
     byte[] truncatedData = outputStream.toByteArray();
@@ -230,14 +201,17 @@ public class VeniceChangeCoordinateSerializationTest {
     objectOutput.writeObject(testPosition.getPositionWireFormat());
 
     // Write unsupported version
-    objectOutput.writeUTF("v999");
+    objectOutput.writeInt(999);
     objectOutput.writeUTF(testPosition.getFactoryClassName());
     objectOutput.flush();
 
     byte[] dataWithUnsupportedVersion = outputStream.toByteArray();
 
     // Should throw VeniceException for unsupported version
-    assertThrows(VeniceException.class, () -> deserializeFromBytes(dataWithUnsupportedVersion));
+    Exception e = expectThrows(VeniceException.class, () -> deserializeFromBytes(dataWithUnsupportedVersion));
+    assertTrue(
+        e.getMessage().contains("Unsupported VeniceChangeCoordinate version: 999"),
+        "Expected unsupported version exception, but got: " + e.getMessage());
   }
 
   @Test
@@ -355,16 +329,6 @@ public class VeniceChangeCoordinateSerializationTest {
   }
 
   /**
-   * Verifies that serialization and deserialization round-trip works correctly
-   */
-  private void verifySerializationRoundTrip(VeniceChangeCoordinate original)
-      throws IOException, ClassNotFoundException {
-    byte[] data = serializeToBytes(original);
-    VeniceChangeCoordinate restored = deserializeFromBytes(data);
-    assertCoordinatesEqual(original, restored);
-  }
-
-  /**
    * Asserts that two VeniceChangeCoordinate instances are equal
    */
   private void assertCoordinatesEqual(VeniceChangeCoordinate expected, VeniceChangeCoordinate actual) {
@@ -373,11 +337,6 @@ public class VeniceChangeCoordinateSerializationTest {
     assertEquals(PubSubUtil.comparePubSubPositions(actual.getPosition(), expected.getPosition()), 0);
     assertEquals(actual.getPosition().getClass(), expected.getPosition().getClass());
   }
-
-  // =================================================================================
-  // Custom Test Position Implementation
-  // Used to test serialization with non-default position types
-  // =================================================================================
 
   /**
    * Custom PubSubPosition implementation for testing

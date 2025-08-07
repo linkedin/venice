@@ -21,11 +21,15 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * This class represents a change coordinate in Venice. It contains the topic name, partition number, and
+ * the pubsub position.
+ */
 public class VeniceChangeCoordinate implements Externalizable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangeCoordinate.class);
   private static final long serialVersionUID = 1L;
-  private static final String VERSION_V2 = "v2";
-  private static final String CURRENT_VERSION = VERSION_V2;
+  private static final int VERSION_V2 = 2;
+  private static final int CURRENT_VERSION = VERSION_V2;
 
   private String topic;
   private Integer partition;
@@ -65,7 +69,7 @@ public class VeniceChangeCoordinate implements Externalizable {
     out.writeObject(pubSubPosition.getPositionWireFormat());
 
     // Begin versioned block
-    out.writeUTF(CURRENT_VERSION); // Write version marker after core fields
+    out.writeInt(CURRENT_VERSION); // Write version marker after core fields
 
     // Version-specific fields for v2
     out.writeUTF(pubSubPosition.getFactoryClassName());
@@ -97,7 +101,7 @@ public class VeniceChangeCoordinate implements Externalizable {
 
     try {
       // Attempt to read version field — this will only succeed for v2+ writers
-      String version = in.readUTF();
+      int version = in.readInt();
 
       switch (version) {
         case VERSION_V2:
