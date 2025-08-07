@@ -127,19 +127,6 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
           .error("Failed to subscribe to topic-partition: {} because last read position is null", pubSubTopicPartition);
       throw new IllegalArgumentException("Last read position cannot be null");
     }
-    if (lastReadPubSubPosition != PubSubSymbolicPosition.EARLIEST
-        && lastReadPubSubPosition != PubSubSymbolicPosition.LATEST
-        && !(lastReadPubSubPosition instanceof ApacheKafkaOffsetPosition)) {
-      LOGGER.error(
-          "Failed to subscribe to topic-partition: {} because last read position type: {} is not supported with consumer type: {}",
-          pubSubTopicPartition,
-          lastReadPubSubPosition.getClass().getName(),
-          ApacheKafkaConsumerAdapter.class.getName());
-      throw new IllegalArgumentException(
-          "Last read position must be an instance of " + ApacheKafkaOffsetPosition.class.getName() + " as consumer is "
-              + ApacheKafkaConsumerAdapter.class.getName() + " but it is "
-              + lastReadPubSubPosition.getClass().getName());
-    }
 
     TopicPartition topicPartition = toKafkaTopicPartition(pubSubTopicPartition);
     if (kafkaConsumer.assignment().contains(topicPartition)) {
@@ -163,11 +150,20 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     } else if (lastReadPubSubPosition == PubSubSymbolicPosition.LATEST) {
       kafkaConsumer.seekToEnd(Collections.singletonList(topicPartition));
       logMessage = PubSubSymbolicPosition.LATEST.toString();
-    } else {
+    } else if (lastReadPubSubPosition instanceof ApacheKafkaOffsetPosition) {
       ApacheKafkaOffsetPosition kafkaOffsetPosition = (ApacheKafkaOffsetPosition) lastReadPubSubPosition;
       long consumptionStartOffset = kafkaOffsetPosition.getInternalOffset() + 1;
       kafkaConsumer.seek(topicPartition, consumptionStartOffset);
       logMessage = "" + consumptionStartOffset;
+    } else {
+      // N.B. This fallback path allows safe rollbacks where the PubSubPosition was written
+      // by a newer PubSubClient (possibly using a non-default PubSubPosition implementation),
+      // but is being consumed using the Kafka client.
+      // In such cases, we attempt to use getNumericOffset() to preserve compatibility.
+      // This behavior is temporary and will be deprecated once full enforcement is feasible.
+      long consumptionStartOffset = lastReadPubSubPosition.getNumericOffset() + 1;
+      kafkaConsumer.seek(topicPartition, consumptionStartOffset);
+      logMessage = "" + consumptionStartOffset + " (last read position: " + lastReadPubSubPosition + ")";
     }
     assignments.put(topicPartition, pubSubTopicPartition);
     LOGGER.info("Subscribed to topic-partition: {} from position: {}", pubSubTopicPartition, logMessage);
