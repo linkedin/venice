@@ -2619,11 +2619,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertTrue(currentPush.isPresent());
     assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(14)).getOffLinePushStatus(clusterName, latestTopic);
-
-    // When there is a regular topic, but there is no corresponding version
-    store.deleteVersion(1);
-    doReturn(new StoreVersionInfo(store, null)).when(internalAdmin)
-        .waitVersion(eq(clusterName), eq(storeName), eq(1), any());
   }
 
   @Test
