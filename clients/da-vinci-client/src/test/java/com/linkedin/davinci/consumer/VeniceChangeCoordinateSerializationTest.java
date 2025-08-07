@@ -76,7 +76,7 @@ public class VeniceChangeCoordinateSerializationTest {
     PubSubPositionWireFormat wireFormat = (PubSubPositionWireFormat) objectInput.readObject();
 
     // Read version field
-    int version = objectInput.readInt();
+    int version = objectInput.readShort();
     assertEquals(version, 2);
 
     // Read factory class name
@@ -177,7 +177,7 @@ public class VeniceChangeCoordinateSerializationTest {
     objectOutput.writeObject(testPosition.getPositionWireFormat());
 
     // Write version but no factory class name (truncated)
-    objectOutput.writeInt(2); // Version 2
+    objectOutput.writeShort(2); // Version 2
     objectOutput.flush();
 
     byte[] truncatedData = outputStream.toByteArray();
@@ -201,7 +201,7 @@ public class VeniceChangeCoordinateSerializationTest {
     objectOutput.writeObject(testPosition.getPositionWireFormat());
 
     // Write unsupported version
-    objectOutput.writeInt(999);
+    objectOutput.writeShort(125);
     objectOutput.writeUTF(testPosition.getFactoryClassName());
     objectOutput.flush();
 
@@ -210,7 +210,7 @@ public class VeniceChangeCoordinateSerializationTest {
     // Should throw VeniceException for unsupported version
     Exception e = expectThrows(VeniceException.class, () -> deserializeFromBytes(dataWithUnsupportedVersion));
     assertTrue(
-        e.getMessage().contains("Unsupported VeniceChangeCoordinate version: 999"),
+        e.getMessage().contains("Unsupported VeniceChangeCoordinate version: 125"),
         "Expected unsupported version exception, but got: " + e.getMessage());
   }
 

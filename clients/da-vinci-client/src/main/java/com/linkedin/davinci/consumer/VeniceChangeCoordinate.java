@@ -28,8 +28,8 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangeCoordinate implements Externalizable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangeCoordinate.class);
   private static final long serialVersionUID = 1L;
-  private static final int VERSION_V2 = 2;
-  private static final int CURRENT_VERSION = VERSION_V2;
+  private static final short VERSION_V2 = 2;
+  private static final short CURRENT_VERSION = VERSION_V2;
 
   private String topic;
   private Integer partition;
@@ -69,7 +69,7 @@ public class VeniceChangeCoordinate implements Externalizable {
     out.writeObject(pubSubPosition.getPositionWireFormat());
 
     // Begin versioned block
-    out.writeInt(CURRENT_VERSION); // Write version marker after core fields
+    out.writeShort(CURRENT_VERSION); // Write version marker after core fields
 
     // Version-specific fields for v2
     out.writeUTF(pubSubPosition.getFactoryClassName());
@@ -101,7 +101,7 @@ public class VeniceChangeCoordinate implements Externalizable {
 
     try {
       // Attempt to read version field — this will only succeed for v2+ writers
-      int version = in.readInt();
+      int version = in.readShort();
 
       switch (version) {
         case VERSION_V2:
