@@ -34,6 +34,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_REC
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_KAFKA;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
@@ -44,6 +45,7 @@ import com.linkedin.davinci.consumer.VeniceAfterImageConsumerImpl;
 import com.linkedin.davinci.consumer.VeniceChangeCoordinate;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
+import com.linkedin.davinci.consumer.VeniceCoordinateOutOfRangeException;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -69,6 +71,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -700,7 +703,9 @@ public class TestChangelogConsumer {
     Set<VeniceChangeCoordinate> badCheckpointSet = new HashSet<>();
     badCheckpointSet.add(badCoordinate);
 
-    Assert.assertThrows(() -> veniceChangelogConsumer.seekToCheckpoint(badCheckpointSet).get());
+    Exception e = Assert
+        .expectThrows(ExecutionException.class, () -> veniceChangelogConsumer.seekToCheckpoint(badCheckpointSet).get());
+    assertTrue(ExceptionUtils.recursiveClassEquals(e, VeniceCoordinateOutOfRangeException.class));
 
     // Seek the consumer by checkpoint
     veniceChangelogConsumer.seekToCheckpoint(checkpointSet).join();
