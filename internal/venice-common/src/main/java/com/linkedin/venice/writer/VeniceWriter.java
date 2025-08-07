@@ -1648,7 +1648,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             ? new PubSubMessageHeaders()
             : headers;
 
-    if (needVtpHeader) {
+    if (needVtpHeader && protocolSchemaHeader != null) {
       returnPubSubMessageHeaders.add(protocolSchemaHeader);
     }
     if (addLeaderCompleteState) {
