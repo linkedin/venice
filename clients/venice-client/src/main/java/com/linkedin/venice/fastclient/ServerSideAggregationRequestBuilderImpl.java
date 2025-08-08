@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient;
 
 import com.google.protobuf.ByteString;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.FacetCountingUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.GrpcTransportClient;
@@ -11,7 +12,6 @@ import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.protocols.ValueCount;
 import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.utils.CountByValueUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -49,7 +49,7 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
     // Use shared utility for complete field validation with schema (same as thin-client)
     try {
       Schema valueSchema = metadata.getValueSchema(metadata.getLatestValueSchemaId());
-      CountByValueUtils.validateFieldNames(fieldNames.toArray(new String[0]), valueSchema);
+      FacetCountingUtils.validateFieldNames(fieldNames.toArray(new String[0]), valueSchema);
     } catch (IllegalArgumentException e) {
       throw new VeniceClientException(e.getMessage(), e);
     }
@@ -169,12 +169,16 @@ public class ServerSideAggregationRequestBuilderImpl<K> implements ServerSideAgg
       // Merge partition responses
       Map<String, Map<String, Integer>> globalFieldCounts = mergePartitionResponses(responses, fieldNames);
 
-      // Apply TopK filtering using shared utility
+      // Apply TopK filtering - reuse the sorting logic from FacetCountingUtils
       for (String fieldName: fieldNames) {
         Map<String, Integer> fieldCounts = globalFieldCounts.get(fieldName);
         if (fieldCounts != null && !fieldCounts.isEmpty()) {
-          // Use shared utility for TopK filtering (same as thin-client)
-          Map<String, Integer> topKCounts = CountByValueUtils.filterTopKValuesGeneric(fieldCounts, topK);
+          // Sort by count in descending order and limit to topK
+          Map<String, Integer> topKCounts = fieldCounts.entrySet()
+              .stream()
+              .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+              .limit(topK)
+              .collect(java.util.LinkedHashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), Map::putAll);
           globalFieldCounts.put(fieldName, topKCounts);
         }
       }

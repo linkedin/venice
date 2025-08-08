@@ -3,6 +3,7 @@ package com.linkedin.venice.listener.grpc.handlers;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.store.StorageEngine;
+import com.linkedin.venice.client.store.FacetCountingUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -18,10 +19,10 @@ import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.utils.CountByValueUtils;
 import com.linkedin.venice.utils.StoreVersionStateUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -136,7 +137,7 @@ public class CountByValueProcessor {
 
       // Validate that all fields exist in the schema using shared utility
       try {
-        CountByValueUtils.validateFieldNames(fieldNames.toArray(new String[0]), valueSchema);
+        FacetCountingUtils.validateFieldNames(fieldNames.toArray(new String[0]), valueSchema);
       } catch (IllegalArgumentException e) {
         return CountByValueResponse.newBuilder()
             .setErrorCode(VeniceReadResponseStatus.BAD_REQUEST)
@@ -238,10 +239,26 @@ public class CountByValueProcessor {
         }
       }
 
-      // Use shared logic to extract field-to-value counts with generic extractor
-      CountByValueUtils.FieldValueExtractor<Object> extractor = CountByValueUtils::extractFieldValueGeneric;
-      Map<String, Map<Object, Integer>> fieldToValueCounts =
-          CountByValueUtils.extractFieldToValueCounts(deserializedValues, fieldNames, extractor);
+      // Use FacetCountingUtils.getValueToCount for each field
+      Map<String, Map<Object, Integer>> fieldToValueCounts = new HashMap<>();
+
+      for (String fieldName: fieldNames) {
+        // For GenericRecord values, use them directly
+        // For String/Utf8 values (string-valued stores), create simple wrapper
+        List<GenericRecord> records = new ArrayList<>();
+        for (Object value: deserializedValues) {
+          if (value instanceof GenericRecord) {
+            records.add((GenericRecord) value);
+          } else if (value instanceof String || value instanceof Utf8) {
+            // For string-valued stores where fieldName is "value" or "_value"
+            records.add(new SimpleStringRecord(value));
+          }
+        }
+
+        // Use FacetCountingUtils.getValueToCount (no TopK limit on server side)
+        Map<Object, Integer> valueCounts = FacetCountingUtils.getValueToCount(records, fieldName, Integer.MAX_VALUE);
+        fieldToValueCounts.put(fieldName, valueCounts);
+      }
 
       return buildCountByValueResponse(fieldNames, fieldToValueCounts);
 
@@ -359,5 +376,44 @@ public class CountByValueProcessor {
       }
     }
     return responseBuilder.setErrorCode(VeniceReadResponseStatus.OK).build();
+  }
+
+  /**
+   * Minimal wrapper for string values in string-valued stores.
+   */
+  private static class SimpleStringRecord implements GenericRecord {
+    private final Object value;
+
+    SimpleStringRecord(Object value) {
+      this.value = value instanceof Utf8 ? value.toString() : value;
+    }
+
+    @Override
+    public Object get(String key) {
+      if ("value".equals(key) || "_value".equals(key)) {
+        return value;
+      }
+      return null;
+    }
+
+    @Override
+    public Object get(int i) {
+      return null;
+    }
+
+    @Override
+    public void put(String key, Object v) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void put(int i, Object v) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Schema getSchema() {
+      return Schema.create(Schema.Type.STRING);
+    }
   }
 }

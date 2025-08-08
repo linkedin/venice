@@ -240,7 +240,7 @@ public class VeniceServerGrpcRequestProcessorTest {
     CountByValueResponse response = processor.processCountByValue(request);
 
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
-    assertTrue(response.getErrorMessage().contains("Field 'nonexistent_field' not found"));
+    assertTrue(response.getErrorMessage().contains("Field not found in schema: nonexistent_field"));
   }
 
   @Test
