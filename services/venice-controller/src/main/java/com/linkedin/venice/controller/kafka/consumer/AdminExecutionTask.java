@@ -34,6 +34,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersio
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreLifecycleHooksRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
@@ -48,12 +49,16 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
+import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.CollectionUtils;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
@@ -504,6 +509,15 @@ public class AdminExecutionTask implements Callable<Void> {
         .setIsDavinciHeartbeatReported(message.isDaVinciHeartBeatReported)
         .setGlobalRtDivEnabled(message.globalRtDivEnabled)
         .setEnumSchemaEvolutionAllowed(message.enumSchemaEvolutionAllowed);
+
+    List<LifecycleHooksRecord> convertedLifecycleHooks = new ArrayList<>();
+    for (StoreLifecycleHooksRecord record: message.storeLifecycleHooks) {
+      convertedLifecycleHooks.add(
+          new LifecycleHooksRecordImpl(
+              record.getStoreLifecycleHooksClassName().toString(),
+              CollectionUtils.getStringMapFromCharSequenceMap(record.getStoreLifecycleHooksParams())));
+    }
+    params.setStoreLifecycleHooks(convertedLifecycleHooks);
 
     if (message.targetSwapRegion != null) {
       params.setTargetRegionSwap(message.getTargetSwapRegion().toString());

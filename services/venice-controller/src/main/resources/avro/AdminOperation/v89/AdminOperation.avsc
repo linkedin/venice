@@ -711,10 +711,17 @@
             },
             {
               "name": "storeLifecycleHooks",
-              "doc": "The list that contains all updated configs by the UpdateStore command. Most of the fields in UpdateStore are not optional, and changing those fields to Optional (Union) is not a backward compatible change, so we have to add an addition array field to record all updated configs in parent controller.",
+              "doc": "List of store lifecycle hooks",
               "type": {
                 "type": "array",
-                "items": "string"
+                "items": {
+                  "name": "StoreLifecycleHooksRecord",
+                  "type": "record",
+                  "fields": [
+                    {"name": "storeLifecycleHooksClassName", "type": "string", "doc":  "FQCN of the hook implementation"},
+                    {"name": "storeLifecycleHooksParams", "type": {"type": "map", "values": "string"}, "doc":  "Bag of properties to pass into the hook implementation"}
+                  ]
+                }
               },
               "default": []
             }

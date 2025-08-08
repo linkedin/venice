@@ -1040,7 +1040,15 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
 
   @Override
   public void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
-    throw new UnsupportedOperationException();
+    List<StoreLifecycleHooksRecord> convertedStoreLifecycleHooks = new ArrayList<>();
+    for (LifecycleHooksRecord storeLifecycleHooksRecord: storeLifecycleHooks) {
+      convertedStoreLifecycleHooks.add(
+          new StoreLifecycleHooksRecord(
+              storeLifecycleHooksRecord.getStoreLifecycleHooksClassName().toString(),
+              CollectionUtils
+                  .convertStringMapToCharSequenceMap(storeLifecycleHooksRecord.getStoreLifecycleHooksParams())));
+    }
+    this.storeProperties.storeLifecycleHooks = convertedStoreLifecycleHooks;
   }
 
   @Override

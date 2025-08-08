@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.systemstore.schemas.StoreLifecycleHooksRecord;
 import com.linkedin.venice.utils.CollectionUtils;
 import java.util.Map;
@@ -12,7 +13,9 @@ public class LifecycleHooksRecordImpl implements LifecycleHooksRecord {
     storeLifecycleHooksRecord = new StoreLifecycleHooksRecord();
   }
 
-  public LifecycleHooksRecordImpl(String storeLifecycleHooksClassName, Map<String, String> storeLifecycleHooksParams) {
+  public LifecycleHooksRecordImpl(
+      @JsonProperty("storeLifecycleHooksClassName") String storeLifecycleHooksClassName,
+      @JsonProperty("storeLifecycleHooksParams") Map<String, String> storeLifecycleHooksParams) {
     this();
     this.storeLifecycleHooksRecord.setStoreLifecycleHooksClassName(storeLifecycleHooksClassName);
     this.storeLifecycleHooksRecord
@@ -28,6 +31,15 @@ public class LifecycleHooksRecordImpl implements LifecycleHooksRecord {
   public Map<String, String> getStoreLifecycleHooksParams() {
     return CollectionUtils
         .convertCharSequenceMapToStringMap(this.storeLifecycleHooksRecord.getStoreLifecycleHooksParams());
+  }
+
+  public void setStoreLifecycleHooksClassName(String className) {
+    this.storeLifecycleHooksRecord.setStoreLifecycleHooksClassName(className);
+  }
+
+  public void setStoreLifecycleHooksParams(Map<String, String> params) {
+    this.storeLifecycleHooksRecord
+        .setStoreLifecycleHooksParams(CollectionUtils.convertStringMapToCharSequenceMap(params));
   }
 
   @Override

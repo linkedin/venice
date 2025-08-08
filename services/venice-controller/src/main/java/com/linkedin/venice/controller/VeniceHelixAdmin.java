@@ -135,6 +135,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.LiveInstanceChangedListener;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
@@ -5272,6 +5273,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  private void setStoreLifecycleHooks(
+      String clusterName,
+      String storeName,
+      List<LifecycleHooksRecord> storeLifecycleHooks) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setStoreLifecycleHooks(storeLifecycleHooks);
+      return store;
+    });
+  }
+
   private void setAutoSchemaRegisterPushJobEnabled(
       String clusterName,
       String storeName,
@@ -5498,6 +5509,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> globalRtDivEnabled = params.isGlobalRtDivEnabled();
     Optional<Boolean> ttlRepushEnabled = params.isTTLRepushEnabled();
     Optional<Boolean> enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed();
+    Optional<List<LifecycleHooksRecord>> storeLifecycleHooks = params.getStoreLifecycleHooks();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -5705,6 +5717,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (backupStrategy.isPresent()) {
         setBackupStrategy(clusterName, storeName, backupStrategy.get());
+      }
+
+      if (storeLifecycleHooks.isPresent()) {
+        List<LifecycleHooksRecord> validatedStoreLifecycleHooks =
+            validateLifecycleHooks(originalStore, storeLifecycleHooks);
+        setStoreLifecycleHooks(clusterName, storeName, validatedStoreLifecycleHooks);
       }
 
       autoSchemaRegisterPushJobEnabled
@@ -6013,6 +6031,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         partitionerClass.orElseGet(originalPartitionerConfig::getPartitionerClass),
         partitionerParams.orElseGet(originalPartitionerConfig::getPartitionerParams),
         amplificationFactor.orElseGet(originalPartitionerConfig::getAmplificationFactor));
+  }
+
+  static List<LifecycleHooksRecord> validateLifecycleHooks(
+      Store oldStore,
+      Optional<List<LifecycleHooksRecord>> newLifecycleHooks) {
+    Map<String, LifecycleHooksRecord> mergedMap = new HashMap<>();
+    List<LifecycleHooksRecord> currLifecycleHooks = oldStore.getStoreLifecycleHooks();
+
+    // No change to existing store lifecycle hooks
+    if (!newLifecycleHooks.isPresent() && !currLifecycleHooks.isEmpty()) {
+      return currLifecycleHooks;
+    } else if (!newLifecycleHooks.isPresent() && currLifecycleHooks.isEmpty()) {
+      return Collections.emptyList();
+    }
+
+    // Validate new lifecycle hooks
+    if (newLifecycleHooks.isPresent()) {
+      for (LifecycleHooksRecord lifecycleHooksRecord: newLifecycleHooks.get()) {
+        if (lifecycleHooksRecord.getStoreLifecycleHooksClassName() == null) {
+          throw new VeniceException("Cannot add lifecycle hooks with null class name");
+        }
+      }
+    }
+
+    return newLifecycleHooks.get();
   }
 
   static Map<String, StoreViewConfigRecord> mergeNewViewConfigsIntoOldConfigs(

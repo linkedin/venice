@@ -142,6 +142,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreLifecycleHooksRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStoragePersona;
@@ -203,6 +204,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.MaterializedViewParameters;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -2473,6 +2475,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> removeView = params.getDisableStoreView();
       Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
       Optional<Boolean> unusedSchemaDeletionEnabled = params.getUnusedSchemaDeletionEnabled();
+      Optional<List<LifecycleHooksRecord>> storeLifecycleHooks = params.getStoreLifecycleHooks();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -2606,6 +2609,17 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         setStore.partitionerConfig = partitionerConfigRecord;
       }
+
+      List<LifecycleHooksRecord> newLifecycleHooks =
+          VeniceHelixAdmin.validateLifecycleHooks(currStore, storeLifecycleHooks);
+      List<StoreLifecycleHooksRecord> convertedLifecycleHooks = new ArrayList<>();
+      for (LifecycleHooksRecord record: newLifecycleHooks) {
+        convertedLifecycleHooks.add(
+            new StoreLifecycleHooksRecord(
+                record.getStoreLifecycleHooksClassName().toString(),
+                CollectionUtils.getCharSequenceMapFromStringMap(record.getStoreLifecycleHooksParams())));
+      }
+      setStore.storeLifecycleHooks = convertedLifecycleHooks;
 
       setStore.enableReads =
           readability.map(addToUpdatedConfigList(updatedConfigsList, ENABLE_READS)).orElseGet(currStore::isEnableReads);
