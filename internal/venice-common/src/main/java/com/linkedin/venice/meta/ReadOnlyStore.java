@@ -6,11 +6,13 @@ import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.systemstore.schemas.DataRecoveryConfig;
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
+import com.linkedin.venice.systemstore.schemas.StoreLifecycleHooksRecord;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
+import com.linkedin.venice.utils.CollectionUtils;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -989,6 +991,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setTargetSwapRegion(getTargetSwapRegion());
     storeProperties.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
     storeProperties.setIsDaVinciHeartBeatReported(getIsDavinciHeartbeatReported());
+    storeProperties.setStoreLifecycleHooks(convertStoreLifecycleHooks(getStoreLifecycleHooks()));
 
     return storeProperties;
   }
@@ -1855,5 +1858,18 @@ public class ReadOnlyStore implements Store {
     }
 
     return systemStorePropertiesMap;
+  }
+
+  private static List<StoreLifecycleHooksRecord> convertStoreLifecycleHooks(
+      List<LifecycleHooksRecord> storeLifecycleHooks) {
+    List<StoreLifecycleHooksRecord> convertedStoreLifecycleHooks = new ArrayList<>();
+    for (LifecycleHooksRecord storeLifecycleHooksRecord: storeLifecycleHooks) {
+      convertedStoreLifecycleHooks.add(
+          new StoreLifecycleHooksRecord(
+              storeLifecycleHooksRecord.getStoreLifecycleHooksClassName(),
+              CollectionUtils
+                  .convertStringMapToCharSequenceMap(storeLifecycleHooksRecord.getStoreLifecycleHooksParams())));
+    }
+    return convertedStoreLifecycleHooks;
   }
 }

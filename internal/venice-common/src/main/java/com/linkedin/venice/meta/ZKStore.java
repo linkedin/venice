@@ -1044,7 +1044,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     for (LifecycleHooksRecord storeLifecycleHooksRecord: storeLifecycleHooks) {
       convertedStoreLifecycleHooks.add(
           new StoreLifecycleHooksRecord(
-              storeLifecycleHooksRecord.getStoreLifecycleHooksClassName().toString(),
+              storeLifecycleHooksRecord.getStoreLifecycleHooksClassName(),
               CollectionUtils
                   .convertStringMapToCharSequenceMap(storeLifecycleHooksRecord.getStoreLifecycleHooksParams())));
     }

@@ -2616,7 +2616,7 @@ public class VeniceParentHelixAdmin implements Admin {
       for (LifecycleHooksRecord record: newLifecycleHooks) {
         convertedLifecycleHooks.add(
             new StoreLifecycleHooksRecord(
-                record.getStoreLifecycleHooksClassName().toString(),
+                record.getStoreLifecycleHooksClassName(),
                 CollectionUtils.getCharSequenceMapFromStringMap(record.getStoreLifecycleHooksParams())));
       }
       setStore.storeLifecycleHooks = convertedLifecycleHooks;

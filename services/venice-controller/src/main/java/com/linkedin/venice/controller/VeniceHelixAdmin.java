@@ -6036,7 +6036,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   static List<LifecycleHooksRecord> validateLifecycleHooks(
       Store oldStore,
       Optional<List<LifecycleHooksRecord>> newLifecycleHooks) {
-    Map<String, LifecycleHooksRecord> mergedMap = new HashMap<>();
     List<LifecycleHooksRecord> currLifecycleHooks = oldStore.getStoreLifecycleHooks();
 
     // No change to existing store lifecycle hooks
