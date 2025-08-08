@@ -1499,9 +1499,7 @@ public class VeniceParentHelixAdmin implements Admin {
         && lastVersion.getStatus() != ONLINE && lastVersion.getStatus() != PARTIALLY_ONLINE) {
       latestTopic = Optional.of(Version.composeKafkaTopic(storeName, lastVersionNum));
     }
-    /**
-     * Check current topic retention to decide whether the previous job is already done or not
-     */
+
     if (latestTopic.isPresent()) {
       final String latestTopicName = latestTopic.get();
       int versionNumber = Version.parseVersionFromKafkaTopicName(latestTopicName);
@@ -2345,6 +2343,11 @@ public class VeniceParentHelixAdmin implements Admin {
         int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
         parentStore.updateVersionStatus(version, ONLINE);
         repository.updateStore(parentStore);
+        LOGGER.info(
+            "Updating parent store {} version {} status to {} after roll-forward",
+            parentStore.getName(),
+            version,
+            ONLINE);
       }
       LOGGER.info(
           "Roll forward to future version {} is successful in all regions for store {}",
