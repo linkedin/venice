@@ -2,30 +2,10 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.stats.DaVinciRecordTransformerStats.RECORD_TRANSFORMER_PUT_LATENCY;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEYMANAGER_ALGORITHM;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
-import static com.linkedin.venice.CommonConfigKeys.SSL_SECURE_RANDOM_IMPLEMENTATION;
-import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTMANAGER_ALGORITHM;
-import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
-import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
-import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_TYPE;
-import static com.linkedin.venice.ConfigKeys.BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_ACL_ENABLED;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC;
-import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT;
-import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
@@ -35,8 +15,6 @@ import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
@@ -49,8 +27,6 @@ import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 import static com.linkedin.venice.stats.ClientType.DAVINCI_CLIENT;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.SslUtils.LOCAL_KEYSTORE_JKS;
-import static com.linkedin.venice.utils.SslUtils.LOCAL_PASSWORD;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_STORE_NAME_PROP;
@@ -111,14 +87,12 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
-import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -131,8 +105,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -1274,267 +1246,6 @@ public class DaVinciClientTest {
     }
   }
 
-  /**
-   * TODO: Add asserts to accurately validate if the blob transfer was performed correctly.
-   * For the local P2P testing, need to setup two different directories and ports for the two Da Vinci clients in order
-   * to avoid conflicts.
-   */
-  @Test(timeOut = 2 * TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void testBlobP2PTransferAmongDVC(boolean batchPushReportEnable) throws Exception {
-    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
-    String zkHosts = cluster.getZk().getAddress();
-    int port1 = TestUtils.getFreePort();
-    int port2 = TestUtils.getFreePort();
-    while (port1 == port2) {
-      port2 = TestUtils.getFreePort();
-    }
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
-    String storeName = Utils.getUniqueString("test-store");
-    setUpStore(storeName, paramsConsumer, properties -> {}, true);
-
-    // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
-    ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts,
-        dvcPath1,
-        storeName,
-        "100",
-        "10",
-        "false",
-        Integer.toString(port1),
-        Integer.toString(port2),
-        StorageClass.DISK.toString(),
-        "false",
-        "true",
-        String.valueOf(batchPushReportEnable));
-
-    // Wait for the first DaVinci Client to complete ingestion
-    Thread.sleep(60000);
-
-    // Start the second DaVinci Client using settings for blob transfer
-    String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
-
-    PropertyBuilder configBuilder = new PropertyBuilder().put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
-        .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true")
-        .put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "3000")
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, dvcPath2)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port2)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1)
-        .put(PUSH_STATUS_STORE_ENABLED, true)
-        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
-        .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
-        .put(BLOB_TRANSFER_MANAGER_ENABLED, true)
-        .put(BLOB_TRANSFER_SSL_ENABLED, true)
-        .put(BLOB_TRANSFER_ACL_ENABLED, true)
-        .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, -1000000) // force the usage of blob transfer.
-        .put(SSL_KEYSTORE_TYPE, "JKS")
-        .put(SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
-        .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
-        .put(SSL_TRUSTSTORE_TYPE, "JKS")
-        .put(SSL_TRUSTSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
-        .put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD)
-        .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
-        .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
-        .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
-        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
-
-    if (batchPushReportEnable) {
-      // if batch push report is enabled, the peer finding expects to query at version level, but it should not affect
-      // performance.
-      configBuilder.put(DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS, "10");
-    }
-
-    VeniceProperties backendConfig2 = configBuilder.build();
-    DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
-
-    try (CachingDaVinciClientFactory factory2 = getCachingDaVinciClientFactory(
-        d2Client,
-        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        new MetricsRepository(),
-        backendConfig2,
-        cluster)) {
-      // Case 1: Start a fresh client, and see if it can bootstrap from the first one
-      DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
-      client2.subscribeAll().get();
-
-      for (int i = 0; i < 3; i++) {
-        String partitionPath = RocksDBUtils.composePartitionDbDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(partitionPath)));
-      }
-
-      for (int i = 0; i < 3; i++) {
-        String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
-        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
-        // path 1 (dvc1) should have snapshot which they are transfer to path 2 (dvc2)
-        String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
-      }
-
-      // Case 2: Restart the second Da Vinci client to see if it can re-bootstrap from the first one with retained old
-      // data.
-      client2.close();
-      // wait and restart, and verify old data is retained before subscribing
-      Thread.sleep(3000);
-      for (int i = 0; i < 3; i++) {
-        // Verify that the folder is not clean up.
-        String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
-        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
-      }
-
-      client2.start();
-      client2.subscribeAll().get();
-      for (int i = 0; i < 3; i++) {
-        String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
-        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
-        // path 1 (dvc1) should have snapshot which they are transfer to path 2 (dvc2)
-        String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
-      }
-    }
-  }
-
-  /**
-   * Test for blob P2P transfer among Da Vinci clients with batch store
-   * 1. Start a Da Vinci client with batch store and blob transfer enabled.
-   * 2. When client completes ingestion, it should have the data in the local but not clean it.
-   * 3. Restart the client to allow it restore the data from the previous ingestion and skip blob transfer.
-   */
-  @Test
-  public void testBlobP2PTransferForNonLaggingDaVinciClient() throws Exception {
-    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
-    String zkHosts = cluster.getZk().getAddress();
-    int port1 = TestUtils.getFreePort();
-    int port2 = TestUtils.getFreePort();
-    while (port1 == port2) {
-      port2 = TestUtils.getFreePort();
-    }
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
-    String storeName = Utils.getUniqueString("test-store");
-    setUpStore(storeName, paramsConsumer, properties -> {}, true);
-
-    // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
-    ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts,
-        dvcPath1,
-        storeName,
-        "100",
-        "10",
-        "false",
-        Integer.toString(port1),
-        Integer.toString(port2),
-        StorageClass.DISK.toString(),
-        "false",
-        "true",
-        "false");
-
-    // Wait for the first DaVinci Client to complete ingestion
-    Thread.sleep(60000);
-
-    // Start the second DaVinci Client using settings for blob transfer
-    String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
-
-    PropertyBuilder configBuilder = new PropertyBuilder().put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
-        .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true")
-        .put(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "3000")
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, dvcPath2)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port2)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1)
-        .put(PUSH_STATUS_STORE_ENABLED, true)
-        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
-        .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
-        .put(BLOB_TRANSFER_MANAGER_ENABLED, true)
-        .put(BLOB_TRANSFER_SSL_ENABLED, true)
-        .put(BLOB_TRANSFER_ACL_ENABLED, true)
-        .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, 100) // Do not enforce the use of blob transfer.
-        .put(SSL_KEYSTORE_TYPE, "JKS")
-        .put(SSL_KEYSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
-        .put(SSL_KEYSTORE_PASSWORD, LOCAL_PASSWORD)
-        .put(SSL_TRUSTSTORE_TYPE, "JKS")
-        .put(SSL_TRUSTSTORE_LOCATION, SslUtils.getPathForResource(LOCAL_KEYSTORE_JKS))
-        .put(SSL_TRUSTSTORE_PASSWORD, LOCAL_PASSWORD)
-        .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
-        .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
-        .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
-        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
-
-    VeniceProperties backendConfig2 = configBuilder.build();
-    DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
-
-    try (CachingDaVinciClientFactory factory2 = getCachingDaVinciClientFactory(
-        d2Client,
-        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        new MetricsRepository(),
-        backendConfig2,
-        cluster)) {
-      // Time 1: Start a fresh client, and see if it can bootstrap via blob transfer from the first one.
-      DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
-      client2.subscribeAll().get();
-
-      for (int i = 0; i < 3; i++) {
-        String partitionPath = RocksDBUtils.composePartitionDbDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(partitionPath)));
-      }
-
-      for (int i = 0; i < 3; i++) {
-        String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
-        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
-        // path 1 (dvc1) should have snapshot which are transfer to path 2 (dvc2)
-        String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
-      }
-
-      // Remove the snapshot for path 1.
-      // Check if client 2 restarts, client 1 no longer generates snapshots for path 1, since client 2 no longer
-      // requests it at all.
-      for (int i = 0; i < 3; i++) {
-        String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(snapshotPath1)));
-        FileUtils.deleteDirectory(new File(snapshotPath1));
-      }
-
-      // Time 2:
-      // Restart the second Da Vinci client while retaining its old data; it should skip blob transfer.
-      // Since client 2 restores the retained data upon restart, it is not expected to be lagged.
-      client2.close();
-
-      // wait and restart, and verify old data is retained before subscribing
-      Thread.sleep(3000);
-      for (int i = 0; i < 3; i++) {
-        String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
-        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
-      }
-
-      client2.start();
-      client2.subscribeAll().get();
-      for (int i = 0; i < 3; i++) {
-        String partitionPath2 = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertTrue(Files.exists(Paths.get(partitionPath2)));
-        String snapshotPath2 = RocksDBUtils.composeSnapshotDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertFalse(Files.exists(Paths.get(snapshotPath2)));
-        // DVC1 1 should not give DVC2 2 snapshot.
-        String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", i);
-        Assert.assertFalse(Files.exists(Paths.get(snapshotPath1)));
-      }
-    }
-  }
-
   @Test(timeOut = TEST_TIMEOUT)
   public void testIsDavinciHeartbeatReported() throws Exception {
     // Setup store and create version 1
@@ -1592,125 +1303,6 @@ public class DaVinciClientTest {
         Assert.assertFalse(store.getIsDavinciHeartbeatReported());
         Assert.assertFalse(store.getVersion(versionThree).get().getIsDavinciHeartbeatReported());
       });
-    }
-  }
-
-  @Test(timeOut = 2 * TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
-  public void testBlobP2PTransferAmongDVCWithServerShutdown(boolean isGracefulShutdown) throws Exception {
-    String dvcPath1 = Utils.getTempDataDirectory().getAbsolutePath();
-    String zkHosts = cluster.getZk().getAddress();
-    int port1 = TestUtils.getFreePort();
-    int port2 = TestUtils.getFreePort();
-    while (port1 == port2) {
-      port2 = TestUtils.getFreePort();
-    }
-    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
-    String storeName = Utils.getUniqueString("test-store");
-    setUpStore(storeName, paramsConsumer, properties -> {}, true);
-
-    // Start the first DaVinci Client using DaVinciUserApp
-    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts,
-        dvcPath1,
-        storeName,
-        "100",
-        "10",
-        "false",
-        Integer.toString(port1),
-        Integer.toString(port2),
-        StorageClass.DISK.toString(),
-        "false",
-        "true",
-        "false");
-
-    // Wait for the first DaVinci Client to complete ingestion
-    Thread.sleep(60000);
-
-    // Prepare client 2 configs
-    String dvcPath2 = Utils.getTempDataDirectory().getAbsolutePath();
-    PropertyBuilder configBuilder = new PropertyBuilder().put(PERSISTENCE_TYPE, ROCKS_DB)
-        .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false")
-        .put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true")
-        .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(DATA_BASE_PATH, dvcPath2)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_SERVER_PORT, port2)
-        .put(DAVINCI_P2P_BLOB_TRANSFER_CLIENT_PORT, port1)
-        .put(PUSH_STATUS_STORE_ENABLED, true)
-        .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
-        .put(DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS, 1)
-        .put(BLOB_TRANSFER_MANAGER_ENABLED, true)
-        .put(BLOB_TRANSFER_SSL_ENABLED, true)
-        .put(BLOB_TRANSFER_ACL_ENABLED, true)
-        .put(BLOB_TRANSFER_DISABLED_OFFSET_LAG_THRESHOLD, -1000000)
-        .put(BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC, 1)
-        .put(BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC, 1);
-
-    // set up SSL configs.
-    Properties sslProperties = SslUtils.getVeniceLocalSslProperties();
-    sslProperties.forEach((key, value) -> configBuilder.put((String) key, value));
-
-    if (!isGracefulShutdown) {
-      // if not graceful shutdown, expect the idle event trigger,
-      // set idle time as 1, trigger the idle handler immediately
-      configBuilder.put(BLOB_RECEIVE_READER_IDLE_TIME_IN_SECONDS, 1);
-    }
-
-    VeniceProperties backendConfig2 = configBuilder.build();
-    DaVinciConfig dvcConfig = new DaVinciConfig().setIsolated(true);
-
-    // Monitor snapshot folder creation to detect if a blob transfer is happening
-    CompletableFuture.runAsync(() -> {
-      try {
-        while (true) {
-          for (int partition = 0; partition < 3; partition++) {
-            String snapshotPath1 = RocksDBUtils.composeSnapshotDir(dvcPath1 + "/rocksdb", storeName + "_v1", partition);
-            if (Files.exists(Paths.get(snapshotPath1))) {
-              if (isGracefulShutdown) {
-                LOGGER
-                    .info("Detected snapshot folder for partition {}, immediately destroy client1 process.", partition);
-                forkedDaVinciUserApp.destroy();
-              } else {
-                LOGGER.info(
-                    "Detected snapshot folder for partition {}, immediately destroyForcibly client1 process.",
-                    partition);
-                forkedDaVinciUserApp.destroyForcibly();
-              }
-              return; // Exit monitoring loop
-            }
-          }
-          // if is graceful shutdown, check more frequently, otherwise transfer may complete before channel close.
-          Thread.sleep(isGracefulShutdown ? 10 : 100);
-        }
-      } catch (Exception e) {
-        LOGGER.error("Error in monitoring snapshot creation.", e);
-      }
-    });
-
-    try (CachingDaVinciClientFactory factory2 = getCachingDaVinciClientFactory(
-        d2Client,
-        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        new MetricsRepository(),
-        backendConfig2,
-        cluster)) {
-      // Start client 2
-      DaVinciClient<Integer, Object> client2 = factory2.getAndStartGenericAvroClient(storeName, dvcConfig);
-      client2.subscribeAll().get();
-
-      // Verify that client2 can still complete the bootstrap successfully
-      // even though client1 was killed during the transfer.
-      try {
-        client2.get(300, TimeUnit.SECONDS);
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-          for (int i = 0; i < 3; i++) {
-            String partitionPath = RocksDBUtils.composePartitionDbDir(dvcPath2 + "/rocksdb", storeName + "_v1", i);
-            Assert.assertTrue(Files.exists(Paths.get(partitionPath)));
-          }
-        });
-      } finally {
-        client2.close();
-      }
     }
   }
 
