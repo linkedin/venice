@@ -36,9 +36,9 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
       return Collections.emptyMap();
     }
 
-    // Use utility method - original logic moved to AggregationUtils
+    // Use utility method - original logic moved to FacetCountingUtils
     int topK = fieldTopKMap.get(field);
-    return AggregationUtils.getValueToCount(computeResults.values(), field, topK);
+    return FacetCountingUtils.getValueToCount(computeResults.values(), field, topK);
   }
 
   @Override
@@ -49,8 +49,8 @@ public class AvroComputeAggregationResponse<K> implements ComputeAggregationResp
       throw new IllegalArgumentException("No count-by-bucket aggregation was requested for field: " + fieldName);
     }
 
-    // Use utility method - original logic moved to AggregationUtils
-    return AggregationUtils.getBucketNameToCount(computeResults.values(), fieldName, buckets);
+    // Use utility method - original logic moved to FacetCountingUtils
+    return FacetCountingUtils.getBucketNameToCount(computeResults.values(), fieldName, buckets);
   }
 
 }

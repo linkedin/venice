@@ -29,12 +29,12 @@ public class AvroComputeAggregationRequestBuilder<K> implements ComputeAggregati
 
   /**
    * Validates that the given field names exist in the schema and are not null or empty.
-   * Uses shared utility method from AggregationUtils.
+   * Uses shared utility method from FacetCountingUtils.
    */
   private void validateFieldNames(String... fieldNames) {
     Schema valueSchema = schemaReader.getValueSchema(schemaReader.getLatestValueSchemaId());
     try {
-      AggregationUtils.validateFieldNames(fieldNames, valueSchema);
+      FacetCountingUtils.validateFieldNames(fieldNames, valueSchema);
     } catch (IllegalArgumentException e) {
       throw new VeniceClientException(e.getMessage(), e);
     }
