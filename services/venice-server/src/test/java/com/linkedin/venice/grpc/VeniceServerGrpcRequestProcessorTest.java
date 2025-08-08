@@ -172,17 +172,6 @@ public class VeniceServerGrpcRequestProcessorTest {
   }
 
   /**
-   * Common assertion helper for error responses.
-   */
-  private void assertErrorResponse(CountByValueResponse response, int expectedCode, String expectedMessage) {
-    assertNotNull(response);
-    assertEquals(response.getErrorCode(), expectedCode);
-    assertTrue(
-        response.getErrorMessage().contains(expectedMessage),
-        "Expected message to contain: '" + expectedMessage + "', but was: '" + response.getErrorMessage() + "'");
-  }
-
-  /**
    * Common assertion helper for successful responses.
    */
   private void assertSuccessResponse(CountByValueResponse response) {
@@ -220,7 +209,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         { createRequestWithResourceName("invalid_format"), VeniceReadResponseStatus.BAD_REQUEST,
             "Invalid resource name format" },
         { createRequestWithFieldNames("nonexistent_field"), VeniceReadResponseStatus.BAD_REQUEST,
-            "Field not found in schema: nonexistent_field" } };
+            "Field 'nonexistent_field' not found in schema" } };
   }
 
   @Test

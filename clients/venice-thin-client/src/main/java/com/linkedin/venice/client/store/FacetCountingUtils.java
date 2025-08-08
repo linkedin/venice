@@ -216,7 +216,7 @@ public class FacetCountingUtils {
         // For record types, validate field exists
         Schema.Field field = valueSchema.getField(fieldName);
         if (field == null) {
-          throw new IllegalArgumentException("Field not found in schema: " + fieldName);
+          throw new IllegalArgumentException("Field '" + fieldName + "' not found in schema");
         }
       } else {
         throw new IllegalArgumentException(
