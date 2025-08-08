@@ -113,111 +113,114 @@ public class VeniceServerGrpcRequestProcessorTest {
   }
 
   /**
-   * Create a basic CountByValueRequest builder with default values.
-   * Tests can customize specific fields as needed.
+   * Creates a CountByValueRequest with customizable parameters.
    */
-  private CountByValueRequest.Builder createDefaultRequestBuilder() {
-    return CountByValueRequest.newBuilder()
-        .setResourceName(DEFAULT_RESOURCE_NAME)
-        .addFieldNames(DEFAULT_FIELD_NAME)
-        .setTopK(DEFAULT_TOP_K)
-        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()))
-        .setPartition(0); // Default to partition 0 for tests
-  }
-
-  /**
-   * Create a CountByValueRequest with custom resource name.
-   */
-  private CountByValueRequest createRequestWithResourceName(String resourceName) {
-    return createDefaultRequestBuilder().setResourceName(resourceName).build();
-  }
-
-  /**
-   * Create a CountByValueRequest with custom field names.
-   */
-  private CountByValueRequest createRequestWithFieldNames(String... fieldNames) {
+  private CountByValueRequest createRequest(
+      String resourceName,
+      String[] fieldNames,
+      int topK,
+      String[] keys,
+      int partition) {
     CountByValueRequest.Builder builder = CountByValueRequest.newBuilder()
-        .setResourceName(DEFAULT_RESOURCE_NAME)
-        .setTopK(DEFAULT_TOP_K)
-        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()))
-        .setPartition(0); // Default to partition 0 for tests
+        .setResourceName(resourceName != null ? resourceName : DEFAULT_RESOURCE_NAME)
+        .setTopK(topK)
+        .setPartition(partition);
 
-    for (String fieldName: fieldNames) {
-      builder.addFieldNames(fieldName);
+    if (fieldNames != null && fieldNames.length > 0) {
+      for (String fieldName: fieldNames) {
+        builder.addFieldNames(fieldName);
+      }
     }
+
+    if (keys != null && keys.length > 0) {
+      for (String key: keys) {
+        builder.addKeys(ByteString.copyFrom(key.getBytes()));
+      }
+    }
+
     return builder.build();
   }
 
-  /**
-   * Create a CountByValueRequest with custom topK value.
-   */
+  // Convenience methods using the unified creator
+  private CountByValueRequest createDefaultRequest() {
+    return createRequest(null, new String[] { DEFAULT_FIELD_NAME }, DEFAULT_TOP_K, new String[] { DEFAULT_KEY }, 0);
+  }
+
+  private CountByValueRequest createRequestWithResourceName(String resourceName) {
+    return createRequest(
+        resourceName,
+        new String[] { DEFAULT_FIELD_NAME },
+        DEFAULT_TOP_K,
+        new String[] { DEFAULT_KEY },
+        0);
+  }
+
+  private CountByValueRequest createRequestWithFieldNames(String... fieldNames) {
+    return createRequest(null, fieldNames, DEFAULT_TOP_K, new String[] { DEFAULT_KEY }, 0);
+  }
+
   private CountByValueRequest createRequestWithTopK(int topK) {
-    return createDefaultRequestBuilder().setTopK(topK).build();
+    return createRequest(null, new String[] { DEFAULT_FIELD_NAME }, topK, new String[] { DEFAULT_KEY }, 0);
   }
 
-  /**
-   * Create a CountByValueRequest with no field names (for testing empty field validation).
-   */
   private CountByValueRequest createRequestWithNoFields() {
-    return CountByValueRequest.newBuilder()
-        .setResourceName(DEFAULT_RESOURCE_NAME)
-        .setTopK(DEFAULT_TOP_K)
-        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()))
-        .setPartition(0) // Default to partition 0 for tests
-        .build();
+    return createRequest(null, null, DEFAULT_TOP_K, new String[] { DEFAULT_KEY }, 0);
+  }
+
+  private CountByValueRequest createRequestWithNoKeys() {
+    return createRequest(null, new String[] { DEFAULT_FIELD_NAME }, DEFAULT_TOP_K, null, 0);
   }
 
   /**
-   * Create a CountByValueRequest with no keys (for testing empty keys).
+   * Common assertion helper for error responses.
    */
-  private CountByValueRequest createRequestWithNoKeys() {
-    return CountByValueRequest.newBuilder()
-        .setResourceName(DEFAULT_RESOURCE_NAME)
-        .addFieldNames(DEFAULT_FIELD_NAME)
-        .setTopK(DEFAULT_TOP_K)
-        .setPartition(0) // Default to partition 0 for tests
-        .build();
+  private void assertErrorResponse(CountByValueResponse response, int expectedCode, String expectedMessage) {
+    assertNotNull(response);
+    assertEquals(response.getErrorCode(), expectedCode);
+    assertTrue(
+        response.getErrorMessage().contains(expectedMessage),
+        "Expected message to contain: '" + expectedMessage + "', but was: '" + response.getErrorMessage() + "'");
+  }
+
+  /**
+   * Common assertion helper for successful responses.
+   */
+  private void assertSuccessResponse(CountByValueResponse response) {
+    assertNotNull(response);
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
+  }
+
+  /**
+   * Setup storage engine with multiple partitions.
+   */
+  private void setupStorageWithPartitions(Set<Integer> partitions) {
+    when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitions);
+    for (Integer partition: partitions) {
+      when(mockStorageEngine.get(eq(partition), any(byte[].class))).thenReturn(null);
+    }
   }
 
   @Test
   public void testSuccessfulCountByValue() throws Exception {
-    // Simple test - just verify it doesn't crash
-    CountByValueRequest request = createDefaultRequestBuilder().build();
-
-    CountByValueResponse response = processor.processCountByValue(request);
-    assertNotNull(response);
-    // Test basic functionality without complex mocking
+    CountByValueResponse response = processor.processCountByValue(createDefaultRequest());
+    assertSuccessResponse(response);
   }
 
-  @Test
-  public void testEmptyFieldNames() {
-    CountByValueRequest request = createRequestWithNoFields();
-
+  @Test(dataProvider = "invalidRequestDataProvider")
+  public void testInvalidRequests(CountByValueRequest request, int expectedCode, String expectedMessage) {
     CountByValueResponse response = processor.processCountByValue(request);
-
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
-    assertTrue(response.getErrorMessage().contains("Field names cannot be null or empty"));
+    assertEquals(response.getErrorCode(), expectedCode);
+    assertTrue(response.getErrorMessage().contains(expectedMessage));
   }
 
-  @Test
-  public void testInvalidTopK() {
-    // Note: Server no longer validates TopK since client handles TopK filtering
-    // This test is kept for backward compatibility but server accepts any TopK value
-    CountByValueRequest request = createRequestWithTopK(0);
-
-    CountByValueResponse response = processor.processCountByValue(request);
-    // Server no longer validates TopK - it returns all counts and client does TopK filtering
-    assertNotNull(response);
-  }
-
-  @Test
-  public void testInvalidResourceName() {
-    CountByValueRequest request = createRequestWithResourceName("invalid_format");
-
-    CountByValueResponse response = processor.processCountByValue(request);
-
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
-    assertTrue(response.getErrorMessage().contains("Invalid resource name format"));
+  @org.testng.annotations.DataProvider
+  public Object[][] invalidRequestDataProvider() {
+    return new Object[][] {
+        { createRequestWithNoFields(), VeniceReadResponseStatus.BAD_REQUEST, "Field names cannot be null or empty" },
+        { createRequestWithResourceName("invalid_format"), VeniceReadResponseStatus.BAD_REQUEST,
+            "Invalid resource name format" },
+        { createRequestWithFieldNames("nonexistent_field"), VeniceReadResponseStatus.BAD_REQUEST,
+            "Field not found in schema: nonexistent_field" } };
   }
 
   @Test
@@ -225,107 +228,61 @@ public class VeniceServerGrpcRequestProcessorTest {
     when(mockStoreRepository.getStoreOrThrow("nonexistent_store"))
         .thenThrow(new VeniceNoStoreException("nonexistent_store"));
 
-    CountByValueRequest request = createRequestWithResourceName("nonexistent_store_v1");
-
-    CountByValueResponse response = processor.processCountByValue(request);
-
+    CountByValueResponse response =
+        processor.processCountByValue(createRequestWithResourceName("nonexistent_store_v1"));
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
     assertTrue(response.getErrorMessage().contains("Store not found"));
-  }
-
-  @Test
-  public void testFieldNotFound() {
-    CountByValueRequest request = createRequestWithFieldNames("nonexistent_field");
-
-    CountByValueResponse response = processor.processCountByValue(request);
-
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
-    assertTrue(response.getErrorMessage().contains("Field not found in schema: nonexistent_field"));
   }
 
   @Test
   public void testStorageEngineNotFound() {
     when(mockStorageEngineRepository.getLocalStorageEngine("test_store_v1")).thenReturn(null);
 
-    CountByValueRequest request = createDefaultRequestBuilder().build();
-
-    CountByValueResponse response = processor.processCountByValue(request);
-
+    CountByValueResponse response = processor.processCountByValue(createDefaultRequest());
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
     assertTrue(response.getErrorMessage().contains("Storage engine not found"));
   }
 
+  @Test(dataProvider = "topKVariationsDataProvider")
+  public void testTopKVariations(int topK, String description) {
+    CountByValueRequest request = createRequestWithTopK(topK);
+    CountByValueResponse response = processor.processCountByValue(request);
+    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
+  }
+
+  @org.testng.annotations.DataProvider
+  public Object[][] topKVariationsDataProvider() {
+    return new Object[][] { { 0, "Zero TopK" }, { 2, "Small TopK" }, { Integer.MAX_VALUE, "Large TopK" },
+        { -1, "Negative TopK" } };
+  }
+
   @Test
   public void testMultipleKeys() {
-    CountByValueRequest request = createDefaultRequestBuilder().setTopK(3)
-        .clearKeys()
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .addKeys(ByteString.copyFrom("key2".getBytes()))
-        .build();
-
+    CountByValueRequest request =
+        createRequest(null, new String[] { DEFAULT_FIELD_NAME }, 3, new String[] { "key1", "key2" }, 0);
     CountByValueResponse response = processor.processCountByValue(request);
-    assertNotNull(response);
-  }
-
-  @Test
-  public void testServerReturnsAllCounts() {
-    // Server no longer does TopK limiting - it returns all counts for client-side aggregation
-    CountByValueRequest request = createRequestWithTopK(2);
-
-    CountByValueResponse response = processor.processCountByValue(request);
-    assertNotNull(response);
-    // Server returns all counts, client will apply TopK=2 filtering
-  }
-
-  @Test
-  public void testDefaultTopK() {
-    // Server ignores TopK value since client handles TopK filtering
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName(DEFAULT_RESOURCE_NAME)
-        .addFieldNames(DEFAULT_FIELD_NAME)
-        .addKeys(ByteString.copyFrom(DEFAULT_KEY.getBytes()))
-        .setPartition(0)
-        .build();
-
-    CountByValueResponse response = processor.processCountByValue(request);
-    assertNotNull(response);
+    assertSuccessResponse(response);
   }
 
   @Test
   public void testEmptyKeysList() {
-    CountByValueRequest request = createRequestWithNoKeys();
-
-    CountByValueResponse response = processor.processCountByValue(request);
-    assertNotNull(response);
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
+    CountByValueResponse response = processor.processCountByValue(createRequestWithNoKeys());
+    assertSuccessResponse(response);
   }
 
   @Test
   public void testInvalidVersionNumber() {
     CountByValueRequest request = createRequestWithResourceName("test_store_vabc");
-
     CountByValueResponse response = processor.processCountByValue(request);
-
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
-    // The actual error message is "Invalid resource name format" because parseStoreFromKafkaTopicName
-    // returns empty string for "test_store_vabc" since it's not a valid version topic format
     assertTrue(response.getErrorMessage().contains("Invalid resource name format"));
   }
 
   @Test
   public void testStoreVersionNotExist() {
     when(mockStore.containsVersion(999)).thenReturn(false);
-
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v999")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
+    CountByValueRequest request = createRequestWithResourceName("test_store_v999");
     CountByValueResponse response = processor.processCountByValue(request);
-
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
     assertTrue(response.getErrorMessage().contains("Store version 999 does not exist"));
   }
@@ -333,17 +290,8 @@ public class VeniceServerGrpcRequestProcessorTest {
   @Test
   public void testNoValueSchema() {
     when(mockSchemaRepository.getSupersetOrLatestValueSchema("test_store")).thenReturn(null);
-
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
+    CountByValueRequest request = createDefaultRequest();
     CountByValueResponse response = processor.processCountByValue(request);
-
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
     assertTrue(response.getErrorMessage().contains("No value schema found"));
   }
@@ -351,240 +299,129 @@ public class VeniceServerGrpcRequestProcessorTest {
   @Test
   public void testStoreVersionStateNotAvailable() {
     when(mockStorageEngine.getStoreVersionState()).thenReturn(null);
-
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
+    CountByValueRequest request = createDefaultRequest();
     CountByValueResponse response = processor.processCountByValue(request);
-
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.INTERNAL_ERROR);
     assertTrue(response.getErrorMessage().contains("Store version state not available"));
   }
 
   @Test
   public void testGetVersionFailure() {
-    // Both containsVersion and getVersion should be consistent
     when(mockStore.containsVersion(1)).thenReturn(false);
     when(mockStore.getVersion(1)).thenReturn(null);
-
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
+    CountByValueRequest request = createDefaultRequest();
     CountByValueResponse response = processor.processCountByValue(request);
-
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
     assertTrue(response.getErrorMessage().contains("Store version 1 does not exist"));
   }
 
   @Test
   public void testMultiplePartitions() {
-    // Test with multiple partitions to increase coverage of partition iteration
     Set<Integer> partitions = new HashSet<>();
     partitions.add(0);
     partitions.add(1);
     partitions.add(2);
-    when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitions);
-    when(mockStorageEngine.get(eq(0), any(byte[].class))).thenReturn(null);
-    when(mockStorageEngine.get(eq(1), any(byte[].class))).thenReturn(null);
-    when(mockStorageEngine.get(eq(2), any(byte[].class))).thenReturn(null);
+    setupStorageWithPartitions(partitions);
 
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
+    CountByValueRequest request =
+        createRequest("test_store_v1", new String[] { "category" }, 5, new String[] { "key1" }, 0);
     CountByValueResponse response = processor.processCountByValue(request);
 
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
+    assertSuccessResponse(response);
     assertTrue(response.getFieldToValueCountsMap().containsKey("category"));
   }
 
   @Test
   public void testEmptyPartitionSet() {
-    // Setup storage engine with no persisted partitions
-    when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(new HashSet<>());
+    setupStorageWithPartitions(new HashSet<>());
 
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
+    CountByValueRequest request =
+        createRequest("test_store_v1", new String[] { "category" }, 5, new String[] { "key1" }, 0);
     CountByValueResponse response = processor.processCountByValue(request);
 
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
-    // Should return empty counts when no partitions available
+    assertSuccessResponse(response);
     assertTrue(response.getFieldToValueCountsMap().containsKey("category"));
     assertTrue(response.getFieldToValueCountsMap().get("category").getValueToCountsMap().isEmpty());
   }
 
   @Test
-  public void testKeyNotFoundInAnyPartition() {
-    // Setup storage engine to return null for all partitions
-    Set<Integer> partitions = new HashSet<>();
-    partitions.add(0);
-    partitions.add(1);
-    partitions.add(2);
-    when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitions);
-    when(mockStorageEngine.get(eq(0), any(byte[].class))).thenReturn(null);
-    when(mockStorageEngine.get(eq(1), any(byte[].class))).thenReturn(null);
-    when(mockStorageEngine.get(eq(2), any(byte[].class))).thenReturn(null);
-
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("nonexistent_key".getBytes()))
-        .build();
-
-    CountByValueResponse response = processor.processCountByValue(request);
-
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
-    // Should return empty counts when key not found
-    assertTrue(response.getFieldToValueCountsMap().containsKey("category"));
-    assertTrue(response.getFieldToValueCountsMap().get("category").getValueToCountsMap().isEmpty());
-  }
-
-  @Test
-  public void testFoundKeyInSecondPartition() {
-    // Test when key is found in second partition (to cover the partition loop)
+  public void testKeyFoundInSecondPartition() {
     Set<Integer> partitions = new HashSet<>();
     partitions.add(0);
     partitions.add(1);
     when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitions);
-
-    // Key not found in first partition, found in second
     when(mockStorageEngine.get(eq(0), any(byte[].class))).thenReturn(null);
-    byte[] recordData = "test_record_data".getBytes();
-    when(mockStorageEngine.get(eq(1), any(byte[].class))).thenReturn(recordData);
+    when(mockStorageEngine.get(eq(1), any(byte[].class))).thenReturn("test_record_data".getBytes());
 
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
+    CountByValueRequest request =
+        createRequest("test_store_v1", new String[] { "category" }, 5, new String[] { "key1" }, 0);
     CountByValueResponse response = processor.processCountByValue(request);
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
+
+    assertSuccessResponse(response);
   }
 
   @Test
   public void testExceptionDuringStorageGet() {
-    // Test exception handling during storage engine get
     Set<Integer> partitions = new HashSet<>();
     partitions.add(0);
     partitions.add(1);
     when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitions);
-
-    // First partition throws exception, second returns null
     when(mockStorageEngine.get(eq(0), any(byte[].class))).thenThrow(new RuntimeException("Storage error"));
     when(mockStorageEngine.get(eq(1), any(byte[].class))).thenReturn(null);
 
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
+    CountByValueRequest request =
+        createRequest("test_store_v1", new String[] { "category" }, 5, new String[] { "key1" }, 0);
     CountByValueResponse response = processor.processCountByValue(request);
 
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
-    // Should handle exception gracefully and continue
+    assertSuccessResponse(response);
     assertTrue(response.getFieldToValueCountsMap().containsKey("category"));
-    // Should have empty counts since both partitions failed to return data
     assertTrue(response.getFieldToValueCountsMap().get("category").getValueToCountsMap().isEmpty());
   }
 
   @Test
   public void testStorageEngineException() {
-    // Test when getLocalStorageEngine throws exception
     when(mockStorageEngineRepository.getLocalStorageEngine("test_store_v1"))
         .thenThrow(new RuntimeException("Storage not found"));
 
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
-    CountByValueResponse response = processor.processCountByValue(request);
-
+    CountByValueResponse response = processor.processCountByValue(createDefaultRequest());
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.INTERNAL_ERROR);
     assertTrue(response.getErrorMessage().contains("Internal error"));
   }
 
   @Test
   public void testDefaultConstructorProcessCountByValue() {
-    // Test the default constructor with processCountByValue
     VeniceServerGrpcRequestProcessor defaultProcessor = new VeniceServerGrpcRequestProcessor();
-
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
-    CountByValueResponse response = defaultProcessor.processCountByValue(request);
+    CountByValueResponse response = defaultProcessor.processCountByValue(createDefaultRequest());
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.INTERNAL_ERROR);
     assertTrue(response.getErrorMessage().contains("CountByValue dependencies not available"));
   }
 
-  // Removed testConstructorWithStorageHandlerForceProductionMode - no longer using reflection
-
-  // Removed testConstructorWithStorageHandlerNormalMode - no longer using reflection
-
-  // Removed testConstructorWithTestMode - no longer using reflection
-
-  // Removed testConstructorWithNormalMode - no longer using reflection
-
   @Test
   public void testStringSchemaSupport() {
-    // Create a STRING schema instead of RECORD
     Schema stringSchema = Schema.create(Schema.Type.STRING);
     when(mockSchemaEntry.getSchema()).thenReturn(stringSchema);
 
     CountByValueRequest request = createRequestWithFieldNames("value");
-
     CountByValueResponse response = processor.processCountByValue(request);
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
+    assertSuccessResponse(response);
+  }
+
+  @Test
+  public void testStringSchemaValueField() {
+    Schema stringSchema = Schema.create(Schema.Type.STRING);
+    when(mockSchemaEntry.getSchema()).thenReturn(stringSchema);
+
+    CountByValueRequest request = createRequestWithFieldNames("_value");
+    CountByValueResponse response = processor.processCountByValue(request);
+    assertSuccessResponse(response);
   }
 
   @Test
   public void testStringSchemaInvalidField() {
-    // Create a STRING schema and test with invalid field name
     Schema stringSchema = Schema.create(Schema.Type.STRING);
     when(mockSchemaEntry.getSchema()).thenReturn(stringSchema);
 
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("invalid_field")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
-
+    CountByValueRequest request = createRequestWithFieldNames("invalid_field");
     CountByValueResponse response = processor.processCountByValue(request);
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
     assertTrue(response.getErrorMessage().contains("only 'value' or '_value' field names are supported"));
@@ -592,186 +429,84 @@ public class VeniceServerGrpcRequestProcessorTest {
 
   @Test
   public void testUnsupportedSchemaType() {
-    // Create an unsupported schema type (e.g., INT)
     Schema intSchema = Schema.create(Schema.Type.INT);
     when(mockSchemaEntry.getSchema()).thenReturn(intSchema);
 
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("value")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
-
+    CountByValueRequest request = createRequestWithFieldNames("value");
     CountByValueResponse response = processor.processCountByValue(request);
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
     assertTrue(response.getErrorMessage().contains("CountByValue only supports STRING and RECORD value types"));
   }
 
   @Test
-  public void testAddHandler() {
-    // Test the addHandler method to increase coverage
+  public void testHandlerManagement() {
     VeniceServerGrpcRequestProcessor processor = new VeniceServerGrpcRequestProcessor();
-
-    // Create mock handlers
     com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler handler1 =
         mock(com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler.class);
     com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler handler2 =
         mock(com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler.class);
+    com.linkedin.venice.listener.grpc.GrpcRequestContext mockContext =
+        mock(com.linkedin.venice.listener.grpc.GrpcRequestContext.class);
 
-    // Mock the getNext() method to return null initially
     when(handler1.getNext()).thenReturn(null);
 
-    // Add first handler (head is null)
+    // Test adding handlers and processing requests
     processor.addHandler(handler1);
-
-    // Add second handler (head is not null, need to traverse)
     processor.addHandler(handler2);
-
-    // Verify handlers were added
-    assertNotNull(processor);
-  }
-
-  @Test
-  public void testProcessRequest() {
-    // Test the processRequest method
-    VeniceServerGrpcRequestProcessor processor = new VeniceServerGrpcRequestProcessor();
-
-    // Create mock handler and context
-    com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler mockHandler =
-        mock(com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler.class);
-    com.linkedin.venice.listener.grpc.GrpcRequestContext mockContext =
-        mock(com.linkedin.venice.listener.grpc.GrpcRequestContext.class);
-
-    // Add handler first
-    processor.addHandler(mockHandler);
-
-    // Process request
     processor.processRequest(mockContext);
 
-    // Verify handler was called
-    assertNotNull(processor);
-  }
+    // Test processing with no handlers
+    new VeniceServerGrpcRequestProcessor().processRequest(mockContext);
 
-  @Test
-  public void testProcessRequestWithNoHandler() {
-    // Test processRequest when head is null
-    VeniceServerGrpcRequestProcessor processor = new VeniceServerGrpcRequestProcessor();
-
-    com.linkedin.venice.listener.grpc.GrpcRequestContext mockContext =
-        mock(com.linkedin.venice.listener.grpc.GrpcRequestContext.class);
-
-    // Process request with no handlers
-    processor.processRequest(mockContext);
-
-    // Should not throw exception
     assertNotNull(processor);
   }
 
   @Test
   public void testNullDependenciesInConstructor() {
-    // Test that processor handles null dependencies properly
-    VeniceServerGrpcRequestProcessor processor = new VeniceServerGrpcRequestProcessor(
-        null, // storageEngineRepository
-        null, // schemaRepository
-        null, // storeRepository
-        null, // executor
-        null // compressorFactory
-    );
-
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
-    CountByValueResponse response = processor.processCountByValue(request);
+    VeniceServerGrpcRequestProcessor processor = new VeniceServerGrpcRequestProcessor(null, null, null, null, null);
+    CountByValueResponse response = processor.processCountByValue(createDefaultRequest());
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.INTERNAL_ERROR);
     assertTrue(response.getErrorMessage().contains("CountByValue dependencies not available"));
   }
 
   @Test
   public void testWithCompressionEnabled() throws Exception {
-    // Test with compression enabled by setting the field directly on mockStoreVersionState
-    // Since compressionStrategy is a public field, we set it directly instead of mocking
     mockStoreVersionState.compressionStrategy = com.linkedin.venice.compression.CompressionStrategy.GZIP.getValue();
 
-    // Mock compressor for GZIP
     com.linkedin.venice.compression.VeniceCompressor gzipCompressor =
         mock(com.linkedin.venice.compression.VeniceCompressor.class);
     when(mockCompressorFactory.getCompressor(com.linkedin.venice.compression.CompressionStrategy.GZIP))
         .thenReturn(gzipCompressor);
 
-    // Mock decompression
     java.nio.ByteBuffer decompressedBuffer = java.nio.ByteBuffer.wrap("decompressed_data".getBytes());
     when(gzipCompressor.decompress(any(java.nio.ByteBuffer.class))).thenReturn(decompressedBuffer);
 
-    // Mock storage engine to return compressed data
     Set<Integer> partitions = new HashSet<>();
     partitions.add(0);
-    when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitions);
+    setupStorageWithPartitions(partitions);
     when(mockStorageEngine.get(eq(0), any(byte[].class))).thenReturn("compressed_data".getBytes());
 
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
-    CountByValueResponse response = processor.processCountByValue(request);
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
+    CountByValueResponse response = processor.processCountByValue(createDefaultRequest());
+    assertSuccessResponse(response);
   }
 
   @Test
-  public void testStringSchemaValueField() {
-    // Test STRING schema with "_value" field name
-    Schema stringSchema = Schema.create(Schema.Type.STRING);
-    when(mockSchemaEntry.getSchema()).thenReturn(stringSchema);
-
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("_value") // Test _value field name
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
-
-    CountByValueResponse response = processor.processCountByValue(request);
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
-  }
-
-  @Test
-  public void testNullDependencies() {
-    // Create processor with some null dependencies to test different null combinations
+  public void testPartialNullDependencies() {
     VeniceServerGrpcRequestProcessor processor = new VeniceServerGrpcRequestProcessor(
-        null, // storageEngineRepository
+        null,
         mockSchemaRepository,
         mockStoreRepository,
         mockExecutor,
         mockCompressorFactory);
 
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
-    CountByValueResponse response = processor.processCountByValue(request);
+    CountByValueResponse response = processor.processCountByValue(createDefaultRequest());
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.INTERNAL_ERROR);
     assertTrue(response.getErrorMessage().contains("CountByValue dependencies not available"));
   }
 
   @Test
   public void testHandlerChainTraversal() {
-    // Test the handler chain traversal in addHandler method
     VeniceServerGrpcRequestProcessor processor = new VeniceServerGrpcRequestProcessor();
-
-    // Create multiple handlers to test chain traversal
     com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler handler1 =
         mock(com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler.class);
     com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler handler2 =
@@ -779,14 +514,10 @@ public class VeniceServerGrpcRequestProcessorTest {
     com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler handler3 =
         mock(com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler.class);
 
-    // Set up chain: handler1 -> handler2 -> null
     when(handler1.getNext()).thenReturn(handler2);
     when(handler2.getNext()).thenReturn(null);
 
-    // Add first handler (becomes head)
     processor.addHandler(handler1);
-
-    // Add third handler (should be added to the end of chain)
     processor.addHandler(handler3);
 
     assertNotNull(processor);
@@ -794,75 +525,23 @@ public class VeniceServerGrpcRequestProcessorTest {
 
   @Test
   public void testDeserializationError() {
-    // Test deserialization error handling
     Set<Integer> partitions = new HashSet<>();
     partitions.add(0);
-    when(mockStorageEngine.getPersistedPartitionIds()).thenReturn(partitions);
+    setupStorageWithPartitions(partitions);
+    when(mockStorageEngine.get(eq(0), any(byte[].class))).thenReturn(new byte[] { 1, 2, 3, 4, 5 }); // Invalid Avro data
 
-    // Return invalid serialized data that will cause deserialization to fail
-    byte[] invalidData = new byte[] { 1, 2, 3, 4, 5 }; // Invalid Avro data
-    when(mockStorageEngine.get(eq(0), any(byte[].class))).thenReturn(invalidData);
-
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .setPartition(0)
-        .build();
-
-    CountByValueResponse response = processor.processCountByValue(request);
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
-    // Should handle deserialization errors gracefully
+    CountByValueResponse response = processor.processCountByValue(createDefaultRequest());
+    assertSuccessResponse(response);
     assertTrue(response.getFieldToValueCountsMap().containsKey("category"));
   }
 
   @Test
   public void testMultipleFieldNames() {
-    // Test with multiple field names to cover field iteration
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .addFieldNames("value") // Add second field
-        .setTopK(5)
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
-
+    CountByValueRequest request = createRequestWithFieldNames("category", "value");
     CountByValueResponse response = processor.processCountByValue(request);
-    assertNotNull(response);
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.OK);
-    // Should have both fields in response
+
+    assertSuccessResponse(response);
     assertTrue(response.getFieldToValueCountsMap().containsKey("category"));
     assertTrue(response.getFieldToValueCountsMap().containsKey("value"));
-  }
-
-  @Test
-  public void testLargeTopKValue() {
-    // Test with large topK value to ensure no artificial limits
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(Integer.MAX_VALUE) // Very large topK
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
-
-    CountByValueResponse response = processor.processCountByValue(request);
-    assertNotNull(response);
-    // Server should handle any topK value since client does the filtering
-  }
-
-  @Test
-  public void testNegativeTopK() {
-    // Test with negative topK value
-    CountByValueRequest request = CountByValueRequest.newBuilder()
-        .setResourceName("test_store_v1")
-        .addFieldNames("category")
-        .setTopK(-1) // Negative topK
-        .addKeys(ByteString.copyFrom("key1".getBytes()))
-        .build();
-
-    CountByValueResponse response = processor.processCountByValue(request);
-    assertNotNull(response);
-    // Server should handle negative topK gracefully
   }
 }
