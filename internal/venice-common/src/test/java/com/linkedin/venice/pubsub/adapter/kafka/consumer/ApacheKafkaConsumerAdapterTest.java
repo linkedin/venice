@@ -110,19 +110,33 @@ public class ApacheKafkaConsumerAdapterTest {
     pubSubMessageDeserializer.close();
   }
 
-  @Test
-  public void testSubscribeWithValidOffset() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testSubscribeWithValidOffset(boolean isInclusive) {
     when(internalKafkaConsumer.assignment()).thenReturn(Collections.emptySet());
     doNothing().when(internalKafkaConsumer).assign(any());
 
-    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, 100);
+    ApacheKafkaOffsetPosition p100 = new ApacheKafkaOffsetPosition(100L);
+    ApacheKafkaOffsetPosition p101 = new ApacheKafkaOffsetPosition(101L);
+    ApacheKafkaOffsetPosition p200 = new ApacheKafkaOffsetPosition(200L);
+    ApacheKafkaOffsetPosition p201 = new ApacheKafkaOffsetPosition(201L);
+
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, p100, isInclusive);
     assertTrue(kafkaConsumerAdapter.getAssignment().contains(pubSubTopicPartition));
     verify(internalKafkaConsumer).assign(any(List.class));
-    verify(internalKafkaConsumer).seek(topicPartition, 101); // Should seek to offset + 1
+    verify(internalKafkaConsumer)
+        .seek(topicPartition, isInclusive ? p100.getInternalOffset() : p101.getInternalOffset());
 
-    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, 200);
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, p200, isInclusive);
     verify(internalKafkaConsumer, times(2)).assign(any(List.class));
-    verify(internalKafkaConsumer).seek(topicPartition, 201); // Should seek to offset + 1
+    verify(internalKafkaConsumer)
+        .seek(topicPartition, isInclusive ? p200.getInternalOffset() : p201.getInternalOffset());
+
+    // Try other position types
+    PubSubPosition p300 = mock(PubSubPosition.class);
+    when(p300.getNumericOffset()).thenReturn(300L);
+    kafkaConsumerAdapter.subscribe(pubSubTopicPartition, p300, isInclusive);
+    verify(internalKafkaConsumer, times(3)).assign(any(List.class));
+    verify(internalKafkaConsumer).seek(topicPartition, isInclusive ? 300L : 301L);
   }
 
   @Test
