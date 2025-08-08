@@ -5,10 +5,12 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.systemstore.schemas.StoreLifecycleHooksRecord;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import com.linkedin.venice.utils.AvroRecordUtils;
+import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.StoreUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -1021,6 +1023,24 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
     this.storeProperties.enumSchemaEvolutionAllowed = enumSchemaEvolutionAllowed;
+  }
+
+  @Override
+  public List<LifecycleHooksRecord> getStoreLifecycleHooks() {
+    List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
+    for (StoreLifecycleHooksRecord storeLifecycleHooksRecord: this.storeProperties.storeLifecycleHooks) {
+      storeLifecycleHooks.add(
+          new LifecycleHooksRecordImpl(
+              storeLifecycleHooksRecord.getStoreLifecycleHooksClassName().toString(),
+              CollectionUtils
+                  .convertCharSequenceMapToStringMap(storeLifecycleHooksRecord.getStoreLifecycleHooksParams())));
+    }
+    return storeLifecycleHooks;
+  }
+
+  @Override
+  public void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
+    throw new UnsupportedOperationException();
   }
 
   @Override

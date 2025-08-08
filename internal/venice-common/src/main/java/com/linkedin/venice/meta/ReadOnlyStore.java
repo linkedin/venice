@@ -1660,6 +1660,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public List<LifecycleHooksRecord> getStoreLifecycleHooks() {
+    return delegate.getStoreLifecycleHooks();
+  }
+
+  @Override
+  public void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public String toString() {
     return this.delegate.toString();
   }
