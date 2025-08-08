@@ -152,10 +152,13 @@ public class SystemStoreRepairTask implements Runnable {
       Map<String, Long> systemStoreToHeartbeatTimestampMap) {
 
     Map<String, Long> userStoreToCreationTimestampMap = new HashMap<>();
-    for (Store store: getParentAdmin().getAllStores(clusterName)) {
-      if (shouldSkipStoreCheck(clusterName, store)) {
-        continue;
+    List<Store> storeList = getParentAdmin().getAllStores(clusterName);
+    // First pass only check user store and directly add non-existed system stores.
+    for (Store store: storeList) {
+      if (!shouldContinue(clusterName)) {
+        return;
       }
+
       // For user store, if corresponding system store flag is not true, it indicates system store is not created.
       if (!VeniceSystemStoreUtils.isSystemStore(store.getName())) {
         userStoreToCreationTimestampMap
@@ -167,6 +170,13 @@ public class SystemStoreRepairTask implements Runnable {
         if (isStoreNewlyCreated(store.getCreatedTime())) {
           continue;
         }
+
+        // Skipping migration store.
+        if (store.isMigrating()) {
+          LOGGER.info("Store: {} is being migrated, will skip it for now.", store.getName());
+          continue;
+        }
+
         if (!store.isDaVinciPushStatusStoreEnabled()) {
           newUnhealthySystemStoreSet
               .add(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(store.getName()));
@@ -176,15 +186,21 @@ public class SystemStoreRepairTask implements Runnable {
         }
       }
     }
-
-    for (Store store: getParentAdmin().getAllStores(clusterName)) {
-      if (shouldSkipStoreCheck(clusterName, store)) {
-        continue;
+    // Second pass only check system store and potentially send heartbeat message to validate health.
+    for (Store store: storeList) {
+      if (!shouldContinue(clusterName)) {
+        return;
       }
 
       // This pass we only scan user system store.
       if (!(VeniceSystemStoreUtils.isSystemStore(store.getName())
           && VeniceSystemStoreUtils.isUserSystemStore(store.getName()))) {
+        continue;
+      }
+
+      // Skipping migration store.
+      if (store.isMigrating()) {
+        LOGGER.info("Store: {} is being migrated, will skip it for now.", store.getName());
         continue;
       }
 
@@ -429,19 +445,6 @@ public class SystemStoreRepairTask implements Runnable {
 
   AtomicLong getNotRepairableSystemStoreCounter(String clusterName) {
     return getClusterSystemStoreHealthCheckStats(clusterName).getNotRepairableSystemStoreCounter();
-  }
-
-  boolean shouldSkipStoreCheck(String clusterName, Store store) {
-    if (!shouldContinue(clusterName)) {
-      return true;
-    }
-
-    // Skipping migration store.
-    if (store.isMigrating()) {
-      LOGGER.info("Store: {} is being migrated, will skip it for now.", store.getName());
-      return true;
-    }
-    return false;
   }
 
   boolean shouldContinue(String clusterName) {

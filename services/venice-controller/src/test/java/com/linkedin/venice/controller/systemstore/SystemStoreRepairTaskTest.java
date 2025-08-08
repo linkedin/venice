@@ -218,7 +218,6 @@ public class SystemStoreRepairTaskTest {
     AtomicBoolean isRunning = new AtomicBoolean(false);
 
     SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
-    doCallRealMethod().when(systemStoreRepairTask).shouldSkipStoreCheck(anyString(), any());
     doReturn(30).when(systemStoreRepairTask).getVersionRefreshThresholdInDays();
     when(systemStoreRepairTask.getParentAdmin()).thenReturn(veniceParentHelixAdmin);
     doCallRealMethod().when(systemStoreRepairTask).checkAndSendHeartbeatToSystemStores(anyString(), anySet(), anyMap());
