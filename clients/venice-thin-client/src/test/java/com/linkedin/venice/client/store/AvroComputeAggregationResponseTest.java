@@ -888,5 +888,4 @@ public class AvroComputeAggregationResponseTest {
 
     return data;
   }
-
 }
