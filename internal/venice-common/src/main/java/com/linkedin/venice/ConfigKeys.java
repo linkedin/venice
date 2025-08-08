@@ -1972,8 +1972,14 @@ public class ConfigKeys {
   // Config to control how much percentage of DVC replica instances are allowed to be offline before failing VPJ push.
   public static final String DAVINCI_PUSH_STATUS_SCAN_MAX_OFFLINE_INSTANCE_RATIO =
       "davinci.push.status.scan.max.offline.instance.ratio";
+
   // this is a host-level config to decide whether bootstrap a blob transfer manager for the host
   public static final String BLOB_TRANSFER_MANAGER_ENABLED = "blob.transfer.manager.enabled";
+
+  // this is a server level (host-level) config to decide if bootstrap from blob transfer override the store-level
+  // config setting.
+  public static final String BLOB_TRANSFER_SERVER_OVERRIDE_ENABLED = "blob.transfer.server.override.enabled";
+
   // this is a config to decide whether the snapshot is expired and need to be recreated.
   public static final String BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN =
       "blob.transfer.snapshot.retention.time.in.min";

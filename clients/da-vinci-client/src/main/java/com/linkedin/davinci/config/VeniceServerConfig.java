@@ -14,6 +14,7 @@ import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_CONCURRENT_SNAPSHOT_USER;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MAX_TIMEOUT_IN_MIN;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_PEERS_CONNECTIVITY_FRESHNESS_IN_SECONDS;
+import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SERVER_OVERRIDE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_CLEANUP_INTERVAL_IN_MINS;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN;
@@ -596,6 +597,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean recordLevelMetricWhenBootstrappingCurrentVersionEnabled;
   private final String identityParserClassName;
   private final boolean blobTransferManagerEnabled;
+  private final boolean blobTransferServerOverride;
   private final boolean blobTransferSslEnabled;
   private final boolean blobTransferAclEnabled;
   private final int snapshotRetentionTimeInMin;
@@ -678,6 +680,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
 
     blobTransferManagerEnabled = serverProperties.getBoolean(BLOB_TRANSFER_MANAGER_ENABLED, false);
+    blobTransferServerOverride = serverProperties.getBoolean(BLOB_TRANSFER_SERVER_OVERRIDE_ENABLED, false);
     blobTransferSslEnabled = serverProperties.getBoolean(BLOB_TRANSFER_SSL_ENABLED, false);
     blobTransferAclEnabled = serverProperties.getBoolean(BLOB_TRANSFER_ACL_ENABLED, false);
 
@@ -1221,6 +1224,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isBlobTransferManagerEnabled() {
     return blobTransferManagerEnabled;
+  }
+
+  public boolean isBlobTransferServerOverride() {
+    return blobTransferServerOverride;
   }
 
   public boolean isBlobTransferSslEnabled() {
