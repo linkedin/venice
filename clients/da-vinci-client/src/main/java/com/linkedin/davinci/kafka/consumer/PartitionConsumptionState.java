@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static java.util.concurrent.TimeUnit.MINUTES;
+
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -36,6 +38,7 @@ import org.apache.avro.generic.GenericRecord;
  */
 public class PartitionConsumptionState {
   private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
+  private static final long DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS = MINUTES.toMillis(2); // Default is 2 minutes.
   private static final String PREVIOUSLY_READY_TO_SERVE = "previouslyReadyToServe";
   private static final String TRUE = "true";
 
@@ -213,6 +216,8 @@ public class PartitionConsumptionState {
   private volatile Lazy<VeniceWriter<byte[], byte[], byte[]>> veniceWriterLazyRef;
 
   private BooleanSupplier isCurrentVersion;
+
+  private long readyToServeTimeLagThreshold = DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS;
 
   public PartitionConsumptionState(
       String replicaId,
@@ -863,5 +868,13 @@ public class PartitionConsumptionState {
 
   public PubSubContext getPubSubContext() {
     return pubSubContext;
+  }
+
+  public long getReadyToServeTimeLagThreshold() {
+    return readyToServeTimeLagThreshold;
+  }
+
+  public void setReadyToServeTimeLagThreshold(long readyToServeTimeLagThreshold) {
+    this.readyToServeTimeLagThreshold = readyToServeTimeLagThreshold;
   }
 }
