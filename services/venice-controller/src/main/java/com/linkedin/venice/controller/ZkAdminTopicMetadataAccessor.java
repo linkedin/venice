@@ -45,37 +45,35 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
    */
   @Override
   public void updateMetadata(String clusterName, Map<String, Long> metadataDelta) {
-    String path = getAdminTopicMetadataNodePath(clusterName);
-    HelixUtils.compareAndUpdate(zkMapAccessor, path, ZK_UPDATE_RETRY, currentMetadataMap -> {
-      if (currentMetadataMap == null) {
-        currentMetadataMap = new HashMap<>();
-      }
-      LOGGER.info(
-          "Updating AdminTopicMetadata map for cluster: {}. Current metadata: {}. New delta metadata: {}",
-          clusterName,
-          currentMetadataMap,
-          metadataDelta);
-      currentMetadataMap.putAll(metadataDelta);
-      return currentMetadataMap;
-    });
+    updateMetadataInternal(clusterName, metadataDelta, "Long metadata");
   }
 
   @Override
   public void updatePositionMetadata(String clusterName, Map<String, Position> positionMetadataDelta) {
+    updateMetadataInternal(clusterName, positionMetadataDelta, "Position metadata");
+  }
+
+  /**
+   * Common helper method to update metadata in ZooKeeper with retry logic and logging.
+   *
+   * @param clusterName the name of the cluster
+   * @param metadataDelta the metadata changes to apply
+   * @param metadataType descriptive name for logging purposes
+   * @param <T> the type of metadata values (Long or Position)
+   */
+  private <T> void updateMetadataInternal(String clusterName, Map<String, T> metadataDelta, String metadataType) {
     String path = getAdminTopicMetadataNodePath(clusterName);
     HelixUtils.compareAndUpdate(zkMapAccessor, path, ZK_UPDATE_RETRY, currentMetadataMap -> {
       if (currentMetadataMap == null) {
         currentMetadataMap = new HashMap<>();
       }
       LOGGER.info(
-          "Updating AdminTopicMetadata map for cluster: {}. Current metadata: {}. New delta metadata: {}",
+          "Updating AdminTopicMetadata map for cluster: {}. Current metadata: {}. New delta {}: {}",
           clusterName,
           currentMetadataMap,
-          positionMetadataDelta);
-
-      // Convert Position objects to byte arrays for storage
-      currentMetadataMap.putAll(positionMetadataDelta);
-
+          metadataType,
+          metadataDelta);
+      currentMetadataMap.putAll(metadataDelta);
       return currentMetadataMap;
     });
   }
