@@ -11,6 +11,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_ABORT_MIGRATION_CLEANUP;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOOK_BACK_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
@@ -120,6 +121,7 @@ import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1134,7 +1136,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#getDeadStores(String, String, boolean)
+   * @see Admin#getDeadStores(String, String, Map)
    */
   public Route getDeadStores(Admin admin) {
     return new VeniceRouteHandler<MultiStoreInfoResponse>(MultiStoreInfoResponse.class) {
@@ -1143,8 +1145,24 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, GET_DEAD_STORES.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        boolean includeSystemStores = Boolean.parseBoolean(request.queryParams(INCLUDE_SYSTEM_STORES));
-        List<StoreInfo> storeList = admin.getDeadStores(cluster, storeName, includeSystemStores);
+
+        // Collect all parameters into a map for extensibility
+        Map<String, String> params = new HashMap<>();
+
+        // Include system stores parameter
+        String includeSystemStoresParam = request.queryParams(INCLUDE_SYSTEM_STORES);
+        if (includeSystemStoresParam != null && !includeSystemStoresParam.isEmpty()) {
+          params.put("includeSystemStores", includeSystemStoresParam);
+        }
+
+        // Look back MS parameter
+        String lookBackMSParam = request.queryParams(LOOK_BACK_MS);
+        if (lookBackMSParam != null && !lookBackMSParam.isEmpty()) {
+          params.put("lookBackMS", lookBackMSParam);
+        }
+
+        List<StoreInfo> storeList = admin.getDeadStores(cluster, storeName, params);
+        veniceResponse.setCluster(cluster);
         veniceResponse.setStoreInfoList(storeList);
       }
     };
