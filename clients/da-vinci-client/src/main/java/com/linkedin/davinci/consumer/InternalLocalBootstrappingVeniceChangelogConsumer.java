@@ -164,15 +164,15 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
           throw new VeniceException("Failed to decode local change capture coordinate checkpoint with exception: ", e);
         }
 
-        PubSubPosition earliestOffset;
+        PubSubPosition earliestPosition;
         PubSubTopicPartition topicPartition = getTopicPartition(partition);
         synchronized (pubSubConsumer) {
-          earliestOffset =
+          earliestPosition =
               pubSubConsumer.beginningPosition(topicPartition, getPubsubOffsetApiTimeoutDurationDefaultValue());
         }
-        VeniceChangeCoordinate earliestCheckpoint = earliestOffset == null
+        VeniceChangeCoordinate earliestCheckpoint = earliestPosition == null
             ? null
-            : new VeniceChangeCoordinate(topicPartition.getPubSubTopic().getName(), earliestOffset, partition);
+            : new VeniceChangeCoordinate(topicPartition.getPubSubTopic().getName(), earliestPosition, partition);
 
         // If earliest offset is larger than the local, we should just bootstrap from beginning.
         if (earliestCheckpoint != null && earliestCheckpoint.comparePosition(localCheckpoint) > -1) {

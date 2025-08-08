@@ -1,5 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
+import static com.linkedin.venice.pubsub.PubSubUtil.calculateSeekOffset;
+
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -158,10 +160,10 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     String logMessage;
     if (position == PubSubSymbolicPosition.EARLIEST) {
       kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
-      logMessage = "EARLIEST (start)";
+      logMessage = PubSubSymbolicPosition.EARLIEST + " (beginning)";
     } else if (position == PubSubSymbolicPosition.LATEST) {
       kafkaConsumer.seekToEnd(Collections.singletonList(topicPartition));
-      logMessage = "LATEST (end)";
+      logMessage = PubSubSymbolicPosition.LATEST + " (end)";
     } else if (position instanceof ApacheKafkaOffsetPosition) {
       ApacheKafkaOffsetPosition kafkaOffsetPosition = (ApacheKafkaOffsetPosition) position;
       long seekOffset = calculateSeekOffset(kafkaOffsetPosition.getInternalOffset(), isInclusive);
@@ -711,16 +713,5 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
         pubSubMessageHeaders,
         pubSubPosition,
         consumerRecord.timestamp());
-  }
-
-  /**
-   * Calculates the seek offset based on the base offset and inclusiveness flag.
-   *
-   * @param baseOffset the base offset to calculate from
-   * @param isInclusive if true, returns the base offset; if false, returns base offset + 1
-   * @return the calculated seek offset
-   */
-  private long calculateSeekOffset(long baseOffset, boolean isInclusive) {
-    return isInclusive ? baseOffset : baseOffset + 1;
   }
 }

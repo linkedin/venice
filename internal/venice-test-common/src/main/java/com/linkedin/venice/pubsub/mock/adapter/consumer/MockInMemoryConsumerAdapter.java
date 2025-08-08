@@ -95,11 +95,10 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
         throw new IllegalStateException(
             "endPosition returned unsupported type: " + resolved.getClass().getSimpleName());
       }
-      long endOffset = ((InMemoryPubSubPosition) resolved).getInternalOffset();
-      seekOffset = isInclusive ? endOffset : endOffset + 1;
+      seekOffset = ((InMemoryPubSubPosition) resolved).getInternalOffset();
     } else if (position instanceof InMemoryPubSubPosition) {
       long inputOffset = ((InMemoryPubSubPosition) position).getInternalOffset();
-      seekOffset = isInclusive ? inputOffset : inputOffset + 1;
+      seekOffset = PubSubUtil.calculateSeekOffset(inputOffset, isInclusive);
     } else {
       throw new IllegalArgumentException("Unsupported PubSubPosition type: " + position.getClass());
     }
