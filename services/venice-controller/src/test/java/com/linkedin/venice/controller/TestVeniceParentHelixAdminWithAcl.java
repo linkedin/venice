@@ -1,11 +1,8 @@
 package com.linkedin.venice.controller;
 
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,14 +19,11 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Collection;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -86,22 +80,19 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
             Optional.of(1L),
             Optional.of(LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)));
 
-    doReturn(
-        CompletableFuture
-            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
-                .when(veniceWriter)
-                .put(any(), any(), anyInt());
-
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
     initializeParentAdmin(Optional.of(authorizerService), Optional.empty());
     parentAdmin.initStorageCluster(clusterName);
+    // To support the store update during store creation.
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     parentAdmin
         .createStore(clusterName, storeName, "dev", keySchemaStr, valueSchemaStr, false, Optional.of(accessPerm));
     Assert.assertEquals(1, authorizerService.setAclsCounter);
     AclBinding actualAB = authorizerService.describeAcls(new Resource(storeName));
     Assert.assertTrue(isAclBindingSame(expectedAB, actualAB));
-    verify(zkClient, times(2)).readData(zkMetadataNodePath, null);
+    verify(zkClient, times(3)).readData(zkMetadataNodePath, null);
   }
 
   /**
@@ -114,12 +105,6 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     // move forward.
     String accessPerm =
         "{\"AccessPermissions\":{\"Read\":[\"user:user1\",\"group:group1\",\"service:app1\"],\"Write\":[\"user:user1\",\"group:group1\",\"service:app1\"],}}";
-
-    doReturn(
-        CompletableFuture
-            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
-                .when(veniceWriter)
-                .put(any(), any(), anyInt());
 
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
@@ -139,12 +124,6 @@ public class TestVeniceParentHelixAdminWithAcl extends AbstractTestVeniceParentH
     Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
     doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
-
-    doReturn(
-        CompletableFuture
-            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
-                .when(veniceWriter)
-                .put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(

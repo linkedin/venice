@@ -28,6 +28,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -40,6 +41,7 @@ import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import java.io.Closeable;
+import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -231,7 +233,7 @@ public class TopicManager implements Closeable {
   }
 
   protected void waitUntilTopicCreated(PubSubTopic topicName, int partitionCount, long deadlineMs) {
-    long startTimeMs = System.nanoTime();
+    long startTimeMs = System.currentTimeMillis();
     while (!containsTopicAndAllPartitionsAreOnline(topicName, partitionCount)) {
       if (System.currentTimeMillis() > deadlineMs) {
         throw new PubSubOpTimeoutException(
@@ -803,6 +805,51 @@ public class TopicManager implements Closeable {
    */
   public void prefetchAndCacheLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
     topicMetadataFetcher.populateCacheWithLatestOffset(pubSubTopicPartition);
+  }
+
+  /**
+   * Resolves a {@link PubSubPosition} from the given serialized buffer using the specified position type ID.
+   * This API is part of the Topic Manager (TM) interface because TM has access to a consumer instance
+   * capable of performing lookups from {@link PubSubTopicPartition} to PubSub-specific objects
+   * (e.g., {@code Shard} in LinkedIn's Xinfra clients), which may be required by some PubSub client implementations.
+   *
+   * @param partition The topic-partition context.
+   * @param positionTypeId The type ID used to identify how to deserialize the position.
+   * @param buffer The serialized form of the position.
+   * @return The resolved {@link PubSubPosition}.
+   */
+  public PubSubPosition resolvePosition(PubSubTopicPartition partition, int positionTypeId, ByteBuffer buffer) {
+    return topicMetadataFetcher.resolvePosition(partition, positionTypeId, buffer);
+  }
+
+  /**
+   * Computes the difference between two positions within a given topic-partition.
+   * This API is part of the Topic Manager (TM) interface because TM has access to a consumer instance
+   * capable of performing lookups from {@link PubSubTopicPartition} to PubSub-specific objects
+   * (e.g., {@code Shard} in LinkedIn's Xinfra clients), which may be required by some PubSub client implementations.
+   *
+   * @param partition The topic-partition context.
+   * @param position1 The first position.
+   * @param position2 The second position.
+   * @return The difference between the two positions, in number of records.
+   */
+  public long diffPosition(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    return topicMetadataFetcher.diffPosition(partition, position1, position2);
+  }
+
+  /**
+   * Compares two positions within the context of a specific topic-partition.
+   * This API is part of the Topic Manager (TM) interface because TM has access to a consumer instance
+   * capable of performing lookups from {@link PubSubTopicPartition} to PubSub-specific objects
+   * (e.g., {@code Shard} in LinkedIn's Xinfra clients), which may be required by some PubSub client implementations.
+   *
+   * @param partition The topic-partition context.
+   * @param position1 The first position.
+   * @param position2 The second position.
+   * @return A negative number if position1 < position2, 0 if equal, and a positive number if position1 > position2.
+   */
+  public long comparePosition(PubSubTopicPartition partition, PubSubPosition position1, PubSubPosition position2) {
+    return topicMetadataFetcher.comparePosition(partition, position1, position2);
   }
 
   public String getPubSubClusterAddress() {

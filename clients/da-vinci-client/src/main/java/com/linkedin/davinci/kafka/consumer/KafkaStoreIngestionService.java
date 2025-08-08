@@ -14,6 +14,7 @@ import static java.lang.Thread.sleep;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -58,6 +59,8 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.PubSubConstants;
+import com.linkedin.venice.pubsub.PubSubContext;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -87,6 +90,7 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
@@ -170,6 +174,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final boolean isIsolatedIngestion;
 
   private final TopicManagerRepository topicManagerRepository;
+
   private ExecutorService participantStoreConsumerExecutorService;
 
   private ExecutorService ingestionExecutorService;
@@ -180,8 +185,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   // primary
   // source. This could be a view of the data, or in our case a cache, or both potentially.
   private final Optional<ObjectCacheBackend> cacheBackend;
-
-  private final DaVinciRecordTransformerConfig recordTransformerConfig;
+  private final Map<String, InternalDaVinciRecordTransformerConfig> storeNameToInternalRecordTransformerConfig =
+      new VeniceConcurrentHashMap<>();
+  private AggVersionedDaVinciRecordTransformerStats recordTransformerStats = null;
 
   private final PubSubProducerAdapterFactory producerAdapterFactory;
 
@@ -192,6 +198,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ResourceAutoClosableLockManager<String> topicLockManager;
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubContext pubSubContext;
   private final KafkaValueSerializer kafkaValueSerializer;
   private final IngestionThrottler ingestionThrottler;
   private final ExecutorService aaWCWorkLoadProcessingThreadPool;
@@ -206,6 +213,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ScheduledExecutorService idleStoreIngestionTaskKillerExecutor;
 
   private final VeniceWriterFactory veniceWriterFactory;
+  private final MetricsRepository metricsRepository;
 
   public KafkaStoreIngestionService(
       StorageService storageService,
@@ -224,7 +232,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       boolean isIsolatedIngestion,
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerConfig recordTransformerConfig,
       boolean isDaVinciClient,
       RemoteIngestionRepairService remoteIngestionRepairService,
       PubSubClientsFactory pubSubClientsFactory,
@@ -235,7 +242,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       Optional<D2Client> d2Client) {
     this.storageService = storageService;
     this.cacheBackend = cacheBackend;
-    this.recordTransformerConfig = recordTransformerConfig;
+    this.metricsRepository = metricsRepository;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
@@ -302,6 +309,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             .build();
     this.topicManagerRepository =
         new TopicManagerRepository(topicManagerContext, serverConfig.getKafkaBootstrapServers());
+    this.pubSubContext = new PubSubContext.Builder().setTopicManagerRepository(topicManagerRepository)
+        .setPubSubPositionTypeRegistry(serverConfig.getPubSubPositionTypeRegistry())
+        .setPubSubPositionDeserializer(new PubSubPositionDeserializer(serverConfig.getPubSubPositionTypeRegistry()))
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .build();
 
     VeniceNotifier notifier = new LogNotifier();
     this.leaderFollowerNotifiers.add(notifier);
@@ -352,7 +364,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           serverConfig.getStoreWriterBufferMemoryCapacity(),
           serverConfig.getStoreWriterBufferNotifyDelta(),
           serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled(),
-          serverConfig.getRegionName(),
+          serverConfig.getLogContext(),
           metricsRepository,
           true);
     }
@@ -459,7 +471,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (serverConfig.isAAWCWorkloadParallelProcessingEnabled()) {
       this.aaWCWorkLoadProcessingThreadPool = Executors.newFixedThreadPool(
           serverConfig.getAAWCWorkloadParallelProcessingThreadPoolSize(),
-          new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING", serverConfig.getRegionName()));
+          new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING", serverConfig.getLogContext()));
     } else {
       this.aaWCWorkLoadProcessingThreadPool = null;
     }
@@ -467,35 +479,28 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.idleStoreIngestionTaskKillerExecutor = serverConfig.getIdleIngestionTaskCleanupIntervalInSeconds() > 0
         ? Executors.newScheduledThreadPool(
             1,
-            new DaemonThreadFactory("idle-store-ingestion-task-clean-up-thread", serverConfig.getRegionName()))
+            new DaemonThreadFactory("idle-store-ingestion-task-clean-up-thread", serverConfig.getLogContext()))
         : null;
 
     this.aaWCIngestionStorageLookupThreadPool = Executors.newFixedThreadPool(
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize(),
-        new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP", serverConfig.getRegionName()));
+        new DaemonThreadFactory("AA_WC_INGESTION_STORAGE_LOOKUP", serverConfig.getLogContext()));
     LOGGER.info(
         "Enabled a thread pool for AA/WC ingestion lookup with {} threads.",
         serverConfig.getAaWCIngestionStorageLookupThreadPoolSize());
-
-    AggVersionedDaVinciRecordTransformerStats recordTransformerStats = null;
-    if (recordTransformerConfig != null) {
-      recordTransformerStats =
-          new AggVersionedDaVinciRecordTransformerStats(metricsRepository, metadataRepo, serverConfig);
-    }
 
     Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier =
         serverConfig.getIngestionTaskReusableObjectsStrategy().supplier();
 
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
+        .setPubSubContext(pubSubContext)
         .setVeniceWriterFactory(veniceWriterFactory)
         .setStorageMetadataService(storageMetadataService)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
         .setSchemaRepository(schemaRepo)
         .setMetadataRepository(metadataRepo)
-        .setTopicManagerRepository(topicManagerRepository)
         .setHostLevelIngestionStats(hostLevelIngestionStats)
         .setVersionedDIVStats(versionedDIVStats)
-        .setDaVinciRecordTransformerStats(recordTransformerStats)
         .setVersionedIngestionStats(versionedIngestionStats)
         .setStoreBufferService(storeBufferService)
         .setServerConfig(serverConfig)
@@ -507,7 +512,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setMetaStoreWriter(metaStoreWriter)
         .setCompressorFactory(compressorFactory)
         .setVeniceViewWriterFactory(viewWriterFactory)
-        .setPubSubTopicRepository(pubSubTopicRepository)
         .setRunnableForKillIngestionTasksForNonCurrentVersions(
             serverConfig.getIngestionMemoryLimit() > 0 ? () -> killConsumptionTaskForNonCurrentVersions() : null)
         .setHeartbeatMonitoringService(heartbeatMonitoringService)
@@ -556,7 +560,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
     if (participantStoreConsumptionTask != null) {
       participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor(
-          new DaemonThreadFactory("ParticipantStoreConsumptionTask", serverConfig.getRegionName()));
+          new DaemonThreadFactory("ParticipantStoreConsumptionTask", serverConfig.getLogContext()));
       participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
       LOGGER.info("{} submitted.", ParticipantStoreConsumptionTask.class.getSimpleName());
     } else {
@@ -608,7 +612,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformerConfig,
+        getInternalRecordTransformerConfig(storeName),
         zkHelixAdmin);
   }
 
@@ -1407,6 +1411,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return metadataRepo;
   }
 
+  public PubSubContext getPubSubContext() {
+    return pubSubContext;
+  }
+
   private boolean ingestionTaskHasAnySubscription(String topic) {
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
@@ -1437,5 +1445,21 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   @VisibleForTesting
   protected Map<String, StoreIngestionTask> getTopicNameToIngestionTaskMap() {
     return topicNameToIngestionTaskMap;
+  }
+
+  synchronized public void registerRecordTransformerConfig(
+      String storeName,
+      DaVinciRecordTransformerConfig recordTransformerConfig) {
+    if (recordTransformerStats == null) {
+      recordTransformerStats =
+          new AggVersionedDaVinciRecordTransformerStats(metricsRepository, metadataRepo, serverConfig);
+    }
+
+    storeNameToInternalRecordTransformerConfig
+        .put(storeName, new InternalDaVinciRecordTransformerConfig(recordTransformerConfig, recordTransformerStats));
+  }
+
+  public InternalDaVinciRecordTransformerConfig getInternalRecordTransformerConfig(String storeName) {
+    return storeNameToInternalRecordTransformerConfig.get(storeName);
   }
 }

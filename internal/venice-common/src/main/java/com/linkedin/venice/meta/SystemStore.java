@@ -767,6 +767,26 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isTTLRepushEnabled() {
+    return zkSharedStore.isTTLRepushEnabled();
+  }
+
+  @Override
+  public void setTTLRepushEnabled(boolean ttlRepushEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isEnumSchemaEvolutionAllowed() {
+    return false;
+  }
+
+  @Override
+  public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    throwUnsupportedOperationException("setEnumSchemaEvolutionAllowed");
+  }
+
+  @Override
   public boolean isGlobalRtDivEnabled() {
     return zkSharedStore.isGlobalRtDivEnabled();
   }

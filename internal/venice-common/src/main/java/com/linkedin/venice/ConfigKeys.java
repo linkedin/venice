@@ -1070,12 +1070,6 @@ public class ConfigKeys {
       "freeze.ingestion.if.ready.to.serve.or.local.data.exists";
 
   /**
-   * a comma seperated list of kafka producer metrics that will be reported.
-   * For ex. "outgoing-byte-rate,record-send-rate,batch-size-max,batch-size-avg,buffer-available-bytes,buffer-exhausted-rate"
-   */
-  public static final String KAFKA_PRODUCER_METRICS = "list.of.producer.metrics.from.kafka";
-
-  /**
    * Whether to print logs that are used for troubleshooting only.
    */
   public static final String SERVER_DEBUG_LOGGING_ENABLED = "server.debug.logging.enabled";
@@ -1633,6 +1627,12 @@ public class ConfigKeys {
    * The name of the cluster that the internal store for storing push job details records belongs to.
    */
   public static final String PUSH_JOB_STATUS_STORE_CLUSTER_NAME = "controller.push.job.status.store.cluster.name";
+
+  /**
+   * The name of the cluster that the internal store for storing controller parent metadata belongs to.
+   */
+  public static final String PARENT_CONTROLLER_METADATA_STORE_CLUSTER_NAME =
+      "parent.controller.metadata.store.cluster.name";
 
   /**
    * The most-significant-bits of the producer GUID used by {@code VenicePushJob} encoded as a {@code long}.

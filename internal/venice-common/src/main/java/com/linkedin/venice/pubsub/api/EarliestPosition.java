@@ -3,6 +3,8 @@ package com.linkedin.venice.pubsub.api;
 import static com.linkedin.venice.pubsub.PubSubPositionTypeRegistry.EARLIEST_POSITION_RESERVED_TYPE_ID;
 
 import com.linkedin.venice.memory.ClassSizeEstimator;
+import com.linkedin.venice.pubsub.EarliestPositionFactory;
+import com.linkedin.venice.pubsub.PubSubPositionFactory;
 import java.nio.ByteBuffer;
 
 
@@ -45,6 +47,17 @@ final class EarliestPosition implements PubSubPosition {
   }
 
   @Override
+  public Class<? extends PubSubPositionFactory> getFactoryClass() {
+    return EarliestPositionFactory.class;
+  }
+
+  @Override
+  public boolean isSymbolic() {
+    // EarliestPosition is a symbolic position
+    return true;
+  }
+
+  @Override
   public String toString() {
     return NAME;
   }
@@ -63,6 +76,6 @@ final class EarliestPosition implements PubSubPosition {
 
   @Override
   public long getNumericOffset() {
-    throw new UnsupportedOperationException("Cannot get numeric offset for EARLIEST position");
+    return -1;
   }
 }

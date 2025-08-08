@@ -20,4 +20,21 @@ public class MockVeniceChangeCoordinate extends VeniceChangeCoordinate {
   protected String getTopic() {
     return this.topic;
   }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+    if (obj == null || getClass() != obj.getClass()) {
+      return false;
+    }
+    MockVeniceChangeCoordinate that = (MockVeniceChangeCoordinate) obj;
+    return this.topic.equals(that.topic) && super.equals(obj);
+  }
+
+  @Override
+  public int hashCode() {
+    return 31 * super.hashCode() + topic.hashCode();
+  }
 }

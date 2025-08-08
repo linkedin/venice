@@ -22,6 +22,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_S
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
@@ -70,6 +71,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION_WAIT_TIME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TTL_REPUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UNUSED_SCHEMA_DELETION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -159,6 +161,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setMinCompactionLagSeconds(srcStore.getMinCompactionLagSeconds())
             .setNearlineProducerCountPerWriter(srcStore.getNearlineProducerCountPerWriter())
             .setIsDavinciHeartbeatReported(srcStore.getIsDavinciHeartbeatReported())
+            .setTTLRepushEnabled(srcStore.isTTLRepushEnabled())
             // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
             // still easy to parse
             .setStoreViews(
@@ -813,8 +816,24 @@ public class UpdateStoreQueryParams extends QueryParams {
     return putBoolean(GLOBAL_RT_DIV_ENABLED, globalRtDivEnabled);
   }
 
+  public Optional<Boolean> isEnumSchemaEvolutionAllowed() {
+    return getBoolean(ENUM_SCHEMA_EVOLUTION_ALLOWED);
+  }
+
+  public UpdateStoreQueryParams setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    return putBoolean(ENUM_SCHEMA_EVOLUTION_ALLOWED, enumSchemaEvolutionAllowed);
+  }
+
   public Optional<Boolean> isGlobalRtDivEnabled() {
     return getBoolean(GLOBAL_RT_DIV_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setTTLRepushEnabled(boolean ttlRepushEnabled) {
+    return putBoolean(TTL_REPUSH_ENABLED, ttlRepushEnabled);
+  }
+
+  public Optional<Boolean> isTTLRepushEnabled() {
+    return getBoolean(TTL_REPUSH_ENABLED);
   }
 
   // ***************** above this line are getters and setters *****************

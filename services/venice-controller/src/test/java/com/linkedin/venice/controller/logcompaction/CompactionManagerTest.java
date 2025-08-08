@@ -11,6 +11,8 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
@@ -20,30 +22,35 @@ import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.mockito.Mockito;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class CompactionManagerTest {
   private static final long COMPACTION_THRESHOLD = 24; // 24 hours ago
   private static final String TEST_STORE_NAME_PREFIX = "test-store";
-  private static final String TEST_CLUSTER_NAME = "test-cluster";
+  private static final String TEST_CLUSTER_NAME_1 = "test-cluster-1";
+  private static final String TEST_CLUSTER_NAME_2 = "test-cluster-2";
   private CompactionManager testCompactionManager;
   private RepushOrchestrator mockRepushOrchestrator;
   private LogCompactionStats mockLogCompactionStats;
 
-  @BeforeClass
+  @BeforeMethod
   public void setUp() {
     mockRepushOrchestrator = mock(RepushOrchestrator.class);
     mockLogCompactionStats = mock(LogCompactionStats.class);
 
-    testCompactionManager = new CompactionManager(
-        mockRepushOrchestrator,
-        TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD),
-        Collections.singletonMap(TEST_CLUSTER_NAME, mockLogCompactionStats));
+    Map<String, LogCompactionStats> statsMap = new HashMap<>();
+    statsMap.put(TEST_CLUSTER_NAME_1, mockLogCompactionStats);
+    statsMap.put(TEST_CLUSTER_NAME_2, mockLogCompactionStats);
+
+    testCompactionManager =
+        new CompactionManager(mockRepushOrchestrator, TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD), statsMap);
   }
 
   @Test
@@ -203,7 +210,7 @@ public class CompactionManagerTest {
 
     // Test
     List<StoreInfo> compactionReadyStores =
-        testCompactionManager.filterStoresForCompaction(storeInfoList, TEST_CLUSTER_NAME);
+        testCompactionManager.filterStoresForCompaction(storeInfoList, TEST_CLUSTER_NAME_1);
 
     // Validate recordStoreNominatedForCompactionCount metric emission
     verify(mockLogCompactionStats, Mockito.times(1)).recordStoreNominatedForCompactionCount(store1.getName());
@@ -244,11 +251,94 @@ public class CompactionManagerTest {
 
     // Create a RepushJobRequest
     RepushJobRequest repushJobRequest = new RepushJobRequest(
-        TEST_CLUSTER_NAME,
+        TEST_CLUSTER_NAME_1,
         Utils.getUniqueString(TEST_STORE_NAME_PREFIX),
         RepushStoreTriggerSource.MANUAL);
 
     // Call the repushStore method and expect a VeniceException
     testCompactionManager.repushStore(repushJobRequest);
+  }
+
+  @Test
+  public void testGetStoresForCompaction() {
+
+    String colo1 = "colo_1";
+    String colo2 = "colo_2";
+
+    // Cluster 1
+    String store1 = "store_1";
+    String store2 = "store_2";
+
+    // Cluster 2
+    String store3 = "store_3";
+    String store4 = "store_4";
+
+    // Mock version
+    Version version1 = mock(Version.class);
+    when(version1.getCreatedTime())
+        .thenReturn(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(COMPACTION_THRESHOLD + 1));
+    when(version1.getNumber()).thenReturn(2);
+
+    // Store Info
+    StoreInfo storeInfo1 = createMockStoreInfo(store1, version1);
+    StoreInfo storeInfo2 = createMockStoreInfo(store2, version1);
+    StoreInfo storeInfo3 = createMockStoreInfo(store3, version1);
+    StoreInfo storeInfo4 = createMockStoreInfo(store4, version1);
+
+    // Store Info List
+    List<StoreInfo> storeInfoList1 = new ArrayList<>();
+    storeInfoList1.add(storeInfo1);
+    storeInfoList1.add(storeInfo2);
+    List<StoreInfo> storeInfoList2 = new ArrayList<>();
+    storeInfoList2.add(storeInfo3);
+    storeInfoList2.add(storeInfo4);
+
+    // MultiStoreInfoResponse
+    MultiStoreInfoResponse multiStoreInfoResponse1 = mock(MultiStoreInfoResponse.class);
+    when(multiStoreInfoResponse1.getStoreInfoList()).thenReturn(storeInfoList1);
+    MultiStoreInfoResponse multiStoreInfoResponse2 = mock(MultiStoreInfoResponse.class);
+    when(multiStoreInfoResponse2.getStoreInfoList()).thenReturn(storeInfoList2);
+
+    // Controller Client
+    ControllerClient mockControllerClient1 = Mockito.mock(ControllerClient.class);
+    when(mockControllerClient1.getClusterStores(TEST_CLUSTER_NAME_1)).thenReturn(multiStoreInfoResponse1);
+    when(mockControllerClient1.getClusterStores(TEST_CLUSTER_NAME_2)).thenReturn(multiStoreInfoResponse2);
+    ControllerClient mockControllerClient2 = Mockito.mock(ControllerClient.class);
+    when(mockControllerClient2.getClusterStores(TEST_CLUSTER_NAME_1)).thenReturn(multiStoreInfoResponse1);
+    when(mockControllerClient2.getClusterStores(TEST_CLUSTER_NAME_2)).thenReturn(multiStoreInfoResponse2);
+
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+    controllerClientMap.put(colo1, mockControllerClient1);
+    controllerClientMap.put(colo2, mockControllerClient2);
+
+    List<StoreInfo> cluster1StoresForCompaction =
+        testCompactionManager.getStoresForCompaction(TEST_CLUSTER_NAME_1, controllerClientMap);
+    assertEquals(cluster1StoresForCompaction.size(), 2);
+    assertTrue(storeInfoListContains(storeInfo1.getName(), cluster1StoresForCompaction));
+    assertTrue(storeInfoListContains(storeInfo2.getName(), cluster1StoresForCompaction));
+    assertFalse(storeInfoListContains(storeInfo3.getName(), cluster1StoresForCompaction));
+    assertFalse(storeInfoListContains(storeInfo4.getName(), cluster1StoresForCompaction));
+
+    List<StoreInfo> cluster2StoresForCompaction =
+        testCompactionManager.getStoresForCompaction(TEST_CLUSTER_NAME_2, controllerClientMap);
+    assertEquals(cluster2StoresForCompaction.size(), 2);
+    assertFalse(storeInfoListContains(storeInfo1.getName(), cluster2StoresForCompaction));
+    assertFalse(storeInfoListContains(storeInfo2.getName(), cluster2StoresForCompaction));
+    assertTrue(storeInfoListContains(storeInfo3.getName(), cluster2StoresForCompaction));
+    assertTrue(storeInfoListContains(storeInfo4.getName(), cluster2StoresForCompaction));
+  }
+
+  private StoreInfo createMockStoreInfo(String storeName, Version version) {
+    StoreInfo storeInfo = mock(StoreInfo.class);
+    when(storeInfo.getName()).thenReturn(storeName);
+    when(storeInfo.getHybridStoreConfig()).thenReturn(mock(HybridStoreConfig.class));
+    when(storeInfo.getVersions()).thenReturn(Collections.singletonList(version));
+    when(storeInfo.isActiveActiveReplicationEnabled()).thenReturn(true);
+    when(storeInfo.isCompactionEnabled()).thenReturn(true);
+    return storeInfo;
+  }
+
+  private boolean storeInfoListContains(String name, List<StoreInfo> storeInfoList) {
+    return storeInfoList.stream().anyMatch(storeInfo -> storeInfo.getName().equals(name));
   }
 }

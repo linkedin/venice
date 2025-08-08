@@ -24,6 +24,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_M
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENUM_SCHEMA_EVOLUTION_ALLOWED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.GLOBAL_RT_DIV_ENABLED;
@@ -80,10 +81,13 @@ import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.BATCH_JOB_HEARTBEAT;
+import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PARENT_CONTROLLER_METADATA_SYSTEM_STORE_VALUE;
 import static com.linkedin.venice.serialization.avro.AvroProtocolDefinition.PUSH_JOB_DETAILS;
 import static com.linkedin.venice.utils.RegionUtils.isRegionPartOfRegionsFilterList;
 import static com.linkedin.venice.utils.RegionUtils.parseRegionsFilterList;
 import static com.linkedin.venice.views.VeniceView.VIEW_NAME_SEPARATOR;
+import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -219,6 +223,8 @@ import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -266,6 +272,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -432,6 +439,7 @@ public class VeniceParentHelixAdmin implements Admin {
         new PubSubTopicRepository(),
         null,
         null,
+        null,
         metricsRepository);
   }
 
@@ -448,7 +456,9 @@ public class VeniceParentHelixAdmin implements Admin {
       PubSubTopicRepository pubSubTopicRepository,
       DelegatingClusterLeaderInitializationRoutine initRoutineForPushJobDetailsSystemStore,
       DelegatingClusterLeaderInitializationRoutine initRoutineForHeartbeatSystemStore,
+      DelegatingClusterLeaderInitializationRoutine initRoutineForParentControllerMetadataSystemStore,
       MetricsRepository metricsRepository) {
+
     Validate.notNull(lingeringStoreVersionChecker);
     Validate.notNull(writeComputeSchemaConverter);
     this.veniceHelixAdmin = veniceHelixAdmin;
@@ -557,6 +567,28 @@ public class VeniceParentHelixAdmin implements Admin {
         initRoutineForHeartbeatSystemStore.setAllowEmptyDelegateInitializationToSucceed();
       }
     }
+
+    String parentControllerMetadataStoreClusterName =
+        getMultiClusterConfigs().getParentControllerMetadataStoreClusterName();
+    boolean initializeParentControllerMetadataStore = !StringUtils.isEmpty(parentControllerMetadataStoreClusterName);
+    if (initRoutineForParentControllerMetadataSystemStore != null) {
+      if (initializeParentControllerMetadataStore) {
+        UpdateStoreQueryParams updateStoreQueryParamsForParentControllerMetadataStore =
+            new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
+        initRoutineForParentControllerMetadataSystemStore.setDelegate(
+            new SharedInternalRTStoreInitializationRoutine(
+                parentControllerMetadataStoreClusterName,
+                VeniceSystemStoreUtils
+                    .getParentControllerMetadataStoreNameForCluster(parentControllerMetadataStoreClusterName),
+                PARENT_CONTROLLER_METADATA_SYSTEM_STORE_VALUE,
+                multiClusterConfigs,
+                this,
+                Schema.create(Schema.Type.STRING),
+                updateStoreQueryParamsForParentControllerMetadataStore));
+      } else {
+        initRoutineForParentControllerMetadataSystemStore.setAllowEmptyDelegateInitializationToSucceed();
+      }
+    }
   }
 
   // For testing purpose.
@@ -589,6 +621,7 @@ public class VeniceParentHelixAdmin implements Admin {
      */
 
     // Check whether the admin topic exists or not.
+    // eg. venice_admin_cluster_1
     PubSubTopic topicName = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
     TopicManager topicManager = getTopicManager();
     if (topicManager.containsTopicAndAllPartitionsAreOnline(topicName)) {
@@ -658,8 +691,23 @@ public class VeniceParentHelixAdmin implements Admin {
         message.executionId = execution.getExecutionId();
         VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
         byte[] serializedValue = adminOperationSerializer.serialize(message, writerSchemaId);
+        PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
         try {
-          Future<PubSubProduceResult> future = veniceWriter.put(emptyKeyByteArr, serializedValue, writerSchemaId);
+          pubSubMessageHeaders.add(
+              new PubSubMessageHeader(
+                  PubSubMessageHeaders.EXECUTION_ID_KEY,
+                  ByteBuffer.allocate(Long.BYTES).putLong(message.executionId).array()));
+          Future<PubSubProduceResult> future = veniceWriter.put(
+              emptyKeyByteArr,
+              serializedValue,
+              writerSchemaId,
+              null,
+              DEFAULT_LEADER_METADATA_WRAPPER,
+              APP_DEFAULT_LOGICAL_TS,
+              null,
+              null,
+              null,
+              pubSubMessageHeaders);
           PubSubProduceResult produceResult = future.get();
 
           LOGGER.info("Sent message: {} to kafka, offset: {}", message, produceResult.getOffset());
@@ -952,6 +1000,15 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
     }
+
+    /**
+     * Enable storage quota by default for the new store creation.
+     * For store migration use cases, the destination store will be created with storage quota enabled, and
+     * if the source store has storage quota disabled, the storage quota will be disabled in the destination store
+     * by a following store update.
+     * Check {@link VeniceHelixAdmin#migrateStore} for more details.
+      */
+    updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStorageNodeReadQuotaEnabled(true));
   }
 
   private void sendStoreCreationAdminMessage(
@@ -2826,6 +2883,10 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.globalRtDivEnabled = params.isGlobalRtDivEnabled()
           .map(addToUpdatedConfigList(updatedConfigsList, GLOBAL_RT_DIV_ENABLED))
           .orElseGet((currStore::isGlobalRtDivEnabled));
+
+      setStore.enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed()
+          .map(addToUpdatedConfigList(updatedConfigsList, ENUM_SCHEMA_EVOLUTION_ALLOWED))
+          .orElseGet((currStore::isEnumSchemaEvolutionAllowed));
 
       // Check whether the passed param is valid or not
       if (latestSupersetSchemaId.isPresent()) {

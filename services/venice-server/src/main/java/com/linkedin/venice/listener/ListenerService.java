@@ -220,7 +220,7 @@ public class ListenerService extends AbstractVeniceService {
     return ThreadPoolFactory.createThreadPool(
         threadCount,
         threadNamePrefix,
-        serverConfig.getRegionName(),
+        serverConfig.getLogContext(),
         capacity,
         serverConfig.getBlockingQueueType());
   }

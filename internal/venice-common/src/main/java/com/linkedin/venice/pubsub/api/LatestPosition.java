@@ -3,6 +3,8 @@ package com.linkedin.venice.pubsub.api;
 import static com.linkedin.venice.pubsub.PubSubPositionTypeRegistry.LATEST_POSITION_RESERVED_TYPE_ID;
 
 import com.linkedin.venice.memory.ClassSizeEstimator;
+import com.linkedin.venice.pubsub.LatestPositionFactory;
+import com.linkedin.venice.pubsub.PubSubPositionFactory;
 import java.nio.ByteBuffer;
 
 
@@ -33,6 +35,12 @@ final class LatestPosition implements PubSubPosition {
   }
 
   @Override
+  public boolean isSymbolic() {
+    // LatestPosition is a symbolic position
+    return true;
+  }
+
+  @Override
   public int getHeapSize() {
     return SHALLOW_CLASS_OVERHEAD;
   }
@@ -43,6 +51,11 @@ final class LatestPosition implements PubSubPosition {
     wireFormat.setType(LATEST_POSITION_RESERVED_TYPE_ID);
     wireFormat.setRawBytes(ByteBuffer.wrap(new byte[0]));
     return wireFormat;
+  }
+
+  @Override
+  public Class<? extends PubSubPositionFactory> getFactoryClass() {
+    return LatestPositionFactory.class;
   }
 
   @Override
@@ -64,6 +77,6 @@ final class LatestPosition implements PubSubPosition {
 
   @Override
   public long getNumericOffset() {
-    throw new UnsupportedOperationException("Cannot get numeric offset for LATEST position");
+    return Long.MAX_VALUE;
   }
 }

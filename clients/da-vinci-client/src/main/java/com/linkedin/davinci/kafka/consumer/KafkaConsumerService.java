@@ -125,7 +125,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
 
     // Initialize consumers and consumerExecutor
     String consumerNamePrefix = "venice-shared-consumer-for-" + kafkaUrl + '-' + poolType.getStatSuffix();
-    threadFactory = new RandomAccessDaemonThreadFactory(consumerNamePrefix, serverConfig.getRegionName());
+    threadFactory = new RandomAccessDaemonThreadFactory(consumerNamePrefix, serverConfig.getLogContext());
     consumerExecutor = Executors.newFixedThreadPool(numOfConsumersPerKafkaCluster, threadFactory);
     this.consumerToConsumptionTask = new IndexedHashMap<>(numOfConsumersPerKafkaCluster);
     this.aggStats = statsOverride != null
@@ -513,10 +513,6 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
     aggStats.recordTotalMaxPartitionsPerConsumer(maxPartitionsPerConsumer);
     aggStats.recordTotalMinPartitionsPerConsumer(minPartitionsPerConsumer);
     aggStats.recordTotalSubscribedPartitionsNum(totalPartitions);
-  }
-
-  public long getOffsetLagBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    return getSomeOffsetFor(versionTopic, pubSubTopicPartition, PubSubConsumerAdapter::getOffsetLag);
   }
 
   public long getLatestOffsetBasedOnMetrics(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {

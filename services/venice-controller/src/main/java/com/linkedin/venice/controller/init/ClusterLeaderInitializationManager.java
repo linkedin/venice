@@ -63,7 +63,7 @@ public class ClusterLeaderInitializationManager implements ClusterLeaderInitiali
       ClusterLeaderInitializationRoutine routine) {
     initializedRoutinesForCluster.computeIfAbsent(routine, k -> {
       try {
-        LogContext.setStructuredLogContext(logContext);
+        LogContext.setLogContext(logContext);
         LOGGER.info(logMessage("Starting", routine, clusterToInit));
         routine.execute(clusterToInit);
         LOGGER.info(logMessage("Finished", routine, clusterToInit));

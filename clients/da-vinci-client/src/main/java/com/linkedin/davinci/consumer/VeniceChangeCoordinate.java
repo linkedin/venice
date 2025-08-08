@@ -6,6 +6,7 @@ import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.Externalizable;
@@ -16,10 +17,19 @@ import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
 import java.util.Base64;
 import java.util.Objects;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
+/**
+ * This class represents a change coordinate in Venice. It contains the topic name, partition number, and
+ * the pubsub position.
+ */
 public class VeniceChangeCoordinate implements Externalizable {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceChangeCoordinate.class);
   private static final long serialVersionUID = 1L;
+  private static final short VERSION_V2 = 2;
+  private static final short CURRENT_VERSION = VERSION_V2;
 
   private String topic;
   private Integer partition;
@@ -30,18 +40,96 @@ public class VeniceChangeCoordinate implements Externalizable {
     // Empty constructor is public for Externalizable
   }
 
+  /**
+   * Serializes the VeniceChangeCoordinate in a backward-compatible format.
+   *
+   * <p>The serialization format is structured as follows:</p>
+   * <ol>
+   *   <li>Core fields: topic, partition, pubSubPositionWireFormat</li>
+   *   <li>Version tag: a UTF string that identifies the version of the serialized data</li>
+   *   <li>Version-specific fields: additional fields added in newer versions</li>
+   * </ol>
+   *
+   * <p>This format ensures that older readers (pre-v2) can still deserialize the first three fields,
+   * while newer readers will detect and parse the version tag and the extra fields.</p>
+   *
+   * @param out the output stream to write to
+   * @throws IOException if writing fails
+   */
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
+    // Defensive checks to avoid corrupting serialized data
+    if (topic == null || partition == null || pubSubPosition == null) {
+      throw new IllegalStateException("Cannot serialize VeniceChangeCoordinate with null required fields");
+    }
+
+    // Write core fields — legacy readers will stop reading after this
     out.writeUTF(topic);
     out.writeInt(partition);
     out.writeObject(pubSubPosition.getPositionWireFormat());
+
+    // Begin versioned block
+    out.writeShort(CURRENT_VERSION); // Write version marker after core fields
+
+    // Version-specific fields for v2
+    out.writeUTF(pubSubPosition.getFactoryClassName());
   }
 
+  /**
+   * Deserializes VeniceChangeCoordinate while supporting both legacy (v1) and newer (v2+) formats.
+   *
+   * <p>The method first reads the core fields (topic, partition, position wire format),
+   * which are common across versions. It then attempts to read a version tag.</p>
+   *
+   * <ul>
+   *   <li>If the version tag is present and recognized, version-specific fields are read accordingly.</li>
+   *   <li>If the tag is missing or reading fails, the method falls back to v1 format.</li>
+   * </ul>
+   *
+   * <p>This approach is robust against partial data and ensures forward and backward compatibility.</p>
+   *
+   * @param in the input stream to read from
+   * @throws IOException if an I/O error occurs
+   * @throws VeniceException if the class of a serialized object cannot be found
+   */
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+    // Read shared core fields
     this.topic = in.readUTF();
     this.partition = in.readInt();
-    this.pubSubPosition = PubSubPosition.getPositionFromWireFormat((PubSubPositionWireFormat) in.readObject());
+    PubSubPositionWireFormat positionWf = (PubSubPositionWireFormat) in.readObject();
+
+    try {
+      // Attempt to read version field — this will only succeed for v2+ writers
+      int version = in.readShort();
+
+      switch (version) {
+        case VERSION_V2:
+          // v2: pubSubPosition factory class follows the version tag
+          String factoryClassName = in.readUTF();
+          this.pubSubPosition = PubSubPositionDeserializer.deserializePubSubPosition(positionWf, factoryClassName);
+          break;
+
+        default:
+          // Future version not supported
+          throw new VeniceException("Unsupported VeniceChangeCoordinate version: " + version);
+      }
+      LOGGER.info(
+          "Deserialized VeniceChangeCoordinate from {} format: topic-partition: {}, position: {}",
+          version,
+          Utils.getReplicaId(topic, partition),
+          pubSubPosition);
+    } catch (IOException e) {
+      LOGGER.warn("Falling back to v1 deserialization due to error: {}", e.toString());
+      // Legacy fallback path: version field was not present (v1 format)
+      this.pubSubPosition = (pubSubPositionDeserializer != null)
+          ? pubSubPositionDeserializer.toPosition(positionWf)
+          : PubSubPositionDeserializer.DEFAULT_DESERIALIZER.toPosition(positionWf);
+      LOGGER.info(
+          "Deserialized VeniceChangeCoordinate from v1 format: topic-partition: {}, position: {}",
+          Utils.getReplicaId(topic, partition),
+          pubSubPosition);
+    }
   }
 
   // Partition and store name can be publicly accessible
@@ -111,5 +199,29 @@ public class VeniceChangeCoordinate implements Externalizable {
     restoredCoordinate.setPubSubPositionDeserializer(deserializer);
     restoredCoordinate.readExternal(objectInputStream);
     return restoredCoordinate;
+  }
+
+  @Override
+  public String toString() {
+    return "VeniceChangeCoordinate{topic-partition=" + Utils.getReplicaId(topic, partition) + ", pubSubPosition="
+        + pubSubPosition + '}';
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+    if (obj == null || getClass() != obj.getClass()) {
+      return false;
+    }
+    VeniceChangeCoordinate that = (VeniceChangeCoordinate) obj;
+    return Objects.equals(topic, that.topic) && Objects.equals(partition, that.partition)
+        && Objects.equals(pubSubPosition, that.pubSubPosition);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(topic, partition, pubSubPosition);
   }
 }

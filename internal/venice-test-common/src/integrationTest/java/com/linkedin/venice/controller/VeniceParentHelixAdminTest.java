@@ -620,7 +620,7 @@ public class VeniceParentHelixAdminTest {
           isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
       try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl, sslFactory);
           ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl, sslFactory)) {
-        testBadDefaultSchemaValidation(parentControllerClient);
+        testBadDefaultSchemaValidation(parentControllerClient, childControllerClient);
         testBackupVersionRetentionUpdate(parentControllerClient, childControllerClient);
         testLatestSupersetSchemaIdUpdate(parentControllerClient, childControllerClient);
         testSuperSetSchemaGen(parentControllerClient);
@@ -633,6 +633,7 @@ public class VeniceParentHelixAdminTest {
         testWriteComputeSchemaAutoGenerationFailure(parentControllerClient);
         testSupersetSchemaGenerationWithUpdateDefaultValue(parentControllerClient);
         testUpdateConfigs(parentControllerClient, childControllerClient);
+        testEnumSchemaEvolution(parentControllerClient, childControllerClient);
       }
     }
   }
@@ -678,7 +679,9 @@ public class VeniceParentHelixAdminTest {
     });
   }
 
-  private void testBadDefaultSchemaValidation(ControllerClient parentControllerClient) {
+  private void testBadDefaultSchemaValidation(
+      ControllerClient parentControllerClient,
+      ControllerClient childControllerClient) {
     String storeName = Utils.getUniqueString("test_store_");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
@@ -700,6 +703,16 @@ public class VeniceParentHelixAdminTest {
     Assert.assertTrue(
         addSchemaResponse.getError()
             .contains("Invalid default for field KeyRecord.salary: 123 (a IntNode) not a \"float\""));
+
+    // Check whether storage quota is enabled or not
+    StoreInfo store = parentControllerClient.getStore(storeName).getStore();
+    assertTrue(
+        store.isStorageNodeReadQuotaEnabled(),
+        "Storage Node read quota should be enabled by default for new store");
+    store = childControllerClient.getStore(storeName).getStore();
+    assertTrue(
+        store.isStorageNodeReadQuotaEnabled(),
+        "Storage Node read quota should be enabled by default for new store");
   }
 
   private void testLatestSupersetSchemaIdUpdate(
@@ -939,6 +952,7 @@ public class VeniceParentHelixAdminTest {
     testUpdateGlobalRtDivEnabled(parentControllerClient, childControllerClient);
     testUpdateCompactionEnabled(parentControllerClient, childControllerClient);
     testUpdateCompactionThreshold(parentControllerClient, childControllerClient);
+    testUpdateEnumSchemaEvolution(parentControllerClient, childControllerClient);
   }
 
   /**
@@ -1073,6 +1087,14 @@ public class VeniceParentHelixAdminTest {
       Assert.assertEquals(response.getStore().getCompactionThreshold(), expectedCompactionThreshold);
     };
     testUpdateConfig(parentClient, childClient, paramsConsumer, responseConsumer);
+  }
+
+  private void testUpdateEnumSchemaEvolution(ControllerClient parentClient, ControllerClient childClient) {
+    testUpdateConfig(
+        parentClient,
+        childClient,
+        params -> params.setEnumSchemaEvolutionAllowed(true),
+        response -> Assert.assertTrue(response.getStore().isEnumSchemaEvolutionAllowed()));
   }
 
   private void testAddBadValueSchema(ControllerClient parentControllerClient) {
@@ -1272,6 +1294,49 @@ public class VeniceParentHelixAdminTest {
         () -> Assert
             .assertEquals(parentControllerClient.getStore(storeName).getStore().getLatestSuperSetValueSchemaId(), 3));
 
+  }
+
+  private void testEnumSchemaEvolution(
+      ControllerClient parentControllerClient,
+      ControllerClient childControllerClient) {
+    String storeName = Utils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String valueSchemaWithEnumDefaultDefined = "{\n" + "  \"name\": \"EnumTestRecord\",\n"
+        + "  \"namespace\": \"com.linkedin.avro.fastserde.generated.avro\",\n" + "  \"type\": \"record\",\n"
+        + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"testEnum\",\n" + "      \"type\": {\n"
+        + "        \"type\": \"enum\",\n" + "        \"name\": \"TestEnum\",\n"
+        + "        \"symbols\": [\"A\", \"B\", \"C\"],\n" + "        \"default\": \"A\"\n" + "      }\n" + "    }\n"
+        + "  ]\n" + "}";
+    String valueSchemaWithEnumEvolved = "{\n" + "  \"name\": \"EnumTestRecord\",\n"
+        + "  \"namespace\": \"com.linkedin.avro.fastserde.generated.avro\",\n" + "  \"type\": \"record\",\n"
+        + "  \"fields\": [\n" + "    {\n" + "      \"name\": \"testEnum\",\n" + "      \"type\": {\n"
+        + "        \"type\": \"enum\",\n" + "        \"name\": \"TestEnum\",\n"
+        + "        \"symbols\": [\"A\", \"B\", \"C\", \"D\", \"E\"],\n" + "        \"default\": \"A\"\n" + "      }\n"
+        + "    }\n" + "  ]\n" + "}";
+    // Create a store with value schema with enum default defined
+    parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaWithEnumDefaultDefined);
+    // Try to evolve the enum field in the value schema
+    StoreInfo store = parentControllerClient.getStore(storeName).getStore();
+    assertFalse(store.isEnumSchemaEvolutionAllowed());
+    SchemaResponse schemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaWithEnumEvolved);
+    assertTrue(schemaResponse.isError(), "Enum schema evolution should not be allowed by default.");
+    MultiSchemaResponse allValueSchemaResponse = childControllerClient.getAllValueSchema(storeName);
+    assertEquals(allValueSchemaResponse.getSchemas().length, 1);
+    // Enable enum schema evolution
+    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams();
+    updateStoreQueryParams.setEnumSchemaEvolutionAllowed(true);
+    parentControllerClient.updateStore(storeName, updateStoreQueryParams);
+    // Try to evolve the enum field in the value schema again
+    store = parentControllerClient.getStore(storeName).getStore();
+    assertTrue(store.isEnumSchemaEvolutionAllowed());
+    schemaResponse = parentControllerClient.addValueSchema(storeName, valueSchemaWithEnumEvolved);
+    assertFalse(schemaResponse.isError(), "Enum schema evolution should be allowed now.");
+    // Make sure the child region has the evolved schema too
+    store = childControllerClient.getStore(storeName).getStore();
+    assertTrue(store.isEnumSchemaEvolutionAllowed());
+    allValueSchemaResponse = childControllerClient.getAllValueSchema(storeName);
+    assertEquals(allValueSchemaResponse.getSchemas().length, 2);
   }
 
   private List<MultiSchemaResponse.Schema> getWriteComputeSchemaStrs(MultiSchemaResponse.Schema[] registeredSchemas) {

@@ -103,6 +103,7 @@ import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -1187,20 +1188,32 @@ public class DaVinciClientTest {
     while (port1 == port2) {
       port2 = TestUtils.getFreePort();
     }
-    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts,
-        baseDataPath,
-        storeName,
-        "100",
-        "10",
-        "true",
-        Integer.toString(port1),
-        Integer.toString(port2),
-        StorageClass.DISK.toString(),
-        "false",
-        "false",
-        "false");
+
+    // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
+    File configDir = Utils.getTempDataDirectory();
+    File configFile = new File(configDir, "dvc-config.properties");
+
+    Properties props = new Properties();
+    props.setProperty("zk.hosts", zkHosts);
+    props.setProperty("base.data.path", baseDataPath);
+    props.setProperty("store.name", storeName);
+    props.setProperty("sleep.seconds", "100");
+    props.setProperty("heartbeat.timeout.seconds", "10");
+    props.setProperty("ingestion.isolation", "true");
+    props.setProperty("blob.transfer.server.port", Integer.toString(port1));
+    props.setProperty("blob.transfer.client.port", Integer.toString(port2));
+    props.setProperty("storage.class", StorageClass.DISK.toString());
+    props.setProperty("record.transformer.enabled", "false");
+    props.setProperty("blob.transfer.manager.enabled", "false");
+    props.setProperty("batch.push.report.enabled", "false");
+
+    // Write properties to file
+    try (FileWriter writer = new FileWriter(configFile)) {
+      props.store(writer, null);
+    }
+
+    ForkedJavaProcess forkedDaVinciUserApp = ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
+
     // Sleep long enough so the forked Da Vinci app process can finish ingestion.
     Thread.sleep(60000);
     IsolatedIngestionUtils.executeShellCommand("kill " + forkedDaVinciUserApp.pid());

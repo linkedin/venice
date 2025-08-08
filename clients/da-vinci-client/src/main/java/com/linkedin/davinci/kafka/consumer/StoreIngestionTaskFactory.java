@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -8,7 +8,6 @@ import com.linkedin.davinci.ingestion.utils.IngestionTaskReusableObjects;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
-import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.davinci.storage.StorageMetadataService;
@@ -20,8 +19,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.DiskUsage;
@@ -57,7 +55,7 @@ public class StoreIngestionTaskFactory {
       int partitionId,
       boolean isIsolatedIngestion,
       Optional<ObjectCacheBackend> cacheBackend,
-      DaVinciRecordTransformerConfig recordTransformerConfig,
+      InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig,
       Lazy<ZKHelixAdmin> zkHelixAdmin) {
     if (version.isActiveActiveReplicationEnabled()) {
       return new ActiveActiveStoreIngestionTask(
@@ -71,7 +69,7 @@ public class StoreIngestionTaskFactory {
           partitionId,
           isIsolatedIngestion,
           cacheBackend,
-          recordTransformerConfig,
+          internalRecordTransformerConfig,
           zkHelixAdmin);
     }
     return new LeaderFollowerStoreIngestionTask(
@@ -85,7 +83,7 @@ public class StoreIngestionTaskFactory {
         partitionId,
         isIsolatedIngestion,
         cacheBackend,
-        recordTransformerConfig,
+        internalRecordTransformerConfig,
         zkHelixAdmin);
   }
 
@@ -111,8 +109,6 @@ public class StoreIngestionTaskFactory {
     private Queue<VeniceNotifier> leaderFollowerNotifiers;
     private ReadOnlySchemaRepository schemaRepo;
     private ReadOnlyStoreRepository metadataRepo;
-    private TopicManagerRepository topicManagerRepository;
-    private AggVersionedDaVinciRecordTransformerStats daVinciRecordTransformerStats;
     private AggHostLevelIngestionStats ingestionStats;
     private AggVersionedDIVStats versionedDIVStats;
     private AggVersionedIngestionStats versionedStorageIngestionStats;
@@ -125,7 +121,7 @@ public class StoreIngestionTaskFactory {
     private RemoteIngestionRepairService remoteIngestionRepairService;
     private MetaStoreWriter metaStoreWriter;
     private StorageEngineBackedCompressorFactory compressorFactory;
-    private PubSubTopicRepository pubSubTopicRepository;
+    private PubSubContext pubSubContext;
     private Runnable runnableForKillIngestionTasksForNonCurrentVersions;
     private ExecutorService aaWCWorkLoadProcessingThreadPool;
     private ExecutorService aaWCIngestionStorageLookupThreadPool;
@@ -220,21 +216,12 @@ public class StoreIngestionTaskFactory {
       return set(() -> this.metadataRepo = metadataRepo);
     }
 
-    public TopicManagerRepository getTopicManagerRepository() {
-      return topicManagerRepository;
+    public Builder setPubSubContext(PubSubContext pubSubContext) {
+      return set(() -> this.pubSubContext = pubSubContext);
     }
 
-    public Builder setTopicManagerRepository(TopicManagerRepository topicManagerRepository) {
-      return set(() -> this.topicManagerRepository = topicManagerRepository);
-    }
-
-    public AggVersionedDaVinciRecordTransformerStats getDaVinciRecordTransformerStats() {
-      return daVinciRecordTransformerStats;
-    }
-
-    public Builder setDaVinciRecordTransformerStats(
-        AggVersionedDaVinciRecordTransformerStats daVinciRecordTransformerStats) {
-      return set(() -> this.daVinciRecordTransformerStats = daVinciRecordTransformerStats);
+    public PubSubContext getPubSubContext() {
+      return pubSubContext;
     }
 
     public AggHostLevelIngestionStats getIngestionStats() {
@@ -316,14 +303,6 @@ public class StoreIngestionTaskFactory {
 
     public Builder setCompressorFactory(StorageEngineBackedCompressorFactory compressorFactory) {
       return set(() -> this.compressorFactory = compressorFactory);
-    }
-
-    public PubSubTopicRepository getPubSubTopicRepository() {
-      return pubSubTopicRepository;
-    }
-
-    public Builder setPubSubTopicRepository(PubSubTopicRepository pubSubTopicRepository) {
-      return set(() -> this.pubSubTopicRepository = pubSubTopicRepository);
     }
 
     public Runnable getRunnableForKillIngestionTasksForNonCurrentVersions() {

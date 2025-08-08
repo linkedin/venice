@@ -27,6 +27,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PO
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_CHECK_INTERVAL_IN_MS;
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
@@ -76,10 +77,12 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
@@ -96,6 +99,7 @@ public class DaVinciClientRecordTransformerTest {
   private static final int TEST_TIMEOUT = 120_000;
   private VeniceClusterWrapper cluster;
   private D2Client d2Client;
+  private static final String BASE_STORE_NAME = "test-store";
 
   @BeforeClass
   public void setUp() {
@@ -126,23 +130,32 @@ public class DaVinciClientRecordTransformerTest {
   }
 
   /*
-   * Lower priority ensures that this test runs first. This is needed because this test fails if it doesn't go first,
-   * even when this class is set to single threaded and we recreate the resources before every test.
-   * It fails because the DVRT metrics get emitted but they're not queryable from the metrics repository. The root
+   * Lower priority ensures that this test runs first. This is needed because this test fails if it doesn't go first.
+   * It fails even when this class is set to single threaded, and we recreate the resources before every test.
+   * It fails because the DVRT metrics get emitted, but they're not queryable from the metrics repository. The root
    * cause is unknown, but to mitigate for now we need this test to run first.
    */
   @Test(timeOut = TEST_TIMEOUT, priority = -1)
   public void testRecordTransformer() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
-
-    String storeName = Utils.getUniqueString("test-store");
+    String storeName1 = Utils.getUniqueString(BASE_STORE_NAME);
+    String storeName2 = Utils.getUniqueString(BASE_STORE_NAME);
+    String recordTransformerStoreName = Utils.getUniqueString(BASE_STORE_NAME);
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     String customValue = "a";
     int numKeys = 10;
 
-    setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
+    setUpStore(storeName1, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
+    setUpStore(storeName2, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
+    setUpStore(
+        recordTransformerStoreName,
+        pushStatusStoreEnabled,
+        chunkingEnabled,
+        compressionStrategy,
+        customValue,
+        numKeys);
 
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -159,22 +172,34 @@ public class DaVinciClientRecordTransformerTest {
               .build();
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
+      DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, new DaVinciConfig());
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
-          factory.getAndStartGenericAvroClient(storeName, clientConfig);
+          factory.getAndStartGenericAvroClient(recordTransformerStoreName, clientConfig);
+      DaVinciClient<Integer, Object> client2 = factory.getAndStartGenericAvroClient(storeName2, new DaVinciConfig());
+
+      CompletableFuture
+          .allOf(client1.subscribeAll(), clientWithRecordTransformer.subscribeAll(), client2.subscribeAll())
+          .join();
 
       // Test non-existent key access
-      clientWithRecordTransformer.subscribeAll().get();
       assertNull(clientWithRecordTransformer.get(numKeys + 1).get());
 
       // Test single-get access
       for (int k = 1; k <= numKeys; ++k) {
-        Object valueObj = clientWithRecordTransformer.get(k).get();
-        String expectedValue = "a" + k + "Transformed";
-        assertEquals(valueObj.toString(), expectedValue);
+        String value1 = client1.get(k).get().toString();
+        String value2 = client2.get(k).get().toString();
+        String transformedValue = clientWithRecordTransformer.get(k).get().toString();
+
+        String expectedValue = "a" + k;
+        String expectedTransformedValue = expectedValue + "Transformed";
+
+        assertEquals(value1, expectedValue);
+        assertEquals(value2, expectedValue);
+        assertEquals(transformedValue, expectedTransformedValue);
       }
 
       try (OnlineVeniceProducer producer = OnlineProducerFactory.createProducer(
-          ClientConfig.defaultGenericClientConfig(storeName)
+          ClientConfig.defaultGenericClientConfig(recordTransformerStoreName)
               .setD2Client(d2Client)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
           VeniceProperties.empty(),
@@ -182,7 +207,7 @@ public class DaVinciClientRecordTransformerTest {
         producer.asyncDelete(1).get();
 
         // Validate metrics
-        String metricPrefix = "." + storeName + "_total--";
+        String metricPrefix = "." + recordTransformerStoreName + "_total--";
         String metricPostfix = "_avg_ms.DaVinciRecordTransformerStatsGauge";
 
         String deleteLatency = metricPrefix + RECORD_TRANSFORMER_DELETE_LATENCY + metricPostfix;
@@ -219,7 +244,7 @@ public class DaVinciClientRecordTransformerTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testTypeChangeRecordTransformer() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
-    String storeName = Utils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString(BASE_STORE_NAME);
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
@@ -294,17 +319,27 @@ public class DaVinciClientRecordTransformerTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testRecordTransformerOnRecovery() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
-    String storeName = Utils.getUniqueString("test-store");
+    String storeName1 = Utils.getUniqueString(BASE_STORE_NAME);
+    String storeName2 = Utils.getUniqueString(BASE_STORE_NAME);
+    String recordTransformerStoreName = Utils.getUniqueString(BASE_STORE_NAME);
     boolean pushStatusStoreEnabled = true;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
     String customValue = "a";
     int numKeys = 10;
 
-    setUpStore(storeName, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
+    setUpStore(storeName1, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
+    setUpStore(storeName2, pushStatusStoreEnabled, chunkingEnabled, compressionStrategy, customValue, numKeys);
+    setUpStore(
+        recordTransformerStoreName,
+        pushStatusStoreEnabled,
+        chunkingEnabled,
+        compressionStrategy,
+        customValue,
+        numKeys);
 
     VeniceProperties backendConfig = buildRecordTransformerBackendConfig(pushStatusStoreEnabled);
     MetricsRepository metricsRepository = new MetricsRepository();
@@ -334,20 +369,32 @@ public class DaVinciClientRecordTransformerTest {
               .build();
       clientConfig.setRecordTransformerConfig(recordTransformerConfig);
 
+      DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, new DaVinciConfig());
       DaVinciClient<Integer, Object> clientWithRecordTransformer =
-          factory.getAndStartGenericAvroClient(storeName, clientConfig);
+          factory.getAndStartGenericAvroClient(recordTransformerStoreName, clientConfig);
+      DaVinciClient<Integer, Object> client2 =
+          factory.getAndStartGenericAvroClient(storeName2, new DaVinciConfig().setStorageClass(StorageClass.DISK));
+
+      CompletableFuture
+          .allOf(client1.subscribeAll(), clientWithRecordTransformer.subscribeAll(), client2.subscribeAll())
+          .join();
 
       // Test non-existent key access
-      clientWithRecordTransformer.subscribeAll().get();
       assertNull(clientWithRecordTransformer.get(numKeys + 1).get());
       assertNull(recordTransformer.get(numKeys + 1));
 
       // Test single-get access
       for (int k = 1; k <= numKeys; ++k) {
-        Object valueObj = clientWithRecordTransformer.get(k).get();
-        String expectedValue = "a" + k + "Transformed";
-        assertEquals(valueObj.toString(), expectedValue);
-        assertEquals(recordTransformer.get(k), expectedValue);
+        String value1 = client1.get(k).get().toString();
+        String value2 = client2.get(k).get().toString();
+        String transformedValue = clientWithRecordTransformer.get(k).get().toString();
+
+        String expectedValue = "a" + k;
+        String expectedTransformedValue = expectedValue + "Transformed";
+
+        assertEquals(value1, expectedValue);
+        assertEquals(value2, expectedValue);
+        assertEquals(transformedValue, expectedTransformedValue);
       }
 
       /*
@@ -358,9 +405,12 @@ public class DaVinciClientRecordTransformerTest {
       recordTransformer.clearInMemoryDB();
       assertTrue(recordTransformer.isInMemoryDBEmpty());
 
+      client1.close();
+      client2.close();
+
       // Submit online write to ensure writes are still possible after iterating over RocksDB
       try (OnlineVeniceProducer producer = OnlineProducerFactory.createProducer(
-          ClientConfig.defaultGenericClientConfig(storeName)
+          ClientConfig.defaultGenericClientConfig(recordTransformerStoreName)
               .setD2Client(d2Client)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME),
           VeniceProperties.empty(),
@@ -370,17 +420,33 @@ public class DaVinciClientRecordTransformerTest {
         producer.asyncPut(key, value).get();
       }
 
+      client1.start();
       clientWithRecordTransformer.start();
-      clientWithRecordTransformer.subscribeAll().get();
+      client2.start();
+
+      CompletableFuture
+          .allOf(client1.subscribeAll(), clientWithRecordTransformer.subscribeAll(), client2.subscribeAll())
+          .join();
 
       for (int k = 1; k <= numKeys + 1; ++k) {
-        Object valueObj = clientWithRecordTransformer.get(k).get();
-        String expectedValue = "a" + k + "Transformed";
-        assertEquals(valueObj.toString(), expectedValue);
-        assertEquals(recordTransformer.get(k), expectedValue);
+        String transformedValue = clientWithRecordTransformer.get(k).get().toString();
+        String expectedValue = "a" + k;
+        String expectedTransformedValue = expectedValue + "Transformed";
+
+        assertEquals(transformedValue, expectedTransformedValue);
+
+        if (k <= numKeys) {
+          String value1 = client1.get(k).get().toString();
+          String value2 = client2.get(k).get().toString();
+
+          assertEquals(value1, expectedValue);
+          assertEquals(value2, expectedValue);
+        }
       }
 
+      client1.unsubscribeAll();
       clientWithRecordTransformer.unsubscribeAll();
+      client2.unsubscribeAll();
     }
   }
 
@@ -395,7 +461,7 @@ public class DaVinciClientRecordTransformerTest {
     }
     String largeString = stringBuilder.toString();
 
-    String storeName = Utils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString(BASE_STORE_NAME);
     boolean pushStatusStoreEnabled = true;
     boolean chunkingEnabled = true;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
@@ -472,7 +538,7 @@ public class DaVinciClientRecordTransformerTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testRecordTransformerWithEmptyDaVinci() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
-    String storeName = Utils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString(BASE_STORE_NAME);
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
@@ -529,7 +595,7 @@ public class DaVinciClientRecordTransformerTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testSkipResultRecordTransformer() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
-    String storeName = Utils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString(BASE_STORE_NAME);
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
@@ -585,7 +651,7 @@ public class DaVinciClientRecordTransformerTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testUnchangedResultRecordTransformer() throws Exception {
     DaVinciConfig clientConfig = new DaVinciConfig();
-    String storeName = Utils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString(BASE_STORE_NAME);
     boolean pushStatusStoreEnabled = false;
     boolean chunkingEnabled = false;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
@@ -638,7 +704,7 @@ public class DaVinciClientRecordTransformerTest {
       port2 = TestUtils.getFreePort();
     }
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setBlobTransferEnabled(true);
-    String storeName = Utils.getUniqueString("test-store");
+    String storeName = Utils.getUniqueString(BASE_STORE_NAME);
     DaVinciConfig clientConfig = new DaVinciConfig();
 
     Schema myKeySchema = Schema.create(Schema.Type.INT);
@@ -663,20 +729,28 @@ public class DaVinciClientRecordTransformerTest {
     LOGGER.info("zkHosts is {}", zkHosts);
 
     // Start the first DaVinci Client using DaVinciUserApp for regular ingestion
-    ForkedJavaProcess.exec(
-        DaVinciUserApp.class,
-        zkHosts,
-        dvcPath1,
-        storeName,
-        "100",
-        "10",
-        "false",
-        Integer.toString(port1),
-        Integer.toString(port2),
-        StorageClass.DISK.toString(),
-        "true",
-        "true",
-        "false");
+    File configDir = Utils.getTempDataDirectory();
+    File configFile = new File(configDir, "dvc-config.properties");
+    Properties props = new Properties();
+    props.setProperty("zk.hosts", zkHosts);
+    props.setProperty("base.data.path", dvcPath1);
+    props.setProperty("store.name", storeName);
+    props.setProperty("sleep.seconds", "100");
+    props.setProperty("heartbeat.timeout.seconds", "10");
+    props.setProperty("ingestion.isolation", "false");
+    props.setProperty("blob.transfer.server.port", Integer.toString(port1));
+    props.setProperty("blob.transfer.client.port", Integer.toString(port2));
+    props.setProperty("storage.class", StorageClass.DISK.toString());
+    props.setProperty("record.transformer.enabled", "true");
+    props.setProperty("blob.transfer.manager.enabled", "true");
+    props.setProperty("batch.push.report.enabled", "false");
+
+    // Write properties to file
+    try (FileWriter writer = new FileWriter(configFile)) {
+      props.store(writer, null);
+    }
+
+    ForkedJavaProcess.exec(DaVinciUserApp.class, configFile.getAbsolutePath());
 
     // Wait for the first DaVinci Client to complete ingestion
     Thread.sleep(60000);
@@ -707,7 +781,8 @@ public class DaVinciClientRecordTransformerTest {
         .put(SSL_KEY_PASSWORD, LOCAL_PASSWORD)
         .put(SSL_KEYMANAGER_ALGORITHM, "SunX509")
         .put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509")
-        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+        .put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG")
+        .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false);
     VeniceProperties backendConfig2 = configBuilder.build();
 
     try (CachingDaVinciClientFactory factory2 = DaVinciTestContext.getCachingDaVinciClientFactory(
@@ -898,6 +973,7 @@ public class DaVinciClientRecordTransformerTest {
         .put(DATA_BASE_PATH, baseDataPath)
         .put(PERSISTENCE_TYPE, ROCKS_DB)
         .put(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 2 * 1024 * 1024L)
+        .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, false)
         .put(DA_VINCI_CURRENT_VERSION_BOOTSTRAPPING_SPEEDUP_ENABLED, true);
 
     if (pushStatusStoreEnabled) {

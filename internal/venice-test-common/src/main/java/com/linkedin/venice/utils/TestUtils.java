@@ -78,8 +78,10 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pubsub.manager.TopicManagerRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -670,7 +672,7 @@ public class TestUtils {
         cluster,
         new ZkClient(zkAddress),
         new HelixAdapterSerializer(),
-        cluster,
+        LogContext.newBuilder().setComponentName(TestUtils.class.getName()).build(),
         3);
     MockTestStateModelFactory stateModelFactory = new MockTestStateModelFactory(offlinePushStatusAccessor);
     return getParticipant(cluster, nodeId, zkAddress, httpPort, stateModelFactory, stateModelDef);
@@ -894,7 +896,10 @@ public class TestUtils {
         .setLeaderFollowerNotifiersQueue(new ArrayDeque<>())
         .setSchemaRepository(mock(ReadOnlySchemaRepository.class))
         .setMetadataRepository(mockReadOnlyStoreRepository)
-        .setTopicManagerRepository(mock(TopicManagerRepository.class))
+        .setPubSubContext(
+            new PubSubContext.Builder().setPubSubTopicRepository(new PubSubTopicRepository())
+                .setTopicManagerRepository(mock(TopicManagerRepository.class))
+                .build())
         .setHostLevelIngestionStats(mock(AggHostLevelIngestionStats.class))
         .setVersionedDIVStats(mock(AggVersionedDIVStats.class))
         .setVersionedIngestionStats(mock(AggVersionedIngestionStats.class))

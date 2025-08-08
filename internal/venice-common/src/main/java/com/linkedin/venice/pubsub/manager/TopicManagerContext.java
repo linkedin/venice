@@ -11,6 +11,7 @@ import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 
@@ -32,6 +33,7 @@ public class TopicManagerContext {
   private final int topicMetadataFetcherConsumerPoolSize;
   private final int topicMetadataFetcherThreadPoolSize;
   private final VeniceComponent veniceComponent;
+  private final LogContext logContext;
 
   private TopicManagerContext(Builder builder) {
     this.pubSubOperationTimeoutMs = builder.pubSubOperationTimeoutMs;
@@ -47,6 +49,7 @@ public class TopicManagerContext {
     this.topicMetadataFetcherConsumerPoolSize = builder.topicMetadataFetcherConsumerPoolSize;
     this.topicMetadataFetcherThreadPoolSize = builder.topicMetadataFetcherThreadPoolSize;
     this.veniceComponent = builder.veniceComponent;
+    this.logContext = builder.logContext;
   }
 
   public long getPubSubOperationTimeoutMs() {
@@ -101,6 +104,10 @@ public class TopicManagerContext {
     return veniceComponent;
   }
 
+  public LogContext getLogContext() {
+    return logContext;
+  }
+
   public interface PubSubPropertiesSupplier {
     VeniceProperties get(String pubSubBootstrapServers);
   }
@@ -128,6 +135,7 @@ public class TopicManagerContext {
     private MetricsRepository metricsRepository;
     private PubSubPropertiesSupplier pubSubPropertiesSupplier;
     private VeniceComponent veniceComponent = VeniceComponent.UNSPECIFIED; // Default component
+    private LogContext logContext;
     private long pubSubOperationTimeoutMs = PUBSUB_OPERATION_TIMEOUT_MS_DEFAULT_VALUE;
     private long topicDeletionStatusPollIntervalMs = PUBSUB_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS_DEFAULT_VALUE;
     private long topicMinLogCompactionLagMs = DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
@@ -199,6 +207,11 @@ public class TopicManagerContext {
 
     public Builder setVeniceComponent(VeniceComponent veniceComponent) {
       this.veniceComponent = veniceComponent;
+      return this;
+    }
+
+    public Builder setLogContext(LogContext logContext) {
+      this.logContext = logContext;
       return this;
     }
 

@@ -173,6 +173,10 @@ publishing {
   }
 }
 
+afterEvaluate {
+  mavenPublishing.ensureCatchAllModuleGetsPublishedLast(publishing.repositories)
+}
+
 def parser = new XmlSlurper()
 parser.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)
 parser.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
@@ -322,6 +326,8 @@ subprojects {
       def versionOverrides = [
 //        project(':internal:venice-common').file('src/main/resources/avro/StoreVersionState/v5', PathValidation.DIRECTORY)
           project(':internal:venice-common').file('src/main/resources/avro/PartitionState/v17', PathValidation.DIRECTORY),
+          project(':services:venice-controller').file('src/main/resources/avro/AdminOperation/v88', PathValidation.DIRECTORY),
+          project(':internal:venice-common').file('src/main/resources/avro/StoreMetaValue/v33', PathValidation.DIRECTORY)
       ]
 
       def schemaDirs = [sourceDir]
@@ -596,7 +602,7 @@ subprojects {
 
   // Only publish artifacts for projects that are at the leaf level
   if (isLeafSubModule) {
-    publishing.configureArtifactPublishing(project, testJar)
+    mavenPublishing.configureArtifactPublishing(project, testJar)
   }
 }
 
@@ -765,6 +771,9 @@ ext.createDiffFile = { ->
       // venice-common
       ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
       ':!internal/venice-common/src/main/java/com/linkedin/venice/acl/handler/StoreAclHandler.java',
+
+      // venice-client-common
+      ':!internal/venice-client-common/src/main/java/com/linkedin/venice/schema/avro/SchemaCompatibility19.java',
 
       // venice-test-common
       ':!internal/venice-test-common/*',
