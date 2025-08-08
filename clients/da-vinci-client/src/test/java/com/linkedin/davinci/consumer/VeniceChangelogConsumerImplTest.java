@@ -959,6 +959,48 @@ public class VeniceChangelogConsumerImplTest {
     verify(mockPubSubConsumer).poll(anyLong());
   }
 
+  @Test
+  public void testChangeLogConsumerSequenceId() throws ExecutionException, InterruptedException {
+    doReturn(new HashSet<>()).when(mockPubSubConsumer).getAssignment();
+    PubSubTopic newVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2));
+    PubSubTopic oldVersionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1));
+    PubSubTopic oldChangeCaptureTopic =
+        pubSubTopicRepository.getTopic(oldVersionTopic.getName() + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+    int partition = 0;
+    int partition2 = 1;
+    long sequenceIdStartingValue = 1000L;
+    prepareChangeCaptureRecordsToBePolled(
+        0L,
+        10L,
+        mockPubSubConsumer,
+        oldChangeCaptureTopic,
+        partition,
+        oldVersionTopic,
+        newVersionTopic,
+        false,
+        false);
+    ChangelogClientConfig changelogClientConfig =
+        getChangelogClientConfig().setViewName("changeCaptureView").setIsBeforeImageView(true);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
+        new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockPubSubConsumer, sequenceIdStartingValue);
+    veniceChangelogConsumer.setStoreRepository(mockRepository);
+    Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
+    veniceChangelogConsumer.subscribe(new HashSet<>(Collections.singletonList(partition))).get();
+    veniceChangelogConsumer.seekToBeginningOfPush().get();
+    List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
+        (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer
+            .poll(pollTimeoutMs);
+    Assert.assertEquals(pubSubMessages.size(), 10);
+    long expectedSequenceId = sequenceIdStartingValue + 1;
+    for (int i = 0; i < 10; i++) {
+      PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i);
+      ChangeEvent<Utf8> changeEvent = pubSubMessage.getValue();
+      Assert.assertEquals(changeEvent.getCurrentValue().toString(), "newValue" + i);
+      Assert.assertEquals(changeEvent.getPreviousValue().toString(), "oldValue" + i);
+      Assert.assertEquals(pubSubMessage.getOffset().getConsumerSequenceId(), expectedSequenceId++);
+    }
+  }
+
   private void prepareChangeCaptureRecordsToBePolled(
       long startIdx,
       long endIdx,
