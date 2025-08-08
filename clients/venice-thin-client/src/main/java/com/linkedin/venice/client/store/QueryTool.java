@@ -38,39 +38,6 @@ public class QueryTool {
   private static final int SSL_CONFIG_FILE_PATH = 4;
   private static final int REQUIRED_ARGS_COUNT = 5;
 
-  // Facet counting arguments
-  private static final int FACET_COUNTING_MODE_ARG_INDEX = 5;
-  private static final int COUNT_BY_VALUE_FIELDS_ARG_INDEX = 6;
-  private static final int TOP_K_ARG_INDEX = 7;
-  private static final int COUNT_BY_BUCKET_FIELDS_ARG_INDEX = 6;
-  private static final int BUCKET_DEFINITIONS_ARG_INDEX = 7;
-
-  /**
-   * Enum for facet counting modes
-   */
-  public enum FacetCountingMode {
-    SINGLE("single"), COUNT_BY_VALUE("countByValue"), COUNT_BY_BUCKET("countByBucket");
-
-    private final String value;
-
-    FacetCountingMode(String value) {
-      this.value = value;
-    }
-
-    public String getValue() {
-      return value;
-    }
-
-    public static FacetCountingMode fromString(String text) {
-      for (FacetCountingMode mode: FacetCountingMode.values()) {
-        if (mode.value.equalsIgnoreCase(text)) {
-          return mode;
-        }
-      }
-      throw new IllegalArgumentException("Unknown facet counting mode: " + text);
-    }
-  }
-
   public static void main(String[] args) {
     int exitCode = 0;
     try {
@@ -87,40 +54,19 @@ public class QueryTool {
    */
   public static int run(String[] args) throws Exception {
     if (args.length < 1) {
-      printUsage();
       return 1;
     }
 
     String firstArg = args[0];
 
     if ("--countByValue".equals(firstArg)) {
-      return handleCountByValue(Arrays.copyOfRange(args, 1, args.length));
+      return handleCountByValueFromQueryScript(Arrays.copyOfRange(args, 1, args.length));
     } else if ("--countByBucket".equals(firstArg)) {
-      return handleCountByBucket(Arrays.copyOfRange(args, 1, args.length));
+      return handleCountByBucketFromQueryScript(Arrays.copyOfRange(args, 1, args.length));
     } else {
       // Original single key query functionality - unchanged
       return handleSingleKeyQuery(args);
     }
-  }
-
-  private static void printUsage() {
-    System.out.println("Venice QueryTool Usage:");
-    System.out.println();
-    System.out.println("Single key query (original functionality):");
-    System.out.println(
-        "  java -jar venice-thin-client.jar <store> <key_string> <url> <is_vson_store> <ssl_config_file_path>");
-    System.out.println();
-    System.out.println("Count by value aggregation:");
-    System.out.println(
-        "  java -jar venice-thin-client.jar --countByValue <store> <key_string> <url> <is_vson_store> <ssl_config_file_path> <fields> [<topK>]");
-    System.out.println(
-        "  Example: ./query.sh --countByValue myStore \"key1,key2\" https://... false ssl.config \"age,department\" 10");
-    System.out.println();
-    System.out.println("Count by bucket aggregation:");
-    System.out.println(
-        "  java -jar venice-thin-client.jar --countByBucket <store> <key_string> <url> <is_vson_store> <ssl_config_file_path> <field> <bucket_definitions>");
-    System.out.println(
-        "  Example: ./query.sh --countByBucket myStore \"key1,key2\" https://... false ssl.config \"age\" \"young:lt:30,senior:gte:30\"");
   }
 
   /**
@@ -128,8 +74,6 @@ public class QueryTool {
    */
   private static int handleSingleKeyQuery(String[] args) throws Exception {
     if (args.length < REQUIRED_ARGS_COUNT) {
-      System.out.println(
-          "Usage: java -jar venice-thin-client.jar <store> <key_string> <url> <is_vson_store> <ssl_config_file_path>");
       return 1;
     }
 
@@ -147,22 +91,28 @@ public class QueryTool {
   }
 
   /**
-   * Handle countByValue aggregation
+   * Handle countByValue aggregation called from query.sh script
+   * Args format: [store, key, resolved_url, false, ssl.config, fields, topK]
    */
-  private static int handleCountByValue(String[] args) throws Exception {
-    if (args.length < 6) {
-      System.out.println(
-          "Usage: java -jar venice-thin-client.jar --countByValue <store> <key_string> <url> <is_vson_store> <ssl_config_file_path> <fields> [<topK>]");
+  private static int handleCountByValueFromQueryScript(String[] args) throws Exception {
+    if (args.length < 5) {
       return 1;
     }
 
+    // Parse args provided by query.sh: store, key, resolved_url, false, ssl.config, [fields], [topK]
     String store = removeQuotes(args[0]);
     String keyString = removeQuotes(args[1]);
     String url = removeQuotes(args[2]);
     boolean isVsonStore = Boolean.parseBoolean(removeQuotes(args[3]));
     String sslConfigFilePath = removeQuotes(args[4]);
-    String countByValueFields = removeQuotes(args[5]);
+
+    // Additional parameters for countByValue
+    String countByValueFields = args.length > 5 ? removeQuotes(args[5]) : "";
     int topK = args.length > 6 ? Integer.parseInt(removeQuotes(args[6])) : 10;
+
+    if (countByValueFields.isEmpty()) {
+      return 1;
+    }
 
     Optional<String> sslConfigFilePathArgs =
         StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
@@ -174,15 +124,15 @@ public class QueryTool {
   }
 
   /**
-   * Handle countByBucket aggregation
+   * Handle countByBucket aggregation called from query.sh script
+   * Args format: [store, key, resolved_url, false, ssl.config, field, bucket_definitions]
    */
-  private static int handleCountByBucket(String[] args) throws Exception {
+  private static int handleCountByBucketFromQueryScript(String[] args) throws Exception {
     if (args.length < 7) {
-      System.out.println(
-          "Usage: java -jar venice-thin-client.jar --countByBucket <store> <key_string> <url> <is_vson_store> <ssl_config_file_path> <field> <bucket_definitions>");
       return 1;
     }
 
+    // Parse args provided by query.sh: store, key, resolved_url, false, ssl.config, field, bucket_definitions
     String store = removeQuotes(args[0]);
     String keyString = removeQuotes(args[1]);
     String url = removeQuotes(args[2]);
