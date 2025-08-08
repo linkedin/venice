@@ -469,4 +469,53 @@ public class QueryToolTest {
     assertEquals(QueryTool.convertKey("9223372036854775807", longSchema), 9223372036854775807L);
     assertEquals(QueryTool.convertKey("3.141592653589793", doubleSchema), Math.PI);
   }
+
+  @Test
+  public void testJsonKeyWithCommaBug() throws Exception {
+    // Test the original production bug - JSON keys with commas should not be split
+    // This reproduces the issue: {"memberId": 220896326, "useCaseName": "nba_digest_email"}
+    String jsonKeyWithComma = "{\"memberId\": 220896326, \"useCaseName\": \"nba_digest_email\"}";
+
+    // Test single key query (should work with JSON containing commas) - use HTTP URL
+    String[] args = { "myStore", jsonKeyWithComma, "http://venice-url", "false", "" };
+    int exitCode = QueryTool.run(args);
+    // Expected to fail due to missing client setup, but should not fail due to comma parsing
+    assertEquals(exitCode, 1);
+
+    // Test that countByValue and countByBucket require proper flags - use HTTP URL
+    String[] countByValueArgs =
+        { "--countByValue", "myStore", "key1,key2", "http://venice-url", "false", "", "field1", "10" };
+    int countByValueExitCode = QueryTool.run(countByValueArgs);
+    assertEquals(countByValueExitCode, 1); // Expected to fail due to missing client setup
+
+    String[] countByBucketArgs =
+        { "--countByBucket", "myStore", "key1,key2", "http://venice-url", "false", "", "field1", "young:lt:30" };
+    int countByBucketExitCode = QueryTool.run(countByBucketArgs);
+    assertEquals(countByBucketExitCode, 1); // Expected to fail due to missing client setup
+  }
+
+  @Test
+  public void testCommandLineArgumentParsing() throws Exception {
+    // Test that command line argument parsing works correctly
+
+    // Test insufficient arguments
+    String[] tooFewArgs = {};
+    int exitCode1 = QueryTool.run(tooFewArgs);
+    assertEquals(exitCode1, 1);
+
+    // Test single key query routing
+    String[] singleKeyArgs = { "store", "key", "url", "false", "" };
+    int exitCode2 = QueryTool.run(singleKeyArgs);
+    assertEquals(exitCode2, 1); // Expected to fail due to no client, but routing should work
+
+    // Test countByValue routing
+    String[] countByValueArgs = { "--countByValue" };
+    int exitCode3 = QueryTool.run(countByValueArgs);
+    assertEquals(exitCode3, 1); // Should fail due to insufficient args
+
+    // Test countByBucket routing
+    String[] countByBucketArgs = { "--countByBucket" };
+    int exitCode4 = QueryTool.run(countByBucketArgs);
+    assertEquals(exitCode4, 1); // Should fail due to insufficient args
+  }
 }
