@@ -620,7 +620,7 @@ public class VeniceParentHelixAdminTest {
           isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
       try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl, sslFactory);
           ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl, sslFactory)) {
-        testBadDefaultSchemaValidation(parentControllerClient);
+        testBadDefaultSchemaValidation(parentControllerClient, childControllerClient);
         testBackupVersionRetentionUpdate(parentControllerClient, childControllerClient);
         testLatestSupersetSchemaIdUpdate(parentControllerClient, childControllerClient);
         testSuperSetSchemaGen(parentControllerClient);
@@ -679,7 +679,9 @@ public class VeniceParentHelixAdminTest {
     });
   }
 
-  private void testBadDefaultSchemaValidation(ControllerClient parentControllerClient) {
+  private void testBadDefaultSchemaValidation(
+      ControllerClient parentControllerClient,
+      ControllerClient childControllerClient) {
     String storeName = Utils.getUniqueString("test_store_");
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
@@ -701,6 +703,16 @@ public class VeniceParentHelixAdminTest {
     Assert.assertTrue(
         addSchemaResponse.getError()
             .contains("Invalid default for field KeyRecord.salary: 123 (a IntNode) not a \"float\""));
+
+    // Check whether storage quota is enabled or not
+    StoreInfo store = parentControllerClient.getStore(storeName).getStore();
+    assertTrue(
+        store.isStorageNodeReadQuotaEnabled(),
+        "Storage Node read quota should be enabled by default for new store");
+    store = childControllerClient.getStore(storeName).getStore();
+    assertTrue(
+        store.isStorageNodeReadQuotaEnabled(),
+        "Storage Node read quota should be enabled by default for new store");
   }
 
   private void testLatestSupersetSchemaIdUpdate(
