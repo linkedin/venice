@@ -253,7 +253,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
   PubSubPosition getPositionByTimestamp(PubSubTopicPartition pubSubTopicPartition, long timestamp);
 
   /**
-   * Retrieves the beginning offset for the specified PubSub topic-partition.
+   * Retrieves the beginning position for the specified PubSub topic-partition.
    *
    * @param pubSubTopicPartition The PubSub topic-partition for which to fetch the beginning offset.
    * @param timeout The maximum duration to wait for the operation to complete.
@@ -262,8 +262,6 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the beginning offset.
    * @throws PubSubClientException If there is an error while attempting to fetch the beginning offset.
    */
-  Long beginningOffset(PubSubTopicPartition pubSubTopicPartition, Duration timeout);
-
   PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout);
 
   default PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition) {

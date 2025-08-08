@@ -506,16 +506,6 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public Long beginningOffset(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
-    ApacheKafkaOffsetPosition beginningPosition =
-        (ApacheKafkaOffsetPosition) beginningPosition(pubSubTopicPartition, timeout);
-    if (beginningPosition == null) {
-      return 0L;
-    }
-    return beginningPosition.getInternalOffset();
-  }
-
-  @Override
   public PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
     return beginningPositions(Collections.singleton(pubSubTopicPartition), timeout).get(pubSubTopicPartition);
   }

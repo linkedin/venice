@@ -236,11 +236,6 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
   }
 
   @Override
-  public synchronized Long beginningOffset(PubSubTopicPartition partition, Duration timeout) {
-    return 0L;
-  }
-
-  @Override
   public synchronized PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
     return InMemoryPubSubPosition.of(0);
   }

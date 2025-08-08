@@ -38,6 +38,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -163,18 +164,15 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
           throw new VeniceException("Failed to decode local change capture coordinate checkpoint with exception: ", e);
         }
 
-        Long earliestOffset = null;
+        PubSubPosition earliestOffset;
         PubSubTopicPartition topicPartition = getTopicPartition(partition);
         synchronized (pubSubConsumer) {
           earliestOffset =
-              pubSubConsumer.beginningOffset(topicPartition, getPubsubOffsetApiTimeoutDurationDefaultValue());
+              pubSubConsumer.beginningPosition(topicPartition, getPubsubOffsetApiTimeoutDurationDefaultValue());
         }
         VeniceChangeCoordinate earliestCheckpoint = earliestOffset == null
             ? null
-            : new VeniceChangeCoordinate(
-                topicPartition.getPubSubTopic().getName(),
-                new ApacheKafkaOffsetPosition(earliestOffset),
-                partition);
+            : new VeniceChangeCoordinate(topicPartition.getPubSubTopic().getName(), earliestOffset, partition);
 
         // If earliest offset is larger than the local, we should just bootstrap from beginning.
         if (earliestCheckpoint != null && earliestCheckpoint.comparePosition(localCheckpoint) > -1) {
