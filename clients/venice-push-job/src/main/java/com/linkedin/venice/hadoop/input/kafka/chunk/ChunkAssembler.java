@@ -3,6 +3,10 @@ package com.linkedin.venice.hadoop.input.kafka.chunk;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
+import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -54,7 +58,7 @@ public class ChunkAssembler {
     ByteBuffer latestChunkedValueManifestRMDPayload = null;
     ChunkedValueManifest latestChunkedRmdManifest = null;
 
-    long lastOffset = Long.MAX_VALUE;
+    PubSubPosition lastOffset = PubSubSymbolicPosition.LATEST;
 
     byte[][] valueChunks = new byte[0][0];
     ByteBuffer[] valueChunkKeySuffixes = new ByteBuffer[0];
@@ -67,17 +71,22 @@ public class ChunkAssembler {
     int rmdChunksFound = 0;
     int totalRmdByteCount = 0;
 
+    PubSubPosition reusedMapperValuePosition;
     while (valueIterator.hasNext()) { // Start from the value with the highest offset
       byte[] currentValue = valueIterator.next();
       reusedMapperValue = KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(
           reusedMapperValue,
           OPTIMIZED_BINARY_DECODER_FACTORY.createOptimizedBinaryDecoder(currentValue, 0, currentValue.length));
-      if (reusedMapperValue.offset > lastOffset) {
+
+      reusedMapperValuePosition = PubSubPositionDeserializer.deserializePubSubPosition(
+          reusedMapperValue.getPositionWireBytes(),
+          reusedMapperValue.getPositionFactoryClass().toString());
+      if (PubSubUtil.comparePubSubPositions(reusedMapperValuePosition, lastOffset) > 0) {
         throw new VeniceException(
             "Unexpected, the input is supposed to be in descending order by offset, previous offset: " + lastOffset
-                + ", current offset: " + reusedMapperValue.offset);
+                + ", current offset: " + reusedMapperValuePosition);
       }
-      lastOffset = reusedMapperValue.offset;
+      lastOffset = reusedMapperValuePosition;
 
       if (reusedMapperValue.valueType.equals(MapperValueType.DELETE)) {
         if (latestChunkedValueManifest != null) {

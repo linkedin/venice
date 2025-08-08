@@ -1,7 +1,9 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -17,9 +19,10 @@ import org.apache.hadoop.mapred.InputSplit;
  * and end offsets.
  */
 public class KafkaInputSplit implements InputSplit {
-  private long startingOffset;
-  private long endingOffset;
   private PubSubTopicPartition topicPartition;
+  private PubSubPosition startingOffset;
+  private PubSubPosition endingOffset;
+  private long numberOfRecords = 0L;
   private final PubSubTopicRepository topicRepository;
 
   /**
@@ -40,18 +43,20 @@ public class KafkaInputSplit implements InputSplit {
   public KafkaInputSplit(
       PubSubTopicRepository topicRepository,
       PubSubTopicPartition topicPartition,
-      long startingOffset,
-      long endingOffset) {
+      PubSubPosition startingOffset,
+      PubSubPosition endingOffset,
+      long numberOfRecords) {
     this.topicRepository = topicRepository;
     this.startingOffset = startingOffset;
     this.endingOffset = endingOffset;
     this.topicPartition = topicPartition;
+    this.numberOfRecords = numberOfRecords;
   }
 
   @Override
   public long getLength() throws IOException {
     // This is just used as a hint for size of bytes so it is already inaccurate.
-    return startingOffset > 0 ? endingOffset - startingOffset : endingOffset;
+    return numberOfRecords;
   }
 
   @Override
@@ -74,7 +79,7 @@ public class KafkaInputSplit implements InputSplit {
    *
    * @return the starting offset for the split
    */
-  public long getStartingOffset() {
+  public PubSubPosition getStartingOffset() {
     return startingOffset;
   }
 
@@ -83,26 +88,60 @@ public class KafkaInputSplit implements InputSplit {
    *
    * @return the ending offset for the split
    */
-  public long getEndingOffset() {
+  public PubSubPosition getEndingOffset() {
     return endingOffset;
+  }
+
+  /**
+   * Returns the number of records in this split.
+   *
+   * @return the number of records in this split
+   */
+  public long getNumberOfRecords() {
+    return numberOfRecords;
   }
 
   @Override
   public void write(DataOutput dataOutput) throws IOException {
+    // Write topic, partition, and number of records
     dataOutput.writeUTF(topicPartition.getTopicName());
     dataOutput.writeInt(topicPartition.getPartitionNumber());
-    dataOutput.writeLong(startingOffset);
-    dataOutput.writeLong(endingOffset);
+    dataOutput.writeLong(numberOfRecords);
+
+    // Write startingOffset
+    byte[] startBytes = startingOffset.toWireFormatBytes();
+    dataOutput.writeInt(startBytes.length);
+    dataOutput.write(startBytes);
+    dataOutput.writeUTF(startingOffset.getFactoryClassName());
+
+    // Write endingOffset
+    byte[] endBytes = endingOffset.toWireFormatBytes();
+    dataOutput.writeInt(endBytes.length);
+    dataOutput.write(endBytes);
+    dataOutput.writeUTF(endingOffset.getFactoryClassName());
   }
 
   @Override
   public void readFields(DataInput dataInput) throws IOException {
+    // Read topic, partition, and number of records
     String topic = dataInput.readUTF();
     int partition = dataInput.readInt();
-    startingOffset = dataInput.readLong();
-    endingOffset = dataInput.readLong();
-
     topicPartition = new PubSubTopicPartitionImpl(topicRepository.getTopic(topic), partition);
+    numberOfRecords = dataInput.readLong();
+
+    // Read and reconstruct startingOffset
+    int startLength = dataInput.readInt();
+    byte[] startBytes = new byte[startLength];
+    dataInput.readFully(startBytes);
+    String startFactoryClass = dataInput.readUTF();
+    startingOffset = PubSubPositionDeserializer.deserializePubSubPosition(startBytes, startFactoryClass);
+
+    // Read and reconstruct endingOffset
+    int endLength = dataInput.readInt();
+    byte[] endBytes = new byte[endLength];
+    dataInput.readFully(endBytes);
+    String endFactoryClass = dataInput.readUTF();
+    endingOffset = PubSubPositionDeserializer.deserializePubSubPosition(endBytes, endFactoryClass);
   }
 
   @Override

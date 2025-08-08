@@ -10,9 +10,16 @@
       "type": "bytes"
     },
     {
-      "name": "offset",
-      "doc": "The offset of the record in the original Kafka topic partition",
-      "type": "long"
+      "name": "positionWireBytes",
+      "doc": "Serialized wire format bytes of the position within the original PubSub topic partition.",
+      "type": "bytes",
+      "default": ""
+    },
+    {
+      "name": "positionFactoryClass",
+      "doc": "Fully-qualified class name of the PubSubPositionFactory used to create or deserialize the positionWireBytes.",
+      "type": ["null", "string"],
+      "default": null
     }
   ]
 }

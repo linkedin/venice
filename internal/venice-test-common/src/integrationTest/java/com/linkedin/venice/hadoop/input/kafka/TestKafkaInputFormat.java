@@ -10,6 +10,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -93,6 +94,7 @@ public class TestKafkaInputFormat {
     Assert.assertEquals(splits.length, expectedSplit.size());
     Arrays.stream(splits).forEach(split -> Assert.assertTrue(split instanceof KafkaInputSplit));
     KafkaInputSplit[] kafkaInputSplits = (KafkaInputSplit[]) splits;
+    // todo(sushantmane): Update this test
     Arrays.sort(kafkaInputSplits, new Comparator<KafkaInputSplit>() {
       @Override
       public int compare(KafkaInputSplit o1, KafkaInputSplit o2) {
@@ -101,7 +103,7 @@ public class TestKafkaInputFormat {
         } else if (o1.getTopicPartition().getPartitionNumber() < o2.getTopicPartition().getPartitionNumber()) {
           return -1;
         } else {
-          return (int) (o1.getStartingOffset() - o2.getStartingOffset());
+          return (int) (o1.getStartingOffset().getNumericOffset() - o2.getStartingOffset().getNumericOffset());
         }
       }
     });
@@ -116,8 +118,8 @@ public class TestKafkaInputFormat {
       long expectedStartOffset = expected[1];
       long expectedEndOffset = expected[2];
       Assert.assertEquals(split.getTopicPartition().getPartitionNumber(), expectedPartition);
-      Assert.assertEquals(split.getStartingOffset(), expectedStartOffset);
-      Assert.assertEquals(split.getEndingOffset(), expectedEndOffset);
+      Assert.assertEquals(split.getStartingOffset().getNumericOffset(), expectedStartOffset);
+      Assert.assertEquals(split.getEndingOffset().getNumericOffset(), expectedEndOffset);
     }
   }
 
@@ -128,13 +130,13 @@ public class TestKafkaInputFormat {
     JobConf conf = new JobConf();
     conf.set(KAFKA_INPUT_BROKER_URL, pubSubBrokerWrapper.getAddress());
     conf.set(KAFKA_INPUT_TOPIC, topic.getName());
-    Map<PubSubTopicPartition, Long> latestOffsets = kafkaInputFormat.getLatestOffsets(conf);
+    Map<PubSubTopicPartition, PubSubPosition> latestOffsets = kafkaInputFormat.getEndPositions(manager, topic);
     PubSubTopicPartition partition0 = new PubSubTopicPartitionImpl(topic, 0);
     PubSubTopicPartition partition1 = new PubSubTopicPartitionImpl(topic, 1);
     PubSubTopicPartition partition2 = new PubSubTopicPartitionImpl(topic, 2);
-    Assert.assertEquals(latestOffsets.get(partition0).longValue(), 300);
-    Assert.assertEquals(latestOffsets.get(partition1).longValue(), 356);
-    Assert.assertEquals(latestOffsets.get(partition2).longValue(), 350);
+    Assert.assertEquals(latestOffsets.get(partition0).getNumericOffset(), 300);
+    Assert.assertEquals(latestOffsets.get(partition1).getNumericOffset(), 356);
+    Assert.assertEquals(latestOffsets.get(partition2).getNumericOffset(), 350);
 
     // Try to get splits with the default max records per mapper
     getSplitAndValidate(

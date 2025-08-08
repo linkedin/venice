@@ -24,6 +24,8 @@ import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.map.AbstractTestVeniceMapper;
 import com.linkedin.venice.hadoop.task.datawriter.DataWriterTaskTracker;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -44,8 +46,10 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
   private static final AtomicReference<Long> EMPTY_LONG_REF = new AtomicReference<>(-1L);
   private static final KafkaInputMapperKey EMPTY_KEY = new KafkaInputMapperKey();
   static {
+    PubSubPosition offset = ApacheKafkaOffsetPosition.of(1);
     EMPTY_KEY.key = ByteBuffer.wrap("test_key".getBytes());
-    EMPTY_KEY.offset = 1;
+    EMPTY_KEY.positionWireBytes = offset.toWireFormatBuffer();
+    EMPTY_KEY.positionFactoryClass = offset.getFactoryClassName();
   }
 
   private static final String RMD = "rmd";
@@ -157,7 +161,9 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
 
   private KafkaInputMapperValue generateKIFRecord() {
     KafkaInputMapperValue value = new KafkaInputMapperValue();
-    value.offset = 0;
+    PubSubPosition position = ApacheKafkaOffsetPosition.of(0);
+    value.positionWireBytes = position.toWireFormatBuffer();
+    value.positionFactoryClass = position.getFactoryClassName();
     value.schemaId = -1;
     value.valueType = MapperValueType.PUT;
     value.replicationMetadataPayload = ByteBuffer.wrap(RMD.getBytes());

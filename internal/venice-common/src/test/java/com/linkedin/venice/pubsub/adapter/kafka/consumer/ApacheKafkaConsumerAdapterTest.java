@@ -514,12 +514,6 @@ public class ApacheKafkaConsumerAdapterTest {
     assertNotNull(position);
     assertTrue(position instanceof ApacheKafkaOffsetPosition);
     assertEquals(((ApacheKafkaOffsetPosition) position).getInternalOffset(), 0L);
-
-    // Case 2: return empty response
-    doReturn(Collections.emptyMap()).when(internalKafkaConsumer)
-        .beginningOffsets(Collections.singleton(topicPartition), Duration.ofMillis(500));
-    position = kafkaConsumerAdapter.beginningPosition(pubSubTopicPartition, Duration.ofMillis(500));
-    assertEquals(position, PubSubSymbolicPosition.EARLIEST);
   }
 
   @Test
@@ -819,6 +813,8 @@ public class ApacheKafkaConsumerAdapterTest {
   @Test
   public void testPositionDifferenceWithSymbolicAndConcrete() {
     PubSubPosition pos = new ApacheKafkaOffsetPosition(10L);
+    doReturn(Collections.singletonMap(topicPartition, 0L)).when(internalKafkaConsumer)
+        .beginningOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class));
 
     assertEquals(
         kafkaConsumerAdapter.positionDifference(pubSubTopicPartition, PubSubSymbolicPosition.EARLIEST, pos),

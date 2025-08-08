@@ -29,6 +29,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientException;
@@ -39,7 +40,6 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
-import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -729,12 +729,52 @@ public class TopicManager implements Closeable {
   }
 
   /**
-   * Get the latest offsets for all partitions of a given topic.
-   * @param pubSubTopic the topic to get latest offsets for
-   * @return a Map of partition to the latest offset, or an empty map if there's any problem getting the offsets
+   * Retrieves the latest offsets (end offsets) for all partitions of the specified topic.
+   * <p>The returned offset represents the position of the next message that would be produced,
+   * which is effectively one greater than the offset of the last available message.</p>
+   *
+   * @param pubSubTopic the topic for which to retrieve latest offsets
+   * @return a map containing partition numbers mapped to their corresponding latest offsets
    */
-  public Int2LongMap getTopicLatestOffsets(PubSubTopic pubSubTopic) {
-    return topicMetadataFetcher.getTopicLatestOffsets(pubSubTopic);
+  public Map<PubSubTopicPartition, PubSubPosition> getEndPositionsForTopic(PubSubTopic pubSubTopic) {
+    return topicMetadataFetcher.getEndPositionsForTopic(pubSubTopic);
+  }
+
+  public Map<PubSubTopicPartition, PubSubPosition> getStartPositionsForTopic(PubSubTopic pubSubTopic) {
+    return topicMetadataFetcher.getStartPositionsForTopic(pubSubTopic);
+  }
+
+  public PubSubPosition getStartPositionsForPartition(PubSubTopicPartition pubSubTopicPartition) {
+    return topicMetadataFetcher.getStartPositionsForPartition(pubSubTopicPartition);
+  }
+
+  public PubSubPosition getEndPositionsForPartition(PubSubTopicPartition pubSubTopicPartition) {
+    return topicMetadataFetcher.getEndPositionsForPartition(pubSubTopicPartition);
+  }
+
+  // Convenience method mainly intended to be used in integration tests.
+  public long getNumRecordsInTopic(PubSubTopic pubSubTopic) {
+    Map<PubSubTopicPartition, PubSubPosition> startPositions = getStartPositionsForTopic(pubSubTopic);
+    Map<PubSubTopicPartition, PubSubPosition> endPositions = getEndPositionsForTopic(pubSubTopic);
+    long totalRecords = 0;
+
+    for (Map.Entry<PubSubTopicPartition, PubSubPosition> entry: endPositions.entrySet()) {
+      PubSubTopicPartition partition = entry.getKey();
+      PubSubPosition endPosition = entry.getValue();
+      PubSubPosition startPosition = startPositions.get(partition);
+      if (startPosition != null) {
+        totalRecords += topicMetadataFetcher.diffPosition(partition, endPosition, startPosition);
+      } else {
+        logger.warn("No start position found for partition: {} in topic: {}", partition, pubSubTopic);
+      }
+    }
+    return totalRecords;
+  }
+
+  // get the number of records in a topic for a specific partition
+  public long getNumRecordsInPartition(PubSubTopicPartition pubSubTopicPartition) {
+    return topicMetadataFetcher
+        .diffPosition(pubSubTopicPartition, PubSubSymbolicPosition.LATEST, PubSubSymbolicPosition.EARLIEST);
   }
 
   /**
