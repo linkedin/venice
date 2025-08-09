@@ -295,8 +295,12 @@ public class BlobSnapshotManager {
    * @param partitionId the partition id
    */
   public void cleanupSnapshot(String kafkaVersionTopic, int partitionId) {
-    StorageEngine storageEngine =
-        Objects.requireNonNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
+    StorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+    if (storageEngine == null) {
+      LOGGER
+          .warn("Storage engine is null for topic {} partition {}, skipping cleanup. ", kafkaVersionTopic, partitionId);
+      return;
+    }
     AbstractStoragePartition partition = storageEngine.getPartitionOrThrow(partitionId);
     partition.cleanupSnapshot();
   }

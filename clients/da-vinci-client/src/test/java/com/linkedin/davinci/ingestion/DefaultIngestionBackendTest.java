@@ -130,6 +130,26 @@ public class DefaultIngestionBackendTest {
   }
 
   @Test
+  public void testStartConsumptionWithBlobTransferStoreLevelConfigDisabled() {
+    when(store.isBlobTransferEnabled()).thenReturn(false); // disable store level config
+    when(veniceServerConfig.isBlobTransferServerOverride()).thenReturn(true); // enable server level config
+    when(store.isHybrid()).thenReturn(false);
+    when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
+        .thenReturn(CompletableFuture.completedFuture(null));
+    when(veniceServerConfig.getRocksDBPath()).thenReturn(BASE_DIR);
+
+    RocksDBServerConfig rocksDBServerConfig = Mockito.mock(RocksDBServerConfig.class);
+    when(rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()).thenReturn(false);
+    when(veniceServerConfig.getRocksDBServerConfig()).thenReturn(rocksDBServerConfig);
+
+    ingestionBackend.startConsumption(storeConfig, PARTITION);
+    verify(blobTransferManager).get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT));
+    verify(aggVersionedBlobTransferStats).recordBlobTransferResponsesCount(eq(STORE_NAME), eq(VERSION_NUMBER));
+    verify(aggVersionedBlobTransferStats)
+        .recordBlobTransferResponsesBasedOnBoostrapStatus(eq(STORE_NAME), eq(VERSION_NUMBER), eq(true));
+  }
+
+  @Test
   public void testStartConsumptionWithBlobTransferValidatePartitionStatus() {
     when(storageService.getStorageEngine(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER)))
         .thenReturn(storageEngine);

@@ -83,7 +83,12 @@ public class DefaultIngestionBackend implements IngestionBackend {
           storeVersion,
           partition);
     };
-    if (!storeAndVersion.getStore().isBlobTransferEnabled() || blobTransferManager == null) {
+
+    boolean storeLevelBlobTransferEnabled = storeAndVersion.getStore().isBlobTransferEnabled();
+    boolean serverLevelBlobTransferOverride = serverConfig.isBlobTransferServerOverride();
+    boolean blobTransferEnabledInStoreLevelOrServerLevel =
+        storeLevelBlobTransferEnabled || serverLevelBlobTransferOverride;
+    if (!blobTransferEnabledInStoreLevelOrServerLevel || blobTransferManager == null) {
       runnable.run();
     } else {
       BlobTransferTableFormat requestTableFormat =
@@ -131,10 +136,6 @@ public class DefaultIngestionBackend implements IngestionBackend {
       Supplier<StoreVersionState> svsSupplier) {
     String storeName = store.getName();
     String kafkaTopic = Version.composeKafkaTopic(storeName, versionNumber);
-
-    if (!store.isBlobTransferEnabled() || blobTransferManager == null) {
-      return CompletableFuture.completedFuture(null);
-    }
 
     // Open store for lag check and later metadata update for offset/StoreVersionState
     // If the offset lag is below the blobTransferDisabledOffsetLagThreshold, it indicates there is not lagging and
