@@ -83,6 +83,10 @@ public class VeniceOpenTelemetryMetricsRepository {
     try {
       SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
 
+      if (metricsConfig.useOtelExponentialHistogram()) {
+        setExponentialHistogramAggregation(builder, metricsConfig);
+      }
+
       if (metricsConfig.exportOtelMetricsToEndpoint()) {
         MetricExporter httpExporter = getOtlpHttpMetricExporter(metricsConfig);
         builder.registerMetricReader(
@@ -103,10 +107,6 @@ public class VeniceOpenTelemetryMetricsRepository {
         // additional metrics reader apart from the above. For instance,
         // an in-memory metric reader can be passed in for testing purposes.
         builder.registerMetricReader(metricsConfig.getOtelAdditionalMetricsReader());
-      }
-
-      if (metricsConfig.useOtelExponentialHistogram()) {
-        setExponentialHistogramAggregation(builder, metricsConfig);
       }
 
       // Set resource to empty to avoid adding any default resource attributes. The receiver
@@ -158,7 +158,12 @@ public class VeniceOpenTelemetryMetricsRepository {
     if (metricsConfig.getOtelAggregationTemporalitySelector() != null) {
       exporterBuilder.setAggregationTemporalitySelector(metricsConfig.getOtelAggregationTemporalitySelector());
     }
-    return exporterBuilder.build();
+    OtlpHttpMetricExporter otlpHttpMetricExporter = exporterBuilder.build();
+    if (metricsConfig.enableSplitExportOfOtelMetrics()) {
+      return new SplitOtlpHttpMetricExporter(otlpHttpMetricExporter, metricsConfig.getNumberOfSamplesPerSplitExport());
+    } else {
+      return otlpHttpMetricExporter;
+    }
   }
 
   /**
