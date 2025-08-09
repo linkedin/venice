@@ -14,7 +14,6 @@ import org.apache.avro.util.Utf8;
 
 
 /**
- * Utility class for server-side aggregation operations (CountByValue and CountByBucket).
  * This class provides shared implementation for processing values and counting field occurrences
  * that can be used by thin-client, fast-client, and server components.
  */
@@ -205,23 +204,15 @@ public class FacetCountingUtils {
     }
 
     // Then do schema-specific validation
-    for (String fieldName: fieldNames) {
-      // For string schema, only "value" or "_value" are valid
-      if (valueSchema.getType() == Schema.Type.STRING) {
-        if (!fieldName.equals("value") && !fieldName.equals("_value")) {
-          throw new IllegalArgumentException(
-              "For string-valued stores, only 'value' or '_value' field names are supported. Got: " + fieldName);
-        }
-      } else if (valueSchema.getType() == Schema.Type.RECORD) {
-        // For record types, validate field exists
+    if (valueSchema.getType() == Schema.Type.RECORD) {
+      // For record types, validate field exists
+      for (String fieldName: fieldNames) {
         Schema.Field field = valueSchema.getField(fieldName);
         if (field == null) {
           throw new IllegalArgumentException("Field not found in schema: " + fieldName);
         }
-      } else {
-        throw new IllegalArgumentException(
-            "CountByValue only supports STRING and RECORD value types. Got: " + valueSchema.getType());
       }
     }
+    // For STRING type and other types, let the server handle the validation
   }
 }
