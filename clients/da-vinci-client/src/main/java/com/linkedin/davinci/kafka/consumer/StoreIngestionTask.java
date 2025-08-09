@@ -2175,8 +2175,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       newPartitionConsumptionState.getOffsetRecord()
           .setHeartbeatTimestamp(HeartbeatMonitoringService.INVALID_HEARTBEAT_TIMESTAMP);
       newPartitionConsumptionState.getOffsetRecord().setOffsetLag(OffsetRecord.DEFAULT_OFFSET_LAG);
+      // This ready-to-serve check is acceptable in SIT thread as it happens before subscription.
       if (!isCompletedReport) {
-        getReadyToServeChecker().apply(newPartitionConsumptionState);
+        getDefaultReadyToServeChecker().apply(newPartitionConsumptionState);
       }
     } catch (VeniceInconsistentStoreMetadataException e) {
       hostLevelIngestionStats.recordInconsistentStoreMetadata();
@@ -4830,10 +4831,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   boolean isDaVinciClient() {
     return isDaVinciClient;
-  }
-
-  ReadyToServeCheck getReadyToServeChecker() {
-    return defaultReadyToServeChecker;
   }
 
   VeniceConcurrentHashMap<String, Long> getConsumedBytesSinceLastSync() {
