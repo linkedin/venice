@@ -192,25 +192,21 @@ public class FacetCountingUtils {
    * @throws IllegalArgumentException if validation fails
    */
   public static void validateFieldNames(String[] fieldNames, Schema valueSchema) {
-    // First do basic validation
     if (fieldNames == null || fieldNames.length == 0) {
       throw new IllegalArgumentException("fieldNames cannot be null or empty");
     }
 
     for (String fieldName: fieldNames) {
-      if (fieldName == null || fieldName.isEmpty()) {
-        throw new IllegalArgumentException("Field name cannot be null or empty");
+      if (fieldName == null) {
+        throw new IllegalArgumentException("Field name cannot be null");
       }
-    }
+      if (fieldName.isEmpty()) {
+        throw new IllegalArgumentException("Field name cannot be empty");
+      }
 
-    // Then do schema-specific validation
-    if (valueSchema.getType() == Schema.Type.RECORD) {
-      // For record types, validate field exists
-      for (String fieldName: fieldNames) {
-        Schema.Field field = valueSchema.getField(fieldName);
-        if (field == null) {
-          throw new IllegalArgumentException("Field not found in schema: " + fieldName);
-        }
+      Schema.Field field = valueSchema.getField(fieldName);
+      if (field == null) {
+        throw new IllegalArgumentException("Field not found in schema: " + fieldName);
       }
     }
   }
