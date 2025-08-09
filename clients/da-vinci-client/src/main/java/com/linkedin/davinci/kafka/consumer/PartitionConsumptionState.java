@@ -624,7 +624,7 @@ public class PartitionConsumptionState {
   }
 
   public boolean getReadyToServeInOffsetRecord() {
-    return offsetRecord.getPreviousStatusesEntry(PREVIOUSLY_READY_TO_SERVE).equals(TRUE);
+    return TRUE.equals(offsetRecord.getPreviousStatusesEntry(PREVIOUSLY_READY_TO_SERVE));
   }
 
   /**
