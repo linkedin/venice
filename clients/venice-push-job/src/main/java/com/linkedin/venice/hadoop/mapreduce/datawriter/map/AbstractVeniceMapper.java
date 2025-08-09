@@ -37,7 +37,12 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     if (updatePreviousReporter(reporter)) {
       dataWriterTaskTracker = new ReporterBackedMapReduceDataWriterTaskTracker(reporter);
     }
-    super.processRecord(inputKey, inputValue, -1L, getRecordEmitter(output), dataWriterTaskTracker);
+    super.processRecord(
+        inputKey,
+        inputValue,
+        getRecordTimestamp(inputValue),
+        getRecordEmitter(output),
+        dataWriterTaskTracker);
   }
 
   private boolean updatePreviousReporter(Reporter reporter) {
@@ -75,5 +80,11 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
         throw new VeniceException(e);
       }
     };
+  }
+
+  protected long getRecordTimestamp(INPUT_VALUE inputValue) {
+    // Override this method in subclasses to extract the timestamp from the input value.
+    // Default implementation returns 0, which means no timestamp is provided.
+    return -1;
   }
 }

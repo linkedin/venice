@@ -59,6 +59,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.POLL_STATUS_RETRY_A
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_JOB_TIMEOUT_OVERRIDE_MS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.PUSH_TO_SEPARATE_REALTIME_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_SECONDS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
@@ -105,6 +106,7 @@ import com.linkedin.venice.exceptions.VeniceResourceAccessException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInvalidInputException;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
+import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.jobs.DataWriterMRJob;
 import com.linkedin.venice.hadoop.mapreduce.engine.DefaultJobClientWrapper;
 import com.linkedin.venice.hadoop.schema.HDFSSchemaSource;
@@ -398,6 +400,8 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSettingToReturn.repushTTLStartTimeMs = repushTtlStartTimestamp;
       }
     }
+    String ttlResolutionPolicyStr = props.getString(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.name());
+    pushJobSettingToReturn.ttlResolutionPolicy = TTLResolutionPolicy.valueOf(ttlResolutionPolicyStr);
 
     pushJobSettingToReturn.isBatchWriteOptimizationForHybridStoreEnabled =
         props.getBoolean(HYBRID_BATCH_WRITE_OPTIMIZATION_ENABLED, false);
