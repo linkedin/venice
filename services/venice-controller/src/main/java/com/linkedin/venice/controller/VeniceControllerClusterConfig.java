@@ -61,11 +61,15 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESS
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP;
@@ -402,8 +406,12 @@ public class VeniceControllerClusterConfig {
   private final boolean controllerClusterHelixCloudEnabled;
   private final boolean storageClusterHelixCloudEnabled;
   private final CloudConfig helixCloudConfig;
+  private final long controllerHelixParticipantDeregistrationTimeoutMs;
 
   private final String helixRestCustomizedHealthUrl;
+  private final boolean serverHelixClusterTopologyAware;
+  private final String serverHelixClusterTopology;
+  private final String serverHelixClusterFaultZoneType;
 
   private final boolean usePushStatusStoreForIncrementalPushStatusReads;
 
@@ -1028,8 +1036,14 @@ public class VeniceControllerClusterConfig {
     } else {
       helixCloudConfig = null;
     }
-
+    this.controllerHelixParticipantDeregistrationTimeoutMs =
+        props.getLong(CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS, -1L);
     this.helixRestCustomizedHealthUrl = props.getString(CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL, "");
+    this.serverHelixClusterTopologyAware = props.getBoolean(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, false);
+    this.serverHelixClusterTopology =
+        props.getString(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY, "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
+    this.serverHelixClusterFaultZoneType =
+        props.getString(CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE, HelixUtils.TOPOLOGY_CONSTRAINT);
 
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
@@ -1817,8 +1831,24 @@ public class VeniceControllerClusterConfig {
     return helixCloudConfig;
   }
 
+  public long getControllerHelixParticipantDeregistrationTimeoutMs() {
+    return controllerHelixParticipantDeregistrationTimeoutMs;
+  }
+
   public String getHelixRestCustomizedHealthUrl() {
     return helixRestCustomizedHealthUrl;
+  }
+
+  public boolean isServerHelixClusterTopologyAware() {
+    return serverHelixClusterTopologyAware;
+  }
+
+  public String getServerHelixClusterTopology() {
+    return serverHelixClusterTopology;
+  }
+
+  public String getServerHelixClusterFaultZoneType() {
+    return serverHelixClusterFaultZoneType;
   }
 
   public boolean usePushStatusStoreForIncrementalPush() {

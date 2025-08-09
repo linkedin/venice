@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.helix.model.CloudConfig;
+import org.apache.helix.model.ClusterConfig;
 
 
 public class VeniceControllerMultiClusterConfig {
@@ -329,6 +331,34 @@ public class VeniceControllerMultiClusterConfig {
 
   public List<String> getControllerInstanceTagList() {
     return getCommonConfig().getControllerInstanceTagList();
+  }
+
+  public Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> getHelixGlobalRebalancePreference() {
+    return getCommonConfig().getHelixGlobalRebalancePreference();
+  }
+
+  public List<String> getHelixInstanceCapacityKeys() {
+    return getCommonConfig().getHelixInstanceCapacityKeys();
+  }
+
+  public Map<String, Integer> getHelixDefaultInstanceCapacityMap() {
+    return getCommonConfig().getHelixDefaultInstanceCapacityMap();
+  }
+
+  public Map<String, Integer> getHelixDefaultPartitionWeightMap() {
+    return getCommonConfig().getHelixDefaultPartitionWeightMap();
+  }
+
+  public long getControllerHelixParticipantDeregistrationTimeoutMs() {
+    return getCommonConfig().getControllerHelixParticipantDeregistrationTimeoutMs();
+  }
+
+  public boolean isControllerClusterHelixCloudEnabled() {
+    return getCommonConfig().isControllerClusterHelixCloudEnabled();
+  }
+
+  public CloudConfig getHelixCloudConfig() {
+    return getCommonConfig().getHelixCloudConfig();
   }
 
   public String getRepushOrchestratorClassName() {

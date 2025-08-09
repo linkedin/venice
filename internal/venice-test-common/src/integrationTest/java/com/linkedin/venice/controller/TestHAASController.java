@@ -36,7 +36,6 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -51,7 +50,6 @@ import org.apache.helix.HelixAdmin;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.constants.InstanceConstants;
-import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.CloudConfig;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.InstanceConfig;
@@ -413,12 +411,9 @@ public class TestHAASController {
 
   private static class InitTask implements Callable<Void> {
     private final HelixAdminClient client;
-    private final HashMap<String, String> helixClusterProperties;
 
     public InitTask(HelixAdminClient client) {
       this.client = client;
-      helixClusterProperties = new HashMap<>();
-      helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     }
 
     @Override
