@@ -213,6 +213,5 @@ public class FacetCountingUtils {
         }
       }
     }
-    // For STRING type and other types, let the server handle the validation
   }
 }
