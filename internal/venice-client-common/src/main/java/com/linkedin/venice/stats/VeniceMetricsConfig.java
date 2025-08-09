@@ -33,11 +33,14 @@ public class VeniceMetricsConfig {
   public static final String OTEL_VENICE_METRICS_ENABLED = "otel.venice.metrics.enabled";
 
   /**
-   * Config to reuse the {@link io.opentelemetry.api.OpenTelemetry} initialized by the application
-   * or other libraries and set as {@link io.opentelemetry.api.GlobalOpenTelemetry} rather than
-   * initializing it individually. This is particularly useful for clients use cases where one
-   * application can initialize multiple venice client libraries which would otherwise initialize
-   * OpenTelemetry multiple times, which could take more resources.
+   * Configuration to reuse the {@link io.opentelemetry.api.OpenTelemetry} instance
+   * already initialized by the application or other libraries and registered as
+   * {@link io.opentelemetry.api.GlobalOpenTelemetry}, instead of creating a new one.
+   *
+   * This is especially useful in clients where a single application may use
+   * multiple Venice client libraries. Without this setting, each library would
+   * initialize its own OpenTelemetry instance, leading to redundant initialization
+   * and increased resource usage.
    */
   public static final String OTEL_VENICE_USE_OPENTELEMETRY_INITIALIZED_BY_APPLICATION =
       "otel.venice.use.opentelemetry.initialized.by.application";
@@ -48,7 +51,18 @@ public class VeniceMetricsConfig {
   public static final String OTEL_VENICE_METRICS_PREFIX = "otel.venice.metrics.prefix";
 
   /**
-   * Config to set custom description for all Histogram metrics.
+   * Configuration to define a custom description for all Histogram metrics.
+   *
+   * This option is particularly relevant when
+   * {@link #OTEL_VENICE_USE_OPENTELEMETRY_INITIALIZED_BY_APPLICATION} is enabled,
+   * restricting direct configuration of OpenTelemetry via Venice code and application
+   * code overrides can rely on something else like the description here without
+   * introducing new setters or APIs. When set to a non-empty string, if neeeded,
+   * this description could be used by application-level code overrides to control
+   * Histogram behavior (e.g., exponential vs. explicit aggregation) as done in
+   * {@link VeniceOpenTelemetryMetricsRepository#setExponentialHistogramAggregation}
+   *
+   * If null or unset, this configuration has no effect.
    */
   public static final String OTEL_VENICE_METRICS_CUSTOM_DESCRIPTION_FOR_HISTOGRAM =
       "otel.venice.metrics.custom.description.for.histogram";

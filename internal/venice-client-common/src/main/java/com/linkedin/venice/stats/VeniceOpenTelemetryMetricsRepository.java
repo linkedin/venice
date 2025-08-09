@@ -57,7 +57,7 @@ public class VeniceOpenTelemetryMetricsRepository {
   public static final String DEFAULT_METRIC_PREFIX = "venice.";
   private final VeniceMetricsConfig metricsConfig;
   private SdkMeterProvider sdkMeterProvider = null;
-  private OpenTelemetry openTelemetry = null;
+  private final OpenTelemetry openTelemetry;
   private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricNamingFormat metricFormat;
   private Meter meter;
@@ -75,6 +75,7 @@ public class VeniceOpenTelemetryMetricsRepository {
     metricFormat = metricsConfig.getMetricNamingFormat();
     if (!emitOpenTelemetryMetrics) {
       LOGGER.info("OpenTelemetry metrics are disabled");
+      openTelemetry = null;
       return;
     }
     LOGGER.info(
@@ -84,14 +85,13 @@ public class VeniceOpenTelemetryMetricsRepository {
     this.metricPrefix = metricsConfig.getMetricPrefix();
     validateMetricName(getMetricPrefix());
     if (metricsConfig.useOpenTelemetryInitializedByApplication()) {
-      LOGGER.warn("Configured to use GlobalOpenTelemetry set by the application");
+      LOGGER.info("Using globally initialized OpenTelemetry for {}", metricsConfig.getServiceName());
       openTelemetry = GlobalOpenTelemetry.get();
       if (openTelemetry == null) {
         // this is an extra safety check as GlobalOpenTelemetry.get() will return a default noop instance
         // if it was not originally initialized by the application
         throw new VeniceException("OpenTelemetry is not initialized globally, but it is required for metrics.");
       }
-      LOGGER.info("Using globally initialized OpenTelemetry for {}", metricsConfig.getServiceName());
     } else {
       LOGGER.info(
           "OpenTelemetry initialization for {} started with config: {}",
