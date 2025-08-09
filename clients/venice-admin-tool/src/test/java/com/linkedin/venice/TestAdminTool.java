@@ -25,6 +25,7 @@ import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -85,7 +86,9 @@ public class TestAdminTool {
     String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
         "testStore", "--rmd-chunking-enabled", "true", "--blob-transfer-enabled", "true", "--target-region-swap",
         "prod", "--target-region-swap-wait-time", "100", "--global-rt-div-enabled", "true", "--partitioner-params",
-        "{\"" + K1 + "\":\"" + V1 + "\",\"" + K2 + "\":\"" + V2 + "\",\"" + K3 + "\":\"" + V3 + "\"}" };
+        "{\"" + K1 + "\":\"" + V1 + "\",\"" + K2 + "\":\"" + V2 + "\",\"" + K3 + "\":\"" + V3 + "\"}",
+        "--store-lifecycle-hooks-list",
+        "[{\"storeLifecycleHooksClassName\":\"com.example.MyHook1\",\"storeLifecycleHooksParams\":{\"paramA\":\"valueA\",\"paramB\":\"valueB\"}},{\"storeLifecycleHooksClassName\":\"com.example.MyHook2\",\"storeLifecycleHooksParams\":{\"foo\":\"bar\"}}]" };
 
     CommandLine commandLine = AdminTool.getCommandLine(args);
     UpdateStoreQueryParams params = AdminTool.getUpdateStoreQueryParams(commandLine);
@@ -105,6 +108,9 @@ public class TestAdminTool {
     Assert.assertEquals(partitionerParamsMap.get(K1), V1);
     Assert.assertEquals(partitionerParamsMap.get(K2), V2);
     Assert.assertEquals(partitionerParamsMap.get(K3), V3);
+    Assert.assertTrue(params.getStoreLifecycleHooks().isPresent());
+    List<LifecycleHooksRecord> lifecycleHooksRecords = params.getStoreLifecycleHooks().get();
+    Assert.assertEquals(lifecycleHooksRecords.size(), 2);
   }
 
   @Test

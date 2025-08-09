@@ -365,4 +365,8 @@ public interface Store {
   boolean isEnumSchemaEvolutionAllowed();
 
   void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed);
+
+  List<LifecycleHooksRecord> getStoreLifecycleHooks();
+
+  void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks);
 }

@@ -787,6 +787,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public List<LifecycleHooksRecord> getStoreLifecycleHooks() {
+    return zkSharedStore.getStoreLifecycleHooks();
+  }
+
+  @Override
+  public void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public boolean isGlobalRtDivEnabled() {
     return zkSharedStore.isGlobalRtDivEnabled();
   }
