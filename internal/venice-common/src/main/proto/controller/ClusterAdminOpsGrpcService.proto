@@ -58,6 +58,11 @@ message UpdateAdminOperationProtocolVersionGrpcRequest {
   int64 adminOperationProtocolVersion = 2;
 }
 
+message Position {
+  int64 typeId = 1;
+  bytes positionBytes = 2;
+}
+
 message AdminTopicGrpcMetadata {
   string clusterName = 1;
   optional int64 executionId = 2;
@@ -65,4 +70,5 @@ message AdminTopicGrpcMetadata {
   optional int64 offset = 4;
   optional int64 upstreamOffset = 5;
   optional int64 adminOperationProtocolVersion = 6;
+  optional Position position = 7;
 }
