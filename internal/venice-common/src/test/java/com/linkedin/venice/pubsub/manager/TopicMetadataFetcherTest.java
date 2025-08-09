@@ -323,21 +323,22 @@ public class TopicMetadataFetcherTest {
     assertEquals(consumedRecords.size(), 0);
 
     // test when beginningOffset (non-zero) is same as endOffset
-    endOffsetsMap.put(topicPartition, 1L);
+    ApacheKafkaOffsetPosition position = new ApacheKafkaOffsetPosition(1L);
+    endOffsetsMap.put(topicPartition, position.getInternalOffset());
     when(consumerMock.endOffsets(eq(Collections.singletonList(topicPartition)), any(Duration.class)))
         .thenReturn(endOffsetsMap);
-    when(consumerMock.beginningOffset(eq(topicPartition), any(Duration.class))).thenReturn(1L);
+    when(consumerMock.beginningPosition(eq(topicPartition), any(Duration.class))).thenReturn(position);
     consumedRecords = topicMetadataFetcher.consumeLatestRecords(topicPartition, 1);
     assertEquals(consumedRecords.size(), 0);
 
+    ApacheKafkaOffsetPosition startPosition = ApacheKafkaOffsetPosition.of(3);
     long endOffset = 10;
-    long startOffset = 3;
     int numRecordsToRead = 5; // read records at offsets 5, 6, 7, 8, 9
     long consumePastOffset = 4; // subscribe at offset
     endOffsetsMap.put(topicPartition, endOffset);
     when(consumerMock.endOffsets(eq(Collections.singletonList(topicPartition)), any(Duration.class)))
         .thenReturn(endOffsetsMap);
-    when(consumerMock.beginningOffset(eq(topicPartition), any(Duration.class))).thenReturn(startOffset);
+    when(consumerMock.beginningPosition(eq(topicPartition), any(Duration.class))).thenReturn(startPosition);
     verify(consumerMock, never()).subscribe(topicPartition, consumePastOffset);
     verify(consumerMock, never()).poll(anyLong());
     verify(consumerMock, never()).unSubscribe(eq(topicPartition));
