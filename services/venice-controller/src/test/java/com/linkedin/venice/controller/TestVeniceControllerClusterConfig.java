@@ -15,7 +15,11 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
@@ -290,6 +294,34 @@ public class TestVeniceControllerClusterConfig {
     assertEquals(cloudConfig.getCloudID(), cloudId);
     assertEquals(cloudConfig.getCloudInfoProcessorName(), processorName);
     assertEquals(cloudConfig.getCloudInfoSources(), cloudInfoSources);
+  }
+
+  @Test
+  public void testControllerHelixParticipantDeregistrationTimeoutMs() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+
+    baseProps.setProperty(CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS, "60000");
+
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(clusterConfig.getControllerHelixParticipantDeregistrationTimeoutMs(), 60000L);
+  }
+
+  @Test
+  public void testServerHelixTopologyAwareConfigs() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+
+    boolean topologyAware = true;
+    String topology = "/fault_zone_type/instance_id";
+    String faultZoneType = "fault_zone_type";
+
+    baseProps.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, String.valueOf(topologyAware));
+    baseProps.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY, topology);
+    baseProps.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE, faultZoneType);
+
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(clusterConfig.isServerHelixClusterTopologyAware(), topologyAware);
+    assertEquals(clusterConfig.getServerHelixClusterTopology(), topology);
+    assertEquals(clusterConfig.getServerHelixClusterFaultZoneType(), faultZoneType);
   }
 
   @Test
