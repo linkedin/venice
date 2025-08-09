@@ -2163,11 +2163,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
     try {
-      checkFastReadyToServeForReplica(newPartitionConsumptionState);
+      boolean isCompletedReport = checkFastReadyToServeForReplica(newPartitionConsumptionState);
       // Clear offset lag in metadata, it is only used in restart.
       newPartitionConsumptionState.getOffsetRecord()
           .setHeartbeatTimestamp(HeartbeatMonitoringService.INVALID_HEARTBEAT_TIMESTAMP);
       newPartitionConsumptionState.getOffsetRecord().setOffsetLag(OffsetRecord.DEFAULT_OFFSET_LAG);
+      if (!isCompletedReport) {
+        getReadyToServeChecker().apply(newPartitionConsumptionState);
+      }
     } catch (VeniceInconsistentStoreMetadataException e) {
       hostLevelIngestionStats.recordInconsistentStoreMetadata();
       // clear the local store metadata and the replica will be rebuilt from scratch upon retry as part of
@@ -4875,7 +4878,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  void checkFastReadyToServeWithPreviousHeartbeatLag(PartitionConsumptionState pcs) {
+  boolean checkFastReadyToServeWithPreviousHeartbeatLag(PartitionConsumptionState pcs) {
     long previousHeartbeatTimestamp = pcs.getOffsetRecord().getHeartbeatTimestamp();
     long previousCheckpointTimestamp = pcs.getOffsetRecord().getLastCheckpointTimestamp();
     String replicaId = pcs.getReplicaId();
@@ -4883,13 +4886,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info(
           "Previous message timestamp is invalid for replica: {}, will fallback to regular ready-to-serve check path.",
           replicaId);
-      return;
+      return false;
     }
     if (previousCheckpointTimestamp == HeartbeatMonitoringService.INVALID_HEARTBEAT_TIMESTAMP) {
       LOGGER.info(
           "Previous checkpoint timestamp is invalid for replica: {}, will fallback to regular ready-to-serve check path.",
           replicaId);
-      return;
+      return false;
     }
     long heartbeatRelaxThreshold = getServerConfig().getHeartbeatLagThresholdForFastOnlineTransitionInRestart();
     long currentLag = System.currentTimeMillis() - previousHeartbeatTimestamp;
@@ -4902,6 +4905,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           replicaId);
       pcs.lagHasCaughtUp();
       reportCompleted(pcs, true);
+      return true;
     } else {
       pcs.setReadyToServeTimeLagThreshold(previousLag);
       LOGGER.info(
@@ -4910,10 +4914,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           heartbeatRelaxThreshold,
           previousLag,
           replicaId);
+      return false;
     }
   }
 
-  void checkFastReadyToServeWithPreviousOffsetLag(PartitionConsumptionState pcs) {
+  boolean checkFastReadyToServeWithPreviousOffsetLag(PartitionConsumptionState pcs) {
     long offsetLagThreshold =
         getOffsetToOnlineLagThresholdPerPartition(getHybridStoreConfig(), getStoreName(), getPartitionCount());
     // Only enable this feature with positive offset lag threshold.
@@ -4922,7 +4927,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           "Offset lag threshold per partition: {} is invalid for replica: {}, will fallback to regular ready-to-serve check path.",
           offsetLagThreshold,
           pcs.getReplicaId());
-      return;
+      return false;
     }
 
     long offsetLagDeltaRelaxFactor = getServerConfig().getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart();
@@ -4932,7 +4937,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info(
           "Previous offset lag is invalid for replica: {}, will fallback to regular ready-to-serve check path.",
           pcs.getReplicaId());
-      return;
+      return false;
     }
 
     if ((offsetLag - previousOffsetLag) < offsetLagDeltaRelaxFactor * offsetLagThreshold) {
@@ -4943,16 +4948,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           pcs.getReplicaId());
       pcs.lagHasCaughtUp();
       reportCompleted(pcs, true);
+      return true;
     } else {
       LOGGER.info(
           "Offset lag increase since last server checkpoint: {} is greater than configured threshold: {}, will fallback to regular ready-to-serve check path for replica: {}",
           offsetLag - previousOffsetLag,
           offsetLagDeltaRelaxFactor * offsetLagThreshold,
           pcs.getReplicaId());
+      return false;
     }
   }
 
-  void checkFastReadyToServeForReplica(PartitionConsumptionState pcs) {
+  boolean checkFastReadyToServeForReplica(PartitionConsumptionState pcs) {
     if (getHybridStoreConfig().isPresent() && pcs.getReadyToServeInOffsetRecord()) {
       /**
        * If heartbeat lag relax check is enabled, we will only check heartbeat lag during restart.
@@ -4960,11 +4967,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * everywhere in ready-to-serve check.
        */
       if (isHeartbeatLagRelaxEnabled() && getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
-        checkFastReadyToServeWithPreviousHeartbeatLag(pcs);
+        return checkFastReadyToServeWithPreviousHeartbeatLag(pcs);
       } else if (isOffsetLagDeltaRelaxEnabled()) {
-        checkFastReadyToServeWithPreviousOffsetLag(pcs);
+        return checkFastReadyToServeWithPreviousOffsetLag(pcs);
       }
     }
+    return false;
   }
 
   Optional<HybridStoreConfig> getHybridStoreConfig() {
