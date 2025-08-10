@@ -17,6 +17,9 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORAGE_CLUSTER_HELIX_CLOUD_ENABLED;
@@ -303,6 +306,56 @@ public class TestVeniceControllerClusterConfig {
 
     VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
     assertEquals(clusterConfig.getHelixRestCustomizedHealthUrl(), healthUrl);
+  }
+
+  @Test
+  public void testServerHelixTopologyAwareConfigs() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+
+    boolean topologyAware = true;
+    String topology = "/zone/rack/host/instance";
+    String faultZoneType = "zone";
+
+    baseProps.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, String.valueOf(topologyAware));
+    baseProps.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY, topology);
+    baseProps.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE, faultZoneType);
+
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(clusterConfig.isServerHelixClusterTopologyAware(), topologyAware);
+    assertEquals(clusterConfig.getServerHelixClusterTopology(), topology);
+    assertEquals(clusterConfig.getServerHelixClusterFaultZoneType(), faultZoneType);
+  }
+
+  @Test
+  public void testPartialServerHelixTopologyAwareConfigs() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+
+    boolean topologyAware = true;
+    String topology = "/zone/rack/host/instance";
+    String faultZoneType = "zone";
+
+    Properties propsWithoutTopology = new Properties();
+    propsWithoutTopology.putAll(baseProps);
+    propsWithoutTopology.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, String.valueOf(topologyAware));
+    propsWithoutTopology.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE, faultZoneType);
+    Exception exceptionWithoutTopology = Assert.expectThrows(
+        VeniceException.class,
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(propsWithoutTopology)));
+    assertTrue(
+        exceptionWithoutTopology.getMessage()
+            .contains("Server cluster is configured for topology-aware placement, but no topology is provided"));
+
+    Properties propsWithoutFaultZoneType = new Properties();
+    propsWithoutFaultZoneType.putAll(baseProps);
+    propsWithoutFaultZoneType
+        .setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, String.valueOf(topologyAware));
+    propsWithoutFaultZoneType.setProperty(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY, topology);
+    Exception exceptionWithoutFaultZoneType = Assert.expectThrows(
+        VeniceException.class,
+        () -> new VeniceControllerClusterConfig(new VeniceProperties(propsWithoutFaultZoneType)));
+    assertTrue(
+        exceptionWithoutFaultZoneType.getMessage()
+            .contains("Server cluster is configured for topology-aware placement, but no fault zone type is provided"));
   }
 
   @Test
