@@ -331,6 +331,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getControllerInstanceTagList();
   }
 
+  public long getControllerHelixParticipantDeregistrationTimeoutMs() {
+    return getCommonConfig().getControllerHelixParticipantDeregistrationTimeoutMs();
+  }
+
   public String getRepushOrchestratorClassName() {
     return getCommonConfig().getRepushOrchestratorClassName();
   }

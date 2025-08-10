@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigConstants.CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
 import static com.linkedin.venice.controller.TestVeniceControllerClusterConfig.getBaseSingleRegionProperties;
+import static com.linkedin.venice.controller.ZkHelixAdminClient.HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_CONFIG;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
@@ -104,6 +105,7 @@ public class TestZkHelixAdminClient {
   public void testCreateVeniceControllerCluster() {
     doReturn(true).when(mockHelixAdmin).addCluster(VENICE_CONTROLLER_CLUSTER, false);
     doReturn(true).when(mockCommonConfig).isControllerClusterHelixCloudEnabled();
+    doReturn(600000L).when(mockMultiClusterConfigs).getControllerHelixParticipantDeregistrationTimeoutMs();
 
     CloudConfig cloudConfig = mock(CloudConfig.class);
     doReturn(cloudConfig).when(mockCommonConfig).getHelixCloudConfig();
@@ -115,6 +117,9 @@ public class TestZkHelixAdminClient {
 
       assertEquals(clusterConfig.getClusterName(), VENICE_CONTROLLER_CLUSTER);
       assertTrue(clusterConfig.getRecord().getBooleanField(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, false));
+      assertEquals(
+          clusterConfig.getRecord().getLongField(HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_CONFIG, -1L),
+          600000L);
       assertFalse(clusterConfig.isTopologyAwareEnabled());
 
       return null;
