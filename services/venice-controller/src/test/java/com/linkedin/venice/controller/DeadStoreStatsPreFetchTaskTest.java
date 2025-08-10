@@ -109,6 +109,31 @@ public class DeadStoreStatsPreFetchTaskTest {
     verify(mockAdmin, atLeastOnce()).preFetchDeadStoreStats(eq(CLUSTER_NAME), anyList());
   }
 
+  @Test
+  public void testImmediatePrefetchWhenBecomingLeader() throws InterruptedException {
+    // Simulate: start as non-leader, then become leader (should trigger immediate prefetch)
+    when(mockAdmin.isLeaderControllerFor(CLUSTER_NAME)).thenReturn(false) // Initially not leader
+        .thenReturn(true) // Becomes leader - should trigger immediate prefetch
+        .thenReturn(true) // Still leader - regular cycle
+        .thenReturn(false); // Loses leadership - task should stop
+
+    DeadStoreStatsPreFetchTask task = new DeadStoreStatsPreFetchTask(CLUSTER_NAME, mockAdmin, 200);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    executor.submit(task);
+
+    // Wait for: non-leader check + leadership gain + immediate prefetch + regular cycle + leadership loss
+    Thread.sleep(800);
+
+    // Verify that prefetch was called: immediate prefetch when becoming leader + regular cycle
+    // Should be at least 2 calls: immediate + one regular cycle before losing leadership
+    verify(mockAdmin, atLeast(2)).preFetchDeadStoreStats(eq(CLUSTER_NAME), anyList());
+
+    // Task should have stopped itself when leadership was lost, so no need to explicitly close
+    executor.shutdown();
+    executor.awaitTermination(1, TimeUnit.SECONDS);
+  }
+
   private void waitForAsyncExecution() throws InterruptedException {
     Thread.sleep(300);
   }
