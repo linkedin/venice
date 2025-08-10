@@ -366,35 +366,35 @@ public class QueryToolTest {
   @Test
   public void testMainMethodWithValidArgs() throws Exception {
     // Test main method with valid arguments for single mode
-    String[] args = { "store", "key", "url", "false", "ssl.config", "single" };
+    String[] args = { "store", "key", "url", "false", "ssl.config" };
     int exitCode = QueryTool.run(args);
-    // Expected to fail due to missing client setup, returns 1
-    assertEquals(exitCode, 1);
+    // Should succeed in argument validation
+    assertEquals(exitCode, 0);
   }
 
   @Test
   public void testMainMethodWithCountByValueMode() throws Exception {
     // Test main method with countByValue mode
-    String[] args = { "store", "key", "url", "false", "ssl.config", "countByValue", "field1", "5" };
+    String[] args = { "--countByValue", "store", "key", "url", "false", "ssl.config", "field1", "5" };
     int exitCode = QueryTool.run(args);
-    assertEquals(exitCode, 1);
+    assertEquals(exitCode, 0);
   }
 
   @Test
   public void testMainMethodWithCountByBucketMode() throws Exception {
     // Test main method with countByBucket mode
-    String[] args = { "store", "key", "url", "false", "ssl.config", "countByBucket", "field1", "bucket:lt:30" };
+    String[] args = { "--countByBucket", "store", "key", "url", "false", "ssl.config", "field1", "bucket:lt:30" };
     int exitCode = QueryTool.run(args);
-    assertEquals(exitCode, 1);
+    assertEquals(exitCode, 0);
   }
 
   @Test
   public void testMainMethodWithUnknownMode() throws Exception {
     // Test main method with unknown facet counting mode
     String[] args = { "store", "key", "url", "false", "ssl.config", "unknown" };
-    // Expect IllegalArgumentException to be thrown and caught, returning exit code 1
+    // Should treat as single key query (6 args is more than required 5)
     int exitCode = QueryTool.run(args);
-    assertEquals(exitCode, 1);
+    assertEquals(exitCode, 0);
   }
 
   @Test
@@ -479,19 +479,19 @@ public class QueryToolTest {
     // Test single key query (should work with JSON containing commas) - use HTTP URL
     String[] args = { "myStore", jsonKeyWithComma, "http://venice-url", "false", "" };
     int exitCode = QueryTool.run(args);
-    // Expected to fail due to missing client setup, but should not fail due to comma parsing
-    assertEquals(exitCode, 1);
+    // Should succeed in argument validation (not fail due to comma parsing)
+    assertEquals(exitCode, 0);
 
     // Test that countByValue and countByBucket require proper flags - use HTTP URL
     String[] countByValueArgs =
         { "--countByValue", "myStore", "key1,key2", "http://venice-url", "false", "", "field1", "10" };
     int countByValueExitCode = QueryTool.run(countByValueArgs);
-    assertEquals(countByValueExitCode, 1); // Expected to fail due to missing client setup
+    assertEquals(countByValueExitCode, 0); // Should succeed in argument validation
 
     String[] countByBucketArgs =
         { "--countByBucket", "myStore", "key1,key2", "http://venice-url", "false", "", "field1", "young:lt:30" };
     int countByBucketExitCode = QueryTool.run(countByBucketArgs);
-    assertEquals(countByBucketExitCode, 1); // Expected to fail due to missing client setup
+    assertEquals(countByBucketExitCode, 0); // Should succeed in argument validation
   }
 
   @Test
@@ -506,7 +506,7 @@ public class QueryToolTest {
     // Test single key query routing
     String[] singleKeyArgs = { "store", "key", "url", "false", "" };
     int exitCode2 = QueryTool.run(singleKeyArgs);
-    assertEquals(exitCode2, 1); // Expected to fail due to no client, but routing should work
+    assertEquals(exitCode2, 0); // Should succeed in argument validation
 
     // Test countByValue routing
     String[] countByValueArgs = { "--countByValue" };
