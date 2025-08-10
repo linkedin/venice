@@ -45,7 +45,6 @@ public class ZkHelixAdminClient implements HelixAdminClient {
 
   private final HelixAdmin helixAdmin;
   private final ConfigAccessor helixConfigAccessor;
-  private final VeniceControllerClusterConfig commonConfig;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String haasSuperClusterName;
   private final String controllerClusterName;
@@ -55,7 +54,6 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository) {
     this.multiClusterConfigs = multiClusterConfigs;
-    this.commonConfig = multiClusterConfigs.getCommonConfig();
     haasSuperClusterName = multiClusterConfigs.getControllerHAASSuperClusterName();
     controllerClusterName = multiClusterConfigs.getControllerClusterName();
     controllerClusterReplicaCount = multiClusterConfigs.getControllerClusterReplica();
@@ -103,21 +101,21 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         clusterConfig.setTopologyAwareEnabled(false);
         clusterConfig.setPersistBestPossibleAssignment(true);
 
-        if (commonConfig.getHelixGlobalRebalancePreference() != null) {
+        if (multiClusterConfigs.getHelixGlobalRebalancePreference() != null) {
           // We want to prioritize evenness over less movement when it comes to resource assignment, because the cost
           // of rebalancing for the controller is cheap as it is stateless.
-          clusterConfig.setGlobalRebalancePreference(commonConfig.getHelixGlobalRebalancePreference());
+          clusterConfig.setGlobalRebalancePreference(multiClusterConfigs.getHelixGlobalRebalancePreference());
         }
 
-        if (commonConfig.getHelixDefaultInstanceCapacityMap() != null
-            && commonConfig.getHelixDefaultPartitionWeightMap() != null) {
-          clusterConfig.setInstanceCapacityKeys(commonConfig.getHelixInstanceCapacityKeys());
+        if (multiClusterConfigs.getHelixDefaultInstanceCapacityMap() != null
+            && multiClusterConfigs.getHelixDefaultPartitionWeightMap() != null) {
+          clusterConfig.setInstanceCapacityKeys(multiClusterConfigs.getHelixInstanceCapacityKeys());
 
           // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
           // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes
           // the current top-state distribution into account when rebalancing.
-          clusterConfig.setDefaultInstanceCapacityMap(commonConfig.getHelixDefaultInstanceCapacityMap());
-          clusterConfig.setDefaultPartitionWeightMap(commonConfig.getHelixDefaultPartitionWeightMap());
+          clusterConfig.setDefaultInstanceCapacityMap(multiClusterConfigs.getHelixDefaultInstanceCapacityMap());
+          clusterConfig.setDefaultPartitionWeightMap(multiClusterConfigs.getHelixDefaultPartitionWeightMap());
         }
 
         if (multiClusterConfigs.getControllerHelixParticipantDeregistrationTimeoutMs() >= 0) {
@@ -130,8 +128,8 @@ public class ZkHelixAdminClient implements HelixAdminClient {
         updateClusterConfigs(controllerClusterName, clusterConfig);
         helixAdmin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
-        if (commonConfig.isControllerClusterHelixCloudEnabled()) {
-          helixAdmin.addCloudConfig(controllerClusterName, commonConfig.getHelixCloudConfig());
+        if (multiClusterConfigs.isControllerClusterHelixCloudEnabled()) {
+          helixAdmin.addCloudConfig(controllerClusterName, multiClusterConfigs.getHelixCloudConfig());
         }
       }
       return true;
