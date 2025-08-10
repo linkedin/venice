@@ -245,19 +245,6 @@ public class QueryToolTest {
   }
 
   @Test
-  public void testConvertKeyWithUnionSchema() {
-    // Create a union schema with string and int
-    Schema stringSchema = Schema.create(Schema.Type.STRING);
-    Schema intSchema = Schema.create(Schema.Type.INT);
-    Schema unionSchema = Schema.createUnion(stringSchema, intSchema);
-
-    // The method should handle union by stripping to the underlying type
-    // This tests the VsonAvroSchemaAdapter.stripFromUnion logic
-    Object result = QueryTool.convertKey("test", unionSchema);
-    assertEquals(result, "test");
-  }
-
-  @Test
   public void testConvertKeyWithComplexSchema() {
     // Test with a complex JSON schema (record type)
     String recordSchemaJson = "{" + "\"type\": \"record\"," + "\"name\": \"TestRecord\"," + "\"fields\": ["

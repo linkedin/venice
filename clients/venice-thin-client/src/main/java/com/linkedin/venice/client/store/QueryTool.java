@@ -27,8 +27,8 @@ import org.apache.commons.lang.StringUtils;
 
 
 /**
- * A tool use thin client to query the value from a store by the specified key.
- * Now supports facet counting with countByValue and countByBucket functionality.
+ * A command-line tool that uses Venice thin client to query values from a store.
+ * Supports single key queries and aggregation queries (countByValue and countByBucket).
  */
 public class QueryTool {
   private static final int STORE = 0;
@@ -53,9 +53,9 @@ public class QueryTool {
 
     try {
       if ("--countByValue".equals(firstArg)) {
-        handleCountByValueFromQueryScript(Arrays.copyOfRange(args, 1, args.length));
+        handleCountByValue(Arrays.copyOfRange(args, 1, args.length));
       } else if ("--countByBucket".equals(firstArg)) {
-        handleCountByBucketFromQueryScript(Arrays.copyOfRange(args, 1, args.length));
+        handleCountByBucket(Arrays.copyOfRange(args, 1, args.length));
       } else {
         // Original single key query functionality - restored to main method
         handleSingleKeyQuery(args);
@@ -96,7 +96,6 @@ public class QueryTool {
         if (args.length < REQUIRED_ARGS_COUNT) {
           return 1;
         }
-        // Don't actually execute the query in tests, just validate arguments
         return 0;
       }
     } catch (Exception e) {
@@ -128,17 +127,17 @@ public class QueryTool {
   }
 
   /**
-   * Handle countByValue aggregation called from query.sh script
-   * Args format: [store, key, resolved_url, false, ssl.config, fields, topK]
+   * Handle countByValue aggregation query
+   * Args format: [store, keys, url, is_vson_store, ssl_config_file_path, fields, topK]
    */
-  private static void handleCountByValueFromQueryScript(String[] args) throws Exception {
+  private static void handleCountByValue(String[] args) throws Exception {
     if (args.length < 6) {
       System.out.println(
           "Usage: java -jar venice-thin-client.jar --countByValue <store> <keys> <url> <is_vson_store> <ssl_config_file_path> <fields> [topK]");
       System.exit(1);
     }
 
-    // Parse args provided by query.sh: store, key, resolved_url, false, ssl.config, [fields], [topK]
+    // Parse command line arguments
     String store = removeQuotes(args[0]);
     String keyString = removeQuotes(args[1]);
     String url = removeQuotes(args[2]);
@@ -156,17 +155,17 @@ public class QueryTool {
   }
 
   /**
-   * Handle countByBucket aggregation called from query.sh script
-   * Args format: [store, key, resolved_url, false, ssl.config, field, bucket_definitions]
+   * Handle countByBucket aggregation query
+   * Args format: [store, keys, url, is_vson_store, ssl_config_file_path, field, bucket_definitions]
    */
-  private static void handleCountByBucketFromQueryScript(String[] args) throws Exception {
+  private static void handleCountByBucket(String[] args) throws Exception {
     if (args.length < 7) {
       System.out.println(
           "Usage: java -jar venice-thin-client.jar --countByBucket <store> <keys> <url> <is_vson_store> <ssl_config_file_path> <field> <bucket_definitions>");
       System.exit(1);
     }
 
-    // Parse args provided by query.sh: store, key, resolved_url, false, ssl.config, field, bucket_definitions
+    // Parse command line arguments
     String store = removeQuotes(args[0]);
     String keyString = removeQuotes(args[1]);
     String url = removeQuotes(args[2]);
@@ -255,7 +254,7 @@ public class QueryTool {
       // Parse fields
       String[] fields = countByValueFields.split(",");
 
-      // Create a pure client-side aggregation builder
+      // Create aggregation request builder
       ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(store)
           .setVeniceURL(url)
           .setVsonClient(isVsonStore)
@@ -306,7 +305,7 @@ public class QueryTool {
       // Parse bucket definitions
       Map<String, Predicate<Long>> bucketPredicates = parseBucketDefinitions(bucketDefinitions);
 
-      // Create a pure client-side aggregation builder
+      // Create aggregation request builder
       ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(store)
           .setVeniceURL(url)
           .setVsonClient(isVsonStore)
