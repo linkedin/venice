@@ -62,6 +62,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNK
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_LIFECYCLE_HOOKS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TARGET_SWAP_REGION;
@@ -2618,6 +2619,7 @@ public class VeniceParentHelixAdmin implements Admin {
             new StoreLifecycleHooksRecord(
                 record.getStoreLifecycleHooksClassName(),
                 CollectionUtils.getCharSequenceMapFromStringMap(record.getStoreLifecycleHooksParams())));
+        updatedConfigsList.add(STORE_LIFECYCLE_HOOKS_LIST);
       }
       setStore.storeLifecycleHooks = convertedLifecycleHooks;
 

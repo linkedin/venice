@@ -5278,6 +5278,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       String storeName,
       List<LifecycleHooksRecord> storeLifecycleHooks) {
     storeMetadataUpdate(clusterName, storeName, store -> {
+      LOGGER.info(
+          "Setting lifecycle hooks for store: {} of cluster: {}, hooks: {}",
+          storeName,
+          clusterName,
+          storeLifecycleHooks);
       store.setStoreLifecycleHooks(storeLifecycleHooks);
       return store;
     });
@@ -5406,6 +5411,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void internalUpdateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
+    LOGGER.info("internal update store {} with params {}", storeName, params);
     // There are certain configs that are only allowed to be updated in child regions. We might still want the ability
     // to update such configs in the parent region via the Admin tool for operational reasons. So, we allow such updates
     // if the regions filter only specifies one region, which is the parent region.

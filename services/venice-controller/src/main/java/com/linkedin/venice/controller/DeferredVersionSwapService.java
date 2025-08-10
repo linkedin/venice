@@ -625,10 +625,12 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       if (StoreVersionLifecycleEventOutcome.WAIT.equals(outcome)) {
         return false;
       } else if (StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome)) {
+        veniceParentHelixAdmin.rollbackToBackupVersion(clusterName, parentStore.getName(), targetRegion);
+
         String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
             + targetVersionNum + "as post version swap validations emitted a roll back";
         logMessageIfNotRedundant(message);
-        parentStore.updateVersionStatus(targetVersionNum, PARTIALLY_ONLINE);
+        parentStore.updateVersionStatus(targetVersionNum, ERROR);
         repository.updateStore(parentStore);
 
         LOGGER.info("Truncating kafka topic: {} after validations emitted a roll back", kafkaTopicName);

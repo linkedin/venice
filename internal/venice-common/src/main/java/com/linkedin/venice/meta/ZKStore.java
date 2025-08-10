@@ -241,6 +241,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setGlobalRtDivEnabled(store.isGlobalRtDivEnabled());
     setTTLRepushEnabled(store.isTTLRepushEnabled());
     setEnumSchemaEvolutionAllowed(store.isEnumSchemaEvolutionAllowed());
+    setStoreLifecycleHooks(store.getStoreLifecycleHooks());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);

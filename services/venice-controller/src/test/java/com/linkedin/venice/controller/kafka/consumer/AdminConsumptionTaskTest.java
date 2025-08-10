@@ -60,6 +60,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreLifecycleHooksRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
@@ -966,6 +967,10 @@ public class AdminConsumptionTaskTest {
     partitionerConfig.partitionerParams = new HashMap<>();
     partitionerConfig.partitionerClass = "dummyClassName";
     setStore.partitionerConfig = partitionerConfig;
+
+    List<StoreLifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
+    storeLifecycleHooks.add(new StoreLifecycleHooksRecord("test", Collections.emptyMap()));
+    setStore.storeLifecycleHooks = storeLifecycleHooks;
 
     if (replicateAllConfigs) {
       setStore.replicateAllConfigs = true;
