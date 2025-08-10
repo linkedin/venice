@@ -33,7 +33,7 @@ public class DeadStoreStatsPreFetchTaskTest {
 
   @Test
   public void testBecomesLeaderAfterRetries() throws InterruptedException {
-    // Simulate: false 1st check, true on 2nd check (~10 sec delay)
+    // Simulate: false 1st check, true on 2nd check
     when(mockAdmin.isLeaderControllerFor(CLUSTER_NAME)).thenReturn(false).thenReturn(true);
 
     DeadStoreStatsPreFetchTask task = new DeadStoreStatsPreFetchTask(CLUSTER_NAME, mockAdmin, 1000);
@@ -41,8 +41,8 @@ public class DeadStoreStatsPreFetchTaskTest {
 
     executor.submit(task);
 
-    // Wait enough time for two isLeaderControllerFor() calls (~10s + small buffer)
-    Thread.sleep(13_000);
+    // Wait enough time for: 30s sleep (non-leader) + leadership check + immediate prefetch
+    Thread.sleep(32_000);
 
     shutdownTask(task, executor);
 
