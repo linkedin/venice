@@ -254,6 +254,7 @@ public class P2PFileTransferServerHandler extends SimpleChannelInboundHandler<Fu
   }
 
   private void sendFile(File file, ChannelHandlerContext ctx) throws IOException {
+    LOGGER.info("Sending file: {} at path {}. ", file.getName(), file.getAbsolutePath());
     RandomAccessFile raf = new RandomAccessFile(file, "r");
     ChannelFuture sendFileFuture;
     ChannelFuture lastContentFuture;
