@@ -110,6 +110,28 @@ images can be embedded with an absolute link like this:
 Here's a link to all the emojis available in README files: [Emoji Cheat Sheet](https://github.com/ikatyang/emoji-cheat-sheet/blob/master/README.md). 
 
 ## Testing Doc Changes
+
+There are two ways to test doc changes, locally and on the public web. Local testing is convenient to iterate quickly,
+while public web testing is useful to make sure that nothing breaks (e.g., especially if changing styles, Ruby 
+dependencies, or Jekyll configs) and to share more significant documentation changes with PR reviewers.
+
+### Testing Locally
+
+The docs are rendered and served by a Ruby server called Jekyll. Follow the OS-specific instructions to [install Jekyll
+and all its dependencies](https://jekyllrb.com/docs/installation/). After that, navigate to the `docs/` directory in the
+repo, and run:
+
+```bash
+bundle exec jekyll serve 
+```
+
+Then navigate to `http://127.0.0.1:4000` and look at the docs in your browser. Whenever Markdown content or style files 
+change, the Jekyll server hot reloads them. In cases where the `Gemfile` or `_config.yml` files change, the server needs 
+to be restarted. Regarding the `Gemfile`, it is also important to note that not all gems are supported by GitHub Pages,
+and so it is critical to perform the public web testing on the PR author's own GitHub fork (see next section).
+
+### Testing on the Public Web
+
 A GitHub fork can have its own documentation. This can be setup by:
 
 1. Navigating to the fork's Settings > Pages, i.e.: `https://github.com/<username>/venice/settings/pages`
@@ -117,3 +139,6 @@ A GitHub fork can have its own documentation. This can be setup by:
 3. Selecting `/docs` as the root directory.
 4. Clicking Save.
 5. Navigating to your fork's docs at: `https://<username>.github.io/venice`
+
+For significant doc changes, please follow this process and add a link inside the PR to the docs hosted in the PR 
+author's own fork.
