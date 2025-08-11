@@ -14,7 +14,6 @@ import org.apache.avro.util.Utf8;
 
 
 /**
- * Utility class for server-side aggregation operations (CountByValue and CountByBucket).
  * This class provides shared implementation for processing values and counting field occurrences
  * that can be used by thin-client, fast-client, and server components.
  */
@@ -193,34 +192,21 @@ public class FacetCountingUtils {
    * @throws IllegalArgumentException if validation fails
    */
   public static void validateFieldNames(String[] fieldNames, Schema valueSchema) {
-    // First do basic validation
     if (fieldNames == null || fieldNames.length == 0) {
       throw new IllegalArgumentException("fieldNames cannot be null or empty");
     }
 
     for (String fieldName: fieldNames) {
-      if (fieldName == null || fieldName.isEmpty()) {
-        throw new IllegalArgumentException("Field name cannot be null or empty");
+      if (fieldName == null) {
+        throw new IllegalArgumentException("Field name cannot be null");
       }
-    }
+      if (fieldName.isEmpty()) {
+        throw new IllegalArgumentException("Field name cannot be empty");
+      }
 
-    // Then do schema-specific validation
-    for (String fieldName: fieldNames) {
-      // For string schema, only "value" or "_value" are valid
-      if (valueSchema.getType() == Schema.Type.STRING) {
-        if (!fieldName.equals("value") && !fieldName.equals("_value")) {
-          throw new IllegalArgumentException(
-              "For string-valued stores, only 'value' or '_value' field names are supported. Got: " + fieldName);
-        }
-      } else if (valueSchema.getType() == Schema.Type.RECORD) {
-        // For record types, validate field exists
-        Schema.Field field = valueSchema.getField(fieldName);
-        if (field == null) {
-          throw new IllegalArgumentException("Field '" + fieldName + "' not found in schema");
-        }
-      } else {
-        throw new IllegalArgumentException(
-            "CountByValue only supports STRING and RECORD value types. Got: " + valueSchema.getType());
+      Schema.Field field = valueSchema.getField(fieldName);
+      if (field == null) {
+        throw new IllegalArgumentException("Field not found in schema: " + fieldName);
       }
     }
   }
