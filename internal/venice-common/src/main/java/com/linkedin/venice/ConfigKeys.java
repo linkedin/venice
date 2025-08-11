@@ -568,6 +568,12 @@ public class ConfigKeys {
   public static final String CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME = "controller.helix.cloud.info.processor.name";
 
   /**
+   * Controller Helix participant deregistration timeout in milliseconds.
+   */
+  public static final String CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS =
+      "controller.helix.participant.deregistration.timeout.ms";
+
+  /**
    * Base URL for customized health checks triggered by Helix. Default is empty string.
    */
   public static final String CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL =

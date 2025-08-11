@@ -62,6 +62,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESS
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT;
@@ -404,6 +405,8 @@ public class VeniceControllerClusterConfig {
   private final boolean controllerClusterHelixCloudEnabled;
   private final boolean storageClusterHelixCloudEnabled;
   private final CloudConfig helixCloudConfig;
+
+  private final long controllerHelixParticipantDeregistrationTimeoutMs;
 
   private final String helixRestCustomizedHealthUrl;
 
@@ -1041,6 +1044,8 @@ public class VeniceControllerClusterConfig {
       helixCloudConfig = null;
     }
 
+    this.controllerHelixParticipantDeregistrationTimeoutMs =
+        props.getLong(CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS, -1L);
     this.helixRestCustomizedHealthUrl = props.getString(CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL, "");
 
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
@@ -1831,6 +1836,10 @@ public class VeniceControllerClusterConfig {
 
   public CloudConfig getHelixCloudConfig() {
     return helixCloudConfig;
+  }
+
+  public long getControllerHelixParticipantDeregistrationTimeoutMs() {
+    return controllerHelixParticipantDeregistrationTimeoutMs;
   }
 
   public String getHelixRestCustomizedHealthUrl() {

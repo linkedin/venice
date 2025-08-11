@@ -15,6 +15,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_ID;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
@@ -489,4 +490,13 @@ public class TestVeniceControllerClusterConfig {
         () -> new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties5)));
   }
 
+  @Test
+  public void testControllerHelixParticipantDeregistrationTimeoutMs() {
+    Properties baseProps = getBaseSingleRegionProperties(false);
+
+    baseProps.setProperty(CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS, "60000");
+
+    VeniceControllerClusterConfig clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(baseProps));
+    assertEquals(clusterConfig.getControllerHelixParticipantDeregistrationTimeoutMs(), 60000L);
+  }
 }
