@@ -1158,16 +1158,10 @@ public class VeniceControllerClusterConfig {
     validateHelixCapacities(helixInstanceCapacity, helixResourceCapacityWeight);
 
     if (helixInstanceCapacity != null && helixResourceCapacityWeight != null) {
-      Map<String, Integer> helixDefaultInstanceCapacityMap = new HashMap<>();
-      Map<String, Integer> helixDefaultPartitionWeightMap = new HashMap<>();
-
-      helixDefaultInstanceCapacityMap.put(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixInstanceCapacity);
-      helixDefaultPartitionWeightMap.put(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixResourceCapacityWeight);
-
       helixCapacityConfig = new HelixCapacityConfig(
           Collections.singletonList(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
-          helixDefaultInstanceCapacityMap,
-          helixDefaultPartitionWeightMap);
+          Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixInstanceCapacity),
+          Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixResourceCapacityWeight));
 
     } else {
       helixCapacityConfig = null;
