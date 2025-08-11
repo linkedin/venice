@@ -45,6 +45,7 @@ import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.PushJobCheckpoints;
+import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
@@ -340,16 +341,17 @@ public class TestVeniceControllerClusterConfig {
         (int) helixGlobalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE),
         helixRebalancePreferenceForceBaselineConverge);
 
-    List<String> helixInstanceCapacityKeys = clusterConfig.getHelixInstanceCapacityKeys();
+    HelixCapacityConfig helixCapacityConfig = clusterConfig.getHelixCapacityConfig();
+    List<String> helixInstanceCapacityKeys = helixCapacityConfig.getHelixInstanceCapacityKeys();
     assertEquals(helixInstanceCapacityKeys.size(), 1);
     assertEquals(helixInstanceCapacityKeys.get(0), CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY);
 
-    Map<String, Integer> helixDefaultInstanceCapacityMap = clusterConfig.getHelixDefaultInstanceCapacityMap();
+    Map<String, Integer> helixDefaultInstanceCapacityMap = helixCapacityConfig.getHelixDefaultInstanceCapacityMap();
     assertEquals(
         (int) helixDefaultInstanceCapacityMap.get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
         helixInstanceCapacity);
 
-    Map<String, Integer> helixDefaultPartitionWeightMap = clusterConfig.getHelixDefaultPartitionWeightMap();
+    Map<String, Integer> helixDefaultPartitionWeightMap = helixCapacityConfig.getHelixDefaultPartitionWeightMap();
     assertEquals(
         (int) helixDefaultPartitionWeightMap.get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
         helixResourceCapacityWeight);
@@ -362,9 +364,7 @@ public class TestVeniceControllerClusterConfig {
         new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties));
 
     assertNull(clusterConfig.getHelixGlobalRebalancePreference());
-    assertNull(clusterConfig.getHelixInstanceCapacityKeys());
-    assertNull(clusterConfig.getHelixDefaultInstanceCapacityMap());
-    assertNull(clusterConfig.getHelixDefaultPartitionWeightMap());
+    assertNull(clusterConfig.getHelixCapacityConfig());
     assertFalse(clusterConfig.isLogCompactionSchedulingEnabled());
   }
 
@@ -427,12 +427,13 @@ public class TestVeniceControllerClusterConfig {
     clusterProperties4.put(ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT, helixResourceCapacityWeight);
     clusterConfig = new VeniceControllerClusterConfig(new VeniceProperties(clusterProperties4));
 
-    Map<String, Integer> helixDefaultInstanceCapacityMap = clusterConfig.getHelixDefaultInstanceCapacityMap();
+    HelixCapacityConfig capacityConfig = clusterConfig.getHelixCapacityConfig();
+    Map<String, Integer> helixDefaultInstanceCapacityMap = capacityConfig.getHelixDefaultInstanceCapacityMap();
     assertEquals(
         (int) helixDefaultInstanceCapacityMap.get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
         helixInstanceCapacity);
 
-    Map<String, Integer> helixDefaultPartitionWeightMap = clusterConfig.getHelixDefaultPartitionWeightMap();
+    Map<String, Integer> helixDefaultPartitionWeightMap = capacityConfig.getHelixDefaultPartitionWeightMap();
     assertEquals(
         (int) helixDefaultPartitionWeightMap.get(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
         helixResourceCapacityWeight);

@@ -209,6 +209,7 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -587,9 +588,7 @@ public class VeniceControllerClusterConfig {
   private final double deferredVersionSwapBufferTime;
 
   private final Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference;
-  private final List<String> helixInstanceCapacityKeys;
-  private final Map<String, Integer> helixDefaultInstanceCapacityMap;
-  private final Map<String, Integer> helixDefaultPartitionWeightMap;
+  private final HelixCapacityConfig helixCapacityConfig;
 
   /**
    * Configs for repush
@@ -1159,17 +1158,19 @@ public class VeniceControllerClusterConfig {
     validateHelixCapacities(helixInstanceCapacity, helixResourceCapacityWeight);
 
     if (helixInstanceCapacity != null && helixResourceCapacityWeight != null) {
-      helixInstanceCapacityKeys = Collections.singletonList(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY);
-      helixDefaultInstanceCapacityMap = new HashMap<>();
-      helixDefaultPartitionWeightMap = new HashMap<>();
+      Map<String, Integer> helixDefaultInstanceCapacityMap = new HashMap<>();
+      Map<String, Integer> helixDefaultPartitionWeightMap = new HashMap<>();
 
       helixDefaultInstanceCapacityMap.put(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixInstanceCapacity);
       helixDefaultPartitionWeightMap.put(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixResourceCapacityWeight);
 
+      helixCapacityConfig = new HelixCapacityConfig(
+          Collections.singletonList(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
+          helixDefaultInstanceCapacityMap,
+          helixDefaultPartitionWeightMap);
+
     } else {
-      helixInstanceCapacityKeys = null;
-      helixDefaultInstanceCapacityMap = null;
-      helixDefaultPartitionWeightMap = null;
+      helixCapacityConfig = null;
     }
 
     this.deferredVersionSwapSleepMs =
@@ -2135,16 +2136,8 @@ public class VeniceControllerClusterConfig {
     return helixGlobalRebalancePreference;
   }
 
-  public List<String> getHelixInstanceCapacityKeys() {
-    return helixInstanceCapacityKeys;
-  }
-
-  public Map<String, Integer> getHelixDefaultInstanceCapacityMap() {
-    return helixDefaultInstanceCapacityMap;
-  }
-
-  public Map<String, Integer> getHelixDefaultPartitionWeightMap() {
-    return helixDefaultPartitionWeightMap;
+  public HelixCapacityConfig getHelixCapacityConfig() {
+    return helixCapacityConfig;
   }
 
   private void validateHelixRebalancePreferences(

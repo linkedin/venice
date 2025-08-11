@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
@@ -337,16 +338,8 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getHelixGlobalRebalancePreference();
   }
 
-  public List<String> getHelixInstanceCapacityKeys() {
-    return getCommonConfig().getHelixInstanceCapacityKeys();
-  }
-
-  public Map<String, Integer> getHelixDefaultInstanceCapacityMap() {
-    return getCommonConfig().getHelixDefaultInstanceCapacityMap();
-  }
-
-  public Map<String, Integer> getHelixDefaultPartitionWeightMap() {
-    return getCommonConfig().getHelixDefaultPartitionWeightMap();
+  public HelixCapacityConfig getHelixCapacityConfig() {
+    return getCommonConfig().getHelixCapacityConfig();
   }
 
   public boolean isControllerClusterHelixCloudEnabled() {

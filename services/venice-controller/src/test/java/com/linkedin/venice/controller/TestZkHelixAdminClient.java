@@ -17,6 +17,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.utils.HelixUtils;
 import java.lang.reflect.Field;
 import java.security.AccessController;
@@ -257,10 +258,12 @@ public class TestZkHelixAdminClient {
     Map<String, Integer> helixDefaultPartitionWeightMap =
         Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixResourceCapacityWeight);
 
+    HelixCapacityConfig capacityConfig = new HelixCapacityConfig(
+        helixInstanceCapacityKeys,
+        helixDefaultInstanceCapacityMap,
+        helixDefaultPartitionWeightMap);
     doReturn(helixGlobalRebalancePreference).when(mockMultiClusterConfigs).getHelixGlobalRebalancePreference();
-    doReturn(helixInstanceCapacityKeys).when(mockMultiClusterConfigs).getHelixInstanceCapacityKeys();
-    doReturn(helixDefaultInstanceCapacityMap).when(mockMultiClusterConfigs).getHelixDefaultInstanceCapacityMap();
-    doReturn(helixDefaultPartitionWeightMap).when(mockMultiClusterConfigs).getHelixDefaultPartitionWeightMap();
+    doReturn(capacityConfig).when(mockMultiClusterConfigs).getHelixCapacityConfig();
 
     doAnswer(invocation -> {
       String controllerClusterName = invocation.getArgument(0);
@@ -375,14 +378,13 @@ public class TestZkHelixAdminClient {
   }
 
   @Test
-  public void testPartiallyDefinedCapacityKeysNoInstanceCapacityMap() {
+  public void testRebalancePreferenceWithoutCapacityKeysDefined() {
     when(zkHelixAdminClient.isVeniceControllerClusterCreated()).thenReturn(false);
     when(mockHelixAdmin.addCluster(VENICE_CONTROLLER_CLUSTER, false)).thenReturn(true);
 
     int helixRebalancePreferenceEvenness = 10;
     int helixRebalancePreferenceLessMovement = 1;
     int helixRebalancePreferenceForceBaselineConverge = 1;
-    int helixResourceCapacityWeight = 100;
 
     Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference = new HashMap<>();
     helixGlobalRebalancePreference
@@ -393,77 +395,10 @@ public class TestZkHelixAdminClient {
         ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE,
         helixRebalancePreferenceForceBaselineConverge);
 
-    List<String> helixInstanceCapacityKeys = Collections.singletonList(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY);
-    Map<String, Integer> helixDefaultPartitionWeightMap =
-        Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixResourceCapacityWeight);
-
     doReturn(helixGlobalRebalancePreference).when(mockMultiClusterConfigs).getHelixGlobalRebalancePreference();
-    doReturn(helixInstanceCapacityKeys).when(mockMultiClusterConfigs).getHelixInstanceCapacityKeys();
-    doReturn(null).when(mockMultiClusterConfigs).getHelixDefaultInstanceCapacityMap();
-    doReturn(helixDefaultPartitionWeightMap).when(mockMultiClusterConfigs).getHelixDefaultPartitionWeightMap();
+    doReturn(null).when(mockMultiClusterConfigs).getHelixCapacityConfig();
 
     // Both defaultInstanceCapacityMap and defaultPartitionWeightMap need to be specified
-    doAnswer(invocation -> {
-      String controllerClusterName = invocation.getArgument(0);
-      ClusterConfig helixClusterConfig = invocation.getArgument(1);
-
-      assertEquals(controllerClusterName, VENICE_CONTROLLER_CLUSTER);
-
-      Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> globalRebalancePreference =
-          helixClusterConfig.getGlobalRebalancePreference();
-      assertEquals(
-          (int) globalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS),
-          helixRebalancePreferenceEvenness);
-      assertEquals(
-          (int) globalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT),
-          helixRebalancePreferenceLessMovement);
-      assertEquals(
-          (int) globalRebalancePreference.get(ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE),
-          helixRebalancePreferenceForceBaselineConverge);
-
-      List<String> instanceCapacityKeys = helixClusterConfig.getInstanceCapacityKeys();
-      assertEquals(instanceCapacityKeys.size(), 0);
-
-      Map<String, Integer> defaultInstanceCapacityMap = helixClusterConfig.getDefaultInstanceCapacityMap();
-      assertEquals(defaultInstanceCapacityMap.size(), 0);
-
-      Map<String, Integer> defaultPartitionWeightMap = helixClusterConfig.getDefaultPartitionWeightMap();
-      assertEquals(defaultPartitionWeightMap.size(), 0);
-      return null;
-    }).when(zkHelixAdminClient).updateClusterConfigs(any(), any());
-
-    doCallRealMethod().when(zkHelixAdminClient).createVeniceControllerCluster();
-    zkHelixAdminClient.createVeniceControllerCluster();
-  }
-
-  @Test
-  public void testPartiallyDefinedCapacityKeysNoPartitionWeightMap() {
-    when(zkHelixAdminClient.isVeniceControllerClusterCreated()).thenReturn(false);
-    when(mockHelixAdmin.addCluster(VENICE_CONTROLLER_CLUSTER, false)).thenReturn(true);
-
-    int helixRebalancePreferenceEvenness = 10;
-    int helixRebalancePreferenceLessMovement = 1;
-    int helixRebalancePreferenceForceBaselineConverge = 1;
-    int helixInstanceCapacity = 10000;
-
-    Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference = new HashMap<>();
-    helixGlobalRebalancePreference
-        .put(ClusterConfig.GlobalRebalancePreferenceKey.EVENNESS, helixRebalancePreferenceEvenness);
-    helixGlobalRebalancePreference
-        .put(ClusterConfig.GlobalRebalancePreferenceKey.LESS_MOVEMENT, helixRebalancePreferenceLessMovement);
-    helixGlobalRebalancePreference.put(
-        ClusterConfig.GlobalRebalancePreferenceKey.FORCE_BASELINE_CONVERGE,
-        helixRebalancePreferenceForceBaselineConverge);
-
-    List<String> helixInstanceCapacityKeys = Collections.singletonList(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY);
-    Map<String, Integer> helixDefaultInstanceCapacityMap =
-        Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixInstanceCapacity);
-
-    doReturn(helixGlobalRebalancePreference).when(mockMultiClusterConfigs).getHelixGlobalRebalancePreference();
-    doReturn(helixInstanceCapacityKeys).when(mockMultiClusterConfigs).getHelixInstanceCapacityKeys();
-    doReturn(helixDefaultInstanceCapacityMap).when(mockMultiClusterConfigs).getHelixDefaultInstanceCapacityMap();
-    doReturn(null).when(mockMultiClusterConfigs).getHelixDefaultPartitionWeightMap();
-
     doAnswer(invocation -> {
       String controllerClusterName = invocation.getArgument(0);
       ClusterConfig helixClusterConfig = invocation.getArgument(1);
@@ -511,10 +446,12 @@ public class TestZkHelixAdminClient {
     Map<String, Integer> helixDefaultPartitionWeightMap =
         Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixResourceCapacityWeight);
 
+    HelixCapacityConfig capacityConfig = new HelixCapacityConfig(
+        helixInstanceCapacityKeys,
+        helixDefaultInstanceCapacityMap,
+        helixDefaultPartitionWeightMap);
     doReturn(null).when(mockMultiClusterConfigs).getHelixGlobalRebalancePreference();
-    doReturn(helixInstanceCapacityKeys).when(mockMultiClusterConfigs).getHelixInstanceCapacityKeys();
-    doReturn(helixDefaultInstanceCapacityMap).when(mockMultiClusterConfigs).getHelixDefaultInstanceCapacityMap();
-    doReturn(helixDefaultPartitionWeightMap).when(mockMultiClusterConfigs).getHelixDefaultPartitionWeightMap();
+    doReturn(capacityConfig).when(mockMultiClusterConfigs).getHelixCapacityConfig();
 
     doAnswer(invocation -> {
       String controllerClusterName = invocation.getArgument(0);

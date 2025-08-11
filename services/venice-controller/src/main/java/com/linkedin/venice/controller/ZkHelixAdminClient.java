@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.helix.ZkClientFactory;
@@ -107,15 +108,15 @@ public class ZkHelixAdminClient implements HelixAdminClient {
           clusterConfig.setGlobalRebalancePreference(multiClusterConfigs.getHelixGlobalRebalancePreference());
         }
 
-        if (multiClusterConfigs.getHelixDefaultInstanceCapacityMap() != null
-            && multiClusterConfigs.getHelixDefaultPartitionWeightMap() != null) {
-          clusterConfig.setInstanceCapacityKeys(multiClusterConfigs.getHelixInstanceCapacityKeys());
+        HelixCapacityConfig helixCapacityConfig = multiClusterConfigs.getHelixCapacityConfig();
+        if (multiClusterConfigs.getHelixCapacityConfig() != null) {
+          clusterConfig.setInstanceCapacityKeys(helixCapacityConfig.getHelixInstanceCapacityKeys());
 
           // This is how much capacity a participant can take. The Helix documentation recommends setting this to a high
           // value to avoid rebalance failures. The primary goal of setting this is to enable a constraint that takes
           // the current top-state distribution into account when rebalancing.
-          clusterConfig.setDefaultInstanceCapacityMap(multiClusterConfigs.getHelixDefaultInstanceCapacityMap());
-          clusterConfig.setDefaultPartitionWeightMap(multiClusterConfigs.getHelixDefaultPartitionWeightMap());
+          clusterConfig.setDefaultInstanceCapacityMap(helixCapacityConfig.getHelixDefaultInstanceCapacityMap());
+          clusterConfig.setDefaultPartitionWeightMap(helixCapacityConfig.getHelixDefaultPartitionWeightMap());
         }
 
         if (multiClusterConfigs.getControllerHelixParticipantDeregistrationTimeoutMs() >= 0) {
