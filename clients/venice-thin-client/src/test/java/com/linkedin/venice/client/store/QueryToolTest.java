@@ -357,30 +357,24 @@ public class QueryToolTest {
 
   @Test
   public void testCommaHandlingDifference() throws Exception {
-    // Test the core difference between the two query methods
     String jsonKeyWithComma = "{\"memberId\": 220896326, \"useCaseName\": \"nba_digest_email\"}";
     String multipleKeys = "key1,key2,key3";
 
-    // Demonstrate the intended behavior difference:
-
-    // 1. Single key with JSON containing comma - should NOT be split
-    // This is what queryStoreForKey does (called by single key path)
+    // Single key with JSON containing comma should NOT be split
     assertEquals(QueryTool.convertKey(jsonKeyWithComma, Schema.create(Schema.Type.STRING)), jsonKeyWithComma);
 
-    // 2. Multiple keys separated by comma - SHOULD be split
-    // This is what parseKeys does (called by aggregation paths)
+    // Multiple keys separated by comma SHOULD be split
     String[] splitKeys = multipleKeys.split(",");
     assertEquals(splitKeys.length, 3);
     assertEquals(splitKeys[0].trim(), "key1");
     assertEquals(splitKeys[1].trim(), "key2");
     assertEquals(splitKeys[2].trim(), "key3");
 
-    // 3. Verify JSON would be incorrectly split by old logic
+    // Verify JSON would be incorrectly split by old logic
     String[] jsonSplit = jsonKeyWithComma.split(",");
-    assertEquals(jsonSplit.length, 2); // This demonstrates the bug
+    assertEquals(jsonSplit.length, 2);
     assertTrue(jsonSplit[0].contains("memberId"));
     assertTrue(jsonSplit[1].contains("useCaseName"));
-    // This shows why the old logic was wrong for JSON keys
   }
 
   @Test

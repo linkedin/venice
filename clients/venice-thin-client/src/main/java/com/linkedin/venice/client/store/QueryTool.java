@@ -39,7 +39,6 @@ public class QueryTool {
   private static final int REQUIRED_ARGS_COUNT = 5;
 
   public static void main(String[] args) throws Exception {
-    // Route to new aggregation features if specified
     if (args.length > 0) {
       if ("--countByValue".equals(args[0])) {
         handleCountByValue(Arrays.copyOfRange(args, 1, args.length));
@@ -121,7 +120,7 @@ public class QueryTool {
   }
 
   /**
-   * Query store for a single key - original behavior (NO comma splitting)
+   * Query store for a single key
    */
   public static Map<String, String> queryStoreForKey(
       String store,
