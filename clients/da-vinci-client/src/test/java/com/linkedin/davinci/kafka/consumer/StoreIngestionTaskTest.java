@@ -42,6 +42,7 @@ import static com.linkedin.venice.utils.Time.MS_PER_HOUR;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_NOT_COMPLETED;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
+import static com.linkedin.venice.writer.VeniceWriter.LEADER_COMPLETE_STATE_HEADERS;
 import static com.linkedin.venice.writer.VeniceWriter.generateHeartbeatMessage;
 import static com.linkedin.venice.writer.VeniceWriter.getHeartbeatKME;
 import static org.mockito.ArgumentMatchers.any;
@@ -81,6 +82,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -913,6 +915,13 @@ public abstract class StoreIngestionTaskTest {
 
     zkHelixAdmin = mock(ZKHelixAdmin.class);
     doNothing().when(zkHelixAdmin).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
+
+    InternalDaVinciRecordTransformerConfig internalDaVinciRecordTransformerConfig = null;
+    if (recordTransformerConfig != null) {
+      internalDaVinciRecordTransformerConfig =
+          new InternalDaVinciRecordTransformerConfig(recordTransformerConfig, mockDaVinciRecordTransformerStats);
+    }
+
     storeIngestionTaskUnderTest = spy(
         ingestionTaskFactory.getNewIngestionTask(
             this.mockStorageService,
@@ -924,7 +933,7 @@ public abstract class StoreIngestionTaskTest {
             PARTITION_FOO,
             false,
             Optional.empty(),
-            recordTransformerConfig,
+            internalDaVinciRecordTransformerConfig,
             Lazy.of(() -> zkHelixAdmin)));
 
     Future testSubscribeTaskFuture = null;
@@ -1176,7 +1185,6 @@ public abstract class StoreIngestionTaskTest {
         .setHostLevelIngestionStats(mockAggStoreIngestionStats)
         .setVersionedDIVStats(mockVersionedDIVStats)
         .setVersionedIngestionStats(mockVersionedStorageIngestionStats)
-        .setDaVinciRecordTransformerStats(mockDaVinciRecordTransformerStats)
         .setStoreBufferService(storeBufferService)
         .setServerConfig(veniceServerConfig)
         .setDiskUsage(diskUsage)
@@ -3815,7 +3823,7 @@ public abstract class StoreIngestionTaskTest {
         getHeartbeatKME(producerTimestamp, mockLeaderMetadataWrapper, generateHeartbeatMessage(CheckSumType.NONE), "0");
 
     PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
-    pubSubMessageHeaders.add(VeniceWriter.getLeaderCompleteStateHeader(LEADER_COMPLETED));
+    pubSubMessageHeaders.add(LEADER_COMPLETE_STATE_HEADERS.get(LEADER_COMPLETED));
     DefaultPubSubMessage pubSubMessage = new ImmutablePubSubMessage(
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,

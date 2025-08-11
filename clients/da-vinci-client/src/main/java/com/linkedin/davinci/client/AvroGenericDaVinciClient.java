@@ -195,6 +195,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       throw new VeniceClientException("Ingestion Isolation is not supported with DaVinciRecordTransformer");
     }
 
+    if (backendConfig.getBoolean(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)
+        && recordTransformerConfig != null) {
+      throw new VeniceClientException(
+          DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY
+              + " must be set to false when using DaVinciRecordTransformer");
+    }
+
     preValidation.run();
   }
 
@@ -716,7 +723,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         .put(ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION, 80)
         .put(ZOOKEEPER_ADDRESS, zkAddress)
         .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
-        .put(DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY, true)
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, daVinciConfig.getStorageClass() == StorageClass.MEMORY_BACKED_BY_DISK)
         .put(INGESTION_USE_DA_VINCI_CLIENT, true)
         .put(RECORD_TRANSFORMER_VALUE_SCHEMA, recordTransformerOutputValueSchema)
@@ -734,20 +740,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       VeniceConfigLoader configLoader,
       Optional<Set<String>> managedClients,
       ICProvider icProvider,
-      Optional<ObjectCacheConfig> cacheConfig,
-      DaVinciRecordTransformerConfig recordTransformerConfig) {
+      Optional<ObjectCacheConfig> cacheConfig) {
     synchronized (AvroGenericDaVinciClient.class) {
       if (daVinciBackend == null) {
         logger
             .info("Da Vinci Backend does not exist, creating a new backend for client: " + clientConfig.getStoreName());
         daVinciBackend = new ReferenceCounted<>(
-            new DaVinciBackend(
-                clientConfig,
-                configLoader,
-                managedClients,
-                icProvider,
-                cacheConfig,
-                recordTransformerConfig),
+            new DaVinciBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig),
             backend -> {
               // Ensure that existing backend is fully closed before a new one can be created.
               synchronized (AvroGenericDaVinciClient.class) {
@@ -784,8 +783,16 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
     logger.info("Starting client, storeName={}", getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
+
+    if (configLoader.getVeniceServerConfig().isDatabaseChecksumVerificationEnabled()
+        && daVinciConfig.isRecordTransformerEnabled() && !recordTransformerConfig.shouldSkipCompatibilityChecks()) {
+      // The checksum verification will fail when a DaVinciRecordTransformer implementation transforms the values
+      throw new VeniceException(
+          "DaVinciRecordTransformer cannot be used with database checksum verification when skipCompatibilityChecks is set to false.");
+    }
+
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
-    initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig, recordTransformerConfig);
+    initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);
 
     try {
       getBackend().verifyCacheConfigEquality(daVinciConfig.getCacheConfig(), getStoreName());
@@ -837,6 +844,10 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       } else {
         this.storeDeserializerCache = (AvroStoreDeserializerCache<V>) this.genericRecordStoreDeserializerCache;
         this.readerSchemaId = DO_NOT_USE_READER_SCHEMA_ID;
+      }
+
+      if (daVinciConfig.isRecordTransformerEnabled()) {
+        daVinciBackend.get().registerRecordTransformerConfig(getStoreName(), recordTransformerConfig);
       }
 
       ready.set(true);

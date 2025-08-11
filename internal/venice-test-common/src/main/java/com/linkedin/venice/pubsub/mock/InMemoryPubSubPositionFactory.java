@@ -21,7 +21,7 @@ public class InMemoryPubSubPositionFactory extends PubSubPositionFactory {
   }
 
   @Override
-  public PubSubPosition createFromByteBuffer(ByteBuffer buffer) {
+  public PubSubPosition fromPositionRawBytes(ByteBuffer buffer) {
     return InMemoryPubSubPosition.of(buffer);
   }
 

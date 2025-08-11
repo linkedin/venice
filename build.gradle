@@ -173,6 +173,10 @@ publishing {
   }
 }
 
+afterEvaluate {
+  mavenPublishing.ensureCatchAllModuleGetsPublishedLast(publishing.repositories)
+}
+
 def parser = new XmlSlurper()
 parser.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)
 parser.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
@@ -598,7 +602,7 @@ subprojects {
 
   // Only publish artifacts for projects that are at the leaf level
   if (isLeafSubModule) {
-    publishing.configureArtifactPublishing(project, testJar)
+    mavenPublishing.configureArtifactPublishing(project, testJar)
   }
 }
 

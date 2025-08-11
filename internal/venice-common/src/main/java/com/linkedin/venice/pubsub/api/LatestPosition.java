@@ -3,6 +3,8 @@ package com.linkedin.venice.pubsub.api;
 import static com.linkedin.venice.pubsub.PubSubPositionTypeRegistry.LATEST_POSITION_RESERVED_TYPE_ID;
 
 import com.linkedin.venice.memory.ClassSizeEstimator;
+import com.linkedin.venice.pubsub.LatestPositionFactory;
+import com.linkedin.venice.pubsub.PubSubPositionFactory;
 import java.nio.ByteBuffer;
 
 
@@ -52,6 +54,11 @@ final class LatestPosition implements PubSubPosition {
   }
 
   @Override
+  public Class<? extends PubSubPositionFactory> getFactoryClass() {
+    return LatestPositionFactory.class;
+  }
+
+  @Override
   public String toString() {
     return NAME;
   }
@@ -70,6 +77,6 @@ final class LatestPosition implements PubSubPosition {
 
   @Override
   public long getNumericOffset() {
-    throw new UnsupportedOperationException("Cannot get numeric offset for LATEST position");
+    return Long.MAX_VALUE;
   }
 }

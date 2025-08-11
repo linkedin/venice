@@ -16,8 +16,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IngestionBackend;
+import com.linkedin.davinci.stats.AggVersionedDaVinciRecordTransformerStats;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.ConfigKeys;
@@ -182,11 +184,15 @@ public class VersionBackendTest {
     ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
     when(mockStoreRepository.getStoreOrThrow(storeName)).thenReturn(readOnlyStore);
 
-    DaVinciRecordTransformerConfig recordTransformerConfig = spy(
+    DaVinciRecordTransformerConfig recordTransformerConfig =
         new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
-            .build());
+            .build();
 
-    when(mockDaVinciBackend.getRecordTransformerConfig()).thenReturn(recordTransformerConfig);
+    InternalDaVinciRecordTransformerConfig internalRecordTransformerConfig = spy(
+        new InternalDaVinciRecordTransformerConfig(
+            recordTransformerConfig,
+            mock(AggVersionedDaVinciRecordTransformerStats.class)));
+    when(mockDaVinciBackend.getInternalRecordTransformerConfig(storeName)).thenReturn(internalRecordTransformerConfig);
 
     VersionBackend versionBackend = new VersionBackend(mockDaVinciBackend, version, mockStoreBackendStats);
 
@@ -194,12 +200,12 @@ public class VersionBackendTest {
     ComplementSet<Integer> complementSet = ComplementSet.newSet(partitionList);
 
     versionBackend.subscribe(complementSet);
-    verify(recordTransformerConfig).setStartConsumptionLatchCount(3);
+    verify(internalRecordTransformerConfig).setStartConsumptionLatchCount(3);
     verify(mockIngestionBackend).startConsumption(any(), eq(0));
     verify(mockIngestionBackend).startConsumption(any(), eq(1));
     verify(mockIngestionBackend).startConsumption(any(), eq(2));
 
-    clearInvocations(recordTransformerConfig);
+    clearInvocations(internalRecordTransformerConfig);
     clearInvocations(mockIngestionBackend);
     partitionList = Arrays.asList(2, 3, 4);
     complementSet = ComplementSet.newSet(partitionList);
@@ -208,6 +214,6 @@ public class VersionBackendTest {
     verify(mockIngestionBackend, never()).startConsumption(any(), eq(2));
     verify(mockIngestionBackend).startConsumption(any(), eq(3));
     verify(mockIngestionBackend).startConsumption(any(), eq(4));
-    verify(recordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
+    verify(internalRecordTransformerConfig, never()).setStartConsumptionLatchCount(anyInt());
   }
 }

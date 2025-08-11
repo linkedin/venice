@@ -3,7 +3,6 @@ package com.linkedin.davinci.client;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 
@@ -21,7 +20,6 @@ public class DaVinciRecordTransformerConfig {
   private final boolean skipCompatibilityChecks;
   private final boolean useSpecificRecordKeyDeserializer;
   private final boolean useSpecificRecordValueDeserializer;
-  private AtomicInteger startConsumptionLatchCount;
 
   public DaVinciRecordTransformerConfig(Builder builder) {
     this.recordTransformerFunction = Optional.ofNullable(builder.recordTransformerFunction)
@@ -42,9 +40,6 @@ public class DaVinciRecordTransformerConfig {
     this.storeRecordsInDaVinci = builder.storeRecordsInDaVinci;
     this.alwaysBootstrapFromVersionTopic = builder.alwaysBootstrapFromVersionTopic;
     this.skipCompatibilityChecks = builder.skipCompatibilityChecks;
-
-    // Default = 0 to guard against NPE downstream, which shouldn't be possible.
-    this.startConsumptionLatchCount = new AtomicInteger(0);
   }
 
   /**
@@ -108,23 +103,6 @@ public class DaVinciRecordTransformerConfig {
    */
   public boolean shouldSkipCompatibilityChecks() {
     return skipCompatibilityChecks;
-  }
-
-  /**
-   * @return {@link #startConsumptionLatchCount}
-   */
-  synchronized public int getStartConsumptionLatchCount() {
-    return startConsumptionLatchCount.get();
-  }
-
-  /**
-   * @param startConsumptionLatchCount the count used for the latch to guarantee we finish scanning every RocksDB partition before starting remote consumption.
-   */
-  synchronized public void setStartConsumptionLatchCount(int startConsumptionLatchCount) {
-    if (this.startConsumptionLatchCount.get() > 0) {
-      throw new VeniceException("startConsumptionLatchCount should only be modified once");
-    }
-    this.startConsumptionLatchCount.set(startConsumptionLatchCount);
   }
 
   public static class Builder {

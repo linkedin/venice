@@ -1616,7 +1616,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     VeniceWriterOptions.Builder vwOptionsBuilder =
         new VeniceWriterOptions.Builder(topicToReceiveEndOfPush).setUseKafkaKeySerializer(true)
             .setPartitionCount(partitionCount);
-    if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()) {
+    if (multiClusterConfigs.isParent()) {
       vwOptionsBuilder.setBrokerAddress(version.getPushStreamSourceAddress());
     }
     try (VeniceWriter veniceWriter = factory.createVeniceWriter(vwOptionsBuilder.build())) {
@@ -2523,13 +2523,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceControllerClusterConfig clusterConfig = resources.getConfig();
         version.setNativeReplicationEnabled(clusterConfig.isMultiRegion());
 
-        if (version.isNativeReplicationEnabled()) {
-          if (remoteKafkaBootstrapServers != null) {
-            version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
-          } else {
-            version.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
-          }
+        if (remoteKafkaBootstrapServers != null) {
+          version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
+        } else {
+          version.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
         }
+
         /**
          * Version-level rewind time override.
          */
@@ -3001,17 +3000,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
             }
             long createBatchTopicStartTime = System.currentTimeMillis();
-            topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
-            createBatchTopics(
-                version,
-                pushType,
-                getTopicManager(),
-                numberOfPartitions,
-                clusterConfig,
-                useFastKafkaOperationTimeout);
-            addVersionLatencyStats
-                .recordBatchTopicCreationLatency(LatencyUtils.getElapsedTimeFromMsToMs(createBatchTopicStartTime));
-
+            if (clusterConfig.getConcurrentPushDetectionStrategy().isTopicWriteNeeded() || !isParent()) {
+              topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
+              createBatchTopics(
+                  version,
+                  pushType,
+                  getTopicManager(),
+                  numberOfPartitions,
+                  clusterConfig,
+                  useFastKafkaOperationTimeout);
+              addVersionLatencyStats
+                  .recordBatchTopicCreationLatency(LatencyUtils.getElapsedTimeFromMsToMs(createBatchTopicStartTime));
+            }
             String sourceKafkaBootstrapServers = null;
 
             store = repository.getStore(storeName);
@@ -3132,7 +3132,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 VeniceWriterOptions.Builder vwOptionsBuilder =
                     new VeniceWriterOptions.Builder(version.kafkaTopicName()).setUseKafkaKeySerializer(true)
                         .setPartitionCount(numberOfPartitions);
-                if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()) {
+                if (multiClusterConfigs.isParent()) {
                   // Produce directly into one of the child fabric
                   vwOptionsBuilder.setBrokerAddress(version.getPushStreamSourceAddress());
                 } else {
