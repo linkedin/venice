@@ -356,107 +356,6 @@ public class QueryToolTest {
   }
 
   @Test
-  public void testMainMethodWithInsufficientArgs() throws Exception {
-    // Test main method with insufficient arguments
-    String[] args = { "store", "key" };
-    int exitCode = QueryTool.run(args);
-    assertEquals(exitCode, 1);
-  }
-
-  @Test
-  public void testMainMethodWithValidArgs() throws Exception {
-    // Test main method with valid arguments for single key query
-    String[] args = { "store", "key", "http://url", "false", "ssl.config" };
-    int exitCode = QueryTool.run(args);
-    // Expected to fail due to network connection (original mode behavior)
-    assertEquals(exitCode, 1);
-  }
-
-  @Test
-  public void testMainMethodWithCountByValueMode() throws Exception {
-    // Test main method with countByValue mode
-    String[] args = { "--countByValue", "store", "key1,key2", "http://url", "false", "ssl.config", "field1", "5" };
-    int exitCode = QueryTool.run(args);
-    // Expected to fail due to network connection (original mode behavior)
-    assertEquals(exitCode, 1);
-  }
-
-  @Test
-  public void testMainMethodWithCountByBucketMode() throws Exception {
-    // Test main method with countByBucket mode
-    String[] args =
-        { "--countByBucket", "store", "key1,key2", "http://url", "false", "ssl.config", "field1", "bucket:lt:30" };
-    int exitCode = QueryTool.run(args);
-    // Expected to fail due to network connection (original mode behavior)
-    assertEquals(exitCode, 1);
-  }
-
-  @Test
-  public void testMainMethodWithUnknownMode() throws Exception {
-    // Test main method with insufficient arguments for unknown mode
-    String[] args = { "--unknown", "store", "key" };
-    // Expect validation failure, returning exit code 1
-    int exitCode = QueryTool.run(args);
-    assertEquals(exitCode, 1);
-  }
-
-  @Test
-  public void testJsonKeyWithCommaBug() throws Exception {
-    // Test the original production bug - JSON keys with commas should not be split
-    // This reproduces the issue: {"memberId": 220896326, "useCaseName": "nba_digest_email"}
-    String jsonKeyWithComma = "{\"memberId\": 220896326, \"useCaseName\": \"nba_digest_email\"}";
-
-    // Test single key query (should work with JSON containing commas) - use HTTP URL
-    String[] args = { "myStore", jsonKeyWithComma, "http://venice-url", "false", "" };
-    int exitCode = QueryTool.run(args);
-    // Will fail due to network connection, but importantly NOT due to comma parsing
-    assertEquals(exitCode, 1);
-
-    // Test that countByValue and countByBucket work with multiple keys - use HTTP URL
-    String[] countByValueArgs =
-        { "--countByValue", "myStore", "key1,key2", "http://venice-url", "false", "", "field1", "10" };
-    int countByValueExitCode = QueryTool.run(countByValueArgs);
-    // Will fail due to network connection
-    assertEquals(countByValueExitCode, 1);
-
-    String[] countByBucketArgs =
-        { "--countByBucket", "myStore", "key1,key2", "http://venice-url", "false", "", "field1", "young:lt:30" };
-    int countByBucketExitCode = QueryTool.run(countByBucketArgs);
-    // Will fail due to network connection
-    assertEquals(countByBucketExitCode, 1);
-  }
-
-  @Test
-  public void testCommandLineArgumentParsing() throws Exception {
-    // Test argument parsing for different modes (will fail due to network, but test routing logic)
-
-    // Single key query with minimal required args
-    String[] singleKeyArgs = { "store", "key", "http://url", "false", "ssl.config" };
-    assertEquals(QueryTool.run(singleKeyArgs), 1); // Network failure
-
-    // CountByValue with minimal required args
-    String[] countByValueArgs = { "--countByValue", "store", "keys", "http://url", "false", "ssl.config", "fields" };
-    assertEquals(QueryTool.run(countByValueArgs), 1); // Network failure
-
-    // CountByBucket with minimal required args
-    String[] countByBucketArgs =
-        { "--countByBucket", "store", "keys", "http://url", "false", "ssl.config", "field", "buckets" };
-    assertEquals(QueryTool.run(countByBucketArgs), 1); // Network failure
-
-    // Insufficient args for single key query
-    String[] insufficientSingleArgs = { "store", "key", "url", "false" };
-    assertEquals(QueryTool.run(insufficientSingleArgs), 1);
-
-    // Insufficient args for countByValue
-    String[] insufficientCountByValueArgs = { "--countByValue", "store", "keys", "url", "false" };
-    assertEquals(QueryTool.run(insufficientCountByValueArgs), 1);
-
-    // Insufficient args for countByBucket
-    String[] insufficientCountByBucketArgs = { "--countByBucket", "store", "keys", "url", "false", "ssl", "field" };
-    assertEquals(QueryTool.run(insufficientCountByBucketArgs), 1);
-  }
-
-  @Test
   public void testCommaHandlingDifference() throws Exception {
     // Test the core difference between the two query methods
     String jsonKeyWithComma = "{\"memberId\": 220896326, \"useCaseName\": \"nba_digest_email\"}";
@@ -465,7 +364,7 @@ public class QueryToolTest {
     // Demonstrate the intended behavior difference:
 
     // 1. Single key with JSON containing comma - should NOT be split
-    // This is what queryStoreForSingleKey does (called by single key path)
+    // This is what queryStoreForKey does (called by single key path)
     assertEquals(QueryTool.convertKey(jsonKeyWithComma, Schema.create(Schema.Type.STRING)), jsonKeyWithComma);
 
     // 2. Multiple keys separated by comma - SHOULD be split

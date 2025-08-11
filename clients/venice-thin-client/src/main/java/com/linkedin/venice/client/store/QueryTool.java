@@ -38,106 +38,86 @@ public class QueryTool {
   private static final int SSL_CONFIG_FILE_PATH = 4;
   private static final int REQUIRED_ARGS_COUNT = 5;
 
-  public static void main(String[] args) {
-    int exitCode = 0;
-    try {
-      exitCode = run(args);
-    } catch (Exception e) {
-      e.printStackTrace();
-      exitCode = 1;
+  public static void main(String[] args) throws Exception {
+    // Route to new aggregation features if specified
+    if (args.length > 0) {
+      if ("--countByValue".equals(args[0])) {
+        handleCountByValue(Arrays.copyOfRange(args, 1, args.length));
+        return;
+      } else if ("--countByBucket".equals(args[0])) {
+        handleCountByBucket(Arrays.copyOfRange(args, 1, args.length));
+        return;
+      }
     }
-    System.exit(exitCode);
+
+    if (args.length < REQUIRED_ARGS_COUNT) {
+      System.out.println(
+          "Usage: java -jar venice-thin-client-0.1.jar <store> <key_string> <url> <is_vson_store> <ssl_config_file_path>");
+      System.exit(1);
+    }
+    String store = removeQuotes(args[STORE]);
+    String keyString = removeQuotes(args[KEY_STRING]);
+    String url = removeQuotes(args[URL]);
+    boolean isVsonStore = Boolean.parseBoolean(removeQuotes(args[IS_VSON_STORE]));
+    String sslConfigFilePath = removeQuotes(args[SSL_CONFIG_FILE_PATH]);
+    Optional<String> sslConfigFilePathArgs =
+        StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
+    System.out.println();
+
+    Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, sslConfigFilePathArgs);
+    outputMap.entrySet().stream().forEach(System.out::println);
   }
 
-  /**
-   * Business logic entry point, returns exit code. 0 for success, 1 for failure.
-   */
-  public static int run(String[] args) throws Exception {
-    if (args.length < 1) {
-      return 1;
+  private static void handleCountByValue(String[] args) throws Exception {
+    if (args.length < 6) {
+      System.err.println(
+          "Usage: --countByValue <store> <key_string> <url> <is_vson_store> <ssl_config_file_path> <fields> [topK]");
+      System.exit(1);
     }
 
-    String firstArg = args[0];
+    String store = removeQuotes(args[0]);
+    String keyString = removeQuotes(args[1]);
+    String url = removeQuotes(args[2]);
+    boolean isVsonStore = Boolean.parseBoolean(removeQuotes(args[3]));
+    String sslConfigFilePath = removeQuotes(args[4]);
+    String countByValueFields = removeQuotes(args[5]);
+    int topK = args.length > 6 ? Integer.parseInt(removeQuotes(args[6])) : 10;
 
-    try {
-      if ("--countByValue".equals(firstArg)) {
-        // CountByValue execution path
-        String[] subArgs = Arrays.copyOfRange(args, 1, args.length);
-        if (subArgs.length < 6) {
-          return 1;
-        }
+    Optional<String> sslConfigFilePathArgs =
+        StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
 
-        String store = removeQuotes(subArgs[0]);
-        String keyString = removeQuotes(subArgs[1]);
-        String url = removeQuotes(subArgs[2]);
-        boolean isVsonStore = Boolean.parseBoolean(removeQuotes(subArgs[3]));
-        String sslConfigFilePath = removeQuotes(subArgs[4]);
-        String countByValueFields = removeQuotes(subArgs[5]);
-        int topK = subArgs.length > 6 ? Integer.parseInt(removeQuotes(subArgs[6])) : 10;
+    Map<String, String> outputMap =
+        queryStoreWithCountByValue(store, keyString, url, isVsonStore, sslConfigFilePathArgs, countByValueFields, topK);
+    outputMap.entrySet().stream().forEach(System.out::println);
+  }
 
-        Optional<String> sslConfigFilePathArgs =
-            StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
-
-        Map<String, String> outputMap = queryStoreWithCountByValue(
-            store,
-            keyString,
-            url,
-            isVsonStore,
-            sslConfigFilePathArgs,
-            countByValueFields,
-            topK);
-        outputMap.entrySet().stream().forEach(System.out::println);
-
-      } else if ("--countByBucket".equals(firstArg)) {
-        // CountByBucket execution path
-        String[] subArgs = Arrays.copyOfRange(args, 1, args.length);
-        if (subArgs.length < 7) {
-          return 1;
-        }
-
-        String store = removeQuotes(subArgs[0]);
-        String keyString = removeQuotes(subArgs[1]);
-        String url = removeQuotes(subArgs[2]);
-        boolean isVsonStore = Boolean.parseBoolean(removeQuotes(subArgs[3]));
-        String sslConfigFilePath = removeQuotes(subArgs[4]);
-        String countByBucketFields = removeQuotes(subArgs[5]);
-        String bucketDefinitions = removeQuotes(subArgs[6]);
-
-        Optional<String> sslConfigFilePathArgs =
-            StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
-
-        Map<String, String> outputMap = queryStoreWithCountByBucket(
-            store,
-            keyString,
-            url,
-            isVsonStore,
-            sslConfigFilePathArgs,
-            countByBucketFields,
-            bucketDefinitions);
-        outputMap.entrySet().stream().forEach(System.out::println);
-
-      } else {
-        // Single key query path (original functionality - use original method)
-        if (args.length < REQUIRED_ARGS_COUNT) {
-          return 1;
-        }
-
-        String store = removeQuotes(args[STORE]);
-        String keyString = removeQuotes(args[KEY_STRING]);
-        String url = removeQuotes(args[URL]);
-        boolean isVsonStore = Boolean.parseBoolean(removeQuotes(args[IS_VSON_STORE]));
-        String sslConfigFilePath = removeQuotes(args[SSL_CONFIG_FILE_PATH]);
-        Optional<String> sslConfigFilePathArgs =
-            StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
-
-        Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, sslConfigFilePathArgs);
-        outputMap.entrySet().stream().forEach(System.out::println);
-      }
-      return 0;
-    } catch (Exception e) {
-      e.printStackTrace();
-      return 1;
+  private static void handleCountByBucket(String[] args) throws Exception {
+    if (args.length < 7) {
+      System.err.println(
+          "Usage: --countByBucket <store> <key_string> <url> <is_vson_store> <ssl_config_file_path> <fields> <bucket_definitions>");
+      System.exit(1);
     }
+
+    String store = removeQuotes(args[0]);
+    String keyString = removeQuotes(args[1]);
+    String url = removeQuotes(args[2]);
+    boolean isVsonStore = Boolean.parseBoolean(removeQuotes(args[3]));
+    String sslConfigFilePath = removeQuotes(args[4]);
+    String countByBucketFields = removeQuotes(args[5]);
+    String bucketDefinitions = removeQuotes(args[6]);
+
+    Optional<String> sslConfigFilePathArgs =
+        StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
+
+    Map<String, String> outputMap = queryStoreWithCountByBucket(
+        store,
+        keyString,
+        url,
+        isVsonStore,
+        sslConfigFilePathArgs,
+        countByBucketFields,
+        bucketDefinitions);
+    outputMap.entrySet().stream().forEach(System.out::println);
   }
 
   /**
@@ -150,8 +130,17 @@ public class QueryTool {
       boolean isVsonStore,
       Optional<String> sslConfigFile) throws Exception {
 
-    SSLFactory factory = createSSLFactory(sslConfigFile);
-    validateSSLConfiguration(url, factory);
+    SSLFactory factory = null;
+    if (sslConfigFile.isPresent()) {
+      Properties sslProperties = SslUtils.loadSSLConfig(sslConfigFile.get());
+      String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+      factory = SslUtils.getSSLFactory(sslProperties, sslFactoryClassName);
+    }
+
+    // Verify the ssl engine is set up correctly.
+    if (url.toLowerCase().trim().startsWith("https") && (factory == null || factory.getSSLContext() == null)) {
+      throw new VeniceException("ERROR: The SSL configuration is not valid to send a request to " + url);
+    }
 
     Map<String, String> outputMap = new LinkedHashMap<>();
     try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
@@ -164,13 +153,14 @@ public class QueryTool {
               .getInnerStoreClient();
       Schema keySchema = castClient.getKeySchema();
 
+      Object key = null;
       // Transfer vson schema to avro schema.
       while (keySchema.getType().equals(Schema.Type.UNION)) {
         keySchema = VsonAvroSchemaAdapter.stripFromUnion(keySchema);
       }
+      key = convertKey(keyString, keySchema);
+      System.out.println("Key string parsed successfully. About to make the query.");
 
-      // Single key - treat keyString as a single entity (original behavior)
-      Object key = convertKey(keyString, keySchema);
       Object value = client.get(key).get(15, TimeUnit.SECONDS);
 
       outputMap.put("key-class", key.getClass().getCanonicalName());
@@ -178,7 +168,6 @@ public class QueryTool {
       outputMap.put("request-path", castClient.getRequestPathByKey(key));
       outputMap.put("key", keyString);
       outputMap.put("value", value == null ? "null" : value.toString());
-
       return outputMap;
     }
   }
@@ -317,18 +306,18 @@ public class QueryTool {
 
   /**
    * Parses bucket definitions string into a map of bucket names to predicates.
-   * 
+   *
    * <p>Currently only supports LongPredicate for integer-based bucket definitions.
    * Future versions may support additional predicate types.</p>
-   * 
+   *
    * <p>Supported formats:</p>
    * <ul>
    *   <li>Range format: "min-max" (e.g., "20-25")</li>
    *   <li>Operator format: "bucketName:operator:value" (e.g., "age:gte:18")</li>
    * </ul>
-   * 
+   *
    * <p>Supported operators: lt, lte, gt, gte, eq</p>
-   * 
+   *
    * @param bucketDefinitions comma-separated bucket definitions
    * @return map of bucket names to LongPredicate instances
    * @throws VeniceException if bucket definition format is invalid
