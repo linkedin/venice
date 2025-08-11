@@ -232,14 +232,14 @@ public class AvroComputeAggregationRequestBuilderTest {
   @Test(description = "Should handle whitespace field names")
   public void testWhitespaceFieldNames() {
     VeniceClientException ex = expectThrows(VeniceClientException.class, () -> builder.countGroupByValue(5, "   "));
-    assertEquals(ex.getMessage(), "Field '   ' not found in schema");
+    assertEquals(ex.getMessage(), "Field not found in schema:    ");
   }
 
   @Test(description = "Should handle special characters in field names")
   public void testSpecialCharactersInFieldNames() {
     VeniceClientException ex =
         expectThrows(VeniceClientException.class, () -> builder.countGroupByValue(5, "field@name"));
-    assertEquals(ex.getMessage(), "Field 'field@name' not found in schema");
+    assertEquals(ex.getMessage(), "Field not found in schema: field@name");
   }
 
   @Test(description = "Should handle very long field names")
@@ -251,7 +251,7 @@ public class AvroComputeAggregationRequestBuilderTest {
     String longFieldName = sb.toString();
     VeniceClientException ex =
         expectThrows(VeniceClientException.class, () -> builder.countGroupByValue(5, longFieldName));
-    assertEquals(ex.getMessage(), "Field '" + longFieldName + "' not found in schema");
+    assertEquals(ex.getMessage(), "Field not found in schema: " + longFieldName);
   }
 
   @Test(description = "Should handle mixed valid and invalid fields")
@@ -259,7 +259,7 @@ public class AvroComputeAggregationRequestBuilderTest {
     VeniceClientException ex = expectThrows(
         VeniceClientException.class,
         () -> builder.countGroupByValue(5, JOB_TYPE_FIELD, "nonExistentField"));
-    assertEquals(ex.getMessage(), "Field 'nonExistentField' not found in schema");
+    assertEquals(ex.getMessage(), "Field not found in schema: nonExistentField");
   }
 
   @Test(description = "Should handle multiple countGroupByValue calls with same field")

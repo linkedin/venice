@@ -209,7 +209,7 @@ public class VeniceServerGrpcRequestProcessorTest {
         { createRequestWithResourceName("invalid_format"), VeniceReadResponseStatus.BAD_REQUEST,
             "Invalid resource name format" },
         { createRequestWithFieldNames("nonexistent_field"), VeniceReadResponseStatus.BAD_REQUEST,
-            "Field 'nonexistent_field' not found in schema" } };
+            "Field not found in schema: nonexistent_field" } };
   }
 
   @Test
@@ -386,45 +386,27 @@ public class VeniceServerGrpcRequestProcessorTest {
   }
 
   @Test
-  public void testStringSchemaSupport() {
-    Schema stringSchema = Schema.create(Schema.Type.STRING);
-    when(mockSchemaEntry.getSchema()).thenReturn(stringSchema);
-
-    CountByValueRequest request = createRequestWithFieldNames("value");
+  public void testRecordSchemaSupport() {
+    // Use the existing record schema which has "category" field
+    CountByValueRequest request = createRequestWithFieldNames("category");
     CountByValueResponse response = processor.processCountByValue(request);
     assertSuccessResponse(response);
   }
 
   @Test
-  public void testStringSchemaValueField() {
-    Schema stringSchema = Schema.create(Schema.Type.STRING);
-    when(mockSchemaEntry.getSchema()).thenReturn(stringSchema);
-
-    CountByValueRequest request = createRequestWithFieldNames("_value");
+  public void testRecordSchemaMultipleFields() {
+    // Test multiple valid fields (category and value exist in the mock schema)
+    CountByValueRequest request = createRequestWithFieldNames("category", "value");
     CountByValueResponse response = processor.processCountByValue(request);
     assertSuccessResponse(response);
   }
 
   @Test
-  public void testStringSchemaInvalidField() {
-    Schema stringSchema = Schema.create(Schema.Type.STRING);
-    when(mockSchemaEntry.getSchema()).thenReturn(stringSchema);
-
+  public void testRecordSchemaInvalidField() {
     CountByValueRequest request = createRequestWithFieldNames("invalid_field");
     CountByValueResponse response = processor.processCountByValue(request);
     assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
-    assertTrue(response.getErrorMessage().contains("only 'value' or '_value' field names are supported"));
-  }
-
-  @Test
-  public void testUnsupportedSchemaType() {
-    Schema intSchema = Schema.create(Schema.Type.INT);
-    when(mockSchemaEntry.getSchema()).thenReturn(intSchema);
-
-    CountByValueRequest request = createRequestWithFieldNames("value");
-    CountByValueResponse response = processor.processCountByValue(request);
-    assertEquals(response.getErrorCode(), VeniceReadResponseStatus.BAD_REQUEST);
-    assertTrue(response.getErrorMessage().contains("CountByValue only supports STRING and RECORD value types"));
+    assertTrue(response.getErrorMessage().contains("Field not found in schema: invalid_field"));
   }
 
   @Test

@@ -204,22 +204,9 @@ public class FacetCountingUtils {
         throw new IllegalArgumentException("Field name cannot be empty");
       }
 
-      // Handle different schema types
-      if (valueSchema.getType() == Schema.Type.STRING) {
-        // For STRING schema, only 'value' or '_value' field names are supported
-        if (!"value".equals(fieldName) && !"_value".equals(fieldName)) {
-          throw new IllegalArgumentException("For STRING schema, only 'value' or '_value' field names are supported");
-        }
-      } else if (valueSchema.getType() == Schema.Type.RECORD) {
-        // For RECORD schema, validate that the field exists
-        Schema.Field field = valueSchema.getField(fieldName);
-        if (field == null) {
-          throw new IllegalArgumentException("Field '" + fieldName + "' not found in schema");
-        }
-      } else {
-        // For other schema types, CountByValue is not supported
-        throw new IllegalArgumentException(
-            "CountByValue only supports STRING and RECORD value types, but found: " + valueSchema.getType());
+      Schema.Field field = valueSchema.getField(fieldName);
+      if (field == null) {
+        throw new IllegalArgumentException("Field not found in schema: " + fieldName);
       }
     }
   }
