@@ -42,6 +42,11 @@ public class TestVeniceChangeCoordinate {
     Assert.assertEquals(restoredCoordinate.getPartition(), TEST_PARTITION);
     Assert.assertEquals(restoredCoordinate.getPosition(), position);
 
+    Assert.assertEquals(
+        restoredCoordinate,
+        veniceChangeCoordinate,
+        "Restored VeniceChangeCoordinate should be equal to the original one");
+    Assert.assertEquals(restoredCoordinate.hashCode(), veniceChangeCoordinate.hashCode());
   }
 
   @Test

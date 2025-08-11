@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.logging.log4j.LogManager;
@@ -50,11 +51,10 @@ public class CompactionManager {
    * @return list of StoreInfo of stores ready for log compaction in clusterName
    */
   public List<StoreInfo> getStoresForCompaction(String clusterName, Map<String, ControllerClient> childControllers) {
-    ArrayList<StoreInfo> storeInfoList = new ArrayList<>();
+    List<StoreInfo> storeInfoList = new ArrayList<>();
 
     // iterate through child controllers
     for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
-
       // add all store info to storeInfoList
       MultiStoreInfoResponse response = controller.getValue().getClusterStores(clusterName);
       storeInfoList.addAll(response.getStoreInfoList());
@@ -67,16 +67,16 @@ public class CompactionManager {
   // public for testing
   @VisibleForTesting
   List<StoreInfo> filterStoresForCompaction(List<StoreInfo> storeInfoList, String clusterName) {
-    List<StoreInfo> storesReadyForCompaction = new ArrayList<>();
+    Map<String, StoreInfo> storesReadyForCompaction = new HashMap<>();
     for (StoreInfo storeInfo: storeInfoList) {
-      if (isCompactionReady(storeInfo)) {
-        storesReadyForCompaction.add(storeInfo);
+      if (!storesReadyForCompaction.containsKey(storeInfo.getName()) && isCompactionReady(storeInfo)) {
+        storesReadyForCompaction.put(storeInfo.getName(), storeInfo);
         LogCompactionStats stats = statsMap.get(clusterName);
         stats.recordStoreNominatedForCompactionCount(storeInfo.getName());
         stats.setCompactionEligible(storeInfo.getName());
       }
     }
-    return storesReadyForCompaction;
+    return new ArrayList<>(storesReadyForCompaction.values());
   }
 
   /**
@@ -88,9 +88,9 @@ public class CompactionManager {
   //
   public boolean isCompactionReady(StoreInfo storeInfo) {
     boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
-    return isHybridStore && isLastCompactionTimeOlderThanThreshold(getLogCompactionThresholdMs(storeInfo), storeInfo)
-        && storeInfo.isActiveActiveReplicationEnabled() && !VeniceSystemStoreUtils.isSystemStore(storeInfo.getName())
-        && storeInfo.isCompactionEnabled();
+    return !VeniceSystemStoreUtils.isSystemStore(storeInfo.getName()) && isHybridStore
+        && isLastCompactionTimeOlderThanThreshold(getLogCompactionThresholdMs(storeInfo), storeInfo)
+        && storeInfo.isActiveActiveReplicationEnabled() && storeInfo.isCompactionEnabled();
   }
 
   /**

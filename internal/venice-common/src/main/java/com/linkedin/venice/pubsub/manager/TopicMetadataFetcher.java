@@ -613,7 +613,8 @@ class TopicMetadataFetcher implements Closeable {
 
       // find the beginning offset
       long earliestOffset =
-          pubSubConsumerAdapter.beginningOffset(pubSubTopicPartition, getPubsubOffsetApiTimeoutDurationDefaultValue());
+          pubSubConsumerAdapter.beginningPosition(pubSubTopicPartition, getPubsubOffsetApiTimeoutDurationDefaultValue())
+              .getNumericOffset();
       if (earliestOffset == latestOffset) {
         return Collections.emptyList(); // no records in this topic partition
       }

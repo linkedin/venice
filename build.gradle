@@ -174,7 +174,7 @@ publishing {
 }
 
 afterEvaluate {
-  publishing.ensureCatchAllModuleGetsPublishedLast()
+  mavenPublishing.ensureCatchAllModuleGetsPublishedLast(publishing.repositories)
 }
 
 def parser = new XmlSlurper()
@@ -600,7 +600,7 @@ subprojects {
 
   // Only publish artifacts for projects that are at the leaf level
   if (isLeafSubModule) {
-    publishing.configureArtifactPublishing(project, testJar)
+    mavenPublishing.configureArtifactPublishing(project, testJar)
   }
 }
 

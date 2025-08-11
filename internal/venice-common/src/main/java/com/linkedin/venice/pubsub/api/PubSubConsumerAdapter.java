@@ -62,6 +62,38 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
   void subscribe(@Nonnull PubSubTopicPartition pubSubTopicPartition, @Nonnull PubSubPosition lastReadPubSubPosition);
 
   /**
+   * Subscribes to a specified topic-partition if it is not already subscribed. If the topic-partition is
+   * already subscribed, this method performs no action.
+   *
+   * <p>The subscription uses the provided {@link PubSubPosition} to determine the starting position for
+   * consumption. If the position is {@link PubSubSymbolicPosition#EARLIEST}, the consumer will seek to the earliest
+   * available message. If it is {@link PubSubSymbolicPosition#LATEST}, the consumer will seek to the latest available
+   * message. If a concrete position is provided, implementations should resolve it to a specific offset or internal
+   * position based on the underlying pub-sub system.
+   *
+   * <p>The {@code inclusive} flag determines whether the message at the specified position (if resolvable to an offset
+   * or equivalent) should be included in consumption:
+   * <ul>
+   *   <li>If {@code true}, the consumer should begin from the exact position specified.</li>
+   *   <li>If {@code false}, consumption should begin immediately after the specified position.</li>
+   * </ul>
+   *
+   * <p>Implementations should validate the topic-partition's existence and handle any necessary assignment or
+   * internal state initialization. The method does not guarantee immediate subscription effect and may defer
+   * changes depending on the consumer's execution model.
+   *
+   * @param pubSubTopicPartition the topic-partition to subscribe to
+   * @param position the position from which consumption should begin
+   * @param isInclusive whether to include the message at the given position
+   * @throws IllegalArgumentException if {@code position} is null or of an unsupported type
+   * @throws PubSubTopicDoesNotExistException if the specified topic does not exist
+   */
+  void subscribe(
+      @Nonnull PubSubTopicPartition pubSubTopicPartition,
+      @Nonnull PubSubPosition position,
+      boolean isInclusive);
+
+  /**
    * Unsubscribes the consumer from a specified topic-partition.
    * If the consumer was previously subscribed to the given partition, it will be unsubscribed,
    * and the associated partition assignments and tracked offsets will be updated accordingly.
@@ -221,7 +253,7 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
   PubSubPosition getPositionByTimestamp(PubSubTopicPartition pubSubTopicPartition, long timestamp);
 
   /**
-   * Retrieves the beginning offset for the specified PubSub topic-partition.
+   * Retrieves the beginning position for the specified PubSub topic-partition.
    *
    * @param pubSubTopicPartition The PubSub topic-partition for which to fetch the beginning offset.
    * @param timeout The maximum duration to wait for the operation to complete.
@@ -230,8 +262,6 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
    * @throws PubSubOpTimeoutException If the operation times out while fetching the beginning offset.
    * @throws PubSubClientException If there is an error while attempting to fetch the beginning offset.
    */
-  Long beginningOffset(PubSubTopicPartition pubSubTopicPartition, Duration timeout);
-
   PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout);
 
   default PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition) {
@@ -239,6 +269,10 @@ public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
         pubSubTopicPartition,
         Duration.ofMillis(PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_DEFAULT_VALUE));
   }
+
+  Map<PubSubTopicPartition, PubSubPosition> beginningPositions(
+      Collection<PubSubTopicPartition> partitions,
+      Duration timeout);
 
   /**
    * Retrieves the end offsets for a collection of PubSub topic-partitions. The end offset represents

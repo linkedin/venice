@@ -335,7 +335,7 @@ public class PubSubConsumerAdapterTest {
     long startTime = System.currentTimeMillis();
     assertThrows(
         PubSubOpTimeoutException.class,
-        () -> pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT));
+        () -> pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
@@ -354,21 +354,21 @@ public class PubSubConsumerAdapterTest {
 
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
     long startTime = System.currentTimeMillis();
-    long beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
+    long beginningOffset = pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT).getNumericOffset();
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
     assertTrue(elapsedTime <= PUBSUB_CONSUMER_API_DEFAULT_TIMEOUT_MS_WITH_VARIANCE, "beginningOffset should not block");
 
     partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     startTime = System.currentTimeMillis();
-    beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
+    beginningOffset = pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT).getNumericOffset();
     elapsedTime = System.currentTimeMillis() - startTime;
     assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
     assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "beginningOffset should not block");
 
     partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 2);
     startTime = System.currentTimeMillis();
-    beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
+    beginningOffset = pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT).getNumericOffset();
     elapsedTime = System.currentTimeMillis() - startTime;
     assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
     assertTrue(elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE, "beginningOffset should not block");
@@ -390,14 +390,14 @@ public class PubSubConsumerAdapterTest {
         "Topic should have only 1 partition");
 
     PubSubTopicPartition partition = new PubSubTopicPartitionImpl(existingPubSubTopic, 0);
-    long beginningOffset = pubSubConsumerAdapter.beginningOffset(partition, PUBSUB_OP_TIMEOUT);
+    long beginningOffset = pubSubConsumerAdapter.beginningPosition(partition, PUBSUB_OP_TIMEOUT).getNumericOffset();
     assertEquals(beginningOffset, 0, "Beginning offset should be 0 for an existing topic");
 
     PubSubTopicPartition nonExistentPartition = new PubSubTopicPartitionImpl(existingPubSubTopic, 1);
     long startTime = System.currentTimeMillis();
     assertThrows(
         PubSubOpTimeoutException.class,
-        () -> pubSubConsumerAdapter.beginningOffset(nonExistentPartition, PUBSUB_OP_TIMEOUT));
+        () -> pubSubConsumerAdapter.beginningPosition(nonExistentPartition, PUBSUB_OP_TIMEOUT));
     long elapsedTime = System.currentTimeMillis() - startTime;
     assertTrue(
         elapsedTime <= PUBSUB_OP_TIMEOUT_WITH_VARIANCE,
