@@ -288,7 +288,7 @@
             {"name": "ttlRepushEnabled", "type": "boolean", "default": false, "doc": "Self-managed (by controller) flag to indicate whether TTL re-push is enabled or not"},
             {"name": "enumSchemaEvolutionAllowed", "type": "boolean", "default": false, "doc": "Whether enum schema evolution is allowed or not and this requires the store readers to use Avro-1.9+"},
             {
-              "name": "StoreLifecycleHooks",
+              "name": "storeLifecycleHooks",
               "doc": "List of store lifecycle hooks",
               "type": {
                 "type": "array",
