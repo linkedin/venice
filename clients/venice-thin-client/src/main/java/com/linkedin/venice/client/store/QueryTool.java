@@ -27,8 +27,8 @@ import org.apache.commons.lang.StringUtils;
 
 
 /**
- * A tool use thin client to query the value from a store by the specified key.
- * Now supports facet counting with countByValue and countByBucket functionality.
+ * A command-line tool that uses Venice thin client to query values from a store.
+ * Supports single key queries and aggregation queries (countByValue and countByBucket).
  */
 public class QueryTool {
   private static final int STORE = 0;
@@ -38,36 +38,19 @@ public class QueryTool {
   private static final int SSL_CONFIG_FILE_PATH = 4;
   private static final int REQUIRED_ARGS_COUNT = 5;
 
-  public static void main(String[] args) throws Exception {
-    if (args.length < 1) {
-      System.out.println(
-          "Usage: java -jar venice-thin-client.jar <store> <key_string> <url> <is_vson_store> <ssl_config_file_path>");
-      System.out.println(
-          "       java -jar venice-thin-client.jar --countByValue <store> <keys> <url> <is_vson_store> <ssl_config_file_path> <fields> [topK]");
-      System.out.println(
-          "       java -jar venice-thin-client.jar --countByBucket <store> <keys> <url> <is_vson_store> <ssl_config_file_path> <field> <bucket_definitions>");
-      System.exit(1);
-    }
-
-    String firstArg = args[0];
-
+  public static void main(String[] args) {
+    int exitCode = 0;
     try {
-      if ("--countByValue".equals(firstArg)) {
-        handleCountByValueFromQueryScript(Arrays.copyOfRange(args, 1, args.length));
-      } else if ("--countByBucket".equals(firstArg)) {
-        handleCountByBucketFromQueryScript(Arrays.copyOfRange(args, 1, args.length));
-      } else {
-        // Original single key query functionality - restored to main method
-        handleSingleKeyQuery(args);
-      }
+      exitCode = run(args);
     } catch (Exception e) {
       e.printStackTrace();
-      System.exit(1);
+      exitCode = 1;
     }
+    System.exit(exitCode);
   }
 
   /**
-   * For testing purposes - returns exit code instead of calling System.exit
+   * Business logic entry point, returns exit code. 0 for success, 1 for failure.
    */
   public static int run(String[] args) throws Exception {
     if (args.length < 1) {
@@ -78,116 +61,88 @@ public class QueryTool {
 
     try {
       if ("--countByValue".equals(firstArg)) {
+        // CountByValue execution path
         String[] subArgs = Arrays.copyOfRange(args, 1, args.length);
         if (subArgs.length < 6) {
           return 1;
         }
-        // Don't actually execute the query in tests, just validate arguments
-        return 0;
+
+        String store = removeQuotes(subArgs[0]);
+        String keyString = removeQuotes(subArgs[1]);
+        String url = removeQuotes(subArgs[2]);
+        boolean isVsonStore = Boolean.parseBoolean(removeQuotes(subArgs[3]));
+        String sslConfigFilePath = removeQuotes(subArgs[4]);
+        String countByValueFields = removeQuotes(subArgs[5]);
+        int topK = subArgs.length > 6 ? Integer.parseInt(removeQuotes(subArgs[6])) : 10;
+
+        Optional<String> sslConfigFilePathArgs =
+            StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
+
+        Map<String, String> outputMap = queryStoreWithCountByValue(
+            store,
+            keyString,
+            url,
+            isVsonStore,
+            sslConfigFilePathArgs,
+            countByValueFields,
+            topK);
+        outputMap.entrySet().stream().forEach(System.out::println);
+
       } else if ("--countByBucket".equals(firstArg)) {
+        // CountByBucket execution path
         String[] subArgs = Arrays.copyOfRange(args, 1, args.length);
         if (subArgs.length < 7) {
           return 1;
         }
-        // Don't actually execute the query in tests, just validate arguments
-        return 0;
+
+        String store = removeQuotes(subArgs[0]);
+        String keyString = removeQuotes(subArgs[1]);
+        String url = removeQuotes(subArgs[2]);
+        boolean isVsonStore = Boolean.parseBoolean(removeQuotes(subArgs[3]));
+        String sslConfigFilePath = removeQuotes(subArgs[4]);
+        String countByBucketFields = removeQuotes(subArgs[5]);
+        String bucketDefinitions = removeQuotes(subArgs[6]);
+
+        Optional<String> sslConfigFilePathArgs =
+            StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
+
+        Map<String, String> outputMap = queryStoreWithCountByBucket(
+            store,
+            keyString,
+            url,
+            isVsonStore,
+            sslConfigFilePathArgs,
+            countByBucketFields,
+            bucketDefinitions);
+        outputMap.entrySet().stream().forEach(System.out::println);
+
       } else {
-        // Single key query validation
+        // Single key query path (original functionality - use original method)
         if (args.length < REQUIRED_ARGS_COUNT) {
           return 1;
         }
-        // Don't actually execute the query in tests, just validate arguments
-        return 0;
+
+        String store = removeQuotes(args[STORE]);
+        String keyString = removeQuotes(args[KEY_STRING]);
+        String url = removeQuotes(args[URL]);
+        boolean isVsonStore = Boolean.parseBoolean(removeQuotes(args[IS_VSON_STORE]));
+        String sslConfigFilePath = removeQuotes(args[SSL_CONFIG_FILE_PATH]);
+        Optional<String> sslConfigFilePathArgs =
+            StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
+
+        Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, sslConfigFilePathArgs);
+        outputMap.entrySet().stream().forEach(System.out::println);
       }
+      return 0;
     } catch (Exception e) {
+      e.printStackTrace();
       return 1;
     }
   }
 
   /**
-   * Handle original single key query - keeps all original logic unchanged
+   * Query store for a single key - original behavior (NO comma splitting)
    */
-  private static void handleSingleKeyQuery(String[] args) throws Exception {
-    if (args.length < REQUIRED_ARGS_COUNT) {
-      System.out.println(
-          "Usage: java -jar venice-thin-client.jar <store> <key_string> <url> <is_vson_store> <ssl_config_file_path>");
-      System.exit(1);
-    }
-
-    String store = removeQuotes(args[STORE]);
-    String keyString = removeQuotes(args[KEY_STRING]);
-    String url = removeQuotes(args[URL]);
-    boolean isVsonStore = Boolean.parseBoolean(removeQuotes(args[IS_VSON_STORE]));
-    String sslConfigFilePath = removeQuotes(args[SSL_CONFIG_FILE_PATH]);
-    Optional<String> sslConfigFilePathArgs =
-        StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
-
-    Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, sslConfigFilePathArgs);
-    outputMap.entrySet().stream().forEach(System.out::println);
-  }
-
-  /**
-   * Handle countByValue aggregation called from query.sh script
-   * Args format: [store, key, resolved_url, false, ssl.config, fields, topK]
-   */
-  private static void handleCountByValueFromQueryScript(String[] args) throws Exception {
-    if (args.length < 6) {
-      System.out.println(
-          "Usage: java -jar venice-thin-client.jar --countByValue <store> <keys> <url> <is_vson_store> <ssl_config_file_path> <fields> [topK]");
-      System.exit(1);
-    }
-
-    // Parse args provided by query.sh: store, key, resolved_url, false, ssl.config, [fields], [topK]
-    String store = removeQuotes(args[0]);
-    String keyString = removeQuotes(args[1]);
-    String url = removeQuotes(args[2]);
-    boolean isVsonStore = Boolean.parseBoolean(removeQuotes(args[3]));
-    String sslConfigFilePath = removeQuotes(args[4]);
-    String countByValueFields = removeQuotes(args[5]);
-    int topK = args.length > 6 ? Integer.parseInt(removeQuotes(args[6])) : 10;
-
-    Optional<String> sslConfigFilePathArgs =
-        StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
-
-    Map<String, String> outputMap =
-        queryStoreWithCountByValue(store, keyString, url, isVsonStore, sslConfigFilePathArgs, countByValueFields, topK);
-    outputMap.entrySet().stream().forEach(System.out::println);
-  }
-
-  /**
-   * Handle countByBucket aggregation called from query.sh script
-   * Args format: [store, key, resolved_url, false, ssl.config, field, bucket_definitions]
-   */
-  private static void handleCountByBucketFromQueryScript(String[] args) throws Exception {
-    if (args.length < 7) {
-      System.out.println(
-          "Usage: java -jar venice-thin-client.jar --countByBucket <store> <keys> <url> <is_vson_store> <ssl_config_file_path> <field> <bucket_definitions>");
-      System.exit(1);
-    }
-
-    // Parse args provided by query.sh: store, key, resolved_url, false, ssl.config, field, bucket_definitions
-    String store = removeQuotes(args[0]);
-    String keyString = removeQuotes(args[1]);
-    String url = removeQuotes(args[2]);
-    boolean isVsonStore = Boolean.parseBoolean(removeQuotes(args[3]));
-    String sslConfigFilePath = removeQuotes(args[4]);
-    String countByBucketFields = removeQuotes(args[5]);
-    String bucketDefinitions = removeQuotes(args[6]);
-
-    Optional<String> sslConfigFilePathArgs =
-        StringUtils.isEmpty(sslConfigFilePath) ? Optional.empty() : Optional.of(sslConfigFilePath);
-
-    Map<String, String> outputMap = queryStoreWithCountByBucket(
-        store,
-        keyString,
-        url,
-        isVsonStore,
-        sslConfigFilePathArgs,
-        countByBucketFields,
-        bucketDefinitions);
-    outputMap.entrySet().stream().forEach(System.out::println);
-  }
-
   public static Map<String, String> queryStoreForKey(
       String store,
       String keyString,
@@ -209,14 +164,13 @@ public class QueryTool {
               .getInnerStoreClient();
       Schema keySchema = castClient.getKeySchema();
 
-      Object key = null;
       // Transfer vson schema to avro schema.
       while (keySchema.getType().equals(Schema.Type.UNION)) {
         keySchema = VsonAvroSchemaAdapter.stripFromUnion(keySchema);
       }
-      key = convertKey(keyString, keySchema);
-      System.out.println("Key string parsed successfully. About to make the query.");
 
+      // Single key - treat keyString as a single entity (original behavior)
+      Object key = convertKey(keyString, keySchema);
       Object value = client.get(key).get(15, TimeUnit.SECONDS);
 
       outputMap.put("key-class", key.getClass().getCanonicalName());
@@ -266,6 +220,11 @@ public class QueryTool {
       builder.countGroupByValue(topK, fields);
 
       ComputeAggregationResponse response = builder.execute(keys).get(60, TimeUnit.SECONDS);
+
+      outputMap.put("query-type", "countByValue");
+      outputMap.put("keys", keyString);
+      outputMap.put("fields", countByValueFields);
+      outputMap.put("topK", String.valueOf(topK));
 
       // Add results for each field
       for (String field: fields) {
@@ -318,6 +277,11 @@ public class QueryTool {
 
       ComputeAggregationResponse response = builder.execute(keys).get(60, TimeUnit.SECONDS);
 
+      outputMap.put("query-type", "countByBucket");
+      outputMap.put("keys", keyString);
+      outputMap.put("fields", countByBucketFields);
+      outputMap.put("bucket-definitions", bucketDefinitions);
+
       // Add results for each field
       for (String field: fields) {
         Map<String, Integer> bucketCounts = response.getBucketNameToCount(field);
@@ -353,18 +317,18 @@ public class QueryTool {
 
   /**
    * Parses bucket definitions string into a map of bucket names to predicates.
-   *
+   * 
    * <p>Currently only supports LongPredicate for integer-based bucket definitions.
    * Future versions may support additional predicate types.</p>
-   *
+   * 
    * <p>Supported formats:</p>
    * <ul>
    *   <li>Range format: "min-max" (e.g., "20-25")</li>
    *   <li>Operator format: "bucketName:operator:value" (e.g., "age:gte:18")</li>
    * </ul>
-   *
+   * 
    * <p>Supported operators: lt, lte, gt, gte, eq</p>
-   *
+   * 
    * @param bucketDefinitions comma-separated bucket definitions
    * @return map of bucket names to LongPredicate instances
    * @throws VeniceException if bucket definition format is invalid
