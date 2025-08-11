@@ -219,13 +219,14 @@ public class SystemStoreRepairTask implements Runnable {
        * there is no current version information, here we use the latest version by the creation time to compute the
        * version age.
        */
-      if (store.getVersions().isEmpty()) {
+      List<Version> storeVersionList = store.getVersions();
+      if (storeVersionList.isEmpty()) {
         LOGGER.info("Adding the system store: {} to the repair set as there is no version.", store.getName());
         newUnhealthySystemStoreSet.add(store.getName());
         continue;
       }
-      long versionAgeInMs = System.currentTimeMillis()
-          - store.getVersions().stream().mapToLong(Version::getCreatedTime).max().getAsLong();
+      long versionAgeInMs =
+          System.currentTimeMillis() - storeVersionList.stream().mapToLong(Version::getCreatedTime).max().getAsLong();
       if (versionAgeInMs > TimeUnit.DAYS.toMillis(getVersionRefreshThresholdInDays())) {
         LOGGER.info(
             "Adding the system store: {} to the repair set as the version age: {} exceed threshold.",
