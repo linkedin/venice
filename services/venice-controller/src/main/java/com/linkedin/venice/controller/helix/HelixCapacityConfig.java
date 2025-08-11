@@ -5,7 +5,7 @@ import java.util.Map;
 import org.apache.commons.lang3.Validate;
 
 
-public class HelixCapacityConfig {
+public final class HelixCapacityConfig {
   private final List<String> helixInstanceCapacityKeys;
   private final Map<String, Integer> helixDefaultInstanceCapacityMap;
   private final Map<String, Integer> helixDefaultPartitionWeightMap;
