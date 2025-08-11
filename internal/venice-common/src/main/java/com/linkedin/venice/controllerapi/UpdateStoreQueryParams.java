@@ -850,7 +850,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
 
   public Optional<List<LifecycleHooksRecord>> getStoreLifecycleHooks() {
-    if (params.get(STORE_LIFECYCLE_HOOKS_LIST) == null) { // TODO figure out why we need to check for this
+    if (params.get(STORE_LIFECYCLE_HOOKS_LIST) == null) {
       return Optional.empty();
     }
     try {

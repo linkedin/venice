@@ -363,7 +363,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         return false;
       case PUSHED:
       case KILLED:
-        logMessageIfNotRedundant("Entering version swap loop for: " + storeName + " on version: " + targetVersionNum);
         return true;
       case ONLINE:
         // This should not happen, but if it does, we should still perform a version swap and log a metric for it
@@ -623,19 +622,22 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           veniceProperties);
 
       if (StoreVersionLifecycleEventOutcome.WAIT.equals(outcome)) {
-        return false;
+        String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
+            + targetVersionNum + " as post version swap validations emitted WAIT";
+        logMessageIfNotRedundant(message);
       } else if (StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome)) {
-        veniceParentHelixAdmin.rollbackToBackupVersion(clusterName, parentStore.getName(), targetRegion);
-
         String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
             + targetVersionNum + "as post version swap validations emitted a roll back";
         logMessageIfNotRedundant(message);
+
+        veniceParentHelixAdmin.rollbackToBackupVersion(clusterName, parentStore.getName(), targetRegion);
         parentStore.updateVersionStatus(targetVersionNum, ERROR);
         repository.updateStore(parentStore);
 
         LOGGER.info("Truncating kafka topic: {} after validations emitted a roll back", kafkaTopicName);
         veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopicName);
       }
+
       if (!StoreVersionLifecycleEventOutcome.PROCEED.equals(outcome)) {
         proceed = false;
       }
