@@ -283,6 +283,7 @@ public class TestMultiDataCenterAdminOperations {
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;
     adminMessage.executionId = executionId;
+    updateStore.storeLifecycleHooks = Collections.emptyList();
     return adminOperationSerializer
         .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }

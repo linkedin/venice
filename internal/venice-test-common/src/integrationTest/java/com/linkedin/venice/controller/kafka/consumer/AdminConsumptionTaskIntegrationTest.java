@@ -381,6 +381,7 @@ public class AdminConsumptionTaskIntegrationTest {
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;
     adminMessage.executionId = executionId;
+    updateStore.storeLifecycleHooks = Collections.emptyList();
     return adminOperationSerializer.serialize(adminMessage, writerSchemaId);
   }
 
