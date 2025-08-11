@@ -12,7 +12,6 @@ import static org.mockito.Mockito.when;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -197,77 +196,6 @@ public class TopicManagerTest {
         TimeUnit.SECONDS,
         () -> Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicName)));
     return topicName;
-  }
-
-  /**
-   * N.B.: This test takes 1 minute in the absence of {@link PubSubConstantsOverrider}.
-   */
-  @Test
-  public void testGetProducerTimestampOfLastDataRecord() throws ExecutionException, InterruptedException {
-    final PubSubTopic topic = getTopic();
-    final PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 0);
-    final long timestamp = System.currentTimeMillis();
-    produceRandomPubSubMessage(topic, true, timestamp - 1000);
-    produceRandomPubSubMessage(topic, true, timestamp); // This timestamp is expected to be retrieved
-
-    long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, 1);
-    Assert.assertEquals(retrievedTimestamp, timestamp);
-  }
-
-  /**
-   * N.B.: This test takes 2 minutes in the absence of {@link PubSubConstantsOverrider}.
-   */
-  @Test
-  public void testGetProducerTimestampOfLastDataRecordWithControlMessage()
-      throws ExecutionException, InterruptedException {
-    final PubSubTopic topic = getTopic();
-    final PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 0);
-
-    long timestamp = System.currentTimeMillis();
-    produceRandomPubSubMessage(topic, true, timestamp); // This timestamp is expected to be retrieved
-    produceRandomPubSubMessage(topic, false, timestamp + 1000); // produce a control message
-
-    long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, 1);
-    Assert.assertEquals(retrievedTimestamp, timestamp);
-
-    // Produce more data records to this topic partition
-    for (int i = 0; i < 10; i++) {
-      timestamp += 1000;
-      produceRandomPubSubMessage(topic, true, timestamp);
-    }
-    // Produce several control messages at the end
-    for (int i = 1; i <= 3; i++) {
-      produceRandomPubSubMessage(topic, false, timestamp + i * 1000L);
-    }
-    retrievedTimestamp = topicManager.getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, 1);
-    Assert.assertEquals(retrievedTimestamp, timestamp);
-  }
-
-  @Test
-  public void testGetProducerTimestampOfLastDataRecordOnEmptyTopic() {
-    final PubSubTopicPartition emptyTopicPartition = new PubSubTopicPartitionImpl(getTopic(), 0);
-    long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataMessageWithRetries(emptyTopicPartition, 1);
-    Assert.assertEquals(retrievedTimestamp, PubSubConstants.PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION);
-  }
-
-  /**
-   * N.B.: This test takes 3 minutes in the absence of {@link PubSubConstantsOverrider}.
-   */
-  @Test
-  public void testGetProducerTimestampOfLastDataRecordWithOnlyControlMessages()
-      throws ExecutionException, InterruptedException {
-    final PubSubTopic topic = getTopic();
-    long timestamp = System.currentTimeMillis();
-
-    // Produce only control messages
-    for (int i = 0; i < 10; i++) {
-      produceRandomPubSubMessage(topic, false, timestamp);
-      timestamp += 10;
-    }
-    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 0);
-    Assert.assertThrows(
-        VeniceException.class,
-        () -> topicManager.getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, 1));
   }
 
   @Test
@@ -545,15 +473,6 @@ public class TopicManagerTest {
     Assert.assertThrows(
         PubSubTopicDoesNotExistException.class,
         () -> topicManager.getLatestOffsetWithRetries(new PubSubTopicPartitionImpl(nonExistingTopic, 0), 10));
-  }
-
-  @Test
-  public void testGetLatestProducerTimestampForNonExistingTopic() {
-    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("non-existing-topic"));
-    Assert.assertThrows(
-        PubSubTopicDoesNotExistException.class,
-        () -> topicManager
-            .getProducerTimestampOfLastDataMessageWithRetries(new PubSubTopicPartitionImpl(nonExistingTopic, 0), 10));
   }
 
   @Test
