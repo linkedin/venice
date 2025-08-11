@@ -6,12 +6,12 @@ import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -181,7 +181,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               getPartitionListToSubscribe(partitions, Collections.EMPTY_SET, targetTopic);
 
           for (PubSubTopicPartition topicPartition: topicPartitionList) {
-            consumerAdapter.subscribe(topicPartition, OffsetRecord.LOWEST_OFFSET_LAG);
+            consumerAdapter.subscribe(topicPartition, PubSubSymbolicPosition.EARLIEST);
           }
           Map<PubSubTopicPartition, List<DefaultPubSubMessage>> polledResults;
           Map<Integer, Boolean> endOfPushConsumedPerPartitionMap = new HashMap<>();

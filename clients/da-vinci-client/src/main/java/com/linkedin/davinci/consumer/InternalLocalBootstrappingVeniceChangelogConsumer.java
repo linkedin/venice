@@ -39,6 +39,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -317,7 +318,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       LOGGER.info(
           "Update checkpoint for partition: {}, new offset: {}",
           partitionId,
-          getOffset(bootstrapState.currentPubSubPosition));
+          bootstrapState.currentPubSubPosition);
     } catch (IOException e) {
       LOGGER.error("Failed to update change capture coordinate position: {}", bootstrapState.currentPubSubPosition);
     }
@@ -348,11 +349,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         keyDeserializer.deserialize(key),
         changeEvent,
         getTopicPartition(partition),
-        /**
-         * TODO: Should we introduce a magic position to handle the zero-offset case?
-         * Or use {@link com.linkedin.venice.pubsub.api.PubSubPosition.EARLIEST} as an alternative.
-         */
-        ApacheKafkaOffsetPosition.of(0),
+        PubSubSymbolicPosition.EARLIEST,
         0,
         value.length * 8,
         false);
@@ -375,7 +372,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
               null,
               null,
               getTopicPartition(partition),
-              ApacheKafkaOffsetPosition.of(0),
+              PubSubSymbolicPosition.EARLIEST,
               0,
               0,
               true));
@@ -413,7 +410,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
           LOGGER.info(
               "pollAndCatchup completed for partition: {} with offset: {}, put message: {}, delete message: {}",
               record.getPartition(),
-              getOffset(record.getOffset()),
+              record.getOffset(),
               partitionToPutMessageCount.getOrDefault(record.getPartition(), new AtomicLong(0)).get(),
               partitionToDeleteMessageCount.getOrDefault(record.getPartition(), new AtomicLong(0)).get());
           currentPartitionState.bootstrapState = PollState.BOOTSTRAPPING;
@@ -430,7 +427,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
       ByteBuffer value,
       PubSubTopicPartition partition,
       int readerSchemaId,
-      long recordOffset) {
+      PubSubPosition recordOffset) {
     if (deserializedValue instanceof RecordChangeEvent) {
       RecordChangeEvent recordChangeEvent = (RecordChangeEvent) deserializedValue;
       if (recordChangeEvent.currentValue == null) {
@@ -455,7 +452,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
     VeniceChangeCoordinate currentPubSubPosition = bootstrapState.currentPubSubPosition;
     bootstrapState.currentPubSubPosition = new VeniceChangeCoordinate(
         currentPubSubPosition.getTopic(),
-        new ApacheKafkaOffsetPosition(recordOffset),
+        recordOffset,
         currentPubSubPosition.getPartition());
 
     bootstrapState.incrementProcessedRecordSizeSinceLastSync(value.array().length);
@@ -494,7 +491,10 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
                 offsetRecord.getLocalVersionTopicOffset());
             localCheckpoint = new VeniceChangeCoordinate(
                 getTopicPartition(partition).getPubSubTopic().getName(),
-                new ApacheKafkaOffsetPosition(offsetRecord.getLocalVersionTopicOffset()),
+                offsetRecord.getLocalVersionTopicOffset() == -1
+                    ? PubSubSymbolicPosition.EARLIEST
+                    // TODO: Remove once we populate PubSubPosition for local version topic offset
+                    : ApacheKafkaOffsetPosition.of(offsetRecord.getLocalVersionTopicOffset()),
                 partition);
           } else {
             localCheckpoint = VeniceChangeCoordinate
@@ -507,7 +507,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
                       partition));
             }
 
-            LOGGER.info("Got local checkpoint for partition: {}, offset: {}", partition, getOffset(localCheckpoint));
+            LOGGER.info("Got local checkpoint for partition: {}, offset: {}", partition, localCheckpoint);
           }
         } catch (IOException | ClassNotFoundException e) {
           throw new VeniceException("Failed to decode local change capture coordinate checkpoint with exception: ", e);
@@ -515,7 +515,7 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
 
         // Where we need to catch up to
         VeniceChangeCoordinate targetCheckpoint = this.getLatestCoordinate(partition);
-        LOGGER.info("Got latest offset: {} for partition: {}", getOffset(targetCheckpoint), partition);
+        LOGGER.info("Got latest offset: {} for partition: {}", targetCheckpoint, partition);
 
         synchronized (bootstrapStateMap) {
           BootstrapState newState = new BootstrapState();
@@ -595,13 +595,6 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
   void setStorageAndMetadataService(StorageService storageService, StorageMetadataService storageMetadataService) {
     this.storageService = storageService;
     this.storageMetadataService = storageMetadataService;
-  }
-
-  /**
-   * Helper method to get offset in long value from VeniceChangeCoordinate.
-   */
-  private long getOffset(VeniceChangeCoordinate veniceChangeCoordinate) {
-    return veniceChangeCoordinate.getPosition().getNumericOffset();
   }
 
   enum PollState {

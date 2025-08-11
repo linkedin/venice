@@ -3880,7 +3880,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               put.getSchemaId(),
               keyBytes,
               put.getPutValue(),
-              consumerRecord.getPosition().getNumericOffset(),
+              consumerRecord.getPosition(),
               compressor.get());
 
           // Current record is a chunk. We only write to the storage engine for fully assembled records
