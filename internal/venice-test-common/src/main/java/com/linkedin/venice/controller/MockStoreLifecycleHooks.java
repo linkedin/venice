@@ -1,12 +1,14 @@
-package com.linkedin.venice.hooks;
+package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.hooks.StoreLifecycleHooks;
+import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 
 
-public class StoreLifecycleHooksForTesting extends StoreLifecycleHooks {
-  public StoreLifecycleHooksForTesting(VeniceProperties defaultConfigs) {
+public class MockStoreLifecycleHooks extends StoreLifecycleHooks {
+  public MockStoreLifecycleHooks(VeniceProperties defaultConfigs) {
     super(defaultConfigs);
   }
 

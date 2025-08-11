@@ -12,7 +12,7 @@ import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hooks.StoreLifecycleHooksForTesting;
+import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -28,7 +28,6 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -216,8 +215,9 @@ public class TestDeferredVersionSwapService {
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, mock(DeferredVersionSwapStats.class));
 
     List<LifecycleHooksRecord> lifecycleHooks = new ArrayList<>();
-    lifecycleHooks
-        .add(new LifecycleHooksRecordImpl(StoreLifecycleHooksForTesting.class.getName(), Collections.emptyMap()));
+    Map<String, String> params = new HashMap<>();
+    params.put("outcome", StoreVersionLifecycleEventOutcome.PROCEED.toString());
+    lifecycleHooks.add(new LifecycleHooksRecordImpl(MockStoreLifecycleHooks.class.getName(), params));
     doReturn(lifecycleHooks).when(store).getStoreLifecycleHooks();
     Assert.assertEquals(store.getStoreLifecycleHooks().size(), 1);
 

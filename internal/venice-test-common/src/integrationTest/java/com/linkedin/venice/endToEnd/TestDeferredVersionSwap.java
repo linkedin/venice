@@ -25,13 +25,13 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.MockStoreLifecycleHooks;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.hooks.StoreLifecycleHooksForTesting;
 import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
@@ -633,8 +633,7 @@ public class TestDeferredVersionSwap {
     List<LifecycleHooksRecord> lifecycleHooks = new ArrayList<>();
     Map<String, String> lifecycleHooksParams = new HashMap<>();
     lifecycleHooksParams.put("outcome", validationOutcome);
-    lifecycleHooks
-        .add(new LifecycleHooksRecordImpl(StoreLifecycleHooksForTesting.class.getName(), lifecycleHooksParams));
+    lifecycleHooks.add(new LifecycleHooksRecordImpl(MockStoreLifecycleHooks.class.getName(), lifecycleHooksParams));
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setStoreLifecycleHooks(lifecycleHooks);
     storeParms.setTargetRegionSwapWaitTime(1);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
