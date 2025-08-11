@@ -40,6 +40,9 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   private static final int CONTROLLER_CLUSTER_PARTITION_COUNT = 1;
   private static final String CONTROLLER_HAAS_ZK_CLIENT_NAME = "controller-zk-client-for-haas-admin";
 
+  // TODO: Replace with config from Helix lib once we pick up a fresher Helix dependency
+  static final String HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_CONFIG = "PARTICIPANT_DEREGISTRATION_TIMEOUT";
+
   private final HelixAdmin helixAdmin;
   private final ConfigAccessor helixConfigAccessor;
   private final VeniceControllerClusterConfig commonConfig;
@@ -115,6 +118,13 @@ public class ZkHelixAdminClient implements HelixAdminClient {
           // the current top-state distribution into account when rebalancing.
           clusterConfig.setDefaultInstanceCapacityMap(commonConfig.getHelixDefaultInstanceCapacityMap());
           clusterConfig.setDefaultPartitionWeightMap(commonConfig.getHelixDefaultPartitionWeightMap());
+        }
+
+        if (multiClusterConfigs.getControllerHelixParticipantDeregistrationTimeoutMs() >= 0) {
+          clusterConfig.getRecord()
+              .setLongField(
+                  HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_CONFIG,
+                  multiClusterConfigs.getControllerHelixParticipantDeregistrationTimeoutMs());
         }
 
         updateClusterConfigs(controllerClusterName, clusterConfig);
