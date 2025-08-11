@@ -21,7 +21,6 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.GlobalOpenTelemetry;
-import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleGauge;
 import io.opentelemetry.api.metrics.DoubleHistogram;
@@ -375,17 +374,16 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
         otelMetricsRepositoryCase2.getOpenTelemetry().getMeterProvider(),
         otelMetricsRepositoryCase1.getOpenTelemetry().getMeterProvider());
 
-    // case 3: Global is not set and useOpenTelemetryInitializedByApplication is true: use new noop OpenTelemetry
+    // case 3: Global is not set and useOpenTelemetryInitializedByApplication is true: exception should be thrown
     GlobalOpenTelemetry.resetForTest();
-    VeniceOpenTelemetryMetricsRepository otelMetricsRepositoryCase3 =
-        new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
-
-    assertNull(otelMetricsRepositoryCase3.getSdkMeterProvider(), "SdkMeterProvider should be null");
-    // comparing the meter provider rather than comparing the OpenTelemetry instance as setting the GlobalOpenTelemetry
-    // copies the OpenTelemetry instance as a new ObfuscatedOpenTelemetry instance.
-    assertEquals(
-        otelMetricsRepositoryCase3.getOpenTelemetry().getMeterProvider(),
-        OpenTelemetry.noop().getMeterProvider());
+    try {
+      new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
+      fail();
+    } catch (VeniceException e) {
+      assertTrue(
+          e.getMessage().contains("OpenTelemetry is not initialized globally by the application"),
+          e.getMessage());
+    }
 
     // reset
     when(mockMetricsConfig.useOpenTelemetryInitializedByApplication()).thenReturn(false);

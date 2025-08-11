@@ -23,6 +23,7 @@ import io.opentelemetry.api.metrics.DoubleHistogramBuilder;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongCounterBuilder;
 import io.opentelemetry.api.metrics.Meter;
+import io.opentelemetry.api.metrics.MeterProvider;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporterBuilder;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -78,19 +79,20 @@ public class VeniceOpenTelemetryMetricsRepository {
       openTelemetry = null;
       return;
     }
-    LOGGER.info(
-        "OpenTelemetry initialization for {} started with config: {}",
-        metricsConfig.getServiceName(),
-        metricsConfig.toString());
     this.metricPrefix = metricsConfig.getMetricPrefix();
     validateMetricName(getMetricPrefix());
     if (metricsConfig.useOpenTelemetryInitializedByApplication()) {
       LOGGER.info("Using globally initialized OpenTelemetry for {}", metricsConfig.getServiceName());
       openTelemetry = GlobalOpenTelemetry.get();
-      if (openTelemetry == null) {
-        // this is an extra safety check as GlobalOpenTelemetry.get() will return a default noop instance
-        // if it was not originally initialized by the application
-        throw new VeniceException("OpenTelemetry is not initialized globally, but it is required for metrics.");
+      if (openTelemetry == null || openTelemetry.getMeterProvider() == null
+          || openTelemetry.getMeterProvider().equals(MeterProvider.noop())) {
+        // Fail fast if no global OpenTelemetry instance is initialized to avoid silent metric loss.
+        // When disabled, each Venice component will initialize its own OpenTelemetry instance,
+        // which can lead to multiple instances in the same application, especially when used as
+        // a library (common for Venice clients) when multiple such libraries initialized.
+        throw new VeniceException(
+            "OpenTelemetry is not initialized globally by the application: disable the configuration or "
+                + "initialize OpenTelemetry in the application before initializing venice");
       }
     } else {
       LOGGER.info(
