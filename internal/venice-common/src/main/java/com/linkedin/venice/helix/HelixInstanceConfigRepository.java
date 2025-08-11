@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.helix.NotificationContext;
@@ -128,10 +129,12 @@ public class HelixInstanceConfigRepository
       // Extract group config
       if (instanceConfig.getInstanceEnabled()) {
         Map<String, String> domainConfigMap = instanceConfig.getDomainAsMap();
-        String groupConfig = domainConfigMap.get(faultZoneType);
-        if (groupConfig == null) {
+        String groupConfig;
+        if (faultZoneType == null || !domainConfigMap.containsKey(faultZoneType)) {
           // Set the default group to be empty if not present
           groupConfig = "";
+        } else {
+          groupConfig = domainConfigMap.get(faultZoneType);
         }
         int currentGroupId = groupIdMapping.computeIfAbsent(groupConfig, gc -> groupIdCnt.getAndIncrement());
         newInstanceGroupIdMapping.put(instanceConfig.getId(), currentGroupId);
@@ -158,7 +161,7 @@ public class HelixInstanceConfigRepository
   @Override
   public void onClusterConfigChange(ClusterConfig clusterConfig, NotificationContext context) {
     String updatedFaultZoneType = clusterConfig.getFaultZoneType();
-    if (faultZoneType.equals(updatedFaultZoneType)) {
+    if (Objects.equals(faultZoneType, updatedFaultZoneType)) {
       return;
     }
     synchronized (this) {
