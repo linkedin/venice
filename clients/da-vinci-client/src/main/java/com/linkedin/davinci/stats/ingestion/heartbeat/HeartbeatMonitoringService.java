@@ -5,6 +5,9 @@ import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.ReplicaHeartbeatInfo;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
@@ -20,7 +23,9 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -50,9 +55,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   public static final long DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS = TimeUnit.MINUTES.toMillis(10);
 
   private static final Logger LOGGER = LogManager.getLogger(HeartbeatMonitoringService.class);
+  private static final int DEFAULT_LAG_MONITOR_CLEANUP_CYCLE = 5;
   private final ReadOnlyStoreRepository metadataRepository;
   private final Thread reportingThread;
-  private final Thread lagLoggingThread;
+  private final Thread lagCleanupAndLoggingThread;
 
   private final Set<String> regionNames;
   private final String localRegionName;
@@ -60,22 +66,28 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   // store -> version -> partition -> region -> (timestamp, RTS)
   private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> followerHeartbeatTimeStamps;
   private final Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderHeartbeatTimeStamps;
+  private final Map<String, Integer> cleanupHeartbeatMap;
   private final HeartbeatVersionedStats versionStatsReporter;
   private final HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats;
   private final Duration maxWaitForVersionInfo;
+  private final CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepositoryFuture;
+  private final String nodeId;
+  private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
 
   public HeartbeatMonitoringService(
       MetricsRepository metricsRepository,
       ReadOnlyStoreRepository metadataRepository,
       VeniceServerConfig serverConfig,
-      HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats) {
+      HeartbeatMonitoringServiceStats heartbeatMonitoringServiceStats,
+      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepositoryFuture) {
     this.regionNames = serverConfig.getRegionNames();
     this.localRegionName = serverConfig.getRegionName();
     this.maxWaitForVersionInfo = serverConfig.getServerMaxWaitForVersionInfo();
     this.reportingThread = new HeartbeatReporterThread(serverConfig);
-    this.lagLoggingThread = new HeartbeatLagLoggingThread(serverConfig);
+    this.lagCleanupAndLoggingThread = new HeartbeatLagCleanupAndLoggingThread(serverConfig);
     this.followerHeartbeatTimeStamps = new VeniceConcurrentHashMap<>();
     this.leaderHeartbeatTimeStamps = new VeniceConcurrentHashMap<>();
+    this.cleanupHeartbeatMap = new VeniceConcurrentHashMap<>();
     this.metadataRepository = metadataRepository;
     this.versionStatsReporter = new HeartbeatVersionedStats(
         metricsRepository,
@@ -88,6 +100,8 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         leaderHeartbeatTimeStamps,
         followerHeartbeatTimeStamps);
     this.heartbeatMonitoringServiceStats = heartbeatMonitoringServiceStats;
+    this.customizedViewRepositoryFuture = customizedViewRepositoryFuture;
+    this.nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
   }
 
   private synchronized void initializeEntry(
@@ -139,6 +153,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to monitor lag for
    */
   public void addFollowerLagMonitor(Version version, int partition) {
+    cleanupHeartbeatMap.remove(Utils.getReplicaId(version.kafkaTopicName(), partition));
     initializeEntry(followerHeartbeatTimeStamps, version, partition, true);
     removeEntry(leaderHeartbeatTimeStamps, version, partition);
   }
@@ -151,6 +166,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to monitor lag for
    */
   public void addLeaderLagMonitor(Version version, int partition) {
+    cleanupHeartbeatMap.remove(Utils.getReplicaId(version.kafkaTopicName(), partition));
     initializeEntry(leaderHeartbeatTimeStamps, version, partition, false);
     removeEntry(followerHeartbeatTimeStamps, version, partition);
   }
@@ -237,14 +253,14 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     reportingThread.start();
-    lagLoggingThread.start();
+    lagCleanupAndLoggingThread.start();
     return true;
   }
 
   @Override
   public void stopInner() throws Exception {
     reportingThread.interrupt();
-    lagLoggingThread.interrupt();
+    lagCleanupAndLoggingThread.interrupt();
   }
 
   /**
@@ -546,6 +562,76 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     checkAndMaybeLogHeartbeatDelayMap(followerHeartbeatTimeStamps);
   }
 
+  /**
+   * The cleanup targets resources that have been deleted or are no longer assigned; i.e. the corresponding lag monitor
+   * will be removed from both the leader and follower maps. To avoid a scenario where a resource is unassigned and then
+   * quickly reassigned to the same node; potentially causing a race condition in which the cleanup thread mistakenly
+   * removes the lag monitor, we wait for DEFAULT_LAG_MONITOR_CLEANUP_CYCLE cycles before actually removing the entry.
+   * This should prevent other race conditions caused by out of sync customized view too.
+   */
+  void checkAndMaybeCleanupLagMonitor() {
+    if (customizedViewRepository == null) {
+      if (customizedViewRepositoryFuture.isDone()) {
+        try {
+          customizedViewRepository = customizedViewRepositoryFuture.get();
+          LOGGER.info("Customized view repository is ready, starting lag monitor cleanup");
+        } catch (Exception e) {
+          LOGGER.error("Failed to get customized view repository for lag monitor cleanup", e);
+        }
+      } else {
+        LOGGER.info("Customized view repository not ready yet, skipping lag monitor cleanup");
+        return;
+      }
+    }
+    // We assume the heartbeat maps are maintained correctly and no partition should exist in both leader and follower
+    // map. If it does it will accelerate the cleanup process if the node can no longer be found in the assignment
+    cleanupStoreVersionPartitionMap(leaderHeartbeatTimeStamps);
+    cleanupStoreVersionPartitionMap(followerHeartbeatTimeStamps);
+  }
+
+  private void cleanupStoreVersionPartitionMap(
+      Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps) {
+    if (customizedViewRepository == null) {
+      // Defensive coding, we should already have verified that the customized view repository is ready
+      return;
+    }
+    for (Map.Entry<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> storeName: heartbeatTimestamps
+        .entrySet()) {
+      for (Map.Entry<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>> version: storeName.getValue()
+          .entrySet()) {
+        PartitionAssignment partitionAssignment = customizedViewRepository
+            .getPartitionAssignments(Version.composeKafkaTopic(storeName.getKey(), version.getKey()));
+        for (Map.Entry<Integer, Map<String, HeartbeatTimeStampEntry>> partition: version.getValue().entrySet()) {
+          Set<String> instanceIdSet = partitionAssignment.getPartition(partition.getKey())
+              .getAllInstancesSet()
+              .stream()
+              .map(Instance::getNodeId)
+              .collect(Collectors.toSet());
+          String replicaId =
+              Utils.getReplicaId(Version.composeKafkaTopic(storeName.getKey(), version.getKey()), partition.getKey());
+          if (instanceIdSet.contains(nodeId)) {
+            cleanupHeartbeatMap.remove(replicaId);
+          } else {
+            int result = cleanupHeartbeatMap.compute(replicaId, (k, v) -> v == null ? 1 : v + 1);
+            if (result >= DEFAULT_LAG_MONITOR_CLEANUP_CYCLE) {
+              removeLagMonitor(new VersionImpl(storeName.getKey(), version.getKey(), ""), partition.getKey());
+              cleanupHeartbeatMap.remove(replicaId);
+              LOGGER.warn(
+                  "Removing lingering replica: {} from heartbeat monitoring service because it is no longer assigned to this node: {}",
+                  replicaId,
+                  nodeId);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // For unit testing
+  Map<String, Integer> getCleanupHeartbeatMap() {
+    return this.cleanupHeartbeatMap;
+  }
+
   AggregatedHeartbeatLagEntry getMaxHeartbeatLag(
       Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> heartbeatTimestamps) {
     long currentTimestamp = System.currentTimeMillis();
@@ -622,10 +708,10 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     }
   }
 
-  private class HeartbeatLagLoggingThread extends Thread {
+  private class HeartbeatLagCleanupAndLoggingThread extends Thread {
     private final LogContext logContext;
 
-    HeartbeatLagLoggingThread(VeniceServerConfig serverConfig) {
+    HeartbeatLagCleanupAndLoggingThread(VeniceServerConfig serverConfig) {
       super("Ingestion-Heartbeat-Lag-Logging-Service-Thread");
       this.logContext = serverConfig.getLogContext();
     }
@@ -636,6 +722,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
       while (!Thread.interrupted()) {
         try {
           heartbeatMonitoringServiceStats.recordLoggerHeartbeat();
+          checkAndMaybeCleanupLagMonitor();
           checkAndMaybeLogHeartbeatDelay();
           TimeUnit.SECONDS.sleep(DEFAULT_LAG_LOGGING_THREAD_SLEEP_INTERVAL_SECONDS);
         } catch (InterruptedException e) {
