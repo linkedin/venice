@@ -23,10 +23,7 @@ public class AggVersionedStorageEngineStatsTest {
         new AggVersionedStorageEngineStats(metricsRepository, metadataRepository, false);
     stats.addStore(storeName);
     stats.getStats(storeName, 1).getKeyCountEstimate();
-    stats.getStats(storeName, 1).getDuplicateKeyCountEstimate();
-    Metric metric = metricsRepository.getMetric(".testStore_total--rocksdb_duplicate_key_count_estimate.Gauge");
-    Assert.assertEquals(metric.value(), 0.0);
-    metric = metricsRepository.getMetric(".testStore_total--rocksdb_key_count_estimate.Gauge");
+    Metric metric = metricsRepository.getMetric(".testStore_total--rocksdb_key_count_estimate.Gauge");
     Assert.assertEquals(metric.value(), 0.0);
   }
 }
