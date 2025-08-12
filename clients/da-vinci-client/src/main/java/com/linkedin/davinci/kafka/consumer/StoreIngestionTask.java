@@ -935,9 +935,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * In rocksdb Plain Table mode or in non deferredWrite mode, we can't use rocksdb SSTFileWriter to verify the checksum.
      * So there is no point keep calculating the running checksum here.
+     *
+     * Additionally, if {@link DaVinciRecordTransformerConfig#shouldSkipCompatibilityChecks()} returns false
+     * (compatibility checks are enabled), checksum validation is not possible here.
+     * This is because records are transformed during ingestion, resulting in a checksum that does not match
+     * the original data and causing validation to fail.
      */
     if (serverConfig.isDatabaseChecksumVerificationEnabled() && partitionConsumptionState.isDeferredWrite()
-        && !serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) {
+        && !serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled() && recordTransformerConfig != null
+        && recordTransformerConfig.shouldSkipCompatibilityChecks()) {
       partitionConsumptionState.initializeExpectedChecksum();
       partitionChecksumSupplier = Optional.ofNullable(() -> {
         byte[] checksum = partitionConsumptionState.getExpectedChecksum();
