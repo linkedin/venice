@@ -32,6 +32,7 @@ import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -2926,12 +2927,12 @@ public class AdminTool {
 
     // Include system stores parameter (default: false if not specified)
     if (includeSystemStoresStr != null && !includeSystemStoresStr.isEmpty()) {
-      params.put("includeSystemStores", includeSystemStoresStr);
+      params.put(ControllerApiConstants.INCLUDE_SYSTEM_STORES, includeSystemStoresStr);
     }
 
     // Look back MS parameter
     if (lookBackMSStr != null && !lookBackMSStr.isEmpty()) {
-      params.put("lookBackMS", lookBackMSStr);
+      params.put(ControllerApiConstants.LOOK_BACK_MS, lookBackMSStr);
     }
 
     MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, storeName, params);
