@@ -5440,11 +5440,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Cause {@link Admin#getDeadStores(String, String, boolean)}
+   * Cause {@link Admin#getDeadStores(String, String, Map)}
    */
   @Override
-  public List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores) {
-    return getVeniceHelixAdmin().getDeadStores(clusterName, storeName, includeSystemStores);
+  public List<StoreInfo> getDeadStores(String clusterName, String storeName, Map<String, String> params) {
+    return getVeniceHelixAdmin().getDeadStores(clusterName, storeName, params);
   }
 
   @Override

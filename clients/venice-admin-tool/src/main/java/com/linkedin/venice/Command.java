@@ -77,6 +77,7 @@ import static com.linkedin.venice.Arg.LAG_FILTER_ENABLED;
 import static com.linkedin.venice.Arg.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LATEST_SUPERSET_SCHEMA_ID;
+import static com.linkedin.venice.Arg.LOOK_BACK_MS;
 import static com.linkedin.venice.Arg.MAX_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.Arg.MAX_NEARLINE_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.Arg.MAX_RECORD_SIZE_BYTES;
@@ -480,7 +481,7 @@ public enum Command {
   ),
   GET_DEAD_STORES(
       "get-dead-stores", "Get the stores that are considered dead via ACL DB and Store Discovery",
-      new Arg[] { URL, CLUSTER }, new Arg[] { STORE, INCLUDE_SYSTEM_STORES }
+      new Arg[] { URL, CLUSTER }, new Arg[] { STORE, INCLUDE_SYSTEM_STORES, LOOK_BACK_MS }
   ),
   LIST_STORE_PUSH_INFO(
       "list-store-push-info", "List information about current pushes and push history for a specific store.",
