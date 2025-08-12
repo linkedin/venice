@@ -68,6 +68,9 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFEREN
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP;
@@ -243,6 +246,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.model.CloudConfig;
@@ -410,6 +414,10 @@ public class VeniceControllerClusterConfig {
   private final long controllerHelixParticipantDeregistrationTimeoutMs;
 
   private final String helixRestCustomizedHealthUrl;
+
+  private final boolean serverHelixClusterTopologyAware;
+  private final String serverHelixClusterTopology;
+  private final String serverHelixClusterFaultZoneType;
 
   private final boolean usePushStatusStoreForIncrementalPushStatusReads;
 
@@ -1046,6 +1054,15 @@ public class VeniceControllerClusterConfig {
     this.controllerHelixParticipantDeregistrationTimeoutMs =
         props.getLong(CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS, -1L);
     this.helixRestCustomizedHealthUrl = props.getString(CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL, "");
+
+    this.serverHelixClusterTopologyAware = props.getBoolean(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, false);
+    this.serverHelixClusterTopology = props.getString(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY, (String) null);
+    this.serverHelixClusterFaultZoneType =
+        props.getString(CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE, (String) null);
+    validateServerHelixClusterTopologyAwareConfigs(
+        serverHelixClusterTopologyAware,
+        serverHelixClusterTopology,
+        serverHelixClusterFaultZoneType);
 
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
@@ -1839,6 +1856,37 @@ public class VeniceControllerClusterConfig {
 
   public String getHelixRestCustomizedHealthUrl() {
     return helixRestCustomizedHealthUrl;
+  }
+
+  public boolean isServerHelixClusterTopologyAware() {
+    return serverHelixClusterTopologyAware;
+  }
+
+  public String getServerHelixClusterTopology() {
+    return serverHelixClusterTopology;
+  }
+
+  public String getServerHelixClusterFaultZoneType() {
+    return serverHelixClusterFaultZoneType;
+  }
+
+  private void validateServerHelixClusterTopologyAwareConfigs(
+      boolean serverHelixClusterTopologyAware,
+      String serverHelixClusterTopology,
+      String serverHelixClusterFaultZoneType) {
+    if (!serverHelixClusterTopologyAware) {
+      return;
+    }
+
+    if (StringUtils.isEmpty(serverHelixClusterTopology)) {
+      throw new VeniceException(
+          "Server cluster is configured for topology-aware placement, but no topology is provided");
+    }
+
+    if (StringUtils.isEmpty(serverHelixClusterFaultZoneType)) {
+      throw new VeniceException(
+          "Server cluster is configured for topology-aware placement, but no fault zone type is provided");
+    }
   }
 
   public boolean usePushStatusStoreForIncrementalPush() {

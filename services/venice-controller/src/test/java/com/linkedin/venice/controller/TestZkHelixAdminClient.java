@@ -18,7 +18,6 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.controller.helix.HelixCapacityConfig;
-import com.linkedin.venice.utils.HelixUtils;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
@@ -172,10 +171,12 @@ public class TestZkHelixAdminClient {
     clusterConfig.setDelayRebalaceEnabled(true);
 
     clusterConfig.setPersistBestPossibleAssignment(true);
-    // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to
-    // choose proper instance to hold the replica.
-    clusterConfig.setTopology("/" + HelixUtils.TOPOLOGY_CONSTRAINT);
-    clusterConfig.setFaultZoneType(HelixUtils.TOPOLOGY_CONSTRAINT);
+
+    String topology = "/zone/rack/host/instance";
+    String faultZoneType = "zone";
+    clusterConfig.setTopologyAwareEnabled(true);
+    clusterConfig.setTopology(topology);
+    clusterConfig.setFaultZoneType(faultZoneType);
 
     doAnswer(invocation -> {
       String clusterNameProp = invocation.getArgument(0);
@@ -185,19 +186,16 @@ public class TestZkHelixAdminClient {
       assertEquals(clusterProps.getClusterName(), clusterName);
       Map<String, String> simpleFields = clusterProps.getRecord().getSimpleFields();
 
-      assertEquals(simpleFields.size(), 6);
+      assertEquals(simpleFields.size(), 7);
       assertEquals(simpleFields.get(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN), "true");
       assertEquals(simpleFields.get(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_ENABLED.name()), "true");
       assertEquals(simpleFields.get(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name()), "1000");
       assertEquals(
           simpleFields.get(ClusterConfig.ClusterConfigProperty.PERSIST_BEST_POSSIBLE_ASSIGNMENT.name()),
           "true");
-      assertEquals(
-          simpleFields.get(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name()),
-          "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
-      assertEquals(
-          simpleFields.get(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name()),
-          HelixUtils.TOPOLOGY_CONSTRAINT);
+      assertEquals(simpleFields.get(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name()), "true");
+      assertEquals(simpleFields.get(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name()), topology);
+      assertEquals(simpleFields.get(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name()), faultZoneType);
 
       return null;
     }).when(mockHelixConfigAccessor).setClusterConfig(any(), any());
