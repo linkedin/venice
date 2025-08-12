@@ -784,13 +784,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     logger.info("Starting client, storeName={}", getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
 
-    if (configLoader.getVeniceServerConfig().isDatabaseChecksumVerificationEnabled()
-        && daVinciConfig.isRecordTransformerEnabled() && !recordTransformerConfig.shouldSkipCompatibilityChecks()) {
-      // The checksum verification will fail when a DaVinciRecordTransformer implementation transforms the values
-      throw new VeniceException(
-          "DaVinciRecordTransformer cannot be used with database checksum verification when skipCompatibilityChecks is set to false.");
-    }
-
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
     initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);
 
