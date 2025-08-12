@@ -27,7 +27,6 @@ import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.AvroSerializer;
@@ -170,7 +169,7 @@ public class AvroGenericDaVinciClientTest {
   }
 
   @Test
-  public void testRecordTransformerWithChecksumVerificationEnabled()
+  public void testRecordTransformerWithChecksumVerificationAndCompatabilityChecks()
       throws NoSuchFieldException, IllegalAccessException {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
 
@@ -179,14 +178,13 @@ public class AvroGenericDaVinciClientTest {
   }
 
   @Test
-  public void testRecordTransformerWithChecksumVerificationEnabledException()
+  public void testRecordTransformerWithChecksumVerificationAndCompatabilityChecksDisabled()
       throws NoSuchFieldException, IllegalAccessException {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
 
-    // If skipCompatabilityChecks are disabled, then the DVRT implementation could be transforming records, causing
-    // database checksum verification to fail.
+    // DaVinciRecordTransformer should gracefully handle config incompatibility for checksum validation
     AvroGenericDaVinciClient dvcClient = setUpClientWithRecordTransformer(clientConfig, null, false, true, false);
-    assertThrows(VeniceException.class, () -> dvcClient.start());
+    dvcClient.start();
   }
 
   @Test
