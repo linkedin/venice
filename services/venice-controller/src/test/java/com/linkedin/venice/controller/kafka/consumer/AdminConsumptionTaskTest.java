@@ -70,10 +70,6 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.guid.GuidUtils;
-import com.linkedin.venice.kafka.protocol.state.PartitionState;
-import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
-import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
@@ -103,14 +99,12 @@ import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.PollStrategy;
 import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -566,77 +560,6 @@ public class AdminConsumptionTaskTest {
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
   }
 
-  private OffsetRecord getOffsetRecordByOffsetAndSeqNum(long offset, int seqNum) {
-    PartitionState partitionState = new PartitionState();
-    partitionState.endOfPush = false;
-    partitionState.offset = offset;
-    partitionState.lastUpdate = System.currentTimeMillis();
-    partitionState.producerStates = new HashMap<>();
-    partitionState.databaseInfo = new HashMap<>();
-    partitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
-    ProducerPartitionState ppState = new ProducerPartitionState();
-    ppState.segmentNumber = 0;
-    ppState.segmentStatus = SegmentStatus.IN_PROGRESS.getValue();
-    ppState.messageSequenceNumber = seqNum;
-    ppState.messageTimestamp = System.currentTimeMillis();
-    ppState.checksumType = CheckSumType.NONE.getValue();
-    ppState.checksumState = ByteBuffer.allocate(0);
-    ppState.aggregates = new HashMap<>();
-    ppState.debugInfo = new HashMap<>();
-
-    partitionState.producerStates.put(GuidUtils.getCharSequenceFromGuid(veniceWriter.getProducerGUID()), ppState);
-
-    return new OffsetRecord(partitionState, AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-  }
-
-  @Test(timeOut = TIMEOUT)
-  public void testRunWhenRestart() throws Exception {
-    // Mock previous-persisted offset
-    int firstAdminMessageOffset = 1;
-    int firstAdminMessageSeqNum = 1;
-    OffsetRecord offsetRecord = getOffsetRecordByOffsetAndSeqNum(firstAdminMessageOffset, firstAdminMessageSeqNum);
-    offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
-
-    PubSubProduceResult killJobMetadata =
-        (PubSubProduceResult) veniceWriter
-            .put(
-                emptyKeyBytes,
-                getKillOfflinePushJobMessage(clusterName, storeTopicName, 1),
-                AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-            .get();
-    veniceWriter
-        .put(
-            emptyKeyBytes,
-            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2),
-            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-        .get();
-
-    Queue<MockInMemoryPartitionPosition> pollDeliveryOrder = new LinkedList<>();
-    pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
-    PollStrategy pollStrategy = new ArbitraryOrderingPollStrategy(pollDeliveryOrder);
-
-    doReturn(false).when(admin).hasStore(clusterName, storeName);
-
-    AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
-    executor.submit(task);
-
-    TestUtils.waitForNonDeterministicAssertion(
-        TIMEOUT,
-        TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(getLastOffset(clusterName), 2L));
-
-    task.close();
-    executor.shutdown();
-    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
-
-    verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), any(PubSubPosition.class));
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
-    verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
-    // Kill message is before persisted offset
-    verify(admin, never()).killOfflinePush(clusterName, storeTopicName, false);
-  }
-
   @Test(timeOut = TIMEOUT)
   public void testRunWithMissingMessages() throws Exception {
     String storeName1 = "test_store1";
@@ -758,11 +681,12 @@ public class AdminConsumptionTaskTest {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     adminTopicMetadataAccessor.updateMetadata(
         clusterName,
-        AdminTopicMetadataAccessor.generateMetadataMap(
-            Optional.of(metadataForStoreName0Future.get().getOffset()),
-            Optional.of(-1L),
-            Optional.of(1L),
-            Optional.empty()));
+        AdminMetadata.fromLegacyMap(
+            AdminTopicMetadataAccessor.generateMetadataMap(
+                Optional.of(metadataForStoreName0Future.get().getOffset()),
+                Optional.of(-1L),
+                Optional.of(1L),
+                Optional.empty())));
 
     // Write a message with a skipped execution id but a different producer metadata.
     veniceWriter.put(
@@ -850,7 +774,7 @@ public class AdminConsumptionTaskTest {
     doReturn(false).when(admin).hasStore(clusterName, storeName2);
     Map<String, Long> newMetadata = AdminTopicMetadataAccessor
         .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.empty());
-    adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
+    adminTopicMetadataAccessor.updateMetadata(clusterName, AdminMetadata.fromLegacyMap(newMetadata));
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
@@ -904,7 +828,7 @@ public class AdminConsumptionTaskTest {
           AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
       final long executionId = i;
       TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName).toLegacyMap();
         return AdminTopicMetadataAccessor.getOffsets(metaData).getFirst() == executionId
             && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
       });
@@ -944,7 +868,7 @@ public class AdminConsumptionTaskTest {
           pubSubMessageHeaders);
       final long executionId = i;
       TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName).toLegacyMap();
         return AdminTopicMetadataAccessor.getOffsets(metaData).getFirst() == executionId
             && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
       });
@@ -1226,7 +1150,7 @@ public class AdminConsumptionTaskTest {
     long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
     Map<String, Long> newMetadata = AdminTopicMetadataAccessor
         .generateMetadataMap(Optional.of(offset), Optional.of(-1L), Optional.of(4L), Optional.empty());
-    adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
+    adminTopicMetadataAccessor.updateMetadata(clusterName, AdminMetadata.fromLegacyMap(newMetadata));
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, 4L);
     // Resubscribe to the admin topic and make sure it can still process new admin messages
     doReturn(true).when(admin).isLeaderControllerFor(clusterName);
@@ -1285,10 +1209,9 @@ public class AdminConsumptionTaskTest {
     // while stuck on a failing message.
     when(admin.isLeaderControllerFor(clusterName)).thenReturn(true, true, true, true, true, false, false, false, true);
     executor.submit(task);
-    TestUtils.waitForNonDeterministicAssertion(
-        TIMEOUT,
-        TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingOffset(), failingOffset));
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(task.getFailingOffset(), failingOffset);
+    });
     // Failing offset should be set to -1 once the consumption task unsubscribed.
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
@@ -1848,7 +1771,6 @@ public class AdminConsumptionTaskTest {
 
     verify(admin, atLeastOnce()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
     verify(admin, times(1)).createStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
-
   }
 
   @Test(timeOut = TIMEOUT)

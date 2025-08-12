@@ -386,6 +386,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getRealTimeTopicVersioningEnabled();
   }
 
+  public boolean useV2AdminTopicMessage() {
+    return getCommonConfig().getRealTimeTopicVersioningEnabled();
+  }
+
   public LogContext getLogContext() {
     return getCommonConfig().getLogContext();
   }

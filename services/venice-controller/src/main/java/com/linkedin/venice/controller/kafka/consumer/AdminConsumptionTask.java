@@ -428,7 +428,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   private void subscribe() {
-    Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+    Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName).toLegacyMap();
     if (!metaData.isEmpty()) {
       Pair<Long, Long> localAndUpstreamOffsets = AdminTopicMetadataAccessor.getOffsets(metaData);
       localOffsetCheckpointAtStartTime = localAndUpstreamOffsets.getFirst();
@@ -981,7 +981,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               Optional.of(upstreamOffsetCheckpointAtStartTime),
               Optional.of(lastDelegatedExecutionId),
               Optional.empty());
-      adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
+      adminTopicMetadataAccessor.updateMetadata(clusterName, AdminMetadata.fromLegacyMap(metadata));
       lastPersistedOffset = lastOffset;
       lastPersistedExecutionId = lastDelegatedExecutionId;
       LOGGER.info("Updated lastPersistedOffset to {}", lastPersistedOffset);
