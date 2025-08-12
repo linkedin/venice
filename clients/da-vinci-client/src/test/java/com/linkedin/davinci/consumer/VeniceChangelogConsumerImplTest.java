@@ -74,6 +74,7 @@ import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.stats.dimensions.VeniceResponseStatusCategory;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -987,10 +988,11 @@ public class VeniceChangelogConsumerImplTest {
     Assert.assertEquals(veniceChangelogConsumer.getPartitionCount(), 2);
     veniceChangelogConsumer.subscribe(new HashSet<>(Collections.singletonList(partition))).get();
     veniceChangelogConsumer.seekToBeginningOfPush().get();
-    List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        (List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>>) veniceChangelogConsumer
-            .poll(pollTimeoutMs);
-    Assert.assertEquals(pubSubMessages.size(), 10);
+    final List<PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      pubSubMessages.addAll(veniceChangelogConsumer.poll(pollTimeoutMs));
+      Assert.assertEquals(pubSubMessages.size(), 10);
+    });
     long expectedSequenceId = sequenceIdStartingValue + 1;
     for (int i = 0; i < 10; i++) {
       PubSubMessage<String, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage = pubSubMessages.get(i);

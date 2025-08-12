@@ -29,6 +29,7 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -86,7 +87,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
   private long backgroundReporterThreadSleepIntervalSeconds = 60L;
   private final BasicConsumerStats changeCaptureStats;
   private final AtomicBoolean isCaughtUp = new AtomicBoolean(false);
-  private final AtomicLong consumerSequenceIdGenerator;
+  private final VeniceConcurrentHashMap<Integer, AtomicLong> consumerSequenceIdGeneratorMap;
+  private final long consumerSequenceIdStartingValue;
 
   public BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl(ChangelogClientConfig changelogClientConfig) {
     this(changelogClientConfig, System.nanoTime());
@@ -137,7 +139,8 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
     } else {
       changeCaptureStats = null;
     }
-    consumerSequenceIdGenerator = new AtomicLong(consumerSequenceIdStartingValue);
+    this.consumerSequenceIdGeneratorMap = new VeniceConcurrentHashMap<>();
+    this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
   }
 
   @Override
@@ -400,7 +403,7 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
                   0,
                   0,
                   false,
-                  getNextConsumerSequenceId()));
+                  getNextConsumerSequenceId(partitionId)));
 
           /*
            * pubSubMessages is full, signal to a poll thread awaiting on bufferFullCondition.
@@ -429,7 +432,9 @@ public class BootstrappingVeniceChangelogConsumerDaVinciRecordTransformerImpl<K,
       }
     }
 
-    private long getNextConsumerSequenceId() {
+    private long getNextConsumerSequenceId(int partition) {
+      AtomicLong consumerSequenceIdGenerator = consumerSequenceIdGeneratorMap
+          .computeIfAbsent(partition, p -> new AtomicLong(consumerSequenceIdStartingValue));
       return consumerSequenceIdGenerator.incrementAndGet();
     }
 

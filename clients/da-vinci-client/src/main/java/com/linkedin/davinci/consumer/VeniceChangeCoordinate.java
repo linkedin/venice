@@ -51,7 +51,10 @@ public class VeniceChangeCoordinate implements Externalizable {
    * A sequence id that's unique and monotonically increasing per record polled from the same consumer instance and
    * partition. This can be used to reason about the order of events consumed from the same consumer and partition.
    * e.g. event A and B are both consumed from partition 0 from the same consumer instance. If B's sequence id is
-   * greater than A then it means B happened after A.
+   * greater than A then it means B happened after A. The sequence id is mostly contiguous, but it is not guaranteed
+   * because there can be messages that are consumed internally (sequence id is already incremented) but not processed
+   * by the external consumer yet. In most cases it's good enough to provide some heuristic about the rate of
+   * consumption or number of events consumed, but it's not meant for precise measurement.
    */
   private long consumerSequenceId;
 
@@ -191,6 +194,19 @@ public class VeniceChangeCoordinate implements Externalizable {
     return Version.parseStoreFromKafkaTopicName(topic);
   }
 
+  /**
+   * Returns the consumer sequence id for this {@link VeniceChangeCoordinate}.
+   * The sequence id is unique and monotonically increasing per record polled
+   * from the same consumer instance and partition. This can be used to reason
+   * about the order of events consumed from the same consumer and partition.
+   * The sequence id is mostly contiguous, but it is not guaranteed because there
+   * can be messages that are consumed internally (sequence id is already incremented)
+   * but not processed by the external consumer yet. In most cases it's good enough to
+   * provide some heuristic about the rate of consumption or number of events consumed,
+   * but it's not meant for precise measurement.
+   *
+   * @return the consumer sequence id, or {@link #UNDEFINED_CONSUMER_SEQUENCE_ID} if not available.
+   */
   public long getConsumerSequenceId() {
     return consumerSequenceId;
   }
