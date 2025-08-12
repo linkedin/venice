@@ -1006,12 +1006,7 @@ public class VeniceChangelogConsumerImplTest {
     AtomicInteger pollMultiplier = new AtomicInteger(2);
 
     when(mockPubSubConsumer.poll(anyLong())).thenAnswer(invocation -> {
-      long timeout;
-      synchronized (pollMultiplier) {
-        timeout = pollTimeoutMs * pollMultiplier.get();
-        pollMultiplier.decrementAndGet();
-      }
-      Thread.sleep(timeout);
+      Thread.sleep(pollTimeoutMs * pollMultiplier.getAndDecrement());
       return Collections.emptyMap();
     });
 
