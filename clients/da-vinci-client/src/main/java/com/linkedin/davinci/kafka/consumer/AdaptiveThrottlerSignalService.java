@@ -7,6 +7,7 @@ import com.linkedin.davinci.stats.AdaptiveThrottlingServiceStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.AggregatedHeartbeatLagEntry;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.throttle.VeniceAdaptiveThrottler;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -45,7 +46,7 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
   private boolean currentFollowerMaxHeartbeatLagSignal = false;
   private boolean nonCurrentLeaderMaxHeartbeatLagSignal = false;
   private boolean nonCurrentFollowerMaxHeartbeatLagSignal = false;
-  private AdaptiveThrottlingServiceStats adaptiveThrottlingServiceStats;
+  private final AdaptiveThrottlingServiceStats adaptiveThrottlingServiceStats;
 
   public AdaptiveThrottlerSignalService(
       VeniceServerConfig veniceServerConfig,
@@ -69,7 +70,7 @@ public class AdaptiveThrottlerSignalService extends AbstractVeniceService {
     updateReadLatencySignal();
     updateHeartbeatLatencySignal();
     // Update all the throttler and record the current throttle limit
-    for (VeniceAdaptiveIngestionThrottler throttler: throttlerList) {
+    for (VeniceAdaptiveThrottler throttler: throttlerList) {
       throttler.checkSignalAndAdjustThrottler();
       adaptiveThrottlingServiceStats.recordThrottleLimitForThrottler(throttler);
     }
