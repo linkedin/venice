@@ -222,16 +222,14 @@ public class SystemStoreRepairTask implements Runnable {
        */
       List<Version> storeVersionList = store.getVersions();
 
-      long latestCreatedTime =
-          storeVersionList.stream().mapToLong(Version::getCreatedTime).max().orElse(Long.MIN_VALUE); // no versions ->
-                                                                                                     // treat as
-                                                                                                     // infinitely old
+      // If no version is found, we will default to 0.
+      long latestCreatedTime = storeVersionList.stream().mapToLong(Version::getCreatedTime).max().orElse(0);
 
       boolean versionTooOldOrMissing = LatencyUtils.getElapsedTimeFromMsToMs(latestCreatedTime) > TimeUnit.DAYS
           .toMillis(getVersionRefreshThresholdInDays());
 
       if (versionTooOldOrMissing) {
-        if (latestCreatedTime == Long.MIN_VALUE) {
+        if (latestCreatedTime == 0) {
           LOGGER.info("Adding the system store: {} to the repair set as there is no version.", store.getName());
         } else {
           long versionAgeInMs = System.currentTimeMillis() - latestCreatedTime;
