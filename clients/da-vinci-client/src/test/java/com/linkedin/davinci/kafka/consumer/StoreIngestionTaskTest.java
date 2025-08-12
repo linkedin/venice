@@ -2728,17 +2728,6 @@ public abstract class StoreIngestionTaskTest {
     doReturn(false).when(rocksDBServerConfig).isRocksDBPlainTableFormatEnabled();
     setStoreVersionStateSupplier(true);
 
-    Schema myKeySchema = Schema.create(Schema.Type.INT);
-    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
-    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
-    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
-
-    Schema myValueSchema = Schema.create(Schema.Type.STRING);
-    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
-    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
-    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
-    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
-
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
       localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
       try {
@@ -2760,13 +2749,7 @@ public abstract class StoreIngestionTaskTest {
       });
     }, aaConfig);
 
-    DaVinciRecordTransformerConfig recordTransformerConfig =
-        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
-            .setOutputValueClass(String.class)
-            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
-            .build();
-    config.setRecordTransformerConfig(recordTransformerConfig);
-
+    config.setRecordTransformerConfig(buildRecordTransformerConfig(false));
     runTest(config);
   }
 
@@ -2775,17 +2758,6 @@ public abstract class StoreIngestionTaskTest {
     databaseChecksumVerificationEnabled = true;
     doReturn(false).when(rocksDBServerConfig).isRocksDBPlainTableFormatEnabled();
     setStoreVersionStateSupplier(true);
-
-    Schema myKeySchema = Schema.create(Schema.Type.INT);
-    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
-    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
-    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
-
-    Schema myValueSchema = Schema.create(Schema.Type.STRING);
-    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
-    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
-    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
-    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
 
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
       localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
@@ -2817,14 +2789,7 @@ public abstract class StoreIngestionTaskTest {
       });
     }, aaConfig);
 
-    DaVinciRecordTransformerConfig recordTransformerConfig =
-        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
-            .setOutputValueClass(String.class)
-            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
-            .setSkipCompatibilityChecks(true)
-            .build();
-    config.setRecordTransformerConfig(recordTransformerConfig);
-
+    config.setRecordTransformerConfig(buildRecordTransformerConfig(true));
     runTest(config);
   }
 
@@ -5150,17 +5115,6 @@ public abstract class StoreIngestionTaskTest {
     when(leaderProducedRecordContext.getKeyBytes()).thenReturn(putKeyFoo);
     when(leaderProducedRecordContext.getConsumedPosition()).thenReturn(mockedPubSubPosition);
 
-    Schema myKeySchema = Schema.create(Schema.Type.INT);
-    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
-    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
-    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
-
-    Schema myValueSchema = Schema.create(Schema.Type.STRING);
-    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
-    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
-    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
-    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
-
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
       TestUtils.waitForNonDeterministicAssertion(
           5,
@@ -5180,13 +5134,7 @@ public abstract class StoreIngestionTaskTest {
       }
     }, aaConfig);
 
-    DaVinciRecordTransformerConfig recordTransformerConfig =
-        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
-            .setOutputValueClass(String.class)
-            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
-            .build();
-    config.setRecordTransformerConfig(recordTransformerConfig);
-
+    config.setRecordTransformerConfig(buildRecordTransformerConfig(false));
     runTest(config);
 
     // Metrics that should have been recorded
@@ -6101,5 +6049,24 @@ public abstract class StoreIngestionTaskTest {
       this.version = version;
       this.storeVersionConfig = storeVersionConfig;
     }
+  }
+
+  private DaVinciRecordTransformerConfig buildRecordTransformerConfig(boolean skipCompatabilityChecks) {
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
+    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
+    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
+    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+
+    Schema myValueSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
+    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
+    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
+
+    return new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+        .setOutputValueClass(String.class)
+        .setOutputValueSchema(Schema.create(Schema.Type.STRING))
+        .setSkipCompatibilityChecks(skipCompatabilityChecks)
+        .build();
   }
 }
