@@ -469,6 +469,10 @@ public class RouterServer extends AbstractVeniceService {
     registry = new ResourceRegistry();
     workerExecutor = registry.factory(ShutdownableExecutors.class)
         .newCachedThreadPool(new DefaultThreadFactory("RouterThread", true, Thread.MAX_PRIORITY));
+
+    // Register thread pool stats for workerExecutor
+    new ThreadPoolStats(metricsRepository, (ThreadPoolExecutor) workerExecutor, "router_worker_executor");
+
     /**
      * Use TreeMap inside TimeoutProcessor; the other option ConcurrentSkipList has performance issue.
      *
