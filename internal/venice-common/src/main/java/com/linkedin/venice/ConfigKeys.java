@@ -580,6 +580,23 @@ public class ConfigKeys {
       "controller.helix.rest.customized.health.url";
 
   /**
+   * Config that controls whether server cluster in Helix is TOPOLOGY aware or not.
+   */
+  public static final String CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE =
+      "controller.helix.server.cluster.topology.aware";
+
+  /**
+   * The TOPOLOGY string to use for the server cluster in Helix.
+   */
+  public static final String CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY = "controller.helix.server.cluster.topology";
+
+  /**
+   * The FAULT_ZONE_TYPE string to use for the server cluster in Helix.
+   */
+  public static final String CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE =
+      "controller.helix.server.cluster.fault.zone.type";
+
+  /**
    * Whether to enable graveyard cleanup for batch-only store at cluster level. Default is false.
    */
   public static final String CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED = "controller.store.graveyard.cleanup.enabled";
