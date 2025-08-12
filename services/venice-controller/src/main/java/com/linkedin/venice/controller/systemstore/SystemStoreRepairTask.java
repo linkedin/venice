@@ -10,6 +10,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
@@ -242,12 +243,7 @@ public class SystemStoreRepairTask implements Runnable {
       systemStoreToHeartbeatTimestampMap.put(store.getName(), currentTimestamp);
 
       // Sleep to throttle heartbeat send rate.
-      try {
-        Thread.sleep(DEFAULT_PER_SYSTEM_STORE_HEARTBEAT_CHECK_INTERVAL_IN_MS);
-      } catch (InterruptedException e) {
-        LOGGER.info("Caught interrupted exception, will exit now.");
-        return;
-      }
+      LatencyUtils.sleep(DEFAULT_PER_SYSTEM_STORE_HEARTBEAT_CHECK_INTERVAL_IN_MS);
     }
   }
 
@@ -311,13 +307,8 @@ public class SystemStoreRepairTask implements Runnable {
         LOGGER.info("Check task completed for {} ms", System.currentTimeMillis() - startCheckingTime);
         return;
       }
-      try {
-        // Wait for certain period for next round of check.
-        Thread.sleep(TimeUnit.SECONDS.toMillis(checkIntervalInSeconds));
-      } catch (InterruptedException e) {
-        LOGGER.info("Caught interrupted exception, will exit now.");
-        return;
-      }
+      // Wait for certain period for next round of check.
+      LatencyUtils.sleep(TimeUnit.SECONDS.toMillis(checkIntervalInSeconds));
     }
   }
 
@@ -424,7 +415,7 @@ public class SystemStoreRepairTask implements Runnable {
 
   boolean isStoreNewlyCreated(long creationTimestamp) {
     // Since system store is just created, we can skip checking its system store.
-    return (System.currentTimeMillis() - creationTimestamp) < TimeUnit.HOURS
+    return LatencyUtils.getElapsedTimeFromMsToMs(creationTimestamp) < TimeUnit.HOURS
         .toMillis(DEFAULT_SKIP_NEWLY_CREATED_STORE_SYSTEM_STORE_HEALTH_CHECK_IN_HOURS);
   }
 
