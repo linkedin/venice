@@ -11,7 +11,5 @@ public interface StorageEngineStats {
 
   boolean hasMemorySpaceLeft();
 
-  long getDuplicateKeyCountEstimate();
-
   long getKeyCountEstimate();
 }

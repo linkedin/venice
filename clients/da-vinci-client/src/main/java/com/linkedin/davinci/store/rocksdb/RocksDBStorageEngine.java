@@ -89,7 +89,6 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
     this.stats = new RocksDBStorageEngineStats(
         storeDbPath,
         this::getRMDSizeInBytes,
-        this::getDuplicateKeyCountEstimate,
         this::getKeyCountEstimate,
         this::hasMemorySpaceLeft);
 
@@ -156,10 +155,6 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
 
   private long getRMDSizeInBytes() {
     return getStatSumAcrossPartitions(RocksDBStoragePartition::getRmdByteUsage);
-  }
-
-  private long getDuplicateKeyCountEstimate() {
-    return getStatSumAcrossPartitions(RocksDBStoragePartition::getDuplicateKeyCountEstimate);
   }
 
   private long getKeyCountEstimate() {

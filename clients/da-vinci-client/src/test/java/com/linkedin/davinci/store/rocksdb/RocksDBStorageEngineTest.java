@@ -1,7 +1,6 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_EMIT_DUPLICATE_KEY_METRIC;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -26,7 +25,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
-import java.util.Properties;
 import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -52,9 +50,8 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     Store mockStore = mock(Store.class);
     when(mockStore.getVersion(versionNumber)).thenReturn(mockVersion);
     when(mockReadOnlyStoreRepository.getStoreOrThrow(storeName)).thenReturn(mockStore);
-    Properties properties = new Properties();
-    properties.put(ROCKSDB_EMIT_DUPLICATE_KEY_METRIC, "true");
-    VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
+
+    VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     storageService = new StorageService(
         AbstractStorageEngineTest.getVeniceConfigLoader(serverProps),
         mock(AggVersionedStorageEngineStats.class),
@@ -207,7 +204,6 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     Assert.assertTrue(persistedPartitionIds.contains(PARTITION_ID));
     Assert.assertTrue(persistedPartitionIds.contains(METADATA_PARTITION_ID));
     Assert.assertEquals(2, rocksDBStorageEngine.getStats().getKeyCountEstimate());
-    Assert.assertEquals(0, rocksDBStorageEngine.getStats().getDuplicateKeyCountEstimate());
   }
 
   @Test

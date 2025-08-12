@@ -1,8 +1,6 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
-import static org.rocksdb.TickerType.COMPACTION_KEY_DROP_NEWER_ENTRY;
-import static org.rocksdb.TickerType.COMPACTION_KEY_DROP_USER;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.stats.RocksDBMemoryStats;
@@ -144,8 +142,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   protected final boolean readWriteLeaderForRMDCF;
 
   private final Optional<Statistics> aggStatistics;
-  private Statistics keyStatistics;
-
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
   private Optional<Supplier<byte[]>> expectedChecksumSupplier;
@@ -409,12 +405,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     options.setKeepLogFileNum(rocksDBServerConfig.getMaxLogFileNum());
     options.setMaxLogFileSize(rocksDBServerConfig.getMaxLogFileSize());
 
-    if (rocksDBServerConfig.isEmitDuplicateKeyMetricEnabled()) {
-      keyStatistics = new Statistics();
-      options.setStatistics(keyStatistics);
-    } else {
-      aggStatistics.ifPresent(options::setStatistics);
-    }
+    aggStatistics.ifPresent(options::setStatistics);
 
     if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
       PlainTableConfig tableConfig = new PlainTableConfig();
@@ -850,20 +841,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     return rocksDBSstFileWriter.sync();
   }
 
-  public long getDuplicateKeyCountEstimate() {
-    readCloseRWLock.readLock().lock();
-    try {
-      if (keyStatistics != null) {
-        makeSureRocksDBIsStillOpen();
-        return keyStatistics.getTickerCount(COMPACTION_KEY_DROP_NEWER_ENTRY)
-            + keyStatistics.getTickerCount(COMPACTION_KEY_DROP_USER);
-      }
-      return 0;
-    } finally {
-      readCloseRWLock.readLock().unlock();
-    }
-  }
-
   public long getKeyCountEstimate() {
     return getRocksDBStatValue("rocksdb.estimate-num-keys");
   }
@@ -942,9 +919,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     }
     if (deferredWrite) {
       rocksDBSstFileWriter.close();
-    }
-    if (keyStatistics != null) {
-      keyStatistics.close();
     }
     options.close();
     if (writeOptions != null) {
