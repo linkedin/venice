@@ -201,7 +201,6 @@ public class RocksDBServerConfig {
       "rocksdb.level0.compaction.tuning.for.read.write.leader.enabled";
 
   public static final String ROCKSDB_PUT_REUSE_BYTE_BUFFER = "rocksdb.put.reuse.byte.buffer";
-  public static final String ROCKSDB_EMIT_DUPLICATE_KEY_METRIC = "rocksdb.emit.duplicate.key.metric";
 
   /**
    * Every time, when RocksDB tries to open a database, it will spin up multiple threads to load the file metadata
@@ -316,8 +315,6 @@ public class RocksDBServerConfig {
   private final boolean level0CompactionTuningForReadWriteLeaderEnabled;
 
   private final boolean putReuseByteBufferEnabled;
-  private final boolean emitDuplicateKeyMetricEnabled;
-
   private final boolean atomicFlushEnabled;
   private final boolean separateRMDCacheEnabled;
   private int blockBaseFormatVersion;
@@ -446,7 +443,6 @@ public class RocksDBServerConfig {
         props.getBoolean(ROCKSDB_LEVEL0_COMPACTION_TUNING_FOR_READ_WRITE_LEADER_ENABLED, false);
 
     this.putReuseByteBufferEnabled = props.getBoolean(ROCKSDB_PUT_REUSE_BYTE_BUFFER, false);
-    this.emitDuplicateKeyMetricEnabled = props.getBoolean(ROCKSDB_EMIT_DUPLICATE_KEY_METRIC, false);
     this.atomicFlushEnabled = props.getBoolean(ROCKSDB_ATOMIC_FLUSH_ENABLED, true);
     this.separateRMDCacheEnabled = props.getBoolean(ROCKSDB_SEPARATE_RMD_CACHE_ENABLED, false);
 
@@ -655,10 +651,6 @@ public class RocksDBServerConfig {
 
   public boolean isPutReuseByteBufferEnabled() {
     return putReuseByteBufferEnabled;
-  }
-
-  public boolean isEmitDuplicateKeyMetricEnabled() {
-    return emitDuplicateKeyMetricEnabled;
   }
 
   public boolean isAtomicFlushEnabled() {

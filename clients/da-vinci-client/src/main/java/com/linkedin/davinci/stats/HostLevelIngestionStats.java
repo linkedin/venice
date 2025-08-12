@@ -168,6 +168,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
     this.totalBytesConsumedRate =
         registerOnlyTotalRate("bytes_consumed", totalStats, () -> totalStats.totalBytesConsumedRate, time);
+
     this.totalRecordsConsumedRate =
         registerOnlyTotalRate("records_consumed", totalStats, () -> totalStats.totalRecordsConsumedRate, time);
 
