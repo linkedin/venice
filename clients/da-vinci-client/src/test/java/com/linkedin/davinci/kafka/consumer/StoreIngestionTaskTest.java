@@ -2723,6 +2723,112 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test(dataProvider = "aaConfigProvider")
+  public void testRecordTransformerDatabaseChecksumDefaultSettings(AAConfig aaConfig) throws Exception {
+    databaseChecksumVerificationEnabled = true;
+    doReturn(false).when(rocksDBServerConfig).isRocksDBPlainTableFormatEnabled();
+    setStoreVersionStateSupplier(true);
+
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
+    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
+    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
+    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+
+    Schema myValueSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
+    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
+    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
+
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+      localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
+      try {
+        localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
+      } catch (Exception e) {
+        throw new VeniceException(e);
+      }
+
+      // Verify it retrieves the offset from the Offset Manager
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
+
+      StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
+      deferredWritePartitionConfig.setDeferredWrite(true);
+
+      waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        // When DVRT is enabled with default settings, checksum shouldn't be calculated
+        verify(mockAbstractStorageEngine)
+            .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()));
+      });
+    }, aaConfig);
+
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setOutputValueClass(String.class)
+            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
+            .build();
+    config.setRecordTransformerConfig(recordTransformerConfig);
+
+    runTest(config);
+  }
+
+  @Test(dataProvider = "aaConfigProvider")
+  public void testRecordTransformerDatabaseChecksumSkipCompatabilityChecks(AAConfig aaConfig) throws Exception {
+    databaseChecksumVerificationEnabled = true;
+    doReturn(false).when(rocksDBServerConfig).isRocksDBPlainTableFormatEnabled();
+    setStoreVersionStateSupplier(true);
+
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
+    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
+    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
+    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+
+    Schema myValueSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
+    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
+    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
+
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+      localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
+      try {
+        localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
+      } catch (Exception e) {
+        throw new VeniceException(e);
+      }
+
+      CheckSum checksum = CheckSum.getInstance(CheckSumType.MD5);
+      checksum.update(putKeyFoo);
+      checksum.update(SCHEMA_ID);
+      checksum.update(putValue);
+      ArgumentCaptor<Optional<Supplier<byte[]>>> checksumCaptor = ArgumentCaptor.forClass(Optional.class);
+
+      // Verify it retrieves the offset from the Offset Manager
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
+
+      StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
+      deferredWritePartitionConfig.setDeferredWrite(true);
+
+      waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        // When DVRT is enabled with skip compatability checks enabled, checksum should be calculated
+        verify(mockAbstractStorageEngine)
+            .beginBatchWrite(eq(deferredWritePartitionConfig), any(), checksumCaptor.capture());
+        Optional<Supplier<byte[]>> checksumSupplier = checksumCaptor.getValue();
+        Assert.assertTrue(checksumSupplier.isPresent());
+        Assert.assertTrue(Arrays.equals(checksumSupplier.get().get(), checksum.getCheckSum()));
+      });
+    }, aaConfig);
+
+    DaVinciRecordTransformerConfig recordTransformerConfig =
+        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+            .setOutputValueClass(String.class)
+            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
+            .setSkipCompatibilityChecks(true)
+            .build();
+    config.setRecordTransformerConfig(recordTransformerConfig);
+
+    runTest(config);
+  }
+
+  @Test(dataProvider = "aaConfigProvider")
   public void testDelayedTransitionToOnlineInHybridMode(AAConfig aaConfig) throws Exception {
     final long MESSAGES_BEFORE_EOP = 100;
     final long MESSAGES_AFTER_EOP = 100;

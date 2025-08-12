@@ -942,8 +942,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * the original data and causing validation to fail.
      */
     if (serverConfig.isDatabaseChecksumVerificationEnabled() && partitionConsumptionState.isDeferredWrite()
-        && !serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled() && recordTransformerConfig != null
-        && recordTransformerConfig.shouldSkipCompatibilityChecks()) {
+        && !serverConfig.getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()
+        && (recordTransformerConfig == null || recordTransformerConfig.shouldSkipCompatibilityChecks())) {
+
       partitionConsumptionState.initializeExpectedChecksum();
       partitionChecksumSupplier = Optional.ofNullable(() -> {
         byte[] checksum = partitionConsumptionState.getExpectedChecksum();
