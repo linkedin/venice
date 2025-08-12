@@ -118,6 +118,7 @@ import com.linkedin.venice.controller.init.DelegatingClusterLeaderInitialization
 import com.linkedin.venice.controller.init.SharedInternalRTStoreInitializationRoutine;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -474,7 +475,8 @@ public class VeniceParentHelixAdmin implements Admin {
     this.veniceWriterMap = new ConcurrentHashMap<>();
     this.adminTopicMetadataAccessor = new ZkAdminTopicMetadataAccessor(
         this.veniceHelixAdmin.getZkClient(),
-        this.veniceHelixAdmin.getAdapterSerializer());
+        this.veniceHelixAdmin.getAdapterSerializer(),
+        this.multiClusterConfigs);
     this.adminCommandExecutionTrackers = new HashMap<>();
     this.asyncSetupEnabledMap = new VeniceConcurrentHashMap<>();
     this.accessController = accessController;
@@ -815,8 +817,8 @@ public class VeniceParentHelixAdmin implements Admin {
    * @return The writer schema id to be used to serialize the admin operation.
    */
   private int getWriterSchemaIdFromZK(String clusterName) {
-    Map<String, Long> metadata = adminTopicMetadataAccessor.getMetadata(clusterName);
-    int adminOperationProtocolVersion = (int) AdminTopicMetadataAccessor.getAdminOperationProtocolVersion(metadata);
+    AdminMetadata metadata = adminTopicMetadataAccessor.getMetadata(clusterName);
+    int adminOperationProtocolVersion = metadata.getAdminOperationProtocolVersion().intValue();
     return (adminOperationProtocolVersion > 0
         && adminOperationProtocolVersion <= AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
             ? adminOperationProtocolVersion

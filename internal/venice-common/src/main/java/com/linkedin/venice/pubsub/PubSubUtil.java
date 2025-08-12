@@ -16,6 +16,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
+import java.util.Base64;
 import java.util.Properties;
 
 
@@ -315,5 +316,13 @@ public final class PubSubUtil {
       return PubSubSymbolicPosition.EARLIEST; // -1 is start offset
     }
     return ApacheKafkaOffsetPosition.of(offset);
+  }
+
+  public static String getBase64EncodedString(byte[] byteBuffer) {
+    return byteBuffer != null ? Base64.getEncoder().encodeToString(byteBuffer) : "";
+  }
+
+  public static byte[] getBase64DecodedBytes(String bytesString) {
+    return Base64.getDecoder().decode(bytesString);
   }
 }
