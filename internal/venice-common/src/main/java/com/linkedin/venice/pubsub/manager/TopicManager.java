@@ -776,14 +776,6 @@ public class TopicManager implements Closeable {
         .getLatestOffsetCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
   }
 
-  public long getProducerTimestampOfLastDataMessageWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
-    return topicMetadataFetcher.getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, retries);
-  }
-
-  public long getProducerTimestampOfLastDataMessageCached(PubSubTopicPartition pubSubTopicPartition) {
-    return topicMetadataFetcher.getProducerTimestampOfLastDataMessageCached(pubSubTopicPartition);
-  }
-
   /**
    * Get offsets for only one partition with a specific timestamp.
    */

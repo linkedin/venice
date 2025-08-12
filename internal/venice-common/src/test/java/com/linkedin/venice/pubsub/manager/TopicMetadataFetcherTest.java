@@ -1,11 +1,7 @@
 package com.linkedin.venice.pubsub.manager;
 
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_CONSUMER_POLLING_FOR_METADATA_RETRY_MAX_ATTEMPT;
-import static com.linkedin.venice.pubsub.PubSubConstants.PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -18,23 +14,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.ProducerMetadata;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
-import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -284,183 +273,6 @@ public class TopicMetadataFetcherTest {
     assertEquals(res.get(0), tp0Info);
     assertEquals(res.get(1), tp1Info);
     assertEquals(pubSubConsumerPool.size(), 1);
-  }
-
-  @Test
-  public void testConsumeLatestRecords() {
-    // test invalid input
-    PubSubTopicPartition invalidTp = new PubSubTopicPartitionImpl(pubSubTopic, -1);
-    Throwable t =
-        expectThrows(IllegalArgumentException.class, () -> topicMetadataFetcher.consumeLatestRecords(invalidTp, 1));
-    assertTrue(t.getMessage().contains("Invalid partition number"));
-
-    // test invalid last record count
-    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
-    t = expectThrows(
-        IllegalArgumentException.class,
-        () -> topicMetadataFetcher.consumeLatestRecords(topicPartition, 0));
-    assertTrue(t.getMessage().contains("Last record count must be greater than or equal to 1."));
-
-    when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
-
-    // test when endOffsets returns null
-    when(consumerMock.endOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class))).thenReturn(null);
-    t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.consumeLatestRecords(topicPartition, 1));
-    assertTrue(t.getMessage().contains("Failed to get the end offset for topic-partition:"));
-
-    // test when endOffsets returns empty map
-    when(consumerMock.endOffsets(eq(Collections.singleton(topicPartition)), any(Duration.class)))
-        .thenReturn(Collections.emptyMap());
-    t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.consumeLatestRecords(topicPartition, 1));
-    assertTrue(t.getMessage().contains("Failed to get the end offset for topic-partition:"));
-
-    // test when there are no records to consume as endOffset is 0
-    Map<PubSubTopicPartition, Long> endOffsetsMap = new HashMap<>();
-    endOffsetsMap.put(topicPartition, 0L);
-    when(consumerMock.endOffsets(eq(Collections.singletonList(topicPartition)), any(Duration.class)))
-        .thenReturn(endOffsetsMap);
-    List<DefaultPubSubMessage> consumedRecords = topicMetadataFetcher.consumeLatestRecords(topicPartition, 1);
-    assertEquals(consumedRecords.size(), 0);
-
-    // test when beginningOffset (non-zero) is same as endOffset
-    ApacheKafkaOffsetPosition position = new ApacheKafkaOffsetPosition(1L);
-    endOffsetsMap.put(topicPartition, position.getInternalOffset());
-    when(consumerMock.endOffsets(eq(Collections.singletonList(topicPartition)), any(Duration.class)))
-        .thenReturn(endOffsetsMap);
-    when(consumerMock.beginningPosition(eq(topicPartition), any(Duration.class))).thenReturn(position);
-    consumedRecords = topicMetadataFetcher.consumeLatestRecords(topicPartition, 1);
-    assertEquals(consumedRecords.size(), 0);
-
-    ApacheKafkaOffsetPosition startPosition = ApacheKafkaOffsetPosition.of(3);
-    long endOffset = 10;
-    int numRecordsToRead = 5; // read records at offsets 5, 6, 7, 8, 9
-    long consumePastOffset = 4; // subscribe at offset
-    endOffsetsMap.put(topicPartition, endOffset);
-    when(consumerMock.endOffsets(eq(Collections.singletonList(topicPartition)), any(Duration.class)))
-        .thenReturn(endOffsetsMap);
-    when(consumerMock.beginningPosition(eq(topicPartition), any(Duration.class))).thenReturn(startPosition);
-    verify(consumerMock, never()).subscribe(topicPartition, consumePastOffset);
-    verify(consumerMock, never()).poll(anyLong());
-    verify(consumerMock, never()).unSubscribe(eq(topicPartition));
-
-    // test when poll returns no records
-    when(consumerMock.poll(anyLong())).thenReturn(Collections.emptyMap());
-    t = expectThrows(
-        VeniceException.class,
-        () -> topicMetadataFetcher.consumeLatestRecords(topicPartition, numRecordsToRead));
-    assertNotNull(t.getMessage());
-    assertTrue(t.getMessage().contains("Failed to get records from topic-partition:"));
-    verify(consumerMock, times(1)).subscribe(topicPartition, consumePastOffset);
-    verify(consumerMock, times(PUBSUB_CONSUMER_POLLING_FOR_METADATA_RETRY_MAX_ATTEMPT)).poll(anyLong());
-    verify(consumerMock, times(1)).unSubscribe(eq(topicPartition));
-
-    // poll returns 1, then 2 and then 4 records (to simulate a condition where records get added after getEndOffsets
-    // API call)
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> batch1 = new HashMap<>();
-    batch1.put(topicPartition, Collections.singletonList(getPubSubMessage(topicPartition, true, 5)));
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> batch2 = new HashMap<>();
-    batch2.put(
-        topicPartition,
-        Arrays.asList(getPubSubMessage(topicPartition, true, 6), getPubSubMessage(topicPartition, false, 7)));
-    Map<PubSubTopicPartition, List<DefaultPubSubMessage>> batch3 = new HashMap<>();
-    batch3.put(
-        topicPartition,
-        Arrays.asList(
-            getPubSubMessage(topicPartition, false, 8),
-            getPubSubMessage(topicPartition, true, 9),
-            getPubSubMessage(topicPartition, true, 10),
-            getPubSubMessage(topicPartition, false, 11)));
-    when(consumerMock.poll(anyLong())).thenReturn(batch1).thenReturn(batch2).thenReturn(batch3);
-
-    List<DefaultPubSubMessage> allConsumedRecords =
-        topicMetadataFetcher.consumeLatestRecords(topicPartition, numRecordsToRead);
-    assertTrue(allConsumedRecords.size() >= numRecordsToRead);
-    long firstOffset = allConsumedRecords.get(0).getPosition().getNumericOffset();
-    assertEquals(firstOffset, 5);
-    long lastOffset = allConsumedRecords.get(allConsumedRecords.size() - 1).getPosition().getNumericOffset();
-    assertEquals(lastOffset, 11);
-    verify(consumerMock, times(2)).subscribe(topicPartition, consumePastOffset);
-    verify(consumerMock, times(6)).poll(anyLong()); // 3 from prev test and 3 from this test
-    verify(consumerMock, times(2)).unSubscribe(eq(topicPartition));
-  }
-
-  private DefaultPubSubMessage getHeartBeatPubSubMessage(PubSubTopicPartition topicPartition, long offset) {
-    KafkaKey key = KafkaKey.HEART_BEAT;
-    KafkaMessageEnvelope val = mock(KafkaMessageEnvelope.class);
-    ProducerMetadata producerMetadata = new ProducerMetadata();
-    producerMetadata.setMessageTimestamp(System.nanoTime());
-    when(val.getProducerMetadata()).thenReturn(producerMetadata);
-    return new ImmutablePubSubMessage(
-        key,
-        val,
-        topicPartition,
-        ApacheKafkaOffsetPosition.of(offset),
-        System.currentTimeMillis(),
-        512);
-  }
-
-  private DefaultPubSubMessage getPubSubMessage(
-      PubSubTopicPartition topicPartition,
-      boolean isControlMessage,
-      long offset) {
-    KafkaKey key = mock(KafkaKey.class);
-    when(key.isControlMessage()).thenReturn(isControlMessage);
-    KafkaMessageEnvelope val = mock(KafkaMessageEnvelope.class);
-    ProducerMetadata producerMetadata = new ProducerMetadata();
-    producerMetadata.setMessageTimestamp(System.nanoTime());
-    when(val.getProducerMetadata()).thenReturn(producerMetadata);
-    return new ImmutablePubSubMessage(
-        key,
-        val,
-        topicPartition,
-        ApacheKafkaOffsetPosition.of(offset),
-        System.currentTimeMillis(),
-        512);
-  }
-
-  @Test
-  public void testGetProducerTimestampOfLastDataMessage() {
-    // test when there are no records to consume
-    TopicMetadataFetcher metadataFetcherSpy = spy(topicMetadataFetcher);
-    PubSubTopicPartition topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
-    doReturn(Collections.emptyList()).when(metadataFetcherSpy).consumeLatestRecords(eq(topicPartition), anyInt());
-    long timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
-    assertEquals(timestamp, PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION);
-    verify(metadataFetcherSpy, times(1)).consumeLatestRecords(eq(topicPartition), anyInt());
-
-    // test when there are no data messages and heartbeat messages to consume
-    DefaultPubSubMessage cm = getPubSubMessage(topicPartition, true, 5);
-    doReturn(Collections.singletonList(cm)).when(metadataFetcherSpy).consumeLatestRecords(eq(topicPartition), anyInt());
-    Throwable t = expectThrows(
-        VeniceException.class,
-        () -> metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition));
-    assertTrue(t.getMessage().contains("No data message found in topic-partition"));
-
-    // test when there are heartbeat messages but no data messages to consume
-    DefaultPubSubMessage hm = getHeartBeatPubSubMessage(topicPartition, 6);
-    doReturn(Collections.singletonList(hm)).when(metadataFetcherSpy).consumeLatestRecords(eq(topicPartition), anyInt());
-    timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
-    assertEquals(timestamp, hm.getValue().getProducerMetadata().getMessageTimestamp());
-
-    // test when there are data messages to consume
-    DefaultPubSubMessage dm0 = getPubSubMessage(topicPartition, false, 4);
-    doReturn(Collections.singletonList(dm0)).when(metadataFetcherSpy)
-        .consumeLatestRecords(eq(topicPartition), anyInt());
-    timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
-    assertEquals(timestamp, dm0.getValue().getProducerMetadata().getMessageTimestamp());
-
-    // test: first return one control message and then one data message
-    doReturn(Collections.singletonList(cm)).doReturn(Collections.singletonList(dm0))
-        .when(metadataFetcherSpy)
-        .consumeLatestRecords(eq(topicPartition), anyInt());
-    timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
-    assertEquals(timestamp, dm0.getValue().getProducerMetadata().getMessageTimestamp());
-
-    // test: return 2 data messages
-    DefaultPubSubMessage dm1 = getPubSubMessage(topicPartition, false, 3);
-    doReturn(Arrays.asList(dm1, dm0)).when(metadataFetcherSpy).consumeLatestRecords(eq(topicPartition), anyInt());
-    timestamp = metadataFetcherSpy.getProducerTimestampOfLastDataMessage(topicPartition);
-    assertEquals(timestamp, dm0.getValue().getProducerMetadata().getMessageTimestamp());
   }
 
   @Test

@@ -6,10 +6,8 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterContext;
@@ -210,26 +208,6 @@ public class TopicManagerE2ETest {
         topicManager.getLatestOffsetCached(nonExistentTopic, 0),
         StatsErrorCode.LAG_MEASUREMENT_FAILURE.code);
 
-    // get producer timestamp of last data message with retries for an existing topic
-    Runnable t11 = () -> assertEquals(
-        topicManager.getProducerTimestampOfLastDataMessageWithRetries(topicPartition, 1),
-        tsOfLastDataMessage);
-
-    // get producer timestamp of last data message with retries for a non-existent topic
-    Runnable t12 = () -> assertThrows(
-        PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getProducerTimestampOfLastDataMessageWithRetries(nonExistentTopicPartition, 1));
-
-    // get producer timestamp of last data message cached for an existing topic
-    Runnable t13 = () -> assertEquals(
-        topicManager.getProducerTimestampOfLastDataMessageCached(topicPartition),
-        tsOfLastDataMessage);
-
-    // get producer timestamp of last data message cached for a non-existent topic
-    Runnable t14 = () -> assertEquals(
-        topicManager.getProducerTimestampOfLastDataMessageCached(nonExistentTopicPartition),
-        StatsErrorCode.LAG_MEASUREMENT_FAILURE.code);
-
     // get offset by time for an existing topic
     Runnable t15 =
         () -> assertEquals(topicManager.getOffsetByTime(topicPartition, System.currentTimeMillis()), numMessages);
@@ -248,8 +226,7 @@ public class TopicManagerE2ETest {
     // invalidate cache for a non-existent topic
     Runnable t19 = () -> topicManager.invalidateCache(nonExistentTopic);
 
-    List<Runnable> tasks =
-        Arrays.asList(t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13, t14, t15, t16, t17, t18, t19);
+    List<Runnable> tasks = Arrays.asList(t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t15, t16, t17, t18, t19);
 
     final AtomicInteger successfulRequests = new AtomicInteger(0);
     ExecutorService executorService = Executors.newFixedThreadPool(8);
@@ -278,12 +255,6 @@ public class TopicManagerE2ETest {
     assertThrows(
         PubSubTopicDoesNotExistException.class,
         () -> topicManager.getOffsetByTime(nonExistentTopicPartition, System.currentTimeMillis()));
-    assertThrows(
-        PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getProducerTimestampOfLastDataMessageWithRetries(nonExistentTopicPartition, 1));
-    assertEquals(
-        topicManager.getProducerTimestampOfLastDataMessageCached(nonExistentTopicPartition),
-        StatsErrorCode.LAG_MEASUREMENT_FAILURE.code);
     topicManager.invalidateCache(nonExistentTopic).get(1, TimeUnit.MINUTES); // should not throw an exception
     assertThrows(
         PubSubTopicDoesNotExistException.class,
@@ -323,7 +294,6 @@ public class TopicManagerE2ETest {
     PubSubTopicPartition p0 = new PubSubTopicPartitionImpl(existingTopic, 0);
     PubSubTopicPartition p1 = new PubSubTopicPartitionImpl(existingTopic, 1);
     PubSubTopicPartition p2 = new PubSubTopicPartitionImpl(existingTopic, 2);
-    PubSubTopicPartition p3 = new PubSubTopicPartitionImpl(existingTopic, 3);
 
     // produce messages to the topic-partitions: p0, p1, p2
     PubSubProducerAdapter pubSubProducerAdapter = pubSubProducerAdapterLazy.get();
@@ -370,35 +340,6 @@ public class TopicManagerE2ETest {
 
     long p0TsBeforeM0 = p0Messages.get(0).getTimestampBeforeProduce();
     assertEquals(topicManager.getOffsetByTime(p0, p0TsBeforeM0), 0);
-
-    // test getProducerTimestampOfLastDataMessage
-    long p0LastDataMessageTs =
-        p0Messages.get(p0Messages.size() - 1).getValue().getProducerMetadata().getMessageTimestamp();
-    long p1LastDataMessageTs =
-        p1Messages.get(p1Messages.size() - 1).getValue().getProducerMetadata().getMessageTimestamp();
-    long p2LastDataMessageTs =
-        p2Messages.get(p2Messages.size() - 1).getValue().getProducerMetadata().getMessageTimestamp();
-    long p3LastDataMessageTs = PubSubConstants.PUBSUB_NO_PRODUCER_TIME_IN_EMPTY_TOPIC_PARTITION;
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p0, 5), p0LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p1, 5), p1LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p2, 5), p2LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p3, 5), p3LastDataMessageTs);
-    PubSubHelper.produceMessages(pubSubProducerAdapter, p0, 5, 1, true);
-    PubSubHelper.produceMessages(pubSubProducerAdapter, p1, 13, 1, true);
-    PubSubHelper.produceMessages(pubSubProducerAdapter, p2, 21, 1, true);
-    PubSubHelper.produceMessages(pubSubProducerAdapter, p3, 25, 1, true);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p0, 5), p0LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageCached(p0), p0LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p1, 5), p1LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageCached(p1), p1LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageWithRetries(p2, 5), p2LastDataMessageTs);
-    assertEquals(topicManager.getProducerTimestampOfLastDataMessageCached(p2), p2LastDataMessageTs);
-    Throwable exception =
-        expectThrows(VeniceException.class, () -> topicManager.getProducerTimestampOfLastDataMessageWithRetries(p3, 5));
-    assertTrue(exception.getMessage().contains("No data message found in topic-partition: "));
-    Throwable exception2 =
-        expectThrows(VeniceException.class, () -> topicManager.getProducerTimestampOfLastDataMessageCached(p3));
-    assertTrue(exception2.getMessage().contains("No data message found in topic-partition: "));
   }
 
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)
