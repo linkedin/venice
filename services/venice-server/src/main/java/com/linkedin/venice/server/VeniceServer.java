@@ -2,6 +2,7 @@ package com.linkedin.venice.server;
 
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.davinci.blobtransfer.AdaptiveBlobTransferTrafficThrottler;
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferManagerBuilder;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
@@ -502,7 +503,18 @@ public class VeniceServer {
           serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
           serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
           serverConfig.getSnapshotCleanupIntervalInMins());
-
+      AdaptiveBlobTransferTrafficThrottler writeThrottler = null;
+      AdaptiveBlobTransferTrafficThrottler readThrottler = null;
+      if (serverConfig.isAdaptiveThrottlerEnabled()) {
+        writeThrottler = new AdaptiveBlobTransferTrafficThrottler(
+            serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+            serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
+            true);
+        readThrottler = new AdaptiveBlobTransferTrafficThrottler(
+            serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
+            serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
+            false);
+      }
       blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
           .setCustomizedViewFuture(customizedViewFuture)
           .setStorageMetadataService(storageMetadataService)
@@ -511,6 +523,8 @@ public class VeniceServer {
           .setAggVersionedBlobTransferStats(aggVersionedBlobTransferStats)
           .setBlobTransferSSLFactory(sslFactory)
           .setBlobTransferAclHandler(BlobTransferUtils.createAclHandler(veniceConfigLoader))
+          .setAdaptiveBlobTransferWriteTrafficThrottler(writeThrottler)
+          .setAdaptiveBlobTransferReadTrafficThrottler(readThrottler)
           .build();
     } else {
       aggVersionedBlobTransferStats = null;
