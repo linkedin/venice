@@ -15,6 +15,7 @@ import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.SN
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.stats.VeniceMetricsConfig.Builder;
@@ -49,6 +50,9 @@ public class VeniceMetricsConfigTest {
     assertEquals(config.useOtelExponentialHistogram(), true);
     assertEquals(config.getOtelExponentialHistogramMaxScale(), 3);
     assertEquals(config.getOtelExponentialHistogramMaxBuckets(), 250);
+    assertTrue(config.getOtelCustomDimensionsMap().isEmpty());
+    assertFalse(config.useOpenTelemetryInitializedByApplication());
+    assertNull(config.getOtelCustomDescriptionForHistogramMetrics());
     assertNotNull(config.getTehutiMetricConfig());
   }
 
@@ -212,5 +216,24 @@ public class VeniceMetricsConfigTest {
     VeniceMetricsConfig config =
         new Builder().setServiceName("TestService").setMetricPrefix("TestPrefix").setOtelHeaders(otelHeaders).build();
     assertEquals(config.getOtelHeaders().get("key1"), "value1");
+  }
+
+  @Test
+  public void testSetOtelCustomDescription() {
+    String customDescription = "This is a custom description for OpenTelemetry metrics.";
+    VeniceMetricsConfig config = new Builder().setServiceName("TestService")
+        .setMetricPrefix("TestPrefix")
+        .setOtelCustomDescriptionForHistogramMetrics(customDescription)
+        .build();
+    assertEquals(config.getOtelCustomDescriptionForHistogramMetrics(), customDescription);
+  }
+
+  @Test
+  public void testUseOpenTelemetryInitializedByApplication() {
+    VeniceMetricsConfig config = new Builder().setServiceName("TestService")
+        .setMetricPrefix("TestPrefix")
+        .setUseOpenTelemetryInitializedByApplication(true)
+        .build();
+    assertTrue(config.useOpenTelemetryInitializedByApplication());
   }
 }

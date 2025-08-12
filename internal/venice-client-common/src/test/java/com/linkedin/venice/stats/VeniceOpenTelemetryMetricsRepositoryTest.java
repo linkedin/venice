@@ -20,6 +20,7 @@ import com.linkedin.venice.stats.metrics.MetricEntityState;
 import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleGauge;
 import io.opentelemetry.api.metrics.DoubleHistogram;
@@ -291,5 +292,100 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
     metricPrefix = metricsRepository.getMetricPrefix(metricEntity);
     assertNotNull(metricPrefix, "Metric prefix should not be null");
     assertEquals(metricPrefix, "venice.test_custom_prefix", "Metric prefix should match the configured value");
+  }
+
+  @Test
+  public void testOtelCustomDescription() {
+    String metricName = "test_metric";
+    String specificMetricDescription = "This is a specific metric description";
+    String customDescriptionInConfig = "Custom description from config";
+
+    assertEquals(
+        VeniceOpenTelemetryMetricsRepository.getMetricDescription(
+            new MetricEntity(
+                metricName,
+                MetricType.HISTOGRAM,
+                MetricUnit.NUMBER,
+                specificMetricDescription,
+                new HashSet<>(singletonList(VeniceMetricsDimensions.VENICE_REQUEST_METHOD))),
+            mockMetricsConfig),
+        specificMetricDescription);
+
+    assertEquals(
+        VeniceOpenTelemetryMetricsRepository.getMetricDescription(
+            new MetricEntity(
+                metricName,
+                MetricType.COUNTER,
+                MetricUnit.NUMBER,
+                specificMetricDescription,
+                new HashSet<>(singletonList(VeniceMetricsDimensions.VENICE_REQUEST_METHOD))),
+            mockMetricsConfig),
+        specificMetricDescription);
+
+    when(mockMetricsConfig.getOtelCustomDescriptionForHistogramMetrics()).thenReturn(customDescriptionInConfig);
+
+    assertEquals(
+        VeniceOpenTelemetryMetricsRepository.getMetricDescription(
+            new MetricEntity(
+                metricName,
+                MetricType.HISTOGRAM,
+                MetricUnit.NUMBER,
+                specificMetricDescription,
+                new HashSet<>(singletonList(VeniceMetricsDimensions.VENICE_REQUEST_METHOD))),
+            mockMetricsConfig),
+        customDescriptionInConfig);
+
+    // Non HISTOGRAM should still be the metric specific description
+    assertEquals(
+        VeniceOpenTelemetryMetricsRepository.getMetricDescription(
+            new MetricEntity(
+                metricName,
+                MetricType.COUNTER,
+                MetricUnit.NUMBER,
+                specificMetricDescription,
+                new HashSet<>(singletonList(VeniceMetricsDimensions.VENICE_REQUEST_METHOD))),
+            mockMetricsConfig),
+        specificMetricDescription);
+
+    // reset
+    when(mockMetricsConfig.getOtelCustomDescriptionForHistogramMetrics()).thenReturn(null);
+  }
+
+  @Test
+  public void testOpenTelemetryCreation() {
+    // case 1: No global set and useOpenTelemetryInitializedByApplication is false: Use newly created one
+    VeniceOpenTelemetryMetricsRepository otelMetricsRepositoryCase1 =
+        new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
+
+    assertNotNull(otelMetricsRepositoryCase1.getSdkMeterProvider(), "SdkMeterProvider should not be null");
+    assertNotNull(otelMetricsRepositoryCase1.getOpenTelemetry(), "OpenTelemetry should not be null");
+
+    // case 2: Global is set from case 1 and useOpenTelemetryInitializedByApplication is true: Use the global
+    // OpenTelemetry
+    GlobalOpenTelemetry.set(otelMetricsRepositoryCase1.getOpenTelemetry());
+    when(mockMetricsConfig.useOpenTelemetryInitializedByApplication()).thenReturn(true);
+    VeniceOpenTelemetryMetricsRepository otelMetricsRepositoryCase2 =
+        new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
+
+    assertNull(otelMetricsRepositoryCase2.getSdkMeterProvider(), "SdkMeterProvider should be null");
+    // comparing the meter provider rather than comparing the OpenTelemetry instance as setting the GlobalOpenTelemetry
+    // copies the OpenTelemetry instance as a new ObfuscatedOpenTelemetry instance.
+    assertEquals(
+        otelMetricsRepositoryCase2.getOpenTelemetry().getMeterProvider(),
+        otelMetricsRepositoryCase1.getOpenTelemetry().getMeterProvider());
+
+    // case 3: Global is not set and useOpenTelemetryInitializedByApplication is true: exception should be thrown
+    GlobalOpenTelemetry.resetForTest();
+    try {
+      new VeniceOpenTelemetryMetricsRepository(mockMetricsConfig);
+      fail();
+    } catch (VeniceException e) {
+      assertTrue(
+          e.getMessage().contains("OpenTelemetry is not initialized globally by the application"),
+          e.getMessage());
+    }
+
+    // reset
+    when(mockMetricsConfig.useOpenTelemetryInitializedByApplication()).thenReturn(false);
   }
 }
