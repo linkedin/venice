@@ -221,18 +221,25 @@ public class SystemStoreRepairTask implements Runnable {
        * version age.
        */
       List<Version> storeVersionList = store.getVersions();
-      if (storeVersionList.isEmpty()) {
-        LOGGER.info("Adding the system store: {} to the repair set as there is no version.", store.getName());
-        newUnhealthySystemStoreSet.add(store.getName());
-        continue;
-      }
-      long versionAgeInMs =
-          System.currentTimeMillis() - storeVersionList.stream().mapToLong(Version::getCreatedTime).max().getAsLong();
-      if (versionAgeInMs > TimeUnit.DAYS.toMillis(getVersionRefreshThresholdInDays())) {
-        LOGGER.info(
-            "Adding the system store: {} to the repair set as the version age: {} exceed threshold.",
-            store.getName(),
-            versionAgeInMs);
+
+      long latestCreatedTime =
+          storeVersionList.stream().mapToLong(Version::getCreatedTime).max().orElse(Long.MIN_VALUE); // no versions ->
+                                                                                                     // treat as
+                                                                                                     // infinitely old
+
+      boolean versionTooOldOrMissing = LatencyUtils.getElapsedTimeFromMsToMs(latestCreatedTime) > TimeUnit.DAYS
+          .toMillis(getVersionRefreshThresholdInDays());
+
+      if (versionTooOldOrMissing) {
+        if (latestCreatedTime == Long.MIN_VALUE) {
+          LOGGER.info("Adding the system store: {} to the repair set as there is no version.", store.getName());
+        } else {
+          long versionAgeInMs = System.currentTimeMillis() - latestCreatedTime;
+          LOGGER.info(
+              "Adding the system store: {} to the repair set as the version age: {} exceeds threshold.",
+              store.getName(),
+              versionAgeInMs);
+        }
         newUnhealthySystemStoreSet.add(store.getName());
         continue;
       }
