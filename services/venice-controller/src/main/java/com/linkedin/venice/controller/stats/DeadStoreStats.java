@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.stats;
 
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.List;
+import java.util.Map;
 
 
 /*
@@ -11,8 +12,12 @@ public interface DeadStoreStats {
   /**
    * Side effect operation of populating isStoreDead and setStoreDeadStatusReasons in the StoreInfo object and
    * returns back the same list of StoreInfo objects.
+   * @param storeInfos List of StoreInfo objects to evaluate
+   * @param params Parameters for dead store detection including:
+   *               - "lookBackMS": long (optional) - Look back time in milliseconds for dead store detection
+   *               - Future extension points
    */
-  List<StoreInfo> getDeadStores(List<StoreInfo> storeInfos);
+  List<StoreInfo> getDeadStores(List<StoreInfo> storeInfos, Map<String, String> params);
 
   /**
    * Pre fetches the dead store stats for the given stores, to then be accessible to getDeadStores()

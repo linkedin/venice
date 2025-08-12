@@ -32,6 +32,7 @@ import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -2921,9 +2922,23 @@ public class AdminTool {
   private static void getDeadStores(CommandLine cmd) {
     String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
     Optional<String> storeName = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE));
-    boolean includeSystemStores = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES));
+    String includeSystemStoresStr = getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES);
+    String lookBackMSStr = getOptionalArgument(cmd, Arg.LOOK_BACK_MS);
 
-    MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, includeSystemStores, storeName);
+    // Build parameters map for clean, extensible API
+    Map<String, String> params = new HashMap<>();
+
+    // Include system stores parameter (default: false if not specified)
+    if (includeSystemStoresStr != null && !includeSystemStoresStr.isEmpty()) {
+      params.put(ControllerApiConstants.INCLUDE_SYSTEM_STORES, includeSystemStoresStr);
+    }
+
+    // Look back MS parameter
+    if (lookBackMSStr != null && !lookBackMSStr.isEmpty()) {
+      params.put(ControllerApiConstants.LOOK_BACK_MS, lookBackMSStr);
+    }
+
+    MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, storeName, params);
     printObject(response);
   }
 
