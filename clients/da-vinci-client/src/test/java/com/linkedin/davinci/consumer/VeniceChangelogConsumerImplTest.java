@@ -98,6 +98,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -929,18 +930,24 @@ public class VeniceChangelogConsumerImplTest {
 
   @Test
   public void testConcurrentPolls() throws ExecutionException, InterruptedException {
-    prepareVersionTopicRecordsToBePolled(0L, 5L, mockPubSubConsumer, oldVersionTopic, 0, true);
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, mockPubSubConsumer);
 
-    when(mockPubSubConsumer.poll(pollTimeoutMs)).thenAnswer(invocation -> {
-      Thread.sleep(pollTimeoutMs);
+    /*
+     * We make this test deterministic by making the first poll hold the lock longer than the second poll, to ensure
+     * the second poll times out before it can acquire the lock. Thus, ensuring poll on the PubSubConsumer only gets
+     * invoked once.
+     */
+    AtomicInteger pollMultiplier = new AtomicInteger(2);
+
+    when(mockPubSubConsumer.poll(anyLong())).thenAnswer(invocation -> {
+      Thread.sleep(pollTimeoutMs * pollMultiplier.getAndDecrement());
       return Collections.emptyMap();
     });
 
     ExecutorService executorService = Executors.newFixedThreadPool(2);
     Callable<Void> pollTask = () -> {
-      veniceChangelogConsumer.poll(pollTimeoutMs);
+      veniceChangelogConsumer.poll(pollTimeoutMs * pollMultiplier.get());
       return null;
     };
 
@@ -949,7 +956,7 @@ public class VeniceChangelogConsumerImplTest {
     pollFuture1.get();
     pollFuture2.get();
 
-    verify(mockPubSubConsumer).poll(pollTimeoutMs);
+    verify(mockPubSubConsumer).poll(anyLong());
   }
 
   private void prepareChangeCaptureRecordsToBePolled(
