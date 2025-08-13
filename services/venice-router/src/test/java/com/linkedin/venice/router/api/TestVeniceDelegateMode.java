@@ -191,6 +191,9 @@ public class TestVeniceDelegateMode {
     };
   }
 
+  /**
+   * Thread-safe implementation of {@link HostFinder} for testing.
+   */
   private HostFinder<Instance, VeniceRole> getHostFinder(Map<String, List<Instance>> partitionHostMap) {
     return new VeniceHostFinder(null, null, null) {
       @Override

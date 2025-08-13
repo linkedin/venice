@@ -129,7 +129,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     }
     this.routingComputationMode = config.getRoutingComputationMode();
     this.parallelRoutingChunkSize = config.getParallelRoutingChunkSize();
-    if (this.routingComputationMode == RoutingComputationMode.PARALLEL) {
+    if (this.routingComputationMode.equals(RoutingComputationMode.PARALLEL)) {
       int parallelRoutingThreadCount = config.getParallelRoutingThreadCount();
       if (parallelRoutingThreadCount <= 0) {
         throw new VeniceException(
