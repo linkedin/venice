@@ -8,6 +8,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.router.api.RoutingComputationMode;
 import com.linkedin.venice.router.httpclient.HttpClient5StorageNodeClient;
 import com.linkedin.venice.router.httpclient.PortableHttpResponse;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
@@ -48,8 +49,8 @@ public class TestReadForHttpClient5 extends TestRead {
   }
 
   @Override
-  protected boolean isConcurrentRoutingEnabled() {
-    return true;
+  protected RoutingComputationMode getRoutingComputationMode() {
+    return RoutingComputationMode.PARALLEL;
   }
 
   @Test

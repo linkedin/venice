@@ -2573,12 +2573,12 @@ public class ConfigKeys {
   /**
    * Whether to enable concurrent routing within one multi-key request in Router.
    */
-  public static final String ROUTER_CONCURRENT_ROUTING_ENABLED = "router.concurrent.routing.enabled";
-  public static final String ROUTER_CONCURRENT_ROUTING_THREAD_POOL_SIZE = "router.concurrent.routing.thread.pool.size";
+  public static final String ROUTER_ROUTING_COMPUTATION_MODE = "router.routing.computation.mode";
+  public static final String ROUTER_PARALLEL_ROUTING_THREAD_POOL_SIZE = "router.parallel.routing.thread.pool.size";
   /**
-   * Chunk size (number of partitions) for concurrent routing within one multi-key request in Router.
+   * Chunk size (number of partitions) for parallel routing within one multi-key request in Router.
    */
-  public static final String ROUTER_CONCURRENT_ROUTING_CHUNK_SIZE = "router.concurrent.routing.chunk.size";
+  public static final String ROUTER_PARALLEL_ROUTING_CHUNK_SIZE = "router.parallel.routing.chunk.size";
 
   /**
    * Server configs to enable the topic partition re-subscription during ingestion to let bottom ingestion service aware

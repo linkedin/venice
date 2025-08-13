@@ -29,6 +29,10 @@ public class RouteHttpRequestStats {
     this.storageNodeClient = storageNodeClient;
   }
 
+  public MetricsRepository getMetricsRepository() {
+    return metricsRepository;
+  }
+
   public void recordPendingRequest(String hostName) {
     InternalHostStats stats = routeStatsMap.computeIfAbsent(hostName, h -> new InternalHostStats(metricsRepository, h));
     stats.recordPendingRequestCount();

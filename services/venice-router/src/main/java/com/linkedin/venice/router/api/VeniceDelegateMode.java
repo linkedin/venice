@@ -24,8 +24,8 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.RouterThrottler;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -33,8 +33,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
@@ -99,9 +99,9 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   private final ScatterGatherMode scatterGatherModeForMultiKeyRequest;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
 
-  private final boolean concurrentRoutingEnabled;
-  private final ExecutorService concurrentRoutingExecutor;
-  private final int concurrentRoutingChunkSize;
+  private final RoutingComputationMode routingComputationMode;
+  private final ThreadPoolExecutor parallelRoutingExecutor;
+  private final int parallelRoutingChunkSize;
 
   public VeniceDelegateMode(
       VeniceRouterConfig config,
@@ -127,22 +127,33 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       default:
         throw new VeniceException("Unknown multi-key routing strategy: " + this.multiKeyRoutingStrategy);
     }
-    this.concurrentRoutingEnabled = config.isConcurrentRoutingEnabled();
-    this.concurrentRoutingChunkSize = config.getConcurrentRoutingChunkSize();
-    if (this.concurrentRoutingEnabled) {
-      int concurrentRoutingThreadCount = config.getConcurrentRoutingThreadCount();
-      if (concurrentRoutingThreadCount <= 0) {
+    this.routingComputationMode = config.getRoutingComputationMode();
+    this.parallelRoutingChunkSize = config.getParallelRoutingChunkSize();
+    if (this.routingComputationMode == RoutingComputationMode.PARALLEL) {
+      int parallelRoutingThreadCount = config.getParallelRoutingThreadCount();
+      if (parallelRoutingThreadCount <= 0) {
         throw new VeniceException(
-            "Concurrent routing thread count must be greater than 0, but received: " + concurrentRoutingThreadCount);
+            "Parallel routing thread count must be greater than 0, but received: " + parallelRoutingThreadCount);
       }
-      this.concurrentRoutingExecutor = Executors
-          .newFixedThreadPool(concurrentRoutingThreadCount, new DaemonThreadFactory("Venice-Concurrent-Routing"));
+      this.parallelRoutingExecutor = new ThreadPoolExecutor(
+          parallelRoutingThreadCount,
+          parallelRoutingThreadCount,
+          0L,
+          TimeUnit.MILLISECONDS,
+          new LinkedBlockingQueue<>(),
+          new DaemonThreadFactory("Venice-Parallel-Routing"));
+      if (routeHttpRequestStats.getMetricsRepository() != null) {
+        new ThreadPoolStats(
+            routeHttpRequestStats.getMetricsRepository(),
+            parallelRoutingExecutor,
+            "ParallelRoutingExecutor");
+      }
       LOGGER.info(
-          "Venice router concurrent routing enabled, with thread pool size: {}, chunk size: {}",
-          concurrentRoutingThreadCount,
-          concurrentRoutingChunkSize);
+          "Venice router parallel routing enabled, with thread pool size: {}, chunk size: {}",
+          parallelRoutingThreadCount,
+          parallelRoutingChunkSize);
     } else {
-      this.concurrentRoutingExecutor = null;
+      this.parallelRoutingExecutor = null;
     }
   }
 
@@ -538,7 +549,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       /**
        * Group by host
        */
-      Map<Instance, KeyPartitionSet<Instance, RouterKey>> hostMap = new VeniceConcurrentHashMap<>();
+      Map<Instance, KeyPartitionSet<Instance, RouterKey>> hostMap = routingComputationMode.getHostMapSupplier().get();
       int helixGroupNum = getHelixGroupNum();
       int assignedHelixGroupId = getAssignedHelixGroupId(venicePath);
       // This is used to record the request start time for the whole Router request.
@@ -586,23 +597,23 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       }
 
       try {
-        if (concurrentRoutingEnabled) {
-          List<Integer> nonEmptyPartitions = new ArrayList<>(concurrentRoutingChunkSize);
+        if (routingComputationMode.equals(RoutingComputationMode.PARALLEL)) {
+          List<Integer> nonEmptyPartitions = new ArrayList<>(parallelRoutingChunkSize);
           List<CompletableFuture> chunkFutures = new ArrayList<>();
           for (int currPartition = 0; currPartition < partitionCount; currPartition++) {
             keysForCurrentPartition = keysPerPartition.get(currPartition);
             if (!keysForCurrentPartition.isEmpty()) {
               nonEmptyPartitions.add(currPartition);
-              if (nonEmptyPartitions.size() == concurrentRoutingChunkSize) {
-                chunkFutures.add(
-                    CompletableFuture.runAsync(new RoutingFunction(nonEmptyPartitions), concurrentRoutingExecutor));
+              if (nonEmptyPartitions.size() == parallelRoutingChunkSize) {
+                chunkFutures
+                    .add(CompletableFuture.runAsync(new RoutingFunction(nonEmptyPartitions), parallelRoutingExecutor));
                 nonEmptyPartitions = new ArrayList<>();
               }
             }
           }
-          if (nonEmptyPartitions.size() < concurrentRoutingChunkSize) {
+          if (nonEmptyPartitions.size() < parallelRoutingChunkSize) {
             chunkFutures
-                .add(CompletableFuture.runAsync(new RoutingFunction(nonEmptyPartitions), concurrentRoutingExecutor));
+                .add(CompletableFuture.runAsync(new RoutingFunction(nonEmptyPartitions), parallelRoutingExecutor));
           }
           if (chunkFutures.size() > 0) {
             CompletableFuture.allOf(chunkFutures.toArray(new CompletableFuture[0])).get(1, TimeUnit.SECONDS);
