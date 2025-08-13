@@ -5,6 +5,7 @@ import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.ReplicaHeartbeatInfo;
 import com.linkedin.davinci.stats.HeartbeatMonitoringServiceStats;
+import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -153,9 +154,13 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to monitor lag for
    */
   public void addFollowerLagMonitor(Version version, int partition) {
-    cleanupHeartbeatMap.remove(Utils.getReplicaId(version.kafkaTopicName(), partition));
-    initializeEntry(followerHeartbeatTimeStamps, version, partition, true);
-    removeEntry(leaderHeartbeatTimeStamps, version, partition);
+    String cleanupKey = Utils.getReplicaId(version.kafkaTopicName(), partition);
+    cleanupHeartbeatMap.compute(cleanupKey, (k, v) -> {
+      // See comments in {@link #addLeaderLagMonitor(Version, int)} for race condition explanations
+      initializeEntry(followerHeartbeatTimeStamps, version, partition, true);
+      removeEntry(leaderHeartbeatTimeStamps, version, partition);
+      return null;
+    });
   }
 
   /**
@@ -166,9 +171,18 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
    * @param partition the partition to monitor lag for
    */
   public void addLeaderLagMonitor(Version version, int partition) {
-    cleanupHeartbeatMap.remove(Utils.getReplicaId(version.kafkaTopicName(), partition));
-    initializeEntry(leaderHeartbeatTimeStamps, version, partition, false);
-    removeEntry(followerHeartbeatTimeStamps, version, partition);
+    String cleanupKey = Utils.getReplicaId(version.kafkaTopicName(), partition);
+    cleanupHeartbeatMap.compute(cleanupKey, (k, v) -> {
+      // Cleanup logic should perform the check and cleanup in a similar compute block to ensure that the following
+      // race won't occur:
+      // 1. A replica is deemed lingering and to be removed
+      // 2. The same replica is reassigned to this node and added to lag monitor before the cleanup thread is able to
+      // remove it.
+      // 3. The cleanup thread removes the newly added lag monitor and the replica will be ingested without lag monitor
+      initializeEntry(leaderHeartbeatTimeStamps, version, partition, false);
+      removeEntry(followerHeartbeatTimeStamps, version, partition);
+      return null;
+    });
   }
 
   /**
@@ -599,28 +613,48 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
         .entrySet()) {
       for (Map.Entry<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>> version: storeName.getValue()
           .entrySet()) {
-        PartitionAssignment partitionAssignment = customizedViewRepository
-            .getPartitionAssignments(Version.composeKafkaTopic(storeName.getKey(), version.getKey()));
+        PartitionAssignment partitionAssignment = null;
+        boolean isResourceDeleted = false;
+        try {
+          partitionAssignment = customizedViewRepository
+              .getPartitionAssignments(Version.composeKafkaTopic(storeName.getKey(), version.getKey()));
+        } catch (VeniceNoHelixResourceException noHelixResourceException) {
+          isResourceDeleted = true;
+        }
         for (Map.Entry<Integer, Map<String, HeartbeatTimeStampEntry>> partition: version.getValue().entrySet()) {
-          Set<String> instanceIdSet = partitionAssignment.getPartition(partition.getKey())
-              .getAllInstancesSet()
-              .stream()
-              .map(Instance::getNodeId)
-              .collect(Collectors.toSet());
+          boolean lingerReplica = isResourceDeleted;
           String replicaId =
               Utils.getReplicaId(Version.composeKafkaTopic(storeName.getKey(), version.getKey()), partition.getKey());
-          if (instanceIdSet.contains(nodeId)) {
-            cleanupHeartbeatMap.remove(replicaId);
-          } else {
-            int result = cleanupHeartbeatMap.compute(replicaId, (k, v) -> v == null ? 1 : v + 1);
-            if (result >= DEFAULT_LAG_MONITOR_CLEANUP_CYCLE) {
-              removeLagMonitor(new VersionImpl(storeName.getKey(), version.getKey(), ""), partition.getKey());
+          if (!isResourceDeleted) {
+            Set<String> instanceIdSet = partitionAssignment.getPartition(partition.getKey())
+                .getAllInstancesSet()
+                .stream()
+                .map(Instance::getNodeId)
+                .collect(Collectors.toSet());
+            if (instanceIdSet.contains(nodeId)) {
+              // Replica is still assigned to this node based on locally cached customized view
               cleanupHeartbeatMap.remove(replicaId);
-              LOGGER.warn(
-                  "Removing lingering replica: {} from heartbeat monitoring service because it is no longer assigned to this node: {}",
-                  replicaId,
-                  nodeId);
+            } else {
+              lingerReplica = true;
             }
+          }
+          if (lingerReplica) {
+            cleanupHeartbeatMap.compute(replicaId, (k, v) -> {
+              // Replica is not assigned to this node based on locally cached customized view
+              // See comments in {@link #addLeaderLagMonitor(Version, int)} for race condition explanations
+              if (v == null) {
+                return 1;
+              } else if (v + 1 >= DEFAULT_LAG_MONITOR_CLEANUP_CYCLE) {
+                removeLagMonitor(new VersionImpl(storeName.getKey(), version.getKey(), ""), partition.getKey());
+                LOGGER.warn(
+                    "Removing lingering replica: {} from heartbeat monitoring service because it is no longer assigned to this node: {}",
+                    replicaId,
+                    nodeId);
+                return null;
+              } else {
+                return v + 1;
+              }
+            });
           }
         }
       }
@@ -689,18 +723,25 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     @Override
     public void run() {
       LogContext.setLogContext(logContext);
+      boolean exceptionThrown = false;
       while (!Thread.interrupted()) {
         try {
+          if (exceptionThrown) {
+            TimeUnit.SECONDS.sleep(DEFAULT_REPORTER_THREAD_SLEEP_INTERVAL_SECONDS);
+          }
           heartbeatMonitoringServiceStats.recordReporterHeartbeat();
           record();
           TimeUnit.SECONDS.sleep(DEFAULT_REPORTER_THREAD_SLEEP_INTERVAL_SECONDS);
+          exceptionThrown = false;
         } catch (InterruptedException e) {
           // We've received an interrupt which is to be expected, so we'll just leave the loop and log
           break;
         } catch (Exception e) {
+          exceptionThrown = true;
           LOGGER.error("Received exception from Ingestion-Heartbeat-Reporter-Service-Thread", e);
           heartbeatMonitoringServiceStats.recordHeartbeatExceptionCount();
         } catch (Throwable throwable) {
+          exceptionThrown = true;
           LOGGER.error("Received exception from Ingestion-Heartbeat-Reporter-Service-Thread", throwable);
         }
       }
@@ -719,19 +760,26 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     @Override
     public void run() {
       LogContext.setLogContext(logContext);
+      boolean exceptionThrown = false;
       while (!Thread.interrupted()) {
         try {
+          if (exceptionThrown) {
+            TimeUnit.SECONDS.sleep(DEFAULT_LAG_LOGGING_THREAD_SLEEP_INTERVAL_SECONDS);
+          }
           heartbeatMonitoringServiceStats.recordLoggerHeartbeat();
           checkAndMaybeCleanupLagMonitor();
           checkAndMaybeLogHeartbeatDelay();
           TimeUnit.SECONDS.sleep(DEFAULT_LAG_LOGGING_THREAD_SLEEP_INTERVAL_SECONDS);
+          exceptionThrown = false;
         } catch (InterruptedException e) {
           // We've received an interrupt which is to be expected, so we'll just leave the loop and log
           break;
         } catch (Exception e) {
+          exceptionThrown = true;
           LOGGER.error("Received exception from Ingestion-Heartbeat-Lag-Logging-Service-Thread", e);
           heartbeatMonitoringServiceStats.recordHeartbeatExceptionCount();
         } catch (Throwable throwable) {
+          exceptionThrown = true;
           LOGGER
               .error("Received non-exception throwable from Ingestion-Heartbeat-Lag-Logging-Service-Thread", throwable);
         }

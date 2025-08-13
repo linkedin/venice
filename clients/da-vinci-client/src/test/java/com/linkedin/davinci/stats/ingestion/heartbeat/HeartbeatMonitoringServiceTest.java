@@ -14,6 +14,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -23,6 +24,7 @@ import static org.mockito.Mockito.when;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
+import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -709,7 +711,7 @@ public class HeartbeatMonitoringServiceTest {
     Assert.assertEquals(
         heartbeatMonitoringService.getCleanupHeartbeatMap().get(Utils.getReplicaId(currentVersionTopic, 1)).intValue(),
         4);
-    // One more cycle and p1 of v2 should be cleaned up. p1 of v1 will is marked again since it's still absent from CV
+    // One more cycle and p1 of v2 should be cleaned up. p1 of v1 will be marked again since it's still absent from CV
     heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
     Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().size(), 1);
     Assert.assertEquals(
@@ -720,5 +722,10 @@ public class HeartbeatMonitoringServiceTest {
     doReturn(mockPartition0And2).when(mockPartitionAssignment).getPartition(1);
     heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
     Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().size(), 0);
+    // If resources are deleted, their lag monitors should be marked for cleanup too
+    doThrow(new VeniceNoHelixResourceException("resource deleted test")).when(mockCustomizedViewOfflinePushRepository)
+        .getPartitionAssignments(anyString());
+    heartbeatMonitoringService.checkAndMaybeCleanupLagMonitor();
+    Assert.assertEquals(heartbeatMonitoringService.getCleanupHeartbeatMap().size(), 5);
   }
 }
