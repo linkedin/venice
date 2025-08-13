@@ -904,6 +904,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               false));
 
       try {
+        /*
+         * OffsetVector is extracted, but we currently do nothing with it as CDC doesn't currently leverage the
+         * VERSION_SWAP control message. Because of this, filterRecordByVersionSwapHighWatermarks is a NO_OP for now.
+         */
         replicationCheckpoint = extractOffsetVectorFromMessage(
             delete.getSchemaId(),
             delete.getReplicationMetadataVersionId(),
@@ -1012,7 +1016,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       } else {
         try {
           /*
-           * OffsetVector is extracted, but we currently do nothing with it as CDC doesn't currently leverage
+           * OffsetVector is extracted, but we currently do nothing with it as CDC doesn't currently leverage the
            * VERSION_SWAP control message. Because of this, filterRecordByVersionSwapHighWatermarks is a NO_OP for now.
            */
           replicationCheckpoint = extractOffsetVectorFromMessage(
