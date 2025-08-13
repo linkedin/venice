@@ -352,7 +352,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
         PubSubSymbolicPosition.EARLIEST,
         0,
         value.length * 8,
-        false);
+        false,
+        getNextConsumerSequenceId(partition));
     resultSet.add(record);
   }
 
@@ -375,7 +376,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
               PubSubSymbolicPosition.EARLIEST,
               0,
               0,
-              true));
+              true,
+              getNextConsumerSequenceId(partition)));
     }
 
     // Notify that we've caught up
@@ -453,7 +455,8 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
     bootstrapState.currentPubSubPosition = new VeniceChangeCoordinate(
         currentPubSubPosition.getTopic(),
         recordOffset,
-        currentPubSubPosition.getPartition());
+        currentPubSubPosition.getPartition(),
+        getNextConsumerSequenceId(currentPubSubPosition.getPartition()));
 
     bootstrapState.incrementProcessedRecordSizeSinceLastSync(value.array().length);
     if (bootstrapState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval) {
