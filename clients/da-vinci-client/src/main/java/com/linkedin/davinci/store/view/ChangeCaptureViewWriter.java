@@ -142,6 +142,9 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
         highWaterMarkOffsets.set(
             kafkaClusterUrlToIdMap.getInt(url),
             partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap().get(url).getNumericOffset());
+        highWaterMarkPubSubPositions.set(
+            kafkaClusterUrlToIdMap.getInt(url),
+            partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap().get(url).toWireFormatBuffer());
       }
     } else {
       highWaterMarkOffsets = Collections.emptyList();

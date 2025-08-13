@@ -1334,7 +1334,7 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(getLastOffset(clusterName), offset));
+        () -> Assert.assertEquals(InMemoryPubSubPosition.of(getLastOffset(clusterName)), offset));
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,

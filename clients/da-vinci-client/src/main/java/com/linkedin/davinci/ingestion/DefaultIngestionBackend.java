@@ -301,7 +301,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
     } else {
       if (offsetRecord.getOffsetLag() == 0
           && offsetRecord.getLocalVersionTopicOffset() == PubSubSymbolicPosition.EARLIEST) {
-        LOGGER.info("Offset lag is 0 and topic offset is -1 for replica {}.", Utils.getReplicaId(topicName, partition));
+        LOGGER.info(
+            "Offset lag is 0 and topic offset is EARLIEST for replica {}.",
+            Utils.getReplicaId(topicName, partition));
         return true;
       }
 
