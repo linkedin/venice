@@ -114,6 +114,10 @@ public abstract class TestRead {
     return true;
   }
 
+  protected boolean isConcurrentRoutingEnabled() {
+    return false;
+  }
+
   protected boolean isRouterHttp2Enabled() {
     return false;
   }
@@ -161,6 +165,11 @@ public abstract class TestRead {
     extraProperties.put(ConfigKeys.ROUTER_CLIENT_IP_SPOOFING_CHECK_ENABLED, isRouterClientIPSpoofingCheckEnabled());
     extraProperties.put(ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED, true);
     extraProperties.put(ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 0.0);
+    if (isConcurrentRoutingEnabled()) {
+      extraProperties.put(ConfigKeys.ROUTER_CONCURRENT_ROUTING_ENABLED, true);
+      extraProperties.put(ConfigKeys.ROUTER_CONCURRENT_ROUTING_CHUNK_SIZE, 1);
+      extraProperties.put(ConfigKeys.ROUTER_CONCURRENT_ROUTING_THREAD_POOL_SIZE, 4);
+    }
 
     VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
         .numberOfServers(1)

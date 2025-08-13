@@ -26,6 +26,9 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_RESOLUTION_RETRY_ATTE
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_RESOLUTION_RETRY_BACKOFF_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_COMPUTE_TARDY_LATENCY_MS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_CONCURRENT_ROUTING_CHUNK_SIZE;
+import static com.linkedin.venice.ConfigKeys.ROUTER_CONCURRENT_ROUTING_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ROUTER_CONCURRENT_ROUTING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_HANDLE_MODE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_TIMEOUT;
@@ -231,6 +234,9 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int nameRepoMaxEntryCount;
   private final int aclInMemoryCacheTTLMs;
   private final LogContext logContext;
+  private final boolean concurrentRoutingEnabled;
+  private final int concurrentRoutingThreadCount;
+  private final int concurrentRoutingChunkSize;;
 
   // MUTABLE CONFIGS
 
@@ -418,6 +424,11 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       this.nameRepoMaxEntryCount =
           props.getInt(NAME_REPOSITORY_MAX_ENTRY_COUNT, NameRepository.DEFAULT_MAXIMUM_ENTRY_COUNT);
       aclInMemoryCacheTTLMs = props.getInt(ACL_IN_MEMORY_CACHE_TTL_MS, -1); // acl caching is disabled by default
+
+      concurrentRoutingEnabled = props.getBoolean(ROUTER_CONCURRENT_ROUTING_ENABLED, false);
+      concurrentRoutingThreadCount =
+          props.getInt(ROUTER_CONCURRENT_ROUTING_THREAD_POOL_SIZE, Runtime.getRuntime().availableProcessors());
+      concurrentRoutingChunkSize = props.getInt(ROUTER_CONCURRENT_ROUTING_CHUNK_SIZE, 100);
       LOGGER.info("Loaded configuration");
     } catch (Exception e) {
       String errorMessage = "Can not load properties.";
@@ -909,5 +920,17 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public LogContext getLogContext() {
     return logContext;
+  }
+
+  public boolean isConcurrentRoutingEnabled() {
+    return concurrentRoutingEnabled;
+  }
+
+  public int getConcurrentRoutingThreadCount() {
+    return concurrentRoutingThreadCount;
+  }
+
+  public int getConcurrentRoutingChunkSize() {
+    return concurrentRoutingChunkSize;
   }
 }

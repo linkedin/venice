@@ -24,14 +24,21 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.RouterThrottler;
+import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -53,6 +60,7 @@ import javax.annotation.Nonnull;
  * this potential leaking issue.
  */
 public class VeniceDelegateMode extends ScatterGatherMode {
+  public static final Logger LOGGER = LogManager.getLogger(VeniceDelegateMode.class);
   /**
    * This mode will route single get to the least loaded replica.
    */
@@ -91,6 +99,10 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   private final ScatterGatherMode scatterGatherModeForMultiKeyRequest;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
 
+  private final boolean concurrentRoutingEnabled;
+  private final ExecutorService concurrentRoutingExecutor;
+  private final int concurrentRoutingChunkSize;
+
   public VeniceDelegateMode(
       VeniceRouterConfig config,
       RouterStats<AggRouterHttpRequestStats> routerStats,
@@ -114,6 +126,23 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         break;
       default:
         throw new VeniceException("Unknown multi-key routing strategy: " + this.multiKeyRoutingStrategy);
+    }
+    this.concurrentRoutingEnabled = config.isConcurrentRoutingEnabled();
+    this.concurrentRoutingChunkSize = config.getConcurrentRoutingChunkSize();
+    if (this.concurrentRoutingEnabled) {
+      int concurrentRoutingThreadCount = config.getConcurrentRoutingThreadCount();
+      if (concurrentRoutingThreadCount <= 0) {
+        throw new VeniceException(
+            "Concurrent routing thread count must be greater than 0, but received: " + concurrentRoutingThreadCount);
+      }
+      this.concurrentRoutingExecutor = Executors
+          .newFixedThreadPool(concurrentRoutingThreadCount, new DaemonThreadFactory("Venice-Concurrent-Routing"));
+      LOGGER.info(
+          "Venice router concurrent routing enabled, with thread pool size: {}, chunk size: {}",
+          concurrentRoutingThreadCount,
+          concurrentRoutingChunkSize);
+    } else {
+      this.concurrentRoutingExecutor = null;
     }
   }
 
@@ -509,59 +538,148 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       /**
        * Group by host
        */
-      Map<Instance, KeyPartitionSet<Instance, RouterKey>> hostMap = new HashMap<>();
+      Map<Instance, KeyPartitionSet<Instance, RouterKey>> hostMap = new VeniceConcurrentHashMap<>();
       int helixGroupNum = getHelixGroupNum();
       int assignedHelixGroupId = getAssignedHelixGroupId(venicePath);
       // This is used to record the request start time for the whole Router request.
       venicePath.recordOriginalRequestStartTimestamp();
-      currentPartition = 0;
-      try {
-        for (; currentPartition < partitionCount; currentPartition++) {
-          keysForCurrentPartition = keysPerPartition.get(currentPartition);
-          if (keysForCurrentPartition.isEmpty()) {
-            continue;
-          }
-          List<Instance> hosts = veniceHostFinder.findHosts(
-              requestMethod,
-              resourceName,
-              venicePath.getStoreName(),
-              currentPartition,
-              veniceHostHealthMonitor);
 
-          if (hosts.isEmpty()) {
-            veniceScatter.addOfflineRequest(
-                new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keysForCurrentPartition)));
-          } else if (hosts.size() == 1) {
-            Instance host = hosts.get(0);
-            populateHostMap(hostMap, host, keysForCurrentPartition);
-          } else {
-            try {
-              selectHostForPartition(
-                  hosts,
-                  keysForCurrentPartition,
-                  venicePath,
-                  hostMap,
-                  helixGroupNum,
-                  assignedHelixGroupId);
-            } catch (RouterException e) {
-              /**
-               * We don't want to throw exception here to fail the whole request since for streaming, partial scatter is acceptable.
-               */
-              veniceScatter.addOfflineRequest(
-                  new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keysForCurrentPartition)));
-            }
-          }
-          // Important to clear the inner list since it is thread-local state, which will be re-used by the next request
-          keysForCurrentPartition.clear();
+      class RoutingFunction implements Runnable {
+        private List<Integer> nonEmptyPartitions;
+
+        public RoutingFunction(List<Integer> nonEmptyPartitions) {
+          this.nonEmptyPartitions = nonEmptyPartitions;
         }
-      } finally {
-        for (; currentPartition < partitionCount; currentPartition++) {
-          // This would only happen if the body of the try threw an exception.
-          // If that were to happen we would do a final cleanup here out of an abundance of caution.
-          keysForCurrentPartition = keysPerPartition.get(currentPartition);
-          keysForCurrentPartition.clear();
+
+        @Override
+        public void run() {
+          for (int partitionId: nonEmptyPartitions) {
+            List<RouterKey> keys = keysPerPartition.get(partitionId);
+            List<Instance> hosts = veniceHostFinder.findHosts(
+                requestMethod,
+                resourceName,
+                venicePath.getStoreName(),
+                partitionId,
+                veniceHostHealthMonitor);
+
+            if (hosts.isEmpty()) {
+              veniceScatter.addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keys)));
+            } else if (hosts.size() == 1) {
+              Instance host = hosts.get(0);
+              populateHostMap(hostMap, host, keys);
+            } else {
+              try {
+                selectHostForPartition(hosts, keys, venicePath, hostMap, helixGroupNum, assignedHelixGroupId);
+              } catch (RouterException e) {
+                /**
+                 * We don't want to throw exception here to fail the whole request since for streaming, partial scatter is acceptable.
+                 */
+                veniceScatter
+                    .addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keys)));
+              }
+            }
+            // Important to clear the inner list since it is thread-local state, which will be re-used by the next
+            // request
+            keys.clear();
+          }
         }
       }
+
+      try {
+        if (concurrentRoutingEnabled) {
+          List<Integer> nonEmptyPartitions = new ArrayList<>(concurrentRoutingChunkSize);
+          List<CompletableFuture> chunkFutures = new ArrayList<>();
+          for (int currPartition = 0; currPartition < partitionCount; currPartition++) {
+            keysForCurrentPartition = keysPerPartition.get(currPartition);
+            if (!keysForCurrentPartition.isEmpty()) {
+              nonEmptyPartitions.add(currPartition);
+              if (nonEmptyPartitions.size() == concurrentRoutingChunkSize) {
+                chunkFutures.add(
+                    CompletableFuture.runAsync(new RoutingFunction(nonEmptyPartitions), concurrentRoutingExecutor));
+                nonEmptyPartitions = new ArrayList<>();
+              }
+            }
+          }
+          if (nonEmptyPartitions.size() < concurrentRoutingChunkSize) {
+            chunkFutures
+                .add(CompletableFuture.runAsync(new RoutingFunction(nonEmptyPartitions), concurrentRoutingExecutor));
+          }
+          if (chunkFutures.size() > 0) {
+            CompletableFuture.allOf(chunkFutures.toArray(new CompletableFuture[0])).get(1, TimeUnit.SECONDS);
+          }
+        } else {
+          List<Integer> nonEmptyPartitions = new ArrayList<>(partitionCount);
+          for (int currPartition = 0; currPartition < partitionCount; currPartition++) {
+            keysForCurrentPartition = keysPerPartition.get(currPartition);
+            if (!keysForCurrentPartition.isEmpty()) {
+              nonEmptyPartitions.add(currPartition);
+            }
+          }
+          new RoutingFunction(nonEmptyPartitions).run();
+        }
+      } catch (Exception e) {
+        // If any exception occurs during the routing, we should clear the keys for all partitions to avoid memory leak.
+        for (int i = 0; i < partitionCount; i++) {
+          keysPerPartition.get(i).clear();
+        }
+        LOGGER.error("Error occurred while routing multi-key request", e);
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+            venicePath.getStoreName(),
+            venicePath.getRequestType(),
+            INTERNAL_SERVER_ERROR,
+            "Error occurred while routing multi-key request: " + e.getMessage());
+      }
+
+      // currentPartition = 0;
+      // try {
+      //
+      // for (; currentPartition < partitionCount; currentPartition++) {
+      // keysForCurrentPartition = keysPerPartition.get(currentPartition);
+      // if (keysForCurrentPartition.isEmpty()) {
+      // continue;
+      // }
+      // List<Instance> hosts = veniceHostFinder.findHosts(
+      // requestMethod,
+      // resourceName,
+      // venicePath.getStoreName(),
+      // currentPartition,
+      // veniceHostHealthMonitor);
+      //
+      // if (hosts.isEmpty()) {
+      // veniceScatter.addOfflineRequest(
+      // new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keysForCurrentPartition)));
+      // } else if (hosts.size() == 1) {
+      // Instance host = hosts.get(0);
+      // populateHostMap(hostMap, host, keysForCurrentPartition);
+      // } else {
+      // try {
+      // selectHostForPartition(
+      // hosts,
+      // keysForCurrentPartition,
+      // venicePath,
+      // hostMap,
+      // helixGroupNum,
+      // assignedHelixGroupId);
+      // } catch (RouterException e) {
+      // /**
+      // * We don't want to throw exception here to fail the whole request since for streaming, partial scatter is
+      // acceptable.
+      // */
+      // veniceScatter.addOfflineRequest(
+      // new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keysForCurrentPartition)));
+      // }
+      // }
+      // // Important to clear the inner list since it is thread-local state, which will be re-used by the next request
+      // keysForCurrentPartition.clear();
+      // }
+      // } finally {
+      // for (; currentPartition < partitionCount; currentPartition++) {
+      // // This would only happen if the body of the try threw an exception.
+      // // If that were to happen we would do a final cleanup here out of an abundance of caution.
+      // keysForCurrentPartition = keysPerPartition.get(currentPartition);
+      // keysForCurrentPartition.clear();
+      // }
+      // }
 
       /**
        * Populate online requests

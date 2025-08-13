@@ -43,6 +43,7 @@ import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.stats.VeniceMetricsRepository;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpMethod;
@@ -533,8 +534,8 @@ public class TestVeniceDelegateMode {
     verify(retryManager, atLeastOnce()).isRetryAllowed(eq(3));
   }
 
-  @Test
-  public void testScatterWithStreamingMultiGet() throws RouterException {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testScatterWithStreamingMultiGet(boolean enableConcurrentRouting) throws RouterException {
     String storeName = Utils.getUniqueString("test_store");
     int version = 1;
     String resourceName = storeName + "_v" + version;
@@ -608,6 +609,12 @@ public class TestVeniceDelegateMode {
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
 
+    if (enableConcurrentRouting) {
+      doReturn(true).when(config).isConcurrentRoutingEnabled();
+      doReturn(3).when(config).getConcurrentRoutingThreadCount();
+      doReturn(1).when(config).getConcurrentRoutingChunkSize();
+    }
+
     VeniceDelegateMode scatterMode =
         new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));
     scatterMode.initReadRequestThrottler(throttler);
@@ -619,8 +626,8 @@ public class TestVeniceDelegateMode {
     Assert.assertEquals(requests.size(), 1);
   }
 
-  @Test
-  public void testScatterForMultiGetWithHelixAssistedRouting() throws RouterException {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testScatterForMultiGetWithHelixAssistedRouting(boolean enableConcurrentRouting) throws RouterException {
     String storeName = Utils.getUniqueString("test_store");
     int version = 1;
     String resourceName = storeName + "_v" + version;
@@ -697,6 +704,11 @@ public class TestVeniceDelegateMode {
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(HELIX_ASSISTED_ROUTING).when(config).getMultiKeyRoutingStrategy();
+    if (enableConcurrentRouting) {
+      doReturn(true).when(config).isConcurrentRoutingEnabled();
+      doReturn(3).when(config).getConcurrentRoutingThreadCount();
+      doReturn(1).when(config).getConcurrentRoutingChunkSize();
+    }
 
     VeniceDelegateMode scatterMode =
         new VeniceDelegateMode(config, mock(RouterStats.class), mock(RouteHttpRequestStats.class));

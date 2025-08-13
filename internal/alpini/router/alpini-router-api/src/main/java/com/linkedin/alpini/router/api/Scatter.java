@@ -1,9 +1,9 @@
 package com.linkedin.alpini.router.api;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import javax.annotation.Nonnull;
 
 
@@ -16,11 +16,11 @@ import javax.annotation.Nonnull;
  */
 public class Scatter<H, P extends ResourcePath<K>, K> {
   /** Requests for servers that are available. */
-  private final Collection<ScatterGatherRequest<H, K>> _onlineRequests = new ArrayList<>();
+  private final Collection<ScatterGatherRequest<H, K>> _onlineRequests = new ConcurrentLinkedQueue<>();
   private final Collection<ScatterGatherRequest<H, K>> _unmodifiableOnlineRequests =
       Collections.unmodifiableCollection(_onlineRequests);
   /** Requests for servers that are offline. */
-  private final Collection<ScatterGatherRequest<H, K>> _offlineRequests = new ArrayList<>();
+  private final Collection<ScatterGatherRequest<H, K>> _offlineRequests = new ConcurrentLinkedQueue<>();
   private final Collection<ScatterGatherRequest<H, K>> _unmodifiableOfflineRequests =
       Collections.unmodifiableCollection(_offlineRequests);
   private final P _path;

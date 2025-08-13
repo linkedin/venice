@@ -47,6 +47,11 @@ public class TestReadForHttpClient5 extends TestRead {
     return testEnabled;
   }
 
+  @Override
+  protected boolean isConcurrentRoutingEnabled() {
+    return true;
+  }
+
   @Test
   public void testHttpClient5WithoutRequestTimeout() throws Exception {
     if (!isTestEnabled()) {
