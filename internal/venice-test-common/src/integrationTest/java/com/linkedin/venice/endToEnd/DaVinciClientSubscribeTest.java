@@ -99,7 +99,7 @@ import org.testng.annotations.Test;
 
 
 public class DaVinciClientSubscribeTest {
-  private static final Logger LOGGER = LogManager.getLogger(DaVinciClientTest.class);
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciClientSubscribeTest.class);
   private static final int KEY_COUNT = 10;
   private static final int TEST_TIMEOUT = 120_000;
   private VeniceClusterWrapper cluster;
