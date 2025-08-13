@@ -58,7 +58,8 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         this,
         storeRepository,
         storeName,
-        changelogClientConfig.getConsumerName());
+        changelogClientConfig.getConsumerName(),
+        this.changeCaptureStats);
   }
 
   @Override
@@ -281,5 +282,13 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   public void setStoreRepository(NativeMetadataRepositoryViewAdapter repository) {
     super.setStoreRepository(repository);
     versionSwapListener.setStoreRepository(repository);
+  }
+
+  /**
+   * Throws an exception when version swap in {@link VersionSwapDataChangeListener} fails.
+   * This is to prevent silent thread termination.
+   */
+  protected void handleVersionSwapFailure(Exception error) {
+    throw new VeniceException("Version Swap failed for " + storeName + " due to ", error);
   }
 }

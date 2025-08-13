@@ -1011,6 +1011,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         replicationCheckpoint = recordChangeEvent.replicationCheckpointVector;
       } else {
         try {
+          /*
+           * OffsetVector is extracted, but we currently do nothing with it as CDC doesn't currently leverage
+           * VERSION_SWAP control message. Because of this, filterRecordByVersionSwapHighWatermarks is a NO_OP for now.
+           */
           replicationCheckpoint = extractOffsetVectorFromMessage(
               put.getSchemaId(),
               put.getReplicationMetadataVersionId(),
@@ -1099,7 +1103,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       Integer upstreamPartition) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
-      for (int attempt = 0; attempt <= MAX_VERSION_SWAP_RETRIES; attempt++) {
+      for (int attempt = 1; attempt <= MAX_VERSION_SWAP_RETRIES; attempt++) {
         try {
           VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
           LOGGER.info(
@@ -1212,6 +1216,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return null;
   }
 
+  /**
+   * This method is currently dead and is a NO_OP due to VERSION_SWAP messages not being used currently by the CDC
+   * client. However, we plan to leverage it in the future for record filtering for version swaps.
+   */
   private boolean filterRecordByVersionSwapHighWatermarks(
       List<Long> recordCheckpointVector,
       PubSubTopicPartition pubSubTopicPartition,

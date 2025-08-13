@@ -579,10 +579,13 @@ public class VeniceChangelogConsumerImplTest {
     when(mockRepository.getStore(storeName)).thenReturn(mockStore);
     when(mockStore.getVersion(5)).thenReturn(mockVersion);
 
+    BasicConsumerStats mockChangeCaptureStats = mock(BasicConsumerStats.class);
+
     VersionSwapDataChangeListener changeListener =
-        new VersionSwapDataChangeListener(mockConsumer, mockRepository, storeName, "");
+        new VersionSwapDataChangeListener(mockConsumer, mockRepository, storeName, "", mockChangeCaptureStats);
     changeListener.handleStoreChanged(mockStore);
     Mockito.verify(mockConsumer).internalSeekToEndOfPush(Mockito.anySet(), Mockito.any(), Mockito.anyBoolean());
+    verify(mockChangeCaptureStats).emitVersionSwapCountMetrics(SUCCESS);
   }
 
   @Test
