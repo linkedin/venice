@@ -166,11 +166,20 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final BasicConsumerStats changeCaptureStats;
   protected final HeartbeatReporterThread heartbeatReporterThread;
+  protected final VeniceConcurrentHashMap<Integer, AtomicLong> consumerSequenceIdGeneratorMap;
+  protected final long consumerSequenceIdStartingValue;
   private final RocksDBStorageEngineFactory rocksDBStorageEngineFactory;
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       PubSubConsumerAdapter pubSubConsumer) {
+    this(changelogClientConfig, pubSubConsumer, System.nanoTime());
+  }
+
+  VeniceChangelogConsumerImpl(
+      ChangelogClientConfig changelogClientConfig,
+      PubSubConsumerAdapter pubSubConsumer,
+      long consumerSequenceIdStartingValue) {
     Objects.requireNonNull(changelogClientConfig, "ChangelogClientConfig cannot be null");
     this.pubSubConsumer = pubSubConsumer;
     this.pubSubTopicRepository = changelogClientConfig.getPubSubTopicRepository();
@@ -242,7 +251,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     Schema keySchema = schemaReader.getKeySchema();
     this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
     this.startTimestamp = System.currentTimeMillis();
-    LOGGER.info("VeniceChangelogConsumer created at timestamp: {}", startTimestamp);
+    this.consumerSequenceIdGeneratorMap = new VeniceConcurrentHashMap<>();
+    this.consumerSequenceIdStartingValue = consumerSequenceIdStartingValue;
+    LOGGER.info(
+        "VeniceChangelogConsumer created at timestamp: {} with consumer sequence id starting at: {}",
+        startTimestamp,
+        consumerSequenceIdStartingValue);
 
     Properties properties = new Properties();
     properties.put(
@@ -763,7 +777,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                       message.getPosition(),
                       0,
                       0,
-                      false));
+                      false,
+                      getNextConsumerSequenceId(message.getPartition())));
             }
 
           } else {
@@ -901,7 +916,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               message.getPosition(),
               message.getPubSubMessageTime(),
               message.getPayloadSize(),
-              false));
+              false,
+              getNextConsumerSequenceId(message.getPartition())));
 
       try {
         replicationCheckpoint = extractOffsetVectorFromMessage(
@@ -1056,7 +1072,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                 message.getPosition(),
                 message.getPubSubMessageTime(),
                 payloadSize,
-                false));
+                false,
+                getNextConsumerSequenceId(message.getPartition())));
       }
       partitionToPutMessageCount.computeIfAbsent(message.getPartition(), x -> new AtomicLong(0)).incrementAndGet();
     }
@@ -1201,7 +1218,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         pubSubPosition,
         timestamp,
         payloadSize,
-        false);
+        false,
+        getNextConsumerSequenceId(pubSubTopicPartition.getPartitionNumber()));
   }
 
   private V deserializeValueFromBytes(ByteBuffer byteBuffer, int valueSchemaId) {
@@ -1323,6 +1341,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected BasicConsumerStats getChangeCaptureStats() {
     return changeCaptureStats;
+  }
+
+  protected long getNextConsumerSequenceId(int partition) {
+    AtomicLong consumerSequenceIdGenerator =
+        consumerSequenceIdGeneratorMap.computeIfAbsent(partition, p -> new AtomicLong(consumerSequenceIdStartingValue));
+    return consumerSequenceIdGenerator.incrementAndGet();
   }
 
   protected class HeartbeatReporterThread extends Thread {
