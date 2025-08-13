@@ -432,6 +432,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       store.updateVersionStatus(targetVersionNum, ERROR);
       repository.updateStore(store);
 
+      // TODO cleanup the code below after parent VT is deprecated
       String kafkaTopic = Version.composeKafkaTopic(store.getName(), targetVersionNum);
       LOGGER.info("Truncating kafka topic: {} after push failed in 1+ target regions", kafkaTopic);
       veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopic);
@@ -484,7 +485,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                   * veniceControllerMultiClusterConfig.getDeferredVersionSwapBufferTime()));
       long currentTime = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
       if ((completionTime + bufferedWaitTime) < currentTime) {
-        String message = "Store: " + store.getName() + "has not swapped to the target version: " + targetVersionNum
+        String message = "Store: " + store.getName() + " has not swapped to the target version: " + targetVersionNum
             + " and the wait time: " + store.getTargetSwapRegionWaitTime() + " has passed in target region "
             + targetRegion;
         logMessageIfNotRedundant(message);
@@ -580,6 +581,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
       parentStore.updateVersionStatus(targetVersionNum, PARTIALLY_ONLINE);
       repository.updateStore(parentStore);
 
+      // TODO cleanup the code below after parent VT is deprecated
       LOGGER.info("Truncating kafka topic: {} after push failed in all non target regions", kafkaTopicName);
       veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopicName);
       return Collections.emptySet();
@@ -621,19 +623,22 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
           null,
           veniceProperties);
 
+      // TODO handle ABORT signal once we change push job to complete after version swap occurs
       if (StoreVersionLifecycleEventOutcome.WAIT.equals(outcome)) {
         String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
             + targetVersionNum + " as post version swap validations emitted WAIT";
         logMessageIfNotRedundant(message);
-      } else if (StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome)) {
+      } else if (StoreVersionLifecycleEventOutcome.ROLLBACK.equals(outcome)
+          || StoreVersionLifecycleEventOutcome.ABORT.equals(outcome)) {
         String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
-            + targetVersionNum + "as post version swap validations emitted a roll back";
+            + targetVersionNum + "as post version swap validations emitted " + outcome;
         logMessageIfNotRedundant(message);
 
         veniceParentHelixAdmin.rollbackToBackupVersion(clusterName, parentStore.getName(), targetRegion);
         parentStore.updateVersionStatus(targetVersionNum, ERROR);
         repository.updateStore(parentStore);
 
+        // TODO cleanup the code below after parent VT is deprecated
         LOGGER.info("Truncating kafka topic: {} after validations emitted a roll back", kafkaTopicName);
         veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopicName);
       }
@@ -787,6 +792,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
                     storeName,
                     nonTargetRegionsCompleted);
 
+                // TODO cleanup the code below after parent VT is deprecated
                 LOGGER.info("Truncating kafka topic: {} after roll forward failed in 1+ regions", kafkaTopicName);
                 veniceParentHelixAdmin.truncateKafkaTopic(kafkaTopicName);
               }
