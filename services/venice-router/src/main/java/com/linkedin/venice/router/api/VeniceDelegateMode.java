@@ -630,57 +630,6 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             "Error occurred while routing multi-key request: " + e.getMessage());
       }
 
-      // currentPartition = 0;
-      // try {
-      //
-      // for (; currentPartition < partitionCount; currentPartition++) {
-      // keysForCurrentPartition = keysPerPartition.get(currentPartition);
-      // if (keysForCurrentPartition.isEmpty()) {
-      // continue;
-      // }
-      // List<Instance> hosts = veniceHostFinder.findHosts(
-      // requestMethod,
-      // resourceName,
-      // venicePath.getStoreName(),
-      // currentPartition,
-      // veniceHostHealthMonitor);
-      //
-      // if (hosts.isEmpty()) {
-      // veniceScatter.addOfflineRequest(
-      // new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keysForCurrentPartition)));
-      // } else if (hosts.size() == 1) {
-      // Instance host = hosts.get(0);
-      // populateHostMap(hostMap, host, keysForCurrentPartition);
-      // } else {
-      // try {
-      // selectHostForPartition(
-      // hosts,
-      // keysForCurrentPartition,
-      // venicePath,
-      // hostMap,
-      // helixGroupNum,
-      // assignedHelixGroupId);
-      // } catch (RouterException e) {
-      // /**
-      // * We don't want to throw exception here to fail the whole request since for streaming, partial scatter is
-      // acceptable.
-      // */
-      // veniceScatter.addOfflineRequest(
-      // new ScatterGatherRequest<>(Collections.emptyList(), new HashSet<>(keysForCurrentPartition)));
-      // }
-      // }
-      // // Important to clear the inner list since it is thread-local state, which will be re-used by the next request
-      // keysForCurrentPartition.clear();
-      // }
-      // } finally {
-      // for (; currentPartition < partitionCount; currentPartition++) {
-      // // This would only happen if the body of the try threw an exception.
-      // // If that were to happen we would do a final cleanup here out of an abundance of caution.
-      // keysForCurrentPartition = keysPerPartition.get(currentPartition);
-      // keysForCurrentPartition.clear();
-      // }
-      // }
-
       /**
        * Populate online requests
        */
