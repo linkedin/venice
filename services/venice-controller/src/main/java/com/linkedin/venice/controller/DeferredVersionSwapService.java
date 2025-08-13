@@ -607,10 +607,19 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     Boolean proceed = true;
     List<LifecycleHooksRecord> storeLifecycleHooks = parentStore.getStoreLifecycleHooks();
     for (LifecycleHooksRecord lifecycleHooksRecord: storeLifecycleHooks) {
-      StoreLifecycleHooks storeLifecycleHook = ReflectUtils.callConstructor(
-          ReflectUtils.loadClass(lifecycleHooksRecord.getStoreLifecycleHooksClassName()),
-          new Class<?>[] { VeniceProperties.class },
-          new Object[] { veniceControllerMultiClusterConfig.getCommonConfig().getProps() });
+      StoreLifecycleHooks storeLifecycleHook;
+      try {
+        storeLifecycleHook = ReflectUtils.callConstructor(
+            ReflectUtils.loadClass(lifecycleHooksRecord.getStoreLifecycleHooksClassName()),
+            new Class<?>[] { VeniceProperties.class },
+            new Object[] { veniceControllerMultiClusterConfig.getCommonConfig().getProps() });
+      } catch (Exception e) {
+        String message =
+            "Failed to construct store lifecycle hook class: " + lifecycleHooksRecord.getStoreLifecycleHooksClassName()
+                + " for store: " + parentStore.getName() + " on version: " + targetVersionNum;
+        logMessageIfNotRedundant(message);
+        continue;
+      }
 
       Properties properties = new Properties();
       properties.putAll(lifecycleHooksRecord.getStoreLifecycleHooksParams());
