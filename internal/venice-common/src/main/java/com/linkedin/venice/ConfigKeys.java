@@ -646,6 +646,9 @@ public class ConfigKeys {
   public static final String CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT =
       "controller.parent.system.store.repair.retry.count";
 
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_VERSION_REFRESH_THRESHOLD_IN_DAYS =
+      "controller.parent.system.store.version.refresh.threshold.in.days";
+
   /**
    * Whether to initialize system schemas when controller starts. Default is true.
    */
