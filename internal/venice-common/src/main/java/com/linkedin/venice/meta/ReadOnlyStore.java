@@ -1862,6 +1862,10 @@ public class ReadOnlyStore implements Store {
 
   private static List<StoreLifecycleHooksRecord> convertStoreLifecycleHooks(
       List<LifecycleHooksRecord> storeLifecycleHooks) {
+    if (storeLifecycleHooks.isEmpty()) {
+      return Collections.emptyList();
+    }
+
     List<StoreLifecycleHooksRecord> convertedStoreLifecycleHooks = new ArrayList<>();
     for (LifecycleHooksRecord storeLifecycleHooksRecord: storeLifecycleHooks) {
       convertedStoreLifecycleHooks.add(

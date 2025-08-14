@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.StoreUtils;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -1028,6 +1029,10 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
 
   @Override
   public List<LifecycleHooksRecord> getStoreLifecycleHooks() {
+    if (this.storeProperties.storeLifecycleHooks.isEmpty()) {
+      return Collections.emptyList();
+    }
+
     List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
     for (StoreLifecycleHooksRecord storeLifecycleHooksRecord: this.storeProperties.storeLifecycleHooks) {
       storeLifecycleHooks.add(

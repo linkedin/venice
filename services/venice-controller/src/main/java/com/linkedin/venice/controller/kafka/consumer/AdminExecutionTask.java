@@ -57,6 +57,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.CollectionUtils;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -510,14 +511,18 @@ public class AdminExecutionTask implements Callable<Void> {
         .setGlobalRtDivEnabled(message.globalRtDivEnabled)
         .setEnumSchemaEvolutionAllowed(message.enumSchemaEvolutionAllowed);
 
-    List<LifecycleHooksRecord> convertedLifecycleHooks = new ArrayList<>();
-    for (StoreLifecycleHooksRecord record: message.storeLifecycleHooks) {
-      convertedLifecycleHooks.add(
-          new LifecycleHooksRecordImpl(
-              record.getStoreLifecycleHooksClassName().toString(),
-              CollectionUtils.getStringMapFromCharSequenceMap(record.getStoreLifecycleHooksParams())));
+    if (message.storeLifecycleHooks.isEmpty()) {
+      params.setStoreLifecycleHooks(Collections.emptyList());
+    } else {
+      List<LifecycleHooksRecord> convertedLifecycleHooks = new ArrayList<>();
+      for (StoreLifecycleHooksRecord record: message.storeLifecycleHooks) {
+        convertedLifecycleHooks.add(
+            new LifecycleHooksRecordImpl(
+                record.getStoreLifecycleHooksClassName().toString(),
+                CollectionUtils.getStringMapFromCharSequenceMap(record.getStoreLifecycleHooksParams())));
+      }
+      params.setStoreLifecycleHooks(convertedLifecycleHooks);
     }
-    params.setStoreLifecycleHooks(convertedLifecycleHooks);
 
     if (message.targetSwapRegion != null) {
       params.setTargetRegionSwap(message.getTargetSwapRegion().toString());

@@ -2744,15 +2744,20 @@ public class VeniceParentHelixAdmin implements Admin {
 
       List<LifecycleHooksRecord> newLifecycleHooks =
           VeniceHelixAdmin.validateLifecycleHooks(currStore, storeLifecycleHooks);
-      List<StoreLifecycleHooksRecord> convertedLifecycleHooks = new ArrayList<>();
-      for (LifecycleHooksRecord record: newLifecycleHooks) {
-        convertedLifecycleHooks.add(
-            new StoreLifecycleHooksRecord(
-                record.getStoreLifecycleHooksClassName(),
-                CollectionUtils.getCharSequenceMapFromStringMap(record.getStoreLifecycleHooksParams())));
+      if (newLifecycleHooks.isEmpty()) {
         updatedConfigsList.add(STORE_LIFECYCLE_HOOKS_LIST);
+        setStore.storeLifecycleHooks = Collections.emptyList();
+      } else {
+        List<StoreLifecycleHooksRecord> convertedLifecycleHooks = new ArrayList<>();
+        for (LifecycleHooksRecord record: newLifecycleHooks) {
+          convertedLifecycleHooks.add(
+              new StoreLifecycleHooksRecord(
+                  record.getStoreLifecycleHooksClassName(),
+                  CollectionUtils.getCharSequenceMapFromStringMap(record.getStoreLifecycleHooksParams())));
+          updatedConfigsList.add(STORE_LIFECYCLE_HOOKS_LIST);
+        }
+        setStore.storeLifecycleHooks = convertedLifecycleHooks;
       }
-      setStore.storeLifecycleHooks = convertedLifecycleHooks;
 
       setStore.enableReads =
           readability.map(addToUpdatedConfigList(updatedConfigsList, ENABLE_READS)).orElseGet(currStore::isEnableReads);
