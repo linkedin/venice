@@ -2571,6 +2571,16 @@ public class ConfigKeys {
   public static final String ROUTER_RETRY_MANAGER_CORE_POOL_SIZE = "router.retry.manager.core.pool.size";
 
   /**
+   * Whether to enable concurrent routing within one multi-key request in Router.
+   */
+  public static final String ROUTER_ROUTING_COMPUTATION_MODE = "router.routing.computation.mode";
+  public static final String ROUTER_PARALLEL_ROUTING_THREAD_POOL_SIZE = "router.parallel.routing.thread.pool.size";
+  /**
+   * Chunk size (number of partitions) for parallel routing within one multi-key request in Router.
+   */
+  public static final String ROUTER_PARALLEL_ROUTING_CHUNK_SIZE = "router.parallel.routing.chunk.size";
+
+  /**
    * Server configs to enable the topic partition re-subscription during ingestion to let bottom ingestion service aware
    * of store version's ingestion context changed (workload type {#@link PartitionReplicaIngestionContext.WorkloadType} or
    * {#@link VersionRole.WorkloadType} version role changed).
