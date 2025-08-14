@@ -632,7 +632,6 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
         continue;
       }
 
-      // TODO handle ABORT signal once we change push job to complete after version swap occurs
       if (StoreVersionLifecycleEventOutcome.WAIT.equals(outcome)) {
         String message = "Skipping version swap for store: " + parentStore.getName() + " on version: "
             + targetVersionNum + " as post version swap validations emitted WAIT";
