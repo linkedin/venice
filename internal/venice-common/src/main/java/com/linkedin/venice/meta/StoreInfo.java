@@ -87,6 +87,7 @@ public class StoreInfo {
     storeInfo.setGlobalRtDivEnabled(store.isGlobalRtDivEnabled());
     storeInfo.setTTLRepushEnabled(store.isTTLRepushEnabled());
     storeInfo.setEnumSchemaEvolutionAllowed(store.isEnumSchemaEvolutionAllowed());
+    storeInfo.setStoreLifecycleHooks(store.getStoreLifecycleHooks());
     return storeInfo;
   }
 
@@ -365,6 +366,7 @@ public class StoreInfo {
    */
   private boolean ttlRepushEnabled = false;
   private boolean enumSchemaEvolutionAllowed = false;
+  private List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
 
   public StoreInfo() {
   }
@@ -957,5 +959,13 @@ public class StoreInfo {
 
   public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
     this.enumSchemaEvolutionAllowed = enumSchemaEvolutionAllowed;
+  }
+
+  public List<LifecycleHooksRecord> getStoreLifecycleHooks() {
+    return this.storeLifecycleHooks;
+  }
+
+  public void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
+    this.storeLifecycleHooks = storeLifecycleHooks;
   }
 }

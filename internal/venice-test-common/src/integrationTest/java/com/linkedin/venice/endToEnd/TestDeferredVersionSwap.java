@@ -25,12 +25,14 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.MockStoreLifecycleHooks;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -38,6 +40,8 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
+import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -52,6 +56,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -604,6 +610,89 @@ public class TestDeferredVersionSwap {
         Optional<Version> version = store.getStore().getVersion(1);
         assertNotNull(version);
         assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
+      }
+    }
+  }
+
+  @DataProvider(name = "validationsProvider")
+  public Object[][] validationsProvider() {
+    return new Object[][] { { StoreVersionLifecycleEventOutcome.PROCEED.toString(), 2 },
+        { StoreVersionLifecycleEventOutcome.ROLLBACK.toString(), 1 } };
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "validationsProvider")
+  public void testDeferredVersionSwapWithValidation(String validationOutcome, int targetVersion) throws IOException {
+    File inputDir = getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
+    // Setup job properties
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("testDeferredVersionSwap");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = "\"string\"";
+    List<LifecycleHooksRecord> lifecycleHooks = new ArrayList<>();
+    Map<String, String> lifecycleHooksParams = new HashMap<>();
+    lifecycleHooksParams.put("outcome", validationOutcome);
+    lifecycleHooks.add(new LifecycleHooksRecordImpl(MockStoreLifecycleHooks.class.getName(), lifecycleHooksParams));
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setStoreLifecycleHooks(lifecycleHooks);
+    storeParms.setTargetRegionSwapWaitTime(1);
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    Set<String> targetRegionsList = RegionUtils.parseRegionsFilterList(REGION1);
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
+      createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
+
+      IntegrationTestPushUtils.runVPJ(props);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      // Start push job with target region push enabled
+      props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
+      props.put(TARGETED_REGION_PUSH_LIST, REGION1);
+      IntegrationTestPushUtils.runVPJ(props);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 2),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+
+      // Version should only be swapped in the target region
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
+        Map<String, Integer> coloVersions =
+            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+        coloVersions.forEach((colo, version) -> {
+          if (targetRegionsList.contains(colo)) {
+            Assert.assertEquals((int) version, 2);
+          } else {
+            Assert.assertEquals((int) version, 1);
+          }
+        });
+      });
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+        Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.PUSHED);
+      });
+
+      // Verify that final version is the same as the target version
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        Map<String, Integer> coloVersions =
+            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
+
+        coloVersions.forEach((colo, version) -> {
+          Assert.assertEquals((int) version, targetVersion);
+        });
+      });
+
+      if (targetVersion == 1) {
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
+          Assert.assertEquals(parentStore.getVersion(2).get().getStatus(), VersionStatus.ERROR);
+        });
       }
     }
   }
