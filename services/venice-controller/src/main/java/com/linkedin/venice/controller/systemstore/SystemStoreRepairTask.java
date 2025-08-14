@@ -292,6 +292,8 @@ public class SystemStoreRepairTask implements Runnable {
       }
       for (String key: listToRemove) {
         systemStoreToHeartbeatTimestampMap.remove(key);
+        newUnhealthySystemStoreSet.remove(key);
+        unreachableSystemStoreSet.remove(key);
       }
       return systemStoreToHeartbeatTimestampMap.isEmpty();
     });
@@ -363,7 +365,7 @@ public class SystemStoreRepairTask implements Runnable {
     LOGGER.info(
         "Got heartbeat: {} from system store: {}, most stale region: {}",
         oldestHeartbeatTimestamp,
-        clusterName,
+        systemStoreName,
         staleRegion);
     return oldestHeartbeatTimestamp;
   }

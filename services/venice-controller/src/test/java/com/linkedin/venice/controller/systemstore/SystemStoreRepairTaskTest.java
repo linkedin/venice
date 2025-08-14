@@ -68,11 +68,70 @@ public class SystemStoreRepairTaskTest {
   }
 
   @Test
-  public void testCheckHeartbeat() {
+  public void testPeriodicCheckHeartbeat() {
+
     SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
 
     String clusterName = "venice";
 
+    String userStoreName1 = "testStore";
+    String metaStoreName1 = VeniceSystemStoreType.META_STORE.getSystemStoreName(userStoreName1);
+    String pushStatusStoreName1 = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStoreName1);
+
+    String userStoreName2 = "testStore2";
+    String metaStoreName2 = VeniceSystemStoreType.META_STORE.getSystemStoreName(userStoreName2);
+    String pushStatusStoreName2 = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStoreName2);
+
+    Map<String, Long> systemStoreToHeartbeatTimestampMap = new HashMap<>();
+    systemStoreToHeartbeatTimestampMap.put(metaStoreName1, 100L);
+    systemStoreToHeartbeatTimestampMap.put(pushStatusStoreName1, 100L);
+    systemStoreToHeartbeatTimestampMap.put(metaStoreName2, 100L);
+    systemStoreToHeartbeatTimestampMap.put(pushStatusStoreName2, 100L);
+
+    Set<String> unhealthySystemStoreSet = new HashSet<>();
+    Set<String> unreachableSystemStoreSet = new HashSet<>();
+    doCallRealMethod().when(systemStoreRepairTask)
+        .checkHeartbeatFromSystemStores(anyString(), anySet(), anySet(), anyMap(), anyInt());
+    // Check is not enabled.
+    when(systemStoreRepairTask.shouldContinue(anyString())).thenReturn(false);
+    doCallRealMethod().when(systemStoreRepairTask).periodicCheckTask(anyString(), anyInt(), anyInt(), any());
+    doReturn(1).when(systemStoreRepairTask).getHeartbeatCheckIntervalInSeconds();
+    systemStoreRepairTask.checkHeartbeatFromSystemStores(
+        clusterName,
+        unhealthySystemStoreSet,
+        unreachableSystemStoreSet,
+        systemStoreToHeartbeatTimestampMap,
+        5);
+    Assert.assertEquals(unhealthySystemStoreSet.size(), 0);
+    Assert.assertEquals(unreachableSystemStoreSet.size(), 0);
+
+    // Always stale
+    when(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, metaStoreName1)).thenReturn(10L);
+    // First stale, then healthy HB
+    when(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, pushStatusStoreName1)).thenReturn(10L)
+        .thenReturn(100L);
+    // Always not reachable
+    when(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, metaStoreName2)).thenReturn(-1L);
+    // First not reachable, then healthy HB
+    when(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, pushStatusStoreName2)).thenReturn(-1L)
+        .thenReturn(100L);
+
+    // Check is enabled.
+    when(systemStoreRepairTask.shouldContinue(anyString())).thenReturn(true);
+    systemStoreRepairTask.checkHeartbeatFromSystemStores(
+        clusterName,
+        unhealthySystemStoreSet,
+        unreachableSystemStoreSet,
+        systemStoreToHeartbeatTimestampMap,
+        5);
+    Assert.assertEquals(unhealthySystemStoreSet.size(), 2);
+    Assert.assertEquals(unreachableSystemStoreSet.size(), 1);
+  }
+
+  @Test
+  public void testCheckHeartbeat() {
+    SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
+    String clusterName = "venice";
     String userStoreName1 = "testStore";
     String metaStoreName1 = VeniceSystemStoreType.META_STORE.getSystemStoreName(userStoreName1);
     String pushStatusStoreName1 = VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(userStoreName1);
@@ -113,36 +172,6 @@ public class SystemStoreRepairTaskTest {
     Assert.assertEquals(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, pushStatusStoreName1), -1L);
     Assert.assertEquals(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, metaStoreName2), 10L);
     Assert.assertEquals(systemStoreRepairTask.getHeartbeatFromSystemStore(clusterName, pushStatusStoreName2), 10L);
-
-    Map<String, Long> systemStoreToHeartbeatTimestampMap = new HashMap<>();
-    systemStoreToHeartbeatTimestampMap.put(metaStoreName1, 11L);
-    systemStoreToHeartbeatTimestampMap.put(pushStatusStoreName1, 10L);
-    systemStoreToHeartbeatTimestampMap.put(metaStoreName2, 10L);
-    systemStoreToHeartbeatTimestampMap.put(pushStatusStoreName2, 20L);
-
-    Set<String> unhealthySystemStoreSet = new HashSet<>();
-    Set<String> unreachableSystemStoreSet = new HashSet<>();
-    when(systemStoreRepairTask.shouldContinue(anyString())).thenReturn(false);
-    doCallRealMethod().when(systemStoreRepairTask).periodicCheckTask(anyString(), anyInt(), anyInt(), any());
-    doReturn(1).when(systemStoreRepairTask).getHeartbeatCheckIntervalInSeconds();
-    systemStoreRepairTask.checkHeartbeatFromSystemStores(
-        clusterName,
-        unhealthySystemStoreSet,
-        unreachableSystemStoreSet,
-        systemStoreToHeartbeatTimestampMap,
-        5);
-    Assert.assertEquals(unhealthySystemStoreSet.size(), 0);
-    Assert.assertEquals(unreachableSystemStoreSet.size(), 0);
-
-    when(systemStoreRepairTask.shouldContinue(anyString())).thenReturn(true);
-    systemStoreRepairTask.checkHeartbeatFromSystemStores(
-        clusterName,
-        unhealthySystemStoreSet,
-        unreachableSystemStoreSet,
-        systemStoreToHeartbeatTimestampMap,
-        5);
-    Assert.assertEquals(unhealthySystemStoreSet.size(), 3);
-    Assert.assertEquals(unreachableSystemStoreSet.size(), 1);
   }
 
   @Test
