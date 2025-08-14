@@ -2847,4 +2847,9 @@ public class ConfigKeys {
    */
   public static final String SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY =
       "server.ingestion.task.reusable.objects.strategy";
+
+  /**
+   * Max number of threads for Spark Java controller.
+   */
+  public static final String CONTROLLER_SPARK_JAVA_MAX_THREADS_COUNT = "controller.spark.java.max.threads.count";
 }

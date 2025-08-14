@@ -639,6 +639,10 @@ public class VeniceControllerClusterConfig {
   private final int storeMigrationThreadPoolSize;
   private final int storeMigrationMaxRetryAttempts;
 
+  // Spark java service configs
+  // Max threads for spark-java service
+  private final int sparkJavaServiceMaxThreads;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
     this.clusterName = props.getString(CLUSTER_NAME);
@@ -1202,6 +1206,8 @@ public class VeniceControllerClusterConfig {
     this.isMultiTaskSchedulerServiceEnabled = props.getBoolean(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, false);
     this.storeMigrationThreadPoolSize = props.getInt(ConfigKeys.STORE_MIGRATION_THREAD_POOL_SIZE, 1);
     this.storeMigrationMaxRetryAttempts = props.getInt(ConfigKeys.STORE_MIGRATION_MAX_RETRY_ATTEMPTS, 3);
+
+    this.sparkJavaServiceMaxThreads = props.getInt(ConfigKeys.CONTROLLER_SPARK_JAVA_MAX_THREADS_COUNT, -1);
   }
 
   public VeniceProperties getProps() {
@@ -2181,6 +2187,10 @@ public class VeniceControllerClusterConfig {
 
   public VeniceProperties getDeadStoreStatsConfigs() {
     return deadStoreStatsConfigs;
+  }
+
+  public int getSparkJavaServiceMaxThreads() {
+    return sparkJavaServiceMaxThreads;
   }
 
   public Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> getHelixGlobalRebalancePreference() {

@@ -143,6 +143,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.eclipse.jetty.util.thread.ExecutorThreadPool;
 import spark.Request;
 import spark.Response;
 import spark.Service;
@@ -195,6 +196,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       List<ControllerRoute> disabledRoutes,
       VeniceProperties jettyConfigOverrides,
       boolean disableParentRequestTopicForStreamPushes,
+      int sparkJavaMaxThreadCount,
       PubSubTopicRepository pubSubTopicRepository,
       VeniceControllerRequestHandler requestHandler) {
     this.logContext = admin.getLogContext();
@@ -216,7 +218,12 @@ public class AdminSparkServer extends AbstractVeniceService {
           new SparkServerStats(metricsRepository, cluster + "." + statsPrefix + "controller_spark_server"));
     }
     nonclusterSpecificStats = new SparkServerStats(metricsRepository, "." + statsPrefix + "controller_spark_server");
-    EmbeddedServers.add(EmbeddedServers.Identifiers.JETTY, new VeniceSparkServerFactory(jettyConfigOverrides));
+    VeniceSparkServerFactory sparkServerFactory = new VeniceSparkServerFactory(jettyConfigOverrides);
+    if (sparkJavaMaxThreadCount > 0) {
+      // Create a custom thread pool with the given max thread count
+      sparkServerFactory.withThreadPool(new ExecutorThreadPool(sparkJavaMaxThreadCount));
+    }
+    EmbeddedServers.add(EmbeddedServers.Identifiers.JETTY, sparkServerFactory);
 
     httpService = Service.ignite();
     this.disabledRoutes = disabledRoutes;
@@ -241,6 +248,9 @@ public class AdminSparkServer extends AbstractVeniceService {
           config.getSslTrustStorePassword(),
           config.isSslNeedsClientCert());
     }
+
+    // Monitor active threads being used in spark server
+    this.nonclusterSpecificStats.registerSparkServerActiveThreadCount(httpService);
 
     httpService.before((request, response) -> {
       LogContext.setLogContext(logContext);

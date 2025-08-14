@@ -170,6 +170,7 @@ public class ServiceFactory {
           bannedRoutes,
           null,
           false,
+          3,
           new PubSubTopicRepository(),
           requestHandler);
       server.start();
