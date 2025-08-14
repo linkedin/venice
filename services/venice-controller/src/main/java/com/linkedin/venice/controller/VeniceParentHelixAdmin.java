@@ -2745,7 +2745,6 @@ public class VeniceParentHelixAdmin implements Admin {
       List<LifecycleHooksRecord> newLifecycleHooks =
           VeniceHelixAdmin.validateLifecycleHooks(currStore, storeLifecycleHooks);
       if (newLifecycleHooks.isEmpty()) {
-        updatedConfigsList.add(STORE_LIFECYCLE_HOOKS_LIST);
         setStore.storeLifecycleHooks = Collections.emptyList();
       } else {
         List<StoreLifecycleHooksRecord> convertedLifecycleHooks = new ArrayList<>();
