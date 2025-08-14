@@ -607,30 +607,30 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     Boolean proceed = true;
     List<LifecycleHooksRecord> storeLifecycleHooks = parentStore.getStoreLifecycleHooks();
     for (LifecycleHooksRecord lifecycleHooksRecord: storeLifecycleHooks) {
-      StoreLifecycleHooks storeLifecycleHook;
+      StoreVersionLifecycleEventOutcome outcome;
       try {
-        storeLifecycleHook = ReflectUtils.callConstructor(
+        StoreLifecycleHooks storeLifecycleHook = ReflectUtils.callConstructor(
             ReflectUtils.loadClass(lifecycleHooksRecord.getStoreLifecycleHooksClassName()),
             new Class<?>[] { VeniceProperties.class },
             new Object[] { veniceControllerMultiClusterConfig.getCommonConfig().getProps() });
+
+        Properties properties = new Properties();
+        properties.putAll(lifecycleHooksRecord.getStoreLifecycleHooksParams());
+        VeniceProperties veniceProperties = new VeniceProperties(properties);
+        outcome = storeLifecycleHook.postStoreVersionSwap(
+            clusterName,
+            parentStore.getName(),
+            targetVersionNum,
+            targetRegion,
+            null,
+            veniceProperties);
       } catch (Exception e) {
-        String message =
-            "Failed to construct store lifecycle hook class: " + lifecycleHooksRecord.getStoreLifecycleHooksClassName()
-                + " for store: " + parentStore.getName() + " on version: " + targetVersionNum;
+        String message = "Encountered exception while executing lifecycle hook: "
+            + lifecycleHooksRecord.getStoreLifecycleHooksClassName() + " for store: " + parentStore.getName()
+            + " on version: " + targetVersionNum + ". Exception: " + e;
         logMessageIfNotRedundant(message);
         continue;
       }
-
-      Properties properties = new Properties();
-      properties.putAll(lifecycleHooksRecord.getStoreLifecycleHooksParams());
-      VeniceProperties veniceProperties = new VeniceProperties(properties);
-      StoreVersionLifecycleEventOutcome outcome = storeLifecycleHook.postStoreVersionSwap(
-          clusterName,
-          parentStore.getName(),
-          targetVersionNum,
-          targetRegion,
-          null,
-          veniceProperties);
 
       // TODO handle ABORT signal once we change push job to complete after version swap occurs
       if (StoreVersionLifecycleEventOutcome.WAIT.equals(outcome)) {
