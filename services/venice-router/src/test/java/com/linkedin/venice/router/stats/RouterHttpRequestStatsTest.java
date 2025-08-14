@@ -1,6 +1,9 @@
 package com.linkedin.venice.router.stats;
 
 import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.HEALTHY_REQUEST;
+import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.KEY_SIZE_IN_BYTE;
+import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.REQUEST_SIZE;
+import static com.linkedin.venice.router.stats.RouterHttpRequestStats.RouterTehutiMetricNameEnum.RESPONSE_SIZE;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.PASCAL_CASE;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_CLUSTER_NAME;
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_METHOD;
@@ -63,7 +66,7 @@ public class RouterHttpRequestStatsTest {
         clusterName,
         RequestType.SINGLE_GET,
         mock(ScatterGatherStats.class),
-        false,
+        true,
         null);
 
     if (useVeniceMetricRepository && isOtelEnabled) {
@@ -95,5 +98,73 @@ public class RouterHttpRequestStatsTest {
     assertEquals(
         metricsRepository.getMetric("." + storeName + "--" + HEALTHY_REQUEST.getMetricName() + ".Count").value(),
         1.0);
+
+    routerHttpRequestStats.recordRequestSize(512.0);
+    // Verify that the request size is recorded correctly
+    assertEquals(
+        metricsRepository.getMetric("." + storeName + "--" + REQUEST_SIZE.getMetricName() + ".Avg").value(),
+        512.0);
+
+    // Verify that the response size is recorded
+    routerHttpRequestStats.recordResponseSize(1024.0);
+    assertEquals(
+        metricsRepository.getMetric("." + storeName + "--" + RESPONSE_SIZE.getMetricName() + ".Avg").value(),
+        1024.0);
+
+  }
+
+  @Test
+  public void testKeyValueProfilingEnabled() {
+    String storeName = "test-store";
+    String clusterName = "test-cluster";
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    metricsRepository.addReporter(new MockTehutiReporter());
+
+    RouterHttpRequestStats routerHttpRequestStats = new RouterHttpRequestStats(
+        metricsRepository,
+        storeName,
+        clusterName,
+        RequestType.SINGLE_GET,
+        mock(ScatterGatherStats.class),
+        true, // keyValueProfilingEnabled = true
+        null);
+
+    // Record key size metric
+    routerHttpRequestStats.recordKeySizeInByte(128);
+
+    // Test response size metric (should always work)
+    routerHttpRequestStats.recordResponseSize(1024.0);
+    String responseSizeMetricName = "." + storeName + "--" + RESPONSE_SIZE.getMetricName() + ".Avg";
+    assertNotNull(metricsRepository.getMetric(responseSizeMetricName));
+    assertEquals(metricsRepository.getMetric(responseSizeMetricName).value(), 1024.0);
+  }
+
+  @Test
+  public void testKeyValueProfilingDisabled() {
+    String storeName = "test-store";
+    String clusterName = "test-cluster";
+    MetricsRepository metricsRepository = MetricsRepositoryUtils.createSingleThreadedMetricsRepository();
+    metricsRepository.addReporter(new MockTehutiReporter());
+
+    RouterHttpRequestStats routerHttpRequestStats = new RouterHttpRequestStats(
+        metricsRepository,
+        storeName,
+        clusterName,
+        RequestType.SINGLE_GET,
+        mock(ScatterGatherStats.class),
+        false, // keyValueProfilingEnabled = false
+        null);
+
+    // Record key size metric
+    routerHttpRequestStats.recordKeySizeInByte(128);
+
+    // Key size metric should not exist when profiling is disabled
+    String keySizeMetricName = "." + storeName + "--" + KEY_SIZE_IN_BYTE.getMetricName() + ".Avg";
+    assertNull(metricsRepository.getMetric(keySizeMetricName));
+
+    // Response size should still work
+    routerHttpRequestStats.recordResponseSize(1024.0);
+    String responseSizeMetricName = "." + storeName + "--" + RESPONSE_SIZE.getMetricName() + ".Avg";
+    assertNotNull(metricsRepository.getMetric(responseSizeMetricName));
   }
 }
