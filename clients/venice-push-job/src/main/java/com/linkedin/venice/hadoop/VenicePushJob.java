@@ -124,7 +124,9 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -2536,7 +2538,37 @@ public class VenicePushJob implements AutoCloseable {
         } else {
           LOGGER.info("Successfully pushed {} to all the regions", pushJobSetting.topic);
         }
-        return;
+
+        // For target region push with deferred swap, stall push completion until version swap is complete
+        // Version swap is complete when the parent version is online, partially online, or error
+        if (isTargetRegionPushWithDeferredSwap) {
+          StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
+          if (parentStoreResponse.isError()) {
+            LOGGER.warn("Failed to get store response for store: {}", pushJobSetting.storeName);
+            return;
+          }
+
+          StoreInfo parentStoreInfo = parentStoreResponse.getStore();
+          int latestUsedVersionNumber = parentStoreInfo.getLargestUsedVersionNumber();
+          Optional<Version> parentVersion = parentStoreInfo.getVersion(latestUsedVersionNumber);
+          if (!parentVersion.isPresent()) {
+            LOGGER.warn("Failed to get parent version for store: {}", pushJobSetting.storeName);
+            return;
+          }
+
+          VersionStatus parentVersionStatus = parentVersion.get().getStatus();
+          if (VersionStatus.ERROR.equals(parentVersionStatus)
+              && ExecutionStatus.COMPLETED.equals(overallStatus.getRootStatus())) {
+            throw new VeniceException(
+                "Version " + latestUsedVersionNumber
+                    + " was rolled back after ingestion completed due to validation failure");
+          } else if (VersionStatus.ONLINE.equals(parentVersionStatus)
+              || VersionStatus.PARTIALLY_ONLINE.equals(parentVersionStatus)) {
+            return;
+          }
+        } else {
+          return;
+        }
       }
       if (!overallStatus.equals(ExecutionStatus.UNKNOWN)) {
         unknownStateStartTimeMs = 0;
