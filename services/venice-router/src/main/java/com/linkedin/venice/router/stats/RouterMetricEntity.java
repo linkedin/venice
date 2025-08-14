@@ -95,6 +95,16 @@ public enum RouterMetricEntity implements ModuleMetricEntityInterface {
   RETRY_DELAY(
       MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.MILLISECOND, "Retry delay time",
       setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
+  ),
+
+  TEST_ASYNC_GAUGE(
+      MetricType.ASYNC_GAUGE, MetricUnit.NUMBER, "Test async gauge for testing purposes",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
+  ),
+
+  TEST_ASYNC_GAUGE_BOTH(
+      MetricType.ASYNC_GAUGE, MetricUnit.NUMBER, "Test async gauge for testing purposes",
+      setOf(VENICE_STORE_NAME, VENICE_CLUSTER_NAME, VENICE_REQUEST_METHOD)
   );
 
   private final MetricEntity metricEntity;

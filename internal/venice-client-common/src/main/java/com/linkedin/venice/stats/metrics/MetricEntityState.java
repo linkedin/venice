@@ -5,17 +5,19 @@ import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.metrics.DoubleGauge;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
+import io.opentelemetry.api.metrics.LongGauge;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.LongSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -55,11 +57,31 @@ public abstract class MetricEntityState {
       TehutiSensorRegistrationFunction registerTehutiSensorFn,
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats) {
+    this(
+        metricEntity,
+        otelRepository,
+        baseDimensionsMap,
+        registerTehutiSensorFn,
+        tehutiMetricNameEnum,
+        tehutiMetricStats,
+        null,
+        null);
+  }
+
+  public MetricEntityState(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      TehutiSensorRegistrationFunction registerTehutiSensorFn,
+      TehutiMetricNameEnum tehutiMetricNameEnum,
+      List<MeasurableStat> tehutiMetricStats,
+      LongSupplier asyncCallback,
+      Attributes asyncAttributes) {
     this.metricEntity = metricEntity;
     this.emitOpenTelemetryMetrics = otelRepository != null && otelRepository.emitOpenTelemetryMetrics();
     this.otelRepository = otelRepository;
     this.baseDimensionsMap = baseDimensionsMap;
-    createMetric(tehutiMetricNameEnum, tehutiMetricStats, registerTehutiSensorFn);
+    createMetric(tehutiMetricNameEnum, tehutiMetricStats, registerTehutiSensorFn, asyncCallback, asyncAttributes);
   }
 
   public void setOtelMetric(Object otelMetric) {
@@ -78,12 +100,55 @@ public abstract class MetricEntityState {
     Sensor register(String sensorName, MeasurableStat... stats);
   }
 
+  /**
+   * Validates the tehuti metrics stats against the otel metric type for a given metric entity.
+   * If tehutiMetricStats contains AsyncGauge, then the metric type should be ASYNC_GAUGE and tehutiMetricStats
+   * should contain only one stat. If tehutiMetricStats does not contain AsyncGauge, then the metric type should not
+   * be ASYNC_GAUGE.
+   *
+   * @param tehutiMetricStats the tehuti metrics stats for the given metric entity.
+   */
+  private void validateMetric(List<MeasurableStat> tehutiMetricStats, LongSupplier asyncCallback) {
+    if (asyncCallback != null && !metricEntity.getMetricType().isAsyncMetric()) {
+      throw new IllegalArgumentException(
+          "Async callback is provided, but the metric type is not async for metric: " + metricEntity.getMetricName());
+    } else if (asyncCallback == null && metricEntity.getMetricType().isAsyncMetric()) {
+      throw new IllegalArgumentException(
+          "Async callback is not provided, but the metric type is async for metric: " + metricEntity.getMetricName());
+    }
+
+    // ASYNC_GAUGE specific: If both tehuti and Otel are present, validate if all are nothing is async
+    if (tehutiMetricStats == null || tehutiMetricStats.isEmpty()) {
+      return;
+    }
+    // if tehutiMetricStats has AsyncGauge() then the metric type should be ASYNC_GAUGE
+    if (tehutiMetricStats.stream().anyMatch(stat -> stat instanceof AsyncGauge)) {
+      if (tehutiMetricStats.size() > 1) {
+        throw new IllegalArgumentException(
+            "Tehuti metric stats contains AsyncGauge, but it should be the only stat for metric: "
+                + metricEntity.getMetricName());
+      }
+      if (metricEntity.getMetricType() != MetricType.ASYNC_GAUGE) {
+        throw new IllegalArgumentException(
+            "Tehuti metric stats contains AsyncGauge, but the otel metric type is not ASYNC_GAUGE for metric: "
+                + metricEntity.getMetricName());
+      }
+    } else if (metricEntity.getMetricType() == MetricType.ASYNC_GAUGE) {
+      throw new IllegalArgumentException(
+          "Tehuti metric stats does not contain AsyncGauge, but the otel metric type is ASYNC_GAUGE for metric: "
+              + metricEntity.getMetricName());
+    }
+  }
+
   public void createMetric(
       TehutiMetricNameEnum tehutiMetricNameEnum,
       List<MeasurableStat> tehutiMetricStats,
-      TehutiSensorRegistrationFunction registerTehutiSensorFn) {
+      TehutiSensorRegistrationFunction registerTehutiSensorFn,
+      LongSupplier asyncCallback,
+      Attributes asyncAttributes) {
+    validateMetric(tehutiMetricStats, asyncCallback);
     if (emitOpenTelemetryMetrics()) {
-      setOtelMetric(otelRepository.createInstrument(this.metricEntity));
+      setOtelMetric(otelRepository.createInstrument(this.metricEntity, asyncCallback, asyncAttributes));
     }
     // tehuti metric
     if (tehutiMetricStats != null && !tehutiMetricStats.isEmpty()) {
@@ -108,7 +173,10 @@ public abstract class MetricEntityState {
           ((LongCounter) otelMetric).add((long) value, attributes);
           break;
         case GAUGE:
-          ((DoubleGauge) otelMetric).set((long) value, attributes);
+          ((LongGauge) otelMetric).set((long) value, attributes);
+          break;
+        case ASYNC_GAUGE:
+          // Async gauge is not recorded directly, it is updated by the callback function.
           break;
         default:
           throw new IllegalArgumentException("Unsupported metric type: " + metricType);
@@ -128,6 +196,10 @@ public abstract class MetricEntityState {
   }
 
   final void record(double value, Attributes attributes) {
+    if (metricEntity.getMetricType() == MetricType.ASYNC_GAUGE) {
+      // Async gauge metrics are not recorded directly, they are updated by the callback function.
+      return;
+    }
     recordOtelMetric(value, attributes);
     recordTehutiMetric(value);
   }

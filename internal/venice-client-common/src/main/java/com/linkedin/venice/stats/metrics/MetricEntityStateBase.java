@@ -7,6 +7,8 @@ import io.tehuti.metrics.MeasurableStat;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongSupplier;
+import javax.annotation.Nonnull;
 import org.apache.commons.lang.Validate;
 
 
@@ -18,16 +20,34 @@ import org.apache.commons.lang.Validate;
 public class MetricEntityStateBase extends MetricEntityState {
   private final Attributes attributes;
 
-  /** should not be called directly, call {@link #create} instead */
+  /** should not be called directly, call {@link #createAsyncMetric} instead */
   private MetricEntityStateBase(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Attributes baseAttributes) {
-    this(metricEntity, otelRepository, null, null, Collections.EMPTY_LIST, baseDimensionsMap, baseAttributes);
+    this(metricEntity, otelRepository, baseDimensionsMap, baseAttributes, null);
   }
 
-  /** should not be called directly, call {@link #create} instead */
+  /** should not be called directly, call {@link #createAsyncMetric} instead */
+  private MetricEntityStateBase(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Attributes baseAttributes,
+      LongSupplier asyncCallback) {
+    this(
+        metricEntity,
+        otelRepository,
+        null,
+        null,
+        Collections.EMPTY_LIST,
+        baseDimensionsMap,
+        baseAttributes,
+        asyncCallback);
+  }
+
+  /** should not be called directly, call {@link #createAsyncMetric} instead */
   private MetricEntityStateBase(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -36,13 +56,36 @@ public class MetricEntityStateBase extends MetricEntityState {
       List<MeasurableStat> tehutiMetricStats,
       Map<VeniceMetricsDimensions, String> baseDimensionsMap,
       Attributes baseAttributes) {
+    this(
+        metricEntity,
+        otelRepository,
+        registerTehutiSensorFn,
+        tehutiMetricNameEnum,
+        tehutiMetricStats,
+        baseDimensionsMap,
+        baseAttributes,
+        null);
+  }
+
+  /** should not be called directly, call {@link #createAsyncMetric} instead */
+  private MetricEntityStateBase(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      TehutiSensorRegistrationFunction registerTehutiSensorFn,
+      TehutiMetricNameEnum tehutiMetricNameEnum,
+      List<MeasurableStat> tehutiMetricStats,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Attributes baseAttributes,
+      LongSupplier asyncCallback) {
     super(
         metricEntity,
         otelRepository,
         baseDimensionsMap,
         registerTehutiSensorFn,
         tehutiMetricNameEnum,
-        tehutiMetricStats);
+        tehutiMetricStats,
+        asyncCallback,
+        baseAttributes);
     validateRequiredDimensions(metricEntity, baseAttributes, baseDimensionsMap);
     // directly using the Attributes as multiple MetricEntityState can reuse the same base attributes object.
     // If we want to fully abstract the Attribute creation inside these classes, we can create it here instead.
@@ -63,6 +106,16 @@ public class MetricEntityStateBase extends MetricEntityState {
     return new MetricEntityStateBase(metricEntity, otelRepository, baseDimensionsMap, baseAttributes);
   }
 
+  /** Factory method to keep the API consistent with other subclasses like {@link MetricEntityStateOneEnum} */
+  public static MetricEntityStateBase createAsyncMetric(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Attributes baseAttributes,
+      LongSupplier asyncCallback) {
+    return new MetricEntityStateBase(metricEntity, otelRepository, baseDimensionsMap, baseAttributes, asyncCallback);
+  }
+
   /** Overloaded Factory method for constructor with Tehuti parameters */
   public static MetricEntityStateBase create(
       MetricEntity metricEntity,
@@ -80,6 +133,27 @@ public class MetricEntityStateBase extends MetricEntityState {
         tehutiMetricStats,
         baseDimensionsMap,
         baseAttributes);
+  }
+
+  /** Overloaded Factory method for constructor with Tehuti parameters and async callback */
+  public static MetricEntityStateBase createAsyncMetric(
+      MetricEntity metricEntity,
+      VeniceOpenTelemetryMetricsRepository otelRepository,
+      TehutiSensorRegistrationFunction registerTehutiSensorFn,
+      TehutiMetricNameEnum tehutiMetricNameEnum,
+      List<MeasurableStat> tehutiMetricStats,
+      Map<VeniceMetricsDimensions, String> baseDimensionsMap,
+      Attributes baseAttributes,
+      @Nonnull LongSupplier asyncCallback) {
+    return new MetricEntityStateBase(
+        metricEntity,
+        otelRepository,
+        registerTehutiSensorFn,
+        tehutiMetricNameEnum,
+        tehutiMetricStats,
+        baseDimensionsMap,
+        baseAttributes,
+        asyncCallback);
   }
 
   public void record(long value) {
