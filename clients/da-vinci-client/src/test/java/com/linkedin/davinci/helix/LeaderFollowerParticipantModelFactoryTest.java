@@ -10,6 +10,7 @@ import com.linkedin.davinci.ingestion.IngestionBackend;
 import com.linkedin.davinci.stats.ParticipantStateTransitionStats;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -19,6 +20,7 @@ import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.time.Duration;
 import java.util.HashSet;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.apache.helix.model.Message;
@@ -35,6 +37,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
   private VeniceServerConfig mockServerConfig;
   private VeniceStoreVersionConfig mockStoreConfig;
   private ReadOnlyStoreRepository mockReadOnlyStoreRepository;
+  private HelixCustomizedViewOfflinePushRepository mockCustomizedViewRepository;
   private Store mockStore;
   private int testPartition = 0;
   private String resourceName = Version.composeKafkaTopic("testStore", 1);
@@ -61,6 +64,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
     mockServerConfig = mock(VeniceServerConfig.class);
     mockStoreConfig = mock(VeniceStoreVersionConfig.class);
     mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
+    mockCustomizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     mockStore = mock(Store.class);
     Mockito.when(mockConfigLoader.getVeniceServerConfig()).thenReturn(mockServerConfig);
     Mockito.when(mockConfigLoader.getStoreConfig(resourceName)).thenReturn(mockStoreConfig);
@@ -83,7 +87,12 @@ public class LeaderFollowerParticipantModelFactoryTest {
         mockReadOnlyStoreRepository,
         null,
         null,
-        new HeartbeatMonitoringService(new MetricsRepository(), mockReadOnlyStoreRepository, veniceServerConfig, null));
+        new HeartbeatMonitoringService(
+            new MetricsRepository(),
+            mockReadOnlyStoreRepository,
+            veniceServerConfig,
+            null,
+            CompletableFuture.completedFuture(mockCustomizedViewRepository)));
   }
 
   @Test
