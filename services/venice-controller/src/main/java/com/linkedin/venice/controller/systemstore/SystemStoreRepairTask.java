@@ -354,19 +354,12 @@ public class SystemStoreRepairTask implements Runnable {
 
   long getHeartbeatFromSystemStore(String clusterName, String systemStoreName) {
     long oldestHeartbeatTimestamp = Long.MAX_VALUE;
-    String staleRegion = "";
     for (Map.Entry<String, ControllerClient> entry: getControllerClientMap(clusterName).entrySet()) {
       long timestamp = entry.getValue().getHeartbeatFromSystemStore(systemStoreName).getHeartbeatTimestamp();
       if (oldestHeartbeatTimestamp > timestamp) {
-        staleRegion = entry.getKey();
         oldestHeartbeatTimestamp = timestamp;
       }
     }
-    LOGGER.info(
-        "Got heartbeat: {} from system store: {}, most stale region: {}",
-        oldestHeartbeatTimestamp,
-        systemStoreName,
-        staleRegion);
     return oldestHeartbeatTimestamp;
   }
 
