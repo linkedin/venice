@@ -144,7 +144,6 @@ public class TestDeferredVersionSwap {
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
     storeParms.setTargetRegionSwapWaitTime(1);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
-    Set<String> targetRegionsList = RegionUtils.parseRegionsFilterList(targetRegions);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
@@ -483,7 +482,6 @@ public class TestDeferredVersionSwap {
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
     storeParms.setTargetRegionSwapWaitTime(1);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
-    Set<String> targetRegionsList = RegionUtils.parseRegionsFilterList(REGION1);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
@@ -557,7 +555,6 @@ public class TestDeferredVersionSwap {
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setStoreLifecycleHooks(lifecycleHooks);
     storeParms.setTargetRegionSwapWaitTime(1);
     String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
-    Set<String> targetRegionsList = RegionUtils.parseRegionsFilterList(REGION1);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
       createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
