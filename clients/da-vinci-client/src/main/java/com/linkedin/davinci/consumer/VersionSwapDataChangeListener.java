@@ -119,7 +119,8 @@ class VersionSwapDataChangeListener<K, V> implements StoreDataChangedListener {
                 storeName,
                 partitions,
                 attempt,
-                consumerName);
+                consumerName,
+                error);
             consumer.handleVersionSwapFailure(error);
           } else {
             LOGGER.error(
