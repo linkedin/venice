@@ -252,7 +252,7 @@
                     {"name": "targetSwapRegionWaitTime", "type": "int", "default": 60, "doc": "Controls how long to wait in minutes before swapping the version on the regions"},
                     {"name": "isDaVinciHeartBeatReported", "type": "boolean", "default": false, "doc": "Flag to indicate whether DVC is bootstrapping and sending heartbeats"},
                     {"name": "globalRtDivEnabled", "type":  "boolean", "default": false, "doc": "Flag to indicate whether the Global RT DIV feature is on. The DIV will be centralized in the ConsumptionTask, and leaders will periodically replicate the RT DIV to followers via VT."},
-                    {"name": "blobTransferInServerEnabled", "type": "boolean", "default": false, "doc": "Flag to indicate if the blob transfer is allowed or not in server"}
+                    {"name": "blobTransferInServerEnabled", "type": "string", "default": "NOT_SPECIFIED", "doc": "Flag to indicate if the blob transfer is allowed or not in server. Values can be 'NOT_SPECIFIED' as default, 'ENABLED', or 'DISABLED'."}
                   ]
                 }
               },
@@ -304,7 +304,7 @@
               },
               "default": []
             },
-            {"name": "blobTransferInServerEnabled", "type": "boolean", "default": false, "doc": "Flag to indicate if the blob transfer is allowed or not in server"}
+            {"name": "blobTransferInServerEnabled", "type": "string", "default": "NOT_SPECIFIED", "doc": "Flag to indicate if the blob transfer is allowed or not in server. Values can be 'NOT_SPECIFIED' as default, 'ENABLED', or 'DISABLED'."}
           ]
         }
       ],

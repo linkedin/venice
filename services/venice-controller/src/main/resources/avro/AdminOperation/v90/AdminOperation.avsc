@@ -727,9 +727,9 @@
             },
             {
               "name": "blobTransferInServerEnabled",
-              "doc": "Flag to indicate if the blob transfer is allowed or not in server",
-              "type": "boolean",
-              "default": false
+              "doc": "Flag to indicate if the blob transfer is allowed or not in server. Values can be 'NOT_SPECIFIED' as default, 'ENABLED', or 'DISABLED'.",
+              "type": "string",
+              "default": "NOT_SPECIFIED"
             }
           ]
         },
