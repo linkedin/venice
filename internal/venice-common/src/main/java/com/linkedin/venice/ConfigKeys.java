@@ -2176,11 +2176,11 @@ public class ConfigKeys {
       "offset.lag.delta.relax.factor.for.fast.online.transition.in.restart";
 
   /*
-   * This config will specify the heartbeat lag threshold to be used for heartbeat lag comparison in making partition
+   * This config will specify the time lag threshold to be used for time lag comparison in making partition
    * online faster. Default value is -1 meaning disabled.
    */
-  public static final String HEARTBEAT_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART =
-      "heartbeat.lag.threshold.for.fast.online.transition.in.restart";
+  public static final String TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART =
+      "time.lag.threshold.for.fast.online.transition.in.restart";
 
   /**
    * Enable offset collection for kafka topic partition from kafka consumer metrics.

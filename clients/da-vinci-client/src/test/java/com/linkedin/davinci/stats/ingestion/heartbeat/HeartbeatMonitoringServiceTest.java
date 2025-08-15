@@ -131,12 +131,12 @@ public class HeartbeatMonitoringServiceTest {
     lag = heartbeatMonitoringService.getReplicaLeaderMaxHeartbeatLag(pcs, store, version, true);
     Assert.assertEquals(lag, Long.MAX_VALUE);
     timestamp = heartbeatMonitoringService.getReplicaLeaderMinHeartbeatTimestamp(pcs, store, version, true);
-    Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_HEARTBEAT_TIMESTAMP);
+    Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
     // Replica not found in leader map.
     lag = heartbeatMonitoringService.getReplicaLeaderMaxHeartbeatLag(pcs, store, 2, true);
     Assert.assertEquals(lag, Long.MAX_VALUE);
     timestamp = heartbeatMonitoringService.getReplicaLeaderMinHeartbeatTimestamp(pcs, store, 2, true);
-    Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_HEARTBEAT_TIMESTAMP);
+    Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
 
     /**
      * Validating Follower Lag
@@ -173,12 +173,12 @@ public class HeartbeatMonitoringServiceTest {
     lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, version, true);
     Assert.assertEquals(lag, Long.MAX_VALUE);
     timestamp = heartbeatMonitoringService.getReplicaFollowerHeartbeatTimestamp(pcs, store, version, true);
-    Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_HEARTBEAT_TIMESTAMP);
+    Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
     // Replica not found in follower map.
     lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, 2, true);
     Assert.assertEquals(lag, Long.MAX_VALUE);
     timestamp = heartbeatMonitoringService.getReplicaFollowerHeartbeatTimestamp(pcs, store, 2, true);
-    Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_HEARTBEAT_TIMESTAMP);
+    Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
 
   }
 

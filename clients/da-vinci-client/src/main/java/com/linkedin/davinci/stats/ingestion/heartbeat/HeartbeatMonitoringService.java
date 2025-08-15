@@ -54,7 +54,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   public static final int DEFAULT_REPORTER_THREAD_SLEEP_INTERVAL_SECONDS = 60;
   public static final int DEFAULT_LAG_LOGGING_THREAD_SLEEP_INTERVAL_SECONDS = 60;
   public static final long DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS = TimeUnit.MINUTES.toMillis(10);
-  public static final long INVALID_HEARTBEAT_TIMESTAMP = 0;
+  public static final long INVALID_MESSAGE_TIMESTAMP = 0;
   public static final long INVALID_HEARTBEAT_LAG = Long.MAX_VALUE;
 
   private static final Logger LOGGER = LogManager.getLogger(HeartbeatMonitoringService.class);
@@ -392,7 +392,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   /**
    * Get minimum heartbeat timestamp from all regions (except separate RT regions) for a given LEADER replica.
-   * @return Min leader heartbeat timestamp, or {@link #INVALID_HEARTBEAT_TIMESTAMP} if any region's heartbeat is unknown.
+   * @return Min leader heartbeat timestamp, or {@link #INVALID_MESSAGE_TIMESTAMP} if any region's heartbeat is unknown.
    */
   public long getReplicaLeaderMinHeartbeatTimestamp(
       PartitionConsumptionState partitionConsumptionState,
@@ -404,7 +404,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     long lag =
         getReplicaLeaderMaxHeartbeatLag(partitionConsumptionState, storeName, version, shouldLogLag, currentTimestamp);
     if (lag == Long.MAX_VALUE) {
-      return INVALID_HEARTBEAT_TIMESTAMP;
+      return INVALID_MESSAGE_TIMESTAMP;
     } else {
       return currentTimestamp - lag;
     }
@@ -429,7 +429,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
 
   /**
    * Get heartbeat timestamp from local region for a given FOLLOWER replica.
-   * @return Follower heartbeat timestamp, or {@link #INVALID_HEARTBEAT_TIMESTAMP} if local region's heartbeat is unknown.
+   * @return Follower heartbeat timestamp, or {@link #INVALID_MESSAGE_TIMESTAMP} if local region's heartbeat is unknown.
    */
   public long getReplicaFollowerHeartbeatTimestamp(
       PartitionConsumptionState partitionConsumptionState,
@@ -440,7 +440,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
     long lag =
         getReplicaFollowerHeartbeatLag(partitionConsumptionState, storeName, version, shouldLogLag, currentTimestamp);
     if (lag == INVALID_HEARTBEAT_LAG) {
-      return INVALID_HEARTBEAT_TIMESTAMP;
+      return INVALID_MESSAGE_TIMESTAMP;
     }
     return currentTimestamp - lag;
   }

@@ -373,7 +373,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final boolean isDaVinciClient;
 
   private final boolean offsetLagDeltaRelaxEnabled;
-  private final boolean heartbeatLagRelaxEnabled;
+  private final boolean timeLagRelaxEnabled;
   private final boolean ingestionCheckpointDuringGracefulShutdownEnabled;
 
   protected boolean isDataRecovery;
@@ -593,7 +593,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isDaVinciClient = builder.isDaVinciClient();
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
-    this.heartbeatLagRelaxEnabled = serverConfig.getHeartbeatLagThresholdForFastOnlineTransitionInRestart() > 0;
+    this.timeLagRelaxEnabled = serverConfig.getTimeLagThresholdForFastOnlineTransitionInRestart() > 0;
     this.ingestionCheckpointDuringGracefulShutdownEnabled =
         serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled();
     this.metaStoreWriter = builder.getMetaStoreWriter();
@@ -1125,7 +1125,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * Measure the hybrid heartbeat timestamp for replica being tracked in `partitionConsumptionState`.
-   * If it is Da Vinci client, return {@link HeartbeatMonitoringService#INVALID_HEARTBEAT_TIMESTAMP} before it is implemented.
+   * If it is Da Vinci client, return {@link HeartbeatMonitoringService#INVALID_MESSAGE_TIMESTAMP} before it is implemented.
    */
   protected abstract long measureHybridHeartbeatTimestamp(
       PartitionConsumptionState partitionConsumptionState,
@@ -2173,7 +2173,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean isCompletedReport = checkFastReadyToServeForReplica(newPartitionConsumptionState);
       // Clear offset lag in metadata, it is only used in restart.
       newPartitionConsumptionState.getOffsetRecord()
-          .setHeartbeatTimestamp(HeartbeatMonitoringService.INVALID_HEARTBEAT_TIMESTAMP);
+          .setHeartbeatTimestamp(HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
       newPartitionConsumptionState.getOffsetRecord().setOffsetLag(OffsetRecord.DEFAULT_OFFSET_LAG);
       // This ready-to-serve check is acceptable in SIT thread as it happens before subscription.
       if (!isCompletedReport) {
@@ -4882,25 +4882,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  boolean checkFastReadyToServeWithPreviousHeartbeatLag(PartitionConsumptionState pcs) {
-    long previousHeartbeatTimestamp = pcs.getOffsetRecord().getHeartbeatTimestamp();
+  boolean checkFastReadyToServeWithPreviousTimeLag(PartitionConsumptionState pcs) {
+    long previousMessageTimestamp = pcs.getOffsetRecord().getHeartbeatTimestamp();
     long previousCheckpointTimestamp = pcs.getOffsetRecord().getLastCheckpointTimestamp();
     String replicaId = pcs.getReplicaId();
-    if (previousHeartbeatTimestamp == HeartbeatMonitoringService.INVALID_HEARTBEAT_TIMESTAMP) {
+    if (previousMessageTimestamp == HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP) {
       LOGGER.info(
           "Previous message timestamp is invalid for replica: {}, will fallback to regular ready-to-serve check path.",
           replicaId);
       return false;
     }
-    if (previousCheckpointTimestamp == HeartbeatMonitoringService.INVALID_HEARTBEAT_TIMESTAMP) {
+    if (previousCheckpointTimestamp == HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP) {
       LOGGER.info(
           "Previous checkpoint timestamp is invalid for replica: {}, will fallback to regular ready-to-serve check path.",
           replicaId);
       return false;
     }
-    long heartbeatRelaxThreshold = getServerConfig().getHeartbeatLagThresholdForFastOnlineTransitionInRestart();
-    long currentLag = System.currentTimeMillis() - previousHeartbeatTimestamp;
-    long previousLag = previousCheckpointTimestamp - previousHeartbeatTimestamp;
+    long heartbeatRelaxThreshold = getServerConfig().getTimeLagThresholdForFastOnlineTransitionInRestart();
+    long currentLag = System.currentTimeMillis() - previousMessageTimestamp;
+    long previousLag = previousCheckpointTimestamp - previousMessageTimestamp;
     if ((currentLag - previousLag) < heartbeatRelaxThreshold) {
       LOGGER.info(
           "Time lag increase since last server checkpoint: {} is within configured threshold: {}, will mark the replica ready-to-serve directly for replica: {}",
@@ -4966,12 +4966,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   boolean checkFastReadyToServeForReplica(PartitionConsumptionState pcs) {
     if (getHybridStoreConfig().isPresent() && pcs.getReadyToServeInOffsetRecord()) {
       /**
-       * If heartbeat lag relax check is enabled, we will only check heartbeat lag during restart.
-       * Otherwise, we will perform offset lag relax check. It will be fully deprecated when heartbeat lag is used
+       * If time lag relax check is enabled, we will only check heartbeat lag during restart.
+       * Otherwise, we will perform offset lag relax check. It will be fully deprecated when time lag is used
        * everywhere in ready-to-serve check.
        */
-      if (isHeartbeatLagRelaxEnabled() && getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
-        return checkFastReadyToServeWithPreviousHeartbeatLag(pcs);
+      if (isTimeLagRelaxEnabled() && getServerConfig().isUseHeartbeatLagForReadyToServeCheckEnabled()) {
+        return checkFastReadyToServeWithPreviousTimeLag(pcs);
       } else if (isOffsetLagDeltaRelaxEnabled()) {
         return checkFastReadyToServeWithPreviousOffsetLag(pcs);
       }
@@ -4987,8 +4987,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return partitionCount;
   }
 
-  boolean isHeartbeatLagRelaxEnabled() {
-    return heartbeatLagRelaxEnabled;
+  boolean isTimeLagRelaxEnabled() {
+    return timeLagRelaxEnabled;
   }
 
   boolean isOffsetLagDeltaRelaxEnabled() {
