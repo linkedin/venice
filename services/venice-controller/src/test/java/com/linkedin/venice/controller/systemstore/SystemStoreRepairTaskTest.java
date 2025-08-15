@@ -291,7 +291,7 @@ public class SystemStoreRepairTaskTest {
   public void testRepairSystemStore() {
     String clusterName = "test-cluster";
     SystemStoreRepairTask systemStoreRepairTask = mock(SystemStoreRepairTask.class);
-    doCallRealMethod().when(systemStoreRepairTask).repairBadSystemStore(anyString(), anySet(), anyInt());
+    doCallRealMethod().when(systemStoreRepairTask).repairBadSystemStore(anyString(), anySet());
     doCallRealMethod().when(systemStoreRepairTask).pollSystemStorePushStatus(anyString(), anyMap(), anySet(), anyInt());
     doReturn(true).when(systemStoreRepairTask).shouldContinue(anyString());
     doCallRealMethod().when(systemStoreRepairTask).periodicCheckTask(anyString(), anyInt(), anyInt(), any());
@@ -322,27 +322,27 @@ public class SystemStoreRepairTaskTest {
     when(parentHelixAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(systemStore, 5)))
         .thenReturn(midPushStatus)
         .thenReturn(errorPushStatus);
-    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet, 1);
+    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet);
     Assert.assertFalse(unhealthySystemStoreSet.isEmpty());
 
     // Push Timeout.
     when(parentHelixAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(systemStore, 5)))
         .thenReturn(midPushStatus);
-    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet, 1);
+    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet);
     Assert.assertFalse(unhealthySystemStoreSet.isEmpty());
 
     // Push Completed.
     when(parentHelixAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(systemStore, 5)))
         .thenReturn(midPushStatus)
         .thenReturn(goodPushStatus);
-    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet, 1);
+    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet);
     Assert.assertTrue(unhealthySystemStoreSet.isEmpty());
 
     // Poll throws exception, should be caught inside.
     unhealthySystemStoreSet.add(systemStore);
     doThrow(VeniceException.class).when(parentHelixAdmin)
         .getOffLinePushStatus(clusterName, Version.composeKafkaTopic(systemStore, 5));
-    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet, 1);
+    systemStoreRepairTask.repairBadSystemStore(clusterName, unhealthySystemStoreSet);
     Assert.assertFalse(unhealthySystemStoreSet.isEmpty());
 
   }

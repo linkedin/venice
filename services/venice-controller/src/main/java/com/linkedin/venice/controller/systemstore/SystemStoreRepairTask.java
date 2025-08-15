@@ -32,8 +32,7 @@ import org.apache.logging.log4j.Logger;
  * It will perform the following action for each system store of each cluster:
  * 1. Check system store is created.
  * 2. Send heartbeat to system store and check if heartbeat is received after certain wait period.
- * 3. If system store failed any of the check in (1) / (2), it will try to run empty push to repair the system store,
- * until maximum retry of repair is reached.
+ * 3. If system store failed any of the check in (1) / (2), it will try to run empty push to repair the system store.
  * It will emit metrics to indicate bad system store counts per cluster and how many stores are not fixable by the task.
  */
 public class SystemStoreRepairTask implements Runnable {
@@ -47,7 +46,6 @@ public class SystemStoreRepairTask implements Runnable {
 
   private final int heartbeatWaitTimeInSeconds;
   private final int versionRefreshThresholdInDays;
-  private final int maxRepairRetry;
   private final VeniceParentHelixAdmin parentAdmin;
   private final AtomicBoolean isRunning;
   private final Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap;
@@ -55,13 +53,11 @@ public class SystemStoreRepairTask implements Runnable {
   public SystemStoreRepairTask(
       VeniceParentHelixAdmin parentAdmin,
       Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap,
-      int maxRepairRetry,
       int heartbeatWaitTimeInSeconds,
       int versionRefreshThresholdInDays,
       AtomicBoolean isRunning) {
     this.parentAdmin = parentAdmin;
     this.clusterToSystemStoreHealthCheckStatsMap = clusterToSystemStoreHealthCheckStatsMap;
-    this.maxRepairRetry = maxRepairRetry;
     this.heartbeatWaitTimeInSeconds = heartbeatWaitTimeInSeconds;
     this.versionRefreshThresholdInDays = versionRefreshThresholdInDays;
     this.isRunning = isRunning;
@@ -84,37 +80,35 @@ public class SystemStoreRepairTask implements Runnable {
           unreachableSystemStoreSet,
           systemStoreToHeartbeatTimestampMap);
       // Try repair all bad system stores.
-      repairBadSystemStore(clusterName, unhealthySystemStoreSet, getMaxRepairRetry());
+      repairBadSystemStore(clusterName, unhealthySystemStoreSet);
     }
   }
 
-  void repairBadSystemStore(String clusterName, Set<String> unhealthySystemStoreSet, int maxRepairRetry) {
-    for (int i = 0; i < maxRepairRetry; i++) {
-      Map<String, Integer> systemStoreToRepairJobVersionMap = new HashMap<>();
-      for (String systemStoreName: unhealthySystemStoreSet) {
-        if (!shouldContinue(clusterName)) {
-          return;
-        }
-        String pushJobId = SYSTEM_STORE_REPAIR_JOB_PREFIX + System.currentTimeMillis();
-        try {
-          Version version = getNewSystemStoreVersion(clusterName, systemStoreName, pushJobId);
-          systemStoreToRepairJobVersionMap.put(systemStoreName, version.getNumber());
-          LOGGER.info(
-              "Kick off an repair empty push job for store: {} in cluster: {} with expected version number: {}",
-              systemStoreName,
-              clusterName,
-              version.getNumber());
-        } catch (Exception e) {
-          LOGGER.warn("Unable to run empty push job for store: {} in cluster: {}", systemStoreName, clusterName, e);
-        }
+  void repairBadSystemStore(String clusterName, Set<String> unhealthySystemStoreSet) {
+    Map<String, Integer> systemStoreToRepairJobVersionMap = new HashMap<>();
+    for (String systemStoreName: unhealthySystemStoreSet) {
+      if (!shouldContinue(clusterName)) {
+        return;
       }
-      // After sending all repair request, periodically poll the push status until terminal status or timeout.
-      pollSystemStorePushStatus(
-          clusterName,
-          systemStoreToRepairJobVersionMap,
-          unhealthySystemStoreSet,
-          getRepairJobCheckTimeoutInSeconds());
+      String pushJobId = SYSTEM_STORE_REPAIR_JOB_PREFIX + System.currentTimeMillis();
+      try {
+        Version version = getNewSystemStoreVersion(clusterName, systemStoreName, pushJobId);
+        systemStoreToRepairJobVersionMap.put(systemStoreName, version.getNumber());
+        LOGGER.info(
+            "Kick off an repair empty push job for store: {} in cluster: {} with expected version number: {}",
+            systemStoreName,
+            clusterName,
+            version.getNumber());
+      } catch (Exception e) {
+        LOGGER.warn("Unable to run empty push job for store: {} in cluster: {}", systemStoreName, clusterName, e);
+      }
     }
+    // After sending all repair request, periodically poll the push status until terminal status or timeout.
+    pollSystemStorePushStatus(
+        clusterName,
+        systemStoreToRepairJobVersionMap,
+        unhealthySystemStoreSet,
+        getRepairJobCheckTimeoutInSeconds());
     // After repairing system stores, update stats again.
     updateBadSystemStoreCount(clusterName, unhealthySystemStoreSet);
     updateNotRepairableSystemStoreCount(clusterName, unhealthySystemStoreSet);
@@ -448,10 +442,6 @@ public class SystemStoreRepairTask implements Runnable {
 
   VeniceParentHelixAdmin getParentAdmin() {
     return parentAdmin;
-  }
-
-  int getMaxRepairRetry() {
-    return maxRepairRetry;
   }
 
   Version getNewSystemStoreVersion(String clusterName, String systemStoreName, String pushJobId) {
