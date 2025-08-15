@@ -1471,7 +1471,7 @@ public class VenicePushJobTest {
       if (VersionStatus.PARTIALLY_ONLINE.equals(versionStatus)) {
         Assert.assertEquals(
             e.getMessage(),
-            "Version 1 is only partially online in some regions. Check nuage to see which regions are not serving the new version");
+            "Version 1 is only partially online in some regions. Check nuage to see which regions are not serving the latest version");
       } else {
         Assert.assertEquals(
             e.getMessage(),
