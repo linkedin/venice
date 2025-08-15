@@ -234,6 +234,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setMaxRecordSizeBytes(store.getMaxRecordSizeBytes());
     setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     setBlobTransferEnabled(store.isBlobTransferEnabled());
+    setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
     setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
     setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
     setTargetSwapRegion(store.getTargetSwapRegion());
@@ -950,6 +951,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public boolean isBlobTransferEnabled() {
     return this.storeProperties.blobTransferEnabled;
+  }
+
+  @Override
+  public void setBlobTransferInServerEnabled(String blobTransferServerEnabled) {
+    this.storeProperties.blobTransferInServerEnabled = blobTransferServerEnabled;
+  }
+
+  @Override
+  public String getBlobTransferInServerEnabled() {
+    return this.storeProperties.blobTransferInServerEnabled.toString();
   }
 
   @Override

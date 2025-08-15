@@ -8,6 +8,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_ENABLED;
@@ -153,6 +154,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
             .setStorageNodeReadQuotaEnabled(srcStore.isStorageNodeReadQuotaEnabled())
             .setBlobTransferEnabled(srcStore.isBlobTransferEnabled())
+            .setBlobTransferInServerEnabled(srcStore.getBlobTransferInServerEnabled())
             .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
@@ -773,6 +775,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getBlobTransferEnabled() {
     return getBoolean(BLOB_TRANSFER_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setBlobTransferInServerEnabled(String blobTransferInServerEnabled) {
+    return putString(BLOB_TRANSFER_IN_SERVER_ENABLED, blobTransferInServerEnabled);
+  }
+
+  public Optional<String> getBlobTransferInServerEnabled() {
+    return getString(BLOB_TRANSFER_IN_SERVER_ENABLED);
   }
 
   public UpdateStoreQueryParams setNearlineProducerCompressionEnabled(boolean compressionEnabled) {

@@ -55,6 +55,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.utils.BlobTransferCommonUtils.BlobTransferInServerConfigType;
 import com.linkedin.venice.utils.CollectionUtils;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -503,6 +504,10 @@ public class AdminExecutionTask implements Callable<Void> {
         .setMigrationDuplicateStore(message.migrationDuplicateStore)
         .setLatestSupersetSchemaId(message.latestSuperSetValueSchemaId)
         .setBlobTransferEnabled(message.blobTransferEnabled)
+        .setBlobTransferInServerEnabled(
+            message.blobTransferInServerEnabled == null
+                ? BlobTransferInServerConfigType.NOT_SPECIFIED.name()
+                : message.blobTransferInServerEnabled.toString())
         .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
         .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)

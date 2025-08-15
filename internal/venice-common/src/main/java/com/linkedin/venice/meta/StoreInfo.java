@@ -5,6 +5,7 @@ import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.utils.BlobTransferCommonUtils.BlobTransferInServerConfigType;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -79,6 +80,7 @@ public class StoreInfo {
     storeInfo.setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
+    storeInfo.setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
     storeInfo.setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
     storeInfo.setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
     storeInfo.setTargetRegionSwap(store.getTargetSwapRegion());
@@ -354,6 +356,7 @@ public class StoreInfo {
   private boolean unusedSchemaDeletionEnabled;
 
   private boolean blobTransferEnabled;
+  private String blobTransferInServerEnable = BlobTransferInServerConfigType.NOT_SPECIFIED.name();
 
   private boolean nearlineProducerCompressionEnabled;
   private int nearlineProducerCountPerWriter;
@@ -879,6 +882,14 @@ public class StoreInfo {
 
   public boolean isBlobTransferEnabled() {
     return this.blobTransferEnabled;
+  }
+
+  public void setBlobTransferInServerEnabled(String blobTransferInServerEnable) {
+    this.blobTransferInServerEnable = blobTransferInServerEnable;
+  }
+
+  public String getBlobTransferInServerEnabled() {
+    return this.blobTransferInServerEnable;
   }
 
   public boolean isNearlineProducerCompressionEnabled() {

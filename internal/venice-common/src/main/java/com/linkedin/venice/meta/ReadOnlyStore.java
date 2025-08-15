@@ -519,6 +519,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public String getBlobTransferInServerEnabled() {
+      return this.delegate.getBlobTransferInServerEnabled();
+    }
+
+    @Override
+    public void setBlobTransferInServerEnabled(String blobTransferInServerEnabled) {
+      throw new UnsupportedOperationException("Blob transfer in server not supported");
+    }
+
+    @Override
     public boolean isUseVersionLevelIncrementalPushEnabled() {
       return this.delegate.isUseVersionLevelIncrementalPushEnabled();
     }
@@ -986,6 +996,7 @@ public class ReadOnlyStore implements Store {
     storeProperties.setSystemStores(convertSystemStores(getSystemStores()));
     storeProperties.setStorageNodeReadQuotaEnabled(isStorageNodeReadQuotaEnabled());
     storeProperties.setBlobTransferEnabled(isBlobTransferEnabled());
+    storeProperties.setBlobTransferInServerEnabled(getBlobTransferInServerEnabled());
     storeProperties.setNearlineProducerCompressionEnabled(isNearlineProducerCompressionEnabled());
     storeProperties.setNearlineProducerCountPerWriter(getNearlineProducerCountPerWriter());
     storeProperties.setTargetSwapRegion(getTargetSwapRegion());
@@ -1575,6 +1586,16 @@ public class ReadOnlyStore implements Store {
   @Override
   public boolean isBlobTransferEnabled() {
     return this.delegate.isBlobTransferEnabled();
+  }
+
+  @Override
+  public void setBlobTransferInServerEnabled(String blobTransferInServerEnabled) {
+    throw new UnsupportedOperationException("Blob transfer server not supported");
+  }
+
+  @Override
+  public String getBlobTransferInServerEnabled() {
+    return this.delegate.getBlobTransferInServerEnabled();
   }
 
   @Override

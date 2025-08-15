@@ -255,6 +255,7 @@ public class RecoverStoreMetadata {
             .setMaxRecordSizeBytes(deletedStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(deletedStore.getMaxNearlineRecordSizeBytes())
             .setBlobTransferEnabled(deletedStore.isBlobTransferEnabled())
+            .setBlobTransferInServerEnabled(deletedStore.getBlobTransferInServerEnabled())
             .setTargetRegionSwap(deletedStore.getTargetSwapRegion())
             .setTargetRegionSwapWaitTime(deletedStore.getTargetSwapRegionWaitTime())
             .setIsDavinciHeartbeatReported(deletedStore.getIsDavinciHeartbeatReported())
