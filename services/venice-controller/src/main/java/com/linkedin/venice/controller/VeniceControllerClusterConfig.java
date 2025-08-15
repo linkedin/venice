@@ -35,6 +35,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SY
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED;
@@ -636,6 +637,8 @@ public class VeniceControllerClusterConfig {
   private final int storeMigrationThreadPoolSize;
   private final int storeMigrationMaxRetryAttempts;
 
+  private final boolean backupVersionReplicaReductionEnabled;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
     this.clusterName = props.getString(CLUSTER_NAME);
@@ -1198,6 +1201,8 @@ public class VeniceControllerClusterConfig {
     this.isMultiTaskSchedulerServiceEnabled = props.getBoolean(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, false);
     this.storeMigrationThreadPoolSize = props.getInt(ConfigKeys.STORE_MIGRATION_THREAD_POOL_SIZE, 1);
     this.storeMigrationMaxRetryAttempts = props.getInt(ConfigKeys.STORE_MIGRATION_MAX_RETRY_ATTEMPTS, 3);
+    this.backupVersionReplicaReductionEnabled =
+        props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, true);
   }
 
   public VeniceProperties getProps() {
@@ -1516,6 +1521,10 @@ public class VeniceControllerClusterConfig {
 
   public int getDaVinciPushStatusScanMaxOfflineInstanceCount() {
     return daVinciPushStatusScanMaxOfflineInstanceCount;
+  }
+
+  public boolean isBackupVersionReplicaReductionEnabled() {
+    return backupVersionReplicaReductionEnabled;
   }
 
   public double getDaVinciPushStatusScanMaxOfflineInstanceRatio() {
