@@ -54,7 +54,7 @@ public class HeartbeatMonitoringService extends AbstractVeniceService {
   public static final int DEFAULT_REPORTER_THREAD_SLEEP_INTERVAL_SECONDS = 60;
   public static final int DEFAULT_LAG_LOGGING_THREAD_SLEEP_INTERVAL_SECONDS = 60;
   public static final long DEFAULT_STALE_HEARTBEAT_LOG_THRESHOLD_MILLIS = TimeUnit.MINUTES.toMillis(10);
-  public static final long INVALID_MESSAGE_TIMESTAMP = 0;
+  public static final long INVALID_MESSAGE_TIMESTAMP = -1;
   public static final long INVALID_HEARTBEAT_LAG = Long.MAX_VALUE;
 
   private static final Logger LOGGER = LogManager.getLogger(HeartbeatMonitoringService.class);
