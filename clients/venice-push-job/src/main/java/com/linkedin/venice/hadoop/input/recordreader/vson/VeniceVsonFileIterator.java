@@ -47,8 +47,8 @@ public class VeniceVsonFileIterator implements VeniceRecordIterator {
   }
 
   @Override
-  public long getTimeStamp() {
-    return recordReader.getRecordTimestamp(currentKey, currentValue);
+  public byte[] getCurrentRmd() {
+    return recordReader.getRmdBytes(currentKey, currentValue);
   }
 
   @Override

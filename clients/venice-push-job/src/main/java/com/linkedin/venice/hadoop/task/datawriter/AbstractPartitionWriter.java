@@ -19,7 +19,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TELEMETRY_MESSAGE_I
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_DIR;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_SCHEMA_ID_PROP;
-import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
@@ -43,7 +42,6 @@ import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
-import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -93,10 +91,39 @@ import org.apache.logging.log4j.Logger;
 public abstract class AbstractPartitionWriter extends AbstractDataWriterTask implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(AbstractPartitionWriter.class);
 
+  /*
+   * A model class to hold multiple attributes passed from the reducers of VPJ to the writer class. Ideally, we can extract
+   * this class even higher and use it higher up in the call chain to avoid leaking spark abstractions into the code
+   * through vanilla spark rows. However, that is tabled for a separate refactoring effort.
+   */
+  public static class VeniceRecordWithMetadata {
+    private final byte[] key;
+    private final byte[] value;
+
+    private final byte[] rmd;
+
+    public VeniceRecordWithMetadata(byte[] key, byte[] value, byte[] rmd) {
+      this.key = key;
+      this.value = value;
+      this.rmd = rmd;
+    }
+
+    public byte[] getKey() {
+      return key;
+    }
+
+    public byte[] getValue() {
+      return value;
+    }
+
+    public byte[] getRmd() {
+      return rmd;
+    }
+  }
+
   public static class VeniceWriterMessage {
     private final byte[] keyBytes;
     private final byte[] valueBytes;
-    private final long logicalTimestamp;
     private final int valueSchemaId;
     private final int rmdVersionId;
     private final Consumer<AbstractVeniceWriter<byte[], byte[], byte[]>> consumer;
@@ -108,35 +135,22 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         PubSubProducerCallback callback,
         boolean enableWriteCompute,
         int derivedValueSchemaId) {
-      this(
-          keyBytes,
-          valueBytes,
-          APP_DEFAULT_LOGICAL_TS,
-          valueSchemaId,
-          -1,
-          null,
-          callback,
-          enableWriteCompute,
-          null,
-          derivedValueSchemaId);
+      this(keyBytes, valueBytes, valueSchemaId, -1, null, callback, enableWriteCompute, derivedValueSchemaId);
     }
 
     public VeniceWriterMessage(
         byte[] keyBytes,
         byte[] valueBytes,
-        long logicalTimestamp,
         int valueSchemaId,
         int rmdVersionId,
         ByteBuffer rmdPayload,
         PubSubProducerCallback callback,
         boolean enableWriteCompute,
-        Schema rmdSchema,
         int derivedValueSchemaId) {
       this.keyBytes = keyBytes;
       this.valueBytes = valueBytes;
       this.valueSchemaId = valueSchemaId;
       this.rmdVersionId = rmdVersionId;
-      this.logicalTimestamp = logicalTimestamp;
       this.consumer = writer -> {
         if (rmdPayload != null) {
           if (rmdPayload.remaining() == 0) {
@@ -152,14 +166,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
         } else if (enableWriteCompute && derivedValueSchemaId > 0) {
           writer.update(keyBytes, valueBytes, valueSchemaId, derivedValueSchemaId, callback);
         } else {
-          if (this.logicalTimestamp > 0) {
-            PutMetadata putMetadata = new PutMetadata(
-                rmdVersionId,
-                RmdSchemaGenerator.generateRecordLevelTimestampMetadata(rmdSchema, this.logicalTimestamp));
-            writer.put(keyBytes, valueBytes, valueSchemaId, this.logicalTimestamp, callback, putMetadata);
-          } else {
-            writer.put(keyBytes, valueBytes, valueSchemaId, callback, null);
-          }
+          writer.put(keyBytes, valueBytes, valueSchemaId, callback, null);
         }
       };
     }
@@ -240,10 +247,13 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
    */
   private final ScheduledExecutorService taskProgressHeartbeatScheduler = Executors.newScheduledThreadPool(1);
 
+  public VeniceRecordWithMetadata createVeniceValueRecord(byte[] keyBytes, byte[] valueBytes, byte[] rmdBytes) {
+    return new VeniceRecordWithMetadata(keyBytes, valueBytes, rmdBytes);
+  }
+
   public void processValuesForKey(
       byte[] key,
-      Iterator<byte[]> values,
-      Iterator<Long> timestampIterator,
+      Iterator<VeniceRecordWithMetadata> values,
       DataWriterTaskTracker dataWriterTaskTracker) {
     this.dataWriterTaskTracker = dataWriterTaskTracker;
     final long timeOfLastReduceFunctionStartInNS = System.nanoTime();
@@ -253,7 +263,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
           (timeOfLastReduceFunctionStartInNS - timeOfLastReduceFunctionEndInNS);
     }
     if (key.length > 0 && (!hasReportedFailure(dataWriterTaskTracker, this.isDuplicateKeyAllowed))) {
-      VeniceWriterMessage message = extract(key, values, timestampIterator, rmdSchema, dataWriterTaskTracker);
+      VeniceWriterMessage message = extract(key, values, dataWriterTaskTracker);
       if (message != null) {
         try {
           sendMessageToKafka(dataWriterTaskTracker, message.getConsumer());
@@ -299,11 +309,13 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     return enableWriteCompute;
   }
 
+  protected Schema getRmdSchema() {
+    return rmdSchema;
+  }
+
   protected VeniceWriterMessage extract(
       byte[] keyBytes,
-      Iterator<byte[]> values,
-      Iterator<Long> timestampIterator,
-      Schema valueSchema,
+      Iterator<VeniceRecordWithMetadata> values,
       DataWriterTaskTracker dataWriterTaskTracker) {
     /**
      * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
@@ -311,11 +323,11 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     if (!values.hasNext()) {
       throw new VeniceException("There is no value corresponding to key bytes: " + ByteUtils.toHexString(keyBytes));
     }
-    byte[] valueBytes = values.next();
-    long timestamp = -1L;
-    if (timestampIterator.hasNext()) {
-      timestamp = timestampIterator.next();
-    }
+
+    VeniceRecordWithMetadata valueRecord = values.next();
+    byte[] valueBytes = valueRecord.getValue();
+    ByteBuffer rmd = valueRecord.getRmd() == null ? null : ByteBuffer.wrap(valueRecord.getRmd());
+
     if (duplicateKeyPrinter == null) {
       throw new VeniceException("'DuplicateKeyPrinter' is not initialized properly");
     }
@@ -324,13 +336,11 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
     return new VeniceWriterMessage(
         keyBytes,
         valueBytes,
-        timestamp,
         valueSchemaId,
         -1,
-        null,
+        rmd,
         getCallback(),
         isEnableWriteCompute(),
-        valueSchema,
         getDerivedValueSchemaId());
   }
 
@@ -786,7 +796,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
 
     protected void detectAndHandleDuplicateKeys(
         byte[] valueBytes,
-        Iterator<byte[]> values,
+        Iterator<VeniceRecordWithMetadata> values,
         DataWriterTaskTracker dataWriterTaskTracker) {
       if (numOfDupKey > MAX_NUM_OF_LOG) {
         return;
@@ -796,7 +806,7 @@ public abstract class AbstractPartitionWriter extends AbstractDataWriterTask imp
       int identicalValuesToKeyCount = 0;
 
       while (values.hasNext()) {
-        if (Arrays.equals(values.next(), valueBytes)) {
+        if (Arrays.equals(values.next().getValue(), valueBytes)) {
           // Identical values map to the same key. E.g. key:[ value_1, value_1]
           identicalValuesToKeyCount++;
           if (shouldPrint) {

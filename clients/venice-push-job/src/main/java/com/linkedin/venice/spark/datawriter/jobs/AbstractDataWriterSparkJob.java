@@ -37,6 +37,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TIMESTAMP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_DIR;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_ID_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_SCHEMA_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_KEY_PASSWORD_PROPERTY_NAME;
@@ -221,6 +222,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     } else {
       jobConf.set(VALUE_SCHEMA_ID_PROP, pushJobSetting.valueSchemaId);
       jobConf.set(DERIVED_SCHEMA_ID_PROP, pushJobSetting.derivedSchemaId);
+      jobConf.set(RMD_SCHEMA_ID_PROP, pushJobSetting.rmdSchemaId);
     }
     jobConf.set(ENABLE_WRITE_COMPUTE, pushJobSetting.enableWriteCompute);
     if (pushJobSetting.replicationMetadataSchemaString != null) {

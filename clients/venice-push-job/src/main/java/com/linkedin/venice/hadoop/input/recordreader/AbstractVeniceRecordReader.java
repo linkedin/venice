@@ -12,11 +12,16 @@ import org.apache.avro.Schema;
  * @param <INPUT_VALUE> The format of the value as controlled by the input format
  */
 public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
+  public static final byte[] EMPTY_RMD_BYTES = new byte[0];
   private Schema keySchema;
   private Schema valueSchema;
 
+  private Schema rmdSchema;
+
   private RecordSerializer<Object> keySerializer;
   private RecordSerializer<Object> valueSerializer;
+
+  private RecordSerializer<Object> rmdSerializer;
 
   public Schema getKeySchema() {
     return keySchema;
@@ -26,14 +31,28 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
     return valueSchema;
   }
 
+  public Schema getRmdSchema() {
+    return rmdSchema;
+  }
+
+  Schema getDefaultRmdSchema() {
+    return Schema.create(Schema.Type.BYTES);
+  }
+
   /**
    * Configure the record serializers
    */
   protected void configure(Schema keySchema, Schema valueSchema) {
+    configure(keySchema, valueSchema, getDefaultRmdSchema());
+  }
+
+  protected void configure(Schema keySchema, Schema valueSchema, Schema rmdSchema) {
     this.keySchema = keySchema;
     this.valueSchema = valueSchema;
+    this.rmdSchema = rmdSchema;
     keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema);
     valueSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(valueSchema);
+    rmdSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(rmdSchema);
   }
 
   /**
@@ -46,7 +65,7 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
    */
   public abstract Object getAvroValue(INPUT_KEY inputKey, INPUT_VALUE inputValue);
 
-  public abstract Long getRecordTimestamp(INPUT_KEY inputKey, INPUT_VALUE inputValue);
+  public abstract Object getRmdValue(INPUT_KEY inputKey, INPUT_VALUE inputValue);
 
   /**
    * Return a serialized output key
@@ -80,5 +99,19 @@ public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> {
     }
 
     return valueSerializer.serialize(avroValue);
+  }
+
+  public byte[] getRmdBytes(INPUT_KEY inputKey, INPUT_VALUE inputValue) {
+    if (rmdSerializer == null) {
+      return null;
+    }
+
+    Object rmdValue = getRmdValue(inputKey, inputValue);
+
+    if (rmdValue == null) {
+      return null;
+    }
+
+    return rmdSerializer.serialize(rmdValue);
   }
 }

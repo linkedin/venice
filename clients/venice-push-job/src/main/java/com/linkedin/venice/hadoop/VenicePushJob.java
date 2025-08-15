@@ -64,6 +64,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_START_TI
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_EPOCH_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_ETL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SOURCE_GRID_FABRIC;
@@ -74,7 +75,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUS
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TEMP_DIR_PREFIX;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UNCREATED_VERSION_NUMBER;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VENICE_DISCOVER_URL_PROP;
@@ -340,7 +340,7 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.jobServerName = props.getString(JOB_SERVER_NAME, "unknown_job_server");
     pushJobSettingToReturn.veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     pushJobSettingToReturn.enableSSL = props.getBoolean(ENABLE_SSL, DEFAULT_SSL_ENABLED);
-    pushJobSettingToReturn.timestampField = props.getOrDefault(TIMESTAMP_FIELD_PROP, "");
+    pushJobSettingToReturn.rmdField = props.getOrDefault(RMD_FIELD_PROP, "");
     if (pushJobSettingToReturn.enableSSL) {
       VPJSSLUtils.validateSslProperties(props);
     }
@@ -2066,13 +2066,28 @@ public class VenicePushJob implements AutoCloseable {
     if (replicationSchemasResponse.isError()) {
       LOGGER.error("Failed to fetch replication metadata schemas!" + replicationSchemasResponse.getError());
     } else {
-      // We only need a single valid schema, so getting the first one is good enough.
       if (replicationSchemasResponse.getSchemas() != null && replicationSchemasResponse.getSchemas().length > 0) {
-        pushJobSetting.replicationMetadataSchemaString = replicationSchemasResponse.getSchemas()[0].getSchemaStr();
-        LOGGER.info(
-            "Retrieved and using schema with id: {}, and string: {}",
-            replicationSchemasResponse.getSchemas()[0].getId(),
-            pushJobSetting.replicationMetadataSchemaString);
+        boolean foundRmdSchema = false;
+        for (MultiSchemaResponse.Schema schema: replicationSchemasResponse.getSchemas()) {
+          if (schema.getRmdValueSchemaId() == pushJobSetting.valueSchemaId
+              && schema.getId() > pushJobSetting.rmdSchemaId) {
+            pushJobSetting.rmdSchemaId = schema.getId();
+            pushJobSetting.replicationMetadataSchemaString = schema.getSchemaStr();
+            foundRmdSchema = true;
+          }
+        }
+
+        if (foundRmdSchema) {
+          LOGGER.info(
+              "Retrieved and using schema with id: {}, and string: {}",
+              pushJobSetting.rmdSchemaId,
+              pushJobSetting.replicationMetadataSchemaString);
+        } else {
+          LOGGER.info(
+              "No replication schema found for value schema id: {} in store: {}",
+              pushJobSetting.valueSchemaId,
+              setting.storeName);
+        }
       } else {
         LOGGER.info("No replication schemas associated with the store!");
       }
@@ -2096,7 +2111,7 @@ public class VenicePushJob implements AutoCloseable {
       return;
     }
     // Also allow batch push that will provide the row level timestamp field (compatible with TTL re-push)
-    if (setting.timestampField != null && !setting.timestampField.isEmpty()) {
+    if (setting.rmdField != null && !setting.rmdField.isEmpty()) {
       return;
     }
     StoreResponse storeResponse = ControllerClient
