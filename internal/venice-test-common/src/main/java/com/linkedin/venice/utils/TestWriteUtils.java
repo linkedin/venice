@@ -4,7 +4,7 @@ import static com.linkedin.venice.ConfigKeys.MULTI_REGION;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_TIMESTAMP_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.INPUT_PATH_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_INPUT_FILE_DATA_SIZE;
@@ -152,13 +152,13 @@ public class TestWriteUtils {
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA).setValueSchema(STRING_SCHEMA).build();
   public static final Schema STRING_TO_STRING_WITH_TIMESTAMP = new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
       .setValueSchema(STRING_SCHEMA)
-      .setFieldSchema(DEFAULT_TIMESTAMP_FIELD_PROP, Schema.create(Schema.Type.LONG))
+      .setFieldSchema(DEFAULT_RMD_FIELD_PROP, Schema.create(Schema.Type.BYTES))
       .build();
 
   public static final Schema STRING_TO_NAME_WITH_TIMESTAMP_RECORD_V1_SCHEMA =
       new PushInputSchemaBuilder().setKeySchema(STRING_SCHEMA)
           .setValueSchema(NAME_RECORD_V1_SCHEMA)
-          .setFieldSchema(DEFAULT_TIMESTAMP_FIELD_PROP, Schema.create(Schema.Type.LONG))
+          .setFieldSchema(DEFAULT_RMD_FIELD_PROP, Schema.create(Schema.Type.BYTES))
           .build();
 
   public static final Schema STRING_TO_NAME_RECORD_V1_SCHEMA =
@@ -260,7 +260,7 @@ public class TestWriteUtils {
         GenericRecord user = new GenericData.Record(recordSchema);
         user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
         user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
-        user.put(DEFAULT_TIMESTAMP_FIELD_PROP, timestamp);
+        user.put(DEFAULT_RMD_FIELD_PROP, timestamp);
         writer.append(user);
       }
     });
