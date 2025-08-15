@@ -256,7 +256,7 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
     }
 
     List<Version> versions = store.getVersions();
-    if (!whetherStoreReadyToBeCleanup(store, defaultBackupVersionRetentionMs, time, currentVersion)) {
+    if (!whetherStoreReadyToBeCleanup(store, admin.getBackupVersionDefaultRetentionMs(), time, currentVersion)) {
       // not ready to clean up backup versions yet, update the backup version ideal state to use 2 replicas after
       // minimal delay
       if (multiClusterConfig.getControllerConfig(clusterName).isBackupVersionReplicaReductionEnabled()
