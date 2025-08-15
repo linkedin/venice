@@ -7194,8 +7194,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       return false;
     }
     idealState.setMinActiveReplicas(minReplica);
-    // helixAdminClient.rebalance(clusterName, resourceName, minReplica); need to call rebalance?
-
     helixAdminClient.updateIdealState(clusterName, resourceName, idealState);
     return true;
   }
