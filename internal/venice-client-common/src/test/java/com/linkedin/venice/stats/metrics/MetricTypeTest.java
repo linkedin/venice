@@ -1,11 +1,14 @@
 package com.linkedin.venice.stats.metrics;
 
+import static com.linkedin.venice.stats.metrics.MetricType.HISTOGRAM;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateExponentialHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateHistogramPointData;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointDataFromCounter;
 import static com.linkedin.venice.utils.OpenTelemetryDataPointTestUtils.validateLongPointDataFromGauge;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.VeniceMetricsConfig;
@@ -98,7 +101,7 @@ public class MetricTypeTest {
   public void testOTelRecordHistogram(boolean isExponentialHistogram) {
     MetricEntity metricEntityHistogram = new MetricEntity(
         "test_metric_hist",
-        isExponentialHistogram ? MetricType.HISTOGRAM : MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
+        isExponentialHistogram ? HISTOGRAM : MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS,
         MetricUnit.MILLISECOND,
         TEST_DESCRIPTION,
         getTestDimensions());
@@ -203,5 +206,25 @@ public class MetricTypeTest {
         getBaseAttributes(),
         "test_metric_async_gauge",
         METRIC_PREFIX);
+  }
+
+  @Test
+  public void testOTelRecordAsyncMetrics() {
+    for (MetricType metricType: MetricType.values()) {
+      switch (metricType) {
+        case HISTOGRAM:
+        case MIN_MAX_COUNT_SUM_AGGREGATIONS:
+        case COUNTER:
+        case GAUGE:
+          assertFalse(metricType.isAsyncMetric(), "MetricType " + metricType + " should not be async");
+          break;
+        case ASYNC_GAUGE:
+          assertTrue(metricType.isAsyncMetric(), "MetricType " + metricType + " should be async");
+          break;
+
+        default:
+          fail("Unknown MetricType " + metricType);
+      }
+    }
   }
 }

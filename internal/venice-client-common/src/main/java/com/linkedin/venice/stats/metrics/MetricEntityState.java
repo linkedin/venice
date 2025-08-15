@@ -101,12 +101,13 @@ public abstract class MetricEntityState {
   }
 
   /**
-   * Validates the tehuti metrics stats against the otel metric type for a given metric entity.
-   * If tehutiMetricStats contains AsyncGauge, then the metric type should be ASYNC_GAUGE and tehutiMetricStats
-   * should contain only one stat. If tehutiMetricStats does not contain AsyncGauge, then the metric type should not
-   * be ASYNC_GAUGE.
+   * Validates
+   * 1. whether an async callback is provided for an async metric
+   * 2. only when tehutiMetricStats contains AsyncGauge, the metric type should be ASYNC_GAUGE and tehutiMetricStats
+   *    should contain only one stat.
    *
    * @param tehutiMetricStats the tehuti metrics stats for the given metric entity.
+   * @param asyncCallback the async callback function to be used for async metrics.
    */
   private void validateMetric(List<MeasurableStat> tehutiMetricStats, LongSupplier asyncCallback) {
     if (asyncCallback != null && !metricEntity.getMetricType().isAsyncMetric()) {

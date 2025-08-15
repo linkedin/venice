@@ -20,7 +20,7 @@ import org.apache.commons.lang.Validate;
 public class MetricEntityStateBase extends MetricEntityState {
   private final Attributes attributes;
 
-  /** should not be called directly, call {@link #createAsyncMetric} instead */
+  /** should not be called directly, call {@link #create} instead */
   private MetricEntityStateBase(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,
@@ -47,7 +47,7 @@ public class MetricEntityStateBase extends MetricEntityState {
         asyncCallback);
   }
 
-  /** should not be called directly, call {@link #createAsyncMetric} instead */
+  /** should not be called directly, call {@link #create} instead */
   private MetricEntityStateBase(
       MetricEntity metricEntity,
       VeniceOpenTelemetryMetricsRepository otelRepository,

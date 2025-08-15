@@ -301,9 +301,10 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   /**
-   * Asynchronous gauge that will call the supplier during metrics collection.
+   * Asynchronous gauge that will call the callback during metrics collection.
    * This is useful for metrics that are not updated frequently or require expensive computation.
-   * For now, the attributes are passed in as a parameter while creating the gauge.
+   * For now, the attributes are passed in as a parameter while creating the gauge, ie, only
+   * {@link MetricEntityStateBase} is supported for now.
    */
   public ObservableLongGauge createAsyncGauge(
       MetricEntity metricEntity,
