@@ -7188,6 +7188,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     admin.rebalance(controllerClusterName, clusterName, controllerClusterReplica);
   }
 
+  public boolean updateIdealState(String clusterName, String resourceName, int minReplica) {
+    IdealState idealState = helixAdminClient.getResourceIdealState(clusterName, resourceName);
+    if (idealState == null || idealState.getMinActiveReplicas() == minReplica) {
+      return false;
+    }
+    idealState.setMinActiveReplicas(minReplica);
+    // helixAdminClient.rebalance(clusterName, resourceName, minReplica); need to call rebalance?
+
+    helixAdminClient.updateIdealState(clusterName, resourceName, idealState);
+    return true;
+  }
+
+  public IdealState getIdealState(String clusterName, String resourceName) {
+    return helixAdminClient.getResourceIdealState(clusterName, resourceName);
+  }
+
   private void throwStoreAlreadyExists(String clusterName, String storeName) {
     String errorMessage = "Store:" + storeName + " already exists. Can not add it to cluster:" + clusterName;
     LOGGER.error(errorMessage);
