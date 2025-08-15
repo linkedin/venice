@@ -71,7 +71,7 @@ public class TestSparkInputFromHdfs {
     config.put(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
     if (useRecordLevelTimestamp) {
       config.put(SCHEMA_STRING_PROP, AVRO_FILE_WITH_TIMESTAMPS_SCHEMA.toString());
-      config.put(TIMESTAMP_FIELD_PROP, "timestamp");
+      config.put(RMD_FIELD_PROP, "timestamp");
     } else {
       config.put(SCHEMA_STRING_PROP, AVRO_FILE_SCHEMA.toString());
     }
@@ -269,7 +269,7 @@ public class TestSparkInputFromHdfs {
         user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
         user.put(DEFAULT_VALUE_FIELD_PROP, DEFAULT_USER_DATA_VALUE_PREFIX + i);
         if (includeTimestamps) {
-          user.put(DEFAULT_TIMESTAMP_FIELD_PROP, timestamp);
+          user.put(DEFAULT_RMD_FIELD_PROP, timestamp);
         }
         dataFileWriter.append(user);
       }

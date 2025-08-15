@@ -5,8 +5,8 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.ETL_VALUE_SCHEMA_TR
 import static com.linkedin.venice.vpj.VenicePushJobConstants.EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.GENERATE_PARTIAL_UPDATE_RECORD_FROM_INPUT;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KEY_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SCHEMA_STRING_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.TIMESTAMP_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.UPDATE_SCHEMA_STRING_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.VALUE_FIELD_PROP;
 
@@ -47,7 +47,7 @@ public class VeniceAvroRecordReader extends AbstractAvroRecordReader<AvroWrapper
 
     String keyFieldStr = props.getString(KEY_FIELD_PROP);
     String valueFieldStr = props.getString(VALUE_FIELD_PROP);
-    String timestampFieldStr = props.getOrDefault(TIMESTAMP_FIELD_PROP, "");
+    String timestampFieldStr = props.getOrDefault(RMD_FIELD_PROP, "");
 
     ETLValueSchemaTransformation etlValueSchemaTransformation = ETLValueSchemaTransformation
         .valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name()));
