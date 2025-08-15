@@ -18,6 +18,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -42,6 +43,7 @@ import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.samza.config.Config;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemStream;
 import org.mockito.ArgumentCaptor;
@@ -309,5 +311,40 @@ public class VeniceSystemProducerTest {
     assertEquals(options.getProducerThreadCount(), 2);
     assertEquals(options.getProducerQueueSize(), 102400000);
     assertEquals(properties.getProperty(KAFKA_BUFFER_MEMORY), "10240");
+  }
+
+  @Test
+  public void testVeniceSystemProducerWithMixedD2ClientsF() {
+    // Create mock D2Client instance for primary controller only
+    D2Client mockPrimaryControllerColoD2Client = mock(D2Client.class);
+
+    // Create mock VeniceSystemFactory
+    VeniceSystemFactory veniceSystemFactory = new VeniceSystemFactory();
+
+    // Create VeniceSystemProducer with one provided D2Client and one null
+    VeniceSystemProducer producer = veniceSystemFactory.createSystemProducer(
+        null, // Will be created using ZK host
+        mockPrimaryControllerColoD2Client,
+        "primaryServiceName",
+        "testStore",
+        Version.PushType.STREAM,
+        "testJobId",
+        "testFabric",
+        false,
+        mock(Config.class),
+        Optional.empty(),
+        Optional.empty());
+
+    try {
+      producer.start();
+      // Verify that the provided D2Client instance is accessible
+      fail("Should throw IllegalStateException when starting with null D2Client");
+    } catch (IllegalStateException e) {
+      // Expected exception, as one D2Client is null
+      assertTrue(
+          e.getMessage().contains("Cannot create child colo D2Client: no D2Client provided and no ZK host available"));
+    } finally {
+      producer.stop();
+    }
   }
 }
