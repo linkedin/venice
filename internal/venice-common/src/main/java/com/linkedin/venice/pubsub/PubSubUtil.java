@@ -14,6 +14,7 @@ import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Base64;
 import java.util.Properties;
 
 
@@ -295,5 +296,13 @@ public final class PubSubUtil {
    */
   public static long calculateSeekOffset(long baseOffset, boolean isInclusive) {
     return isInclusive ? baseOffset : baseOffset + 1;
+  }
+
+  public static String getBase64EncodedString(byte[] byteBuffer) {
+    return byteBuffer != null ? Base64.getEncoder().encodeToString(byteBuffer) : null;
+  }
+
+  public static byte[] getBase64DecodedBytes(String bytesString) {
+    return Base64.getDecoder().decode(bytesString);
   }
 }

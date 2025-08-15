@@ -1,9 +1,9 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.consumer.AdminMetadata;
-import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
-import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.Pair;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -25,8 +25,6 @@ public abstract class AdminTopicMetadataAccessor {
   public static final String EXECUTION_ID_KEY = "executionId";
   public static final String ADMIN_OPERATION_PROTOCOL_VERSION_KEY = "adminOperationProtocolVersion";
   public static final Long UNDEFINED_VALUE = -1L;
-  public static final PubSubPositionWireFormat UNDEFINED_POSITION =
-      PubSubSymbolicPosition.EARLIEST.getPositionWireFormat();
 
   /**
    * @return a map with {@linkplain AdminTopicMetadataAccessor#OFFSET_KEY}, {@linkplain AdminTopicMetadataAccessor#UPSTREAM_OFFSET_KEY},
@@ -56,11 +54,8 @@ public abstract class AdminTopicMetadataAccessor {
     return new Pair<>(localOffset, upstreamOffset);
   }
 
-  public static Pair<PubSubPositionWireFormat, PubSubPositionWireFormat> getPositions(
-      Map<String, PubSubPositionWireFormat> metadata) {
-    PubSubPositionWireFormat localPosition = metadata.getOrDefault(POSITION_KEY, UNDEFINED_POSITION);
-    PubSubPositionWireFormat upstreamPosition = metadata.getOrDefault(UPSTREAM_POSITION_KEY, UNDEFINED_POSITION);
-    return new Pair<>(localPosition, upstreamPosition);
+  public static Pair<PubSubPosition, PubSubPosition> getPositions(AdminMetadata metadata) throws IOException {
+    return new Pair<>(metadata.getPosition(), metadata.getUpstreamPosition());
   }
 
   /**

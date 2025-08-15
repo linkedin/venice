@@ -96,7 +96,7 @@ public class TestZkAdminTopicMetadataAccessor {
     Map<String, Long> metadataDelta = new HashMap<>();
     metadataDelta.put("offset", newOffset);
     AdminMetadata v2MetadataDelta = AdminMetadata.fromLegacyMap(metadataDelta);
-    v2MetadataDelta.setUpstreamPosition(positionWf);
+    v2MetadataDelta.setPubSubUpstreamPositionJsonWireFormat(positionWf);
 
     String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
     String v2MetadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicV2MetadataNodePath(clusterName);
@@ -115,7 +115,7 @@ public class TestZkAdminTopicMetadataAccessor {
       Map<String, Long> updatedMetadata = AdminTopicMetadataAccessor
           .generateMetadataMap(Optional.of(newOffset), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
       AdminMetadata updatedV2Metadata = AdminMetadata.fromLegacyMap(updatedMetadata);
-      updatedV2Metadata.setUpstreamPosition(positionWf);
+      updatedV2Metadata.setPubSubUpstreamPositionJsonWireFormat(positionWf);
 
       // Verify that the metadata path got read 1 times
       verify(zkClient, times(1)).readData(eq(metadataPath), eq(readStat));
@@ -141,7 +141,7 @@ public class TestZkAdminTopicMetadataAccessor {
     Map<String, Long> currentMetadata = AdminTopicMetadataAccessor
         .generateMetadataMap(Optional.of(1L), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
     AdminMetadata currentV2Metadata = AdminMetadata.fromLegacyMap(currentMetadata);
-    currentV2Metadata.setPosition(positionWf);
+    currentV2Metadata.setPubSubPositionJsonWireFormat(positionWf);
 
     String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
     String v2MetadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicV2MetadataNodePath(clusterName);

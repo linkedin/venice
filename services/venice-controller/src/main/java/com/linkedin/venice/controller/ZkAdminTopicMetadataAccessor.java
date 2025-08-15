@@ -125,11 +125,11 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
       if (!metadata.getAdminOperationProtocolVersion().equals(UNDEFINED_VALUE)) {
         currentMetadata.setAdminOperationProtocolVersion(metadata.getAdminOperationProtocolVersion());
       }
-      if (metadata.getPosition() != null) {
-        currentMetadata.setPosition(metadata.getPosition());
+      if (metadata.getPubSubPositionJsonWireFormat() != null) {
+        currentMetadata.setPubSubPositionJsonWireFormat(metadata.getPubSubPositionJsonWireFormat());
       }
-      if (metadata.getUpstreamPosition() != null) {
-        currentMetadata.setUpstreamPosition(metadata.getUpstreamPosition());
+      if (metadata.getPubSubUpstreamPositionJsonWireFormat() != null) {
+        currentMetadata.setPubSubUpstreamPositionJsonWireFormat(metadata.getPubSubUpstreamPositionJsonWireFormat());
       }
 
       return currentMetadata;

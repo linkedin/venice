@@ -2,7 +2,7 @@ package com.linkedin.venice.controller.kafka.consumer;
 
 import static com.linkedin.venice.controller.AdminTopicMetadataAccessor.UNDEFINED_VALUE;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
@@ -10,6 +10,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
 import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import java.io.IOException;
 import java.util.HashMap;
@@ -48,8 +49,8 @@ public class TestAdminMetadata {
     AdminMetadata.PubSubPositionJsonWireFormat upstreamPositionJson =
         AdminMetadata.PubSubPositionJsonWireFormat.fromWireFormat(upstreamPositionWf);
 
-    originalMetadata.setPosition(positionJson);
-    originalMetadata.setUpstreamPosition(upstreamPositionJson);
+    originalMetadata.setPubSubPositionJsonWireFormat(positionJson);
+    originalMetadata.setPubSubUpstreamPositionJsonWireFormat(upstreamPositionJson);
 
     // Serialize
     byte[] jsonBytes = serializer.serialize(originalMetadata, "test-path");
@@ -65,8 +66,8 @@ public class TestAdminMetadata {
     assertTrue(jsonString.contains("\"typeId\" : " + positionWf.getType()));
     assertTrue(
         jsonString.contains(
-            "\"positionBytes\" : \"" + java.util.Base64.getEncoder().encodeToString(positionWf.getRawBytes().array())
-                + "\""));
+            "\"base64PositionBytes\" : \""
+                + java.util.Base64.getEncoder().encodeToString(positionWf.getRawBytes().array()) + "\""));
 
     // Deserialize
     AdminMetadata deserializedMetadata = serializer.deserialize(jsonBytes, "test-path");
@@ -79,16 +80,18 @@ public class TestAdminMetadata {
     assertEquals(deserializedMetadata.getAdminOperationProtocolVersion(), Long.valueOf(88L));
 
     // Verify position objects
-    assertNotNull(deserializedMetadata.getPosition());
-    assertEquals(deserializedMetadata.getPosition().getTypeId(), Integer.valueOf(positionWf.getType()));
+    assertNotNull(deserializedMetadata.getPubSubPositionJsonWireFormat());
+    assertEquals(deserializedMetadata.getPubSubPositionJsonWireFormat().getTypeId().intValue(), positionWf.getType());
     assertEquals(
-        deserializedMetadata.getPosition().getPositionBytes(),
+        deserializedMetadata.getPubSubPositionJsonWireFormat().getBase64PositionBytes(),
         java.util.Base64.getEncoder().encodeToString(positionWf.getRawBytes().array()));
 
-    assertNotNull(deserializedMetadata.getUpstreamPosition());
-    assertEquals(deserializedMetadata.getUpstreamPosition().getTypeId(), Integer.valueOf(upstreamPositionWf.getType()));
+    assertNotNull(deserializedMetadata.getPubSubUpstreamPositionJsonWireFormat());
     assertEquals(
-        deserializedMetadata.getUpstreamPosition().getPositionBytes(),
+        deserializedMetadata.getPubSubUpstreamPositionJsonWireFormat().getTypeId().intValue(),
+        upstreamPositionWf.getType());
+    assertEquals(
+        deserializedMetadata.getPubSubUpstreamPositionJsonWireFormat().getBase64PositionBytes(),
         java.util.Base64.getEncoder().encodeToString(upstreamPositionWf.getRawBytes().array()));
   }
 
@@ -115,8 +118,8 @@ public class TestAdminMetadata {
     // Verify null fields remain null
     assertNull(deserializedMetadata.getUpstreamOffset());
     assertEquals(deserializedMetadata.getAdminOperationProtocolVersion(), UNDEFINED_VALUE);
-    assertNull(deserializedMetadata.getPosition());
-    assertNull(deserializedMetadata.getUpstreamPosition());
+    assertNull(deserializedMetadata.getPubSubPositionJsonWireFormat());
+    assertNull(deserializedMetadata.getPubSubUpstreamPositionJsonWireFormat());
   }
 
   @Test
@@ -131,7 +134,7 @@ public class TestAdminMetadata {
     assertNotNull(jsonFormat);
     assertEquals(jsonFormat.getTypeId(), Integer.valueOf(wireFormat.getType()));
     assertEquals(
-        jsonFormat.getPositionBytes(),
+        jsonFormat.getBase64PositionBytes(),
         java.util.Base64.getEncoder().encodeToString(wireFormat.getRawBytes().array()));
 
     // Test conversion back to wire format
@@ -140,23 +143,6 @@ public class TestAdminMetadata {
     assertNotNull(convertedWireFormat);
     assertEquals(convertedWireFormat.getType(), wireFormat.getType());
     assertEquals(convertedWireFormat.getRawBytes().array(), wireFormat.getRawBytes().array());
-  }
-
-  @Test
-  public void testPubSubPositionJsonWireFormatNullHandling() {
-    // Test null input
-    AdminMetadata.PubSubPositionJsonWireFormat jsonFormat =
-        AdminMetadata.PubSubPositionJsonWireFormat.fromWireFormat(null);
-    assertNull(jsonFormat);
-
-    // Test null fields
-    AdminMetadata.PubSubPositionJsonWireFormat emptyFormat = new AdminMetadata.PubSubPositionJsonWireFormat();
-    PubSubPositionWireFormat wireFormat = emptyFormat.toWireFormat();
-
-    assertNotNull(wireFormat);
-    // Type should be 0 (default) and rawBytes should be null
-    assertEquals(wireFormat.getType(), 0);
-    assertNull(wireFormat.getRawBytes());
   }
 
   @Test
@@ -191,8 +177,8 @@ public class TestAdminMetadata {
     assertNull(deserializedMetadata.getOffset());
     assertNull(deserializedMetadata.getUpstreamOffset());
     assertEquals(deserializedMetadata.getAdminOperationProtocolVersion(), UNDEFINED_VALUE);
-    assertNull(deserializedMetadata.getPosition());
-    assertNull(deserializedMetadata.getUpstreamPosition());
+    assertNull(deserializedMetadata.getPubSubPositionJsonWireFormat());
+    assertNull(deserializedMetadata.getPubSubUpstreamPositionJsonWireFormat());
   }
 
   @Test
@@ -215,6 +201,132 @@ public class TestAdminMetadata {
 
     assertEquals(pos1, pos2);
     assertEquals(pos1.hashCode(), pos2.hashCode());
-    assertFalse(pos1.equals(pos3));
+    assertNotEquals(pos3, pos1);
+  }
+
+  @Test
+  public void testPositionConversionMethods() throws IOException {
+    // Create AdminMetadata with position objects
+    AdminMetadata metadata = new AdminMetadata();
+
+    // Create position objects using ApacheKafkaOffsetPosition
+    long localOffset = 12345L;
+    long upstreamOffset = 67890L;
+
+    ApacheKafkaOffsetPosition localPosition = ApacheKafkaOffsetPosition.of(localOffset);
+    ApacheKafkaOffsetPosition upstreamPosition = ApacheKafkaOffsetPosition.of(upstreamOffset);
+
+    PubSubPositionWireFormat localPositionWf = localPosition.getPositionWireFormat();
+    PubSubPositionWireFormat upstreamPositionWf = upstreamPosition.getPositionWireFormat();
+
+    // Convert to AdminMetadata format
+    AdminMetadata.PubSubPositionJsonWireFormat localPositionJson =
+        AdminMetadata.PubSubPositionJsonWireFormat.fromWireFormat(localPositionWf);
+    AdminMetadata.PubSubPositionJsonWireFormat upstreamPositionJson =
+        AdminMetadata.PubSubPositionJsonWireFormat.fromWireFormat(upstreamPositionWf);
+
+    metadata.setPubSubPositionJsonWireFormat(localPositionJson);
+    metadata.setPubSubUpstreamPositionJsonWireFormat(upstreamPositionJson);
+
+    // Test getPubSubPositionJsonWireFormat() methods
+    AdminMetadata.PubSubPositionJsonWireFormat retrievedLocalJson = metadata.getPubSubPositionJsonWireFormat();
+    AdminMetadata.PubSubPositionJsonWireFormat retrievedUpstreamJson =
+        metadata.getPubSubUpstreamPositionJsonWireFormat();
+
+    assertNotNull(retrievedLocalJson);
+    assertNotNull(retrievedUpstreamJson);
+
+    // Verify the JSON wire format objects are correct
+    assertEquals(retrievedLocalJson.getTypeId().intValue(), localPositionWf.getType());
+    assertEquals(
+        retrievedLocalJson.getBase64PositionBytes(),
+        java.util.Base64.getEncoder().encodeToString(localPositionWf.getRawBytes().array()));
+
+    assertEquals(retrievedUpstreamJson.getTypeId().intValue(), upstreamPositionWf.getType());
+    assertEquals(
+        retrievedUpstreamJson.getBase64PositionBytes(),
+        java.util.Base64.getEncoder().encodeToString(upstreamPositionWf.getRawBytes().array()));
+
+    // Test getPosition() methods - these should convert back to PubSubPosition objects
+    PubSubPosition retrievedLocalPosition = metadata.getPosition();
+    PubSubPosition retrievedUpstreamPosition = metadata.getUpstreamPosition();
+
+    assertNotNull(retrievedLocalPosition);
+    assertNotNull(retrievedUpstreamPosition);
+
+    // Verify the converted positions are equivalent to the original positions
+    assertTrue(retrievedLocalPosition instanceof ApacheKafkaOffsetPosition);
+    assertTrue(retrievedUpstreamPosition instanceof ApacheKafkaOffsetPosition);
+
+    ApacheKafkaOffsetPosition convertedLocal = (ApacheKafkaOffsetPosition) retrievedLocalPosition;
+    ApacheKafkaOffsetPosition convertedUpstream = (ApacheKafkaOffsetPosition) retrievedUpstreamPosition;
+
+    // Verify the offset values are preserved through the conversion
+    assertEquals(convertedLocal.getInternalOffset(), localOffset);
+    assertEquals(convertedUpstream.getInternalOffset(), upstreamOffset);
+
+    // Verify the wire formats are equivalent
+    assertEquals(convertedLocal.getPositionWireFormat().getType(), localPositionWf.getType());
+    assertEquals(convertedLocal.getPositionWireFormat().getRawBytes().array(), localPositionWf.getRawBytes().array());
+
+    assertEquals(convertedUpstream.getPositionWireFormat().getType(), upstreamPositionWf.getType());
+    assertEquals(
+        convertedUpstream.getPositionWireFormat().getRawBytes().array(),
+        upstreamPositionWf.getRawBytes().array());
+  }
+
+  @Test
+  public void testPositionConversionWithNullValues() throws IOException {
+    // Test behavior when position fields are null
+    AdminMetadata metadata = new AdminMetadata();
+
+    // Both position fields should be null initially
+    assertNull(metadata.getPubSubPositionJsonWireFormat());
+    assertNull(metadata.getPubSubUpstreamPositionJsonWireFormat());
+
+    // Set only local position
+    ApacheKafkaOffsetPosition localPosition = ApacheKafkaOffsetPosition.of(123L);
+    AdminMetadata.PubSubPositionJsonWireFormat localPositionJson =
+        AdminMetadata.PubSubPositionJsonWireFormat.fromWireFormat(localPosition.getPositionWireFormat());
+
+    metadata.setPubSubPositionJsonWireFormat(localPositionJson);
+
+    // Local position should be available, upstream should still be null
+    assertNotNull(metadata.getPubSubPositionJsonWireFormat());
+    assertNull(metadata.getPubSubUpstreamPositionJsonWireFormat());
+    assertNotNull(metadata.getPosition());
+
+    // Verify the local position is correct
+    assertEquals(((ApacheKafkaOffsetPosition) metadata.getPosition()).getInternalOffset(), 123L);
+  }
+
+  @Test
+  public void testPositionConversionRoundTrip() throws IOException {
+    // Test complete round-trip: Position -> JSON -> Wire -> Position
+    long originalOffset = 98765L;
+    ApacheKafkaOffsetPosition originalPosition = ApacheKafkaOffsetPosition.of(originalOffset);
+
+    // Convert to JSON format
+    AdminMetadata.PubSubPositionJsonWireFormat jsonFormat =
+        AdminMetadata.PubSubPositionJsonWireFormat.fromWireFormat(originalPosition.getPositionWireFormat());
+
+    // Create AdminMetadata and set the position
+    AdminMetadata metadata = new AdminMetadata();
+    metadata.setPubSubPositionJsonWireFormat(jsonFormat);
+
+    // Convert back to PubSubPosition
+    PubSubPosition convertedPosition = metadata.getPosition();
+
+    // Verify the round-trip preserved the original data
+    assertNotNull(convertedPosition);
+    assertTrue(convertedPosition instanceof ApacheKafkaOffsetPosition);
+    assertEquals(((ApacheKafkaOffsetPosition) convertedPosition).getInternalOffset(), originalOffset);
+
+    // Verify wire format equivalence
+    PubSubPositionWireFormat originalWireFormat = originalPosition.getPositionWireFormat();
+    PubSubPositionWireFormat convertedWireFormat = convertedPosition.getPositionWireFormat();
+
+    assertEquals(convertedWireFormat.getType(), originalWireFormat.getType());
+    assertEquals(convertedWireFormat.getRawBytes().array(), originalWireFormat.getRawBytes().array());
   }
 }

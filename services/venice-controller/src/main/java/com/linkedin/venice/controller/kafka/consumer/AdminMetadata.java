@@ -1,11 +1,21 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
 import static com.linkedin.venice.controller.AdminTopicMetadataAccessor.UNDEFINED_VALUE;
+import static com.linkedin.venice.pubsub.PubSubUtil.getBase64DecodedBytes;
+import static com.linkedin.venice.pubsub.PubSubUtil.getBase64EncodedString;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
+import javax.annotation.Nullable;
 
 
 /**
@@ -16,8 +26,8 @@ public class AdminMetadata {
   private Long offset;
   private Long upstreamOffset;
   private Long adminOperationProtocolVersion;
-  private PubSubPositionJsonWireFormat position;
-  private PubSubPositionJsonWireFormat upstreamPosition;
+  private PubSubPositionJsonWireFormat pubSubPositionJsonWireFormat;
+  private PubSubPositionJsonWireFormat pubSubUpstreamPositionJsonWireFormat;
 
   public AdminMetadata() {
   }
@@ -33,7 +43,14 @@ public class AdminMetadata {
       metadata.upstreamOffset = legacyMap.get(AdminTopicMetadataAccessor.UPSTREAM_OFFSET_KEY);
       metadata.adminOperationProtocolVersion =
           legacyMap.get(AdminTopicMetadataAccessor.ADMIN_OPERATION_PROTOCOL_VERSION_KEY);
-      // Note: Position objects are not available in legacy format
+      metadata.pubSubPositionJsonWireFormat = metadata.offset == null
+          ? null
+          : PubSubPositionJsonWireFormat
+              .fromWireFormat(ApacheKafkaOffsetPosition.of(metadata.offset).getPositionWireFormat());
+      metadata.pubSubUpstreamPositionJsonWireFormat = metadata.upstreamOffset == null
+          ? null
+          : PubSubPositionJsonWireFormat
+              .fromWireFormat(ApacheKafkaOffsetPosition.of(metadata.upstreamOffset).getPositionWireFormat());
     }
     return metadata;
   }
@@ -48,12 +65,13 @@ public class AdminMetadata {
     // Convert PubSubPositionWireFormat to JSON-friendly format
     Object positionObj = metadataMap.get(AdminTopicMetadataAccessor.POSITION_KEY);
     if (positionObj instanceof PubSubPositionWireFormat) {
-      this.position = PubSubPositionJsonWireFormat.fromWireFormat((PubSubPositionWireFormat) positionObj);
+      this.pubSubPositionJsonWireFormat =
+          PubSubPositionJsonWireFormat.fromWireFormat((PubSubPositionWireFormat) positionObj);
     }
 
     Object upstreamPositionObj = metadataMap.get(AdminTopicMetadataAccessor.UPSTREAM_POSITION_KEY);
     if (upstreamPositionObj instanceof PubSubPositionWireFormat) {
-      this.upstreamPosition =
+      this.pubSubUpstreamPositionJsonWireFormat =
           PubSubPositionJsonWireFormat.fromWireFormat((PubSubPositionWireFormat) upstreamPositionObj);
     }
   }
@@ -83,10 +101,10 @@ public class AdminMetadata {
       map.put(AdminTopicMetadataAccessor.ADMIN_OPERATION_PROTOCOL_VERSION_KEY, adminOperationProtocolVersion);
 
     // Convert back to PubSubPositionWireFormat for compatibility
-    if (position != null)
-      map.put(AdminTopicMetadataAccessor.POSITION_KEY, position.toWireFormat());
-    if (upstreamPosition != null)
-      map.put(AdminTopicMetadataAccessor.UPSTREAM_POSITION_KEY, upstreamPosition.toWireFormat());
+    if (pubSubPositionJsonWireFormat != null)
+      map.put(AdminTopicMetadataAccessor.POSITION_KEY, pubSubPositionJsonWireFormat.toWireFormat());
+    if (pubSubUpstreamPositionJsonWireFormat != null)
+      map.put(AdminTopicMetadataAccessor.UPSTREAM_POSITION_KEY, pubSubUpstreamPositionJsonWireFormat.toWireFormat());
 
     return map;
   }
@@ -142,75 +160,96 @@ public class AdminMetadata {
     this.adminOperationProtocolVersion = adminOperationProtocolVersion;
   }
 
-  public PubSubPositionJsonWireFormat getPosition() {
-    return position;
+  public PubSubPositionJsonWireFormat getPubSubPositionJsonWireFormat() {
+    return pubSubPositionJsonWireFormat;
   }
 
-  public void setPosition(PubSubPositionJsonWireFormat position) {
-    this.position = position;
+  public PubSubPositionJsonWireFormat getPubSubUpstreamPositionJsonWireFormat() {
+    return pubSubUpstreamPositionJsonWireFormat;
   }
 
-  public PubSubPositionJsonWireFormat getUpstreamPosition() {
-    return upstreamPosition;
+  @JsonIgnore
+  public PubSubPosition getPosition() throws IOException {
+    return getPubSubPosition(pubSubPositionJsonWireFormat, offset);
   }
 
-  public void setUpstreamPosition(PubSubPositionJsonWireFormat upstreamPosition) {
-    this.upstreamPosition = upstreamPosition;
+  @Nullable
+  private PubSubPosition getPubSubPosition(PubSubPositionJsonWireFormat pubSubPositionJsonWireFormat, Long offset)
+      throws IOException {
+    if (pubSubPositionJsonWireFormat == null) {
+      if (!offset.equals(UNDEFINED_VALUE)) {
+        return ApacheKafkaOffsetPosition.of(offset);
+      } else {
+        return null;
+      }
+    }
+    PubSubPositionWireFormat wireFormat = pubSubPositionJsonWireFormat.toWireFormat();
+    if (wireFormat.getRawBytes() == null) {
+      return null;
+    }
+    return ApacheKafkaOffsetPosition.of(wireFormat.getRawBytes());
+  }
+
+  @JsonIgnore
+  public PubSubPosition getUpstreamPosition() throws IOException {
+    return getPubSubPosition(pubSubUpstreamPositionJsonWireFormat, upstreamOffset);
+  }
+
+  public void setPubSubPositionJsonWireFormat(PubSubPositionJsonWireFormat pubSubPositionJsonWireFormat) {
+    this.pubSubPositionJsonWireFormat = pubSubPositionJsonWireFormat;
+  }
+
+  public void setPubSubUpstreamPositionJsonWireFormat(
+      PubSubPositionJsonWireFormat pubSubUpstreamPositionJsonWireFormat) {
+    this.pubSubUpstreamPositionJsonWireFormat = pubSubUpstreamPositionJsonWireFormat;
   }
 
   @Override
   public String toString() {
     return "AdminMetadata{" + "executionId=" + executionId + ", offset=" + offset + ", upstreamOffset=" + upstreamOffset
-        + ", adminOperationProtocolVersion=" + adminOperationProtocolVersion + ", position=" + position
-        + ", upstreamPosition=" + upstreamPosition + '}';
+        + ", adminOperationProtocolVersion=" + adminOperationProtocolVersion + ", position="
+        + pubSubPositionJsonWireFormat + ", upstreamPosition=" + pubSubUpstreamPositionJsonWireFormat + '}';
   }
 
   /**
    * JSON-friendly representation of PubSubPositionWireFormat for admin metadata serialization.
    * This class mirrors the structure of PubSubPositionWireFormat but uses JSON-friendly types.
    */
+  @VisibleForTesting
   public static class PubSubPositionJsonWireFormat {
     private Integer typeId;
-    private String positionBytes; // Base64 encoded bytes
+    private String base64PositionBytes; // Base64 encoded bytes
 
     public PubSubPositionJsonWireFormat() {
+      // needed for serialization/deserialization by Jackson
     }
 
-    public PubSubPositionJsonWireFormat(Integer typeId, String positionBytes) {
+    public PubSubPositionJsonWireFormat(Integer typeId, String base64PositionBytes) {
       this.typeId = typeId;
-      this.positionBytes = positionBytes;
+      this.base64PositionBytes = base64PositionBytes;
     }
 
     /**
      * Convert from PubSubPositionWireFormat to JSON-friendly format
      */
     public static PubSubPositionJsonWireFormat fromWireFormat(PubSubPositionWireFormat wireFormat) {
-      if (wireFormat == null)
-        return null;
-
-      String encodedBytes = wireFormat.getRawBytes() != null
-          ? java.util.Base64.getEncoder().encodeToString(wireFormat.getRawBytes().array())
-          : null;
-
-      return new PubSubPositionJsonWireFormat(wireFormat.getType(), encodedBytes);
+      return wireFormat == null
+          ? null
+          : new PubSubPositionJsonWireFormat(
+              wireFormat.getType(),
+              getBase64EncodedString(wireFormat.getRawBytes().array()));
     }
 
     /**
      * Convert to PubSubPositionWireFormat from JSON-friendly format
      */
     public PubSubPositionWireFormat toWireFormat() {
-      PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
-
-      if (typeId != null) {
-        wireFormat.setType(typeId);
+      if (typeId == null || base64PositionBytes == null) {
+        throw new VeniceException(
+            "Cannot convert PubSubPositionJsonWireFormat to PubSubPositionWireFormat. typeId: " + typeId
+                + ", positionBytes: " + base64PositionBytes);
       }
-
-      if (positionBytes != null) {
-        byte[] rawBytes = java.util.Base64.getDecoder().decode(positionBytes);
-        wireFormat.setRawBytes(java.nio.ByteBuffer.wrap(rawBytes));
-      }
-
-      return wireFormat;
+      return new PubSubPositionWireFormat(typeId, ByteBuffer.wrap(getBase64DecodedBytes(base64PositionBytes)));
     }
 
     // Getters and setters
@@ -222,17 +261,18 @@ public class AdminMetadata {
       this.typeId = typeId;
     }
 
-    public String getPositionBytes() {
-      return positionBytes;
+    public String getBase64PositionBytes() {
+      return base64PositionBytes;
     }
 
-    public void setPositionBytes(String positionBytes) {
-      this.positionBytes = positionBytes;
+    public void setBase64PositionBytes(String base64PositionBytes) {
+      this.base64PositionBytes = base64PositionBytes;
     }
 
     @Override
     public String toString() {
-      return "PubSubPositionJsonWireFormat{" + "typeId=" + typeId + ", positionBytes='" + positionBytes + '\'' + '}';
+      return "PubSubPositionJsonWireFormat{" + "typeId=" + typeId + ", positionBytes='" + base64PositionBytes + '\''
+          + '}';
     }
 
     @Override
@@ -246,13 +286,15 @@ public class AdminMetadata {
 
       if (typeId != null ? !typeId.equals(that.typeId) : that.typeId != null)
         return false;
-      return positionBytes != null ? positionBytes.equals(that.positionBytes) : that.positionBytes == null;
+      return base64PositionBytes != null
+          ? base64PositionBytes.equals(that.base64PositionBytes)
+          : that.base64PositionBytes == null;
     }
 
     @Override
     public int hashCode() {
       int result = typeId != null ? typeId.hashCode() : 0;
-      result = 31 * result + (positionBytes != null ? positionBytes.hashCode() : 0);
+      result = 31 * result + (base64PositionBytes != null ? base64PositionBytes.hashCode() : 0);
       return result;
     }
   }
