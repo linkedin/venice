@@ -830,4 +830,9 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     request.attribute(REQUEST_SUCCEED, false);
   }
+
+  // For testing only
+  public Service getSparkJavaService() {
+    return httpService;
+  }
 }
