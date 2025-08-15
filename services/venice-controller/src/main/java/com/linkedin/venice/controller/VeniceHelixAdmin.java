@@ -1452,9 +1452,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
+    String pushJobDetailsStoreClusterName = getPushJobStatusStoreClusterName();
+    if (pushJobDetailsStoreClusterName == null || pushJobDetailsStoreClusterName.isEmpty()) {
+      return;
+    }
     if (isParent()) {
       String lastDualWriteError = "";
-      for (Map.Entry<String, ControllerClient> entry: getControllerClientMap(getPushJobStatusStoreClusterName())
+      for (Map.Entry<String, ControllerClient> entry: getControllerClientMap(pushJobDetailsStoreClusterName)
           .entrySet()) {
         LOGGER.info(
             "Sending controller request to send push job details: {} to region: {} for: {}",
