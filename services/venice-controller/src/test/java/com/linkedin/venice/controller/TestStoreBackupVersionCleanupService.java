@@ -201,7 +201,6 @@ public class TestStoreBackupVersionCleanupService {
     Store storeWithRollback = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 1);
     Assert.assertFalse(service.cleanupBackupVersion(storeWithRollback, clusterName));
     StoreBackupVersionCleanupService.setMinBackupVersionCleanupDelay(100L);
-    // doReturn(30000000000L).when(config).getBackupVersionDefaultRetentionMs();
     doReturn(true).when(controllerConfig).isBackupVersionReplicaReductionEnabled();
     versions.clear();
     versions.put(1, VersionStatus.ONLINE);
