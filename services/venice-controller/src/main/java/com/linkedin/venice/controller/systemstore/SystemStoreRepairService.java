@@ -29,7 +29,6 @@ public class SystemStoreRepairService extends AbstractVeniceService {
   private final int heartbeatWaitTimeInSeconds;
   private final int versionRefreshThresholdInDays;
   private ScheduledExecutorService checkServiceExecutor;
-  private final int maxRepairRetry;
   private final Map<String, SystemStoreHealthCheckStats> clusterToSystemStoreHealthCheckStatsMap =
       new VeniceConcurrentHashMap<>();
 
@@ -40,7 +39,6 @@ public class SystemStoreRepairService extends AbstractVeniceService {
     this.parentAdmin = parentAdmin;
     this.repairTaskIntervalInSeconds =
         multiClusterConfigs.getCommonConfig().getParentSystemStoreRepairCheckIntervalSeconds();
-    this.maxRepairRetry = multiClusterConfigs.getCommonConfig().getParentSystemStoreRepairRetryCount();
     this.versionRefreshThresholdInDays =
         multiClusterConfigs.getCommonConfig().getParentSystemStoreVersionRefreshThresholdInDays();
     this.heartbeatWaitTimeInSeconds =
@@ -61,7 +59,6 @@ public class SystemStoreRepairService extends AbstractVeniceService {
         new SystemStoreRepairTask(
             parentAdmin,
             clusterToSystemStoreHealthCheckStatsMap,
-            maxRepairRetry,
             heartbeatWaitTimeInSeconds,
             versionRefreshThresholdInDays,
             isRunning),
