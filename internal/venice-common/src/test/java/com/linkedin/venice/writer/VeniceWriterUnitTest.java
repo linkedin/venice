@@ -43,6 +43,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.Segment;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
@@ -717,7 +718,7 @@ public class VeniceWriterUnitTest {
           0,
           1,
           null,
-          new LeaderMetadataWrapper(0, 0, 0, ByteBuffer.allocate(0)),
+          new LeaderMetadataWrapper(ApacheKafkaOffsetPosition.of(0), 0, 0),
           APP_DEFAULT_LOGICAL_TS,
           null,
           null,
