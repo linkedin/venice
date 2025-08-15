@@ -324,6 +324,7 @@ public class VeniceOpenTelemetryMetricsRepository {
         try {
           v = asyncCallback.getAsLong();
         } catch (Exception e) {
+          recordFailureMetric(metricEntity, e);
           return;
         }
         measurement.record(v, attributes);
@@ -466,8 +467,11 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
-  public void recordFailureMetric() {
+  public void recordFailureMetric(MetricEntity metricEntity, Exception e) {
     getRecordFailureMetric().record(1);
+    if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
+      LOGGER.error("Error recording metric {} with exception:", metricEntity.getMetricName(), e);
+    }
   }
 
   public boolean emitOpenTelemetryMetrics() {
