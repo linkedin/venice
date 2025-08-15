@@ -57,6 +57,7 @@ public class TestStoreBackupVersionDeletion {
     controllerProps.put(CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS, 10);
     controllerProps.put(CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED, "true");
     Properties serverProperties = new Properties();
+    StoreBackupVersionCleanupService.setMinBackupVersionCleanupDelay(10);
     StoreBackupVersionCleanupService.setWaitTimeDeleteRepushSourceVersion(10);
     VeniceMultiRegionClusterCreateOptions.Builder optionsBuilder =
         new VeniceMultiRegionClusterCreateOptions.Builder().numberOfRegions(NUMBER_OF_CHILD_DATACENTERS)
@@ -122,6 +123,47 @@ public class TestStoreBackupVersionDeletion {
         Store store = veniceHelixAdmin.getStore(CLUSTER_NAMES[0], storeName);
         return store.getVersion(2) == null && store.getVersions().size() == 2;
       });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testBackupVersionReplicaReduction() throws IOException {
+    File inputDir = getTempDataDirectory();
+    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
+    // Setup job properties
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = "\"string\"";
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
+      createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
+      IntegrationTestPushUtils.runVPJ(props);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+      IntegrationTestPushUtils.runVPJ(props);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 2),
+          parentControllerClient,
+          20,
+          TimeUnit.SECONDS);
+      IntegrationTestPushUtils.runVPJ(props);
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 3),
+          parentControllerClient,
+          20,
+          TimeUnit.SECONDS);
+      TestUtils.waitForNonDeterministicCompletion(
+          30,
+          TimeUnit.SECONDS,
+          () -> veniceHelixAdmin.getIdealState(CLUSTER_NAMES[0], Version.composeKafkaTopic(storeName, 2))
+              .getMinActiveReplicas() == 2);
     }
   }
 

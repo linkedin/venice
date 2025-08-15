@@ -377,4 +377,12 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       String reason) {
     helixAdmin.setInstanceOperation(clusterName, instanceName, instanceOperation, reason);
   }
+
+  public IdealState getResourceIdealState(String clusterName, String resourceName) {
+    return helixAdmin.getResourceIdealState(clusterName, resourceName);
+  }
+
+  public void updateIdealState(String clusterName, String resourceName, IdealState idealState) {
+    helixAdmin.updateIdealState(clusterName, resourceName, idealState);
+  }
 }
