@@ -1212,10 +1212,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // We subtract 1 because we are skipping the remote TS message.
       long localVTOffsetProgress =
           partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset().getNumericOffset() - 1;
+      int partition = partitionConsumptionState.getPartition();
       long dataRecoveryLag = measureLagWithCallToPubSub(
           nativeReplicationSourceVersionTopicKafkaURL,
           versionTopic,
-          partitionConsumptionState.getPartition(),
+          partition,
           localVTOffsetProgress);
       boolean isAtEndOfSourceVT = dataRecoveryLag <= 0;
       long lastTimestamp = getLastConsumedMessageTimestamp(partitionConsumptionState.getPartition());
@@ -1682,12 +1683,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         kafkaUrl,
         beforeProcessingRecordTimestampNs);
     PubSubPosition consumedPosition = consumerRecord.getPosition();
-    long sourceTopicOffset = consumedPosition.getNumericOffset();
-    LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(
-        sourceTopicOffset,
-        kafkaClusterId,
-        DEFAULT_TERM_ID,
-        consumedPosition.toWireFormatBuffer());
+    LeaderMetadataWrapper leaderMetadataWrapper =
+        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID);
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     long beforeProduceTimestampNS = System.nanoTime();
     produceFunction.accept(callback, leaderMetadataWrapper);
@@ -2201,11 +2198,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         kafkaUrl,
         beforeProcessingRecordTimestampNs);
     PubSubPosition consumedPosition = consumerRecord.getPosition();
-    LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(
-        consumedPosition.getNumericOffset(),
-        kafkaClusterId,
-        DEFAULT_TERM_ID,
-        consumedPosition.toWireFormatBuffer());
+    LeaderMetadataWrapper leaderMetadataWrapper =
+        new LeaderMetadataWrapper(consumedPosition, kafkaClusterId, DEFAULT_TERM_ID);
     LeaderCompleteState leaderCompleteState =
         LeaderCompleteState.getLeaderCompleteState(partitionConsumptionState.isCompletionReported());
     /**
@@ -2371,7 +2365,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       if (msgType == UPDATE && !produceToLocalKafka) {
         throw new VeniceMessageException(
             ingestionTaskName + " hasProducedToKafka: Received UPDATE message in non-leader for: "
-                + consumerRecord.getTopicPartition() + " Offset " + consumerRecord.getPosition().getNumericOffset());
+                + consumerRecord.getTopicPartition() + " Offset " + consumerRecord.getPosition());
       } else if (msgType == MessageType.CONTROL_MESSAGE) {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
         getAndUpdateLeaderCompletedState(
@@ -3427,9 +3421,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       DefaultPubSubMessage previousMessage,
       String brokerUrl,
       Map<CharSequence, ProducerPartitionState> rtDivPartitionStates) {
-    ByteBuffer emptyBuffer = ByteBuffer.allocate(0); // TODO: use this PubSubPosition instead of latestOffset
-    final long offset = previousMessage.getPosition().getNumericOffset();
-    GlobalRtDivState globalRtDiv = new GlobalRtDivState(brokerUrl, rtDivPartitionStates, offset, emptyBuffer);
+    final PubSubPosition previousPosition = previousMessage.getPosition();
+    GlobalRtDivState globalRtDiv = new GlobalRtDivState(
+        brokerUrl,
+        rtDivPartitionStates,
+        previousPosition.getNumericOffset(),
+        previousPosition.toWireFormatBuffer());
     byte[] valueBytes = ByteUtils.extractByteArray(globalRtDivStateSerializer.serialize(globalRtDiv));
     try {
       valueBytes = compressor.get().compress(valueBytes);

@@ -910,7 +910,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState) {
     String replicaId = getReplicaId(topic, partitionId);
     boolean returnStatus = true;
-    if (offsetRecord.getLocalVersionTopicOffset().getNumericOffset() > 0) {
+    if (offsetRecord.getLocalVersionTopicOffset() != EARLIEST) {
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
       if (storeVersionState != null) {
         LOGGER.info("Found storeVersionState for replica: {}: checkDatabaseIntegrity will proceed", replicaId);
@@ -2131,7 +2131,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Once storage node restart, send the "START" status to controller to rebuild the task status.
     // If this storage node has never consumed data from this topic, instead of sending "START" here, we send it
     // once START_OF_PUSH message has been read.
-    if (offsetRecord.getLocalVersionTopicOffset().getNumericOffset() > 0) {
+    if (offsetRecord.getLocalVersionTopicOffset() != EARLIEST) {
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
       if (storeVersionState != null) {
         boolean sorted = storeVersionState.sorted;
@@ -2934,7 +2934,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long currentOffset,
       Function<String, TopicManager> topicManagerProvider) {
     if (currentOffset < OffsetRecord.LOWEST_OFFSET) {
-      // -1 is a valid offset, which means that nothing was consumed yet, but anything below that is invalid.
+      // EARLIEST is a valid offset, which means that nothing was consumed yet, but anything below that is invalid.
       return Long.MAX_VALUE;
     }
     TopicManager tm = topicManagerProvider.apply(pubSubServerName);
@@ -3129,7 +3129,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     // We need to keep track of when the EOP happened, as that is used within Hybrid Stores' lag measurement
-    partitionConsumptionState.getOffsetRecord().endOfPushReceived(offset);
+    partitionConsumptionState.getOffsetRecord().endOfPushReceived();
     /*
      * Right now, we assume there are no sorted message after EndOfPush control message.
      * TODO: if this behavior changes in the future, the logic needs to be adjusted as well.

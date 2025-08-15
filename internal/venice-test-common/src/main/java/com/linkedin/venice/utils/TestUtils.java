@@ -695,10 +695,6 @@ public class TestUtils {
     return participant;
   }
 
-  public static OffsetRecord getOffsetRecord(long currentOffset) {
-    return getOffsetRecord(ApacheKafkaOffsetPosition.of(currentOffset), Optional.empty());
-  }
-
   public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete) {
     return getOffsetRecord(
         ApacheKafkaOffsetPosition.of(currentOffset),
@@ -709,7 +705,7 @@ public class TestUtils {
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
     offsetRecord.setCheckpointLocalVersionTopicOffset(currentOffset);
     if (endOfPushOffset.isPresent()) {
-      offsetRecord.endOfPushReceived(endOfPushOffset.get());
+      offsetRecord.endOfPushReceived();
     }
     return offsetRecord;
   }

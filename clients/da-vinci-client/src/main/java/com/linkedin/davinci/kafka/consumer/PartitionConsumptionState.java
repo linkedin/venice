@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.EARLIEST;
+
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -292,7 +294,7 @@ public class PartitionConsumptionState {
   }
 
   public boolean isStarted() {
-    return getLatestProcessedLocalVersionTopicOffset().getNumericOffset() > 0;
+    return getLatestProcessedLocalVersionTopicOffset() != EARLIEST;
   }
 
   public final boolean isEndOfPushReceived() {

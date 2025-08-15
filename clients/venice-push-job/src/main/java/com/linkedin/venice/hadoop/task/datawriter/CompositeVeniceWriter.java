@@ -3,7 +3,6 @@ package com.linkedin.venice.hadoop.task.datawriter;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID;
-import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_OFFSET;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_PUBSUB_POSITION;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
@@ -201,10 +200,9 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
           putMetadata);
     }
     LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(
-        DEFAULT_UPSTREAM_OFFSET,
+        DEFAULT_UPSTREAM_PUBSUB_POSITION,
         DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
         DEFAULT_TERM_ID,
-        DEFAULT_UPSTREAM_PUBSUB_POSITION,
         viewPartitionMap);
     // We only need to pass the logical timestamp to the main writer as it's only used for write conflict resolution
     // in the venice server or TTL repush. So we don't need to pass it to view topics.

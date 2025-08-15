@@ -1,7 +1,7 @@
 package com.linkedin.venice.offsets;
 
 import static com.linkedin.venice.pubsub.PubSubUtil.fromKafkaOffset;
-import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_OFFSET;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_PUBSUB_POSITION;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -73,9 +73,9 @@ public class OffsetRecord {
     emptyPartitionState.lastUpdate = 0;
     emptyPartitionState.databaseInfo = new VeniceConcurrentHashMap<>();
     emptyPartitionState.previousStatuses = new VeniceConcurrentHashMap<>();
-    emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_OFFSET;
+    emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_PUBSUB_POSITION.getNumericOffset();
     emptyPartitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
-    emptyPartitionState.upstreamVersionTopicOffset = DEFAULT_UPSTREAM_OFFSET;
+    emptyPartitionState.upstreamVersionTopicOffset = DEFAULT_UPSTREAM_PUBSUB_POSITION.getNumericOffset();
     emptyPartitionState.pendingReportIncrementalPushVersions = new ArrayList<>();
     emptyPartitionState.setRealtimeTopicProducerStates(new VeniceConcurrentHashMap<>());
     emptyPartitionState.upstreamRealTimeTopicPubSubPositionMap = new VeniceConcurrentHashMap<>();
@@ -149,11 +149,7 @@ public class OffsetRecord {
     this.partitionState.lastUpdate = updateTimeInMs;
   }
 
-  public void endOfPushReceived(PubSubPosition endOfPushOffset) {
-    if (endOfPushOffset.getNumericOffset() < 1) {
-      // Even an empty push should have a SOP and EOP, so offset 1 is the absolute minimum.
-      throw new IllegalArgumentException("endOfPushOffset cannot be < 1.");
-    }
+  public void endOfPushReceived() {
     this.partitionState.endOfPush = true;
   }
 

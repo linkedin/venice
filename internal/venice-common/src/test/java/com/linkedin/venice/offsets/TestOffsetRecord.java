@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -34,21 +35,21 @@ public class TestOffsetRecord {
 
   @Test
   public void testToBytes() {
-    OffsetRecord offsetRecord1 = TestUtils.getOffsetRecord(100);
+    OffsetRecord offsetRecord1 = TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty());
     OffsetRecord offsetRecord2 =
         new OffsetRecord(offsetRecord1.toBytes(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     Assert.assertTrue(offsetRecord2.getProducerPartitionStateMap() instanceof VeniceConcurrentHashMap);
     Assert.assertEquals(offsetRecord2, offsetRecord1);
 
-    offsetRecord1 = TestUtils.getOffsetRecord(100);
-    offsetRecord1.endOfPushReceived(ApacheKafkaOffsetPosition.of(100L));
+    offsetRecord1 = TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty());
+    offsetRecord1.endOfPushReceived();
     offsetRecord2 = new OffsetRecord(offsetRecord1.toBytes(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     Assert.assertEquals(offsetRecord2, offsetRecord1);
   }
 
   @Test
   public void testResetUpstreamOffsetMap() {
-    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(100);
+    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty());
     PubSubPosition p1 = ApacheKafkaOffsetPosition.of(1L);
     PubSubPosition p2 = ApacheKafkaOffsetPosition.of(2L);
     offsetRecord.setLeaderUpstreamOffset(TEST_KAFKA_URL1, p1);
@@ -65,7 +66,7 @@ public class TestOffsetRecord {
 
   @Test
   public void testBatchUpdateEOIP() {
-    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(100);
+    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty());
     offsetRecord.setPendingReportIncPushVersionList(Arrays.asList("a", "b", "c"));
     Assert.assertEquals(offsetRecord.getPendingReportIncPushVersionList(), Arrays.asList("a", "b", "c"));
   }
