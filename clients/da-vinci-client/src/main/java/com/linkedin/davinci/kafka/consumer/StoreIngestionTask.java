@@ -593,7 +593,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isDaVinciClient = builder.isDaVinciClient();
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
-    this.timeLagRelaxEnabled = serverConfig.getTimeLagThresholdForFastOnlineTransitionInRestart() > 0;
+    this.timeLagRelaxEnabled = serverConfig.getTimeLagThresholdForFastOnlineTransitionInRestartMinutes() > 0;
     this.ingestionCheckpointDuringGracefulShutdownEnabled =
         serverConfig.isServerIngestionCheckpointDuringGracefulShutdownEnabled();
     this.metaStoreWriter = builder.getMetaStoreWriter();
@@ -1067,7 +1067,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         isLagAcceptable = checkAndLogIfLagIsAcceptableForHybridStore(
             partitionConsumptionState,
             measureHybridHeartbeatLag(partitionConsumptionState, shouldLogLag),
-            partitionConsumptionState.getReadyToServeTimeLagThreshold(),
+            partitionConsumptionState.getReadyToServeTimeLagThresholdInMs(),
             shouldLogLag,
             HEARTBEAT_LAG);
       } else {
@@ -4898,24 +4898,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           replicaId);
       return false;
     }
-    long heartbeatRelaxThreshold = getServerConfig().getTimeLagThresholdForFastOnlineTransitionInRestart();
+    long heartbeatRelaxThresholdInMs =
+        MINUTES.toMillis(getServerConfig().getTimeLagThresholdForFastOnlineTransitionInRestartMinutes());
     long currentLag = System.currentTimeMillis() - previousMessageTimestamp;
     long previousLag = previousCheckpointTimestamp - previousMessageTimestamp;
-    if ((currentLag - previousLag) < heartbeatRelaxThreshold) {
+    if ((currentLag - previousLag) < heartbeatRelaxThresholdInMs) {
       LOGGER.info(
           "Time lag increase since last server checkpoint: {} is within configured threshold: {}, will mark the replica ready-to-serve directly for replica: {}",
           currentLag - previousLag,
-          heartbeatRelaxThreshold,
+          heartbeatRelaxThresholdInMs,
           replicaId);
       pcs.lagHasCaughtUp();
       reportCompleted(pcs, true);
       return true;
     } else {
-      pcs.setReadyToServeTimeLagThreshold(previousLag);
+      pcs.setReadyToServeTimeLagThresholdInMs(previousLag + heartbeatRelaxThresholdInMs);
       LOGGER.info(
           "Time lag increase since last server checkpoint: {} is greater than configured threshold: {}, will update ready-to-serve time lag threshold to: {} for replica: {}",
           currentLag - previousLag,
-          heartbeatRelaxThreshold,
+          heartbeatRelaxThresholdInMs,
           previousLag,
           replicaId);
       return false;

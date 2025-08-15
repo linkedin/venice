@@ -217,7 +217,7 @@ public class PartitionConsumptionState {
 
   private BooleanSupplier isCurrentVersion;
 
-  private long readyToServeTimeLagThreshold = DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS;
+  private long readyToServeTimeLagThresholdInMs = DEFAULT_HEARTBEAT_LAG_THRESHOLD_MS;
 
   public PartitionConsumptionState(
       String replicaId,
@@ -870,11 +870,11 @@ public class PartitionConsumptionState {
     return pubSubContext;
   }
 
-  public long getReadyToServeTimeLagThreshold() {
-    return readyToServeTimeLagThreshold;
+  public long getReadyToServeTimeLagThresholdInMs() {
+    return readyToServeTimeLagThresholdInMs;
   }
 
-  public void setReadyToServeTimeLagThreshold(long readyToServeTimeLagThreshold) {
-    this.readyToServeTimeLagThreshold = readyToServeTimeLagThreshold;
+  public void setReadyToServeTimeLagThresholdInMs(long readyToServeTimeLagThresholdInMs) {
+    this.readyToServeTimeLagThresholdInMs = readyToServeTimeLagThresholdInMs;
   }
 }

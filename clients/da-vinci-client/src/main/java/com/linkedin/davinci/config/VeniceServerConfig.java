@@ -204,7 +204,7 @@ import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_NOTIFY_DELTA;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_NUMBER;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_INITIALIZATION_AT_START_TIME_ENABLED;
-import static com.linkedin.venice.ConfigKeys.TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
+import static com.linkedin.venice.ConfigKeys.TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART_MINUTES;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.UNSORTED_INPUT_DRAINER_SIZE;
 import static com.linkedin.venice.ConfigKeys.USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR;
@@ -488,7 +488,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
   private final int offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart;
-  private final long timeLagThresholdForFastOnlineTransitionInRestart;
+  private final int timeLagThresholdForFastOnlineTransitionInRestartMinutes;
 
   /**
    * Boolean flag indicating if it is a Da Vinci application.
@@ -892,8 +892,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart =
         serverProperties.getInt(OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, 2);
-    timeLagThresholdForFastOnlineTransitionInRestart =
-        serverProperties.getInt(TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART, -1);
+    timeLagThresholdForFastOnlineTransitionInRestartMinutes =
+        serverProperties.getInt(TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART_MINUTES, -1);
 
     enableKafkaConsumerOffsetCollection =
         serverProperties.getBoolean(SERVER_KAFKA_CONSUMER_OFFSET_COLLECTION_ENABLED, true);
@@ -1581,8 +1581,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart;
   }
 
-  public long getTimeLagThresholdForFastOnlineTransitionInRestart() {
-    return timeLagThresholdForFastOnlineTransitionInRestart;
+  public int getTimeLagThresholdForFastOnlineTransitionInRestartMinutes() {
+    return timeLagThresholdForFastOnlineTransitionInRestartMinutes;
   }
 
   public boolean isKafkaConsumerOffsetCollectionEnabled() {

@@ -2179,8 +2179,8 @@ public class ConfigKeys {
    * This config will specify the time lag threshold to be used for time lag comparison in making partition
    * online faster. Default value is -1 meaning disabled.
    */
-  public static final String TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART =
-      "time.lag.threshold.for.fast.online.transition.in.restart";
+  public static final String TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART_MINUTES =
+      "time.lag.threshold.for.fast.online.transition.in.restart.minutes";
 
   /**
    * Enable offset collection for kafka topic partition from kafka consumer metrics.

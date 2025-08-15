@@ -24,7 +24,7 @@ public class SITFastReadyToServeTest {
   public void testReadyToServeWithMessageTimeLag() {
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
-    doReturn(TimeUnit.MINUTES.toMillis(5)).when(serverConfig).getTimeLagThresholdForFastOnlineTransitionInRestart();
+    doReturn(5).when(serverConfig).getTimeLagThresholdForFastOnlineTransitionInRestartMinutes();
     doReturn(serverConfig).when(storeIngestionTask).getServerConfig();
     OffsetRecord record = mock(OffsetRecord.class);
     PartitionConsumptionState pcs = mock(PartitionConsumptionState.class);
@@ -47,7 +47,7 @@ public class SITFastReadyToServeTest {
     doReturn(currentTimestamp - TimeUnit.MINUTES.toMillis(7)).when(record).getLastCheckpointTimestamp();
     storeIngestionTask.checkFastReadyToServeWithPreviousTimeLag(pcs);
     verify(pcs, times(1)).lagHasCaughtUp();
-    verify(pcs, times(1)).setReadyToServeTimeLagThreshold(eq(TimeUnit.MINUTES.toMillis(3)));
+    verify(pcs, times(1)).setReadyToServeTimeLagThresholdInMs(eq(TimeUnit.MINUTES.toMillis(8)));
   }
 
   @Test
