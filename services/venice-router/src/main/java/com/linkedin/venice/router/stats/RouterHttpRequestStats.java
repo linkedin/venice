@@ -48,7 +48,6 @@ import io.opentelemetry.api.common.AttributesBuilder;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Gauge;
@@ -73,8 +72,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> tardyRequestMetric;
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> throttledRequestMetric;
   private final MetricEntityStateThreeEnums<HttpResponseStatusEnum, HttpResponseStatusCodeCategory, VeniceResponseStatusCategory> badRequestMetric;
-  // private final MetricEntityStateBase asyncGaugeTestMetric;
-  private final MetricEntityStateBase asyncGaugeTestMetric1;
 
   private final Sensor healthyRequestRateSensor;
   private final Sensor tardyRequestRatioSensor;
@@ -247,20 +244,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         HttpResponseStatusEnum.class,
         HttpResponseStatusCodeCategory.class,
         VeniceResponseStatusCategory.class);
-
-    /* asyncGaugeTestMetric = MetricEntityStateBase
-        .create(TEST_ASYNC_GAUGE.getMetricEntity(), otelRepository, baseDimensionsMap, baseAttributes);*/
-
-    asyncGaugeTestMetric1 = MetricEntityStateBase.createAsyncMetric(
-        RouterMetricEntity.TEST_ASYNC_GAUGE_BOTH.getMetricEntity(),
-        otelRepository,
-        this::registerSensorFinal,
-        RouterTehutiMetricNameEnum.TEST_ASYNC_GAUGE_BOTH,
-        singletonList(
-            new AsyncGauge((ignored, ignored2) -> 9, RouterTehutiMetricNameEnum.TEST_ASYNC_GAUGE_BOTH.getMetricName())),
-        baseDimensionsMap,
-        baseAttributes,
-        () -> 9);
 
     latencyTehutiSensor = registerSensorWithDetailedPercentiles("latency", new Avg(), new Max(0));
     healthyLatencyMetric = MetricEntityStateThreeEnums.create(
@@ -802,9 +785,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     RETRY_DELAY,
     /** for {@link RouterMetricEntity#ABORTED_RETRY_COUNT} */
     DELAY_CONSTRAINT_ABORTED_RETRY_REQUEST, SLOW_ROUTE_ABORTED_RETRY_REQUEST, RETRY_ROUTE_LIMIT_ABORTED_RETRY_REQUEST,
-    NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST,
-
-    TEST_ASYNC_GAUGE_BOTH;
+    NO_AVAILABLE_REPLICA_ABORTED_RETRY_REQUEST;
 
     private final String metricName;
 

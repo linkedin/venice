@@ -164,6 +164,10 @@ public abstract class MetricEntityState {
   public void recordOtelMetric(double value, Attributes attributes) {
     if (otelMetric != null) {
       MetricType metricType = this.metricEntity.getMetricType();
+      if (metricType.isAsyncMetric()) {
+        // Async gauge metrics should be updated by the callback function.
+        return;
+      }
       switch (metricType) {
         case HISTOGRAM:
         case MIN_MAX_COUNT_SUM_AGGREGATIONS:
@@ -174,9 +178,6 @@ public abstract class MetricEntityState {
           break;
         case GAUGE:
           ((LongGauge) otelMetric).set((long) value, attributes);
-          break;
-        case ASYNC_GAUGE:
-          // Async gauge is not recorded directly, it is updated by the callback function.
           break;
         default:
           throw new IllegalArgumentException("Unsupported metric type: " + metricType);
@@ -191,13 +192,17 @@ public abstract class MetricEntityState {
   }
 
   final void record(long value, Attributes attributes) {
+    if (metricEntity.getMetricType().isAsyncMetric()) {
+      // Async gauge metrics should be updated by the callback function.
+      return;
+    }
     recordOtelMetric(value, attributes);
     recordTehutiMetric(value);
   }
 
   final void record(double value, Attributes attributes) {
-    if (metricEntity.getMetricType() == MetricType.ASYNC_GAUGE) {
-      // Async gauge metrics are not recorded directly, they are updated by the callback function.
+    if (metricEntity.getMetricType().isAsyncMetric()) {
+      // Async gauge metrics should be updated by the callback function.
       return;
     }
     recordOtelMetric(value, attributes);
