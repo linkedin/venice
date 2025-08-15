@@ -2542,21 +2542,37 @@ public class VenicePushJob implements AutoCloseable {
         // For target region push with deferred swap, stall push completion until version swap is complete
         // Version swap is complete when the parent version is online, partially online, or error
         if (isTargetRegionPushWithDeferredSwap) {
-          StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
-          if (parentStoreResponse.isError()) {
-            LOGGER.warn("Failed to get store response for store: {}", pushJobSetting.storeName);
-            return;
+          int attempt = 0;
+          Version parentVersion = null;
+          int latestUsedVersionNumber = -1;
+          while (attempt < 5) {
+            StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
+            if (parentStoreResponse.isError()) {
+              LOGGER.warn("Failed to get store response for store: {}", pushJobSetting.storeName);
+              attempt++;
+              continue;
+            }
+
+            StoreInfo parentStoreInfo = parentStoreResponse.getStore();
+            latestUsedVersionNumber = parentStoreInfo.getLargestUsedVersionNumber();
+            Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(latestUsedVersionNumber);
+            if (!parentVersionFromStore.isPresent()) {
+              LOGGER.warn("Failed to get parent version for store: {}", pushJobSetting.storeName);
+              attempt++;
+              continue;
+            }
+
+            parentVersion = parentVersionFromStore.get();
+            break;
           }
 
-          StoreInfo parentStoreInfo = parentStoreResponse.getStore();
-          int latestUsedVersionNumber = parentStoreInfo.getLargestUsedVersionNumber();
-          Optional<Version> parentVersion = parentStoreInfo.getVersion(latestUsedVersionNumber);
-          if (!parentVersion.isPresent()) {
-            LOGGER.warn("Failed to get parent version for store: {}", pushJobSetting.storeName);
-            return;
+          if (parentVersion == null || latestUsedVersionNumber == -1) {
+            throw new VeniceException(
+                "Failed to get parent version from parent store after 5 attempts "
+                    + "and cannot infer version swap status after ingestion completed");
           }
 
-          VersionStatus parentVersionStatus = parentVersion.get().getStatus();
+          VersionStatus parentVersionStatus = parentVersion.getStatus();
           if (VersionStatus.ERROR.equals(parentVersionStatus)
               && ExecutionStatus.COMPLETED.equals(overallStatus.getRootStatus())) {
             throw new VeniceException(
@@ -2564,10 +2580,13 @@ public class VenicePushJob implements AutoCloseable {
                     + " was rolled back after ingestion completed due to validation failure");
           } else if (VersionStatus.PARTIALLY_ONLINE.equals(parentVersionStatus)) {
             throw new VeniceException(
-                "Version " + latestUsedVersionNumber + " is only partially online in some regions");
+                "Version " + latestUsedVersionNumber + " is only partially online in some regions. "
+                    + "Check nuage to see which regions are not serving the new version");
           } else if (VersionStatus.ONLINE.equals(parentVersionStatus)) {
             return;
           }
+
+          LOGGER.info("Version status is {} and version swap is not complete yet", parentVersion.getStatus());
         } else {
           return;
         }
