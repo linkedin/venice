@@ -15,7 +15,6 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
-import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.CHILD_REGION_NAME_PREFIX;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 
@@ -137,7 +136,6 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, childRegionName.get(0));
       defaultParentControllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, parentRegionName);
       defaultParentControllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, childRegionList + "," + parentRegionName);
-      defaultParentControllerProps.put(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, clusterNames[0]);
 
       final Properties finalParentControllerProperties = new Properties();
       finalParentControllerProperties.putAll(defaultParentControllerProps);
