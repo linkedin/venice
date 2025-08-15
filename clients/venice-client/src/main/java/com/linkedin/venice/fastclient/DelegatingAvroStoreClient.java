@@ -10,6 +10,7 @@ import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
 import com.linkedin.venice.schema.SchemaReader;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -148,5 +149,12 @@ public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, 
   @Override
   public ServerSideAggregationRequestBuilder<K> getServerSideAggregationRequestBuilder() throws VeniceClientException {
     return delegate.getServerSideAggregationRequestBuilder();
+  }
+
+  @Override
+  protected CompletableFuture<Map<String, Map<Object, Integer>>> countByValue(
+      CountByValueRequestContext<K> requestContext,
+      Set<K> keys) throws VeniceClientException {
+    return delegate.countByValue(requestContext, keys);
   }
 }

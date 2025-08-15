@@ -20,6 +20,7 @@ import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
+import com.linkedin.venice.client.store.FacetCountingUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.ComputeUtils;
@@ -34,6 +35,7 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
+import com.linkedin.venice.listener.request.CountByValueRouterRequest;
 import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
@@ -47,6 +49,7 @@ import com.linkedin.venice.listener.request.StorePropertiesFetchRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
+import com.linkedin.venice.listener.response.CountByValueReadResponse;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.MultiKeyResponseWrapper;
@@ -81,6 +84,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -94,6 +98,7 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.util.Utf8;
@@ -296,6 +301,9 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           break;
         case COMPUTE:
           responseFuture = this.computeHandler.apply((ComputeRouterRequestWrapper) request);
+          break;
+        case COUNT_BY_VALUE:
+          responseFuture = handleCountByValueRequest((CountByValueRouterRequest) request);
           break;
         default:
           throw new VeniceException("Unknown request type: " + request.getRequestType());
@@ -674,6 +682,98 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         this.computeExecutor,
         requestContext,
         this::processCompute);
+  }
+
+  /**
+   * Handle CountByValue aggregation request, following the same Handler chain pattern
+   * as GET and BatchGet operations, including chunk support for large values.
+   */
+  public CompletableFuture<ReadResponse> handleCountByValueRequest(CountByValueRouterRequest request) {
+    final int queueLen = this.executor.getQueue().size();
+    final long preSubmissionTimeNs = System.nanoTime();
+
+    return CompletableFuture.supplyAsync(() -> {
+      if (request.shouldRequestBeTerminatedEarly()) {
+        throw new VeniceRequestEarlyTerminationException(request.getStoreName());
+      }
+
+      double submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
+
+      String topic = request.getResourceName();
+      PerStoreVersionState perStoreVersionState = getPerStoreVersionState(topic);
+      StorageEngine storageEngine = perStoreVersionState.storageEngine;
+      StoreVersionState svs = storageEngine.getStoreVersionState();
+      boolean isChunked = StoreVersionStateUtils.isChunked(svs);
+
+      CountByValueReadResponse response = new CountByValueReadResponse();
+      response.setCompressionStrategy(StoreVersionStateUtils.getCompressionStrategy(svs));
+
+      // Use SingleGetChunkingAdapter for each key to reuse chunk logic
+      // Collect all GenericRecords first, then use FacetCountingUtils for processing
+      List<GenericRecord> records = new ArrayList<>();
+      List<byte[]> keys = request.getKeys();
+      List<String> fieldNames = request.getFieldNames();
+
+      for (byte[] key: keys) {
+        ValueRecord valueRecord =
+            SingleGetChunkingAdapter.get(storageEngine, request.getPartition(), key, isChunked, response.getStats());
+
+        if (valueRecord != null && valueRecord.getDataSize() > 0) {
+          // Convert ValueRecord to GenericRecord for use with FacetCountingUtils
+          GenericRecord record = convertValueRecordToGenericRecord(valueRecord, request.getResourceName());
+          if (record != null) {
+            records.add(record);
+          }
+        }
+
+        response.getStats().addKeySize(key.length);
+      }
+
+      // Use FacetCountingUtils for efficient field counting with topK, but filter out null values
+      Map<String, Map<Object, Integer>> fieldToValueCounts = new HashMap<>();
+      int topK = request.getTopK() > 0 ? request.getTopK() : Integer.MAX_VALUE;
+
+      for (String fieldName: fieldNames) {
+        Map<Object, Integer> valueCounts = FacetCountingUtils.getValueToCount(records, fieldName, topK);
+        // Remove null values to match original CountByValue behavior
+        valueCounts.remove(null);
+        fieldToValueCounts.put(fieldName, valueCounts);
+      }
+
+      response.setFieldToValueCounts(fieldToValueCounts);
+      response.getStats().setStorageExecutionSubmissionWaitTime(submissionWaitTime);
+      response.getStats().setStorageExecutionQueueLen(queueLen);
+
+      return (ReadResponse) response;
+    }, executor);
+  }
+
+  /**
+   * Convert a ValueRecord to a GenericRecord for use with FacetCountingUtils.
+   * This method reuses the same deserialization logic but returns the GenericRecord.
+   */
+  private GenericRecord convertValueRecordToGenericRecord(ValueRecord valueRecord, String resourceName) {
+    try {
+      // Get the schema for this record
+      int schemaId = valueRecord.getSchemaId();
+      SchemaEntry schemaEntry = schemaRepository.getValueSchema(resourceName, schemaId);
+      if (schemaEntry == null) {
+        LOGGER.warn("Schema not found for schemaId: {} in resource: {}", schemaId, resourceName);
+        return null;
+      }
+
+      // Deserialize the data to a GenericRecord
+      Schema schema = schemaEntry.getSchema();
+      byte[] data = valueRecord.getDataInBytes();
+      BinaryDecoder decoder = AvroCompatibilityHelper.newBinaryDecoder(data);
+      GenericDatumReader<GenericRecord> datumReader = new GenericDatumReader<>(schema, schema);
+      return datumReader.read(null, decoder);
+
+    } catch (Exception e) {
+      // Log error but continue processing other records
+      LOGGER.warn("Failed to convert value record to GenericRecord for CountByValue aggregation", e);
+      return null;
+    }
   }
 
   /**

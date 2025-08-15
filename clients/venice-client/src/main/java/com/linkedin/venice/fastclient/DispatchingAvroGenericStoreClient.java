@@ -6,6 +6,8 @@ import static org.apache.hc.core5.http.HttpStatus.SC_INTERNAL_SERVER_ERROR;
 import static org.apache.hc.core5.http.HttpStatus.SC_NOT_FOUND;
 import static org.apache.hc.core5.http.HttpStatus.SC_OK;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
@@ -28,6 +30,7 @@ import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestHeadersProvider;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.read.protocol.request.router.CountByValueRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.read.protocol.response.streaming.StreamingFooterRecordV1;
@@ -45,6 +48,7 @@ import com.linkedin.venice.utils.concurrent.ChainedCompletableFuture;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -52,7 +56,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.ByteBufferOptimizedBinaryDecoder;
@@ -85,6 +92,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
   private static final RecordSerializer<ComputeRouterRequestKeyV1> COMPUTE_REQUEST_SERIALIZER =
       FastSerializerDeserializerFactory.getAvroGenericSerializer(ComputeRouterRequestKeyV1.SCHEMA$);
+  private static final RecordSerializer<CountByValueRouterRequestKeyV1> COUNT_BY_VALUE_REQUEST_SERIALIZER =
+      FastSerializerDeserializerFactory.getAvroGenericSerializer(CountByValueRouterRequestKeyV1.SCHEMA$);
   private static final RecordDeserializer<StreamingFooterRecordV1> STREAMING_FOOTER_RECORD_DESERIALIZER =
       FastSerializerDeserializerFactory
           .getFastAvroSpecificDeserializer(StreamingFooterRecordV1.SCHEMA$, StreamingFooterRecordV1.class);
@@ -156,7 +165,20 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       sb.append(URI_SEPARATOR).append(TYPE_COMPUTE).append(URI_SEPARATOR).append(resourceName);
       return sb.toString();
     }
+    if (requestType.equals(RequestType.COUNT_BY_VALUE)) {
+      StringBuilder sb = new StringBuilder();
+      sb.append(URI_SEPARATOR).append(TYPE_COMPUTE).append(URI_SEPARATOR).append(resourceName);
+      return sb.toString();
+    }
     throw new VeniceClientException("Unknown request type: " + requestType);
+  }
+
+  private String composeURIForCountByValueRequest(CountByValueRequestContext<K> requestContext) {
+    int currentVersion = requestContext.getCurrentVersion();
+    String resourceName = getResourceName(currentVersion);
+    StringBuilder sb = new StringBuilder();
+    sb.append(URI_SEPARATOR).append(TYPE_COMPUTE).append(URI_SEPARATOR).append(resourceName);
+    return sb.toString();
   }
 
   private String getResourceName(int currentVersion) {
@@ -794,5 +816,206 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         metadata,
         (GrpcTransportClient) transportClient,
         keySerializer);
+  }
+
+  @Override
+  protected CompletableFuture<Map<String, Map<Object, Integer>>> countByValue(
+      CountByValueRequestContext<K> requestContext,
+      Set<K> keys) throws VeniceClientException {
+
+    verifyMetadataInitialized();
+
+    // For gRPC-only implementation, only support gRPC transport
+    if (!config.useGrpc()) {
+      throw new VeniceClientException(
+          "CountByValue is only supported with gRPC transport. Please configure client to use gRPC.");
+    }
+
+    return multiKeyCountByValueRequest(requestContext, keys);
+  }
+
+  /**
+   * Performs server-side CountByValue aggregation using gRPC transport.
+   * This method follows the same pattern as streamingBatchGet but for aggregation operations.
+   */
+  private CompletableFuture<Map<String, Map<Object, Integer>>> multiKeyCountByValueRequest(
+      CountByValueRequestContext<K> requestContext,
+      Set<K> keys) throws VeniceClientException {
+
+    verifyMetadataInitialized();
+
+    int keyCnt = keys.size();
+    if (keyCnt > metadata.getBatchGetLimit()) {
+      VeniceKeyCountLimitException veniceKeyCountLimitException = new VeniceKeyCountLimitException(
+          getStoreName(),
+          RequestType.COUNT_BY_VALUE,
+          keyCnt,
+          metadata.getBatchGetLimit());
+      CompletableFuture<Map<String, Map<Object, Integer>>> failedFuture = new CompletableFuture<>();
+      failedFuture.completeExceptionally(veniceKeyCountLimitException);
+      return failedFuture;
+    }
+
+    CompletableFuture<Map<String, Map<Object, Integer>>> resultFuture = new CompletableFuture<>();
+
+    try {
+      // Set up request context like multiKeyStreamingRequest
+      requestContext.setKeys(keys);
+      // Get current version from metadata readCurrentVersion()
+      int currentVersion = metadata.getCurrentStoreVersion();
+      requestContext.setCurrentVersion(currentVersion);
+
+      // Route the request to appropriate servers
+      metadata.routeRequest(requestContext, keySerializer);
+
+      // Prepare aggregated result map
+      Map<String, Map<Object, Integer>> aggregatedResults = new HashMap<>();
+      for (String fieldName: requestContext.getFieldNames()) {
+        aggregatedResults.put(fieldName, new HashMap<>());
+      }
+
+      // Track completion of all route requests
+      Set<String> routes = requestContext.getRoutes();
+      if (routes.isEmpty()) {
+        resultFuture.complete(aggregatedResults);
+        return resultFuture;
+      }
+
+      AtomicInteger completedRoutes = new AtomicInteger(0);
+      AtomicReference<Exception> firstException = new AtomicReference<>();
+
+      // Send requests to each route
+      String routeForCountByValue = composeURIForCountByValueRequest(requestContext);
+      for (String route: routes) {
+        String url = route + routeForCountByValue;
+        List<MultiKeyRequestContext.KeyInfo<K>> keysForRoute = requestContext.keysForRoutes(route);
+
+        // Serialize the CountByValue request
+        byte[] serializedRequest = serializeCountByValueRequest(keysForRoute, requestContext);
+
+        // Set appropriate headers
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Content-Type", "application/x-vnd.venice.compute-v1+avro");
+
+        // Send the request via transport client
+        CompletableFuture<TransportClientResponse> transportFuture =
+            transportClient.post(url, headers, serializedRequest);
+
+        transportFuture.whenComplete((transportResponse, throwable) -> {
+          if (throwable != null) {
+            firstException.compareAndSet(null, new VeniceClientException("CountByValue request failed", throwable));
+          } else if (transportResponse != null) {
+            try {
+              // Deserialize response and merge into aggregated results
+              deserializeAndMergeCountByValueResponse(
+                  transportResponse,
+                  keysForRoute,
+                  aggregatedResults,
+                  requestContext);
+            } catch (Exception e) {
+              firstException
+                  .compareAndSet(null, new VeniceClientException("Failed to deserialize CountByValue response", e));
+            }
+          }
+
+          // Check if all routes completed
+          if (completedRoutes.incrementAndGet() == routes.size()) {
+            Exception exception = firstException.get();
+            if (exception != null) {
+              resultFuture.completeExceptionally(exception);
+            } else {
+              resultFuture.complete(aggregatedResults);
+            }
+          }
+        });
+      }
+
+    } catch (Exception e) {
+      resultFuture.completeExceptionally(new VeniceClientException("gRPC CountByValue request setup failed", e));
+    }
+
+    return resultFuture;
+  }
+
+  private byte[] serializeCountByValueRequest(
+      List<MultiKeyRequestContext.KeyInfo<K>> keyList,
+      CountByValueRequestContext<K> context) {
+    List<CountByValueRouterRequestKeyV1> routerRequestKeys = new ArrayList<>();
+
+    // Create one request per partition
+    Map<Integer, List<byte[]>> partitionToKeys = new HashMap<>();
+    for (MultiKeyRequestContext.KeyInfo<K> keyInfo: keyList) {
+      int partitionId = keyInfo.getPartitionId();
+      partitionToKeys.computeIfAbsent(partitionId, k -> new ArrayList<>()).add(keyInfo.getSerializedKey());
+    }
+
+    for (Map.Entry<Integer, List<byte[]>> entry: partitionToKeys.entrySet()) {
+      CountByValueRouterRequestKeyV1 routerRequestKey = new CountByValueRouterRequestKeyV1();
+      routerRequestKey.keys = entry.getValue().stream().map(ByteBuffer::wrap).collect(Collectors.toList());
+      routerRequestKey.fieldNames = new ArrayList<>(context.getFieldNames());
+      routerRequestKey.topK = context.getTopK();
+      routerRequestKey.partitionId = entry.getKey();
+      routerRequestKeys.add(routerRequestKey);
+    }
+
+    return COUNT_BY_VALUE_REQUEST_SERIALIZER.serializeObjects(routerRequestKeys);
+  }
+
+  /**
+   * Deserializes CountByValue response and merges the results into the aggregated map.
+   * This method handles the response from a single route and aggregates the counts.
+   */
+  private void deserializeAndMergeCountByValueResponse(
+      TransportClientResponse transportResponse,
+      List<MultiKeyRequestContext.KeyInfo<K>> keysForRoute,
+      Map<String, Map<Object, Integer>> aggregatedResults,
+      CountByValueRequestContext<K> requestContext) throws Exception {
+
+    if (transportResponse == null || transportResponse.getBody() == null) {
+      return;
+    }
+
+    // Get compression strategy and decompress if needed
+    CompressionStrategy compressionStrategy = transportResponse.getCompressionStrategy();
+    VeniceCompressor compressor = metadata.getCompressor(compressionStrategy, requestContext.getCurrentVersion());
+    ByteBuffer responseBuffer = compressor.decompress(ByteBuffer.wrap(transportResponse.getBody()));
+
+    // Deserialize the response as a Map<String, Map<String, Integer>>
+    // The server sends the aggregated counts as a serialized map structure
+    try {
+      // The response format is: Map<fieldName, Map<fieldValue, count>>
+      // We deserialize it as a generic map and merge with existing results
+      ObjectMapper mapper = new ObjectMapper();
+      byte[] responseData = new byte[responseBuffer.remaining()];
+      responseBuffer.get(responseData);
+
+      // Parse the JSON response from server
+      Map<String, Map<String, Integer>> serverResults =
+          mapper.readValue(responseData, new TypeReference<Map<String, Map<String, Integer>>>() {
+          });
+
+      // Merge server results with aggregated results
+      for (Map.Entry<String, Map<String, Integer>> fieldEntry: serverResults.entrySet()) {
+        String fieldName = fieldEntry.getKey();
+        Map<String, Integer> serverFieldCounts = fieldEntry.getValue();
+        Map<Object, Integer> clientFieldCounts = aggregatedResults.get(fieldName);
+
+        if (clientFieldCounts != null && serverFieldCounts != null) {
+          // Merge counts from this route into the aggregated results
+          for (Map.Entry<String, Integer> valueEntry: serverFieldCounts.entrySet()) {
+            String fieldValue = valueEntry.getKey();
+            Integer count = valueEntry.getValue();
+            clientFieldCounts.merge(fieldValue, count, Integer::sum);
+          }
+        }
+      }
+
+      // Track successful key processing
+      requestContext.successRequestKeyCount.addAndGet(keysForRoute.size());
+
+    } catch (Exception e) {
+      LOGGER.error("Failed to deserialize CountByValue response", e);
+      throw new VeniceClientException("Failed to deserialize CountByValue response", e);
+    }
   }
 }

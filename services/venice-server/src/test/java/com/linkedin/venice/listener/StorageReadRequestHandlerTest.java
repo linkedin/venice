@@ -21,6 +21,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
@@ -28,6 +29,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.listener.response.MetadataResponse;
+import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.listener.response.ReplicaIngestionResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.IngestionMetadataRetriever;
@@ -56,6 +58,7 @@ import com.linkedin.venice.listener.grpc.handlers.GrpcStorageReadRequestHandler;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
+import com.linkedin.venice.listener.request.CountByValueRouterRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.HeartbeatRequest;
@@ -65,6 +68,7 @@ import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.AbstractReadResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
+import com.linkedin.venice.listener.response.CountByValueReadResponse;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.SingleGetResponseWrapper;
@@ -113,6 +117,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ValueSize;
 import com.linkedin.venice.utils.concurrent.BlockingQueueType;
 import com.linkedin.venice.utils.concurrent.ThreadPoolFactory;
+import io.grpc.stub.StreamObserver;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -133,6 +138,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -896,6 +902,383 @@ public class StorageReadRequestHandlerTest {
     verify(context, times(2)).writeAndFlush(shortcutResponseArgumentCaptor.capture());
 
     Assert.assertEquals(shortcutResponseArgumentCaptor.getValue().getStatus(), BAD_REQUEST);
+  }
+
+  @Test
+  public void testCountByValueWithRealAvroData() throws Exception {
+    String storeName = "test_store";
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    int partition = 0;
+    int schemaId = 1;
+
+    // Create a realistic Avro schema with multiple fields
+    Schema valueSchema = SchemaBuilder.record("TestRecord")
+        .fields()
+        .name("category")
+        .type()
+        .stringType()
+        .noDefault()
+        .name("priority")
+        .type()
+        .intType()
+        .noDefault()
+        .name("status")
+        .type()
+        .stringType()
+        .noDefault()
+        .endRecord();
+
+    // Setup schema repository
+    SchemaEntry schemaEntry = new SchemaEntry(schemaId, valueSchema);
+    doReturn(schemaEntry).when(schemaRepository).getValueSchema(topic, schemaId);
+
+    // Create test records with different field values
+    AvroSerializer<GenericRecord> valueSerializer = new AvroSerializer<>(valueSchema);
+
+    // Record 1: category="A", priority=1, status="active"
+    GenericRecord record1 = new GenericData.Record(valueSchema);
+    record1.put("category", "A");
+    record1.put("priority", 1);
+    record1.put("status", "active");
+    byte[] value1Bytes = ValueRecord.create(schemaId, valueSerializer.serialize(record1)).serialize();
+
+    // Record 2: category="B", priority=2, status="active"
+    GenericRecord record2 = new GenericData.Record(valueSchema);
+    record2.put("category", "B");
+    record2.put("priority", 2);
+    record2.put("status", "active");
+    byte[] value2Bytes = ValueRecord.create(schemaId, valueSerializer.serialize(record2)).serialize();
+
+    // Record 3: category="A", priority=1, status="inactive"
+    GenericRecord record3 = new GenericData.Record(valueSchema);
+    record3.put("category", "A");
+    record3.put("priority", 1);
+    record3.put("status", "inactive");
+    byte[] value3Bytes = ValueRecord.create(schemaId, valueSerializer.serialize(record3)).serialize();
+
+    // Mock storage engine to return our test data
+    doReturn(value1Bytes).when(storageEngine).get(partition, ByteBuffer.wrap("key1".getBytes()));
+    doReturn(value2Bytes).when(storageEngine).get(partition, ByteBuffer.wrap("key2".getBytes()));
+    doReturn(value3Bytes).when(storageEngine).get(partition, ByteBuffer.wrap("key3".getBytes()));
+
+    // Setup CountByValue request
+    CountByValueRouterRequest request = mock(CountByValueRouterRequest.class);
+    doReturn(false).when(request).shouldRequestBeTerminatedEarly();
+    doReturn(RequestType.COUNT_BY_VALUE).when(request).getRequestType();
+    doReturn(topic).when(request).getResourceName();
+    doReturn(storeName).when(request).getStoreName();
+    doReturn(partition).when(request).getPartition();
+
+    List<byte[]> keys = Arrays.asList("key1".getBytes(), "key2".getBytes(), "key3".getBytes());
+    List<String> fieldNames = Arrays.asList("category", "status");
+    doReturn(keys).when(request).getKeys();
+    doReturn(fieldNames).when(request).getFieldNames();
+
+    // Execute the request
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    CompletableFuture<ReadResponse> responseFuture = requestHandler.handleCountByValueRequest(request);
+    ReadResponse response = responseFuture.get(1, TimeUnit.SECONDS);
+
+    // Verify the response structure
+    assertNotNull(response);
+    assertTrue(response instanceof CountByValueReadResponse);
+
+    CountByValueReadResponse countByValueResponse = (CountByValueReadResponse) response;
+    Map<String, Map<Object, Integer>> fieldToValueCounts = countByValueResponse.getFieldToValueCounts();
+
+    // Verify actual field counting results
+    assertNotNull(fieldToValueCounts);
+    assertEquals(2, fieldToValueCounts.size()); // "category" and "status" fields
+
+    // Verify category counts: A=2, B=1
+    Map<Object, Integer> categoryCounts = fieldToValueCounts.get("category");
+    assertNotNull(categoryCounts);
+    assertEquals(2, categoryCounts.size());
+    assertEquals(Integer.valueOf(2), categoryCounts.get("A"));
+    assertEquals(Integer.valueOf(1), categoryCounts.get("B"));
+
+    // Verify status counts: active=2, inactive=1
+    Map<Object, Integer> statusCounts = fieldToValueCounts.get("status");
+    assertNotNull(statusCounts);
+    assertEquals(2, statusCounts.size());
+    assertEquals(Integer.valueOf(2), statusCounts.get("active"));
+    assertEquals(Integer.valueOf(1), statusCounts.get("inactive"));
+  }
+
+  @Test
+  public void testCountByValueWithNullAndMissingValues() throws Exception {
+    String storeName = "test_store";
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    int partition = 0;
+    int schemaId = 1;
+
+    // Create schema with optional fields
+    Schema valueSchema = SchemaBuilder.record("TestRecord")
+        .fields()
+        .name("category")
+        .type()
+        .optional()
+        .stringType()
+        .name("priority")
+        .type()
+        .intType()
+        .noDefault()
+        .endRecord();
+
+    SchemaEntry schemaEntry = new SchemaEntry(schemaId, valueSchema);
+    doReturn(schemaEntry).when(schemaRepository).getValueSchema(topic, schemaId);
+
+    AvroSerializer<GenericRecord> valueSerializer = new AvroSerializer<>(valueSchema);
+
+    // Record with null category
+    GenericRecord record1 = new GenericData.Record(valueSchema);
+    record1.put("category", null);
+    record1.put("priority", 1);
+    byte[] value1Bytes = ValueRecord.create(schemaId, valueSerializer.serialize(record1)).serialize();
+
+    // Record with non-null category
+    GenericRecord record2 = new GenericData.Record(valueSchema);
+    record2.put("category", "A");
+    record2.put("priority", 2);
+    byte[] value2Bytes = ValueRecord.create(schemaId, valueSerializer.serialize(record2)).serialize();
+
+    // Mock storage engine
+    doReturn(value1Bytes).when(storageEngine).get(partition, ByteBuffer.wrap("key1".getBytes()));
+    doReturn(value2Bytes).when(storageEngine).get(partition, ByteBuffer.wrap("key2".getBytes()));
+
+    // Setup request
+    CountByValueRouterRequest request = mock(CountByValueRouterRequest.class);
+    doReturn(false).when(request).shouldRequestBeTerminatedEarly();
+    doReturn(RequestType.COUNT_BY_VALUE).when(request).getRequestType();
+    doReturn(topic).when(request).getResourceName();
+    doReturn(storeName).when(request).getStoreName();
+    doReturn(partition).when(request).getPartition();
+    doReturn(Arrays.asList("key1".getBytes(), "key2".getBytes())).when(request).getKeys();
+    doReturn(Arrays.asList("category")).when(request).getFieldNames();
+
+    // Execute
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    CompletableFuture<ReadResponse> responseFuture = requestHandler.handleCountByValueRequest(request);
+    ReadResponse response = responseFuture.get(1, TimeUnit.SECONDS);
+
+    // Verify - null values should not be counted
+    CountByValueReadResponse countByValueResponse = (CountByValueReadResponse) response;
+    Map<String, Map<Object, Integer>> fieldToValueCounts = countByValueResponse.getFieldToValueCounts();
+
+    Map<Object, Integer> categoryCounts = fieldToValueCounts.get("category");
+    assertNotNull(categoryCounts);
+    assertEquals(1, categoryCounts.size()); // Only non-null value should be counted
+    assertEquals(Integer.valueOf(1), categoryCounts.get("A"));
+    Assert.assertNull(categoryCounts.get(null)); // Null values should not be in the count
+  }
+
+  @Test
+  public void testGrpcStorageReadRequestHandlerWithCountByValue() throws Exception {
+    String storeName = "test_store";
+    String topic = Version.composeKafkaTopic(storeName, 1);
+
+    // Setup mock CountByValueRouterRequest
+    CountByValueRouterRequest request = mock(CountByValueRouterRequest.class);
+    doReturn(false).when(request).shouldRequestBeTerminatedEarly();
+    doReturn(RequestType.COUNT_BY_VALUE).when(request).getRequestType();
+    doReturn(topic).when(request).getResourceName();
+    doReturn(storeName).when(request).getStoreName();
+    doReturn(0).when(request).getPartition();
+    doReturn(Arrays.asList("key1".getBytes())).when(request).getKeys();
+    doReturn(Arrays.asList("field1")).when(request).getFieldNames();
+
+    // Mock storage handler response
+    StorageReadRequestHandler storageHandler = mock(StorageReadRequestHandler.class);
+    CountByValueReadResponse mockResponse = mock(CountByValueReadResponse.class);
+    doReturn(true).when(mockResponse).isFound();
+    doReturn(1).when(mockResponse).getRCU();
+    doReturn(false).when(mockResponse).isStreamingResponse();
+    Map<String, Map<Object, Integer>> fieldCounts = new HashMap<>();
+    fieldCounts.put("field1", Collections.singletonMap("value1", 1));
+    doReturn(fieldCounts).when(mockResponse).getFieldToValueCounts();
+
+    CompletableFuture<ReadResponse> responseFuture = CompletableFuture.completedFuture(mockResponse);
+    doReturn(responseFuture).when(storageHandler).handleCountByValueRequest(any(CountByValueRouterRequest.class));
+
+    // Create GrpcStorageReadRequestHandler
+    GrpcStorageReadRequestHandler grpcHandler = new GrpcStorageReadRequestHandler(storageHandler);
+
+    // Create GrpcRequestContext
+    GrpcRequestContext ctx = mock(GrpcRequestContext.class);
+    doReturn(request).when(ctx).getRouterRequest();
+    VeniceServerResponse.Builder responseBuilder = VeniceServerResponse.newBuilder();
+    doReturn(responseBuilder).when(ctx).getVeniceServerResponseBuilder();
+
+    // Mock the response observer to prevent NullPointerException
+    @SuppressWarnings("unchecked")
+    StreamObserver<VeniceServerResponse> responseObserver = mock(StreamObserver.class);
+    doReturn(responseObserver).when(ctx).getResponseObserver();
+
+    // Process the request
+    grpcHandler.processRequest(ctx);
+
+    // Verify that handleCountByValueRequest was called
+    verify(storageHandler, times(1)).handleCountByValueRequest(request);
+
+    // Verify that response was set in context
+    verify(ctx, times(1)).setReadResponse(mockResponse);
+  }
+
+  @Test
+  public void testCountByValueWithTopKFiltering() throws Exception {
+    String storeName = "test_store";
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    int partition = 0;
+    int schemaId = 1;
+
+    // Create test schema with a single field
+    Schema valueSchema =
+        SchemaBuilder.record("TestRecord").fields().name("category").type().stringType().noDefault().endRecord();
+
+    SchemaEntry schemaEntry = new SchemaEntry(schemaId, valueSchema);
+    doReturn(schemaEntry).when(schemaRepository).getValueSchema(topic, schemaId);
+
+    AvroSerializer<GenericRecord> valueSerializer = new AvroSerializer<>(valueSchema);
+
+    // Create 5 different category values with different frequencies
+    // A: 5 occurrences, B: 4 occurrences, C: 3 occurrences, D: 2 occurrences, E: 1 occurrence
+    String[] categories = { "A", "A", "A", "A", "A", "B", "B", "B", "B", "C", "C", "C", "D", "D", "E" };
+    List<byte[]> keys = new ArrayList<>();
+
+    for (int i = 0; i < categories.length; i++) {
+      GenericRecord record = new GenericData.Record(valueSchema);
+      record.put("category", categories[i]);
+      byte[] valueBytes = ValueRecord.create(schemaId, valueSerializer.serialize(record)).serialize();
+      byte[] keyBytes = ("key" + i).getBytes();
+
+      doReturn(valueBytes).when(storageEngine).get(partition, ByteBuffer.wrap(keyBytes));
+      keys.add(keyBytes);
+    }
+
+    // Create CountByValue request with topK = 3
+    CountByValueRouterRequest request = new CountByValueRouterRequest(
+        topic,
+        keys,
+        Arrays.asList("category"),
+        3, // Only return top 3 most frequent values
+        partition,
+        false // not a retry request
+    );
+
+    // Execute the request
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    CompletableFuture<ReadResponse> future = requestHandler.handleCountByValueRequest(request);
+    CountByValueReadResponse response = (CountByValueReadResponse) future.get();
+
+    // Verify response structure
+    Assert.assertTrue(response.isFound());
+    Map<String, Map<Object, Integer>> fieldToValueCounts = response.getFieldToValueCounts();
+    Assert.assertNotNull(fieldToValueCounts);
+    Assert.assertTrue(fieldToValueCounts.containsKey("category"));
+
+    // Verify topK filtering - should only have top 3 values
+    Map<Object, Integer> categoryCounts = fieldToValueCounts.get("category");
+    assertEquals(3, categoryCounts.size()); // Only top 3 categories
+
+    // Verify the counts and order (should be A:5, B:4, C:3)
+    assertEquals(Integer.valueOf(5), categoryCounts.get("A"));
+    assertEquals(Integer.valueOf(4), categoryCounts.get("B"));
+    assertEquals(Integer.valueOf(3), categoryCounts.get("C"));
+
+    // Verify that D and E are filtered out by topK
+    Assert.assertNull(categoryCounts.get("D"));
+    Assert.assertNull(categoryCounts.get("E"));
+  }
+
+  @Test
+  public void testCountByValueWithMultipleFields() throws Exception {
+    String storeName = "test_store";
+    String topic = Version.composeKafkaTopic(storeName, 1);
+    int partition = 0;
+    int schemaId = 1;
+
+    // Create schema with multiple fields
+    Schema valueSchema = SchemaBuilder.record("TestRecord")
+        .fields()
+        .name("category")
+        .type()
+        .stringType()
+        .noDefault()
+        .name("status")
+        .type()
+        .stringType()
+        .noDefault()
+        .name("priority")
+        .type()
+        .intType()
+        .noDefault()
+        .endRecord();
+
+    SchemaEntry schemaEntry = new SchemaEntry(schemaId, valueSchema);
+    doReturn(schemaEntry).when(schemaRepository).getValueSchema(topic, schemaId);
+
+    AvroSerializer<GenericRecord> valueSerializer = new AvroSerializer<>(valueSchema);
+
+    // Create test records with different field values
+    Object[][] testData = { { "A", "active", 1 }, { "A", "inactive", 2 }, { "B", "active", 1 }, { "B", "active", 3 },
+        { "C", "pending", 2 } };
+
+    List<byte[]> keys = new ArrayList<>();
+    for (int i = 0; i < testData.length; i++) {
+      GenericRecord record = new GenericData.Record(valueSchema);
+      record.put("category", testData[i][0]);
+      record.put("status", testData[i][1]);
+      record.put("priority", testData[i][2]);
+
+      byte[] valueBytes = ValueRecord.create(schemaId, valueSerializer.serialize(record)).serialize();
+      byte[] keyBytes = ("key" + i).getBytes();
+
+      doReturn(valueBytes).when(storageEngine).get(partition, ByteBuffer.wrap(keyBytes));
+      keys.add(keyBytes);
+    }
+
+    // Create CountByValue request for multiple fields
+    CountByValueRouterRequest request = new CountByValueRouterRequest(
+        topic,
+        keys,
+        Arrays.asList("category", "status", "priority"), // Multiple fields
+        0, // No topK filtering
+        partition,
+        false // not a retry request
+    );
+
+    // Execute the request
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    CompletableFuture<ReadResponse> future = requestHandler.handleCountByValueRequest(request);
+    CountByValueReadResponse response = (CountByValueReadResponse) future.get();
+
+    // Verify response structure
+    Assert.assertTrue(response.isFound());
+    Map<String, Map<Object, Integer>> fieldToValueCounts = response.getFieldToValueCounts();
+    Assert.assertNotNull(fieldToValueCounts);
+
+    // Verify all three fields are present
+    Assert.assertTrue(fieldToValueCounts.containsKey("category"));
+    Assert.assertTrue(fieldToValueCounts.containsKey("status"));
+    Assert.assertTrue(fieldToValueCounts.containsKey("priority"));
+
+    // Verify category counts: A:2, B:2, C:1
+    Map<Object, Integer> categoryCounts = fieldToValueCounts.get("category");
+    assertEquals(Integer.valueOf(2), categoryCounts.get("A"));
+    assertEquals(Integer.valueOf(2), categoryCounts.get("B"));
+    assertEquals(Integer.valueOf(1), categoryCounts.get("C"));
+
+    // Verify status counts: active:3, inactive:1, pending:1
+    Map<Object, Integer> statusCounts = fieldToValueCounts.get("status");
+    assertEquals(Integer.valueOf(3), statusCounts.get("active"));
+    assertEquals(Integer.valueOf(1), statusCounts.get("inactive"));
+    assertEquals(Integer.valueOf(1), statusCounts.get("pending"));
+
+    // Verify priority counts: 1:2, 2:2, 3:1
+    Map<Object, Integer> priorityCounts = fieldToValueCounts.get("priority");
+    assertEquals(Integer.valueOf(2), priorityCounts.get(1));
+    assertEquals(Integer.valueOf(2), priorityCounts.get(2));
+    assertEquals(Integer.valueOf(1), priorityCounts.get(3));
   }
 
   private SchemaReader getMockSchemaReader(Schema keySchema, Schema valueSchema) {

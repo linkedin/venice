@@ -1,0 +1,34 @@
+{
+  "name": "CountByValueRouterRequestKeyV1",
+  "namespace": "com.linkedin.venice.read.protocol.request.router",
+  "doc": "Router request key for CountByValue aggregation operations",
+  "type": "record",
+  "fields": [
+    {
+      "name": "keys",
+      "doc": "List of keys to retrieve for aggregation",
+      "type": {
+        "type": "array",
+        "items": "bytes"
+      }
+    },
+    {
+      "name": "fieldNames",
+      "doc": "Field names to count values for",
+      "type": {
+        "type": "array",
+        "items": "string"
+      }
+    },
+    {
+      "name": "topK",
+      "doc": "Return only the top K most frequent values",
+      "type": "int"
+    },
+    {
+      "name": "partitionId",
+      "doc": "Partition ID for routing",
+      "type": "int"
+    }
+  ]
+}

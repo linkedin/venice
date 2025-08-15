@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
@@ -145,4 +146,25 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericReadCo
    */
   public abstract ServerSideAggregationRequestBuilder<K> getServerSideAggregationRequestBuilder()
       throws VeniceClientException;
+
+  /**
+   * Server-side CountByValue aggregation API for FastClient.
+   * This method performs field value counting on the server side to reduce network traffic.
+   * 
+   * @param keys The keys to retrieve and aggregate
+   * @param fieldNames The field names to count values for
+   * @param topK Return only the top K most frequent values
+   * @return A future containing the aggregation results
+   */
+  public CompletableFuture<Map<String, Map<Object, Integer>>> countByValue(
+      Set<K> keys,
+      List<String> fieldNames,
+      int topK) throws VeniceClientException {
+    CountByValueRequestContext<K> requestContext = new CountByValueRequestContext<>(keys.size(), fieldNames, topK);
+    return countByValue(requestContext, keys);
+  }
+
+  protected abstract CompletableFuture<Map<String, Map<Object, Integer>>> countByValue(
+      CountByValueRequestContext<K> requestContext,
+      Set<K> keys) throws VeniceClientException;
 }

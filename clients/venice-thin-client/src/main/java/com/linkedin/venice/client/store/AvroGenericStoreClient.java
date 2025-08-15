@@ -8,6 +8,7 @@ import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
@@ -134,6 +135,23 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * @see ComputeRequestBuilder
    */
   ComputeRequestBuilder<K> compute();
+
+  /**
+   * Server-side CountByValue aggregation API.
+   * This method performs field value counting on the server side to reduce network traffic.
+   * 
+   * @param keys The keys to retrieve and aggregate
+   * @param fieldNames The field names to count values for
+   * @param topK Return only the top K most frequent values
+   * @return A future containing the aggregation results: field name -> value -> count
+   * @throws VeniceClientException if the request fails
+   */
+  default CompletableFuture<Map<String, Map<Object, Integer>>> countByValue(
+      Set<K> keys,
+      List<String> fieldNames,
+      int topK) throws VeniceClientException {
+    throw new VeniceClientException("countByValue is not supported by this client implementation");
+  }
 
   void start() throws VeniceClientException;
 

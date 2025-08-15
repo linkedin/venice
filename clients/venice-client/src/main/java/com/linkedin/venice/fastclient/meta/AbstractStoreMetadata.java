@@ -217,7 +217,8 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
       }
       return;
     }
-    if (requestType.equals(RequestType.MULTI_GET_STREAMING) || requestType.equals(RequestType.COMPUTE_STREAMING)) {
+    if (requestType.equals(RequestType.MULTI_GET_STREAMING) || requestType.equals(RequestType.COMPUTE_STREAMING)
+        || requestType.equals(RequestType.COUNT_BY_VALUE)) {
       MultiKeyRequestContext<K, Object> multiKeyRequestContext = (MultiKeyRequestContext) requestContext;
       Set<K> keys = multiKeyRequestContext.getKeys();
 
