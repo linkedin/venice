@@ -80,9 +80,5 @@ public class SecurityStats extends AbstractVeniceStats {
         new AsyncGauge(
             (ignored1, ignored2) -> sslInitializer.getHandshakesFailed(),
             "total_failed_ssl_handshake_count"));
-    registerSensor(
-        new AsyncGauge(
-            (ignored1, ignored2) -> sslInitializer.getHandshakesStarted() - sslInitializer.getHandshakesFailed(),
-            "active_ssl_connection_count"));
   }
 }
