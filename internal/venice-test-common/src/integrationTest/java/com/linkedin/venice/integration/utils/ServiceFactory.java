@@ -3,6 +3,7 @@ package com.linkedin.venice.integration.utils;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_CONTROLLER_SPARK_SERVER_MAX_THREAD_COUNT;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_MAX_ATTEMPT;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.DEFAULT_WAIT_TIME_FOR_CLUSTER_START_S;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants.STANDALONE_REGION_NAME;
@@ -170,7 +171,7 @@ public class ServiceFactory {
           bannedRoutes,
           null,
           false,
-          3,
+          DEFAULT_CONTROLLER_SPARK_SERVER_MAX_THREAD_COUNT,
           new PubSubTopicRepository(),
           requestHandler);
       server.start();

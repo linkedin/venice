@@ -38,4 +38,9 @@ public class VeniceClusterWrapperConstants {
    * and let the router wrapper a free port.
    */
   public static final String ROUTER_PORT_TO_USE_IN_VENICE_ROUTER_WRAPPER = "routerPortToUseInVeniceRouterWrapper";
+
+  /**
+   * Default maximum thread count for Spark server in Venice Controller.
+   */
+  public static final int DEFAULT_CONTROLLER_SPARK_SERVER_MAX_THREAD_COUNT = 3;
 }
