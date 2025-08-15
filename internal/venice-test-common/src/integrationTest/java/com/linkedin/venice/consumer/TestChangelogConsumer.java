@@ -88,7 +88,6 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1141,9 +1140,11 @@ public class TestChangelogConsumer {
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName, "0");
 
     changeLogConsumer.subscribeAll().get();
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        IntegrationTestUtils.pollAllMessagesForVeniceChangelogConsumer(changeLogConsumer, 1000);
-    Assert.assertFalse(pubSubMessages.isEmpty());
+    final List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      pubSubMessages.addAll(changeLogConsumer.poll(1000));
+      Assert.assertEquals(pubSubMessages.size(), 100);
+    });
     // The consumer sequence id should be consecutive and monotonically increasing within the same partition. All
     // partitions should start with the same sequence id (seeded by consumer initialization timestamp).
     long startingSequenceId = pubSubMessages.iterator().next().getOffset().getConsumerSequenceId();
