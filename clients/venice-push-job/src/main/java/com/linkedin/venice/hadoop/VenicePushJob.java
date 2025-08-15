@@ -2569,7 +2569,8 @@ public class VenicePushJob implements AutoCloseable {
           if (parentVersion == null || latestUsedVersionNumber == -1) {
             throw new VeniceException(
                 "Failed to get parent version from parent store after 5 attempts "
-                    + "and cannot infer version swap status after ingestion completed");
+                    + "and cannot infer version swap status after ingestion completed. Check nuage if the latest"
+                    + "version is being served");
           }
 
           VersionStatus parentVersionStatus = parentVersion.getStatus();
@@ -2581,7 +2582,7 @@ public class VenicePushJob implements AutoCloseable {
           } else if (VersionStatus.PARTIALLY_ONLINE.equals(parentVersionStatus)) {
             throw new VeniceException(
                 "Version " + latestUsedVersionNumber + " is only partially online in some regions. "
-                    + "Check nuage to see which regions are not serving the new version");
+                    + "Check nuage to see which regions are not serving the latest version");
           } else if (VersionStatus.ONLINE.equals(parentVersionStatus)) {
             return;
           }

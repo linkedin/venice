@@ -1446,7 +1446,7 @@ public class VenicePushJobTest {
   @Test(dataProvider = "versionStatuses")
   public void testTargetRegionPushWithDeferredSwapVersionStatusChecks(
       VersionStatus versionStatus,
-      Map<String, String> extraInfo) throws Exception {
+      Map<String, String> extraInfo) {
     Properties properties = getVpjRequiredProperties();
     properties.put(KEY_FIELD_PROP, "id");
     properties.put(VALUE_FIELD_PROP, "name");
