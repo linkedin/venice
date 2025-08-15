@@ -41,7 +41,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -408,33 +407,34 @@ public class TestHAASController {
     }
   }
 
-  private void initializeClusters(HelixAdminClient client, ExecutorService executorService) {
-    if (executorService == null) {
-      executorService = Executors.newSingleThreadExecutor();
-    }
-    client.createVeniceControllerCluster();
-    client.addClusterToGrandCluster("venice-controllers");
-    CompletableFuture[] futures = new CompletableFuture[10];
-    for (int i = 0; i < 10; i++) {
-      String clusterName = "cluster-" + i;
-      futures[i] = CompletableFuture.runAsync(() -> {
-        client.createVeniceStorageCluster(clusterName, new ClusterConfig(clusterName), null);
-        client.addClusterToGrandCluster(clusterName);
-        client.addVeniceStorageClusterToControllerCluster(clusterName);
-      }, executorService);
-    }
-    CompletableFuture.allOf(futures).join();
-  }
-
-  @Test(timeOut = 90 * Time.MS_PER_SECOND)
-  public void testConcurrentClusterInitialization() throws InterruptedException {
+  private void initializeClusters(HelixAdminClient client, int parallelism) throws InterruptedException {
     ExecutorService executorService = new ThreadPoolExecutor(
-        3,
-        3,
+        parallelism,
+        parallelism,
         60,
         TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(),
         new DaemonThreadFactory("test-concurrent-cluster-init"));
+    try {
+      client.createVeniceControllerCluster();
+      client.addClusterToGrandCluster("venice-controllers");
+      CompletableFuture[] futures = new CompletableFuture[10];
+      for (int i = 0; i < 10; i++) {
+        String clusterName = "cluster-" + i;
+        futures[i] = CompletableFuture.runAsync(() -> {
+          client.createVeniceStorageCluster(clusterName, new ClusterConfig(clusterName), null);
+          client.addClusterToGrandCluster(clusterName);
+          client.addVeniceStorageClusterToControllerCluster(clusterName);
+        }, executorService);
+      }
+      CompletableFuture.allOf(futures).join();
+    } finally {
+      shutdownExecutor(executorService);
+    }
+  }
+
+  @Test(timeOut = 90 * Time.MS_PER_SECOND)
+  public void testConcurrentClusterInitialization() throws InterruptedException {
     try (ZkServerWrapper zk = ServiceFactory.getZkServer();
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(zk.getAddress())) {
       VeniceControllerMultiClusterConfig controllerMultiClusterConfig = mock(VeniceControllerMultiClusterConfig.class);
@@ -448,11 +448,7 @@ public class TestHAASController {
       doReturn("").when(clusterConfig).getControllerResourceInstanceGroupTag();
       doReturn(clusterConfig).when(controllerMultiClusterConfig).getControllerConfig(anyString());
 
-      initializeClusters(
-          new ZkHelixAdminClient(controllerMultiClusterConfig, new MetricsRepository()),
-          executorService);
-    } finally {
-      shutdownExecutor(executorService);
+      initializeClusters(new ZkHelixAdminClient(controllerMultiClusterConfig, new MetricsRepository()), 3);
     }
   }
 
@@ -474,7 +470,7 @@ public class TestHAASController {
   }
 
   @Test(timeOut = 90 * Time.MS_PER_SECOND)
-  public void testCloudConfig() {
+  public void testCloudConfig() throws InterruptedException {
     try (ZkServerWrapper zk = ServiceFactory.getZkServer();
         HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(zk.getAddress())) {
       VeniceControllerClusterConfig commonConfig = mock(VeniceControllerClusterConfig.class);
@@ -503,7 +499,7 @@ public class TestHAASController {
       doReturn(commonConfig).when(controllerMultiClusterConfig).getCommonConfig();
 
       ZkHelixAdminClient client = new ZkHelixAdminClient(controllerMultiClusterConfig, new MetricsRepository());
-      initializeClusters(client, null);
+      initializeClusters(client, 1);
     }
   }
 
