@@ -7,6 +7,7 @@ service VeniceReadService {
   rpc get (VeniceClientRequest) returns (VeniceServerResponse) {}
   rpc batchGet(VeniceClientRequest) returns (VeniceServerResponse) {}
   rpc countByValue(CountByValueRequest) returns (CountByValueResponse) {}
+  rpc countByBucket(CountByBucketRequest) returns (CountByBucketResponse) {}
 }
 
 message VeniceClientRequest {
@@ -47,4 +48,39 @@ message CountByValueResponse {
 
 message ValueCount {
   map<string, int32> valueToCounts = 1;
+}
+
+message BucketPredicate {
+  oneof predicate_type {
+    ComparisonPredicate comparison = 1;
+    LogicalPredicate logical = 2;
+  }
+}
+
+message ComparisonPredicate {
+  string operator = 1;     // "GT", "GTE", "LT", "LTE", "EQ", "IN"
+  string field_type = 2;   // "LONG", "INT", "FLOAT", "DOUBLE", "STRING"
+  string value = 3;
+}
+
+message LogicalPredicate {
+  string operator = 1;     // "AND", "OR"
+  repeated BucketPredicate predicates = 2;
+}
+
+message CountByBucketRequest {
+  repeated bytes keys = 1;
+  string resourceName = 2;
+  repeated string fieldNames = 3;
+  map<string, BucketPredicate> bucketPredicates = 4;
+}
+
+message CountByBucketResponse {
+  map<string, BucketCount> fieldToBucketCounts = 1;
+  uint32 errorCode = 2;
+  string errorMessage = 3;
+}
+
+message BucketCount {
+  map<string, int32> bucketToCounts = 1;
 }
