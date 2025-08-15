@@ -171,7 +171,7 @@ public class TestVeniceChunkedPayloadTTLFilter {
     byte[] rmdBytes = "dummyString".getBytes();
     List<byte[]> values = Collections.singletonList(createRegularValue(null, rmdBytes, 1, 1, MapperValueType.DELETE));
     final byte[] serializedKey = createChunkBytes(0, 5);
-    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+    ChunkAssembler.ChunkedValueWithMetadata assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
     VeniceChunkedPayloadTTLFilter veniceChunkedPayloadTTLFilter = mock(VeniceChunkedPayloadTTLFilter.class);
     when(veniceChunkedPayloadTTLFilter.getValuePayload(assembledValue)).thenCallRealMethod();

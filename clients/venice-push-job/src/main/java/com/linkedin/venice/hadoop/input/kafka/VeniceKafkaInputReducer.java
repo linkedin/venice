@@ -54,7 +54,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
   private ChunkAssembler chunkAssembler = null;
   private MessageExtractor extractor = this::extractNonChunkedMessage;
 
-  protected FilterChain<ChunkAssembler.ValueBytesAndSchemaId> veniceFilterChain;
+  protected FilterChain<ChunkAssembler.ChunkedValueWithMetadata> veniceFilterChain;
 
   private CompressorFactory compressorFactory;
   private VeniceCompressor sourceVersionCompressor;
@@ -171,7 +171,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       final byte[] keyBytes,
       @Nonnull Iterator<byte[]> valueIterator,
       DataWriterTaskTracker dataWriterTaskTracker) {
-    ChunkAssembler.ValueBytesAndSchemaId value = chunkAssembler.assembleAndGetValue(keyBytes, valueIterator);
+    ChunkAssembler.ChunkedValueWithMetadata value = chunkAssembler.assembleAndGetValue(keyBytes, valueIterator);
     if (value == null) {
       return null;
     } else if (veniceFilterChain != null && veniceFilterChain.apply(value)) {
@@ -256,8 +256,8 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
    * Initialize filter chains in the reducer stage to support filtering when chunking is enabled.
    * @param props
    */
-  FilterChain<ChunkAssembler.ValueBytesAndSchemaId> initFilterChain(VeniceProperties props) {
-    FilterChain<ChunkAssembler.ValueBytesAndSchemaId> filterChain = null;
+  FilterChain<ChunkAssembler.ChunkedValueWithMetadata> initFilterChain(VeniceProperties props) {
+    FilterChain<ChunkAssembler.ChunkedValueWithMetadata> filterChain = null;
     boolean ttlEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
     if (isChunkingEnabled() && ttlEnabled) {
       try {
