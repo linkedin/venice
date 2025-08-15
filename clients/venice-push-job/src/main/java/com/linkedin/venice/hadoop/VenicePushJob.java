@@ -2562,8 +2562,10 @@ public class VenicePushJob implements AutoCloseable {
             throw new VeniceException(
                 "Version " + latestUsedVersionNumber
                     + " was rolled back after ingestion completed due to validation failure");
-          } else if (VersionStatus.ONLINE.equals(parentVersionStatus)
-              || VersionStatus.PARTIALLY_ONLINE.equals(parentVersionStatus)) {
+          } else if (VersionStatus.PARTIALLY_ONLINE.equals(parentVersionStatus)) {
+            throw new VeniceException(
+                "Version " + latestUsedVersionNumber + " is only partially online in some regions");
+          } else if (VersionStatus.ONLINE.equals(parentVersionStatus)) {
             return;
           }
         } else {
