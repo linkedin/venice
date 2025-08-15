@@ -9,6 +9,8 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.ConfigKeys;
@@ -36,10 +38,12 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
@@ -65,6 +69,7 @@ import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -194,23 +199,23 @@ public class TopicManagerTest {
     TestUtils.waitForNonDeterministicAssertion(
         WAIT_TIME_IN_SECONDS,
         TimeUnit.SECONDS,
-        () -> Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicName)));
+        () -> assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicName)));
     return topicName;
   }
 
   @Test
-  public void testCreateTopic() throws Exception {
+  public void testCreateTopic() {
     PubSubTopic topicNameWithEternalRetentionPolicy = getTopic();
     topicManager.createTopic(topicNameWithEternalRetentionPolicy, 1, 1, true); /* should be noop */
-    Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicNameWithEternalRetentionPolicy));
-    Assert.assertEquals(
+    assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicNameWithEternalRetentionPolicy));
+    assertEquals(
         topicManager.getTopicRetention(topicNameWithEternalRetentionPolicy),
         PubSubConstants.ETERNAL_TOPIC_RETENTION_POLICY_MS);
 
     PubSubTopic topicNameWithDefaultRetentionPolicy = getTopic();
     topicManager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false); /* should be noop */
-    Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicNameWithDefaultRetentionPolicy));
-    Assert.assertEquals(
+    assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicNameWithDefaultRetentionPolicy));
+    assertEquals(
         topicManager.getTopicRetention(topicNameWithDefaultRetentionPolicy),
         PubSubConstants.DEFAULT_TOPIC_RETENTION_POLICY_MS);
   }
@@ -225,20 +230,20 @@ public class TopicManagerTest {
     topicManager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false);
     topicManager.updateTopicRetention(topicNameWithEternalRetentionPolicy, 0);
     topicManager.updateTopicRetention(topicNameWithDefaultRetentionPolicy, 0);
-    Assert.assertEquals(topicManager.getTopicRetention(topicNameWithEternalRetentionPolicy), 0);
-    Assert.assertEquals(topicManager.getTopicRetention(topicNameWithDefaultRetentionPolicy), 0);
+    assertEquals(topicManager.getTopicRetention(topicNameWithEternalRetentionPolicy), 0);
+    assertEquals(topicManager.getTopicRetention(topicNameWithDefaultRetentionPolicy), 0);
 
     // re-create those topics with different retention policy
 
     topicManager.createTopic(topicNameWithEternalRetentionPolicy, 1, 1, true); /* should be noop */
-    Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicNameWithEternalRetentionPolicy));
-    Assert.assertEquals(
+    assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicNameWithEternalRetentionPolicy));
+    assertEquals(
         topicManager.getTopicRetention(topicNameWithEternalRetentionPolicy),
         PubSubConstants.ETERNAL_TOPIC_RETENTION_POLICY_MS);
 
     topicManager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false); /* should be noop */
-    Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicNameWithDefaultRetentionPolicy));
-    Assert.assertEquals(
+    assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicNameWithDefaultRetentionPolicy));
+    assertEquals(
         topicManager.getTopicRetention(topicNameWithDefaultRetentionPolicy),
         PubSubConstants.DEFAULT_TOPIC_RETENTION_POLICY_MS);
   }
@@ -251,14 +256,14 @@ public class TopicManagerTest {
   }
 
   @Test
-  public void testDeleteTopicWithRetry() throws ExecutionException {
+  public void testDeleteTopicWithRetry() {
     PubSubTopic topicName = getTopic();
     topicManager.ensureTopicIsDeletedAndBlockWithRetry(topicName);
     Assert.assertFalse(topicManager.containsTopicAndAllPartitionsAreOnline(topicName));
   }
 
   @Test
-  public void testDeleteTopicWithTimeout() throws ExecutionException {
+  public void testDeleteTopicWithTimeout() {
 
     // Since we're dealing with a mock in this test case, we'll just use a fake topic name
     PubSubTopic topicName = pubSubTopicRepository.getTopic("mockTopicName_v1");
@@ -278,7 +283,7 @@ public class TopicManagerTest {
   }
 
   @Test
-  public void testSyncDeleteTopic() throws ExecutionException {
+  public void testSyncDeleteTopic() {
     PubSubTopic topicName = getTopic();
     // Delete that topic
     topicManager.ensureTopicIsDeletedAndBlock(topicName);
@@ -288,19 +293,28 @@ public class TopicManagerTest {
   @Test
   public void testGetLastOffsets() {
     PubSubTopic topic = getTopic();
-    Map<Integer, Long> lastOffsets = topicManager.getTopicLatestOffsets(topic);
+    List<PubSubTopicPartitionInfo> partitions = topicManager.getTopicPartitionInfo(topic);
+    assertEquals(partitions.size(), 1, "Topic should have only one partition");
+    PubSubTopicPartition p0 = partitions.get(0).getTopicPartition();
+
+    Map<PubSubTopicPartition, PubSubPosition> lastOffsets = topicManager.getEndPositionsForTopicWithRetries(topic);
+    Map<PubSubTopicPartition, PubSubPosition> startOffsets = topicManager.getStartPositionsForTopicWithRetries(topic);
+
     TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
-      Assert.assertTrue(lastOffsets.containsKey(0), "single partition topic has an offset for partition 0");
-      Assert
-          .assertEquals(lastOffsets.keySet().size(), 1, "single partition topic has only an offset for one partition");
-      Assert.assertEquals(lastOffsets.get(0).longValue(), 0L, "new topic must end at partition 0");
+      assertTrue(lastOffsets.containsKey(p0), "single partition topic has an offset for partition 0");
+      assertEquals(lastOffsets.keySet().size(), 1, "single partition topic has only an offset for one partition");
+      assertEquals(
+          topicManager.diffPosition(p0, lastOffsets.get(p0), startOffsets.get(p0)),
+          0L,
+          "no messages in topic");
     });
   }
 
   @Test
   public void testListOffsetsOnEmptyTopic() {
-    Map<Integer, Long> offsets = topicManager.getTopicLatestOffsets(pubSubTopicRepository.getTopic("myTopic_v1"));
-    Assert.assertEquals(offsets.size(), 0);
+    Map<PubSubTopicPartition, PubSubPosition> offsets =
+        topicManager.getEndPositionsForTopicWithRetries(pubSubTopicRepository.getTopic("myTopic_v1"));
+    assertEquals(offsets.size(), 0);
   }
 
   @Test
@@ -308,8 +322,8 @@ public class TopicManagerTest {
     PubSubTopic topic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     topicManager.createTopic(topic, 1, 1, true);
     PubSubTopicConfiguration topicProperties = topicManager.getTopicConfig(topic);
-    Assert.assertTrue(topicProperties.retentionInMs().isPresent());
-    Assert.assertTrue(topicProperties.retentionInMs().get() > 0, "retention.ms should be positive");
+    assertTrue(topicProperties.retentionInMs().isPresent());
+    assertTrue(topicProperties.retentionInMs().get() > 0, "retention.ms should be positive");
   }
 
   @Test(expectedExceptions = PubSubTopicDoesNotExistException.class)
@@ -325,13 +339,13 @@ public class TopicManagerTest {
     topicManager.createTopic(topic1, 1, 1, true);
     topicManager.createTopic(topic2, 1, 1, true);
     Set<PubSubTopic> topics = topicManager.listTopics();
-    Assert.assertTrue(topics.contains(topic1));
-    Assert.assertTrue(topics.contains(topic2));
+    assertTrue(topics.contains(topic1));
+    assertTrue(topics.contains(topic2));
 
     Map<PubSubTopic, PubSubTopicConfiguration> topicProperties = topicManager.getSomeTopicConfigs(topics);
     topicProperties.forEach((k, v) -> {
-      Assert.assertTrue(v.retentionInMs().isPresent());
-      Assert.assertTrue(v.retentionInMs().get() > 0, "retention.ms should be positive");
+      assertTrue(v.retentionInMs().isPresent());
+      assertTrue(v.retentionInMs().get() > 0, "retention.ms should be positive");
     });
   }
 
@@ -339,7 +353,7 @@ public class TopicManagerTest {
   public void testGetSomeTopicConfigsForEmptyTopics() {
     Set<PubSubTopic> topics = new HashSet<>();
     Map<PubSubTopic, PubSubTopicConfiguration> topicProperties = topicManager.getSomeTopicConfigs(topics);
-    Assert.assertTrue(topicProperties.isEmpty());
+    assertTrue(topicProperties.isEmpty());
   }
 
   @Test
@@ -358,8 +372,8 @@ public class TopicManagerTest {
     topicManager.createTopic(topic, 1, 1, true);
     topicManager.updateTopicRetention(topic, 0);
     PubSubTopicConfiguration topicProperties = topicManager.getTopicConfig(topic);
-    Assert.assertTrue(topicProperties.retentionInMs().isPresent());
-    Assert.assertTrue(topicProperties.retentionInMs().get() == 0);
+    assertTrue(topicProperties.retentionInMs().isPresent());
+    assertTrue(topicProperties.retentionInMs().get() == 0);
   }
 
   @Test
@@ -372,19 +386,19 @@ public class TopicManagerTest {
     topicManager.createTopic(topic1, 1, 1, true);
     expectTopics.add(topic1);
     Set<PubSubTopic> allTopics = topicManager.listTopics();
-    Assert.assertEquals(allTopics, expectTopics);
+    assertEquals(allTopics, expectTopics);
 
     // Create another topic, expect 2 topics in total
     topicManager.createTopic(topic2, 1, 1, false);
     expectTopics.add(topic2);
     allTopics = topicManager.listTopics();
-    Assert.assertEquals(allTopics, expectTopics);
+    assertEquals(allTopics, expectTopics);
 
     // Create another topic, expect 3 topics in total
     topicManager.createTopic(topic3, 1, 1, false);
     expectTopics.add(topic3);
     allTopics = topicManager.listTopics();
-    Assert.assertEquals(allTopics, expectTopics);
+    assertEquals(allTopics, expectTopics);
   }
 
   @Test
@@ -398,12 +412,10 @@ public class TopicManagerTest {
     topicManager.updateTopicRetention(topic3, 5000);
 
     Map<PubSubTopic, Long> topicRetentions = topicManager.getAllTopicRetentions();
-    Assert.assertTrue(
-        topicRetentions.size() > 3,
-        "There should be at least 3 topics, " + "which were created by this test");
-    Assert.assertEquals(topicRetentions.get(topic1).longValue(), PubSubConstants.ETERNAL_TOPIC_RETENTION_POLICY_MS);
-    Assert.assertEquals(topicRetentions.get(topic2).longValue(), PubSubConstants.DEFAULT_TOPIC_RETENTION_POLICY_MS);
-    Assert.assertEquals(topicRetentions.get(topic3).longValue(), 5000);
+    assertTrue(topicRetentions.size() > 3, "There should be at least 3 topics, " + "which were created by this test");
+    assertEquals(topicRetentions.get(topic1).longValue(), PubSubConstants.ETERNAL_TOPIC_RETENTION_POLICY_MS);
+    assertEquals(topicRetentions.get(topic2).longValue(), PubSubConstants.DEFAULT_TOPIC_RETENTION_POLICY_MS);
+    assertEquals(topicRetentions.get(topic3).longValue(), 5000);
 
     long deprecatedTopicRetentionMaxMs = 5000;
     Assert.assertFalse(
@@ -412,7 +424,7 @@ public class TopicManagerTest {
     Assert.assertFalse(
         topicManager.isTopicTruncated(topic2, deprecatedTopicRetentionMaxMs),
         "Topic2 should not be deprecated because of unknown retention policy");
-    Assert.assertTrue(
+    assertTrue(
         topicManager.isTopicTruncated(topic3, deprecatedTopicRetentionMaxMs),
         "Topic3 should be deprecated because of low retention policy");
 
@@ -423,7 +435,7 @@ public class TopicManagerTest {
         topicManager.isRetentionBelowTruncatedThreshold(
             PubSubConstants.PUBSUB_TOPIC_UNKNOWN_RETENTION,
             deprecatedTopicRetentionMaxMs));
-    Assert.assertTrue(
+    assertTrue(
         topicManager
             .isRetentionBelowTruncatedThreshold(deprecatedTopicRetentionMaxMs - 1, deprecatedTopicRetentionMaxMs));
   }
@@ -436,29 +448,23 @@ public class TopicManagerTest {
         topicManager.isTopicCompactionEnabled(topic),
         "topic: " + topic + " should be with compaction disabled");
     topicManager.updateTopicCompactionPolicy(topic, true);
-    Assert.assertTrue(
-        topicManager.isTopicCompactionEnabled(topic),
-        "topic: " + topic + " should be with compaction enabled");
-    Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), MIN_COMPACTION_LAG);
+    assertTrue(topicManager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction enabled");
+    assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), MIN_COMPACTION_LAG);
     topicManager.updateTopicCompactionPolicy(topic, false);
     Assert.assertFalse(
         topicManager.isTopicCompactionEnabled(topic),
         "topic: " + topic + " should be with compaction disabled");
-    Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), 0L);
+    assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), 0L);
 
     topicManager.updateTopicCompactionPolicy(topic, true, 100, Optional.of(Long.valueOf(200l)));
-    Assert.assertTrue(
-        topicManager.isTopicCompactionEnabled(topic),
-        "topic: " + topic + " should be with compaction enabled");
-    Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), 100L);
-    Assert.assertEquals(topicManager.getTopicMaxLogCompactionLagMs(topic).get(), Long.valueOf(200L));
+    assertTrue(topicManager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction enabled");
+    assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), 100L);
+    assertEquals(topicManager.getTopicMaxLogCompactionLagMs(topic).get(), Long.valueOf(200L));
 
     topicManager.updateTopicCompactionPolicy(topic, true, 1000, Optional.of(Long.valueOf(2000L)));
-    Assert.assertTrue(
-        topicManager.isTopicCompactionEnabled(topic),
-        "topic: " + topic + " should be with compaction enabled");
-    Assert.assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), 1000L);
-    Assert.assertEquals(topicManager.getTopicMaxLogCompactionLagMs(topic).get(), Long.valueOf(2000L));
+    assertTrue(topicManager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction enabled");
+    assertEquals(topicManager.getTopicMinLogCompactionLagMs(topic), 1000L);
+    assertEquals(topicManager.getTopicMaxLogCompactionLagMs(topic).get(), Long.valueOf(2000L));
   }
 
   @Test
@@ -524,7 +530,7 @@ public class TopicManagerTest {
       Assert.assertFalse(
           topicManagerForThisTest.updateTopicRetentionWithRetries(existingTopic, TimeUnit.DAYS.toMillis(1)),
           "Topic should not be updated since it already has the same retention");
-      Assert.assertTrue(
+      assertTrue(
           topicManagerForThisTest.updateTopicRetentionWithRetries(existingTopic, TimeUnit.DAYS.toMillis(5)),
           "Topic should be updated since it has different retention");
       Assert.assertThrows(
@@ -550,7 +556,7 @@ public class TopicManagerTest {
     doReturn(true).when(mockPubSubAdminAdapter).containsTopic(eq(topic));
     PubSubConsumerAdapter mockPubSubConsumer = mock(PubSubConsumerAdapter.class);
     doThrow(new PubSubOpTimeoutException("Timed out while fetching end offsets")).when(mockPubSubConsumer)
-        .endOffsets(any(), any());
+        .endPositions(any(), any());
     // Throw Kafka TimeoutException when trying to get max offset
     String localPubSubBrokerAddress = "localhost:1234";
 
@@ -591,7 +597,7 @@ public class TopicManagerTest {
     // Case 2: topic exists
     topicManager.createTopic(nonExistingTopic, 1, 1, false);
     PubSubTopic existingTopic = nonExistingTopic;
-    Assert.assertTrue(topicManager.containsTopicWithExpectationAndRetry(existingTopic, 3, true));
+    assertTrue(topicManager.containsTopicWithExpectationAndRetry(existingTopic, 3, true));
 
     // Case 3: topic does not exist initially but topic is created later.
     // This test case is to simulate the situation where the contains topic check fails on initial attempt(s) but
@@ -616,13 +622,13 @@ public class TopicManagerTest {
       topicManager.createTopic(initiallyNotExistTopic, 1, 1, false);
       LOGGER.info("Created this initially-not-exist topic: {}", initiallyNotExistTopic);
     });
-    Assert.assertTrue(delayedTopicCreationStartedSignal.await(5, TimeUnit.SECONDS));
+    assertTrue(delayedTopicCreationStartedSignal.await(5, TimeUnit.SECONDS));
 
     Duration initialBackoff = Duration.ofSeconds(delayedTopicCreationInSeconds + 2);
     Duration maxBackoff = Duration.ofSeconds(initialBackoff.getSeconds() + 1);
     Duration maxDuration = Duration.ofSeconds(3 * maxBackoff.getSeconds());
     Assert.assertFalse(delayedTopicCreationFuture.isDone());
-    Assert.assertTrue(
+    assertTrue(
         topicManager.containsTopicWithExpectationAndRetry(
             initiallyNotExistTopic,
             3,
@@ -630,7 +636,7 @@ public class TopicManagerTest {
             initialBackoff,
             maxBackoff,
             maxDuration));
-    Assert.assertTrue(delayedTopicCreationFuture.isDone());
+    assertTrue(delayedTopicCreationFuture.isDone());
   }
 
   @Test
@@ -645,8 +651,7 @@ public class TopicManagerTest {
         new HybridStoreConfigImpl(2 * Time.SECONDS_PER_DAY, 20000, -1, BufferReplayPolicy.REWIND_FROM_EOP);
 
     // Since bootstrapToOnlineTimeout + rewind time + buffer (2 days) < 5 days, retention will be set to 5 days
-    Assert
-        .assertEquals(StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig2DayRewind), 5 * Time.MS_PER_DAY);
+    assertEquals(StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig2DayRewind), 5 * Time.MS_PER_DAY);
   }
 
   @Test
@@ -662,8 +667,7 @@ public class TopicManagerTest {
 
     // Since bootstrapToOnlineTimeout + rewind time + buffer (2 days) > 5 days, retention will be set to the computed
     // value
-    Assert
-        .assertEquals(StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig2DayRewind), 7 * Time.MS_PER_DAY);
+    assertEquals(StoreUtils.getExpectedRetentionTimeInMs(store, hybridStoreConfig2DayRewind), 7 * Time.MS_PER_DAY);
   }
 
   @Test
@@ -672,7 +676,7 @@ public class TopicManagerTest {
     Assert.assertFalse(topicManager.containsTopicAndAllPartitionsAreOnline(topic)); // Topic does not exist yet
 
     topicManager.createTopic(topic, 1, 1, true);
-    Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topic));
+    assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topic));
   }
 
   @Test
@@ -680,11 +684,11 @@ public class TopicManagerTest {
     PubSubTopic topic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     topicManager.createTopic(topic, 1, 1, true);
     PubSubTopicConfiguration pubSubTopicConfiguration = topicManager.getTopicConfig(topic);
-    Assert.assertTrue(pubSubTopicConfiguration.minInSyncReplicas().get() == 1);
+    assertTrue(pubSubTopicConfiguration.minInSyncReplicas().get() == 1);
     // Update minISR to 2
     topicManager.updateTopicMinInSyncReplica(topic, 2);
     pubSubTopicConfiguration = topicManager.getTopicConfig(topic);
-    Assert.assertTrue(pubSubTopicConfiguration.minInSyncReplicas().get() == 2);
+    assertTrue(pubSubTopicConfiguration.minInSyncReplicas().get() == 2);
   }
 
 }
