@@ -38,7 +38,6 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -70,9 +69,8 @@ import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import java.io.File;
 import java.io.IOException;
-import java.util.Collection;
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -468,15 +466,11 @@ public class TestMaterializedViewEndToEnd {
     Assert.assertTrue(viewTopicConsumer instanceof VeniceAfterImageConsumerImpl);
     viewTopicConsumer.subscribeAll().get();
     // Verify we can get the records
-    Map<String, Utf8> polledChangeEvents = new HashMap<>();
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages =
-        IntegrationTestUtils.pollAllMessagesForVeniceChangelogConsumer(viewTopicConsumer, 1000);
-    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> pubSubMessage: pubSubMessages) {
-      Utf8 afterImageEvent = pubSubMessage.getValue().getCurrentValue();
-      String key = pubSubMessage.getKey().toString();
-      polledChangeEvents.put(key, afterImageEvent);
-    }
-    Assert.assertEquals(polledChangeEvents.size(), numberOfRecords);
+    final List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> pubSubMessages = new ArrayList<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+      pubSubMessages.addAll(viewTopicConsumer.poll(1000));
+      Assert.assertEquals(pubSubMessages.size(), numberOfRecords);
+    });
   }
 
   /**
