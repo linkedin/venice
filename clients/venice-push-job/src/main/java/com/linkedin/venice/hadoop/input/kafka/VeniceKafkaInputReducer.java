@@ -7,7 +7,6 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.REPUSH_TTL_ENABLE;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TOPIC_PROP;
-import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -29,9 +28,10 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import javax.annotation.Nonnull;
-import org.apache.avro.Schema;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -127,18 +127,16 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
   @Override
   protected AbstractPartitionWriter.VeniceWriterMessage extract(
       byte[] key,
-      Iterator<byte[]> valueIterator,
-      Iterator<Long> timestampIterator,
-      Schema valueSchema,
+      Iterator<VeniceRecordWithMetadata> values,
       DataWriterTaskTracker dataWriterTaskTracker) {
     KafkaInputMapperKey mapperKey = KAFKA_INPUT_MAPPER_KEY_AVRO_SPECIFIC_DESERIALIZER.deserialize(key);
     byte[] keyBytes = ByteUtils.extractByteArray(mapperKey.key);
-    if (!valueIterator.hasNext()) {
+    if (!values.hasNext()) {
       throw new VeniceException("There is no value corresponding to key bytes: " + ByteUtils.toHexString(keyBytes));
     }
 
-    // We don't support a field override in KIF today, so we don't need to pass the timestampIterator
-    return extractor.extract(keyBytes, valueIterator, dataWriterTaskTracker);
+    // We don't support a field override in KIF today, so we don't need to pass the rmdIterator
+    return extractor.extract(keyBytes, getValueOnlyIterator(values), dataWriterTaskTracker);
   }
 
   @Override
@@ -190,15 +188,19 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       return new AbstractPartitionWriter.VeniceWriterMessage(
           keyBytes,
           compress(value.getBytes()),
-          APP_DEFAULT_LOGICAL_TS,
           value.getSchemaID(),
           value.getReplicationMetadataVersionId(),
           value.getReplicationMetadataPayload(),
           getCallback(),
           isEnableWriteCompute(),
-          null,
           getDerivedValueSchemaId());
     }
+  }
+
+  private Iterator<byte[]> getValueOnlyIterator(Iterator<VeniceRecordWithMetadata> valueRecordIterator) {
+    List<byte[]> values = new ArrayList<>();
+    valueRecordIterator.forEachRemaining(valueRecord -> values.add(valueRecord.getValue()));
+    return values.iterator();
   }
 
   private AbstractPartitionWriter.VeniceWriterMessage extractNonChunkedMessage(
@@ -218,13 +220,11 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
         return new AbstractPartitionWriter.VeniceWriterMessage(
             keyBytes,
             null,
-            APP_DEFAULT_LOGICAL_TS,
             latestMapperValue.schemaId,
             latestMapperValue.replicationMetadataVersionId,
             latestMapperValue.replicationMetadataPayload,
             getCallback(),
             isEnableWriteCompute(),
-            null,
             getDerivedValueSchemaId());
       }
       return null;
@@ -234,13 +234,11 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       return new AbstractPartitionWriter.VeniceWriterMessage(
           keyBytes,
           compress(valueBytes),
-          APP_DEFAULT_LOGICAL_TS,
           latestMapperValue.schemaId,
           latestMapperValue.replicationMetadataVersionId,
           latestMapperValue.replicationMetadataPayload,
           getCallback(),
           isEnableWriteCompute(),
-          null,
           getDerivedValueSchemaId());
     }
     return new AbstractPartitionWriter.VeniceWriterMessage(

@@ -10,7 +10,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_TO_NAME_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_TO_NAME_WITH_TIMESTAMP_RECORD_V1_SCHEMA;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KEY_FIELD_PROP;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_TIMESTAMP_FIELD_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_RMD_FIELD_PROP;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_VALUE_FIELD_PROP;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -51,7 +51,7 @@ public class TestVeniceAvroRecordReader {
         STRING_TO_NAME_RECORD_V1_SCHEMA,
         "key",
         "value",
-        DEFAULT_TIMESTAMP_FIELD_PROP,
+        DEFAULT_RMD_FIELD_PROP,
         NONE,
         updateSchema);
 
@@ -79,7 +79,7 @@ public class TestVeniceAvroRecordReader {
         STRING_TO_NAME_WITH_TIMESTAMP_RECORD_V1_SCHEMA,
         "key",
         "value",
-        DEFAULT_TIMESTAMP_FIELD_PROP,
+        DEFAULT_RMD_FIELD_PROP,
         NONE,
         updateSchema);
 
@@ -91,7 +91,7 @@ public class TestVeniceAvroRecordReader {
     valueRecord.put("lastName", "LN");
     record.put("value", valueRecord);
     Object result = recordReader.getAvroValue(new AvroWrapper<>(record), NullWritable.get());
-    Assert.assertEquals(recordReader.getRecordTimestamp(new AvroWrapper<>(record), NullWritable.get()), timestamp);
+    Assert.assertEquals(recordReader.getRmdValue(new AvroWrapper<>(record), NullWritable.get()), timestamp);
     Assert.assertTrue(result instanceof IndexedRecord);
 
     Assert.assertEquals(((IndexedRecord) result).get(updateSchema.getField("firstName").pos()), "FN");
@@ -102,7 +102,7 @@ public class TestVeniceAvroRecordReader {
 
     // Test the exceptional case
     record.put("timestamp", null);
-    Assert.assertThrows(() -> recordReader.getRecordTimestamp(new AvroWrapper<>(record), NullWritable.get()));
+    Assert.assertThrows(() -> recordReader.getRmdValue(new AvroWrapper<>(record), NullWritable.get()));
   }
 
   @Test(dataProvider = "Boolean-and-EtlTransformations")
@@ -139,7 +139,7 @@ public class TestVeniceAvroRecordReader {
         fileSchema,
         DEFAULT_KEY_FIELD_PROP,
         DEFAULT_VALUE_FIELD_PROP,
-        DEFAULT_TIMESTAMP_FIELD_PROP,
+        DEFAULT_RMD_FIELD_PROP,
         etlValueSchemaTransformation,
         null);
 
