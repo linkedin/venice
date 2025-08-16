@@ -66,7 +66,6 @@ public class SparkPubSubPartitionReaderFactory implements PartitionReaderFactory
     SparkPubSubInputPartitionReader reader = new SparkPubSubInputPartitionReader(
         inputPartition,
         pubSubConsumer,
-        topicPartition,
         regionName,
         shouldUseLocallyBuiltIndexAsOffset);
     LOGGER.info(

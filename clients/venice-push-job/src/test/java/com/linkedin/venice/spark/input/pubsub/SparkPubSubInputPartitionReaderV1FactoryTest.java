@@ -8,7 +8,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class SparkPubSubInputPartitionReaderFactoryTest {
+public class SparkPubSubInputPartitionReaderV1FactoryTest {
   @Test
   public void testCreateReaderWithNonMatchingInputPartitionType() {
     // Arrange

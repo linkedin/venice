@@ -175,7 +175,7 @@ public class TestKafkaInputRecordReader {
             reader.next(key, value);
             Assert.fail("An IOException should be thrown here");
           } catch (IOException e) {
-            Assert.assertTrue(e.getMessage().contains("Unexpected 'UPDATE' message"));
+            Assert.assertTrue(e.getMessage().contains("Unexpected message type: UPDATE"));
           }
           break;
         } else {
