@@ -7936,7 +7936,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           : AdminTopicMetadataAccessor
               .generateMetadataMap(Optional.of(-1L), Optional.of(-1L), Optional.of(executionId), Optional.of(-1L));
     }
-    return getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName);
+    return getAdminConsumerService(clusterName).getAdminTopicMetadata(clusterName).toLegacyMap();
   }
 
   /**

@@ -57,7 +57,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     this.logContext = config.getLogContext();
     this.admin = admin;
     this.adminTopicMetadataAccessor =
-        new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer());
+        new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer(), config);
     this.metricsRepository = metricsRepository;
     this.remoteConsumptionEnabled = config.isAdminTopicRemoteConsumptionEnabled();
     this.pubSubTopicRepository = pubSubTopicRepository;
@@ -175,7 +175,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   /**
    * @return cluster-level execution id, offset, and upstream offset in a child colo.
    */
-  public Map<String, Long> getAdminTopicMetadata(String clusterName) {
+  public AdminMetadata getAdminTopicMetadata(String clusterName) {
     if (clusterName.equals(config.getClusterName())) {
       return adminTopicMetadataAccessor.getMetadata(clusterName);
     } else {
@@ -197,7 +197,7 @@ public class AdminConsumerService extends AbstractVeniceService {
             Optional.of(upstreamOffset),
             Optional.of(executionId),
             Optional.empty());
-        adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
+        adminTopicMetadataAccessor.updateMetadata(clusterName, AdminMetadata.fromLegacyMap(metadata));
       }
     } else {
       throw new VeniceException(
@@ -218,7 +218,7 @@ public class AdminConsumerService extends AbstractVeniceService {
             Optional.empty(),
             Optional.empty(),
             Optional.of(adminOperationProtocolVersion));
-        adminTopicMetadataAccessor.updateMetadata(clusterName, metadata);
+        adminTopicMetadataAccessor.updateMetadata(clusterName, AdminMetadata.fromLegacyMap(metadata));
       }
     } else {
       throw new VeniceException(
