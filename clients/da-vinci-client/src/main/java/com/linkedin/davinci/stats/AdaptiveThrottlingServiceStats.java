@@ -1,7 +1,7 @@
 package com.linkedin.davinci.stats;
 
-import com.linkedin.davinci.kafka.consumer.VeniceAdaptiveIngestionThrottler;
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.throttle.VeniceAdaptiveThrottler;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Gauge;
@@ -17,12 +17,12 @@ public class AdaptiveThrottlingServiceStats extends AbstractVeniceStats {
     super(metricsRepository, ADAPTIVE_THROTTLING_SERVICE_SUFFIX);
   }
 
-  public void registerSensorForThrottler(VeniceAdaptiveIngestionThrottler throttler) {
+  public void registerSensorForThrottler(VeniceAdaptiveThrottler throttler) {
     String throttlerName = throttler.getThrottlerName();
     sensors.put(throttlerName, registerSensorIfAbsent(throttlerName, new Gauge()));
   }
 
-  public void recordThrottleLimitForThrottler(VeniceAdaptiveIngestionThrottler throttler) {
+  public void recordThrottleLimitForThrottler(VeniceAdaptiveThrottler throttler) {
     Sensor sensor = sensors.get(throttler.getThrottlerName());
     if (sensor != null) {
       sensor.record(throttler.getCurrentThrottlerRate());
