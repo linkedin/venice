@@ -4,9 +4,11 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Total;
+import spark.Service;
 
 
 public class SparkServerStats extends AbstractVeniceStats {
@@ -53,5 +55,11 @@ public class SparkServerStats extends AbstractVeniceStats {
   private void finishRequest() {
     finishedRequests.record();
     currentInFlightRequestTotal.record(-1);
+  }
+
+  public void registerSparkServerActiveThreadCount(Service sparkService) {
+    // Register asyncGauge metric to track active thread count in Spark server
+    registerSensor(
+        new AsyncGauge((ignored, ignored2) -> (double) sparkService.activeThreadCount(), "active_thread_count"));
   }
 }

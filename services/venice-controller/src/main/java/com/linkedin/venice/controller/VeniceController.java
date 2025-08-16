@@ -234,6 +234,7 @@ public class VeniceController {
         multiClusterConfigs.getDisabledRoutes(),
         multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
         multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
+        multiClusterConfigs.getCommonConfig().getSparkJavaServiceMaxThreads(),
         pubSubTopicRepository,
         secure ? secureRequestHandler : unsecureRequestHandler);
   }
