@@ -11,6 +11,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BACKUP_VERSION_RETENTION_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BATCH_GET_LIMIT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.BLOB_TRANSFER_IN_SERVER_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.BUFFER_REPLAY_POLICY;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CHUNKING_ENABLED;
@@ -2978,6 +2979,10 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.blobTransferEnabled = params.getBlobTransferEnabled()
           .map(addToUpdatedConfigList(updatedConfigsList, BLOB_TRANSFER_ENABLED))
           .orElseGet(currStore::isBlobTransferEnabled);
+
+      setStore.blobTransferInServerEnabled = params.getBlobTransferInServerEnabled()
+          .map(addToUpdatedConfigList(updatedConfigsList, BLOB_TRANSFER_IN_SERVER_ENABLED))
+          .orElseGet(currStore::getBlobTransferInServerEnabled);
 
       setStore.separateRealTimeTopicEnabled =
           separateRealTimeTopicEnabled.map(addToUpdatedConfigList(updatedConfigsList, SEPARATE_REAL_TIME_TOPIC_ENABLED))

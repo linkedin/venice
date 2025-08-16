@@ -6,7 +6,6 @@ import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
-import static com.linkedin.venice.router.MetaDataHandler.REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_BLOB_DISCOVERY_ERROR_PUSH_STORE;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS;
 import static com.linkedin.venice.router.MetaDataHandler.REQUEST_ERROR_STORE_NOT_FOUND_IN_CLUSTER;
@@ -1494,72 +1493,6 @@ public class TestMetaDataHandler {
     Assert.assertEquals(response.content().toString(StandardCharsets.UTF_8), expectedErrorMsg);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), TEXT_PLAIN);
     Assert.assertEquals(response.status(), HttpResponseStatus.NOT_FOUND);
-  }
-
-  @Test(dataProvider = "blobDiscoverySettingsProvider")
-  public void testHandleBlobDiscoverySettings(Boolean isBlobTransferEnabled, Boolean isHybrid) throws IOException {
-    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
-    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
-    PushStatusStoreReader pushStatusStoreReader = Mockito.mock(PushStatusStoreReader.class);
-
-    String storeName = "store1";
-    String storeVersion = "3";
-    String storePartition = "30";
-
-    // Set up empty map for instance results from PushStatusStore when query partition level status
-    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
-        .when(pushStatusStoreReader)
-        .getPartitionOrVersionStatusAsync(
-            storeName,
-            Integer.parseInt(storeVersion),
-            Integer.parseInt(storePartition),
-            Optional.empty(),
-            Optional.empty(),
-            false);
-
-    // Set up empty map for instance results from PushStatusStore when query version level status
-    Mockito.doReturn(CompletableFuture.completedFuture(new HashMap<CharSequence, Integer>()))
-        .when(pushStatusStoreReader)
-        .getPartitionOrVersionStatusAsync(
-            storeName,
-            Integer.parseInt(storeVersion),
-            Integer.parseInt(storePartition),
-            Optional.empty(),
-            Optional.empty(),
-            true);
-
-    Store store = Mockito.mock(Store.class);
-    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
-    Mockito.doReturn(isBlobTransferEnabled).when(store).isBlobTransferEnabled();
-    Mockito.doReturn(isHybrid).when(store).isHybrid();
-
-    String requestUri = String.format(
-        "http://myRouterHost:4567/%s?store_name=%s&store_version=%s&store_partition=%s",
-        TYPE_BLOB_DISCOVERY,
-        storeName,
-        storeVersion,
-        storePartition);
-
-    FullHttpResponse response = passRequestToMetadataHandler(
-        requestUri,
-        null,
-        null,
-        storeConfigRepository,
-        Collections.emptyMap(),
-        Collections.emptyMap(),
-        storeRepository,
-        pushStatusStoreReader);
-
-    if (isBlobTransferEnabled) {
-      Assert.assertEquals(response.status(), HttpResponseStatus.OK);
-      Assert.assertEquals(response.headers().get(CONTENT_TYPE), JSON);
-    } else {
-      String expectedErrorMsg = String.format(REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS, storeName);
-
-      Assert.assertEquals(response.content().toString(StandardCharsets.UTF_8), expectedErrorMsg);
-      Assert.assertEquals(response.headers().get(CONTENT_TYPE), TEXT_PLAIN);
-      Assert.assertEquals(response.status(), HttpResponseStatus.FORBIDDEN);
-    }
   }
 
   @Test

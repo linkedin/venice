@@ -21,7 +21,6 @@ import static com.linkedin.venice.router.api.VenicePathParser.TYPE_VALUE_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
-import static io.netty.handler.codec.http.HttpResponseStatus.FORBIDDEN;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
@@ -146,9 +145,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       "Expected partitioner class %s cannot be found.";
 
   static final String REQUEST_ERROR_STORE_NOT_FOUND_IN_CLUSTER = "Store: %s could not be found in cluster: %s";
-
-  static final String REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS =
-      "Blob Discovery: blob transfer is not enabled for store: %s";
 
   static final String REQUEST_BLOB_DISCOVERY_MISSING_QUERY_PARAMS =
       "Blob Discovery: missing storeName:%s, storeVersion:%s, or storePartition:%s";
@@ -562,12 +558,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     if (store == null) {
       byte[] errBody = (String.format(REQUEST_ERROR_STORE_NOT_FOUND_IN_CLUSTER, storeName, clusterName)).getBytes();
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
-      return;
-    }
-
-    if (!store.isBlobTransferEnabled()) {
-      byte[] errBody = (String.format(REQUEST_BLOB_DISCOVERY_ERROR_INVALID_SETTINGS, storeName)).getBytes();
-      setupResponseAndFlush(FORBIDDEN, errBody, false, ctx);
       return;
     }
 

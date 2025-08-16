@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import static com.linkedin.venice.utils.BlobTransferCommonUtils.BlobTransferInServerConfigType;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -82,5 +83,21 @@ public class TestStoreInfo {
     lifecycleHooksRecord.setStoreLifecycleHooksParams(Collections.emptyMap());
     storeInfo.setStoreLifecycleHooks(Arrays.asList(lifecycleHooksRecord));
     assertEquals(1, storeInfo.getStoreLifecycleHooks().size());
+  }
+
+  @Test
+  public void testBlobTransferStoreLevelConfigs() {
+    StoreInfo storeInfo = new StoreInfo();
+    // check default value
+    assertNotNull(storeInfo.getBlobTransferInServerEnabled());
+    assertEquals(BlobTransferInServerConfigType.NOT_SPECIFIED.name(), storeInfo.getBlobTransferInServerEnabled());
+    assertFalse(storeInfo.isBlobTransferEnabled());
+    // setting value
+    storeInfo.setBlobTransferInServerEnabled(BlobTransferInServerConfigType.ENABLED.name());
+    storeInfo.setBlobTransferEnabled(true);
+    // check updated value
+    assertNotNull(storeInfo.getBlobTransferInServerEnabled());
+    assertEquals(BlobTransferInServerConfigType.ENABLED.name(), storeInfo.getBlobTransferInServerEnabled());
+    assertTrue(storeInfo.isBlobTransferEnabled());
   }
 }

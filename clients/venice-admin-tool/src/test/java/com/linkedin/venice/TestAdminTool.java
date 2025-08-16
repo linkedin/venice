@@ -84,8 +84,9 @@ public class TestAdminTool {
   public void testAdminUpdateStoreArg() throws ParseException, IOException {
     final String K1 = "k1", V1 = "v1", K2 = "k2", V2 = "v2", K3 = "k3", V3 = "v3";
     String[] args = { "--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store",
-        "testStore", "--rmd-chunking-enabled", "true", "--blob-transfer-enabled", "true", "--target-region-swap",
-        "prod", "--target-region-swap-wait-time", "100", "--global-rt-div-enabled", "true", "--partitioner-params",
+        "testStore", "--rmd-chunking-enabled", "true", "--blob-transfer-enabled", "true",
+        "--blob-transfer-in-server-enabled", "ENABLED", "--target-region-swap", "prod",
+        "--target-region-swap-wait-time", "100", "--global-rt-div-enabled", "true", "--partitioner-params",
         "{\"" + K1 + "\":\"" + V1 + "\",\"" + K2 + "\":\"" + V2 + "\",\"" + K3 + "\":\"" + V3 + "\"}",
         "--store-lifecycle-hooks-list",
         "[{\"storeLifecycleHooksClassName\":\"com.example.MyHook1\",\"storeLifecycleHooksParams\":{\"paramA\":\"valueA\",\"paramB\":\"valueB\"}},{\"storeLifecycleHooksClassName\":\"com.example.MyHook2\",\"storeLifecycleHooksParams\":{\"foo\":\"bar\"}}]" };
@@ -96,6 +97,8 @@ public class TestAdminTool {
     Assert.assertTrue(params.getRmdChunkingEnabled().get());
     Assert.assertTrue(params.getBlobTransferEnabled().isPresent());
     Assert.assertTrue(params.getBlobTransferEnabled().get());
+    Assert.assertTrue(params.getBlobTransferInServerEnabled().isPresent());
+    Assert.assertEquals(params.getBlobTransferInServerEnabled().get(), "ENABLED");
     Assert.assertTrue(params.getTargetSwapRegion().isPresent());
     Assert.assertEquals(params.getTargetSwapRegion().get(), "prod");
     Assert.assertTrue(params.getTargetRegionSwapWaitTime().isPresent());

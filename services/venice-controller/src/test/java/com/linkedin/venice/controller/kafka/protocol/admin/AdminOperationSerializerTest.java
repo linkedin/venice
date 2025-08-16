@@ -44,6 +44,7 @@ public class AdminOperationSerializerTest {
     updateStore.updatedConfigsList = Collections.emptyList();
     updateStore.separateRealTimeTopicEnabled = false;
     updateStore.storeLifecycleHooks = Collections.emptyList();
+    updateStore.blobTransferInServerEnabled = "NOT_SPECIFIED";
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = updateStore;

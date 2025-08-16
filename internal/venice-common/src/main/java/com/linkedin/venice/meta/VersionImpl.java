@@ -289,6 +289,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public String getBlobTransferInServerEnabled() {
+    return this.storeVersion.blobTransferInServerEnabled.toString();
+  }
+
+  @Override
+  public void setBlobTransferInServerEnabled(String blobTransferServerEnable) {
+    this.storeVersion.blobTransferInServerEnabled = blobTransferServerEnable;
+  }
+
+  @Override
   public boolean isUseVersionLevelIncrementalPushEnabled() {
     return this.storeVersion.useVersionLevelIncrementalPushEnabled;
   }

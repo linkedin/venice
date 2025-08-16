@@ -163,6 +163,7 @@ public abstract class AbstractStore implements Store {
       version.setSeparateRealTimeTopicEnabled(isSeparateRealTimeTopicEnabled());
 
       version.setBlobTransferEnabled(isBlobTransferEnabled());
+      version.setBlobTransferInServerEnabled(getBlobTransferInServerEnabled());
 
       version.setUseVersionLevelIncrementalPushEnabled(true);
 
