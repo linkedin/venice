@@ -1,4 +1,4 @@
-package com.linkedin.venice.spark.input.pubsub.raw;
+package com.linkedin.venice.spark.input.pubsub;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
@@ -8,12 +8,12 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class VeniceRawPubsubInputPartitionReaderFactoryTest {
+public class SparkPubSubInputPartitionReaderFactoryTest {
   @Test
   public void testCreateReaderWithNonMatchingInputPartitionType() {
     // Arrange
     VeniceProperties jobConfig = new VeniceProperties(new Properties());
-    VeniceRawPubsubInputPartitionReaderFactory factory = new VeniceRawPubsubInputPartitionReaderFactory(jobConfig);
+    SparkPubSubPartitionReaderFactory factory = new SparkPubSubPartitionReaderFactory(jobConfig);
 
     // Create a mock that does not implement VeniceBasicPubsubInputPartition
     InputPartition mockInputPartition = Mockito.mock(InputPartition.class);
@@ -23,8 +23,7 @@ public class VeniceRawPubsubInputPartitionReaderFactoryTest {
         Assert.expectThrows(IllegalArgumentException.class, () -> factory.createReader(mockInputPartition));
 
     // Verify exception message
-    String expectedMessage =
-        "VeniceRawPubsubInputPartitionReaderFactory can only create readers for VeniceBasicPubsubInputPartition";
+    String expectedMessage = "SparkPubSubPartitionReaderFactory can only create readers for";
     String actualMessage = exception.getMessage();
     Assert.assertTrue(actualMessage.contains(expectedMessage), "Exception message should contain expected message");
   }
@@ -33,7 +32,7 @@ public class VeniceRawPubsubInputPartitionReaderFactoryTest {
   public void testSupportColumnarReads() {
     // Arrange
     VeniceProperties jobConfig = new VeniceProperties(new Properties());
-    VeniceRawPubsubInputPartitionReaderFactory factory = new VeniceRawPubsubInputPartitionReaderFactory(jobConfig);
+    SparkPubSubPartitionReaderFactory factory = new SparkPubSubPartitionReaderFactory(jobConfig);
     InputPartition mockInputPartition = Mockito.mock(InputPartition.class);
 
     // Act & Assert

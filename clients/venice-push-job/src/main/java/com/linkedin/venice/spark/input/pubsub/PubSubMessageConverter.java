@@ -29,5 +29,5 @@ public interface PubSubMessageConverter {
    *         9. Replication metadata version ID (int)
    *         See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
    */
-  InternalRow convert(@NotNull DefaultPubSubMessage pubSubMessage, String region, int partitionNumber);
+  InternalRow convert(@NotNull DefaultPubSubMessage pubSubMessage, String region, int partitionNumber, long offset);
 }

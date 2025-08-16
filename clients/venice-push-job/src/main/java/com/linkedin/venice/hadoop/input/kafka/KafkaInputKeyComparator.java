@@ -77,11 +77,7 @@ public class KafkaInputKeyComparator implements RawComparator<BytesWritable>, Se
     if (compareResult != 0) {
       return compareResult;
     }
-    if (k1.offset < k2.offset) {
-      return 1;
-    } else if (k1.offset > k2.offset) {
-      return -1;
-    }
-    return 0;
+
+    return Long.compare(k2.offset, k1.offset);
   }
 }

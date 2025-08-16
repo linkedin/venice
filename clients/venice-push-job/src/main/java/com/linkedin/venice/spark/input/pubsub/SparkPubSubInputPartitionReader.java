@@ -1,14 +1,11 @@
-package com.linkedin.venice.spark.input.pubsub.raw;
+package com.linkedin.venice.spark.input.pubsub;
 
-import com.linkedin.venice.pubsub.PubSubUtil;
-import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.spark.input.pubsub.OffsetProgressPercentCalculator;
-import com.linkedin.venice.spark.input.pubsub.PubSubMessageConverter;
-import com.linkedin.venice.spark.input.pubsub.VenicePubSubMessageToRow;
+import com.linkedin.venice.spark.input.pubsub.raw.VeniceRawPubsubStats;
+import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Map;
@@ -33,48 +30,58 @@ import org.apache.spark.sql.connector.read.PartitionReader;
  * </ul>
  * <p>
  * This class is part of the Venice Spark connector enabling ETL and KIF functionality.
+ *
+ * TODO: Refactor this class to remove duplication with
+ * {@link com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader}.
+ * Introduce an abstraction for the record-fetching logic and allow passing
+ * a converter for the corresponding engine type.
  */
-public class VeniceRawPubsubInputPartitionReader implements PartitionReader<InternalRow> {
+public class SparkPubSubInputPartitionReader implements PartitionReader<InternalRow> {
   private static final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 12;
   private static final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(5);
   private static final Long CONSUMER_POLL_TIMEOUT = TimeUnit.SECONDS.toMillis(1); // 1 second
   private static final float REPORT_PROGRESS_STEP_PERCENT = 10.0f; // Report progress every 10%
 
-  private static final Logger LOGGER = LogManager.getLogger(VeniceRawPubsubInputPartitionReader.class);
+  private static final Logger LOGGER = LogManager.getLogger(SparkPubSubInputPartitionReader.class);
   final VeniceRawPubsubStats readerStats = new VeniceRawPubsubStats();
   private final boolean filterControlMessages = true;
   private final PubSubConsumerAdapter pubSubConsumer;
   private final ArrayDeque<DefaultPubSubMessage> messageBuffer = new ArrayDeque<>();
   private final PubSubMessageConverter pubSubMessageConverter;
-  private final PubSubTopicPartition targetPubSubTopicPartition;
-  private final String topicName;
+  private final PubSubTopicPartition topicPartition;
   private final String region;
   private final int targetPartitionNumber;
   private final PubSubPosition startingPosition;
-  private final long startingOffset;
   private final PubSubPosition endingPosition;
-  private final long endingOffset;
-  private final long offsetLength;
+
   // Added for testing purposes
   private final long consumerPollTimeout;
   private final int consumerPollEmptyResultRetryTimes;
   private final long emptyPollSleepTimeMs;
-  private final OffsetProgressPercentCalculator percentCalculator;
-  private float lastKnownProgressPercent = 0;
+  private float lastLoggedProgress = -1.0f; // Track last logged progress to avoid excessive logging
   private PubSubPosition currentPosition;
-  private long currentOffset;
   private InternalRow currentRow = null;
+
+  private final long totalRecordsToRead;
+  private final int splitIndex;
+  private final long splitStartingRecordIndex;
+  private final boolean shouldUseLocallyBuiltIndexAsOffset;
+  private long recordsReadSoFar = 0;
 
   // the buffer that holds the relevant messages for the current partition
 
-  public VeniceRawPubsubInputPartitionReader(
-      VeniceBasicPubsubInputPartition inputPartition,
+  public SparkPubSubInputPartitionReader(
+      SparkPubSubInputPartition inputPartition,
       PubSubConsumerAdapter consumer,
-      PubSubTopicPartition topicPartition) {
+      PubSubTopicPartition topicPartition,
+      String regionName,
+      boolean shouldUseLocallyBuiltIndexAsOffset) {
     this(
         inputPartition,
         consumer,
         topicPartition,
+        regionName,
+        shouldUseLocallyBuiltIndexAsOffset,
         CONSUMER_POLL_TIMEOUT,
         CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES,
         EMPTY_POLL_SLEEP_TIME_MS,
@@ -92,42 +99,63 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
    * @param emptyPollSleepTimeMs The sleep time in milliseconds between retries when polling returns empty results
    * @param pubSubMessageConverter The converter to use for converting PubSub messages to Spark rows
    */
-  public VeniceRawPubsubInputPartitionReader(
-      VeniceBasicPubsubInputPartition inputPartition,
+  public SparkPubSubInputPartitionReader(
+      SparkPubSubInputPartition inputPartition,
       PubSubConsumerAdapter consumer,
       PubSubTopicPartition topicPartition,
+      String regionName,
+      boolean shouldUseLocallyBuiltIndexAsOffset,
       long pollTimeoutMs,
       int pollRetryTimes,
       long emptyPollSleepTimeMs,
       PubSubMessageConverter pubSubMessageConverter) {
 
     this.pubSubConsumer = consumer;
-    this.topicName = inputPartition.getTopicName();
-    this.targetPartitionNumber = inputPartition.getPartitionNumber();
-    this.region = inputPartition.getRegion();
+    PubSubPartitionSplit pubSubPartitionSplit = inputPartition.getPubSubPartitionSplit();
+    this.targetPartitionNumber = pubSubPartitionSplit.getPartitionNumber();
+    this.region = regionName;
     this.consumerPollTimeout = pollTimeoutMs;
     this.consumerPollEmptyResultRetryTimes = pollRetryTimes;
     this.emptyPollSleepTimeMs = emptyPollSleepTimeMs;
     this.pubSubMessageConverter = pubSubMessageConverter;
-    this.targetPubSubTopicPartition = topicPartition;
+    this.topicPartition = topicPartition;
 
     // Set up offset positions
-    this.startingOffset = inputPartition.getStartOffset();
-    this.endingOffset = inputPartition.getEndOffset();
-
-    this.startingPosition = ApacheKafkaOffsetPosition.of(startingOffset);
-    this.endingPosition = ApacheKafkaOffsetPosition.of(endingOffset);
-    this.percentCalculator = new OffsetProgressPercentCalculator(this.startingOffset, this.endingOffset);
-
-    this.offsetLength = endingOffset - startingOffset + 1;
+    this.startingPosition = pubSubPartitionSplit.getStartPubSubPosition();
+    this.endingPosition = pubSubPartitionSplit.getEndPubSubPosition();
+    this.totalRecordsToRead = pubSubPartitionSplit.getNumberOfRecords();
+    this.splitIndex = pubSubPartitionSplit.getSplitIndex();
+    this.splitStartingRecordIndex = pubSubPartitionSplit.getStartIndex();
+    this.shouldUseLocallyBuiltIndexAsOffset = shouldUseLocallyBuiltIndexAsOffset;
 
     // Subscribe to the topic partition
-    pubSubConsumer.subscribe(targetPubSubTopicPartition, startingPosition);
-    LOGGER.info("Subscribed to topic-partition: {}-{}.", this.topicName, this.targetPartitionNumber);
+    pubSubConsumer.subscribe(this.topicPartition, startingPosition);
+    LOGGER.info(
+        "Created SparkPubSubInputPartitionReader for split index: {}, to consume  topic-partition: {} from region: {} with starting position: {}",
+        this.splitIndex,
+        this.topicPartition,
+        this.region,
+        this.startingPosition);
   }
 
   public float getProgressPercent() {
-    return this.percentCalculator.calculate(this.currentOffset);
+    if (totalRecordsToRead <= 0) {
+      return 1.0f;
+    }
+    float progress = Math.min(1.0f, ((float) recordsReadSoFar / totalRecordsToRead));
+
+    // Only log progress if it has changed by at least 1% or this is the first time
+    if (lastLoggedProgress < 0.0f || Math.abs(progress - lastLoggedProgress) >= 0.01f) {
+      LOGGER.info(
+          "SparkPubSubInputPartitionReader for TopicPartition: {} has read {} records out of total {} records, progress: {}%",
+          this.topicPartition,
+          recordsReadSoFar,
+          totalRecordsToRead,
+          String.format("%.2f", progress * 100));
+      lastLoggedProgress = progress;
+    }
+
+    return progress * 100.0f; // Convert to percentage
   }
 
   /**
@@ -147,7 +175,13 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
       logProgress(); // Log progress as 0%
       return false;
     }
-    return PubSubUtil.comparePubSubPositions(this.currentPosition, this.endingPosition) > 0;
+    if (recordsReadSoFar > totalRecordsToRead) {
+      return false;
+    }
+    // Use positionDifference instead of compare. If a topic partition has no more data,
+    // currentPosition will never reach or exceed endingPosition. By definition,
+    // endingPosition is set to "last record offset + 1".
+    return pubSubConsumer.positionDifference(topicPartition, endingPosition, currentPosition) > 1;
   }
 
   @Override
@@ -176,9 +210,8 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
       }
     } catch (RuntimeException e) {
       LOGGER.error(
-          "Error while polling messages from topic-partition {}-{}. error:  {}",
-          this.topicName,
-          this.targetPartitionNumber,
+          "Error while polling messages from topic-partition {}. error:  {}",
+          this.topicPartition,
           e.getMessage());
       logProgress();
       // Now we need to experiment with Spark's behavior when the reader returns false.
@@ -196,9 +229,8 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
   public void close() {
     pubSubConsumer.close();
     LOGGER.info(
-        "Consumer closed for topic-partition: {}-{}, consumed {} records.",
-        this.topicName,
-        this.targetPartitionNumber,
+        "Consumer closed for topic-partition: {}, consumed {} records.",
+        this.topicPartition,
         readerStats.getRecordsServed());
     LOGGER.info(
         "Skipped {} records, delivered rows {} times .",
@@ -217,7 +249,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
 
     while (retries < consumerPollEmptyResultRetryTimes) {
       consumerBuffer = this.pubSubConsumer.poll(this.consumerPollTimeout);
-      List<DefaultPubSubMessage> partitionMessagesBuffer = consumerBuffer.get(this.targetPubSubTopicPartition);
+      List<DefaultPubSubMessage> partitionMessagesBuffer = consumerBuffer.get(this.topicPartition);
 
       if (partitionMessagesBuffer != null && !partitionMessagesBuffer.isEmpty()) {
         messageBuffer.addAll(partitionMessagesBuffer);
@@ -228,11 +260,7 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
         Thread.sleep(this.emptyPollSleepTimeMs);
       } catch (InterruptedException e) {
         logProgress();
-        LOGGER.error(
-            "Interrupted while waiting for records from topic-partition {}-{}",
-            this.topicName,
-            this.targetPartitionNumber,
-            e);
+        LOGGER.error("Interrupted while waiting for records from topic-partition {}", this.topicPartition, e);
         // rethrow the exception to exit the loop
         Thread.currentThread().interrupt();
         return; // Exit on interruption
@@ -243,28 +271,26 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
     // Exhausted all retries without getting messages
     throw new RuntimeException(
         String.format(
-            "Empty poll after %d retries for topic-partition: %s-%d. No messages were consumed.",
+            "Empty poll after %d retries for topic-partition: %s. No messages were consumed.",
             consumerPollEmptyResultRetryTimes,
-            this.topicName,
-            this.targetPartitionNumber));
+            this.topicPartition));
   }
 
   private void maybeLogProgress() {
     float progressPercent = this.getProgressPercent();
-    if (progressPercent - this.lastKnownProgressPercent >= REPORT_PROGRESS_STEP_PERCENT) {
+    if (progressPercent - this.lastLoggedProgress >= REPORT_PROGRESS_STEP_PERCENT) {
       logProgress();
-      this.lastKnownProgressPercent = progressPercent;
+      this.lastLoggedProgress = progressPercent;
     }
   }
 
   private void logProgress() {
     // handle null currentOffset gracefully in the calculate method
     LOGGER.info(
-        "Progress for" + " topic-partition {}-{} , consumed {}% of {} records. records delivered: {}, skipped: {}",
-        this.topicName,
-        this.targetPartitionNumber,
+        "Progress for topic-partition {} , consumed {}% of {} records. records delivered: {}, skipped: {}",
+        this.topicPartition,
         String.format("%.1f", this.getProgressPercent()),
-        this.offsetLength,
+        this.totalRecordsToRead,
         readerStats.getRecordsServed(),
         readerStats.getRecordsSkipped());
   }
@@ -292,17 +318,21 @@ public class VeniceRawPubsubInputPartitionReader implements PartitionReader<Inte
         // but keeping it to appease the compiler.
         return false;
       }
-
-      this.currentPosition = message.getOffset(); // needs rework when the pubSub position is fully adopted.
-      this.currentOffset = this.currentPosition.getNumericOffset();
-
+      this.currentPosition = message.getPosition();
+      long offset;
+      if (shouldUseLocallyBuiltIndexAsOffset) {
+        offset = splitStartingRecordIndex + recordsReadSoFar;
+      } else {
+        offset = message.getPosition().getNumericOffset();
+      }
+      recordsReadSoFar += 1;
       // Skip control messages if filtering is enabled
       if (this.filterControlMessages && message.getKey().isControlMessage()) {
         readerStats.incrementRecordsSkipped();
         continue; // Continue to next message in buffer
       }
 
-      this.currentRow = this.pubSubMessageConverter.convert(message, this.region, this.targetPartitionNumber);
+      this.currentRow = this.pubSubMessageConverter.convert(message, this.region, this.targetPartitionNumber, offset);
 
       readerStats.incrementRecordsServed();
       maybeLogProgress();

@@ -31,6 +31,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.vpj.VenicePushJobConstants;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Optional;
@@ -49,7 +50,7 @@ public class KafkaInputUtils {
    * <ul>
    *   <li>Copies all Hadoop job configurations into a {@link Properties} object.</li>
    *   <li>If an SSL configurator is specified, applies SSL settings and merges SSL properties into the consumer properties.</li>
-   *   <li>Clips and merges any {@link KafkaInputRecordReader#KIF_RECORD_READER_KAFKA_CONFIG_PREFIX} prefixed properties into the consumer properties.</li>
+   *   <li>Clips and merges any {@link VenicePushJobConstants#KIF_RECORD_READER_KAFKA_CONFIG_PREFIX} prefixed properties into the consumer properties.</li>
    *   <li>Sets a large receive buffer size (4MB) to support remote Kafka re-push scenarios.</li>
    *   <li>Sets the PubSub bootstrap server address</li>
    * </ul>
@@ -59,7 +60,7 @@ public class KafkaInputUtils {
    * @throws VeniceException if SSL configuration setup fails
    */
 
-  public static VeniceProperties getConsumerProperties(JobConf config) {
+  public static VeniceProperties getConsumerProperties(JobConf config, Properties overrideProperties) {
     Properties allProperties = HadoopUtils.getProps(config);
     Properties consumerProperties = new Properties();
     consumerProperties.putAll(allProperties); // manually copy all properties
@@ -77,7 +78,7 @@ public class KafkaInputUtils {
     VeniceProperties veniceProperties = new VeniceProperties(allProperties);
     // Drop the prefixes for some properties and add them back the consumer properties.
     consumerProperties.putAll(
-        veniceProperties.clipAndFilterNamespace(KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX)
+        veniceProperties.clipAndFilterNamespace(VenicePushJobConstants.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX)
             .toProperties());
     /**
      * Use a large receive buffer size: 4MB since Kafka re-push could consume remotely.
@@ -87,7 +88,16 @@ public class KafkaInputUtils {
         .setProperty(KAFKA_CONFIG_PREFIX + CommonClientConfigs.RECEIVE_BUFFER_CONFIG, Long.toString(4 * 1024 * 1024));
     consumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, config.get(KAFKA_INPUT_BROKER_URL));
     consumerProperties.setProperty(PUBSUB_BROKER_ADDRESS, config.get(KAFKA_INPUT_BROKER_URL));
+
+    // Add any override properties to the consumer properties.
+    if (overrideProperties != null) {
+      consumerProperties.putAll(overrideProperties);
+    }
     return new VeniceProperties(consumerProperties);
+  }
+
+  public static VeniceProperties getConsumerProperties(JobConf config) {
+    return getConsumerProperties(config, null);
   }
 
   public static KafkaValueSerializer getKafkaValueSerializer(JobConf config) {

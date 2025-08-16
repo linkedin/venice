@@ -41,9 +41,6 @@ import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicExistsException;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
-import it.unimi.dsi.fastutil.ints.Int2LongMap;
-import it.unimi.dsi.fastutil.ints.Int2LongMaps;
-import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -734,25 +731,7 @@ public class TopicManager implements Closeable {
   }
 
   /**
-   * Get the latest offsets for all partitions of a given topic.
-   * @param pubSubTopic the topic to get latest offsets for
-   * @return a Map of partition to the latest offset, or an empty map if there's any problem getting the offsets
-   */
-  public Int2LongMap getTopicLatestOffsets(PubSubTopic pubSubTopic) {
-    Map<PubSubTopicPartition, PubSubPosition> topicEndPositions =
-        topicMetadataFetcher.getEndPositionsForTopic(pubSubTopic);
-    if (topicEndPositions == null || topicEndPositions.isEmpty()) {
-      return Int2LongMaps.EMPTY_MAP;
-    }
-    Int2LongMap latestOffsets = new Int2LongOpenHashMap(topicEndPositions.size());
-    for (Map.Entry<PubSubTopicPartition, PubSubPosition> entry: topicEndPositions.entrySet()) {
-      latestOffsets.put(entry.getKey().getPartitionNumber(), entry.getValue().getNumericOffset());
-    }
-    return latestOffsets;
-  }
-
-  /**
-   * Retrieves the latest offsets (end offsets) for all partitions of the specified topic.
+   * Retrieves the latest (end) positions for all partitions of the specified topic.
    * <p>The returned offset represents the position of the next message that would be produced,
    * which is effectively one greater than the offset of the last available message.</p>
    *

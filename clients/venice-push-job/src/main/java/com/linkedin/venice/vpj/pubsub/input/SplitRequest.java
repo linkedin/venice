@@ -1,6 +1,6 @@
 package com.linkedin.venice.vpj.pubsub.input;
 
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER;
 
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -9,7 +9,7 @@ import java.util.Objects;
 
 
 public final class SplitRequest {
-  public static final long DEFAULT_RECORDS_PER_SPLIT = DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+  public static final long DEFAULT_RECORDS_PER_SPLIT = DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER;
   public static final long DEFAULT_TIME_WINDOW_MS = Duration.ofHours(3).toMillis();
   public static final int DEFAULT_MAX_SPLITS = 5;
 

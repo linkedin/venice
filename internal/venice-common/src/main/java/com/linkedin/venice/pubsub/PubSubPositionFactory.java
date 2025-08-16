@@ -37,24 +37,28 @@ public abstract class PubSubPositionFactory {
    * <p>
    * Internally, this delegates to {@link #fromPositionRawBytes(ByteBuffer)} to perform the actual decoding.
    *
-   * @param positionWireFormat the wire format containing the type ID and raw encoded bytes
+   * @param wireFormat the wire format containing the type ID and raw encoded bytes
    * @return a new {@link PubSubPosition} instance reconstructed from the wire format
    * @throws VeniceException if the type ID does not match the factory's expected type
    */
-  public PubSubPosition fromPositionRawBytes(PubSubPositionWireFormat positionWireFormat) {
-    if (positionWireFormat.getType() != positionTypeId) {
+  public PubSubPosition fromWireFormat(PubSubPositionWireFormat wireFormat) {
+    if (wireFormat.getType() != positionTypeId) {
       throw new VeniceException(
-          "Position type ID mismatch: expected " + positionTypeId + ", but got " + positionWireFormat.getType());
+          "Position type ID mismatch: expected " + positionTypeId + ", but got " + wireFormat.getType());
     }
-    return fromPositionRawBytes(positionWireFormat.getRawBytes());
+    return fromPositionRawBytes(wireFormat.getRawBytes());
   }
 
-  @Deprecated
   /**
-   * Use {@link #fromPositionRawBytes(PubSubPositionWireFormat)} instead.
+   * This method is deprecated and should not be used. It is retained for backward compatibility.
+   * Use {@link #fromWireFormat(PubSubPositionWireFormat)} instead.
+   *
+   * @param positionWireFormat the wire format containing the type ID and raw encoded bytes
+   * @return a new {@link PubSubPosition} instance reconstructed from the wire format
    */
-  public PubSubPosition createFromWireFormat(PubSubPositionWireFormat wireFormat) {
-    return fromPositionRawBytes(wireFormat);
+  @Deprecated
+  public PubSubPosition fromPositionRawBytes(PubSubPositionWireFormat positionWireFormat) {
+    return fromWireFormat(positionWireFormat);
   }
 
   /**
@@ -64,14 +68,6 @@ public abstract class PubSubPositionFactory {
    * @return a new {@link PubSubPosition} instance
    */
   public abstract PubSubPosition fromPositionRawBytes(ByteBuffer positionRawBytes);
-
-  @Deprecated
-  /**
-   * Use {@link #fromPositionRawBytes(ByteBuffer)} instead.
-   */
-  public PubSubPosition createFromByteBuffer(ByteBuffer positionRawBytes) {
-    return fromPositionRawBytes(positionRawBytes);
-  }
 
   /**
    * Returns the fully qualified class name of the {@link PubSubPosition} implementation handled by this factory.

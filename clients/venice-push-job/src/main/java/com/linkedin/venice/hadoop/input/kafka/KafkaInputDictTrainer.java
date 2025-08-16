@@ -6,6 +6,7 @@ import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_STRATEGY;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -24,6 +25,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
+import com.linkedin.venice.vpj.pubsub.input.PartitionSplitStrategy;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -180,9 +182,11 @@ public class KafkaInputDictTrainer {
       return dict;
     }
 
-    // Prepare input
-    // Get one split per partition
-    KafkaInputSplit[] splits = (KafkaInputSplit[]) kafkaInputFormat.getSplitsByRecordsPerSplit(jobConf, Long.MAX_VALUE);
+    // Prepare input: Get one split per partition
+    Properties splitProps = new Properties();
+    splitProps.put(PUBSUB_INPUT_SPLIT_STRATEGY, PartitionSplitStrategy.SINGLE_SPLIT_PER_PARTITION.name());
+    VeniceProperties veniceProperties = KafkaInputUtils.getConsumerProperties(jobConf, splitProps);
+    KafkaInputSplit[] splits = kafkaInputFormat.getSplits(veniceProperties);
     // The following sort is trying to get a deterministic dict with the same input.
     Arrays.sort(splits, Comparator.comparingInt(o -> o.getTopicPartition().getPartitionNumber()));
     // Try to gather some records from each partition
@@ -207,7 +211,6 @@ public class KafkaInputDictTrainer {
     int currentPartition = 0;
     long totalSampledRecordCnt = 0;
 
-    VeniceProperties veniceProperties = KafkaInputUtils.getConsumerProperties(jobConf);
     // Reuse the same Kafka Consumer across all partitions avoid log flooding
     PubSubConsumerAdapter reusedConsumer = reusedConsumerOptional.orElseGet(
         () -> PubSubClientsFactory.createConsumerFactory(veniceProperties)

@@ -2,10 +2,10 @@ package com.linkedin.venice.vpj.pubsub.input;
 
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_SPLITS_PER_PARTITION;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SPLIT_STRATEGY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_STRATEGY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -68,10 +68,10 @@ public class PubSubSplitPlannerTest {
     Map<String, String> customProps = new HashMap<>();
     customProps.put(KAFKA_INPUT_TOPIC, TEST_TOPIC_NAME);
     customProps.put(KAFKA_INPUT_BROKER_URL, TEST_BROKER_URL);
-    customProps.put(KAFKA_INPUT_SPLIT_STRATEGY, PartitionSplitStrategy.FIXED_RECORD_COUNT.name());
+    customProps.put(PUBSUB_INPUT_SPLIT_STRATEGY, PartitionSplitStrategy.FIXED_RECORD_COUNT.name());
     customProps.put(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "2000");
-    customProps.put(KAFKA_INPUT_MAX_SPLITS_PER_PARTITION, "8");
-    customProps.put(KAFKA_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES, "120");
+    customProps.put(PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION, "8");
+    customProps.put(PUBSUB_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES, "120");
     VeniceProperties props2 = new VeniceProperties(customProps);
     setupTopicManagerMocks(6, 4000L);
 
@@ -291,10 +291,10 @@ public class PubSubSplitPlannerTest {
     Map<String, String> props = new HashMap<>();
     props.put(KAFKA_INPUT_TOPIC, topicName);
     props.put(KAFKA_INPUT_BROKER_URL, brokerUrl);
-    props.put(KAFKA_INPUT_SPLIT_STRATEGY, splitType);
+    props.put(PUBSUB_INPUT_SPLIT_STRATEGY, splitType);
     props.put(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, String.valueOf(recordsPerSplit));
-    props.put(KAFKA_INPUT_MAX_SPLITS_PER_PARTITION, String.valueOf(maxSplits));
-    props.put(KAFKA_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES, String.valueOf(timeWindowMinutes));
+    props.put(PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION, String.valueOf(maxSplits));
+    props.put(PUBSUB_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES, String.valueOf(timeWindowMinutes));
     return new VeniceProperties(props);
   }
 

@@ -1,8 +1,8 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.vpj.pubsub.input.PubSubPartitionSplit;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
@@ -17,96 +17,62 @@ import org.apache.hadoop.mapred.InputSplit;
  * and end offsets.
  */
 public class KafkaInputSplit implements InputSplit {
-  private long startingOffset;
-  private long endingOffset;
-  private PubSubTopicPartition topicPartition;
-  private final PubSubTopicRepository topicRepository;
+  private PubSubPartitionSplit split;
 
-  /**
-   * Nullary Constructor for creating the instance inside the Mapper instance.
-   */
+  /** Nullary constructor for Hadoop to instantiate reflectively. */
   public KafkaInputSplit() {
-    topicRepository = new PubSubTopicRepository();
   }
 
   /**
-   * Constructs an input split for the provided {@param topic} and {@param partition} restricting data to be between
-   * the {@param startingOffset} and {@param endingOffset}
-   *
-   * @param topicPartition  the topic-partition for the split
-   * @param startingOffset the start of the split
-   * @param endingOffset   the end of the split
+   * Original constructor signature, now wiring through to PubSubPartitionSplit.
    */
-  public KafkaInputSplit(
-      PubSubTopicRepository topicRepository,
-      PubSubTopicPartition topicPartition,
-      long startingOffset,
-      long endingOffset) {
-    this.topicRepository = topicRepository;
-    this.startingOffset = startingOffset;
-    this.endingOffset = endingOffset;
-    this.topicPartition = topicPartition;
+  public KafkaInputSplit(PubSubPartitionSplit pubSubPartitionSplit) {
+    this.split = pubSubPartitionSplit;
+  }
+
+  public PubSubTopicPartition getTopicPartition() {
+    return split.getPubSubTopicPartition();
+  }
+
+  public PubSubPosition getStartingOffset() {
+    return split.getStartPubSubPosition();
+  }
+
+  public PubSubPosition getEndingOffset() {
+    return split.getEndPubSubPosition();
+  }
+
+  public long getNumberOfRecords() {
+    return split.getNumberOfRecords();
   }
 
   @Override
-  public long getLength() throws IOException {
-    // This is just used as a hint for size of bytes so it is already inaccurate.
-    return startingOffset > 0 ? endingOffset - startingOffset : endingOffset;
+  public long getLength() {
+    return split.getNumberOfRecords();
   }
 
   @Override
-  public String[] getLocations() throws IOException {
+  public String[] getLocations() {
     // Leave empty since data locality not really an issue.
     return new String[0];
   }
 
-  /**
-   * Returns the topic and partition for the split
-   *
-   * @return the topic and partition for the split
-   */
-  public PubSubTopicPartition getTopicPartition() {
-    return topicPartition;
-  }
-
-  /**
-   * Returns the starting offset for the split
-   *
-   * @return the starting offset for the split
-   */
-  public long getStartingOffset() {
-    return startingOffset;
-  }
-
-  /**
-   * Returns the ending offset for the split
-   *
-   * @return the ending offset for the split
-   */
-  public long getEndingOffset() {
-    return endingOffset;
+  @Override
+  public void write(DataOutput out) throws IOException {
+    split.writeTo(out);
   }
 
   @Override
-  public void write(DataOutput dataOutput) throws IOException {
-    dataOutput.writeUTF(topicPartition.getTopicName());
-    dataOutput.writeInt(topicPartition.getPartitionNumber());
-    dataOutput.writeLong(startingOffset);
-    dataOutput.writeLong(endingOffset);
+  public void readFields(DataInput in) throws IOException {
+    this.split = PubSubPartitionSplit.readFrom(in);
   }
 
-  @Override
-  public void readFields(DataInput dataInput) throws IOException {
-    String topic = dataInput.readUTF();
-    int partition = dataInput.readInt();
-    startingOffset = dataInput.readLong();
-    endingOffset = dataInput.readLong();
-
-    topicPartition = new PubSubTopicPartitionImpl(topicRepository.getTopic(topic), partition);
+  PubSubPartitionSplit getSplit() {
+    return split;
   }
 
   @Override
   public String toString() {
-    return getTopicPartition() + " Start: " + startingOffset + " End: " + endingOffset;
+    return getTopicPartition() + " Start: " + getStartingOffset() + " End: " + getEndingOffset();
   }
 }

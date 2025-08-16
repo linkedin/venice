@@ -1,9 +1,9 @@
 package com.linkedin.venice.vpj;
 
+import static com.linkedin.venice.ConfigKeys.PUBSUB_CLIENT_CONFIG_PREFIX;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 
 import com.github.luben.zstd.ZstdDictTrainer;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.mapreduce.datawriter.map.AbstractVeniceMapper;
@@ -112,18 +112,20 @@ public final class VenicePushJobConstants {
   public static final String KAFKA_INPUT_BROKER_URL = "kafka.input.broker.url";
   // Optional
   public static final String KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = "kafka.input.max.records.per.mapper";
+
+  // Legacy prefix kept for backward compatibility
+  public static final String KIF_RECORD_READER_KAFKA_CONFIG_PREFIX = "kif.record.reader.kafka.";
+
   /**
    * The default max records per mapper, and if there are more records in one topic partition, it will be
    * consumed by multiple mappers in parallel.
    * BTW, this calculation is not accurate since it is purely based on offset, and the topic
    * being consumed could have log compaction enabled.
    */
-  public static final long DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = 5000000L;
-
-  public static final String KIF_RECORD_READER_KAFKA_CONFIG_PREFIX = "kif.record.reader.kafka.";
+  public static final long DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER = 5000000L;
 
   /**
-   * Use the numeric Kafka offset as the secondary comparator after comparing keys in repush mappers.
+   * Use the numeric offset as the secondary comparator after comparing keys in repush mappers.
    * Both strategies order records latest first:
    * - Enabled: use offset, higher offsets first.
    * - Disabled: use a locally generated logical index (assigned after poll call), higher indices first.
@@ -134,58 +136,58 @@ public final class VenicePushJobConstants {
    *
    * Default: true
    */
-  public static final String KIF_RECORD_READER_KAFKA_SECONDARY_COMPARATOR_NUMERIC_OFFSET =
-      KIF_RECORD_READER_KAFKA_CONFIG_PREFIX + "secondary.comparator.numeric.offset";
-  public static final boolean DEFAULT_SECONDARY_COMPARATOR_NUMERIC_OFFSET = true;
-  /**
-   * Configuration key for specifying the Kafka input split strategy.
-   * <p>
-   * The split type determines how input splits are generated for processing Kafka records.
-   * Supported values include {@code PartitionSplitStrategy} supported by the system.
-   */
-  public static final String KAFKA_INPUT_SPLIT_STRATEGY =
-      ConfigKeys.PUBSUB_CLIENT_CONFIG_PREFIX + "input.split.strategy";
+  public static final String PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET =
+      PUBSUB_CLIENT_CONFIG_PREFIX + "input.secondary.comparator.use.numeric.record.offset";
+  public static final boolean DEFAULT_PUBSUB_INPUT_SECONDARY_COMPARATOR_USE_NUMERIC_RECORD_OFFSET = true;
 
   /**
-   * Default split type for Kafka input.
+   * Configuration key for specifying the PubSub input split strategy.
+   * <p>
+   * The split type determines how input splits are generated for processing PubSub records.
+   * Supported values include {@code PartitionSplitStrategy} supported by the system.
+   */
+  public static final String PUBSUB_INPUT_SPLIT_STRATEGY = PUBSUB_CLIENT_CONFIG_PREFIX + "input.split.strategy";
+
+  /**
+   * Default split type for PubSub input.
    * <p>
    * This value is derived from {@link PartitionSplitStrategy#FIXED_RECORD_COUNT}, which generates splits
    * containing a fixed number of records.
    */
-  public static final String DEFAULT_KAFKA_INPUT_SPLIT_STRATEGY = PartitionSplitStrategy.FIXED_RECORD_COUNT.name();
+  public static final String DEFAULT_PUBSUB_INPUT_SPLIT_STRATEGY = PartitionSplitStrategy.FIXED_RECORD_COUNT.name();
 
   /**
-   * Configuration key for the maximum number of splits to create per Kafka partition.
+   * Configuration key for the maximum number of splits to create per PubSub topic-partition.
    * <p>
    * This setting limits the total number of input splits generated for large partitions.
    * The default value is {@link #DEFAULT_MAX_SPLITS_PER_PARTITION}.
    */
-  public static final String KAFKA_INPUT_MAX_SPLITS_PER_PARTITION =
-      ConfigKeys.PUBSUB_CLIENT_CONFIG_PREFIX + "input.max.splits.per.partition";
+  public static final String PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION =
+      PUBSUB_CLIENT_CONFIG_PREFIX + "input.max.splits.per.partition";
 
   /**
-   * Default maximum number of splits to create per Kafka partition.
+   * Default maximum number of splits to create per PubSub topic-partition.
    * <p>
    * This value is taken from {@link SplitRequest#DEFAULT_MAX_SPLITS}.
    */
   public static final int DEFAULT_MAX_SPLITS_PER_PARTITION = SplitRequest.DEFAULT_MAX_SPLITS;
 
   /**
-   * Configuration key for the time window (in minutes) used to split Kafka input.
+   * Configuration key for the time window (in minutes) used to split PubSub input topic-partition.
    * <p>
    * Splits are generated so that each covers at most the configured time window.
-   * The default value is {@link #DEFAULT_KAFKA_INPUT_TIME_WINDOW_IN_MINUTES}.
+   * The default value is {@link #DEFAULT_PUBSUB_INPUT_TIME_WINDOW_IN_MINUTES}.
    */
-  public static final String KAFKA_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES =
-      ConfigKeys.PUBSUB_CLIENT_CONFIG_PREFIX + "input.split.time.window.in.minutes";
+  public static final String PUBSUB_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES =
+      PUBSUB_CLIENT_CONFIG_PREFIX + "input.split.time.window.in.minutes";
 
   /**
-   * Default time window (in minutes) for splitting Kafka input.
+   * Default time window (in minutes) for splitting PubSub input topic-partition.
    * <p>
    * This value is derived from {@link SplitRequest#DEFAULT_TIME_WINDOW_MS}
    * and converted from milliseconds to minutes.
    */
-  public static final long DEFAULT_KAFKA_INPUT_TIME_WINDOW_IN_MINUTES =
+  public static final long DEFAULT_PUBSUB_INPUT_TIME_WINDOW_IN_MINUTES =
       TimeUnit.MILLISECONDS.toMinutes(SplitRequest.DEFAULT_TIME_WINDOW_MS);
 
   public static final String KAFKA_INPUT_COMBINER_ENABLED = "kafka.input.combiner.enabled";
