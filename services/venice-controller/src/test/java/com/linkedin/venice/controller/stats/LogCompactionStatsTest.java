@@ -126,7 +126,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
     this.logCompactionStats.setCompactionEligible(TEST_STORE_NAME);
 
     // test validation
-    validateDoublePointFromDataFromGauge(
+    validateLongPointFromDataFromGauge(
         ControllerMetricEntity.COMPACTION_ELIGIBLE_STATE.getMetricName(),
         1,
         expectedAttributes);
@@ -143,7 +143,7 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
     this.logCompactionStats.setCompactionComplete(TEST_STORE_NAME);
 
     // test validation
-    validateDoublePointFromDataFromGauge(
+    validateLongPointFromDataFromGauge(
         ControllerMetricEntity.COMPACTION_ELIGIBLE_STATE.getMetricName(),
         0,
         expectedAttributes);
@@ -178,11 +178,11 @@ public class LogCompactionStatsTest extends AbstractTestVeniceParentHelixAdmin {
         TEST_METRIC_PREFIX);
   }
 
-  private void validateDoublePointFromDataFromGauge(
+  private void validateLongPointFromDataFromGauge(
       String metricName,
-      double expectedMetricValue,
+      long expectedMetricValue,
       Attributes expectedAttributes) {
-    OpenTelemetryDataPointTestUtils.validateDoublePointDataFromGauge(
+    OpenTelemetryDataPointTestUtils.validateLongPointDataFromGauge(
         inMemoryMetricReader,
         expectedMetricValue,
         expectedAttributes,

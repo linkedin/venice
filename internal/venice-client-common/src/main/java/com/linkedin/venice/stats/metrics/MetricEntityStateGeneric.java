@@ -1,7 +1,5 @@
 package com.linkedin.venice.stats.metrics;
 
-import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository.REDUNDANT_LOG_FILTER;
-
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 import io.opentelemetry.api.common.Attributes;
@@ -152,10 +150,7 @@ public class MetricEntityStateGeneric extends MetricEntityState {
     try {
       super.record(value, getAttributes(dimensions));
     } catch (IllegalArgumentException e) {
-      getOtelRepository().recordFailureMetric();
-      if (!REDUNDANT_LOG_FILTER.isRedundantLog(e.getMessage())) {
-        LOGGER.error("Error recording metric: ", e);
-      }
+      getOtelRepository().recordFailureMetric(getMetricEntity(), e);
     }
   }
 }

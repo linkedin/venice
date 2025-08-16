@@ -22,9 +22,10 @@ import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.api.metrics.DoubleGauge;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
+import io.opentelemetry.api.metrics.LongGauge;
+import io.opentelemetry.api.metrics.ObservableLongGauge;
 import io.opentelemetry.sdk.metrics.export.MetricExporter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -147,9 +148,6 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           "desc",
           new HashSet<>(singletonList(VeniceMetricsDimensions.VENICE_REQUEST_METHOD)));
 
-      Object instrument = metricsRepository.createInstrument(metricEntity);
-      assertNotNull(instrument, "Instrument should not be null for metric type: " + metricType);
-
       Map<VeniceMetricsDimensions, String> baseDimensionsMap = new HashMap<>();
       baseDimensionsMap
           .put(VeniceMetricsDimensions.VENICE_REQUEST_METHOD, RequestType.MULTI_GET_STREAMING.getDimensionValue());
@@ -160,8 +158,19 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
               RequestType.MULTI_GET_STREAMING.getDimensionValue())
           .build();
 
-      MetricEntityState metricEntityState =
-          MetricEntityStateBase.create(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes);
+      Object instrument = metricsRepository.createInstrument(metricEntity, () -> 10, baseAttributes);
+
+      assertNotNull(instrument, "Instrument should not be null for metric type: " + metricType);
+
+      MetricEntityState metricEntityState;
+      if (metricType.isAsyncMetric()) {
+        metricEntityState = MetricEntityStateBase
+            .createAsyncMetric(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes, () -> 10);
+      } else {
+        metricEntityState =
+            MetricEntityStateBase.create(metricEntity, metricsRepository, baseDimensionsMap, baseAttributes);
+      }
+
       metricEntityState.setOtelMetric(instrument);
 
       Attributes attributes = Attributes.builder().put("key", "value").build();
@@ -183,10 +192,18 @@ public class VeniceOpenTelemetryMetricsRepositoryTest {
           break;
         case GAUGE:
           assertTrue(
-              instrument instanceof DoubleGauge,
-              "Instrument should be a DoubleGauge for metric type: " + metricType);
+              instrument instanceof LongGauge,
+              "Instrument should be a LongGauge for metric type: " + metricType);
           metricEntityState.recordOtelMetric(value, attributes);
           break;
+
+        case ASYNC_GAUGE:
+          assertTrue(
+              instrument instanceof ObservableLongGauge,
+              "Instrument should be a ObservableLongGauge for metric type: " + metricType);
+          metricEntityState.recordOtelMetric(value, attributes);
+          break;
+
         default:
           fail("Unsupported metric type: " + metricType);
       }

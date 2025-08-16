@@ -7,6 +7,7 @@ import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENIC
 import static com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions.VENICE_REQUEST_RETRY_ABORT_REASON;
 import static com.linkedin.venice.stats.metrics.MetricEntityStateTest.DimensionEnum1.DIMENSION_ONE;
 import static com.linkedin.venice.stats.metrics.MetricEntityStateTest.DimensionEnum1.DIMENSION_TWO;
+import static com.linkedin.venice.stats.metrics.MetricType.COUNTER;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
@@ -59,6 +60,7 @@ public class MetricEntityStateThreeEnumTest {
     when(mockOtelRepository.getMetricsConfig()).thenReturn(mockMetricsConfig);
     mockMetricEntity = Mockito.mock(MetricEntity.class);
     Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
+    doReturn(COUNTER).when(mockMetricEntity).getMetricType();
     dimensionsSet.add(VENICE_REQUEST_METHOD);
     dimensionsSet.add(DIMENSION_ONE.getDimensionName());
     dimensionsSet.add(MetricEntityStateTest.DimensionEnum2.DIMENSION_ONE.getDimensionName());
@@ -171,6 +173,7 @@ public class MetricEntityStateThreeEnumTest {
     dimensionsSet.add(MetricEntityStateTest.DimensionEnum2.DIMENSION_ONE.getDimensionName());
     dimensionsSet.add(MetricEntityStateTest.DimensionEnum1Duplicate.DIMENSION_ONE.getDimensionName());
     doReturn(dimensionsSet).when(mockMetricEntity).getDimensionsList();
+    doReturn(COUNTER).when(mockMetricEntity).getMetricType();
     MetricEntityStateThreeEnums.create(
         mockMetricEntity,
         mockOtelRepository,
@@ -399,6 +402,7 @@ public class MetricEntityStateThreeEnumTest {
   @Test(timeOut = 20 * Time.MS_PER_SECOND, invocationCount = 10)
   public void testConcurrentAccess() throws InterruptedException {
     MetricEntity mockMetricEntity = Mockito.mock(MetricEntity.class);
+    when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
     Set<VeniceMetricsDimensions> dimensionsSet = new HashSet<>();
     dimensionsSet.add(VENICE_REQUEST_RETRY_ABORT_REASON);
     dimensionsSet.add(HttpResponseStatusEnum.CONTINUE.getDimensionName());

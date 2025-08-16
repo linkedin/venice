@@ -23,12 +23,15 @@ import com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat;
 import com.linkedin.venice.stats.VeniceOpenTelemetryMetricsRepository;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
+import com.linkedin.venice.utils.Utils;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.AsyncGauge;
 import io.tehuti.metrics.stats.Count;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -123,7 +126,7 @@ public class MetricEntityStateTest {
   public void testCreateMetricWithOtelEnabled() {
     when(mockMetricEntity.getMetricType()).thenReturn(MetricType.COUNTER);
     LongCounter longCounter = mock(LongCounter.class);
-    when(mockOtelRepository.createInstrument(mockMetricEntity)).thenReturn(longCounter);
+    when(mockOtelRepository.createInstrument(mockMetricEntity, null, baseAttributes)).thenReturn(longCounter);
 
     // without tehuti sensor
     MetricEntityState metricEntityState =
@@ -309,6 +312,106 @@ public class MetricEntityStateTest {
       assertTrue(e.getMessage().contains("should contain all the keys and same values as in baseDimensionsMap"));
     }
 
+  }
+
+  @Test
+  public void testValidateMetric() {
+    // case 1: MetricType is ASYNC_GAUGE, but not using createAsyncMetric
+    MetricEntity metricEntity = new MetricEntity(
+        "test_metric",
+        MetricType.ASYNC_GAUGE,
+        MetricUnit.NUMBER,
+        "Test description",
+        Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD));
+    try {
+      MetricEntityStateBase.create(
+          metricEntity,
+          mockOtelRepository,
+          sensorRegistrationFunction,
+          TestTehutiMetricNameEnum.TEST_METRIC,
+          singletonList(new AsyncGauge((ignored, ignored2) -> 0, "test")),
+          baseDimensionsMap,
+          baseAttributes); // No async callback provided
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(
+          e.getMessage().contains("Async callback is not provided, but the metric type is async for metric"),
+          e.getMessage());
+    }
+
+    // case 1: MetricType is not ASYNC_GAUGE, but tehuti has AsyncGauge() in stats
+    metricEntity = new MetricEntity(
+        "test_metric",
+        HISTOGRAM,
+        MetricUnit.NUMBER,
+        "Test description",
+        Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD));
+    try {
+      MetricEntityStateBase.create(
+          metricEntity,
+          mockOtelRepository,
+          sensorRegistrationFunction,
+          TestTehutiMetricNameEnum.TEST_METRIC,
+          singletonList(new AsyncGauge((ignored, ignored2) -> 0, "test")),
+          baseDimensionsMap,
+          baseAttributes);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(
+          e.getMessage()
+              .contains(
+                  "Tehuti metric stats contains AsyncGauge, but the otel metric type is not ASYNC_GAUGE for metric"));
+    }
+
+    // case 2: MetricType is ASYNC_GAUGE, but tehuti does not have AsyncGauge() in stats
+    metricEntity = new MetricEntity(
+        "test_metric",
+        MetricType.ASYNC_GAUGE,
+        MetricUnit.NUMBER,
+        "Test description",
+        Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD));
+    try {
+      MetricEntityStateBase.createAsyncMetric(
+          metricEntity,
+          mockOtelRepository,
+          sensorRegistrationFunction,
+          TestTehutiMetricNameEnum.TEST_METRIC,
+          singletonList(new Count()), // No AsyncGauge in stats
+          baseDimensionsMap,
+          baseAttributes,
+          () -> 0L);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(
+          e.getMessage()
+              .contains(
+                  "Tehuti metric stats does not contain AsyncGauge, but the otel metric type is ASYNC_GAUGE for metric"),
+          e.getMessage());
+    }
+
+    // case 3: MetricType is ASYNC_GAUGE and tehuti stats have AsyncGauge() but have other stats as well
+    metricEntity = new MetricEntity(
+        "test_metric",
+        MetricType.ASYNC_GAUGE,
+        MetricUnit.NUMBER,
+        "Test description",
+        Utils.setOf(VENICE_STORE_NAME, VENICE_REQUEST_METHOD));
+    try {
+      MetricEntityStateBase.createAsyncMetric(
+          metricEntity,
+          mockOtelRepository,
+          sensorRegistrationFunction,
+          TestTehutiMetricNameEnum.TEST_METRIC,
+          Arrays.asList(new AsyncGauge((ignored, ignored2) -> 0, "test"), new Count()),
+          baseDimensionsMap,
+          baseAttributes,
+          () -> 0L);
+      fail();
+    } catch (IllegalArgumentException e) {
+      assertTrue(
+          e.getMessage().contains("Tehuti metric stats contains AsyncGauge, but it should be the only stat for metric"),
+          e.getMessage());
+    }
   }
 
   private Attributes getBaseAttributes(Map<VeniceMetricsDimensions, String> inputMap) {
