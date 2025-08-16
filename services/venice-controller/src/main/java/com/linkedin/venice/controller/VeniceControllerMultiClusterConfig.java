@@ -102,10 +102,6 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getControllerHAASSuperClusterName();
   }
 
-  public int getControllerClusterReplica() {
-    return getCommonConfig().getControllerClusterReplica();
-  }
-
   public String getKafkaBootstrapServers() {
     return getCommonConfig().getKafkaBootstrapServers();
   }
