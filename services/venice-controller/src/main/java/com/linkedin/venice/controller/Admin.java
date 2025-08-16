@@ -669,7 +669,12 @@ public interface Admin extends AutoCloseable, Closeable {
    *
    * @throws com.linkedin.venice.exceptions.VeniceException if not cluster is found.
    */
-  Pair<String, String> discoverCluster(String storeName);
+  String discoverCluster(String storeName);
+
+  /**
+   * Find the router d2 service associated with a given cluster name.
+   */
+  String getRouterD2Service(String clusterName);
 
   /**
    * Find the server d2 service associated with a given cluster name.

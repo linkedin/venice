@@ -7,7 +7,6 @@ import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcRequest;
 import com.linkedin.venice.protocols.controller.DiscoverClusterGrpcResponse;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcRequest;
 import com.linkedin.venice.protocols.controller.LeaderControllerGrpcResponse;
-import com.linkedin.venice.utils.Pair;
 import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -93,17 +92,18 @@ public class VeniceControllerRequestHandler {
       throw new IllegalArgumentException("Store name is required for cluster discovery");
     }
     LOGGER.info("Discovering cluster for store: {}", storeName);
-    Pair<String, String> clusterToD2Pair = admin.discoverCluster(storeName);
+    String clusterName = admin.discoverCluster(storeName);
 
     DiscoverClusterGrpcResponse.Builder responseBuilder =
         DiscoverClusterGrpcResponse.newBuilder().setStoreName(storeName);
-    if (clusterToD2Pair.getFirst() != null) {
-      responseBuilder.setClusterName(clusterToD2Pair.getFirst());
+    if (clusterName != null) {
+      responseBuilder.setClusterName(clusterName);
     }
-    if (clusterToD2Pair.getSecond() != null) {
-      responseBuilder.setD2Service(clusterToD2Pair.getSecond());
+    String routerD2Service = admin.getRouterD2Service(clusterName);
+    if (routerD2Service != null) {
+      responseBuilder.setD2Service(routerD2Service);
     }
-    String serverD2Service = admin.getServerD2Service(clusterToD2Pair.getFirst());
+    String serverD2Service = admin.getServerD2Service(clusterName);
     if (serverD2Service != null) {
       responseBuilder.setServerD2Service(serverD2Service);
     }

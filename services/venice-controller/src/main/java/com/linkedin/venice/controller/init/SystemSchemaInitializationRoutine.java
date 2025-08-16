@@ -14,7 +14,6 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collection;
 import java.util.HashMap;
@@ -70,8 +69,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
 
       // Sanity check to make sure the store is not already created in another cluster.
       try {
-        Pair<String, String> clusterNameAndD2 = admin.discoverCluster(systemStoreName);
-        String currSystemStoreCluster = clusterNameAndD2.getFirst();
+        String currSystemStoreCluster = admin.discoverCluster(systemStoreName);
         if (!currSystemStoreCluster.equals(intendedCluster)) {
           LOGGER.warn(
               "The system store for '{}' already exists in cluster '{}', "

@@ -239,7 +239,7 @@ public class TopicCleanupService extends AbstractVeniceService {
       String storeName = topic.getStoreName();
       String clusterDiscovered;
       try {
-        clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+        clusterDiscovered = admin.discoverCluster(storeName);
       } catch (VeniceNoStoreException e) {
         LOGGER.warn(
             "Expected store: {} not found corresponding to topic: {} in Venice. Will delete the topic without running any safety checks. Error: {}",
@@ -438,7 +438,7 @@ public class TopicCleanupService extends AbstractVeniceService {
             LOGGER.error("Skip dangling admin topic {}.", pubSubTopic);
             continue;
           }
-          String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          String clusterDiscovered = admin.discoverCluster(storeName);
           Store store = admin.getStore(clusterDiscovered, storeName);
           LOGGER.warn("Find topic discrepancy case: {}", pubSubTopic);
           if (!isStillValidPubSubTopic(pubSubTopic, store)) {

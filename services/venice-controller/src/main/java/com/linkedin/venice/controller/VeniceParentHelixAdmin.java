@@ -4849,8 +4849,16 @@ public class VeniceParentHelixAdmin implements Admin {
    * @see Admin#discoverCluster(String)
    */
   @Override
-  public Pair<String, String> discoverCluster(String storeName) {
+  public String discoverCluster(String storeName) {
     return getVeniceHelixAdmin().discoverCluster(storeName);
+  }
+
+  /**
+   * @see Admin#getRouterD2Service(String)
+   */
+  @Override
+  public String getRouterD2Service(String clusterName) {
+    return getVeniceHelixAdmin().getRouterD2Service(clusterName);
   }
 
   /**
