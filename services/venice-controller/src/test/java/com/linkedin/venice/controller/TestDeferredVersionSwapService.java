@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.doReturn;
@@ -50,6 +51,7 @@ public class TestDeferredVersionSwapService {
   private static final String region3 = "test3";
   private static final int versionOne = 1;
   private static final int versionTwo = 2;
+  private static Map<String, String> childDatacenterToUrl = new HashMap<>();
 
   @BeforeMethod
   public void setUp() {
@@ -65,6 +67,11 @@ public class TestDeferredVersionSwapService {
 
     List clustersList = Arrays.asList(clusterName);
     doReturn(clustersList).when(admin).getClustersLeaderOf();
+
+    childDatacenterToUrl.put(region1, "test");
+    childDatacenterToUrl.put(region2, "test");
+    childDatacenterToUrl.put(region3, "test");
+    doReturn(childDatacenterToUrl).when(admin).getChildDataCenterControllerUrlMap(anyString());
   }
 
   private Store mockStore(
@@ -192,13 +199,6 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
-    Map<String, Integer> coloToVersions = new HashMap<>();
-    coloToVersions.put(region1, versionTwo);
-    coloToVersions.put(region2, versionOne);
-    coloToVersions.put(region3, versionOne);
-
-    doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(any(), any());
-
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
         ExecutionStatus.COMPLETED.toString(),
@@ -264,12 +264,6 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
-    Map<String, Integer> coloToVersions = new HashMap<>();
-    coloToVersions.put(region1, versionTwo);
-    coloToVersions.put(region2, versionOne);
-    coloToVersions.put(region3, versionOne);
-
-    doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(any(), any());
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
@@ -334,12 +328,6 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
-    Map<String, Integer> coloToVersions = new HashMap<>();
-    coloToVersions.put(region1, versionTwo);
-    coloToVersions.put(region2, versionOne);
-    coloToVersions.put(region3, versionOne);
-
-    doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(any(), any());
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
@@ -414,12 +402,6 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
-    Map<String, Integer> coloToVersions = new HashMap<>();
-    coloToVersions.put(region1, 2);
-    coloToVersions.put(region2, 1);
-    coloToVersions.put(region3, 1);
-
-    doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(any(), any());
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
 
@@ -480,12 +462,6 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
-    Map<String, Integer> coloToVersions = new HashMap<>();
-    coloToVersions.put(region1, versionTwo);
-    coloToVersions.put(region2, versionOne);
-    coloToVersions.put(region3, versionOne);
-
-    doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(any(), any());
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
@@ -540,12 +516,6 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
-    Map<String, Integer> coloToVersions = new HashMap<>();
-    coloToVersions.put(region1, versionTwo);
-    coloToVersions.put(region2, versionOne);
-    coloToVersions.put(region3, versionOne);
-
-    doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(any(), any());
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
@@ -599,12 +569,6 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
-    Map<String, Integer> coloToVersions = new HashMap<>();
-    coloToVersions.put(region1, versionTwo);
-    coloToVersions.put(region2, versionOne);
-    coloToVersions.put(region3, versionOne);
-
-    doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(any(), any());
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(
@@ -660,12 +624,6 @@ public class TestDeferredVersionSwapService {
     }
 
     mockVeniceHelixAdmin(controllerClientMap);
-    Map<String, Integer> coloToVersions = new HashMap<>();
-    coloToVersions.put(region1, versionTwo);
-    coloToVersions.put(region2, versionOne);
-    coloToVersions.put(region3, versionOne);
-
-    doReturn(coloToVersions).when(admin).getCurrentVersionsForMultiColos(any(), any());
 
     Long time = LocalDateTime.now().toEpochSecond(ZoneOffset.UTC);
     Admin.OfflinePushStatusInfo offlinePushStatusInfoWithCompletedPush = getOfflinePushStatusInfo(

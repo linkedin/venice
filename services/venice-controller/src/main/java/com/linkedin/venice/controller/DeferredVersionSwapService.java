@@ -101,7 +101,7 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
     deferredVersionSwapExecutor.shutdown();
   }
 
-  private Set<String> getRegionsForVersionSwap(Map<String, Integer> candidateRegions, Set<String> targetRegions) {
+  private Set<String> getRegionsForVersionSwap(Map<String, String> candidateRegions, Set<String> targetRegions) {
     Set<String> remainingRegions = new HashSet<>(candidateRegions.keySet());
     remainingRegions.removeAll(targetRegions);
     return remainingRegions;
@@ -695,10 +695,10 @@ public class DeferredVersionSwapService extends AbstractVeniceService {
             }
 
             String storeName = parentStore.getName();
-            Map<String, Integer> coloToVersions =
-                veniceParentHelixAdmin.getCurrentVersionsForMultiColos(cluster, storeName);
+            Map<String, String> childDataCenterControllerUrlMap =
+                veniceParentHelixAdmin.getChildDataCenterControllerUrlMap(cluster);
             Set<String> targetRegions = RegionUtils.parseRegionsFilterList(targetVersion.getTargetSwapRegion());
-            Set<String> remainingRegions = getRegionsForVersionSwap(coloToVersions, targetRegions);
+            Set<String> remainingRegions = getRegionsForVersionSwap(childDataCenterControllerUrlMap, targetRegions);
 
             // Check if the target version is in a terminal state (push job completed or failed)
             if (!isPushInTerminalState(
