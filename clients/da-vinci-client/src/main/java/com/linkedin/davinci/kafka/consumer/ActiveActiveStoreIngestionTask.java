@@ -978,7 +978,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     Map<String, PubSubPosition> upstreamOffsetsByKafkaURLs = new HashMap<>(sourceKafkaServers.size());
     sourceKafkaServers.forEach(sourceKafkaURL -> {
       PubSubPosition upstreamStartOffset = partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaURL);
-      if (upstreamStartOffset == PubSubSymbolicPosition.EARLIEST) {
+      if (PubSubSymbolicPosition.EARLIEST.equals(upstreamStartOffset)) {
         if (rewindStartTimestamp > 0) {
           PubSubTopicPartition newSourceTopicPartition =
               resolveTopicPartitionWithKafkaURL(newSourceTopic, partitionConsumptionState, sourceKafkaURL);

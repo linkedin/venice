@@ -39,7 +39,6 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.api.EmptyPubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
-import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
@@ -182,16 +181,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public static final int DEFAULT_MAX_ATTEMPTS_WHEN_TOPIC_MISSING = 30;
 
-  /**
-   * The default value of the "upstreamOffset" field in avro record {@link LeaderMetadata}.
-   *
-   * Even though we have set the default value for "upstreamOffset" field as -1, the initial value for the long field
-   * "upstreamOffset" is still 0 when we construct a LeaderMetadata record. Default field values are primarily used
-   * when reading records that don't have those fields, typically when we deserialize a record from older version to
-   * newer version.
-   */
-  public static final PubSubPosition DEFAULT_UPSTREAM_PUBSUB_POSITION = PubSubSymbolicPosition.EARLIEST;
-
   public static final int DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID =
       (int) AvroCompatibilityHelper.getSpecificDefaultValue(LeaderMetadata.SCHEMA$.getField("upstreamKafkaClusterId"));
 
@@ -239,7 +228,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(EMPTY_BYTE_ARRAY);
 
   public static final LeaderMetadataWrapper DEFAULT_LEADER_METADATA_WRAPPER =
-      new LeaderMetadataWrapper(DEFAULT_UPSTREAM_PUBSUB_POSITION, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID, DEFAULT_TERM_ID);
+      new LeaderMetadataWrapper(PubSubSymbolicPosition.EARLIEST, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID, DEFAULT_TERM_ID);
 
   // Immutable state
   private final PubSubMessageHeader protocolSchemaHeader;
@@ -1696,7 +1685,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         leaderMetadataWrapper.getViewPartitionMap() == null
             ? DEFAULT_LEADER_METADATA_WRAPPER
             : new LeaderMetadataWrapper(
-                DEFAULT_UPSTREAM_PUBSUB_POSITION,
+                PubSubSymbolicPosition.EARLIEST,
                 DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
                 DEFAULT_TERM_ID,
                 leaderMetadataWrapper.getViewPartitionMap());

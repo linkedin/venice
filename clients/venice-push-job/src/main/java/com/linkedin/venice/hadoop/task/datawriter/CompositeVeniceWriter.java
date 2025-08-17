@@ -3,12 +3,12 @@ package com.linkedin.venice.hadoop.task.datawriter;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_TERM_ID;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID;
-import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_UPSTREAM_PUBSUB_POSITION;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.ComplexVeniceWriter;
@@ -200,7 +200,7 @@ public class CompositeVeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U
           putMetadata);
     }
     LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(
-        DEFAULT_UPSTREAM_PUBSUB_POSITION,
+        PubSubSymbolicPosition.EARLIEST,
         DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID,
         DEFAULT_TERM_ID,
         viewPartitionMap);

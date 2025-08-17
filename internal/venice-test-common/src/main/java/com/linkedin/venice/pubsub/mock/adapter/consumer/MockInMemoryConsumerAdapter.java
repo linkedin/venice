@@ -88,9 +88,9 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
 
     long seekOffset;
 
-    if (position == PubSubSymbolicPosition.EARLIEST) {
+    if (PubSubSymbolicPosition.EARLIEST.equals(position)) {
       seekOffset = 0L; // start from first available record
-    } else if (position == PubSubSymbolicPosition.LATEST) {
+    } else if (PubSubSymbolicPosition.LATEST.equals(position)) {
       PubSubPosition resolved = endPosition(pubSubTopicPartition);
       if (!(resolved instanceof InMemoryPubSubPosition)) {
         throw new IllegalStateException(

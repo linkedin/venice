@@ -202,21 +202,21 @@ public final class PubSubUtil {
       throw new IllegalArgumentException("Positions cannot be null");
     }
 
-    if ((position1 == PubSubSymbolicPosition.EARLIEST && position2 == PubSubSymbolicPosition.EARLIEST)
-        || (position1 == PubSubSymbolicPosition.LATEST && position2 == PubSubSymbolicPosition.LATEST)) {
+    if ((PubSubSymbolicPosition.EARLIEST.equals(position1) && PubSubSymbolicPosition.EARLIEST.equals(position2))
+        || (PubSubSymbolicPosition.LATEST.equals(position1) && PubSubSymbolicPosition.LATEST.equals(position2))) {
       return 0;
     }
 
-    if (position1 == PubSubSymbolicPosition.EARLIEST) {
+    if (PubSubSymbolicPosition.EARLIEST.equals(position1)) {
       return -1;
     }
-    if (position1 == PubSubSymbolicPosition.LATEST) {
+    if (PubSubSymbolicPosition.LATEST.equals(position1)) {
       return 1;
     }
-    if (position2 == PubSubSymbolicPosition.EARLIEST) {
+    if (PubSubSymbolicPosition.EARLIEST.equals(position2)) {
       return 1;
     }
-    if (position2 == PubSubSymbolicPosition.LATEST) {
+    if (PubSubSymbolicPosition.LATEST.equals(position2)) {
       return -1;
     }
 
@@ -252,23 +252,23 @@ public final class PubSubUtil {
 
     // Case 2: Equal symbolic positions
     if (resolved1 == resolved2
-        && (resolved1 == PubSubSymbolicPosition.EARLIEST || resolved1 == PubSubSymbolicPosition.LATEST)) {
+        && (PubSubSymbolicPosition.EARLIEST.equals(resolved1) || PubSubSymbolicPosition.LATEST.equals(resolved1))) {
       return 0L;
     }
 
     // Case 3: One is EARLIEST, one is concrete
-    if (resolved1 == PubSubSymbolicPosition.EARLIEST && concretePositionClass.isInstance(resolved2)) {
+    if (PubSubSymbolicPosition.EARLIEST.equals(resolved1) && concretePositionClass.isInstance(resolved2)) {
       return -offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved2));
     }
-    if (resolved2 == PubSubSymbolicPosition.EARLIEST && concretePositionClass.isInstance(resolved1)) {
+    if (PubSubSymbolicPosition.EARLIEST.equals(resolved2) && concretePositionClass.isInstance(resolved1)) {
       return offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved1));
     }
 
     // Case 4: One is LATEST, one is concrete
-    if (resolved1 == PubSubSymbolicPosition.LATEST && concretePositionClass.isInstance(resolved2)) {
+    if (PubSubSymbolicPosition.LATEST.equals(resolved1) && concretePositionClass.isInstance(resolved2)) {
       return Long.MAX_VALUE - offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved2));
     }
-    if (resolved2 == PubSubSymbolicPosition.LATEST && concretePositionClass.isInstance(resolved1)) {
+    if (PubSubSymbolicPosition.LATEST.equals(resolved2) && concretePositionClass.isInstance(resolved1)) {
       return offsetExtractor.getInternalOffset(concretePositionClass.cast(resolved1)) - Long.MAX_VALUE;
     }
 
@@ -280,9 +280,9 @@ public final class PubSubUtil {
       PubSubTopicPartition partition,
       PubSubPosition position,
       PubSubConsumerAdapter consumerAdapter) {
-    if (position == PubSubSymbolicPosition.EARLIEST) {
+    if (PubSubSymbolicPosition.EARLIEST.equals(position)) {
       return consumerAdapter.beginningPosition(partition);
-    } else if (position == PubSubSymbolicPosition.LATEST) {
+    } else if (PubSubSymbolicPosition.LATEST.equals(position)) {
       return consumerAdapter.endPosition(partition);
     }
     return position;

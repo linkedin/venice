@@ -1028,7 +1028,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     PubSubPosition upstreamStartOffset = partitionConsumptionState
         .getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubTopicRepository, useLcro);
     String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
-    if (upstreamStartOffset == PubSubSymbolicPosition.EARLIEST && leaderTopic.isRealTime()) {
+    if (PubSubSymbolicPosition.EARLIEST.equals(upstreamStartOffset) && leaderTopic.isRealTime()) {
       upstreamStartOffset =
           calculateLeaderUpstreamOffsetWithTopicSwitch(partitionConsumptionState, leaderTopic, Collections.emptyList())
               .getOrDefault(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, PubSubSymbolicPosition.EARLIEST);

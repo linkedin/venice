@@ -1,7 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static java.util.concurrent.TimeUnit.MINUTES;
-import static com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.EARLIEST;
 
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.utils.ByteArrayKey;
@@ -298,7 +297,7 @@ public class PartitionConsumptionState {
   }
 
   public boolean isStarted() {
-    return getLatestProcessedLocalVersionTopicOffset() != EARLIEST;
+    return !PubSubSymbolicPosition.EARLIEST.equals(getLatestProcessedLocalVersionTopicOffset());
   }
 
   public final boolean isEndOfPushReceived() {
@@ -725,7 +724,7 @@ public class PartitionConsumptionState {
   public PubSubPosition getLatestProcessedUpstreamRTOffset(String kafkaUrl) {
     PubSubPosition latestProcessedUpstreamRTOffset =
         getLatestProcessedUpstreamRTOffsetMap().getOrDefault(kafkaUrl, PubSubSymbolicPosition.EARLIEST);
-    if (latestProcessedUpstreamRTOffset == PubSubSymbolicPosition.EARLIEST) {
+    if (PubSubSymbolicPosition.EARLIEST.equals(latestProcessedUpstreamRTOffset)) {
       /**
        * When processing {@link TopicSwitch} control message, only the checkpoint upstream offset maps in {@link OffsetRecord}
        * will be updated, since those offset are not processed yet; so when leader try to get the upstream offsets for the very

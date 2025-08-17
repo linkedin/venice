@@ -8,13 +8,11 @@ import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
-import static com.linkedin.davinci.kafka.consumer.LeaderProducedRecordContext.NO_UPSTREAM_POSITION;
 import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
 import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
-import static com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.EARLIEST;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.closeQuietlyWithErrorLogged;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
@@ -102,6 +100,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubUnsubscribedTopicPartitionException;
@@ -912,7 +911,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState) {
     String replicaId = getReplicaId(topic, partitionId);
     boolean returnStatus = true;
-    if (offsetRecord.getLocalVersionTopicOffset() != EARLIEST) {
+    if (!PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getLocalVersionTopicOffset())) {
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
       if (storeVersionState != null) {
         LOGGER.info("Found storeVersionState for replica: {}: checkDatabaseIntegrity will proceed", replicaId);
@@ -2145,7 +2144,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Once storage node restart, send the "START" status to controller to rebuild the task status.
     // If this storage node has never consumed data from this topic, instead of sending "START" here, we send it
     // once START_OF_PUSH message has been read.
-    if (offsetRecord.getLocalVersionTopicOffset() != EARLIEST) {
+    if (!PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getLocalVersionTopicOffset())) {
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
       if (storeVersionState != null) {
         boolean sorted = storeVersionState.sorted;
@@ -4012,7 +4011,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // as needed in integration test.
     if (purgeTransientRecordBuffer && isTransientRecordBufferUsed(partitionConsumptionState)
         && leaderProducedRecordContext != null
-        && leaderProducedRecordContext.getConsumedPosition() != NO_UPSTREAM_POSITION) {
+        && !PubSubSymbolicPosition.EARLIEST.equals(leaderProducedRecordContext.getConsumedPosition())) {
       partitionConsumptionState.mayRemoveTransientRecord(
           leaderProducedRecordContext.getConsumedKafkaClusterId(),
           leaderProducedRecordContext.getConsumedPosition(),
