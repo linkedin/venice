@@ -68,6 +68,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_READ_COMP
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ADAPTIVE_THROTTLER_SINGLE_GET_LATENCY_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_BATCH_REPORT_END_OF_INCREMENTAL_PUSH_STATUS_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CHANNEL_OPTION_WRITE_BUFFER_WATERMARK_HIGH_BYTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
@@ -529,6 +530,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean resetErrorReplicaEnabled;
 
   private final boolean adaptiveThrottlerEnabled;
+  private final boolean blobTransferAdaptiveThrottlerEnabled;
   private final boolean skipChecksAfterUnSubEnabled;
 
   private final int adaptiveThrottlerSignalIdleThreshold;
@@ -756,6 +758,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         serverProperties.getBoolean(SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED, true);
     resetErrorReplicaEnabled = serverProperties.getBoolean(SERVER_RESET_ERROR_REPLICA_ENABLED, false);
     adaptiveThrottlerEnabled = serverProperties.getBoolean(SERVER_ADAPTIVE_THROTTLER_ENABLED, false);
+    blobTransferAdaptiveThrottlerEnabled =
+        serverProperties.getBoolean(SERVER_BLOB_TRANSFER_ADAPTIVE_THROTTLER_ENABLED, false);
     skipChecksAfterUnSubEnabled = serverProperties.getBoolean(SERVER_SKIP_CHECK_AFTER_UNSUB_ENABLED, false);
     adaptiveThrottlerSignalIdleThreshold = serverProperties.getInt(SERVER_ADAPTIVE_THROTTLER_SIGNAL_IDLE_THRESHOLD, 10);
     adaptiveThrottlerSingleGetLatencyThreshold =
@@ -1594,6 +1598,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isAdaptiveThrottlerEnabled() {
     return adaptiveThrottlerEnabled;
+  }
+
+  public boolean isBlobTransferAdaptiveThrottlerEnabled() {
+    return blobTransferAdaptiveThrottlerEnabled;
   }
 
   public boolean isSkipChecksAfterUnSubEnabled() {

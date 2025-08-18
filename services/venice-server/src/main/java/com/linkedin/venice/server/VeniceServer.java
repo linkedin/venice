@@ -2,12 +2,12 @@ package com.linkedin.venice.server;
 
 import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.davinci.blobtransfer.AdaptiveBlobTransferTrafficThrottler;
 import com.linkedin.davinci.blobtransfer.BlobTransferManager;
 import com.linkedin.davinci.blobtransfer.BlobTransferManagerBuilder;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils;
 import com.linkedin.davinci.blobtransfer.BlobTransferUtils.BlobTransferTableFormat;
 import com.linkedin.davinci.blobtransfer.P2PBlobTransferConfig;
+import com.linkedin.davinci.blobtransfer.VeniceAdaptiveBlobTransferTrafficThrottler;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -503,17 +503,21 @@ public class VeniceServer {
           serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
           serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
           serverConfig.getSnapshotCleanupIntervalInMins());
-      AdaptiveBlobTransferTrafficThrottler writeThrottler = null;
-      AdaptiveBlobTransferTrafficThrottler readThrottler = null;
-      if (serverConfig.isAdaptiveThrottlerEnabled()) {
-        writeThrottler = new AdaptiveBlobTransferTrafficThrottler(
+      VeniceAdaptiveBlobTransferTrafficThrottler writeThrottler = null;
+      VeniceAdaptiveBlobTransferTrafficThrottler readThrottler = null;
+      if (serverConfig.isAdaptiveThrottlerEnabled() && serverConfig.isBlobTransferAdaptiveThrottlerEnabled()) {
+        writeThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(
             serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
             serverConfig.getBlobTransferServiceWriteLimitBytesPerSec(),
             true);
-        readThrottler = new AdaptiveBlobTransferTrafficThrottler(
+        readThrottler = new VeniceAdaptiveBlobTransferTrafficThrottler(
             serverConfig.getAdaptiveThrottlerSignalIdleThreshold(),
             serverConfig.getBlobTransferClientReadLimitBytesPerSec(),
             false);
+        readThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
+        writeThrottler.registerLimiterSignal(adaptiveThrottlerSignalService::isReadLatencySignalActive);
+        adaptiveThrottlerSignalService.registerThrottler(writeThrottler);
+        adaptiveThrottlerSignalService.registerThrottler(readThrottler);
       }
       blobTransferManager = new BlobTransferManagerBuilder().setBlobTransferConfig(p2PBlobTransferConfig)
           .setCustomizedViewFuture(customizedViewFuture)

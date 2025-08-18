@@ -31,8 +31,6 @@ public class P2PBlobTransferConfig {
   // Interval in mins for snapshot manager to clean up old snapshots
   private final int snapshotCleanupIntervalInMins;
 
-  private final boolean enableAdaptiveThrottlingForBlobTransfer = false;
-
   public P2PBlobTransferConfig(
       int p2pTransferServerPort,
       int p2pTransferClientPort,
@@ -112,9 +110,5 @@ public class P2PBlobTransferConfig {
 
   public int getSnapshotCleanupIntervalInMins() {
     return snapshotCleanupIntervalInMins;
-  }
-
-  public boolean isEnableAdaptiveThrottlingForBlobTransfer() {
-    return enableAdaptiveThrottlingForBlobTransfer;
   }
 }
