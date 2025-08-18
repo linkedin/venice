@@ -194,10 +194,6 @@ public class AggVersionedIngestionStats
         stat -> stat.recordConsumedRecordEndToEndProcessingLatency(value, currentTimeMs));
   }
 
-  public void recordVersionTopicEndOffsetRewind(String storeName, int version) {
-    recordVersionedAndTotalStat(storeName, version, IngestionStats::recordVersionTopicEndOffsetRewind);
-  }
-
   public void recordNearlineProducerToLocalBrokerLatency(String storeName, int version, double value, long timestamp) {
     recordVersionedAndTotalStat(
         storeName,
