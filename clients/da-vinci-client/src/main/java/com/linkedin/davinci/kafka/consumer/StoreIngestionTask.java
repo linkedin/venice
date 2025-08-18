@@ -2247,7 +2247,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             versionNumber,
             LatencyUtils.getElapsedTimeFromMsToMs(consumptionStatePrepTimeStart));
         updateLeaderTopicOnFollower(newPartitionConsumptionState);
-        reportStoreVersionTopicOffsetRewindMetrics(newPartitionConsumptionState);
 
         // Subscribe to local version topic.
         long subscribeOffset = getLocalVtSubscribeOffset(newPartitionConsumptionState);
@@ -2394,36 +2393,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     getDataIntegrityValidator().clearPartition(partition);
     storageMetadataService.clearOffset(topicPartition.getPubSubTopic().getName(), partition);
-  }
-
-  /**
-   * This function checks, for a store, if its persisted offset is greater than the end offset of its
-   * corresponding Kafka topic (indicating an offset rewind event, thus a potential data loss in Kafka) and increases
-   * related sensor counter values.
-   */
-  private void reportStoreVersionTopicOffsetRewindMetrics(PartitionConsumptionState pcs) {
-    long offset = pcs.getLatestProcessedLocalVersionTopicOffset();
-    if (offset == OffsetRecord.LOWEST_OFFSET) {
-      return;
-    }
-    /**
-     * N.B.: We do not want to use {@link #getTopicPartitionEndOffSet(String, PubSubTopic, int)} because it can return
-     *       a cached value which will result in a false positive in the below check.
-     */
-    long endOffset = aggKafkaConsumerService.getLatestOffsetBasedOnMetrics(
-        localKafkaServer,
-        versionTopic,
-        new PubSubTopicPartitionImpl(versionTopic, pcs.getPartition()));
-    // Proceed if persisted OffsetRecord exists and has meaningful content.
-    if (endOffset >= 0 && offset > endOffset) {
-      // report offset rewind.
-      LOGGER.warn(
-          "Offset rewind for version topic-partition: {}, persisted record offset: {}, Kafka topic partition end-offset: {}",
-          getReplicaId(kafkaVersionTopic, pcs.getPartition()),
-          offset,
-          endOffset);
-      versionedIngestionStats.recordVersionTopicEndOffsetRewind(storeName, versionNumber);
-    }
   }
 
   /**
