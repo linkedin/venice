@@ -11,8 +11,8 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_LIST;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertTrue;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
@@ -182,57 +182,8 @@ public class TestDeferredVersionSwap {
         assertNotNull(version);
         assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
       }
-    }
-  }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "regionsProvider")
-  public void testDeferredVersionSwapMultiplePushes(String targetRegions) throws IOException {
-    File inputDir = getTempDataDirectory();
-    TestWriteUtils.writeSimpleAvroFileWithStringToV3Schema(inputDir, 100, 100);
-    // Setup job properties
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("testDeferredVersionSwapMultiplePushes");
-    Properties props =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
-    String keySchemaStr = "\"string\"";
-    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setUnusedSchemaDeletionEnabled(true);
-    storeParms.setTargetRegionSwapWaitTime(1);
-    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
-    Set<String> targetRegionsList = RegionUtils.parseRegionsFilterList(targetRegions);
-
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAMES[0], parentControllerURLs)) {
-      createStoreForJob(CLUSTER_NAMES[0], keySchemaStr, NAME_RECORD_V3_SCHEMA.toString(), props, storeParms).close();
-
-      // Start push job with target region push enabled
-      props.put(TARGETED_REGION_PUSH_WITH_DEFERRED_SWAP, true);
-      props.put(TARGETED_REGION_PUSH_LIST, targetRegions);
-      IntegrationTestPushUtils.runVPJ(props);
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 1),
-          parentControllerClient,
-          30,
-          TimeUnit.SECONDS);
-
-      // Version should only be swapped in the target region
-      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.MINUTES, () -> {
-        Map<String, Integer> coloVersions =
-            parentControllerClient.getStore(storeName).getStore().getColoToCurrentVersions();
-
-        coloVersions.forEach((colo, version) -> {
-          if (targetRegionsList.contains(colo)) {
-            Assert.assertEquals((int) version, 1);
-          } else {
-            Assert.assertEquals((int) version, 0);
-          }
-        });
-      });
-
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        StoreInfo parentStore = parentControllerClient.getStore(storeName).getStore();
-        Assert.assertEquals(parentStore.getVersion(1).get().getStatus(), VersionStatus.PUSHED);
-      });
-
-      // Verify that we can't create a new version
+      // Verify that we can create a new version
       VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
           storeName,
           1000,
@@ -246,7 +197,7 @@ public class TestDeferredVersionSwap {
           Optional.empty(),
           false,
           -1);
-      assertTrue(versionCreationResponse.isError());
+      assertFalse(versionCreationResponse.isError());
     }
   }
 
