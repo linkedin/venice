@@ -1268,9 +1268,9 @@ public class ControllerClient implements Closeable {
       String value = entry.getValue();
 
       // Map our internal param names to the API constants
-      if ("includeSystemStores".equals(key)) {
+      if (INCLUDE_SYSTEM_STORES.equals(key)) {
         queryParams.add(INCLUDE_SYSTEM_STORES, value);
-      } else if ("lookBackMS".equals(key)) {
+      } else if (LOOK_BACK_MS.equals(key)) {
         queryParams.add(LOOK_BACK_MS, value);
       }
     }
