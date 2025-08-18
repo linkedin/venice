@@ -16,7 +16,7 @@ public class BlobTransferGlobalTrafficShapingHandlerHolder {
   private static final long DEFAULT_READ_CHANNEL_LIMIT = 0; // unlimited channels by default
   private static final long DEFAULT_WRITE_CHANNEL_LIMIT = 0; // unlimited channels by default
 
-  private static volatile long readLimit = 0; // default unlimited, will update based on thez config setting.
+  private static volatile long readLimit = 0; // default unlimited, will update based on the config setting.
   private static volatile long writeLimit = 0; // default unlimited, will update based on the config setting.
 
   private static final Lazy<GlobalChannelTrafficShapingHandler> GLOBAL_CHANNEL_TRAFFIC_SHAPING_HANDLER = Lazy.of(() -> {
