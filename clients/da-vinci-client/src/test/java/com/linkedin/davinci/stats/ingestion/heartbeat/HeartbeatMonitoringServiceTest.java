@@ -73,7 +73,16 @@ public class HeartbeatMonitoringServiceTest {
     doCallRealMethod().when(heartbeatMonitoringService)
         .getReplicaLeaderMaxHeartbeatLag(any(), anyString(), anyInt(), anyBoolean());
     doCallRealMethod().when(heartbeatMonitoringService)
+        .getReplicaLeaderMinHeartbeatTimestamp(any(), anyString(), anyInt(), anyBoolean());
+    doCallRealMethod().when(heartbeatMonitoringService)
+        .getReplicaLeaderMaxHeartbeatLag(any(), anyString(), anyInt(), anyBoolean(), anyLong());
+
+    doCallRealMethod().when(heartbeatMonitoringService)
         .getReplicaFollowerHeartbeatLag(any(), anyString(), anyInt(), anyBoolean());
+    doCallRealMethod().when(heartbeatMonitoringService)
+        .getReplicaFollowerHeartbeatTimestamp(any(), anyString(), anyInt(), anyBoolean());
+    doCallRealMethod().when(heartbeatMonitoringService)
+        .getReplicaFollowerHeartbeatLag(any(), anyString(), anyInt(), anyBoolean(), anyLong());
 
     Map<String, Map<Integer, Map<Integer, Map<String, HeartbeatTimeStampEntry>>>> leaderMap =
         new VeniceConcurrentHashMap<>();
@@ -93,41 +102,41 @@ public class HeartbeatMonitoringServiceTest {
     leaderMap.put(store, new VeniceConcurrentHashMap<>());
     leaderMap.get(store).put(version, new VeniceConcurrentHashMap<>());
     leaderMap.get(store).get(version).put(partition, new VeniceConcurrentHashMap<>());
+    long currentTime = System.currentTimeMillis();
     leaderMap.get(store)
         .get(version)
         .get(partition)
-        .put(
-            "dc-0",
-            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(5), true, true));
+        .put("dc-0", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(5), true, true));
     leaderMap.get(store)
         .get(version)
         .get(partition)
-        .put(
-            "dc-1",
-            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(10), true, true));
+        .put("dc-1", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(10), true, true));
     leaderMap.get(store)
         .get(version)
         .get(partition)
-        .put(
-            "dc-1_sep",
-            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(100), true, true));
+        .put("dc-1_sep", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(100), true, true));
 
     // Check valid leader lag
     long lag = heartbeatMonitoringService.getReplicaLeaderMaxHeartbeatLag(pcs, store, version, true);
     Assert.assertTrue(lag >= TimeUnit.MINUTES.toMillis(10));
     Assert.assertTrue(lag < TimeUnit.MINUTES.toMillis(11));
+    long timestamp = heartbeatMonitoringService.getReplicaLeaderMinHeartbeatTimestamp(pcs, store, version, true);
+    Assert.assertEquals(timestamp, currentTime - TimeUnit.MINUTES.toMillis(10));
+
     // Add unavailable region
     leaderMap.get(store)
         .get(version)
         .get(partition)
-        .put(
-            "dc-2",
-            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(20), false, false));
+        .put("dc-2", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(20), false, false));
     lag = heartbeatMonitoringService.getReplicaLeaderMaxHeartbeatLag(pcs, store, version, true);
     Assert.assertEquals(lag, Long.MAX_VALUE);
+    timestamp = heartbeatMonitoringService.getReplicaLeaderMinHeartbeatTimestamp(pcs, store, version, true);
+    Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
     // Replica not found in leader map.
     lag = heartbeatMonitoringService.getReplicaLeaderMaxHeartbeatLag(pcs, store, 2, true);
     Assert.assertEquals(lag, Long.MAX_VALUE);
+    timestamp = heartbeatMonitoringService.getReplicaLeaderMinHeartbeatTimestamp(pcs, store, 2, true);
+    Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
 
     /**
      * Validating Follower Lag
@@ -138,35 +147,39 @@ public class HeartbeatMonitoringServiceTest {
     followerMap.get(store)
         .get(version)
         .get(partition)
-        .put(
-            "dc-1",
-            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(10), true, true));
+        .put("dc-1", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(10), true, true));
 
     // Check valid follower lag
     lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, version, true);
     Assert.assertTrue(lag >= TimeUnit.MINUTES.toMillis(10));
+    timestamp = heartbeatMonitoringService.getReplicaFollowerHeartbeatTimestamp(pcs, store, version, true);
+    Assert.assertEquals(timestamp, currentTime - TimeUnit.MINUTES.toMillis(10));
+
     // Add unrelated region
     followerMap.get(store)
         .get(version)
         .get(partition)
-        .put(
-            "dc-0",
-            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(20), true, true));
+        .put("dc-0", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(20), true, true));
     lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, version, true);
     Assert.assertTrue(lag >= TimeUnit.MINUTES.toMillis(10));
     Assert.assertTrue(lag < TimeUnit.MINUTES.toMillis(20));
+    timestamp = heartbeatMonitoringService.getReplicaFollowerHeartbeatTimestamp(pcs, store, version, true);
+    Assert.assertEquals(timestamp, currentTime - TimeUnit.MINUTES.toMillis(10));
     // Set local region lag to be invalid
     followerMap.get(store)
         .get(version)
         .get(partition)
-        .put(
-            "dc-1",
-            new HeartbeatTimeStampEntry(System.currentTimeMillis() - TimeUnit.MINUTES.toMillis(10), true, false));
+        .put("dc-1", new HeartbeatTimeStampEntry(currentTime - TimeUnit.MINUTES.toMillis(10), true, false));
     lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, version, true);
     Assert.assertEquals(lag, Long.MAX_VALUE);
+    timestamp = heartbeatMonitoringService.getReplicaFollowerHeartbeatTimestamp(pcs, store, version, true);
+    Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
     // Replica not found in follower map.
     lag = heartbeatMonitoringService.getReplicaFollowerHeartbeatLag(pcs, store, 2, true);
     Assert.assertEquals(lag, Long.MAX_VALUE);
+    timestamp = heartbeatMonitoringService.getReplicaFollowerHeartbeatTimestamp(pcs, store, 2, true);
+    Assert.assertEquals(timestamp, HeartbeatMonitoringService.INVALID_MESSAGE_TIMESTAMP);
+
   }
 
   @Test
