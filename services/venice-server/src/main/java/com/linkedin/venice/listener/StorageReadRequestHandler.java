@@ -20,6 +20,7 @@ import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
+import com.linkedin.venice.client.store.FacetCountingUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.compute.ComputeUtils;
@@ -34,6 +35,7 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
+import com.linkedin.venice.listener.request.CountByValueRouterRequestWrapper;
 import com.linkedin.venice.listener.request.CurrentVersionRequest;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
@@ -47,6 +49,7 @@ import com.linkedin.venice.listener.request.StorePropertiesFetchRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
+import com.linkedin.venice.listener.response.CountByValueResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.MultiKeyResponseWrapper;
@@ -60,6 +63,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.response.VeniceReadResponseStatus;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.AvroStoreDeserializerCache;
@@ -85,6 +89,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -92,6 +97,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -296,6 +302,9 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
           break;
         case COMPUTE:
           responseFuture = this.computeHandler.apply((ComputeRouterRequestWrapper) request);
+          break;
+        case COUNT_BY_VALUE:
+          responseFuture = handleCountByValueRequest((CountByValueRouterRequestWrapper) request);
           break;
         default:
           throw new VeniceException("Unknown request type: " + request.getRequestType());
@@ -885,5 +894,167 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
         heartbeatRequest.getTopic(),
         heartbeatRequest.getPartition(),
         heartbeatRequest.isFilterLagReplica());
+  }
+
+  // Getter methods for gRPC handlers
+  public StorageEngineRepository getStorageEngineRepository() {
+    return storageEngineRepository;
+  }
+
+  public ReadOnlyStoreRepository getMetadataRepository() {
+    return metadataRepository;
+  }
+
+  public ReadOnlySchemaRepository getSchemaRepository() {
+    return schemaRepository;
+  }
+
+  public CompletableFuture<ReadResponse> handleCountByValueRequest(CountByValueRouterRequestWrapper request) {
+    final int queueLen = this.executor.getQueue().size();
+    final long preSubmissionTimeNs = System.nanoTime();
+    return CompletableFuture.supplyAsync(() -> {
+      if (request.shouldRequestBeTerminatedEarly()) {
+        throw new VeniceRequestEarlyTerminationException(request.getStoreName());
+      }
+
+      double submissionWaitTime = LatencyUtils.getElapsedTimeFromNSToMS(preSubmissionTimeNs);
+
+      CountByValueResponseWrapper responseWrapper = new CountByValueResponseWrapper();
+
+      try {
+        Map<String, Map<String, Integer>> fieldToValueCounts = processCountByValue(request);
+        responseWrapper.setFieldToValueCounts(fieldToValueCounts);
+      } catch (Exception e) {
+        LOGGER.error("Failed to process CountByValue request for store: " + request.getStoreName(), e);
+        responseWrapper.setError(VeniceReadResponseStatus.INTERNAL_ERROR, e.getMessage());
+      }
+
+      responseWrapper.getStats().setStorageExecutionSubmissionWaitTime(submissionWaitTime);
+      responseWrapper.getStats().setStorageExecutionQueueLen(queueLen);
+      return responseWrapper;
+    }, executor);
+  }
+
+  private Map<String, Map<String, Integer>> processCountByValue(CountByValueRouterRequestWrapper request) {
+    String resourceName = request.getResourceName();
+    PerStoreVersionState perStoreVersionState = getPerStoreVersionState(resourceName);
+    StorageEngine storageEngine = perStoreVersionState.storageEngine;
+
+    // Get all value schemas for schema evolution support
+    String storeName = request.getStoreName();
+    Map<Integer, Schema> schemaMap = getAllValueSchemas(storeName);
+    if (schemaMap.isEmpty()) {
+      throw new VeniceException("No value schemas found for store: " + storeName);
+    }
+
+    Map<String, Map<String, Integer>> aggregatedResults = new HashMap<>();
+
+    for (String fieldName: request.getCountByValueRequest().getFieldNamesList()) {
+      // Validate field exists in at least one schema
+      boolean fieldExists = schemaMap.values().stream().anyMatch(schema -> schema.getField(fieldName) != null);
+
+      if (!fieldExists) {
+        throw new IllegalArgumentException("Field not found in any schema: " + fieldName);
+      }
+
+      // Process all keys for this field
+      Map<String, Integer> fieldCounts =
+          processFieldForCountByValue(request.getKeys(), fieldName, storageEngine, schemaMap, storeName);
+
+      aggregatedResults.put(fieldName, fieldCounts);
+    }
+
+    return aggregatedResults;
+  }
+
+  private Map<String, Integer> processFieldForCountByValue(
+      List<byte[]> keys,
+      String fieldName,
+      StorageEngine storageEngine,
+      Map<Integer, Schema> schemaMap,
+      String storeName) {
+
+    // Collect all records for this field
+    List<GenericRecord> records = keys.stream()
+        .map(keyBytes -> retrieveAndDeserializeRecordForCountByValue(keyBytes, storageEngine, schemaMap, storeName))
+        .filter(Objects::nonNull)
+        .collect(Collectors.toList());
+
+    // Use FacetCountingUtils for consistent counting logic
+    return FacetCountingUtils.getValueToCount(records, fieldName, Integer.MAX_VALUE);
+  }
+
+  private GenericRecord retrieveAndDeserializeRecordForCountByValue(
+      byte[] keyBytes,
+      StorageEngine storageEngine,
+      Map<Integer, Schema> schemaMap,
+      String storeName) {
+
+    try {
+      // Use the existing storage approach - need to determine partition
+      // For now, use partition 0 as a default, in practice this would need proper partition calculation
+      int partition = 0; // TODO: Implement proper partition calculation from key hash
+
+      // Use the same approach as single get
+      StoreVersionState svs = storageEngine.getStoreVersionState();
+      boolean isChunked = StoreVersionStateUtils.isChunked(svs);
+
+      // Use SingleGetChunkingAdapter to get the value record
+      ValueRecord valueRecord = SingleGetChunkingAdapter.get(storageEngine, partition, keyBytes, isChunked, null);
+      if (valueRecord == null) {
+        return null;
+      }
+
+      byte[] valueBytes = valueRecord.getDataInBytes();
+      if (valueBytes == null) {
+        return null;
+      }
+
+      // Try deserializing with different schemas (schema evolution support)
+      StoreDeserializerCache<GenericRecord> deserializerCache =
+          new AvroStoreDeserializerCache<>(schemaRepository, storeName, fastAvroEnabled);
+
+      for (Map.Entry<Integer, Schema> schemaEntry: schemaMap.entrySet()) {
+        try {
+          GenericRecord record =
+              deserializerCache.getDeserializer(schemaEntry.getKey(), schemaEntry.getKey()).deserialize(valueBytes);
+          if (record != null) {
+            return record;
+          }
+        } catch (Exception e) {
+          // Try next schema
+          continue;
+        }
+      }
+
+      LOGGER
+          .warn("Failed to deserialize record with any available schema for key: {}", ByteUtils.toHexString(keyBytes));
+      return null;
+
+    } catch (Exception e) {
+      LOGGER.warn("Failed to retrieve/deserialize record for CountByValue", e);
+      return null;
+    }
+  }
+
+  private Map<Integer, Schema> getAllValueSchemas(String storeName) {
+    Map<Integer, Schema> schemaMap = new HashMap<>();
+    try {
+      for (SchemaEntry entry: schemaRepository.getValueSchemas(storeName)) {
+        schemaMap.put(entry.getId(), entry.getSchema());
+      }
+    } catch (Exception e) {
+      LOGGER.warn("Failed to get all schemas for store: " + storeName, e);
+      // Fallback to latest schema
+      try {
+        SchemaEntry latestValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName);
+        if (latestValueSchema != null) {
+          schemaMap.put(latestValueSchema.getId(), latestValueSchema.getSchema());
+        }
+      } catch (Exception ex) {
+        LOGGER.error("Failed to get latest schema for store: " + storeName, ex);
+      }
+    }
+    return schemaMap;
   }
 }

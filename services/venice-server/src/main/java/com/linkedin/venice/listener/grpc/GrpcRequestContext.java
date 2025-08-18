@@ -3,6 +3,8 @@ package com.linkedin.venice.listener.grpc;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.venice.listener.ServerStatsContext;
 import com.linkedin.venice.listener.request.RouterRequest;
+import com.linkedin.venice.protocols.CountByValueRequest;
+import com.linkedin.venice.protocols.CountByValueResponse;
 import com.linkedin.venice.protocols.VeniceClientRequest;
 import com.linkedin.venice.protocols.VeniceServerResponse;
 import io.grpc.stub.StreamObserver;
@@ -18,6 +20,11 @@ public class GrpcRequestContext {
   private VeniceServerResponse.Builder veniceServerResponseBuilder;
   private StreamObserver<VeniceServerResponse> responseObserver;
 
+  // For CountByValue requests
+  private CountByValueRequest countByValueRequest;
+  private CountByValueResponse.Builder countByValueResponseBuilder;
+  private StreamObserver<CountByValueResponse> countByValueResponseObserver;
+
   private boolean isCompleted = false;
   private boolean hasError = false;
   private RouterRequest routerRequest;
@@ -31,6 +38,15 @@ public class GrpcRequestContext {
     this.veniceClientRequest = veniceClientRequest;
     this.veniceServerResponseBuilder = veniceServerResponseBuilder;
     this.responseObserver = responseObserver;
+  }
+
+  public GrpcRequestContext(
+      CountByValueRequest countByValueRequest,
+      CountByValueResponse.Builder countByValueResponseBuilder,
+      StreamObserver<CountByValueResponse> countByValueResponseObserver) {
+    this.countByValueRequest = countByValueRequest;
+    this.countByValueResponseBuilder = countByValueResponseBuilder;
+    this.countByValueResponseObserver = countByValueResponseObserver;
   }
 
   public void setGrpcStatsContext(ServerStatsContext serverStatsContext) {
@@ -95,5 +111,34 @@ public class GrpcRequestContext {
 
   public void setError() {
     hasError = true;
+  }
+
+  // CountByValue getters and setters
+  public CountByValueRequest getCountByValueRequest() {
+    return countByValueRequest;
+  }
+
+  public void setCountByValueRequest(CountByValueRequest countByValueRequest) {
+    this.countByValueRequest = countByValueRequest;
+  }
+
+  public CountByValueResponse.Builder getCountByValueResponseBuilder() {
+    return countByValueResponseBuilder;
+  }
+
+  public void setCountByValueResponseBuilder(CountByValueResponse.Builder countByValueResponseBuilder) {
+    this.countByValueResponseBuilder = countByValueResponseBuilder;
+  }
+
+  public StreamObserver<CountByValueResponse> getCountByValueResponseObserver() {
+    return countByValueResponseObserver;
+  }
+
+  public void setCountByValueResponseObserver(StreamObserver<CountByValueResponse> countByValueResponseObserver) {
+    this.countByValueResponseObserver = countByValueResponseObserver;
+  }
+
+  public boolean isCountByValueRequest() {
+    return countByValueRequest != null;
   }
 }

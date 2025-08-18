@@ -56,6 +56,7 @@ import com.linkedin.venice.listener.grpc.handlers.GrpcStorageReadRequestHandler;
 import com.linkedin.venice.listener.grpc.handlers.VeniceServerGrpcHandler;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
+import com.linkedin.venice.listener.request.CountByValueRouterRequestWrapper;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.HeartbeatRequest;
@@ -65,6 +66,7 @@ import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.request.TopicPartitionIngestionContextRequest;
 import com.linkedin.venice.listener.response.AbstractReadResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
+import com.linkedin.venice.listener.response.CountByValueResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.SingleGetResponseWrapper;
@@ -906,5 +908,287 @@ public class StorageReadRequestHandlerTest {
     doReturn(1).when(schemaReader).getLatestValueSchemaId();
     doReturn(1).when(schemaReader).getValueSchemaId(valueSchema);
     return schemaReader;
+  }
+
+  @Test
+  public void testHandleCountByValueRequest() throws Exception {
+    String storeName = "test-store";
+    String keyString1 = "key1";
+    String keyString2 = "key2";
+    String fieldName = "testField";
+
+    // Create test data with different field values
+    Schema valueSchema =
+        SchemaBuilder.record("TestRecord").fields().requiredString(fieldName).requiredString("otherField").endRecord();
+
+    GenericRecord value1 = new GenericData.Record(valueSchema);
+    value1.put(fieldName, "value_A");
+    value1.put("otherField", "other1");
+
+    GenericRecord value2 = new GenericData.Record(valueSchema);
+    value2.put(fieldName, "value_B");
+    value2.put("otherField", "other2");
+
+    AvroSerializer<GenericRecord> serializer = new AvroSerializer<>(valueSchema);
+    byte[] serializedValue1 = ValueRecord.create(1, serializer.serialize(value1)).serialize();
+    byte[] serializedValue2 = ValueRecord.create(1, serializer.serialize(value2)).serialize();
+
+    // Mock storage engine responses
+    doReturn(serializedValue1).when(storageEngine).get(0, ByteBuffer.wrap(keyString1.getBytes()));
+    doReturn(serializedValue2).when(storageEngine).get(0, ByteBuffer.wrap(keyString2.getBytes()));
+
+    // Mock schema repository
+    SchemaEntry keySchemaEntry = new SchemaEntry(1, Schema.create(Schema.Type.STRING));
+    SchemaEntry valueSchemaEntry = new SchemaEntry(1, valueSchema);
+    doReturn(keySchemaEntry).when(schemaRepository).getKeySchema(storeName);
+    doReturn(valueSchemaEntry).when(schemaRepository).getValueSchema(storeName, 1);
+    doReturn(valueSchemaEntry).when(schemaRepository).getSupersetOrLatestValueSchema(storeName);
+
+    // Create CountByValue request
+    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/");
+    CountByValueRouterRequestWrapper request = new CountByValueRouterRequestWrapper(
+        storeName,
+        com.linkedin.venice.protocols.CountByValueRequest.newBuilder()
+            .addKeys(com.google.protobuf.ByteString.copyFrom(keyString1.getBytes()))
+            .addKeys(com.google.protobuf.ByteString.copyFrom(keyString2.getBytes()))
+            .setResourceName(storeName)
+            .addFieldNames(fieldName)
+            .build(),
+        httpRequest);
+
+    // Execute the test
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    // Verify response
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    CountByValueResponseWrapper responseWrapper = (CountByValueResponseWrapper) argumentCaptor.getValue();
+
+    Assert.assertNotNull(responseWrapper);
+    Assert.assertTrue(responseWrapper.isFound());
+    // Check that response is properly formed
+    Assert.assertTrue(responseWrapper.getResponseBody().readableBytes() > 0);
+  }
+
+  @Test
+  public void testCountByValueWithChunking() throws Exception {
+    String storeName = "test-store";
+    String keyString = "chunked_key";
+    String fieldName = "testField";
+
+    // Enable chunking
+    doReturn(true).when(version).isChunkingEnabled();
+    StoreVersionState svs = mock(StoreVersionState.class);
+    doReturn(true).when(svs).getChunked();
+    doReturn(svs).when(storageEngine).getStoreVersionState();
+
+    // Create test value schema
+    Schema valueSchema = SchemaBuilder.record("TestRecord").fields().requiredString(fieldName).endRecord();
+
+    GenericRecord value = new GenericData.Record(valueSchema);
+    value.put(fieldName, "chunked_value");
+
+    AvroSerializer<GenericRecord> serializer = new AvroSerializer<>(valueSchema);
+    byte[] originalValue = serializer.serialize(value);
+
+    // Create chunked value manifest
+    GUID guid = new JavaUtilGuidV4Generator().getGuid();
+    byte[] keyBytes = keyString.getBytes();
+
+    // Simulate chunks
+    byte[] chunk1 =
+        ValueRecord.create(AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(), "chunked".getBytes()).serialize();
+    byte[] chunk2 =
+        ValueRecord.create(AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(), "_value".getBytes()).serialize();
+
+    List<ByteBuffer> keysWithChunkingSuffix = new ArrayList<>(2);
+    ByteBuffer chunk1KeyBytes = keyWithChunkingSuffixSerializer
+        .serializeChunkedKey(keyBytes, new ChunkedKeySuffix(new ChunkId(guid, 0, 0, 0), true));
+    ByteBuffer chunk2KeyBytes = keyWithChunkingSuffixSerializer
+        .serializeChunkedKey(keyBytes, new ChunkedKeySuffix(new ChunkId(guid, 0, 1, 1), true));
+    keysWithChunkingSuffix.add(chunk1KeyBytes);
+    keysWithChunkingSuffix.add(chunk2KeyBytes);
+
+    doReturn(chunk1).when(storageEngine).get(0, chunk1KeyBytes);
+    doReturn(chunk2).when(storageEngine).get(0, chunk2KeyBytes);
+
+    ChunkedValueManifest chunkedValueManifest =
+        new ChunkedValueManifest(keysWithChunkingSuffix, 1, originalValue.length);
+    byte[] manifestBytes = chunkedValueManifestSerializer.serialize("", chunkedValueManifest);
+    byte[] manifestContainer =
+        ValueRecord.create(AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(), manifestBytes)
+            .serialize();
+
+    ByteBuffer nonChunkedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKeyAsByteBuffer(keyBytes);
+    doReturn(manifestContainer).when(storageEngine).get(0, nonChunkedKey);
+
+    // Mock schema repository
+    SchemaEntry keySchemaEntry = new SchemaEntry(1, Schema.create(Schema.Type.STRING));
+    SchemaEntry valueSchemaEntry = new SchemaEntry(1, valueSchema);
+    doReturn(keySchemaEntry).when(schemaRepository).getKeySchema(storeName);
+    doReturn(valueSchemaEntry).when(schemaRepository).getValueSchema(storeName, 1);
+    doReturn(valueSchemaEntry).when(schemaRepository).getSupersetOrLatestValueSchema(storeName);
+
+    // Create CountByValue request
+    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/");
+    CountByValueRouterRequestWrapper request = new CountByValueRouterRequestWrapper(
+        storeName,
+        com.linkedin.venice.protocols.CountByValueRequest.newBuilder()
+            .addKeys(com.google.protobuf.ByteString.copyFrom(keyBytes))
+            .setResourceName(storeName)
+            .addFieldNames(fieldName)
+            .build(),
+        httpRequest);
+
+    // Execute the test
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    // Verify response
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    CountByValueResponseWrapper responseWrapper = (CountByValueResponseWrapper) argumentCaptor.getValue();
+
+    Assert.assertNotNull(responseWrapper);
+    Assert.assertTrue(responseWrapper.isFound());
+    // Check that response is properly formed
+    Assert.assertTrue(responseWrapper.getResponseBody().readableBytes() > 0);
+  }
+
+  @Test
+  public void testCountByValueErrorHandling() throws Exception {
+    String storeName = "test-store";
+    String keyString = "error_key";
+    String fieldName = "testField";
+
+    // Mock storage engine to throw exception
+    doThrow(new VeniceException("Storage error")).when(storageEngine).get(0, ByteBuffer.wrap(keyString.getBytes()));
+
+    // Create CountByValue request
+    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/");
+    CountByValueRouterRequestWrapper request = new CountByValueRouterRequestWrapper(
+        storeName,
+        com.linkedin.venice.protocols.CountByValueRequest.newBuilder()
+            .addKeys(com.google.protobuf.ByteString.copyFrom(keyString.getBytes()))
+            .setResourceName(storeName)
+            .addFieldNames(fieldName)
+            .build(),
+        httpRequest);
+
+    // Execute the test
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    // Verify error response
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    CountByValueResponseWrapper responseWrapper = (CountByValueResponseWrapper) argumentCaptor.getValue();
+
+    Assert.assertNotNull(responseWrapper);
+    // CountByValue responses always return isFound() = true, even on errors
+    Assert.assertTrue(responseWrapper.isFound());
+    // Check that error response is properly formed
+    Assert.assertTrue(responseWrapper.getResponseBody().readableBytes() > 0);
+  }
+
+  @Test
+  public void testCountByValueWithMultipleFields() throws Exception {
+    String storeName = "test-store";
+    String keyString = "multi_field_key";
+    String fieldName1 = "field1";
+    String fieldName2 = "field2";
+
+    // Create test data with multiple fields
+    Schema valueSchema = SchemaBuilder.record("TestRecord")
+        .fields()
+        .requiredString(fieldName1)
+        .requiredString(fieldName2)
+        .requiredString("otherField")
+        .endRecord();
+
+    GenericRecord value = new GenericData.Record(valueSchema);
+    value.put(fieldName1, "value1");
+    value.put(fieldName2, "value2");
+    value.put("otherField", "other");
+
+    AvroSerializer<GenericRecord> serializer = new AvroSerializer<>(valueSchema);
+    byte[] serializedValue = ValueRecord.create(1, serializer.serialize(value)).serialize();
+
+    // Mock storage engine response
+    doReturn(serializedValue).when(storageEngine).get(0, ByteBuffer.wrap(keyString.getBytes()));
+
+    // Mock schema repository
+    SchemaEntry keySchemaEntry = new SchemaEntry(1, Schema.create(Schema.Type.STRING));
+    SchemaEntry valueSchemaEntry = new SchemaEntry(1, valueSchema);
+    doReturn(keySchemaEntry).when(schemaRepository).getKeySchema(storeName);
+    doReturn(valueSchemaEntry).when(schemaRepository).getValueSchema(storeName, 1);
+    doReturn(valueSchemaEntry).when(schemaRepository).getSupersetOrLatestValueSchema(storeName);
+
+    // Create CountByValue request with multiple fields
+    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/");
+    CountByValueRouterRequestWrapper request = new CountByValueRouterRequestWrapper(
+        storeName,
+        com.linkedin.venice.protocols.CountByValueRequest.newBuilder()
+            .addKeys(com.google.protobuf.ByteString.copyFrom(keyString.getBytes()))
+            .setResourceName(storeName)
+            .addFieldNames(fieldName1)
+            .addFieldNames(fieldName2)
+            .build(),
+        httpRequest);
+
+    // Execute the test
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    // Verify response
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    CountByValueResponseWrapper responseWrapper = (CountByValueResponseWrapper) argumentCaptor.getValue();
+
+    Assert.assertNotNull(responseWrapper);
+    Assert.assertTrue(responseWrapper.isFound());
+    // Check that response is properly formed
+    Assert.assertTrue(responseWrapper.getResponseBody().readableBytes() > 0);
+  }
+
+  @Test
+  public void testCountByValueWithNonExistentKey() throws Exception {
+    String storeName = "test-store";
+    String keyString = "non_existent_key";
+    String fieldName = "testField";
+
+    // Mock storage engine to return null (key not found)
+    doReturn(null).when(storageEngine).get(0, ByteBuffer.wrap(keyString.getBytes()));
+
+    // Create test value schema
+    Schema valueSchema = SchemaBuilder.record("TestRecord").fields().requiredString(fieldName).endRecord();
+
+    // Mock schema repository
+    SchemaEntry keySchemaEntry = new SchemaEntry(1, Schema.create(Schema.Type.STRING));
+    SchemaEntry valueSchemaEntry = new SchemaEntry(1, valueSchema);
+    doReturn(keySchemaEntry).when(schemaRepository).getKeySchema(storeName);
+    doReturn(valueSchemaEntry).when(schemaRepository).getValueSchema(storeName, 1);
+    doReturn(valueSchemaEntry).when(schemaRepository).getSupersetOrLatestValueSchema(storeName);
+
+    // Create CountByValue request
+    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, "/");
+    CountByValueRouterRequestWrapper request = new CountByValueRouterRequestWrapper(
+        storeName,
+        com.linkedin.venice.protocols.CountByValueRequest.newBuilder()
+            .addKeys(com.google.protobuf.ByteString.copyFrom(keyString.getBytes()))
+            .setResourceName(storeName)
+            .addFieldNames(fieldName)
+            .build(),
+        httpRequest);
+
+    // Execute the test
+    StorageReadRequestHandler requestHandler = createStorageReadRequestHandler();
+    requestHandler.channelRead(context, request);
+
+    // Verify response - should still be successful but with empty results
+    verify(context, times(1)).writeAndFlush(argumentCaptor.capture());
+    CountByValueResponseWrapper responseWrapper = (CountByValueResponseWrapper) argumentCaptor.getValue();
+
+    Assert.assertNotNull(responseWrapper);
+    Assert.assertTrue(responseWrapper.isFound());
+    // Check that response is properly formed
+    Assert.assertTrue(responseWrapper.getResponseBody().readableBytes() > 0);
   }
 }

@@ -6,7 +6,7 @@ import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
 
 public enum RequestType implements VeniceDimensionInterface {
   SINGLE_GET(""), MULTI_GET("multiget_"), MULTI_GET_STREAMING("multiget_streaming_"), COMPUTE("compute_"),
-  COMPUTE_STREAMING("compute_streaming_");
+  COMPUTE_STREAMING("compute_streaming_"), COUNT_BY_VALUE("count_by_value_");
 
   private final String metricPrefix;
 
