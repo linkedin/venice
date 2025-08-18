@@ -10,7 +10,8 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class adds adaptive throttling control layer for {@link GlobalChannelTrafficShapingHandler}.
+ * Adaptive throttling wrapper for {@link io.netty.handler.traffic.GlobalChannelTrafficShapingHandler}
+ * that dynamically tunes global read or write limits for blob transfer based on registered boolean signals.
  * It controls either global read or write throughput for the blob transfer behavior based on results of the registered
  * limiter and booster signals.
  * The heuristic behavior rules are defined as:
@@ -18,10 +19,9 @@ import org.apache.logging.log4j.Logger;
  * (2) If no limiter signal found, but there is booster signal found, it will increase by 20%. (max 200% of the base rate).
  * (3) If none of the above rule applies, it will increase idle count, if idle count is greater than the pre-defined
  * threshold, it will try to increase by 20% (still max 200% of the base rate).
- *
  */
-public class AdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiveThrottler {
-  private static final Logger LOGGER = LogManager.getLogger(AdaptiveBlobTransferTrafficThrottler.class);
+public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiveThrottler {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceAdaptiveBlobTransferTrafficThrottler.class);
   private static final String THROTTLER_NAME_SUFFIX = "TrafficBlobTransferThrottler";
   private final String throttlerName;
   private final List<BooleanSupplier> limiterSuppliers = new ArrayList<>();
@@ -35,7 +35,7 @@ public class AdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiveThrot
   private final boolean isWriteThrottler;
   private int signalIdleCount;
 
-  public AdaptiveBlobTransferTrafficThrottler(int singleIdleThreshold, long baseRate, boolean isWriteThrottler) {
+  public VeniceAdaptiveBlobTransferTrafficThrottler(int singleIdleThreshold, long baseRate, boolean isWriteThrottler) {
     this.throttlerName = (isWriteThrottler ? "Write" : "Read") + THROTTLER_NAME_SUFFIX;
     this.baseRate = baseRate;
     this.signalIdleThreshold = singleIdleThreshold;
@@ -86,7 +86,7 @@ public class AdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiveThrot
         isSignalIdle = false;
         signalIdleCount = 0;
         if (currentFactor < MAX_FACTOR) {
-          currentFactor -= 0.2;
+          currentFactor += 0.2;
           updateThrottlerNumber();
           LOGGER.info(
               "Found booster signal for {}, adjusting throttler factor to: {} with throttle rate: {}",
@@ -129,9 +129,9 @@ public class AdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiveThrot
 
   void updateThrottlerNumber() {
     if (isWriteThrottler) {
-      globalChannelTrafficShapingHandler.setWriteLimit((long) currentFactor * baseRate);
+      globalChannelTrafficShapingHandler.setWriteLimit((long) (currentFactor * baseRate));
     } else {
-      globalChannelTrafficShapingHandler.setReadLimit((long) currentFactor * baseRate);
+      globalChannelTrafficShapingHandler.setReadLimit((long) (currentFactor * baseRate));
     }
   }
 }

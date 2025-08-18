@@ -37,8 +37,8 @@ public class BlobTransferManagerBuilder {
   private AggVersionedBlobTransferStats aggVersionedBlobTransferStats;
   private Optional<SSLFactory> sslFactory;
   private Optional<BlobTransferAclHandler> aclHandler;
-  private AdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferWriteTrafficThrottler;
-  private AdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferReadTrafficThrottler;
+  private VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferWriteTrafficThrottler;
+  private VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferReadTrafficThrottler;
 
   public BlobTransferManagerBuilder() {
   }
@@ -93,13 +93,13 @@ public class BlobTransferManagerBuilder {
   }
 
   public BlobTransferManagerBuilder setAdaptiveBlobTransferWriteTrafficThrottler(
-      AdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferWriteTrafficThrottler) {
+      VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferWriteTrafficThrottler) {
     this.adaptiveBlobTransferWriteTrafficThrottler = adaptiveBlobTransferWriteTrafficThrottler;
     return this;
   }
 
   public BlobTransferManagerBuilder setAdaptiveBlobTransferReadTrafficThrottler(
-      AdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferReadTrafficThrottler) {
+      VeniceAdaptiveBlobTransferTrafficThrottler adaptiveBlobTransferReadTrafficThrottler) {
     this.adaptiveBlobTransferReadTrafficThrottler = adaptiveBlobTransferReadTrafficThrottler;
     return this;
   }
