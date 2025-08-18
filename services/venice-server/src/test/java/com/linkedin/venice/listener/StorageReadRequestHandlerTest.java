@@ -1191,4 +1191,5 @@ public class StorageReadRequestHandlerTest {
     // Check that response is properly formed
     Assert.assertTrue(responseWrapper.getResponseBody().readableBytes() > 0);
   }
+
 }

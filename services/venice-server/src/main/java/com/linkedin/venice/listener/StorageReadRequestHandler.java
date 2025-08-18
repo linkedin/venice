@@ -85,11 +85,11 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -97,7 +97,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -959,7 +958,7 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
       // Process all keys for this field
       Map<String, Integer> fieldCounts =
-          processFieldForCountByValue(request.getKeys(), fieldName, storageEngine, schemaMap, storeName);
+          processFieldForCountByValue(request, fieldName, storageEngine, schemaMap, storeName);
 
       aggregatedResults.put(fieldName, fieldCounts);
     }
@@ -968,17 +967,26 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
   }
 
   private Map<String, Integer> processFieldForCountByValue(
-      List<byte[]> keys,
+      CountByValueRouterRequestWrapper request,
       String fieldName,
       StorageEngine storageEngine,
       Map<Integer, Schema> schemaMap,
       String storeName) {
 
-    // Collect all records for this field
-    List<GenericRecord> records = keys.stream()
-        .map(keyBytes -> retrieveAndDeserializeRecordForCountByValue(keyBytes, storageEngine, schemaMap, storeName))
-        .filter(Objects::nonNull)
-        .collect(Collectors.toList());
+    List<byte[]> keys = request.getKeys();
+    List<Integer> partitions = request.getPartitions();
+
+    // Collect all records for this field using client-provided partitions
+    List<GenericRecord> records = new ArrayList<>();
+    for (int i = 0; i < keys.size(); i++) {
+      byte[] keyBytes = keys.get(i);
+      int partition = partitions.get(i);
+      GenericRecord record =
+          retrieveAndDeserializeRecordForCountByValue(keyBytes, partition, storageEngine, schemaMap, storeName);
+      if (record != null) {
+        records.add(record);
+      }
+    }
 
     // Use FacetCountingUtils for consistent counting logic
     return FacetCountingUtils.getValueToCount(records, fieldName, Integer.MAX_VALUE);
@@ -986,14 +994,13 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
 
   private GenericRecord retrieveAndDeserializeRecordForCountByValue(
       byte[] keyBytes,
+      int partition,
       StorageEngine storageEngine,
       Map<Integer, Schema> schemaMap,
       String storeName) {
 
     try {
-      // Use the existing storage approach - need to determine partition
-      // For now, use partition 0 as a default, in practice this would need proper partition calculation
-      int partition = 0; // TODO: Implement proper partition calculation from key hash
+      // Use client-provided partition directly
 
       // Use the same approach as single get
       StoreVersionState svs = storageEngine.getStoreVersionState();
@@ -1057,4 +1064,5 @@ public class StorageReadRequestHandler extends ChannelInboundHandlerAdapter {
     }
     return schemaMap;
   }
+
 }

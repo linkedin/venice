@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 public class CountByValueRouterRequestWrapper extends RouterRequest {
   private final CountByValueRequest countByValueRequest;
   private final List<byte[]> keys;
+  private final List<Integer> partitions;
 
   public CountByValueRouterRequestWrapper(
       String resourceName,
@@ -24,6 +25,7 @@ public class CountByValueRouterRequestWrapper extends RouterRequest {
         .stream()
         .map(byteString -> byteString.toByteArray())
         .collect(Collectors.toList());
+    this.partitions = countByValueRequest.getPartitionsList();
   }
 
   public CountByValueRequest getCountByValueRequest() {
@@ -36,6 +38,17 @@ public class CountByValueRouterRequestWrapper extends RouterRequest {
 
   public int getKeyCount() {
     return keys.size();
+  }
+
+  public List<Integer> getPartitions() {
+    return partitions;
+  }
+
+  public int getPartition(int keyIndex) {
+    if (keyIndex < 0 || keyIndex >= partitions.size()) {
+      throw new IndexOutOfBoundsException("Key index out of bounds: " + keyIndex);
+    }
+    return partitions.get(keyIndex);
   }
 
   @Override

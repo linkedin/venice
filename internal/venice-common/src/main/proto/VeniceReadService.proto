@@ -36,10 +36,7 @@ message CountByValueRequest {
   repeated bytes keys = 1;
   string resourceName = 2;
   repeated string fieldNames = 3;
-  repeated int32 partitions = 4;  // Support multiple partitions
-  int32 maxKeysPerPartition = 5;  // Limit keys per partition
-  int32 maxResponseSizeBytes = 6; // Limit response size
-  bool enableStreaming = 7;       // Enable streaming response for large datasets
+  repeated int32 partitions = 4;  // Partition info for each key from client
 }
 
 message CountByValueResponse {
