@@ -2476,7 +2476,7 @@ public class VenicePushJob implements AutoCloseable {
 
     List<ExecutionStatus> successfulStatuses =
         Arrays.asList(ExecutionStatus.COMPLETED, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
-
+    int fetchParentVersionRetryCount = 0;
     for (;;) {
       long currentTime = System.currentTimeMillis();
       if (currentTime < nextPollingTime) {
@@ -2542,37 +2542,34 @@ public class VenicePushJob implements AutoCloseable {
         // For target region push with deferred swap, stall push completion until version swap is complete
         // Version swap is complete when the parent version is online, partially online, or error
         if (isTargetRegionPushWithDeferredSwap) {
-          int attempt = 0;
-          Version parentVersion = null;
-          int latestUsedVersionNumber = -1;
-          while (attempt < 5) {
-            StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
-            if (parentStoreResponse.isError()) {
-              LOGGER.warn("Failed to get store response for store: {}", pushJobSetting.storeName);
-              attempt++;
-              continue;
-            }
-
-            StoreInfo parentStoreInfo = parentStoreResponse.getStore();
-            latestUsedVersionNumber = parentStoreInfo.getLargestUsedVersionNumber();
-            Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(latestUsedVersionNumber);
-            if (!parentVersionFromStore.isPresent()) {
-              LOGGER.warn("Failed to get parent version for store: {}", pushJobSetting.storeName);
-              attempt++;
-              continue;
-            }
-
-            parentVersion = parentVersionFromStore.get();
-            break;
-          }
-
-          if (parentVersion == null || latestUsedVersionNumber == -1) {
+          if (fetchParentVersionRetryCount > 5) {
             throw new VeniceException(
                 "Failed to get parent version from parent store after 5 attempts "
                     + "and cannot infer version swap status after ingestion completed. Check nuage if the latest"
                     + "version is being served");
           }
 
+          StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
+          if (parentStoreResponse.isError()) {
+            LOGGER.warn(
+                "Failed to get store response for store: {} with error: {}",
+                pushJobSetting.storeName,
+                parentStoreResponse.getError());
+            fetchParentVersionRetryCount++;
+            continue;
+          }
+
+          StoreInfo parentStoreInfo = parentStoreResponse.getStore();
+          int latestUsedVersionNumber = parentStoreInfo.getLargestUsedVersionNumber();
+          Optional<Version> parentVersionFromStore = parentStoreInfo.getVersion(latestUsedVersionNumber);
+          if (!parentVersionFromStore.isPresent()) {
+            LOGGER.warn("Failed to get parent version for store: {}", pushJobSetting.storeName);
+            fetchParentVersionRetryCount++;
+            continue;
+          }
+
+          fetchParentVersionRetryCount = 0; // Reset retry counter if we are able to get parent version
+          Version parentVersion = parentVersionFromStore.get();
           VersionStatus parentVersionStatus = parentVersion.getStatus();
           if (VersionStatus.ERROR.equals(parentVersionStatus)
               && ExecutionStatus.COMPLETED.equals(overallStatus.getRootStatus())) {
