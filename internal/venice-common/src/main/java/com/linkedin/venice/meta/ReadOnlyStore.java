@@ -1830,6 +1830,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setIncrementalPushEnabled(version.isIncrementalPushEnabled());
     storeVersion.setSeparateRealTimeTopicEnabled(version.isSeparateRealTimeTopicEnabled());
     storeVersion.setBlobTransferEnabled(version.isBlobTransferEnabled());
+    storeVersion.setBlobTransferInServerEnabled(version.getBlobTransferInServerEnabled());
     storeVersion.setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled());
     storeVersion.setHybridConfig(convertHybridStoreConfig(version.getHybridStoreConfig()));
     storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());

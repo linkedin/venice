@@ -110,7 +110,7 @@ public class ReadOnlyStoreTest {
     assertEquals(storeProperties.getStorageNodeReadQuotaEnabled(), store.isStorageNodeReadQuotaEnabled());
     assertEquals(storeProperties.getBlobTransferEnabled(), store.isBlobTransferEnabled());
     assertEquals(storeProperties.getBlobTransferInServerEnabled(), store.getBlobTransferInServerEnabled());
-    assertEquals(storeProperties.getBlobTransferInServerEnabled(), BlobTransferInServerConfigType.NOT_SPECIFIED);
+    assertEquals(storeProperties.getBlobTransferInServerEnabled(), BlobTransferInServerConfigType.NOT_SPECIFIED.name());
     assertEquals(storeProperties.getNearlineProducerCompressionEnabled(), store.isNearlineProducerCompressionEnabled());
     assertEquals(storeProperties.getNearlineProducerCountPerWriter(), store.getNearlineProducerCountPerWriter());
     assertEquals(storeProperties.getStoreLifecycleHooks().size(), store.getStoreLifecycleHooks().size());
