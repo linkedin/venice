@@ -382,6 +382,7 @@ public class AdminConsumptionTaskIntegrationTest {
     adminMessage.payloadUnion = updateStore;
     adminMessage.executionId = executionId;
     updateStore.storeLifecycleHooks = Collections.emptyList();
+    updateStore.blobTransferInServerEnabled = "";
     return adminOperationSerializer.serialize(adminMessage, writerSchemaId);
   }
 

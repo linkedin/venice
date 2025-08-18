@@ -5,7 +5,7 @@ import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.utils.BlobTransferCommonUtils.BlobTransferInServerConfigType;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -356,7 +356,7 @@ public class StoreInfo {
   private boolean unusedSchemaDeletionEnabled;
 
   private boolean blobTransferEnabled;
-  private String blobTransferInServerEnable = BlobTransferInServerConfigType.NOT_SPECIFIED.name();
+  private String blobTransferInServerEnable = ActivationState.NOT_SPECIFIED.name();
 
   private boolean nearlineProducerCompressionEnabled;
   private int nearlineProducerCountPerWriter;

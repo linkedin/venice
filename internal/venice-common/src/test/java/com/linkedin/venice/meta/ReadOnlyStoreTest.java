@@ -1,6 +1,6 @@
 package com.linkedin.venice.meta;
 
-import static com.linkedin.venice.utils.BlobTransferCommonUtils.BlobTransferInServerConfigType;
+import static com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
@@ -110,7 +110,7 @@ public class ReadOnlyStoreTest {
     assertEquals(storeProperties.getStorageNodeReadQuotaEnabled(), store.isStorageNodeReadQuotaEnabled());
     assertEquals(storeProperties.getBlobTransferEnabled(), store.isBlobTransferEnabled());
     assertEquals(storeProperties.getBlobTransferInServerEnabled(), store.getBlobTransferInServerEnabled());
-    assertEquals(storeProperties.getBlobTransferInServerEnabled(), BlobTransferInServerConfigType.NOT_SPECIFIED.name());
+    assertEquals(storeProperties.getBlobTransferInServerEnabled(), ActivationState.NOT_SPECIFIED.name());
     assertEquals(storeProperties.getNearlineProducerCompressionEnabled(), store.isNearlineProducerCompressionEnabled());
     assertEquals(storeProperties.getNearlineProducerCountPerWriter(), store.getNearlineProducerCountPerWriter());
     assertEquals(storeProperties.getStoreLifecycleHooks().size(), store.getStoreLifecycleHooks().size());

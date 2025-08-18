@@ -55,8 +55,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.utils.BlobTransferCommonUtils.BlobTransferInServerConfigType;
 import com.linkedin.venice.utils.CollectionUtils;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -506,7 +506,7 @@ public class AdminExecutionTask implements Callable<Void> {
         .setBlobTransferEnabled(message.blobTransferEnabled)
         .setBlobTransferInServerEnabled(
             message.blobTransferInServerEnabled == null
-                ? BlobTransferInServerConfigType.NOT_SPECIFIED.name()
+                ? ActivationState.NOT_SPECIFIED.name()
                 : message.blobTransferInServerEnabled.toString())
         .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
