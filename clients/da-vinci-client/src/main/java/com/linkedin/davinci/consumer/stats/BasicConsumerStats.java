@@ -33,6 +33,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
@@ -54,6 +55,9 @@ public class BasicConsumerStats extends AbstractVeniceStats {
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> versionSwapFailCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordSuccessCountMetric;
   private final MetricEntityStateOneEnum<VeniceResponseStatusCategory> chunkedRecordFailCountMetric;
+
+  private final AtomicInteger versionSwapSuccessCount = new AtomicInteger();
+  private final AtomicInteger versionSwapFailCount = new AtomicInteger();
 
   public BasicConsumerStats(MetricsRepository metricsRepository, String consumerName, String storeName) {
     super(metricsRepository, consumerName);
@@ -143,7 +147,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.VERSION_SWAP_SUCCESS_COUNT,
-        Collections.singletonList(new Rate()),
+        Collections.singletonList(new Gauge()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
@@ -152,7 +156,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
         otelRepository,
         this::registerSensor,
         BasicConsumerTehutiMetricName.VERSION_SWAP_FAIL_COUNT,
-        Collections.singletonList(new Rate()),
+        Collections.singletonList(new Gauge()),
         baseDimensionsMap,
         VeniceResponseStatusCategory.class);
 
@@ -201,9 +205,9 @@ public class BasicConsumerStats extends AbstractVeniceStats {
 
   public void emitVersionSwapCountMetrics(VeniceResponseStatusCategory responseStatusCategory) {
     if (responseStatusCategory == SUCCESS) {
-      versionSwapSuccessCountMetric.record(1, responseStatusCategory);
+      versionSwapSuccessCountMetric.record(versionSwapSuccessCount.incrementAndGet(), responseStatusCategory);
     } else {
-      versionSwapFailCountMetric.record(1, responseStatusCategory);
+      versionSwapFailCountMetric.record(versionSwapFailCount.incrementAndGet(), responseStatusCategory);
     }
   }
 
@@ -275,7 +279,7 @@ public class BasicConsumerStats extends AbstractVeniceStats {
      * Measures the count of version swaps
      */
     VERSION_SWAP_COUNT(
-        MetricType.COUNTER, MetricUnit.NUMBER, "Measures the count of version swaps",
+        MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS, MetricUnit.NUMBER, "Measures the count of version swaps",
         setOf(VENICE_STORE_NAME, VENICE_RESPONSE_STATUS_CODE_CATEGORY)
     ),
     /**
