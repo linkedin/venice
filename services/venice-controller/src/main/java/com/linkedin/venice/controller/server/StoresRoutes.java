@@ -1152,13 +1152,13 @@ public class StoresRoutes extends AbstractRoute {
         // Include system stores parameter
         String includeSystemStoresParam = request.queryParams(INCLUDE_SYSTEM_STORES);
         if (includeSystemStoresParam != null && !includeSystemStoresParam.isEmpty()) {
-          params.put("includeSystemStores", includeSystemStoresParam);
+          params.put(INCLUDE_SYSTEM_STORES, includeSystemStoresParam);
         }
 
         // Look back MS parameter
         String lookBackMSParam = request.queryParams(LOOK_BACK_MS);
         if (lookBackMSParam != null && !lookBackMSParam.isEmpty()) {
-          params.put("lookBackMS", lookBackMSParam);
+          params.put(LOOK_BACK_MS, lookBackMSParam);
         }
 
         List<StoreInfo> storeList = admin.getDeadStores(cluster, storeName, params);
