@@ -54,7 +54,6 @@ import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.atLeast;
@@ -113,7 +112,6 @@ import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.davinci.transformer.TestStringRecordTransformer;
 import com.linkedin.davinci.validation.DataIntegrityValidator;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -410,8 +408,6 @@ public abstract class StoreIngestionTaskTest {
   private PubSubTopicPartition fooTopicPartition;
   private PubSubTopicPartition barTopicPartition;
   private PubSubPosition mockedPubSubPosition;
-
-  private Runnable runnableForKillNonCurrentVersion;
 
   private ZKHelixAdmin zkHelixAdmin;
 
@@ -1190,7 +1186,6 @@ public abstract class StoreIngestionTaskTest {
         .setAggKafkaConsumerService(aggKafkaConsumerService)
         .setCompressorFactory(new StorageEngineBackedCompressorFactory(mockStorageMetadataService))
         .setPartitionStateSerializer(partitionStateSerializer)
-        .setRunnableForKillIngestionTasksForNonCurrentVersions(runnableForKillNonCurrentVersion)
         .setReusableObjectsSupplier(IngestionTaskReusableObjects.Strategy.SINGLETON_THREAD_LOCAL.supplier())
         .setAAWCWorkLoadProcessingThreadPool(
             Executors.newFixedThreadPool(2, new DaemonThreadFactory("AA_WC_PARALLEL_PROCESSING")))
@@ -4673,40 +4668,6 @@ public abstract class StoreIngestionTaskTest {
 
       when(partitionConsumptionState.getLeaderFollowerState()).thenReturn(STANDBY);
       assertFalse(storeIngestionTaskUnderTest.shouldPersistRecord(pubSubMessage2, partitionConsumptionState));
-    }, AA_OFF);
-  }
-
-  @Test
-  public void testIngestionTaskForNonCurrentVersionShouldFailWhenEncounteringMemoryLimitException() throws Exception {
-    doThrow(new MemoryLimitExhaustedException("mock exception")).when(mockAbstractStorageEngine)
-        .put(anyInt(), any(), (ByteBuffer) any());
-    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
-    localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
-
-    runTest(Collections.singleton(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, timeout(1000)).put(eq(PARTITION_FOO), any(), (ByteBuffer) any());
-      verify(mockLogNotifier, timeout(1000)).error(any(), eq(PARTITION_FOO), any(), isA(VeniceException.class));
-      verify(runnableForKillNonCurrentVersion, never()).run();
-    }, AA_OFF);
-  }
-
-  @Test
-  public void testIngestionTaskCurrentVersionKillOngoingPushOnMemoryLimitException() throws Exception {
-    doThrow(new MemoryLimitExhaustedException("mock exception")).doNothing()
-        .when(mockAbstractStorageEngine)
-        .put(anyInt(), any(), (ByteBuffer) any());
-
-    isCurrentVersion = () -> true;
-
-    localVeniceWriter.broadcastStartOfPush(new HashMap<>());
-    localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID, PUT_KEY_FOO_TIMESTAMP, null).get();
-    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
-
-    runTest(Collections.singleton(PARTITION_FOO), () -> {
-      verify(mockAbstractStorageEngine, timeout(5000).times(2)).put(eq(PARTITION_FOO), any(), (ByteBuffer) any());
-      verify(mockAbstractStorageEngine, timeout(1000)).reopenStoragePartition(PARTITION_FOO);
-      verify(mockLogNotifier, timeout(1000)).completed(anyString(), eq(PARTITION_FOO), anyLong(), anyString());
-      verify(runnableForKillNonCurrentVersion, times(1)).run();
     }, AA_OFF);
   }
 

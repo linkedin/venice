@@ -23,7 +23,6 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.davinci.store.StorageEngine;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
-import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;

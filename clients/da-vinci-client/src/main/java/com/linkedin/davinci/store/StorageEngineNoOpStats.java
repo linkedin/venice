@@ -31,11 +31,6 @@ public class StorageEngineNoOpStats implements StorageEngineStats {
   }
 
   @Override
-  public boolean hasMemorySpaceLeft() {
-    return true;
-  }
-
-  @Override
   public long getKeyCountEstimate() {
     return 0;
   }
