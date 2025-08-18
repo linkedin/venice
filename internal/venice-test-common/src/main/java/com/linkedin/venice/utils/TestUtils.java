@@ -701,9 +701,9 @@ public class TestUtils {
         complete ? Optional.of(ApacheKafkaOffsetPosition.of(1000L)) : Optional.of(ApacheKafkaOffsetPosition.of(0L)));
   }
 
-  public static OffsetRecord getOffsetRecord(PubSubPosition currentOffset, Optional<PubSubPosition> endOfPushOffset) {
+  public static OffsetRecord getOffsetRecord(PubSubPosition currentPosition, Optional<PubSubPosition> endOfPushOffset) {
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
-    offsetRecord.setCheckpointLocalVersionTopicOffset(currentOffset);
+    offsetRecord.setCheckpointLocalVersionTopicPosition(currentPosition);
     if (endOfPushOffset.isPresent()) {
       offsetRecord.endOfPushReceived();
     }

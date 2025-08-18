@@ -39,7 +39,7 @@ public class MainIngestionStorageMetadataServiceTest {
     assertNotNull(offsetRecord1);
 
     OffsetRecord offsetRecord2 = new OffsetRecord(PARTITION_STATE.getSerializer());
-    offsetRecord2.setCheckpointLocalVersionTopicOffset(PubSubUtil.fromKafkaOffset(10));
+    offsetRecord2.setCheckpointLocalVersionTopicPosition(PubSubUtil.fromKafkaOffset(10));
 
     mainIngestionStorageMetadataService.putOffsetRecord(topicName, partition, offsetRecord2);
     OffsetRecord offsetRecord3 = mainIngestionStorageMetadataService.getLastOffset(topicName, partition);

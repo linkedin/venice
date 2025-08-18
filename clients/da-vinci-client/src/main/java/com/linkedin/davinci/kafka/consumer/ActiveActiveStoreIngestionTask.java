@@ -977,7 +977,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     Set<String> sourceKafkaServers = getKafkaUrlSetFromTopicSwitch(partitionConsumptionState.getTopicSwitch());
     Map<String, PubSubPosition> upstreamOffsetsByKafkaURLs = new HashMap<>(sourceKafkaServers.size());
     sourceKafkaServers.forEach(sourceKafkaURL -> {
-      PubSubPosition upstreamStartOffset = partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaURL);
+      PubSubPosition upstreamStartOffset = partitionConsumptionState.getLatestProcessedRtPosition(sourceKafkaURL);
       if (PubSubSymbolicPosition.EARLIEST.equals(upstreamStartOffset)) {
         if (rewindStartTimestamp > 0) {
           PubSubTopicPartition newSourceTopicPartition =
@@ -1176,17 +1176,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         partitionConsumptionState,
         consumerRecord,
         leaderProducedRecordContext,
-        partitionConsumptionState::updateLatestProcessedLocalVersionTopicOffset,
+        partitionConsumptionState::setLatestProcessedVtPosition,
         (sourceKafkaUrl, upstreamTopic, upstreamTopicOffset) -> {
           if (upstreamTopic.isRealTime()) {
-            partitionConsumptionState.updateLatestProcessedUpstreamRTOffset(sourceKafkaUrl, upstreamTopicOffset);
+            partitionConsumptionState.setLatestProcessedRtPosition(sourceKafkaUrl, upstreamTopicOffset);
           } else {
-            partitionConsumptionState.updateLatestProcessedUpstreamVersionTopicOffset(upstreamTopicOffset);
+            partitionConsumptionState.setLatestProcessedRemoteVtPosition(upstreamTopicOffset);
           }
         },
         (sourceKafkaUrl, upstreamTopic) -> upstreamTopic.isRealTime()
-            ? partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaUrl)
-            : partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset(),
+            ? partitionConsumptionState.getLatestProcessedRtPosition(sourceKafkaUrl)
+            : partitionConsumptionState.getLatestProcessedRemoteVtPosition(),
         () -> getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, kafkaUrl),
         dryRun);
   }
@@ -1250,7 +1250,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected PubSubPosition getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String upstreamKafkaUrl) {
-    return pcs.getLatestProcessedUpstreamRTOffset(upstreamKafkaUrl);
+    return pcs.getLatestProcessedRtPosition(upstreamKafkaUrl);
   }
 
   /**
@@ -1261,7 +1261,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected PubSubPosition getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String upstreamKafkaUrl) {
-    return pcs.getLeaderConsumedUpstreamRTOffset(upstreamKafkaUrl);
+    return pcs.getLatestConsumedRtPosition(upstreamKafkaUrl);
   }
 
   @Override
@@ -1269,7 +1269,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       PartitionConsumptionState pcs,
       String kafkaUrl,
       PubSubPosition offset) {
-    pcs.updateLeaderConsumedUpstreamRTOffset(kafkaUrl, offset);
+    pcs.setLatestConsumedRtPosition(kafkaUrl, offset);
   }
 
   /**
@@ -1471,11 +1471,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     Map<String, PubSubPosition> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
     List<CharSequence> unreachableBrokerList = new ArrayList<>();
-    boolean useLcro = isTransition && isGlobalRtDivEnabled();
+    boolean shouldUseDivRtPosition = isTransition && isGlobalRtDivEnabled();
     // Read previously checkpointed offset and maybe fallback to TopicSwitch if any of upstream offset is missing.
     for (String kafkaURL: leaderSourceKafkaURLs) {
       leaderOffsetByKafkaURL
-          .put(kafkaURL, partitionConsumptionState.getLeaderOffset(kafkaURL, pubSubTopicRepository, useLcro));
+          .put(kafkaURL, partitionConsumptionState.getLeaderPosition(kafkaURL, shouldUseDivRtPosition));
     }
     if (leaderTopic.isRealTime() && leaderOffsetByKafkaURL.containsValue(PubSubSymbolicPosition.EARLIEST)) {
       leaderOffsetByKafkaURL =

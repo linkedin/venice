@@ -126,8 +126,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       return;
     }
 
-    Map<String, PubSubPosition> sortedWaterMarkOffsets =
-        partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap();
+    Map<String, PubSubPosition> sortedWaterMarkOffsets = partitionConsumptionState.getLatestProcessedRtPositions();
 
     List<Long> highWaterMarkOffsets;
     /**
@@ -141,10 +140,10 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       for (String url: sortedWaterMarkOffsets.keySet()) {
         highWaterMarkOffsets.set(
             kafkaClusterUrlToIdMap.getInt(url),
-            partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap().get(url).getNumericOffset());
+            partitionConsumptionState.getLatestProcessedRtPositions().get(url).getNumericOffset());
         highWaterMarkPubSubPositions.set(
             kafkaClusterUrlToIdMap.getInt(url),
-            partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap().get(url).toWireFormatBuffer());
+            partitionConsumptionState.getLatestProcessedRtPositions().get(url).toWireFormatBuffer());
       }
     } else {
       highWaterMarkOffsets = Collections.emptyList();

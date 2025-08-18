@@ -4821,7 +4821,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Otherwise, the drainer's latest processed VT offset is traditionally used.
    */
   PubSubPosition getLocalVtSubscribeOffset(PartitionConsumptionState pcs) {
-    return (isGlobalRtDivEnabled()) ? pcs.getLatestConsumedVtOffset() : pcs.getLatestProcessedLocalVersionTopicOffset();
+    return (isGlobalRtDivEnabled()) ? pcs.getLatestConsumedVtOffset() : pcs.getLatestProcessedVtPosition();
   }
 
   public StorageUtilizationManager getStorageUtilizationManager() {

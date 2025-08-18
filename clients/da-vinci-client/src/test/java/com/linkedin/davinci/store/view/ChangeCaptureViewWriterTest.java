@@ -78,15 +78,13 @@ public class ChangeCaptureViewWriterTest {
     PartitionConsumptionState mockLeaderPartitionConsumptionState = mock(PartitionConsumptionState.class);
     Mockito.when(mockLeaderPartitionConsumptionState.getLeaderFollowerState())
         .thenReturn(LeaderFollowerStateType.LEADER);
-    Mockito.when(mockLeaderPartitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap())
-        .thenReturn(highWaterMarks);
+    Mockito.when(mockLeaderPartitionConsumptionState.getLatestProcessedRtPositions()).thenReturn(highWaterMarks);
     Mockito.when(mockLeaderPartitionConsumptionState.getPartition()).thenReturn(1);
 
     PartitionConsumptionState mockFollowerPartitionConsumptionState = mock(PartitionConsumptionState.class);
     Mockito.when(mockFollowerPartitionConsumptionState.getLeaderFollowerState())
         .thenReturn(LeaderFollowerStateType.STANDBY);
-    Mockito.when(mockFollowerPartitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap())
-        .thenReturn(highWaterMarks);
+    Mockito.when(mockFollowerPartitionConsumptionState.getLatestProcessedRtPositions()).thenReturn(highWaterMarks);
     Mockito.when(mockFollowerPartitionConsumptionState.getPartition()).thenReturn(1);
 
     VersionSwap versionSwapMessage = new VersionSwap();

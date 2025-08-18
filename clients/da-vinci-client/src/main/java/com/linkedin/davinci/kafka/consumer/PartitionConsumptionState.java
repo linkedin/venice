@@ -6,13 +6,13 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -35,7 +35,20 @@ import org.apache.avro.generic.GenericRecord;
 
 
 /**
- * This class is used to maintain internal state for consumption of each partition.
+ * In-memory state that represents a replica's view of partition consumption.
+ *
+ * <p>This class tracks everything the replica cares about: how far it's consumed
+ * from the real-time (RT) and version topics, what data has been processed, and
+ * what’s been committed. For hybrid setups, it also tracks remote version topic
+ * positions from upstream sources.
+ *
+ * <p>This state is not durable — it's periodically checkpointed by updating the
+ * {@link OffsetRecord}, which wraps the persisted {@code PartitionState} on disk.
+ *
+ * <p>When the replica is the leader for the partition, RT and remote VT positions are
+ * updated by directly consuming from the corresponding topics. For followers, these
+ * positions are derived from the leader footer attached to every version topic message,
+ * or from global DIV snapshots — if global DIV is enabled.
  */
 public class PartitionConsumptionState {
   private static final int MAX_INCREMENTAL_PUSH_ENTRY_NUM = 50;
@@ -172,20 +185,6 @@ public class PartitionConsumptionState {
    */
   private boolean skipKafkaMessage = false;
 
-  /**
-   * This is an in-memory only map which will track the consumed offset from each kafka cluster. Currently used in
-   * measuring hybrid offset lag for each prod region during RT consumption.
-   *
-   * Key: source Kafka url
-   * Value: Latest upstream RT offsets of a specific source consumed by leader
-   */
-  private final ConcurrentMap<String, PubSubPosition> consumedUpstreamRTOffsetMap;
-
-  /**
-   * For Global RT DIV. When the RT DIV is loaded from disk, the LCRO must remain in-memory before the subscribe().
-   */
-  private final ConcurrentMap<String, PubSubPosition> latestConsumedRtOffsetMap;
-
   // stores the SOP control message's producer timestamp.
   private long startOfPushTimestamp = 0;
 
@@ -193,20 +192,57 @@ public class PartitionConsumptionState {
   private long endOfPushTimestamp = 0;
 
   /**
-   * Latest local version topic offset processed by drainer.
+   * Tracks the latest real-time topic position consumed by the leader from each upstream PubSub source.
+   *
+   * This is an in-memory-only map used primarily for measuring hybrid offset lag per region during
+   * real-time (RT) consumption. The values reflect the most recent positions observed by the consumer,
+   * regardless of whether they have been persisted or validated.
+   *
+   * Key: source PubSub broker address
+   * Value: latest consumed real-time topic position from that source
    */
-  private PubSubPosition latestProcessedLocalVersionTopicOffset;
-  /**
-   * Latest upstream version topic offset processed by drainer; if batch native replication source is the same as local
-   * region, this tracking offset should remain as -1.
-   */
-  private PubSubPosition latestProcessedUpstreamVersionTopicOffset;
+  private final ConcurrentMap<String, PubSubPosition> latestConsumedRtPositions;
 
   /**
-   * Key: source Kafka url
-   * Value: Latest upstream RT offsets of a specific source processed by drainer
+   * Tracks the last real-time topic position consumed from each upstream broker
+   * till which Global Data Integrity Validation (DIV) has been successfully generated.
+   *
+   * This in-memory map reflects the highest position per broker up to which both
+   * record consumption and DIV checkpointing were completed. It is restored from
+   * disk during startup and used when the client subscribes to real-time topics,
+   * if global DIV is enabled.
+   *
+   * Key: source PubSub broker address
+   * Value: last consumed real-time topic position with valid DIV
    */
-  private final Map<String, PubSubPosition> latestProcessedUpstreamRTOffsetMap;
+  private final ConcurrentMap<String, PubSubPosition> divRtCheckpointPositions;
+
+  /**
+   * Tracks the position of the last local version topic record processed
+   * and committed to the database by the drainer. This value is not durable
+   * until explicitly persisted, which happens periodically via offset record
+   * updates and checkpointing to disk.
+   */
+  private PubSubPosition latestProcessedVtPosition;
+  /**
+   * Tracks the latest upstream  (remote) version topic position processed by the drainer.
+   * If the batch native replication source is the same as the local region,
+   * this should remain {@link PubSubSymbolicPosition#EARLIEST}. Otherwise, it
+   * should be updated to reflect the actual upstream position.
+   */
+  private PubSubPosition latestProcessedRemoteVtPosition;
+
+  /**
+   * Tracks the latest real-time topic position processed by the drainer for each upstream source.
+   *
+   * Keyed by the source PubSub broker address (see {@link com.linkedin.venice.ConfigKeys#PUBSUB_BROKER_ADDRESS}),
+   * this in-memory map reflects the most recent real-time message position received from each upstream region.
+   *
+   * This state is not durable until it's flushed—typically done by updating the corresponding
+   * offset records and checkpointing them to disk. If the drainer has not yet received any messages
+   * from a given source, its entry may be absent or initialized to {@link PubSubSymbolicPosition#EARLIEST}.
+   */
+  private final Map<String, PubSubPosition> latestProcessedRtPositions;
 
   private LeaderCompleteState leaderCompleteState;
   private long lastLeaderCompleteStateUpdateInMs;
@@ -250,16 +286,16 @@ public class PartitionConsumptionState {
 
     // Restore in-memory consumption RT upstream offset map and latest processed RT upstream offset map from the
     // checkpoint upstream offset map
-    consumedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
-    latestConsumedRtOffsetMap = new VeniceConcurrentHashMap<>();
-    latestProcessedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
+    latestConsumedRtPositions = new VeniceConcurrentHashMap<>(3);
+    divRtCheckpointPositions = new VeniceConcurrentHashMap<>(3);
+    latestProcessedRtPositions = new VeniceConcurrentHashMap<>(3);
     if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
-      offsetRecord.cloneUpstreamOffsetMap(consumedUpstreamRTOffsetMap);
-      offsetRecord.cloneUpstreamOffsetMap(latestProcessedUpstreamRTOffsetMap);
+      offsetRecord.cloneUpstreamOffsetMap(latestConsumedRtPositions);
+      offsetRecord.cloneUpstreamOffsetMap(latestProcessedRtPositions);
     }
     // Restore in-memory latest consumed version topic offset and leader info from the checkpoint version topic offset
-    this.latestProcessedLocalVersionTopicOffset = offsetRecord.getLocalVersionTopicOffset();
-    this.latestProcessedUpstreamVersionTopicOffset = offsetRecord.getCheckpointUpstreamVersionTopicOffset();
+    this.latestProcessedVtPosition = offsetRecord.getLocalVersionTopicOffset();
+    this.latestProcessedRemoteVtPosition = offsetRecord.getCheckpointUpstreamVersionTopicOffset();
     this.leaderHostId = offsetRecord.getLeaderHostId();
     this.leaderGUID = offsetRecord.getLeaderGUID();
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
@@ -297,7 +333,7 @@ public class PartitionConsumptionState {
   }
 
   public boolean isStarted() {
-    return !PubSubSymbolicPosition.EARLIEST.equals(getLatestProcessedLocalVersionTopicOffset());
+    return !PubSubSymbolicPosition.EARLIEST.equals(getLatestProcessedVtPosition());
   }
 
   public final boolean isEndOfPushReceived() {
@@ -395,12 +431,12 @@ public class PartitionConsumptionState {
         .append(replicaId)
         .append(", hybrid=")
         .append(hybrid)
-        .append(", latestProcessedLocalVersionTopicOffset=")
-        .append(latestProcessedLocalVersionTopicOffset)
-        .append(", latestProcessedUpstreamVersionTopicOffset=")
-        .append(latestProcessedUpstreamVersionTopicOffset)
-        .append(", latestProcessedUpstreamRTOffsetMap=")
-        .append(latestProcessedUpstreamRTOffsetMap)
+        .append(", latestProcessedVtPosition=")
+        .append(latestProcessedVtPosition)
+        .append(", latestProcessedRemoteVtPosition=")
+        .append(latestProcessedRemoteVtPosition)
+        .append(", latestProcessedRtPositions=")
+        .append(latestProcessedRtPositions)
         .append(", offsetRecord=")
         .append(offsetRecord)
         .append(", errorReported=")
@@ -700,43 +736,145 @@ public class PartitionConsumptionState {
     }
   }
 
-  public void updateLeaderConsumedUpstreamRTOffset(String kafkaUrl, PubSubPosition offset) {
-    consumedUpstreamRTOffsetMap.put(kafkaUrl, offset);
+  /**
+   * Updates the in-memory latest real-time topic position consumed from the given
+   * upstream PubSub broker.
+   *
+   * This position reflects the most recent message observed by the leader during
+   * real-time (RT) consumption and is used for tracking ingestion progress.
+   *
+   * @param pubSubBrokerAddress the source PubSub broker address
+   * @param lastConsumedRtPosition the latest consumed real-time topic position
+   */
+  public void setLatestConsumedRtPosition(String pubSubBrokerAddress, PubSubPosition lastConsumedRtPosition) {
+    latestConsumedRtPositions.put(pubSubBrokerAddress, lastConsumedRtPosition);
   }
 
-  public PubSubPosition getLeaderConsumedUpstreamRTOffset(String kafkaUrl) {
-    // TODO(sushantmane): We changed default value from 0L to EARLIEST
-    return consumedUpstreamRTOffsetMap.getOrDefault(kafkaUrl, PubSubSymbolicPosition.EARLIEST);
+  /**
+   * Retrieves the latest real-time topic position consumed from the given
+   * upstream PubSub broker.
+   * If no position is recorded, returns {@link PubSubSymbolicPosition#EARLIEST}
+   * as the default.
+   *
+   * @param pubSubBrokerAddress the source PubSub broker address
+   * @return the latest consumed real-time topic position, or EARLIEST if not present
+   */
+  public PubSubPosition getLatestConsumedRtPosition(String pubSubBrokerAddress) {
+    // TODO(sushantmane): We changed default value from 0L to EARLIEST; remember this during troubleshooting in
+    // case of any issues. We don't have access (or construct) to Zeroth PubSubPosition.
+    return latestConsumedRtPositions.getOrDefault(pubSubBrokerAddress, PubSubSymbolicPosition.EARLIEST);
   }
 
-  public void updateLatestConsumedRtOffset(String brokerUrl, PubSubPosition offset) {
-    latestConsumedRtOffsetMap.put(brokerUrl, offset);
+  /**
+   * Sets the real-time topic position till which Data Integrity Validation (DIV)
+   * has been checkpointed for the given upstream broker.
+   *
+   * @param pubSubBrokerAddress the source PubSub broker address
+   * @param divRtCheckpointPosition the position till which DIV has been generated and persisted
+   */
+  public void setDivRtCheckpointPosition(String pubSubBrokerAddress, PubSubPosition divRtCheckpointPosition) {
+    divRtCheckpointPositions.put(pubSubBrokerAddress, divRtCheckpointPosition);
   }
 
-  public PubSubPosition getLatestConsumedRtOffset(String brokerUrl) {
-    return latestConsumedRtOffsetMap.getOrDefault(brokerUrl, PubSubSymbolicPosition.EARLIEST);
+  /**
+   * Returns the real-time topic position till which Data Integrity Validation (DIV)
+   * has been checkpointed for the given upstream broker.
+   *
+   * If no checkpoint exists for the broker, {@link PubSubSymbolicPosition#EARLIEST} is returned.
+   *
+   * @param pubSubBrokerAddress the source PubSub broker address
+   * @return the checkpointed position for DIV, or EARLIEST if not found
+   */
+  public PubSubPosition getDivRtCheckpointPosition(String pubSubBrokerAddress) {
+    return divRtCheckpointPositions.getOrDefault(pubSubBrokerAddress, PubSubSymbolicPosition.EARLIEST);
   }
 
-  public void updateLatestProcessedUpstreamRTOffset(String kafkaUrl, PubSubPosition offset) {
-    latestProcessedUpstreamRTOffsetMap.put(kafkaUrl, offset);
+  /**
+   * Sets the latest processed local version topic position.
+   *
+   * @param vtPosition the version topic position to set
+   */
+  public void setLatestProcessedVtPosition(PubSubPosition vtPosition) {
+    this.latestProcessedVtPosition = vtPosition;
   }
 
-  public PubSubPosition getLatestProcessedUpstreamRTOffset(String kafkaUrl) {
-    PubSubPosition latestProcessedUpstreamRTOffset =
-        getLatestProcessedUpstreamRTOffsetMap().getOrDefault(kafkaUrl, PubSubSymbolicPosition.EARLIEST);
-    if (PubSubSymbolicPosition.EARLIEST.equals(latestProcessedUpstreamRTOffset)) {
+  /**
+   * Returns the latest processed local version topic position.
+   *
+   * @return the current version topic position
+   */
+  public PubSubPosition getLatestProcessedVtPosition() {
+    return this.latestProcessedVtPosition;
+  }
+
+  /**
+   * Sets the latest processed upstream version topic position.
+   *
+   * @param upstreamVtPosition the upstream version topic position to set
+   */
+  public void setLatestProcessedRemoteVtPosition(PubSubPosition upstreamVtPosition) {
+    this.latestProcessedRemoteVtPosition = upstreamVtPosition;
+  }
+
+  /**
+   * Returns the latest processed upstream version topic position.
+   *
+   * @return the current upstream version topic position
+   */
+  public PubSubPosition getLatestProcessedRemoteVtPosition() {
+    return this.latestProcessedRemoteVtPosition;
+  }
+
+  /**
+   * Updates the in-memory latest real-time topic position for the given upstream
+   * PubSub broker address.
+   *
+   * @param pubSubBrokerAddress the source PubSub broker address
+   * @param rtPosition the latest real-time topic position to set
+   */
+  public void setLatestProcessedRtPosition(String pubSubBrokerAddress, PubSubPosition rtPosition) {
+    latestProcessedRtPositions.put(pubSubBrokerAddress, rtPosition);
+  }
+
+  /**
+   * Retrieves the latest real-time topic position processed by the drainer for a given
+   * upstream PubSub broker address.
+   *
+   * <p>This method first checks the in-memory state stored in
+   * {@code latestProcessedUpstreamRtPositions}, which reflects positions already processed
+   * and tracked by the drainer. If no entry is found, or if the position is
+   * {@link PubSubSymbolicPosition#EARLIEST}, it falls back to the offset record, which is
+   * periodically flushed to disk and may contain checkpointed upstream offsets.
+   *
+   * <p>This fallback is necessary during initial processing of {@link TopicSwitch} control messages,
+   * where upstream offsets are written only to the {@link OffsetRecord} before actual records
+   * are processed. In such cases, the in-memory map may still be uninitialized.
+   *
+   * @param pubSubBrokerAddress the source PubSub broker address whose position is being queried
+   * @return the latest real-time topic position for the given broker address
+   */
+  public PubSubPosition getLatestProcessedRtPosition(String pubSubBrokerAddress) {
+    PubSubPosition rtPosition =
+        getLatestProcessedRtPositions().getOrDefault(pubSubBrokerAddress, PubSubSymbolicPosition.EARLIEST);
+    if (PubSubSymbolicPosition.EARLIEST.equals(rtPosition)) {
       /**
        * When processing {@link TopicSwitch} control message, only the checkpoint upstream offset maps in {@link OffsetRecord}
        * will be updated, since those offset are not processed yet; so when leader try to get the upstream offsets for the very
-       * first time, there are no records in {@link #latestProcessedUpstreamRTOffsetMap} yet.
+       * first time, there are no records in {@link #latestProcessedRtPositions} yet.
        */
-      return getOffsetRecord().getUpstreamOffset(kafkaUrl);
+      return getOffsetRecord().getUpstreamOffset(pubSubBrokerAddress);
     }
-    return latestProcessedUpstreamRTOffset;
+    return rtPosition;
   }
 
-  public PubSubPosition getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository) {
-    return getLeaderOffset(kafkaURL, pubSubTopicRepository, false);
+  /**
+   * Returns the in-memory map of latest real-time topic positions processed by the drainer
+   * for each upstream PubSub broker address.
+   *
+   * @return a map from PubSub broker address to the latest processed real-time topic position
+   */
+  public Map<String, PubSubPosition> getLatestProcessedRtPositions() {
+    return this.latestProcessedRtPositions;
   }
 
   /**
@@ -746,15 +884,15 @@ public class PartitionConsumptionState {
    * 2. if currently leader should consume from version topic, return either remote VT offset or local VT offset, depending
    *    on whether the remote consumption flag is on.
    */
-  public PubSubPosition getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository, boolean useLcro) {
-    PubSubTopic leaderTopic = getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+  public PubSubPosition getLeaderPosition(String pubSubBrokerAddress, boolean useCheckpointedDivRtPosition) {
+    PubSubTopic leaderTopic = getOffsetRecord().getLeaderTopic(getPubSubContext().getPubSubTopicRepository());
     if (leaderTopic != null && !leaderTopic.isVersionTopic()) {
       // consumed corresponds to messages seen by consumer, processed corresponds to messages seen by drainer
-      return (useLcro) ? getLatestConsumedRtOffset(kafkaURL) : getLatestProcessedUpstreamRTOffset(kafkaURL);
+      return (useCheckpointedDivRtPosition)
+          ? getDivRtCheckpointPosition(pubSubBrokerAddress)
+          : getLatestProcessedRtPosition(pubSubBrokerAddress);
     } else {
-      return consumeRemotely()
-          ? getLatestProcessedUpstreamVersionTopicOffset()
-          : getLatestProcessedLocalVersionTopicOffset();
+      return consumeRemotely() ? getLatestProcessedRemoteVtPosition() : getLatestProcessedVtPosition();
     }
   }
 
@@ -774,24 +912,8 @@ public class PartitionConsumptionState {
     return endOfPushTimestamp;
   }
 
-  public void updateLatestProcessedLocalVersionTopicOffset(PubSubPosition offset) {
-    this.latestProcessedLocalVersionTopicOffset = offset;
-  }
-
-  public PubSubPosition getLatestProcessedLocalVersionTopicOffset() {
-    return this.latestProcessedLocalVersionTopicOffset;
-  }
-
   public PubSubPosition getLatestConsumedVtOffset() {
     return offsetRecord.getLatestConsumedVtOffset();
-  }
-
-  public void updateLatestProcessedUpstreamVersionTopicOffset(PubSubPosition offset) {
-    this.latestProcessedUpstreamVersionTopicOffset = offset;
-  }
-
-  public PubSubPosition getLatestProcessedUpstreamVersionTopicOffset() {
-    return this.latestProcessedUpstreamVersionTopicOffset;
   }
 
   public void setDataRecoveryCompleted(boolean dataRecoveryCompleted) {
@@ -800,10 +922,6 @@ public class PartitionConsumptionState {
 
   public boolean isDataRecoveryCompleted() {
     return isDataRecoveryCompleted;
-  }
-
-  public Map<String, PubSubPosition> getLatestProcessedUpstreamRTOffsetMap() {
-    return this.latestProcessedUpstreamRTOffsetMap;
   }
 
   public GUID getLeaderGUID() {

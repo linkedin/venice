@@ -90,6 +90,7 @@ public class OffsetRecord {
   }
 
   public PubSubPosition getLocalVersionTopicOffset() {
+    // TODO: Replace with lastProcessedVersionTopicPubSubPosition
     return fromKafkaOffset(this.partitionState.offset);
   }
 
@@ -101,15 +102,13 @@ public class OffsetRecord {
     return partitionState.getPreviousStatuses().getOrDefault(key, NULL_STRING).toString();
   }
 
-  public void setCheckpointLocalVersionTopicOffset(PubSubPosition offset) {
-    if (offset == null) {
-      throw new IllegalArgumentException("Offset cannot be null.");
+  public void setCheckpointLocalVersionTopicPosition(PubSubPosition vtPosition) {
+    if (vtPosition == null || vtPosition.getPositionWireFormat() == null) {
+      String msg = (vtPosition == null) ? "Position" : "Position wire format";
+      throw new IllegalArgumentException(msg + " cannot be null");
     }
-    if (offset.getPositionWireFormat() == null) {
-      throw new IllegalArgumentException("Offset cannot be symbolic." + offset);
-    }
-    this.partitionState.lastProcessedVersionTopicPubSubPosition = offset.toWireFormatBuffer();
-    this.partitionState.offset = offset.getNumericOffset();
+    this.partitionState.lastProcessedVersionTopicPubSubPosition = vtPosition.toWireFormatBuffer();
+    this.partitionState.offset = vtPosition.getNumericOffset();
   }
 
   public PubSubPosition getCheckpointUpstreamVersionTopicOffset() {

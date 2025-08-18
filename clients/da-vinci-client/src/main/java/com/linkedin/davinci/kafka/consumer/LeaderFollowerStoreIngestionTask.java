@@ -733,7 +733,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerSubscribe(
                 currentLeaderTopic,
                 partitionConsumptionState,
-                partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset(),
+                partitionConsumptionState.getLatestProcessedVtPosition(),
                 localKafkaServer);
           }
 
@@ -867,7 +867,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    *         <code>false</code>, otherwise.
    */
   private boolean isLocalVersionTopicPartitionFullyConsumed(PartitionConsumptionState pcs) {
-    PubSubPosition localVTOff = pcs.getLatestProcessedLocalVersionTopicOffset();
+    PubSubPosition localVtPos = pcs.getLatestProcessedVtPosition();
     long localVTEndOffset = getTopicPartitionEndOffSet(localKafkaServer, versionTopic, pcs.getPartition());
 
     if (localVTEndOffset == StatsErrorCode.LAG_MEASUREMENT_FAILURE.code) {
@@ -875,12 +875,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     // If end offset == 0, then no message has been written to the partition, consider it as fully consumed.
-    if (localVTEndOffset == 0 && localVTOff.getNumericOffset() == OffsetRecord.LOWEST_OFFSET) {
+    if (localVTEndOffset == 0 && localVtPos.getNumericOffset() == OffsetRecord.LOWEST_OFFSET) {
       return true;
     }
 
     // End offset is the last successful message offset + 1.
-    return localVTOff.getNumericOffset() + 1 >= localVTEndOffset;
+    return localVtPos.getNumericOffset() + 1 >= localVTEndOffset;
   }
 
   protected Map<String, PubSubPosition> calculateLeaderUpstreamOffsetWithTopicSwitch(
@@ -1025,8 +1025,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       throw new VeniceException("In L/F mode, expect only one leader source Kafka URL. Got: " + leaderSourceKafkaURLs);
     }
     boolean useLcro = isTransition && isGlobalRtDivEnabled();
-    PubSubPosition upstreamStartOffset = partitionConsumptionState
-        .getLeaderOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubTopicRepository, useLcro);
+    PubSubPosition upstreamStartOffset =
+        partitionConsumptionState.getLeaderPosition(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, useLcro);
     String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
     if (PubSubSymbolicPosition.EARLIEST.equals(upstreamStartOffset) && leaderTopic.isRealTime()) {
       upstreamStartOffset =
@@ -1210,8 +1210,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // If the last few records in source VT is old then we can also complete data recovery if the leader idles, and we
       // have reached/passed the end offset of the VT (around the time when ingestion is started for that partition).
       // We subtract 1 because we are skipping the remote TS message.
-      long localVTOffsetProgress =
-          partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset().getNumericOffset() - 1;
+      long localVTOffsetProgress = partitionConsumptionState.getLatestProcessedVtPosition().getNumericOffset() - 1;
       int partition = partitionConsumptionState.getPartition();
       long dataRecoveryLag = measureLagWithCallToPubSub(
           nativeReplicationSourceVersionTopicKafkaURL,
@@ -1445,8 +1444,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected void updateOffsetMetadataInOffsetRecord(PartitionConsumptionState partitionConsumptionState) {
     OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-    offsetRecord
-        .setCheckpointLocalVersionTopicOffset(partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
+    offsetRecord.setCheckpointLocalVersionTopicPosition(partitionConsumptionState.getLatestProcessedVtPosition());
     // DaVinci clients don't need to maintain leader production states
     if (isDaVinciClient) {
       return;
@@ -1456,10 +1454,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       upstreamTopic = versionTopic;
     }
     if (upstreamTopic.isRealTime()) {
-      offsetRecord.updateUpstreamOffsets(partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap());
+      offsetRecord.updateUpstreamOffsets(partitionConsumptionState.getLatestProcessedRtPositions());
     } else {
-      offsetRecord.setCheckpointUpstreamVersionTopicOffset(
-          partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset());
+      offsetRecord
+          .setCheckpointUpstreamVersionTopicOffset(partitionConsumptionState.getLatestProcessedRemoteVtPosition());
     }
     offsetRecord.setLeaderGUID(partitionConsumptionState.getLeaderGUID());
     offsetRecord.setLeaderHostId(partitionConsumptionState.getLeaderHostId());
@@ -1505,17 +1503,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionState,
         consumerRecordWrapper,
         leaderProducedRecordContext,
-        partitionConsumptionState::updateLatestProcessedLocalVersionTopicOffset,
+        partitionConsumptionState::setLatestProcessedVtPosition,
         (sourceKafkaUrl, upstreamTopic, upstreamTopicOffset) -> {
           if (upstreamTopic.isRealTime()) {
-            partitionConsumptionState.updateLatestProcessedUpstreamRTOffset(sourceKafkaUrl, upstreamTopicOffset);
+            partitionConsumptionState.setLatestProcessedRtPosition(sourceKafkaUrl, upstreamTopicOffset);
           } else {
-            partitionConsumptionState.updateLatestProcessedUpstreamVersionTopicOffset(upstreamTopicOffset);
+            partitionConsumptionState.setLatestProcessedRemoteVtPosition(upstreamTopicOffset);
           }
         },
         (sourceKafkaUrl, upstreamTopic) -> upstreamTopic.isRealTime()
-            ? partitionConsumptionState.getLatestProcessedUpstreamRTOffset(sourceKafkaUrl)
-            : partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset(),
+            ? partitionConsumptionState.getLatestProcessedRtPosition(sourceKafkaUrl)
+            : partitionConsumptionState.getLatestProcessedRemoteVtPosition(),
         () -> OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
         dryRun);
   }
@@ -1755,7 +1753,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           localKafkaServer,
           versionTopic,
           partition,
-          partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset().getNumericOffset());
+          partitionConsumptionState.getLatestProcessedVtPosition().getNumericOffset());
     }
 
     // leaderTopic is the real-time topic now
@@ -1847,7 +1845,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           localKafkaServer,
           versionTopic,
           partition,
-          pcs.getLatestProcessedLocalVersionTopicOffset().getNumericOffset());
+          pcs.getLatestProcessedVtPosition().getNumericOffset());
       if (lag <= 0) {
         ingestionNotificationDispatcher.reportCatchUpVersionTopicOffsetLag(pcs);
 
@@ -1957,13 +1955,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           return false;
         }
 
-        PubSubPosition lastOffset = partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
-        if (lastOffset.getNumericOffset() >= record.getPosition().getNumericOffset()) {
+        PubSubPosition lastProcessedVtPos = partitionConsumptionState.getLatestProcessedVtPosition();
+        // TODO(sushantmane): Use TM::compare for PubSubPosition comparison
+        if (lastProcessedVtPos.getNumericOffset() >= record.getPosition().getNumericOffset()) {
           String message = partitionConsumptionState.getLeaderFollowerState() + " replica: "
               + partitionConsumptionState.getReplicaId() + " had already processed the record";
           if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
-            LOGGER
-                .info("{}; LastKnownOffset: {}; OffsetOfIncomingRecord: {}", message, lastOffset, record.getPosition());
+            LOGGER.info(
+                "{}; LastKnownOffset: {}; OffsetOfIncomingRecord: {}",
+                message,
+                lastProcessedVtPos,
+                record.getPosition());
           }
           return false;
         }
@@ -2860,7 +2862,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected PubSubPosition getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String ignoredUpstreamKafkaUrl) {
-    return pcs.getLatestProcessedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+    return pcs.getLatestProcessedRtPosition(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
   }
 
   /**
@@ -2869,14 +2871,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected PubSubPosition getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String ignoredKafkaUrl) {
-    return pcs.getLeaderConsumedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+    return pcs.getLatestConsumedRtPosition(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
   }
 
   protected void updateLatestInMemoryLeaderConsumedRTOffset(
       PartitionConsumptionState pcs,
       String ignoredKafkaUrl,
       PubSubPosition offset) {
-    pcs.updateLeaderConsumedUpstreamRTOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, offset);
+    pcs.setLatestConsumedRtPosition(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, offset);
   }
 
   /**
@@ -3618,7 +3620,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         topicPartition,
         valueManifestContainer);
     if (valueRecord == null) {
-      PubSubPosition leaderOffset = pcs.getLeaderOffset(brokerUrl, pubSubTopicRepository, false);
+      PubSubPosition leaderOffset = pcs.getLeaderPosition(brokerUrl, false);
       if (leaderOffset.getNumericOffset() > 0) {
         LOGGER.warn(
             "Unable to retrieve Global RT DIV from storage engine for replica: {} brokerUrl: {} leaderOffset: {}",
@@ -3636,7 +3638,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionTracker.TopicType realTimeTopicType = PartitionTracker.TopicType.of(REALTIME_TOPIC_TYPE, brokerUrl);
       getConsumerDiv().setPartitionState(realTimeTopicType, pcs.getPartition(), producerStates);
       final PubSubPosition latestConsumedRtOffset = PubSubUtil.fromKafkaOffset(globalRtDivState.getLatestOffset()); // LCRO
-      pcs.updateLatestConsumedRtOffset(brokerUrl, latestConsumedRtOffset);
+      pcs.setDivRtCheckpointPosition(brokerUrl, latestConsumedRtOffset);
     } else {
       LOGGER.warn(
           "Unable to load Global RT DIV from storage engine for replica: {} brokerUrl: {}",
@@ -3986,8 +3988,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     LOGGER.info(
         "Follower replica: {} unsubscribe finished for future resubscribe.",
         partitionConsumptionState.getReplicaId());
-    PubSubPosition latestProcessedLocalVersionTopicOffset =
-        partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
+    PubSubPosition latestProcessedLocalVersionTopicOffset = partitionConsumptionState.getLatestProcessedVtPosition();
     consumerSubscribe(
         versionTopic,
         partitionConsumptionState,
