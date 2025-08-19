@@ -1084,11 +1084,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    */
   public void consumerSubscribe(
       PubSubTopicPartition pubSubTopicPartition,
-      PubSubPosition startOffset,
+      PubSubPosition startPosition,
       String pubSubAddress) {
     VeniceServerConfig serverConfig = getServerConfig();
     if (isDaVinciClient() || serverConfig.getKafkaClusterUrlToIdMap().containsKey(pubSubAddress)) {
-      super.consumerSubscribe(pubSubTopicPartition, startOffset, pubSubAddress);
+      super.consumerSubscribe(pubSubTopicPartition, startPosition, pubSubAddress);
       return;
     }
     LOGGER.error(
@@ -1146,13 +1146,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /**
-   * Process {@link TopicSwitch} control message at given partition offset for a specific {@link PartitionConsumptionState}.
+   * Process {@link TopicSwitch} control message at given partition position for a specific {@link PartitionConsumptionState}.
    */
   @Override
   protected void processTopicSwitch(
       ControlMessage controlMessage,
       int partition,
-      PubSubPosition offset,
+      PubSubPosition position,
       PartitionConsumptionState partitionConsumptionState) {
     TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
     ingestionNotificationDispatcher.reportTopicSwitchReceived(partitionConsumptionState);

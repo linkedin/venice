@@ -196,10 +196,10 @@ public class KafkaConsumerServiceDelegator extends AbstractKafkaConsumerService 
   @Override
   public void startConsumptionIntoDataReceiver(
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
-      PubSubPosition lastReadOffset,
+      PubSubPosition lastReadPosition,
       ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver) {
     assignKafkaConsumerServiceFor(partitionReplicaIngestionContext)
-        .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastReadOffset, consumedDataReceiver);
+        .startConsumptionIntoDataReceiver(partitionReplicaIngestionContext, lastReadPosition, consumedDataReceiver);
   }
 
   @Override

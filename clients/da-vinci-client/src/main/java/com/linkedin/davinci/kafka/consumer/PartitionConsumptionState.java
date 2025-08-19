@@ -295,7 +295,7 @@ public class PartitionConsumptionState {
     }
     // Restore in-memory latest consumed version topic position and leader info from the checkpoint version topic
     // position
-    this.latestProcessedVtPosition = offsetRecord.getLocalVersionTopicOffset();
+    this.latestProcessedVtPosition = offsetRecord.getCheckpointedLocalVtPosition();
     this.latestProcessedRemoteVtPosition = offsetRecord.getCheckpointedRemoteVtPosition();
     this.leaderHostId = offsetRecord.getLeaderHostId();
     this.leaderGUID = offsetRecord.getLeaderGUID();

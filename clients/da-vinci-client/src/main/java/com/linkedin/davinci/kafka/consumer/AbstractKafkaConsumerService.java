@@ -34,7 +34,7 @@ public abstract class AbstractKafkaConsumerService extends AbstractVeniceService
 
   public abstract void startConsumptionIntoDataReceiver(
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
-      PubSubPosition lastReadOffset,
+      PubSubPosition lastReadPosition,
       ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver);
 
   public abstract long getLatestOffsetBasedOnMetrics(
