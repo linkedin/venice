@@ -32,7 +32,7 @@ public class ApacheKafkaOffsetPositionFactoryTest {
     wireFormat.setType(TYPE_ID);
     wireFormat.setRawBytes(position.getPositionWireFormat().getRawBytes());
 
-    PubSubPosition deserialized = factory.fromPositionRawBytes(wireFormat);
+    PubSubPosition deserialized = factory.fromWireFormat(wireFormat);
     assertTrue(deserialized instanceof ApacheKafkaOffsetPosition);
     assertEquals(((ApacheKafkaOffsetPosition) deserialized).getInternalOffset(), 12345L);
   }
@@ -64,7 +64,7 @@ public class ApacheKafkaOffsetPositionFactoryTest {
     wireFormat.setType(TYPE_ID);
     wireFormat.setRawBytes(badBuffer);
 
-    VeniceException exception = expectThrows(VeniceException.class, () -> factory.fromPositionRawBytes(wireFormat));
+    VeniceException exception = expectThrows(VeniceException.class, () -> factory.fromWireFormat(wireFormat));
     assertTrue(exception.getMessage().contains("Failed to deserialize Apache Kafka offset position"));
   }
 
@@ -89,7 +89,7 @@ public class ApacheKafkaOffsetPositionFactoryTest {
     wireFormat.setType(Integer.MAX_VALUE);
     wireFormat.setRawBytes(ByteBuffer.wrap(new byte[] { 0 }));
 
-    VeniceException exception = expectThrows(VeniceException.class, () -> factory.fromPositionRawBytes(wireFormat));
+    VeniceException exception = expectThrows(VeniceException.class, () -> factory.fromWireFormat(wireFormat));
 
     assertTrue(exception.getMessage().contains("Position type ID mismatch"), "Got: " + exception.getMessage());
   }

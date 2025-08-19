@@ -1,15 +1,15 @@
 package com.linkedin.venice.vpj.pubsub.input;
 
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KAFKA_INPUT_SPLIT_STRATEGY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_KAFKA_INPUT_TIME_WINDOW_IN_MINUTES;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_MAX_SPLITS_PER_PARTITION;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_SPLIT_STRATEGY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.DEFAULT_PUBSUB_INPUT_TIME_WINDOW_IN_MINUTES;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_MAX_SPLITS_PER_PARTITION;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SPLIT_STRATEGY;
-import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_STRATEGY;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.PUBSUB_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES;
 
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.annotation.VisibleForTesting;
@@ -51,12 +51,12 @@ public class PubSubSplitPlanner {
 
     try (TopicManager tm = createTopicManager(jobConfig, brokerUrl)) {
       PartitionSplitStrategy partitionSplitStrategy = PartitionSplitStrategy
-          .valueOf(jobConfig.getString(KAFKA_INPUT_SPLIT_STRATEGY, DEFAULT_KAFKA_INPUT_SPLIT_STRATEGY));
+          .valueOf(jobConfig.getString(PUBSUB_INPUT_SPLIT_STRATEGY, DEFAULT_PUBSUB_INPUT_SPLIT_STRATEGY));
       long recordsPerSplit =
-          jobConfig.getLong(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER);
-      int maxSplits = jobConfig.getInt(KAFKA_INPUT_MAX_SPLITS_PER_PARTITION, DEFAULT_MAX_SPLITS_PER_PARTITION);
+          jobConfig.getLong(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER);
+      int maxSplits = jobConfig.getInt(PUBSUB_INPUT_MAX_SPLITS_PER_PARTITION, DEFAULT_MAX_SPLITS_PER_PARTITION);
       long timeWindowMinutes =
-          jobConfig.getLong(KAFKA_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES, DEFAULT_KAFKA_INPUT_TIME_WINDOW_IN_MINUTES);
+          jobConfig.getLong(PUBSUB_INPUT_SPLIT_TIME_WINDOW_IN_MINUTES, DEFAULT_PUBSUB_INPUT_TIME_WINDOW_IN_MINUTES);
       long timeWindowMs = Duration.ofMinutes(timeWindowMinutes).toMillis();
 
       PubSubTopic topic = TOPIC_REPOSITORY.getTopic(jobConfig.getString(KAFKA_INPUT_TOPIC));

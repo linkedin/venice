@@ -60,7 +60,7 @@ public class CappedSplitCountStrategy implements PubSubTopicPartitionSplitStrate
               i,
               startOffset));
       LOGGER.info(
-          "Created split-{} for TPL: {} record count: {}, start: {}, end: {}",
+          "Created split-{} for TP: {} record count: {}, start: {}, end: {}",
           i,
           pubSubTopicPartition,
           thisSplitCount,
