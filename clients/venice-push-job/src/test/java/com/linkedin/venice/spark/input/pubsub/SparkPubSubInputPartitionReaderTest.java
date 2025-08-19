@@ -1,5 +1,6 @@
 package com.linkedin.venice.spark.input.pubsub;
 
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.message.KafkaKey;
@@ -64,12 +65,12 @@ public class SparkPubSubInputPartitionReaderTest {
     String topicName = "basic-mock-topic_v1";
     String region = "basic-mock-region1";
     PubSubPosition startPosition = ApacheKafkaOffsetPosition.of(1L);
-    PubSubPosition endPosition = ApacheKafkaOffsetPosition.of(2L);
+    PubSubPosition endPosition = ApacheKafkaOffsetPosition.of(3L);
 
     pubSubTopic = TOPIC_REPOSITORY.getTopic(topicName);
     topicPartition = new PubSubTopicPartitionImpl(pubSubTopic, partitionNumber);
     pubSubPartitionSplit =
-        new PubSubPartitionSplit(TOPIC_REPOSITORY, topicPartition, startPosition, endPosition, 1L, 0, 1L);
+        new PubSubPartitionSplit(TOPIC_REPOSITORY, topicPartition, startPosition, endPosition, 2L, 0, 1L);
     when(mockInputPartition.getPubSubPartitionSplit()).thenReturn(pubSubPartitionSplit);
   }
 
@@ -115,7 +116,7 @@ public class SparkPubSubInputPartitionReaderTest {
     String region = "ei-test-region2";
     int partitionNumber = 5;
     long startOffset = 1L;
-
+    mockInputPartition = Mockito.mock(SparkPubSubInputPartition.class);
     pubSubPartitionSplit = new PubSubPartitionSplit(
         TOPIC_REPOSITORY,
         topicPartition,
@@ -156,6 +157,16 @@ public class SparkPubSubInputPartitionReaderTest {
             Mockito.eq(region),
             Mockito.eq(partitionNumber),
             Mockito.eq(startOffset + 1L))).thenReturn(mockRow);
+
+    doAnswer(invocation -> {
+      ApacheKafkaOffsetPosition p0 = invocation.getArgument(1);
+      ApacheKafkaOffsetPosition p1 = invocation.getArgument(2);
+      return p0.getInternalOffset() - p1.getInternalOffset();
+    }).when(mockConsumer)
+        .positionDifference(
+            Mockito.any(PubSubTopicPartition.class),
+            Mockito.any(PubSubPosition.class),
+            Mockito.any(PubSubPosition.class));
 
     reader = new SparkPubSubInputPartitionReader(
         mockInputPartition,
@@ -220,6 +231,16 @@ public class SparkPubSubInputPartitionReaderTest {
             Mockito.eq(region),
             Mockito.eq(partitionNumber),
             Mockito.eq(startOffset + 1L))).thenReturn(mockRow);
+
+    doAnswer(invocation -> {
+      ApacheKafkaOffsetPosition p0 = invocation.getArgument(1);
+      ApacheKafkaOffsetPosition p1 = invocation.getArgument(2);
+      return p0.getInternalOffset() - p1.getInternalOffset();
+    }).when(mockConsumer)
+        .positionDifference(
+            Mockito.any(PubSubTopicPartition.class),
+            Mockito.any(PubSubPosition.class),
+            Mockito.any(PubSubPosition.class));
 
     reader = new SparkPubSubInputPartitionReader(
         mockInputPartition,

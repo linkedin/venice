@@ -176,12 +176,12 @@ public class SparkPubSubInputPartitionReader implements PartitionReader<Internal
       return false;
     }
     if (recordsReadSoFar > totalRecordsToRead) {
-      return false;
+      return true;
     }
     // Use positionDifference instead of compare. If a topic partition has no more data,
     // currentPosition will never reach or exceed endingPosition. By definition,
     // endingPosition is set to "last record offset + 1".
-    return pubSubConsumer.positionDifference(topicPartition, endingPosition, currentPosition) > 1;
+    return pubSubConsumer.positionDifference(topicPartition, endingPosition, currentPosition) <= 1;
   }
 
   @Override
