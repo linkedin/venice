@@ -2550,14 +2550,6 @@ public class VenicePushJob implements AutoCloseable {
           }
 
           StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
-          if (parentStoreResponse.isError()) {
-            LOGGER.warn(
-                "Failed to get store response for store: {} with error: {}",
-                pushJobSetting.storeName,
-                parentStoreResponse.getError());
-            fetchParentVersionRetryCount++;
-            continue;
-          }
 
           StoreInfo parentStoreInfo = parentStoreResponse.getStore();
           int latestUsedVersionNumber = parentStoreInfo.getLargestUsedVersionNumber();
