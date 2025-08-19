@@ -104,6 +104,7 @@ import com.linkedin.venice.pubsub.mock.adapter.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -994,7 +995,7 @@ public class AdminConsumptionTaskTest {
     setStore.readComputationEnabled = computationEnabled;
     setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
     setStore.storeLifecycleHooks = Collections.emptyList();
-    setStore.blobTransferInServerEnabled = "";
+    setStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.ENABLED.name();
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;
