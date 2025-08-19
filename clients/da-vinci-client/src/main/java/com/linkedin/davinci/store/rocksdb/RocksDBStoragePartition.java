@@ -475,7 +475,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     cleanupSnapshot(fullPathForPartitionDBSnapshot);
   }
 
-  private void checkAndThrowDiskLimitException(RocksDBException e) {
+  public void checkAndThrowDiskLimitException(RocksDBException e) {
     if (e.getMessage().contains(ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_DISK_QUOTA)) {
       throw new DiskLimitExhaustedException(storeName, storeVersion, e.getMessage());
     }

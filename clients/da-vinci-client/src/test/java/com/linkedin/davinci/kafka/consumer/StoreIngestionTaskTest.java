@@ -606,8 +606,6 @@ public abstract class StoreIngestionTaskTest {
 
     setDefaultStoreVersionStateSupplier();
 
-    runnableForKillNonCurrentVersion = mock(Runnable.class);
-
     KafkaConsumerServiceStats regionStats = mock(KafkaConsumerServiceStats.class);
     doNothing().when(regionStats).recordByteSizePerPoll(anyDouble());
     doNothing().when(regionStats).recordPollResultNum(anyInt());

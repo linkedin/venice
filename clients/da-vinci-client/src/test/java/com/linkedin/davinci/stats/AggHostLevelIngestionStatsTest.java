@@ -5,7 +5,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertThrows;
 
@@ -19,7 +18,6 @@ import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import io.tehuti.Metric;
 import io.tehuti.TehutiException;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
@@ -50,8 +48,6 @@ public class AggHostLevelIngestionStatsTest {
   private static final long STORE_BAR_DISK_USAGE = 15;
   private static final long STORE_FOO_RMD_DISK_USAGE = 1;
   private static final long STORE_BAR_RMD_DISK_USAGE = 2;
-  private static final boolean STORE_FOO_IS_STUCK_BY_MEM_CONSTRAINT = false;
-  private static final boolean STORE_BAR_IS_STUCK_BY_MEM_CONSTRAINT = true;
 
   @BeforeTest
   public void setUp() {
@@ -79,8 +75,6 @@ public class AggHostLevelIngestionStatsTest {
     doReturn(STORE_FOO_RMD_DISK_USAGE).when(fooSET).getCachedRMDSizeInBytes();
     doReturn(STORE_BAR_RMD_DISK_USAGE).when(barSET).getRMDSizeInBytes();
     doReturn(STORE_BAR_RMD_DISK_USAGE).when(barSET).getCachedRMDSizeInBytes();
-    doReturn(STORE_FOO_IS_STUCK_BY_MEM_CONSTRAINT).when(fooSIT).isStuckByMemoryConstraint();
-    doReturn(STORE_BAR_IS_STUCK_BY_MEM_CONSTRAINT).when(barSIT).isStuckByMemoryConstraint();
     sitMap = new HashMap<>();
     sitMap.put(STORE_FOO, fooSIT);
     sitMap.put(STORE_BAR, barSIT);
@@ -131,8 +125,6 @@ public class AggHostLevelIngestionStatsTest {
     assertThrows(TehutiException.class, () -> reporter.query("." + STORE_FOO + "--bytes_consumed.Rate"));
     assertThrows(TehutiException.class, () -> reporter.query("." + STORE_BAR + "--bytes_consumed.Rate"));
 
-    int fooSITisStuckByMemoryConstraint = 0;
-    int barSITisStuckByMemoryConstraint = 0;
     int fooSITgetStorageEngine = 0;
     int barSITgetStorageEngine = 0;
     int fooSEgetStats = 0;
@@ -146,8 +138,6 @@ public class AggHostLevelIngestionStatsTest {
     int fooSETgetCachedStoreSizeInBytes = 0;
     int barSETgetCachedStoreSizeInBytes = 0;
     assertCallCounts(
-        fooSITisStuckByMemoryConstraint,
-        barSITisStuckByMemoryConstraint,
         fooSITgetStorageEngine,
         barSITgetStorageEngine,
         fooSEgetStats,
@@ -166,8 +156,6 @@ public class AggHostLevelIngestionStatsTest {
         (double) STORE_FOO_DISK_USAGE);
 
     assertCallCounts(
-        fooSITisStuckByMemoryConstraint,
-        barSITisStuckByMemoryConstraint,
         ++fooSITgetStorageEngine,
         barSITgetStorageEngine,
         ++fooSEgetStats,
@@ -186,8 +174,6 @@ public class AggHostLevelIngestionStatsTest {
         (double) (STORE_FOO_DISK_USAGE + STORE_BAR_DISK_USAGE));
 
     assertCallCounts(
-        fooSITisStuckByMemoryConstraint,
-        barSITisStuckByMemoryConstraint,
         ++fooSITgetStorageEngine,
         ++barSITgetStorageEngine,
         ++fooSEgetStats,
@@ -206,8 +192,6 @@ public class AggHostLevelIngestionStatsTest {
         (double) STORE_BAR_RMD_DISK_USAGE);
 
     assertCallCounts(
-        fooSITisStuckByMemoryConstraint,
-        barSITisStuckByMemoryConstraint,
         fooSITgetStorageEngine,
         ++barSITgetStorageEngine,
         fooSEgetStats,
@@ -226,8 +210,6 @@ public class AggHostLevelIngestionStatsTest {
         (double) (STORE_FOO_RMD_DISK_USAGE + STORE_BAR_RMD_DISK_USAGE));
 
     assertCallCounts(
-        fooSITisStuckByMemoryConstraint,
-        barSITisStuckByMemoryConstraint,
         ++fooSITgetStorageEngine,
         ++barSITgetStorageEngine,
         ++fooSEgetStats,
@@ -241,13 +223,7 @@ public class AggHostLevelIngestionStatsTest {
         fooSETgetCachedStoreSizeInBytes,
         barSETgetCachedStoreSizeInBytes);
 
-    Metric barStuckByMemConstraint = reporter.query("." + STORE_BAR + "--ingestion_stuck_by_memory_constraint.Gauge");
-    assertNotNull(barStuckByMemConstraint);
-    assertEquals(barStuckByMemConstraint.value(), (double) 1);
-
     assertCallCounts(
-        fooSITisStuckByMemoryConstraint,
-        ++barSITisStuckByMemoryConstraint,
         fooSITgetStorageEngine,
         barSITgetStorageEngine,
         fooSEgetStats,
@@ -261,13 +237,7 @@ public class AggHostLevelIngestionStatsTest {
         fooSETgetCachedStoreSizeInBytes,
         barSETgetCachedStoreSizeInBytes);
 
-    Metric fooStuckByMemConstraint = reporter.query("." + STORE_FOO + "--ingestion_stuck_by_memory_constraint.Gauge");
-    assertNotNull(fooStuckByMemConstraint);
-    assertEquals(fooStuckByMemConstraint.value(), (double) 0);
-
     assertCallCounts(
-        ++fooSITisStuckByMemoryConstraint,
-        barSITisStuckByMemoryConstraint,
         fooSITgetStorageEngine,
         barSITgetStorageEngine,
         fooSEgetStats,
@@ -281,11 +251,7 @@ public class AggHostLevelIngestionStatsTest {
         fooSETgetCachedStoreSizeInBytes,
         barSETgetCachedStoreSizeInBytes);
 
-    assertEquals(reporter.query(".total--ingestion_stuck_by_memory_constraint.Gauge").value(), (double) 1);
-
     assertCallCounts(
-        ++fooSITisStuckByMemoryConstraint,
-        ++barSITisStuckByMemoryConstraint,
         fooSITgetStorageEngine,
         barSITgetStorageEngine,
         fooSEgetStats,
@@ -301,19 +267,9 @@ public class AggHostLevelIngestionStatsTest {
 
     aggStats.handleStoreDeleted(STORE_BAR);
     assertNull(metricsRepository.getMetric("." + STORE_BAR + "--kafka_poll_result_num.Total"));
-
-    /**
-     * If the SIT cannot be found in the SIT map, we default to zero. This is so that any code still hanging on to the
-     * {@link io.tehuti.metrics.Measurable} instance does not get bad results.
-     */
-    assertEquals(barStuckByMemConstraint.value(), (double) 1);
-    sitMap.remove(STORE_BAR);
-    assertEquals(barStuckByMemConstraint.value(), (double) 0);
   }
 
   private void assertCallCounts(
-      int fooSITisStuckByMemoryConstraint,
-      int barSITisStuckByMemoryConstraint,
       int fooSITgetStorageEngine,
       int barSITgetStorageEngine,
       int fooSEgetStats,
@@ -326,8 +282,6 @@ public class AggHostLevelIngestionStatsTest {
       int barSETgetStoreSizeInBytes,
       int fooSETgetCachedStoreSizeInBytes,
       int barSETgetCachedStoreSizeInBytes) {
-    verify(fooSIT, times(fooSITisStuckByMemoryConstraint)).isStuckByMemoryConstraint();
-    verify(barSIT, times(barSITisStuckByMemoryConstraint)).isStuckByMemoryConstraint();
     verify(fooSIT, times(fooSITgetStorageEngine)).getStorageEngine();
     verify(barSIT, times(barSITgetStorageEngine)).getStorageEngine();
     verify(fooSE, times(fooSEgetStats)).getStats();

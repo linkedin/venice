@@ -1130,7 +1130,7 @@ public class RocksDBStoragePartitionTest {
 
     // DiskLimitExhaustedException
     try {
-      storagePartition.checkAndThrowSpecificException(
+      storagePartition.checkAndThrowDiskLimitException(
           new RocksDBException(RocksDBStoragePartition.ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_DISK_QUOTA));
     } catch (Exception e) {
       Assert.assertTrue(e instanceof DiskLimitExhaustedException, "Unexpected exception type: " + e);

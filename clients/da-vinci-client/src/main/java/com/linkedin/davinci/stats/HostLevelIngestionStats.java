@@ -502,10 +502,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     };
   }
 
-  private Measurable measurable(Map<String, StoreIngestionTask> m, String s, ToLongFunction<StoreIngestionTask> f) {
-    return measurable(m, s, f, f);
-  }
-
   /** Record a host-level byte consumption rate across all store versions */
   public void recordTotalBytesConsumed(long bytes) {
     totalBytesConsumedRate.record(bytes);
