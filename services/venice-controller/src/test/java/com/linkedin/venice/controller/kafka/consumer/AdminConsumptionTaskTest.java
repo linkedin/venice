@@ -1325,7 +1325,7 @@ public class AdminConsumptionTaskTest {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     final PubSubPosition position = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getPubSubPosition();
     OffsetRecord offsetRecord = offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    offsetRecord.setCheckpointLocalVersionTopicPosition(position);
+    offsetRecord.checkpointLocalVtPosition(position);
     offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, 3L);
     executionIdAccessor.updateLastSucceededExecutionId(clusterName, 3L);

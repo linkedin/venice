@@ -89,11 +89,6 @@ public class OffsetRecord {
     return serializer.deserialize(PARTITION_STATE_STRING, bytes);
   }
 
-  public PubSubPosition getLocalVersionTopicOffset() {
-    // TODO: Replace with lastProcessedVersionTopicPubSubPosition
-    return fromKafkaOffset(this.partitionState.offset);
-  }
-
   public void setPreviousStatusesEntry(String key, String value) {
     partitionState.getPreviousStatuses().put(key, value);
   }
@@ -102,7 +97,12 @@ public class OffsetRecord {
     return partitionState.getPreviousStatuses().getOrDefault(key, NULL_STRING).toString();
   }
 
-  public void setCheckpointLocalVersionTopicPosition(PubSubPosition vtPosition) {
+  public PubSubPosition getLocalVersionTopicOffset() {
+    // TODO: Replace with lastProcessedVersionTopicPubSubPosition
+    return fromKafkaOffset(this.partitionState.offset);
+  }
+
+  public void checkpointLocalVtPosition(PubSubPosition vtPosition) {
     if (vtPosition == null || vtPosition.getPositionWireFormat() == null) {
       String msg = (vtPosition == null) ? "Position" : "Position wire format";
       throw new IllegalArgumentException(msg + " cannot be null");
@@ -111,13 +111,13 @@ public class OffsetRecord {
     this.partitionState.offset = vtPosition.getNumericOffset();
   }
 
-  public PubSubPosition getCheckpointUpstreamVersionTopicOffset() {
+  public PubSubPosition getCheckpointedRemoteVtPosition() {
     return fromKafkaOffset(this.partitionState.upstreamVersionTopicOffset);
   }
 
-  public void setCheckpointUpstreamVersionTopicOffset(PubSubPosition upstreamVersionTopicOffset) {
-    this.partitionState.upstreamVersionTopicPubSubPosition = upstreamVersionTopicOffset.toWireFormatBuffer();
-    this.partitionState.upstreamVersionTopicOffset = upstreamVersionTopicOffset.getNumericOffset();
+  public void checkpointRemoteVtPosition(PubSubPosition remoteVtPosition) {
+    this.partitionState.upstreamVersionTopicPubSubPosition = remoteVtPosition.toWireFormatBuffer();
+    this.partitionState.upstreamVersionTopicOffset = remoteVtPosition.getNumericOffset();
   }
 
   public long getOffsetLag() {
@@ -340,12 +340,13 @@ public class OffsetRecord {
     this.partitionState.setRecordTransformerClassHash(classHash);
   }
 
-  public void setLatestConsumedVtOffset(PubSubPosition latestConsumedVtOffset) {
-    this.partitionState.setLastConsumedVersionTopicPubSubPosition(latestConsumedVtOffset.toWireFormatBuffer());
-    this.partitionState.setLastConsumedVersionTopicOffset(latestConsumedVtOffset.getNumericOffset());
+  // Updated from {@link PartitionTracker#updateOffsetRecord}
+  public void setLatestConsumedVtPosition(PubSubPosition latestConsumedVtPosition) {
+    this.partitionState.setLastConsumedVersionTopicPubSubPosition(latestConsumedVtPosition.toWireFormatBuffer());
+    this.partitionState.setLastConsumedVersionTopicOffset(latestConsumedVtPosition.getNumericOffset());
   }
 
-  public PubSubPosition getLatestConsumedVtOffset() {
+  public PubSubPosition getLatestConsumedVtPosition() {
     return fromKafkaOffset(this.partitionState.getLastConsumedVersionTopicOffset());
   }
 
@@ -367,10 +368,9 @@ public class OffsetRecord {
         + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
         + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
         + getDatabaseInfo() + ", realTimeProducerState=" + getRealTimeProducerState() + ", recordTransformerClassHash="
-        + getRecordTransformerClassHash() + ", pubSubPosition={" + "currentTermStartPubSubPosition="
-        + partitionState.getCurrentTermStartPubSubPosition() + ", lastProcessedVersionTopicPubSubPosition="
-        + partitionState.getLastProcessedVersionTopicPubSubPosition() + ", lastConsumedVersionTopicPubSubPosition="
-        + partitionState.getLastConsumedVersionTopicPubSubPosition() + ", upstreamVersionTopicPubSubPosition="
+        + getRecordTransformerClassHash() + ", lastProcessedVtPosition="
+        + partitionState.getLastProcessedVersionTopicPubSubPosition() + ", lastConsumedVtPosition="
+        + partitionState.getLastConsumedVersionTopicPubSubPosition() + ", remoteVtPosition="
         + partitionState.getUpstreamVersionTopicPubSubPosition() + "}";
   }
 

@@ -229,7 +229,7 @@ public class PartitionTracker {
     ProducerPartitionState state;
     if (TopicType.isVersionTopic(type)) {
       state = offsetRecord.getProducerPartitionState(guid);
-      offsetRecord.setLatestConsumedVtOffset(getLatestConsumedVtOffset());
+      offsetRecord.setLatestConsumedVtPosition(getLatestConsumedVtOffset());
     } else {
       state = offsetRecord.getRealTimeProducerState(type.getKafkaUrl(), guid);
     }

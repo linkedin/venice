@@ -284,8 +284,8 @@ public class PartitionConsumptionState {
     this.latestPolledMessageTimestampInMs = currentTimeInMs;
     this.consumptionStartTimeInMs = currentTimeInMs;
 
-    // Restore in-memory consumption RT upstream offset map and latest processed RT upstream offset map from the
-    // checkpoint upstream offset map
+    // Restore in-memory consumption RT positions and latest processed RT
+    // positions from the checkpoint upstream positions map
     latestConsumedRtPositions = new VeniceConcurrentHashMap<>(3);
     divRtCheckpointPositions = new VeniceConcurrentHashMap<>(3);
     latestProcessedRtPositions = new VeniceConcurrentHashMap<>(3);
@@ -293,9 +293,10 @@ public class PartitionConsumptionState {
       offsetRecord.cloneUpstreamOffsetMap(latestConsumedRtPositions);
       offsetRecord.cloneUpstreamOffsetMap(latestProcessedRtPositions);
     }
-    // Restore in-memory latest consumed version topic offset and leader info from the checkpoint version topic offset
+    // Restore in-memory latest consumed version topic position and leader info from the checkpoint version topic
+    // position
     this.latestProcessedVtPosition = offsetRecord.getLocalVersionTopicOffset();
-    this.latestProcessedRemoteVtPosition = offsetRecord.getCheckpointUpstreamVersionTopicOffset();
+    this.latestProcessedRemoteVtPosition = offsetRecord.getCheckpointedRemoteVtPosition();
     this.leaderHostId = offsetRecord.getLeaderHostId();
     this.leaderGUID = offsetRecord.getLeaderGUID();
     this.lastVTProduceCallFuture = CompletableFuture.completedFuture(null);
@@ -617,13 +618,13 @@ public class PartitionConsumptionState {
    * This operation is performed atomically to delete the record only when the provided sourceOffset matches.
    *
    * @param kafkaClusterId
-   * @param kafkaConsumedOffset
+   * @param recordPosition
    * @param key
    * @return
    */
-  public TransientRecord mayRemoveTransientRecord(int kafkaClusterId, PubSubPosition kafkaConsumedOffset, byte[] key) {
+  public TransientRecord mayRemoveTransientRecord(int kafkaClusterId, PubSubPosition recordPosition, byte[] key) {
     return transientRecordMap.computeIfPresent(ByteArrayKey.wrap(key), (k, v) -> {
-      if (v.kafkaClusterId == kafkaClusterId && v.consumedPosition == kafkaConsumedOffset) {
+      if (v.kafkaClusterId == kafkaClusterId && v.consumedPosition == recordPosition) {
         return null;
       } else {
         return v;
@@ -878,11 +879,25 @@ public class PartitionConsumptionState {
   }
 
   /**
-   * The caller of this API should be interested in which offset currently leader should consume from now.
-   * 1. If currently leader should consume from real-time topic, return upstream RT offset;
-   *    If Global RT DIV is enabled, use the value of LCRO from the Global RT DIV from StorageEngine.
-   * 2. if currently leader should consume from version topic, return either remote VT offset or local VT offset, depending
-   *    on whether the remote consumption flag is on.
+   * Returns the position the leader should consume from, based on the current leader topic
+   * and whether real-time (RT) or version topic (VT) consumption is active.
+   *
+   * <p>If the leader topic is an RT topic:
+   * <ul>
+   *   <li>If {@code useCheckpointedDivRtPosition} is true, returns the last checkpointed
+   *       RT position from global DIV (LCRO).</li>
+   *   <li>Otherwise, returns the latest processed RT position from in-memory state (or OffsetRecord if required)</li>
+   * </ul>
+   *
+   * <p>If the leader topic is a version topic:
+   * <ul>
+   *   <li>If remote consumption is enabled, returns the latest processed remote VT position.</li>
+   *   <li>Otherwise, returns the latest processed local VT position.</li>
+   * </ul>
+   *
+   * @param pubSubBrokerAddress the upstream PubSub broker address
+   * @param useCheckpointedDivRtPosition whether to use the global DIV checkpoint (LCRO) as the RT start position
+   * @return the position the leader should consume from
    */
   public PubSubPosition getLeaderPosition(String pubSubBrokerAddress, boolean useCheckpointedDivRtPosition) {
     PubSubTopic leaderTopic = getOffsetRecord().getLeaderTopic(getPubSubContext().getPubSubTopicRepository());
@@ -912,8 +927,8 @@ public class PartitionConsumptionState {
     return endOfPushTimestamp;
   }
 
-  public PubSubPosition getLatestConsumedVtOffset() {
-    return offsetRecord.getLatestConsumedVtOffset();
+  public PubSubPosition getLatestConsumedVtPosition() {
+    return offsetRecord.getLatestConsumedVtPosition();
   }
 
   public void setDataRecoveryCompleted(boolean dataRecoveryCompleted) {

@@ -135,7 +135,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     GUID guid = new GUID();
     offsetRecord.setRealtimeTopicProducerState(kafkaUrl, guid, ppState);
     PubSubPosition p666 = ApacheKafkaOffsetPosition.of(666L);
-    offsetRecord.setCheckpointLocalVersionTopicPosition(p666);
+    offsetRecord.checkpointLocalVtPosition(p666);
     rocksDBStorageEngine.putPartitionOffset(PARTITION_ID, offsetRecord);
     Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getLocalVersionTopicOffset(), p666);
     ProducerPartitionState ppStateFromRocksDB =

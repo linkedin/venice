@@ -900,21 +900,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     final PubSubTopicPartition newSourceTopicPartition =
         partitionConsumptionState.getSourceTopicPartition(newSourceTopic);
 
-    PubSubPosition upstreamStartOffset = PubSubSymbolicPosition.EARLIEST;
+    PubSubPosition upstreamStartPosition = PubSubSymbolicPosition.EARLIEST;
     if (topicSwitch.rewindStartTimestamp > 0) {
-      upstreamStartOffset = getTopicPartitionOffsetByKafkaURL(
+      upstreamStartPosition = getTopicPartitionOffsetByKafkaURL(
           newSourceKafkaServer,
           newSourceTopicPartition,
           topicSwitch.rewindStartTimestamp);
       LOGGER.info(
-          "UpstreamStartOffset: {} for source URL: {}, topic: {}, rewind timestamp: {}. Replica: {}",
-          upstreamStartOffset,
+          "UpstreamStartPosition: {} for source URL: {}, tp: {}, rewind timestamp: {}. Replica: {}",
+          upstreamStartPosition,
           newSourceKafkaServer,
           Utils.getReplicaId(newSourceTopic, partitionConsumptionState.getPartition()),
           topicSwitch.rewindStartTimestamp,
           partitionConsumptionState.getReplicaId());
     }
-    return Collections.singletonMap(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartOffset);
+    return Collections.singletonMap(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartPosition);
   }
 
   @Override
@@ -1024,27 +1024,27 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (leaderSourceKafkaURLs.size() != 1) {
       throw new VeniceException("In L/F mode, expect only one leader source Kafka URL. Got: " + leaderSourceKafkaURLs);
     }
-    boolean useLcro = isTransition && isGlobalRtDivEnabled();
-    PubSubPosition upstreamStartOffset =
-        partitionConsumptionState.getLeaderPosition(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, useLcro);
+    boolean shouldUseDivRtPosition = isTransition && isGlobalRtDivEnabled();
+    PubSubPosition upstreamStartPosition = partitionConsumptionState
+        .getLeaderPosition(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, shouldUseDivRtPosition);
     String leaderSourceKafkaURL = leaderSourceKafkaURLs.iterator().next();
-    if (PubSubSymbolicPosition.EARLIEST.equals(upstreamStartOffset) && leaderTopic.isRealTime()) {
-      upstreamStartOffset =
+    if (PubSubSymbolicPosition.EARLIEST.equals(upstreamStartPosition) && leaderTopic.isRealTime()) {
+      upstreamStartPosition =
           calculateLeaderUpstreamOffsetWithTopicSwitch(partitionConsumptionState, leaderTopic, Collections.emptyList())
               .getOrDefault(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, PubSubSymbolicPosition.EARLIEST);
     }
 
-    consumerSubscribe(leaderTopic, partitionConsumptionState, upstreamStartOffset, leaderSourceKafkaURL);
+    consumerSubscribe(leaderTopic, partitionConsumptionState, upstreamStartPosition, leaderSourceKafkaURL);
     // TODO: clear the LCRO map in the PCS after subscribing and set the value for this brokerUrl as null?
     syncConsumedUpstreamRTOffsetMapIfNeeded(
         partitionConsumptionState,
-        Collections.singletonMap(leaderSourceKafkaURL, upstreamStartOffset));
+        Collections.singletonMap(leaderSourceKafkaURL, upstreamStartPosition));
     LOGGER.info(
         "{}, as a leader, started consuming from topic: {}, partition: {} with offset: {}",
         partitionConsumptionState.getReplicaId(),
         leaderTopic,
         partitionConsumptionState.getPartition(),
-        upstreamStartOffset);
+        upstreamStartPosition);
   }
 
   protected void syncConsumedUpstreamRTOffsetMapIfNeeded(
@@ -1057,7 +1057,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         if (upstreamStartOffset
             .getNumericOffset() > getLatestConsumedUpstreamOffsetForHybridOffsetLagMeasurement(pcs, kafkaURL)
                 .getNumericOffset()) {
-          updateLatestInMemoryLeaderConsumedRTOffset(pcs, kafkaURL, upstreamStartOffset);
+          updateLatestConsumedRtPositions(pcs, kafkaURL, upstreamStartOffset);
         }
       });
     }
@@ -1444,7 +1444,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected void updateOffsetMetadataInOffsetRecord(PartitionConsumptionState partitionConsumptionState) {
     OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-    offsetRecord.setCheckpointLocalVersionTopicPosition(partitionConsumptionState.getLatestProcessedVtPosition());
+    offsetRecord.checkpointLocalVtPosition(partitionConsumptionState.getLatestProcessedVtPosition());
     // DaVinci clients don't need to maintain leader production states
     if (isDaVinciClient) {
       return;
@@ -1456,8 +1456,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (upstreamTopic.isRealTime()) {
       offsetRecord.updateUpstreamOffsets(partitionConsumptionState.getLatestProcessedRtPositions());
     } else {
-      offsetRecord
-          .setCheckpointUpstreamVersionTopicOffset(partitionConsumptionState.getLatestProcessedRemoteVtPosition());
+      offsetRecord.checkpointRemoteVtPosition(partitionConsumptionState.getLatestProcessedRemoteVtPosition());
     }
     offsetRecord.setLeaderGUID(partitionConsumptionState.getLeaderGUID());
     offsetRecord.setLeaderHostId(partitionConsumptionState.getLeaderHostId());
@@ -2453,7 +2452,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             kafkaClusterId,
             consumerRecord.getPayloadSize(),
             beforeProcessingBatchRecordsTimestampMs);
-        updateLatestInMemoryLeaderConsumedRTOffset(partitionConsumptionState, kafkaUrl, consumerRecord.getPosition());
+        updateLatestConsumedRtPositions(partitionConsumptionState, kafkaUrl, consumerRecord.getPosition());
       }
 
       // heavy leader processing starts here
@@ -2874,11 +2873,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return pcs.getLatestConsumedRtPosition(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
   }
 
-  protected void updateLatestInMemoryLeaderConsumedRTOffset(
+  protected void updateLatestConsumedRtPositions(
       PartitionConsumptionState pcs,
-      String ignoredKafkaUrl,
-      PubSubPosition offset) {
-    pcs.setLatestConsumedRtPosition(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, offset);
+      String ignoredPubSubBrokerAddress,
+      PubSubPosition pubSubPosition) {
+    pcs.setLatestConsumedRtPosition(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, pubSubPosition);
   }
 
   /**
@@ -3620,13 +3619,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         topicPartition,
         valueManifestContainer);
     if (valueRecord == null) {
-      PubSubPosition leaderOffset = pcs.getLeaderPosition(brokerUrl, false);
-      if (leaderOffset.getNumericOffset() > 0) {
+      PubSubPosition leaderPosition = pcs.getLeaderPosition(brokerUrl, false);
+      if (leaderPosition.getNumericOffset() > 0) {
         LOGGER.warn(
-            "Unable to retrieve Global RT DIV from storage engine for replica: {} brokerUrl: {} leaderOffset: {}",
+            "Unable to retrieve Global RT DIV from storage engine for replica: {} brokerUrl: {} leaderPosition: {}",
             topicPartition,
             brokerUrl,
-            leaderOffset);
+            leaderPosition);
       }
       return; // it may not exist (e.g. this is the first leader to be elected)
     }

@@ -703,7 +703,7 @@ public class TestUtils {
 
   public static OffsetRecord getOffsetRecord(PubSubPosition currentPosition, Optional<PubSubPosition> endOfPushOffset) {
     OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
-    offsetRecord.setCheckpointLocalVersionTopicPosition(currentPosition);
+    offsetRecord.checkpointLocalVtPosition(currentPosition);
     if (endOfPushOffset.isPresent()) {
       offsetRecord.endOfPushReceived();
     }
