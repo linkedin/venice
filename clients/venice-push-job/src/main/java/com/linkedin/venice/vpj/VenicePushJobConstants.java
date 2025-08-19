@@ -122,7 +122,7 @@ public final class VenicePushJobConstants {
    * BTW, this calculation is not accurate since it is purely based on offset, and the topic
    * being consumed could have log compaction enabled.
    */
-  public static final long DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER = 5000000L;
+  public static final long DEFAULT_PUBSUB_INPUT_MAX_RECORDS_PER_MAPPER = 5_000_000L;
 
   /**
    * Use the numeric offset as the secondary comparator after comparing keys in repush mappers.
