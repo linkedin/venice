@@ -506,8 +506,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setBlobTransferEnabled(message.blobTransferEnabled)
         .setBlobTransferInServerEnabled(
             message.blobTransferInServerEnabled == null
-                ? ActivationState.NOT_SPECIFIED.name()
-                : message.blobTransferInServerEnabled.toString())
+                ? ActivationState.NOT_SPECIFIED
+                : ActivationState.valueOf(message.blobTransferInServerEnabled.toString()))
         .setUnusedSchemaDeletionEnabled(message.unusedSchemaDeletionEnabled)
         .setNearlineProducerCompressionEnabled(message.nearlineProducerCompressionEnabled)
         .setNearlineProducerCountPerWriter(message.nearlineProducerCountPerWriter)

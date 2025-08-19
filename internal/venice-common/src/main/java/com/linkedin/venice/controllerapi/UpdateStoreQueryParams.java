@@ -92,6 +92,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.util.List;
@@ -154,7 +155,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
             .setStorageNodeReadQuotaEnabled(srcStore.isStorageNodeReadQuotaEnabled())
             .setBlobTransferEnabled(srcStore.isBlobTransferEnabled())
-            .setBlobTransferInServerEnabled(srcStore.getBlobTransferInServerEnabled())
+            .setBlobTransferInServerEnabled(
+                ConfigCommonUtils.ActivationState.valueOf(srcStore.getBlobTransferInServerEnabled()))
             .setMaxRecordSizeBytes(srcStore.getMaxRecordSizeBytes())
             .setMaxNearlineRecordSizeBytes(srcStore.getMaxNearlineRecordSizeBytes())
             .setTargetRegionSwap(srcStore.getTargetRegionSwap())
@@ -777,8 +779,9 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getBoolean(BLOB_TRANSFER_ENABLED);
   }
 
-  public UpdateStoreQueryParams setBlobTransferInServerEnabled(String blobTransferInServerEnabled) {
-    return putString(BLOB_TRANSFER_IN_SERVER_ENABLED, blobTransferInServerEnabled);
+  public UpdateStoreQueryParams setBlobTransferInServerEnabled(
+      ConfigCommonUtils.ActivationState blobTransferInServerEnabled) {
+    return putString(BLOB_TRANSFER_IN_SERVER_ENABLED, blobTransferInServerEnabled.name());
   }
 
   public Optional<String> getBlobTransferInServerEnabled() {

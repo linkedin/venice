@@ -117,6 +117,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -1343,7 +1344,7 @@ public class AdminTool {
         cmd,
         Arg.BLOB_TRANSFER_IN_SERVER_ENABLED,
         s -> s,
-        p -> params.setBlobTransferInServerEnabled(p),
+        p -> params.setBlobTransferInServerEnabled(ConfigCommonUtils.ActivationState.valueOf(p)),
         argSet);
     booleanParam(
         cmd,
