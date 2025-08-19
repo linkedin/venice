@@ -272,9 +272,10 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
               Version.composeKafkaTopic(store.getName(), version.getNumber()),
               MIN_REPLICA)) {
             LOGGER.info(
-                "Store {} version {} is updated to ideal state to use 2 replicas",
+                "Store {} version {} is updated to ideal state to use {} replicas",
                 store.getName(),
-                version.getNumber());
+                version.getNumber(),
+                MIN_REPLICA);
           }
         }
       }
