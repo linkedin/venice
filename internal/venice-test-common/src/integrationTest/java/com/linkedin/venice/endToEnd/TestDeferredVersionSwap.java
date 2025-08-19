@@ -183,21 +183,23 @@ public class TestDeferredVersionSwap {
         assertEquals(version.get().getStatus(), VersionStatus.ONLINE);
       }
 
-      // Verify that we can create a new version
-      VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
-          storeName,
-          1000,
-          Version.PushType.BATCH,
-          Version.guidBasedDummyPushId(),
-          true,
-          true,
-          false,
-          Optional.empty(),
-          Optional.empty(),
-          Optional.empty(),
-          false,
-          -1);
-      assertFalse(versionCreationResponse.isError());
+      TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+        // Verify that we can create a new version
+        VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
+            storeName,
+            1000,
+            Version.PushType.BATCH,
+            Version.guidBasedDummyPushId(),
+            true,
+            true,
+            false,
+            Optional.empty(),
+            Optional.empty(),
+            Optional.empty(),
+            false,
+            -1);
+        assertFalse(versionCreationResponse.isError());
+      });
     }
   }
 
