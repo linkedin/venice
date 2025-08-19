@@ -155,7 +155,7 @@ public class PushTimeoutTest {
      * will determine that base topic is caught up.
      */
     PubSubPosition p1 = ApacheKafkaOffsetPosition.of(1L);
-    doReturn(p1).when(mockOffsetRecord).getLocalVersionTopicOffset();
+    doReturn(p1).when(mockOffsetRecord).getCheckpointedLocalVtPosition();
     doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0));
 
     LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = new LeaderFollowerStoreIngestionTask(

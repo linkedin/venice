@@ -169,7 +169,7 @@ public class DataIntegrityValidator {
 
   public void updateLatestConsumedVtOffset(int partition, PubSubPosition offset) {
     PartitionTracker partitionTracker = registerPartition(partition);
-    partitionTracker.updateLatestConsumedVtOffset(offset);
+    partitionTracker.updateLatestConsumedVtPosition(offset);
   }
 
   /**

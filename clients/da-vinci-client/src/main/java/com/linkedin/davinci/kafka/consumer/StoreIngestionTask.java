@@ -911,7 +911,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState) {
     String replicaId = getReplicaId(topic, partitionId);
     boolean returnStatus = true;
-    if (!PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getLocalVersionTopicOffset())) {
+    if (!PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
       if (storeVersionState != null) {
         LOGGER.info("Found storeVersionState for replica: {}: checkDatabaseIntegrity will proceed", replicaId);
@@ -2144,7 +2144,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // Once storage node restart, send the "START" status to controller to rebuild the task status.
     // If this storage node has never consumed data from this topic, instead of sending "START" here, we send it
     // once START_OF_PUSH message has been read.
-    if (!PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getLocalVersionTopicOffset())) {
+    if (!PubSubSymbolicPosition.EARLIEST.equals(offsetRecord.getCheckpointedLocalVtPosition())) {
       StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
       if (storeVersionState != null) {
         boolean sorted = storeVersionState.sorted;
@@ -2792,7 +2792,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     pcs.resetProcessedRecordSizeSinceLastSync();
     String msg = "Offset synced for replica: " + pcs.getReplicaId() + " - localVtOffset: {}";
     if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-      LOGGER.info(msg, offsetRecord.getLocalVersionTopicOffset());
+      LOGGER.info(msg, offsetRecord.getCheckpointedLocalVtPosition());
     }
   }
 

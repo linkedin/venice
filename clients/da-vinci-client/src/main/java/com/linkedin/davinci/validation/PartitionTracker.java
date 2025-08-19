@@ -83,7 +83,7 @@ public class PartitionTracker {
   /**
    * The equivalent for RT is not stored. It's the instantaneous offset when a DIV sync is triggered.
    */
-  private final AtomicReference<PubSubPosition> latestConsumedVtOffset =
+  private final AtomicReference<PubSubPosition> latestConsumedVtPosition =
       new AtomicReference(PubSubSymbolicPosition.EARLIEST);
 
   /**
@@ -107,12 +107,12 @@ public class PartitionTracker {
     return partition;
   }
 
-  public PubSubPosition getLatestConsumedVtOffset() {
-    return latestConsumedVtOffset.get();
+  public PubSubPosition getLatestConsumedVtPosition() {
+    return latestConsumedVtPosition.get();
   }
 
-  public void updateLatestConsumedVtOffset(PubSubPosition offset) {
-    latestConsumedVtOffset.updateAndGet(current -> offset);
+  public void updateLatestConsumedVtPosition(PubSubPosition vtPosition) {
+    latestConsumedVtPosition.updateAndGet(current -> vtPosition);
   }
 
   public final String toString() {
@@ -201,7 +201,7 @@ public class PartitionTracker {
     for (Map.Entry<GUID, Segment> entry: vtSegments.entrySet()) {
       destProducerTracker.setSegment(PartitionTracker.VERSION_TOPIC, entry.getKey(), new Segment(entry.getValue()));
     }
-    destProducerTracker.updateLatestConsumedVtOffset(latestConsumedVtOffset.get());
+    destProducerTracker.updateLatestConsumedVtPosition(latestConsumedVtPosition.get());
   }
 
   /**
@@ -229,7 +229,7 @@ public class PartitionTracker {
     ProducerPartitionState state;
     if (TopicType.isVersionTopic(type)) {
       state = offsetRecord.getProducerPartitionState(guid);
-      offsetRecord.setLatestConsumedVtPosition(getLatestConsumedVtOffset());
+      offsetRecord.setLatestConsumedVtPosition(getLatestConsumedVtPosition());
     } else {
       state = offsetRecord.getRealTimeProducerState(type.getKafkaUrl(), guid);
     }

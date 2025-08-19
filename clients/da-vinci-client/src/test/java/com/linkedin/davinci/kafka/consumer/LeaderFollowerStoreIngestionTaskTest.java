@@ -598,7 +598,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     doReturn(consumerDiv).when(mockIngestionTask).getConsumerDiv();
     doReturn(true).when(mockIngestionTask).isGlobalRtDivEnabled();
 
-    // delegateConsumerRecord() should cause updateLatestConsumedVtOffset() to be called
+    // delegateConsumerRecord() should cause updateLatestConsumedVtPosition() to be called
     mockIngestionTask.delegateConsumerRecord(cm, 0, "testURL", 0, 0, 0);
     verify(consumerDiv, times(1)).updateLatestConsumedVtOffset(0, cm.getMessage().getPosition());
   }
@@ -669,7 +669,7 @@ public class LeaderFollowerStoreIngestionTaskTest {
     when(mockOffsetRecord.getLeaderTopic()).thenReturn("test");
     when(mockOffsetRecord.isEndOfPushReceived()).thenReturn(true);
     PubSubPosition p0 = ApacheKafkaOffsetPosition.of(0L);
-    doReturn(p0).when(mockOffsetRecord).getLocalVersionTopicOffset();
+    doReturn(p0).when(mockOffsetRecord).getCheckpointedLocalVtPosition();
 
     when(mockStorageMetadataService.getLastOffset(any(), anyInt())).thenReturn(mockOffsetRecord);
     when(mockConsumerAction.getTopicPartition()).thenReturn(mockTopicPartition);

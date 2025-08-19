@@ -46,7 +46,9 @@ public class TestRocksDBOffsetStore {
     String storeTopicName = storeName + "_v1";
     StorageMetadataService storageMetadataService = serverWrapper.getVeniceServer().getStorageMetadataService();
     Assert.assertTrue(
-        storageMetadataService.getLastOffset(storeTopicName, 0).getLocalVersionTopicOffset().getNumericOffset() != -1);
+        storageMetadataService.getLastOffset(storeTopicName, 0)
+            .getCheckpointedLocalVtPosition()
+            .getNumericOffset() != -1);
     veniceCluster.stopVeniceServer(serverWrapper.getPort());
     TestUtils.waitForNonDeterministicAssertion(
         30,
@@ -56,7 +58,9 @@ public class TestRocksDBOffsetStore {
     veniceCluster.restartVeniceServer(serverWrapper.getPort());
     storageMetadataService = veniceCluster.getVeniceServers().get(0).getVeniceServer().getStorageMetadataService();
     Assert.assertTrue(
-        storageMetadataService.getLastOffset(storeTopicName, 0).getLocalVersionTopicOffset().getNumericOffset() != -1);
+        storageMetadataService.getLastOffset(storeTopicName, 0)
+            .getCheckpointedLocalVtPosition()
+            .getNumericOffset() != -1);
     try (AvroGenericStoreClient<Integer, Integer> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {

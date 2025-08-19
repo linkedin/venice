@@ -290,8 +290,8 @@ public class PartitionConsumptionState {
     divRtCheckpointPositions = new VeniceConcurrentHashMap<>(3);
     latestProcessedRtPositions = new VeniceConcurrentHashMap<>(3);
     if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
-      offsetRecord.cloneUpstreamOffsetMap(latestConsumedRtPositions);
-      offsetRecord.cloneUpstreamOffsetMap(latestProcessedRtPositions);
+      offsetRecord.cloneRtPositionCheckpoints(latestConsumedRtPositions);
+      offsetRecord.cloneRtPositionCheckpoints(latestProcessedRtPositions);
     }
     // Restore in-memory latest consumed version topic position and leader info from the checkpoint version topic
     // position
@@ -863,7 +863,7 @@ public class PartitionConsumptionState {
        * will be updated, since those offset are not processed yet; so when leader try to get the upstream offsets for the very
        * first time, there are no records in {@link #latestProcessedRtPositions} yet.
        */
-      return getOffsetRecord().getUpstreamOffset(pubSubBrokerAddress);
+      return getOffsetRecord().getCheckpointedRtPosition(pubSubBrokerAddress);
     }
     return rtPosition;
   }

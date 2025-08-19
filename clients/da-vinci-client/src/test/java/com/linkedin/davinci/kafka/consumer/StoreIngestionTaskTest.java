@@ -3411,19 +3411,20 @@ public abstract class StoreIngestionTaskTest {
 
     InMemoryPubSubPosition p5 = InMemoryPubSubPosition.of(5);
     OffsetRecord mockOffsetRecordLagCaughtUp = mock(OffsetRecord.class);
-    doReturn(p5).when(mockOffsetRecordLagCaughtUp).getLocalVersionTopicOffset();
+    doReturn(p5).when(mockOffsetRecordLagCaughtUp).getCheckpointedLocalVtPosition();
     doReturn(rtTopic).when(mockOffsetRecordLagCaughtUp).getLeaderTopic(any());
-    doReturn(p5).when(mockOffsetRecordLagCaughtUp).getUpstreamOffset(inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
     doReturn(p5).when(mockOffsetRecordLagCaughtUp)
-        .getUpstreamOffset(inMemoryRemoteKafkaBroker.getPubSubBrokerAddress());
+        .getCheckpointedRtPosition(inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
+    doReturn(p5).when(mockOffsetRecordLagCaughtUp)
+        .getCheckpointedRtPosition(inMemoryRemoteKafkaBroker.getPubSubBrokerAddress());
 
     OffsetRecord mockOffsetRecordLagCaughtUpTimestampLagging = mock(OffsetRecord.class);
-    doReturn(p5).when(mockOffsetRecordLagCaughtUpTimestampLagging).getLocalVersionTopicOffset();
+    doReturn(p5).when(mockOffsetRecordLagCaughtUpTimestampLagging).getCheckpointedLocalVtPosition();
     doReturn(rtTopic).when(mockOffsetRecordLagCaughtUpTimestampLagging).getLeaderTopic(any());
     doReturn(p5).when(mockOffsetRecordLagCaughtUpTimestampLagging)
-        .getUpstreamOffset(inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
+        .getCheckpointedRtPosition(inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
     doReturn(p5).when(mockOffsetRecordLagCaughtUpTimestampLagging)
-        .getUpstreamOffset(inMemoryRemoteKafkaBroker.getPubSubBrokerAddress());
+        .getCheckpointedRtPosition(inMemoryRemoteKafkaBroker.getPubSubBrokerAddress());
     doReturn(System.currentTimeMillis() - MS_PER_HOUR).when(mockOffsetRecordLagCaughtUpTimestampLagging)
         .getLatestProducerProcessingTimeInMs();
 
@@ -3642,10 +3643,10 @@ public abstract class StoreIngestionTaskTest {
     InMemoryPubSubPosition p150 = InMemoryPubSubPosition.of(150);
 
     OffsetRecord mockOffsetRecord = mock(OffsetRecord.class);
-    doReturn(p5).when(mockOffsetRecord).getLocalVersionTopicOffset();
+    doReturn(p5).when(mockOffsetRecord).getCheckpointedLocalVtPosition();
     doReturn(rtTopic).when(mockOffsetRecord).getLeaderTopic(any());
-    doReturn(p5).when(mockOffsetRecord).getUpstreamOffset(inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
-    doReturn(p5).when(mockOffsetRecord).getUpstreamOffset(inMemoryRemoteKafkaBroker.getPubSubBrokerAddress());
+    doReturn(p5).when(mockOffsetRecord).getCheckpointedRtPosition(inMemoryLocalKafkaBroker.getPubSubBrokerAddress());
+    doReturn(p5).when(mockOffsetRecord).getCheckpointedRtPosition(inMemoryRemoteKafkaBroker.getPubSubBrokerAddress());
 
     // Local replication are caught up but remote replication are not. A/A storage node replica is not ready to serve
     // Since host has caught up to lag in local VT, DaVinci replica will be marked ready to serve
@@ -4022,7 +4023,7 @@ public abstract class StoreIngestionTaskTest {
     PubSubPosition p10 = InMemoryPubSubPosition.of(10L);
     storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, p10, mockPcs);
     verify(mockTopicManagerRemoteKafka, never()).getOffsetByTime(any(), anyLong());
-    verify(mockOffsetRecord, never()).setLeaderUpstreamOffset(anyString(), any(PubSubPosition.class));
+    verify(mockOffsetRecord, never()).checkpointRtPosition(anyString(), any(PubSubPosition.class));
   }
 
   @Test(dataProvider = "aaConfigProvider")
@@ -4117,7 +4118,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(rtTopic).when(mockOR).getLeaderTopic(any());
       doReturn(p1000).when(mock).getLeaderPosition(anyString(), anyBoolean());
       System.out.println(mockOR.getLeaderTopic(null));
-      doReturn(p1000).when(mockOR).getUpstreamOffset(anyString());
+      doReturn(p1000).when(mockOR).getCheckpointedRtPosition(anyString());
       doReturn(p1000).when(mock).getLatestProcessedRtPosition(anyString());
       doReturn(mockOR).when(mock).getOffsetRecord();
       System.out.println("inside mock" + mockOR.getLeaderTopic(null));
@@ -4527,9 +4528,9 @@ public abstract class StoreIngestionTaskTest {
         OffsetRecord offsetRecord = pcs.getOffsetRecord();
         assertNotNull(offsetRecord);
         Assert.assertEquals(
-            PubSubUtil.comparePubSubPositions(offsetRecord.getLocalVersionTopicOffset(), p0),
+            PubSubUtil.comparePubSubPositions(offsetRecord.getCheckpointedLocalVtPosition(), p0),
             0,
-            "offsetRecord.getLocalVersionTopicOffset() for PARTITION_FOO is expected to be zero!");
+            "offsetRecord.getCheckpointedLocalVtPosition() for PARTITION_FOO is expected to be zero!");
       }
 
       // verify 2 messages were processed
@@ -4540,15 +4541,15 @@ public abstract class StoreIngestionTaskTest {
       assertNotNull(offsetRecord);
       Assert.assertEquals(pcs.getLatestProcessedVtPosition(), p2); // PCS updated
       // offsetRecord hasn't been updated yet
-      Assert.assertEquals(PubSubUtil.comparePubSubPositions(offsetRecord.getLocalVersionTopicOffset(), p0), 0);
+      Assert.assertEquals(PubSubUtil.comparePubSubPositions(offsetRecord.getCheckpointedLocalVtPosition(), p0), 0);
       storeIngestionTaskUnderTest.close();
 
       // Verify the OffsetRecord is synced up with pcs and get persisted only once during shutdown
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).times(1)).put(eq(topic), eq(PARTITION_FOO), any());
       Assert.assertEquals(
-          PubSubUtil.comparePubSubPositions(offsetRecord.getLocalVersionTopicOffset(), p2),
+          PubSubUtil.comparePubSubPositions(offsetRecord.getCheckpointedLocalVtPosition(), p2),
           0,
-          "offsetRecord.getLocalVersionTopicOffset() for PARTITION_FOO is expected to be 2!");
+          "offsetRecord.getCheckpointedLocalVtPosition() for PARTITION_FOO is expected to be 2!");
 
       // Verify that the underlying storage engine sync function is invoked.
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(1)).sync(eq(PARTITION_FOO));
@@ -6066,12 +6067,12 @@ public abstract class StoreIngestionTaskTest {
     ingestionTask.prepareOffsetCheckpointAndStartConsumptionAsLeader(pubSubTopic, pcs, false);
 
     if (aaEnabled) {
-      Assert.assertEquals(offsetRecord.getUpstreamOffset("dc-1"), PubSubSymbolicPosition.EARLIEST);
-      Assert.assertEquals(offsetRecord.getUpstreamOffset("dc-2"), PubSubSymbolicPosition.EARLIEST);
-      Assert.assertEquals(offsetRecord.getUpstreamOffset("dc-3"), PubSubSymbolicPosition.EARLIEST);
+      Assert.assertEquals(offsetRecord.getCheckpointedRtPosition("dc-1"), PubSubSymbolicPosition.EARLIEST);
+      Assert.assertEquals(offsetRecord.getCheckpointedRtPosition("dc-2"), PubSubSymbolicPosition.EARLIEST);
+      Assert.assertEquals(offsetRecord.getCheckpointedRtPosition("dc-3"), PubSubSymbolicPosition.EARLIEST);
     } else {
       Assert.assertEquals(
-          offsetRecord.getUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY),
+          offsetRecord.getCheckpointedRtPosition(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY),
           PubSubSymbolicPosition.EARLIEST);
     }
 

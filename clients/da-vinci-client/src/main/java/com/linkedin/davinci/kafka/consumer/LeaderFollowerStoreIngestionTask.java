@@ -1454,7 +1454,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       upstreamTopic = versionTopic;
     }
     if (upstreamTopic.isRealTime()) {
-      offsetRecord.updateUpstreamOffsets(partitionConsumptionState.getLatestProcessedRtPositions());
+      offsetRecord.checkpointRtPositions(partitionConsumptionState.getLatestProcessedRtPositions());
     } else {
       offsetRecord.checkpointRemoteVtPosition(partitionConsumptionState.getLatestProcessedRemoteVtPosition());
     }
@@ -2635,7 +2635,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           case TOPIC_SWITCH:
             /**
              * For TOPIC_SWITCH message we should use -1 as consumedOffset. This will ensure that it does not update the
-             * setLeaderUpstreamOffset in:
+             * checkpointRtPosition in:
              * {@link #updateOffsetsAsRemoteConsumeLeader(PartitionConsumptionState, LeaderProducedRecordContext, String, PubSubMessage, UpdateVersionTopicOffset, UpdateUpstreamTopicOffset)}
              * The leaderUpstreamOffset is set from the TS message config itself. We should not override it.
              */

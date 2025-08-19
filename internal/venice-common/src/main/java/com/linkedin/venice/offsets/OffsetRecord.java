@@ -97,7 +97,7 @@ public class OffsetRecord {
     return partitionState.getPreviousStatuses().getOrDefault(key, NULL_STRING).toString();
   }
 
-  public PubSubPosition getLocalVersionTopicOffset() {
+  public PubSubPosition getCheckpointedLocalVtPosition() {
     // TODO: Replace with lastProcessedVersionTopicPubSubPosition
     return fromKafkaOffset(this.partitionState.offset);
   }
@@ -237,11 +237,6 @@ public class OffsetRecord {
     this.leaderPubSubTopic = leaderTopic;
   }
 
-  public void setLeaderUpstreamOffset(String upstreamKafkaURL, PubSubPosition leaderOffset) {
-    partitionState.upstreamRealTimeTopicPubSubPositionMap.put(upstreamKafkaURL, leaderOffset.toWireFormatBuffer());
-    partitionState.upstreamOffsetMap.put(upstreamKafkaURL, leaderOffset.getNumericOffset());
-  }
-
   public void setLeaderGUID(GUID guid) {
     this.partitionState.leaderGUID = guid;
   }
@@ -274,8 +269,8 @@ public class OffsetRecord {
    * leader is still consuming VT, so it would return VT offset; users should
    * call this API to get the latest upstream offset.
    */
-  public PubSubPosition getUpstreamOffset(String kafkaURL) {
-    Long offset = partitionState.upstreamOffsetMap.get(kafkaURL);
+  public PubSubPosition getCheckpointedRtPosition(String pubSubBrokerAddress) {
+    Long offset = partitionState.upstreamOffsetMap.get(pubSubBrokerAddress);
     if (offset == null) {
       // If the offset is not set, return EARLIEST symbolic position.
       return PubSubSymbolicPosition.EARLIEST;
@@ -283,30 +278,34 @@ public class OffsetRecord {
     return fromKafkaOffset(offset);
   }
 
+  public void checkpointRtPosition(String pubSubBrokerAddress, PubSubPosition leaderPosition) {
+    partitionState.upstreamRealTimeTopicPubSubPositionMap.put(pubSubBrokerAddress, leaderPosition.toWireFormatBuffer());
+    partitionState.upstreamOffsetMap.put(pubSubBrokerAddress, leaderPosition.getNumericOffset());
+  }
+
   /**
-   * Clone the checkpoint upstream offset map to another map provided as the input.
+   * Update the checkpoint upstream positions map with new values from another map provided as the input.
+   * @param newRtPositions
    */
-  public void cloneUpstreamOffsetMap(@Nonnull Map<String, PubSubPosition> checkpointUpstreamOffsetMapReceiver) {
-    if (partitionState.upstreamOffsetMap != null && !partitionState.upstreamOffsetMap.isEmpty()) {
-      Validate.notNull(checkpointUpstreamOffsetMapReceiver);
-      checkpointUpstreamOffsetMapReceiver.clear();
-      for (Map.Entry<String, Long> offsetEntry: partitionState.upstreamOffsetMap.entrySet()) {
-        String kafkaURL = offsetEntry.getKey();
-        long offset = offsetEntry.getValue();
-        checkpointUpstreamOffsetMapReceiver.put(kafkaURL, fromKafkaOffset(offset));
-      }
+  public void checkpointRtPositions(@Nonnull Map<String, PubSubPosition> newRtPositions) {
+    Validate.notNull(newRtPositions);
+    for (Map.Entry<String, PubSubPosition> offsetEntry: newRtPositions.entrySet()) {
+      // leader offset can be the topic offset from any colo
+      this.checkpointRtPosition(offsetEntry.getKey(), offsetEntry.getValue());
     }
   }
 
   /**
-   * Update the checkpoint upstream offset map with new values from another map provided as the input.
-   * @param newUpstreamOffsetMap
+   * Clone the checkpoint upstream positions map to another map provided as the input.
    */
-  public void updateUpstreamOffsets(@Nonnull Map<String, PubSubPosition> newUpstreamOffsetMap) {
-    Validate.notNull(newUpstreamOffsetMap);
-    for (Map.Entry<String, PubSubPosition> offsetEntry: newUpstreamOffsetMap.entrySet()) {
-      // leader offset can be the topic offset from any colo
-      this.setLeaderUpstreamOffset(offsetEntry.getKey(), offsetEntry.getValue());
+  public void cloneRtPositionCheckpoints(@Nonnull Map<String, PubSubPosition> checkpointUpstreamPositionsReceiver) {
+    if (partitionState.upstreamOffsetMap != null && !partitionState.upstreamOffsetMap.isEmpty()) {
+      Validate.notNull(checkpointUpstreamPositionsReceiver);
+      checkpointUpstreamPositionsReceiver.clear();
+      for (Map.Entry<String, Long> offsetEntry: partitionState.upstreamOffsetMap.entrySet()) {
+        String pubSubBrokerAddress = offsetEntry.getKey();
+        checkpointUpstreamPositionsReceiver.put(pubSubBrokerAddress, fromKafkaOffset(offsetEntry.getValue()));
+      }
     }
   }
 
@@ -363,7 +362,7 @@ public class OffsetRecord {
 
   @Override
   public String toString() {
-    return "OffsetRecord{" + "localVersionTopicOffset=" + getLocalVersionTopicOffset() + ", upstreamOffset="
+    return "OffsetRecord{" + "localVtPosition=" + getCheckpointedLocalVtPosition() + ", rtPositions="
         + getPartitionUpstreamOffsetString() + ", leaderTopic=" + getLeaderTopic() + ", offsetLag=" + getOffsetLag()
         + ", eventTimeEpochMs=" + getMaxMessageTimeInMs() + ", latestProducerProcessingTimeInMs="
         + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived=" + isEndOfPushReceived() + ", databaseInfo="
@@ -379,7 +378,7 @@ public class OffsetRecord {
    * will not be printed.
    */
   public String toSimplifiedString() {
-    return "OffsetRecord{" + "localVersionTopicOffset=" + getLocalVersionTopicOffset()
+    return "OffsetRecord{" + "localVersionTopicOffset=" + getCheckpointedLocalVtPosition()
         + ", latestProducerProcessingTimeInMs=" + getLatestProducerProcessingTimeInMs() + ", isEndOfPushReceived="
         + isEndOfPushReceived() + ", upstreamOffset=" + getPartitionUpstreamOffsetString() + ", leaderTopic="
         + getLeaderTopic() + '}';

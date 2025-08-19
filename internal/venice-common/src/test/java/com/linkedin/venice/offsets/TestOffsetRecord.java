@@ -52,16 +52,16 @@ public class TestOffsetRecord {
     OffsetRecord offsetRecord = TestUtils.getOffsetRecord(ApacheKafkaOffsetPosition.of(100), Optional.empty());
     PubSubPosition p1 = ApacheKafkaOffsetPosition.of(1L);
     PubSubPosition p2 = ApacheKafkaOffsetPosition.of(2L);
-    offsetRecord.setLeaderUpstreamOffset(TEST_KAFKA_URL1, p1);
+    offsetRecord.checkpointRtPosition(TEST_KAFKA_URL1, p1);
 
-    Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL1), p1);
+    Assert.assertEquals(offsetRecord.getCheckpointedRtPosition(TEST_KAFKA_URL1), p1);
 
     Map<String, PubSubPosition> testMap = new HashMap<>();
     testMap.put(TEST_KAFKA_URL2, p2);
-    offsetRecord.updateUpstreamOffsets(testMap);
+    offsetRecord.checkpointRtPositions(testMap);
     // no upstream found for it so fall back to use the leaderOffset which is 1
-    Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL1), p1);
-    Assert.assertEquals(offsetRecord.getUpstreamOffset(TEST_KAFKA_URL2), p2);
+    Assert.assertEquals(offsetRecord.getCheckpointedRtPosition(TEST_KAFKA_URL1), p1);
+    Assert.assertEquals(offsetRecord.getCheckpointedRtPosition(TEST_KAFKA_URL2), p2);
   }
 
   @Test

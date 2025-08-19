@@ -490,10 +490,10 @@ class InternalLocalBootstrappingVeniceChangelogConsumer<K, V> extends VeniceAfte
             LOGGER.info(
                 "No local checkpoint found for partition: {}， will initialize checkpoint to offset: {}",
                 partition,
-                offsetRecord.getLocalVersionTopicOffset());
+                offsetRecord.getCheckpointedLocalVtPosition());
             localCheckpoint = new VeniceChangeCoordinate(
                 getTopicPartition(partition).getPubSubTopic().getName(),
-                offsetRecord.getLocalVersionTopicOffset(),
+                offsetRecord.getCheckpointedLocalVtPosition(),
                 partition);
           } else {
             localCheckpoint = VeniceChangeCoordinate
