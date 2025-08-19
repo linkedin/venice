@@ -27,6 +27,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiRegionClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -284,6 +285,7 @@ public class TestMultiDataCenterAdminOperations {
     adminMessage.payloadUnion = updateStore;
     adminMessage.executionId = executionId;
     updateStore.storeLifecycleHooks = Collections.emptyList();
+    updateStore.blobTransferInServerEnabled = ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name();
     return adminOperationSerializer
         .serialize(adminMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
   }
