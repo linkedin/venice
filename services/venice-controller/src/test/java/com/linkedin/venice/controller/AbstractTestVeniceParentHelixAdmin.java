@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -23,11 +25,14 @@ import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.manager.TopicManager;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -42,6 +47,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 
 
@@ -122,6 +128,10 @@ public class AbstractTestVeniceParentHelixAdmin {
 
     config = mockConfig(clusterName);
     doReturn(1).when(config).getReplicationMetadataVersion();
+    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY)
+        .doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY)
+        .when(config)
+        .getConcurrentPushDetectionStrategy();
 
     controllerClients
         .put(regionName, ControllerClient.constructClusterControllerClient(clusterName, "localhost", Optional.empty()));
@@ -147,6 +157,11 @@ public class AbstractTestVeniceParentHelixAdmin {
 
     // Need to bypass VeniceWriter initialization
     veniceWriter = mock(VeniceWriter.class);
+    doReturn(
+        CompletableFuture
+            .completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, mock(PubSubPosition.class), -1)))
+                .when(veniceWriter)
+                .put(any(), any(), anyInt(), any(), any(), anyLong(), any(), any(), any(), any());
   }
 
   /**

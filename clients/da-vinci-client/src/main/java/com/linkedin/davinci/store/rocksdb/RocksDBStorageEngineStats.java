@@ -10,7 +10,6 @@ import org.apache.commons.io.FileUtils;
 public class RocksDBStorageEngineStats implements StorageEngineStats {
   private final String storeDbPath;
   private final LongSupplier getRMDSizeInBytes;
-  private final LongSupplier getDuplicateKeyCountEstimate;
   private final LongSupplier getKeyCountEstimate;
   private final BooleanSupplier hasMemorySpaceLeft;
 
@@ -26,12 +25,10 @@ public class RocksDBStorageEngineStats implements StorageEngineStats {
   public RocksDBStorageEngineStats(
       String storeDbPath,
       LongSupplier getRMDSizeInBytes,
-      LongSupplier getDuplicateKeyCountEstimate,
       LongSupplier getKeyCountEstimate,
       BooleanSupplier hasMemorySpaceLeft) {
     this.storeDbPath = storeDbPath;
     this.getRMDSizeInBytes = getRMDSizeInBytes;
-    this.getDuplicateKeyCountEstimate = getDuplicateKeyCountEstimate;
     this.getKeyCountEstimate = getKeyCountEstimate;
     this.hasMemorySpaceLeft = hasMemorySpaceLeft;
   }
@@ -69,11 +66,6 @@ public class RocksDBStorageEngineStats implements StorageEngineStats {
   @Override
   public boolean hasMemorySpaceLeft() {
     return this.hasMemorySpaceLeft.getAsBoolean();
-  }
-
-  @Override
-  public long getDuplicateKeyCountEstimate() {
-    return this.getDuplicateKeyCountEstimate.getAsLong();
   }
 
   @Override

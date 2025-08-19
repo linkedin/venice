@@ -77,6 +77,7 @@ import static com.linkedin.venice.Arg.LAG_FILTER_ENABLED;
 import static com.linkedin.venice.Arg.LARGEST_USED_RT_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
 import static com.linkedin.venice.Arg.LATEST_SUPERSET_SCHEMA_ID;
+import static com.linkedin.venice.Arg.LOOK_BACK_MS;
 import static com.linkedin.venice.Arg.MAX_COMPACTION_LAG_SECONDS;
 import static com.linkedin.venice.Arg.MAX_NEARLINE_RECORD_SIZE_BYTES;
 import static com.linkedin.venice.Arg.MAX_RECORD_SIZE_BYTES;
@@ -131,6 +132,7 @@ import static com.linkedin.venice.Arg.STORAGE_QUOTA;
 import static com.linkedin.venice.Arg.STORE;
 import static com.linkedin.venice.Arg.STORES;
 import static com.linkedin.venice.Arg.STORE_FILTER_FILE;
+import static com.linkedin.venice.Arg.STORE_LIFECYCLE_HOOKS_LIST;
 import static com.linkedin.venice.Arg.STORE_SIZE;
 import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
@@ -307,7 +309,7 @@ public enum Command {
           MAX_RECORD_SIZE_BYTES, MAX_NEARLINE_RECORD_SIZE_BYTES, UNUSED_SCHEMA_DELETION_ENABLED, BLOB_TRANSFER_ENABLED,
           SEPARATE_REALTIME_TOPIC_ENABLED, NEARLINE_PRODUCER_COMPRESSION_ENABLED, NEARLINE_PRODUCER_COUNT_PER_WRITER,
           TARGET_SWAP_REGION, TARGET_SWAP_REGION_WAIT_TIME, DAVINCI_HEARTBEAT_REPORTED, ENABLE_STORE_MIGRATION,
-          GLOBAL_RT_DIV_ENABLED, ENUM_SCHEMA_EVOLUTION_ALLOWED }
+          GLOBAL_RT_DIV_ENABLED, ENUM_SCHEMA_EVOLUTION_ALLOWED, STORE_LIFECYCLE_HOOKS_LIST }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
@@ -480,7 +482,7 @@ public enum Command {
   ),
   GET_DEAD_STORES(
       "get-dead-stores", "Get the stores that are considered dead via ACL DB and Store Discovery",
-      new Arg[] { URL, CLUSTER }, new Arg[] { STORE, INCLUDE_SYSTEM_STORES }
+      new Arg[] { URL, CLUSTER }, new Arg[] { STORE, INCLUDE_SYSTEM_STORES, LOOK_BACK_MS }
   ),
   LIST_STORE_PUSH_INFO(
       "list-store-push-info", "List information about current pushes and push history for a specific store.",

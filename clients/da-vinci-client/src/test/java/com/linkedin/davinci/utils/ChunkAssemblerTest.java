@@ -18,6 +18,8 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
@@ -85,6 +87,8 @@ public class ChunkAssemblerTest {
                 AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
                 ByteUtils.extractByteArray(manifestBytes))
             .serialize();
+
+    PubSubPosition p10 = ApacheKafkaOffsetPosition.of(10L);
     doReturn(manifestByteArray).when(mockStorageEngine).get(0, ByteBuffer.wrap(serializedKey));
     ChunkAssembler throwChunkAssembler = new RocksDBChunkAssembler(mockStorageEngine, false);
     Assert.assertThrows(
@@ -94,7 +98,7 @@ public class ChunkAssemblerTest {
             AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
             serializedKey,
             manifestBytes,
-            10,
+            p10,
             compressor));
     ChunkAssembler skipChunkAssembler = new RocksDBChunkAssembler(mockStorageEngine, true);
     Assert.assertNull(
@@ -103,7 +107,7 @@ public class ChunkAssemblerTest {
             AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
             serializedKey,
             manifestBytes,
-            10,
+            p10,
             compressor));
     // Make the chunks available too.
     for (Map.Entry<KafkaKey, Put> entry: chunksMap.entrySet()) {
@@ -118,7 +122,7 @@ public class ChunkAssemblerTest {
         AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
         serializedKey,
         manifestBytes,
-        10,
+        p10,
         compressor);
     Assert.assertNotNull(valueRecord);
     Assert.assertEquals(valueRecord.writerSchemaId(), writerSchemaId);
@@ -136,6 +140,8 @@ public class ChunkAssemblerTest {
     Map<KafkaKey, Put> chunksMap = new HashMap<>();
     int writerSchemaId = 5;
     ChunkedPayloadAndManifest manifest = newChunksAndManifest(serializedKey, writerSchemaId, chunksMap);
+    PubSubPosition p1 = ApacheKafkaOffsetPosition.of(1L);
+    PubSubPosition p10 = ApacheKafkaOffsetPosition.of(10L);
     for (Map.Entry<KafkaKey, Put> entry: chunksMap.entrySet()) {
       byte[] key = entry.getKey().getKey();
       byte[] value =
@@ -148,7 +154,7 @@ public class ChunkAssemblerTest {
               AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(),
               key,
               entry.getValue().getPutValue(),
-              1,
+              p1,
               compressor));
       // Verify chunks are persisted
       verify(mockStorageEngine, times(1)).put(eq(0), eq(key), eq(value));
@@ -167,7 +173,7 @@ public class ChunkAssemblerTest {
         AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
         serializedKey,
         manifestBytes,
-        10,
+        p10,
         compressor);
     Assert.assertNotNull(valueRecord);
     Assert.assertEquals(valueRecord.writerSchemaId(), writerSchemaId);

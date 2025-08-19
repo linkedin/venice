@@ -22,6 +22,8 @@ import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_DATA_REPLIC
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REAL_TIME_TOPIC_NAME;
 import static com.linkedin.venice.meta.Version.DEFAULT_RT_VERSION_NUMBER;
 import static com.linkedin.venice.pubsub.mock.adapter.producer.MockInMemoryProducerAdapter.getPosition;
+import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -60,6 +62,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreLifecycleHooksRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
@@ -79,6 +82,8 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeader;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -915,6 +920,46 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
   }
 
+  @Test
+  public void testGetLastSucceedExecutionIdFromHeader() throws Exception {
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
+    executor.submit(task);
+    for (long i = 1; i <= 3; i++) {
+      PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
+      pubSubMessageHeaders.add(
+          new PubSubMessageHeader(
+              PubSubMessageHeaders.EXECUTION_ID_KEY,
+              ByteBuffer.allocate(Long.BYTES).putLong(i).array()));
+
+      veniceWriter.put(
+          emptyKeyBytes,
+          getKillOfflinePushJobMessage(clusterName, storeTopicName, i),
+          AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+          null,
+          DEFAULT_LEADER_METADATA_WRAPPER,
+          APP_DEFAULT_LOGICAL_TS,
+          null,
+          null,
+          null,
+          pubSubMessageHeaders);
+      final long executionId = i;
+      TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+        return AdminTopicMetadataAccessor.getOffsets(metaData).getFirst() == executionId
+            && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
+      });
+
+      Assert.assertEquals(
+          (long) task.getLastSucceededExecutionId(),
+          executionId,
+          "After consumption succeed, the last succeed execution id should be updated.");
+    }
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testSetStore(boolean replicateAllConfigs) throws Exception {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
@@ -948,6 +993,7 @@ public class AdminConsumptionTaskTest {
     setStore.writeComputationEnabled = writeComputationEnabled;
     setStore.readComputationEnabled = computationEnabled;
     setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
+    setStore.storeLifecycleHooks = Collections.emptyList();
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;
@@ -965,6 +1011,10 @@ public class AdminConsumptionTaskTest {
     partitionerConfig.partitionerParams = new HashMap<>();
     partitionerConfig.partitionerClass = "dummyClassName";
     setStore.partitionerConfig = partitionerConfig;
+
+    List<StoreLifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
+    storeLifecycleHooks.add(new StoreLifecycleHooksRecord("test", Collections.emptyMap()));
+    setStore.storeLifecycleHooks = storeLifecycleHooks;
 
     if (replicateAllConfigs) {
       setStore.replicateAllConfigs = true;

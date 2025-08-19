@@ -3,9 +3,9 @@ package com.linkedin.venice.pubsub.api;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
-import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.pubsub.PubSubPositionFactory;
 import java.lang.reflect.Constructor;
 import org.testng.annotations.Test;
 
@@ -69,7 +69,7 @@ public class EarliestPositionTest {
   @Test
   public void testNumericOffset() {
     EarliestPosition instance = EarliestPosition.getInstance();
-    assertThrows(UnsupportedOperationException.class, () -> instance.getNumericOffset());
+    assertEquals(instance.getNumericOffset(), -1, "Numeric offset for EarliestPosition should be -1");
   }
 
   public static class DummyPosition implements PubSubPosition {
@@ -86,6 +86,11 @@ public class EarliestPositionTest {
     }
 
     public PubSubPositionWireFormat getPositionWireFormat() {
+      return null;
+    }
+
+    @Override
+    public Class<? extends PubSubPositionFactory> getFactoryClass() {
       return null;
     }
 

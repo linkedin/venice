@@ -298,9 +298,9 @@ public class KafkaTopicDumper implements AutoCloseable {
           partition);
       startingOffset = offsetForTime;
     }
-    Long partitionBeginningOffset =
-        consumer.beginningOffset(partition, getPubsubOffsetApiTimeoutDurationDefaultValue());
-    return Math.max(partitionBeginningOffset, startingOffset);
+    return Math.max(
+        startingOffset,
+        consumer.beginningPosition(partition, getPubsubOffsetApiTimeoutDurationDefaultValue()).getNumericOffset());
   }
 
   /**

@@ -30,7 +30,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
-import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LogContext;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.TestUtils;
@@ -64,10 +63,10 @@ class AbstractTestVeniceHelixAdmin {
   static final String KEY_SCHEMA = "\"string\"";
   static final String VALUE_SCHEMA = "\"string\"";
   static final int MAX_NUMBER_OF_PARTITION = 16;
-  static String NODE_ID = "localhost_9985";
-  static int SERVER_LISTENING_PORT = 9985;
+  static final String NODE_ID = "localhost_9985";
+  static final int SERVER_LISTENING_PORT = 9985;
 
-  private final static Logger LOGGER = LogManager.getLogger(AbstractTestVeniceHelixAdmin.class);
+  private static final Logger LOGGER = LogManager.getLogger(AbstractTestVeniceHelixAdmin.class);
 
   VeniceHelixAdmin veniceAdmin;
   String clusterName;
@@ -183,7 +182,6 @@ class AbstractTestVeniceHelixAdmin {
         TestUtils.getParticipant(clusterName, nodeId, zkAddress, SERVER_LISTENING_PORT, stateModelFactory, stateModel);
     helixManager.connect();
     helixManagerByNodeID.put(nodeId, helixManager);
-    HelixUtils.setupInstanceConfig(clusterName, nodeId, zkAddress);
   }
 
   void stopAllParticipants() {

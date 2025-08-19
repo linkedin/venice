@@ -70,4 +70,17 @@ public class TestStoreInfo {
     assertEquals(1, storeInfo.getStoreDeadStatusReasons().size());
     assertEquals("Store deleted", storeInfo.getStoreDeadStatusReasons().get(0));
   }
+
+  @Test
+  public void testSetAndGetStoreLifecycleHooks() {
+    StoreInfo storeInfo = new StoreInfo();
+    assertNotNull(storeInfo.getStoreLifecycleHooks(), "Default should be empty list");
+    assertTrue(storeInfo.getStoreLifecycleHooks().isEmpty(), "Default should be empty");
+
+    LifecycleHooksRecordImpl lifecycleHooksRecord = new LifecycleHooksRecordImpl();
+    lifecycleHooksRecord.setStoreLifecycleHooksClassName("test");
+    lifecycleHooksRecord.setStoreLifecycleHooksParams(Collections.emptyMap());
+    storeInfo.setStoreLifecycleHooks(Arrays.asList(lifecycleHooksRecord));
+    assertEquals(1, storeInfo.getStoreLifecycleHooks().size());
+  }
 }

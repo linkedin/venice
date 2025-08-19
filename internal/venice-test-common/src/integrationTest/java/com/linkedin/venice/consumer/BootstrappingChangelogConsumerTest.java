@@ -21,6 +21,7 @@ import static com.linkedin.venice.ConfigKeys.DAVINCI_P2P_BLOB_TRANSFER_SERVER_PO
 import static com.linkedin.venice.ConfigKeys.DAVINCI_PUSH_STATUS_SCAN_INTERVAL_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.stats.ClientType.CHANGE_DATA_CAPTURE_CLIENT;
@@ -105,7 +106,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestBootstrappingChangelogConsumer {
+public class BootstrappingChangelogConsumerTest {
   private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
   private static final int PARTITION_COUNT = 3;
 
@@ -238,7 +239,8 @@ public class TestBootstrappingChangelogConsumer {
         1,
         polledChangeEventsMap,
         polledChangeEventsList,
-        bootstrappingVeniceChangelogConsumerList);
+        bootstrappingVeniceChangelogConsumerList,
+        true);
 
     // Since nothing is produced, so no changed events generated.
     verifyNoRecordsProduced(polledChangeEventsMap, polledChangeEventsList, bootstrappingVeniceChangelogConsumerList);
@@ -269,6 +271,7 @@ public class TestBootstrappingChangelogConsumer {
     consumerProperties.put(CLUSTER_NAME, clusterName);
     consumerProperties.put(ZOOKEEPER_ADDRESS, zkAddress);
     consumerProperties.putAll(clusterWrapper.getPubSubClientProperties());
+    consumerProperties.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, true);
     ChangelogClientConfig globalChangelogClientConfig =
         new ChangelogClientConfig().setConsumerProperties(consumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
@@ -313,6 +316,10 @@ public class TestBootstrappingChangelogConsumer {
       verifyDelete(polledChangeEventsMap, 110, 120, 1);
     });
 
+    long startingSequenceId = polledChangeEventsList.iterator().next().getOffset().getConsumerSequenceId();
+    Map<Integer, Long> partitionSequenceIdMap = new HashMap<>();
+    verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
+
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       assertTrue(bootstrappingVeniceChangelogConsumerList.get(0).isCaughtUp());
     });
@@ -326,7 +333,11 @@ public class TestBootstrappingChangelogConsumer {
         1,
         polledChangeEventsMap,
         polledChangeEventsList,
-        bootstrappingVeniceChangelogConsumerList);
+        bootstrappingVeniceChangelogConsumerList,
+        false);
+    verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
+    polledChangeEventsList.clear();
+    polledChangeEventsMap.clear();
 
     // Since nothing is produced, so no changed events generated.
     verifyNoRecordsProduced(polledChangeEventsMap, polledChangeEventsList, bootstrappingVeniceChangelogConsumerList);
@@ -348,7 +359,11 @@ public class TestBootstrappingChangelogConsumer {
         2,
         polledChangeEventsMap,
         polledChangeEventsList,
-        bootstrappingVeniceChangelogConsumerList);
+        bootstrappingVeniceChangelogConsumerList,
+        false);
+    verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
+    polledChangeEventsList.clear();
+    polledChangeEventsMap.clear();
 
     // Do a repush
     props = defaultVPJProps(clusterWrapper, inputDirPath, storeName);
@@ -370,7 +385,11 @@ public class TestBootstrappingChangelogConsumer {
         3,
         polledChangeEventsMap,
         polledChangeEventsList,
-        bootstrappingVeniceChangelogConsumerList);
+        bootstrappingVeniceChangelogConsumerList,
+        false);
+    verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
+    polledChangeEventsList.clear();
+    polledChangeEventsMap.clear();
 
     // Test restart
     polledChangeEventsList.clear();
@@ -392,8 +411,38 @@ public class TestBootstrappingChangelogConsumer {
       verifyPut(polledChangeEventsMap, 140, 150, 3);
       verifyPut(polledChangeEventsMap, 160, 170, 3);
     });
+    verifyVCCSequenceId(polledChangeEventsList, partitionSequenceIdMap, startingSequenceId);
 
     cleanUpStoreAndVerify(storeName);
+  }
+
+  /**
+   * Verify VCC sequence id is monotonically increasing.
+   * @param polledChangeEventsList to be verified
+   * @param previousPartitionSequenceIdMap of previous consumption, if null it will be created
+   * @param knownStartingSequenceId of the consumer, if -1 it will be inferred from the first message
+   */
+  private void verifyVCCSequenceId(
+      List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsList,
+      Map<Integer, Long> previousPartitionSequenceIdMap,
+      long knownStartingSequenceId) {
+    if (polledChangeEventsList.isEmpty()) {
+      return;
+    }
+    long startingSequenceId = knownStartingSequenceId < 0
+        ? polledChangeEventsList.iterator().next().getOffset().getConsumerSequenceId()
+        : knownStartingSequenceId;
+    Map<Integer, Long> partitionSequenceIdMap =
+        previousPartitionSequenceIdMap == null ? new HashMap<>() : previousPartitionSequenceIdMap;
+    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate> message: polledChangeEventsList) {
+      int partition = message.getPartition();
+      long expectedSequenceId = partitionSequenceIdMap.computeIfAbsent(partition, k -> startingSequenceId);
+      Assert.assertEquals(
+          message.getOffset().getConsumerSequenceId(),
+          expectedSequenceId,
+          "Unexpected sequence id for partition: " + partition + ", starting sequence id: " + startingSequenceId);
+      partitionSequenceIdMap.put(partition, expectedSequenceId + 1);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -509,7 +558,8 @@ public class TestBootstrappingChangelogConsumer {
         1,
         polledChangeEventsMap,
         polledChangeEventsList,
-        bootstrappingVeniceChangelogConsumerList);
+        bootstrappingVeniceChangelogConsumerList,
+        true);
 
     // Since nothing is produced, so no changed events generated.
     verifyNoRecordsProduced(polledChangeEventsMap, polledChangeEventsList, bootstrappingVeniceChangelogConsumerList);
@@ -893,7 +943,8 @@ public class TestBootstrappingChangelogConsumer {
       int version,
       Map<String, PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsMap,
       List<PubSubMessage<Utf8, ChangeEvent<Utf8>, VeniceChangeCoordinate>> polledChangeEventsList,
-      List<BootstrappingVeniceChangelogConsumer<Utf8, Utf8>> bootstrappingVeniceChangelogConsumerList) {
+      List<BootstrappingVeniceChangelogConsumer<Utf8, Utf8>> bootstrappingVeniceChangelogConsumerList,
+      boolean clearConsumedRecords) {
     // Half puts and half deletes
     int recordsToProduce = 20;
     int numPuts = recordsToProduce / 2;
@@ -925,8 +976,10 @@ public class TestBootstrappingChangelogConsumer {
       verifyPut(polledChangeEventsMap, startIndex, startIndex + numPuts, version);
       verifyDelete(polledChangeEventsMap, startIndex + numPuts, startIndex + numDeletes, version);
     });
-    polledChangeEventsList.clear();
-    polledChangeEventsMap.clear();
+    if (clearConsumedRecords) {
+      polledChangeEventsList.clear();
+      polledChangeEventsMap.clear();
+    }
 
     return startIndex + recordsToProduce;
   }

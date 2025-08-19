@@ -26,19 +26,10 @@ public class IngestionStats {
   protected static final String INGESTION_TASK_ERROR_GAUGE = "ingestion_task_errored_gauge";
   protected static final String INGESTION_TASK_PUSH_TIMEOUT_GAUGE = "ingestion_task_push_timeout_gauge";
   protected static final String WRITE_COMPUTE_OPERATION_FAILURE = "write_compute_operation_failure";
-  protected static final String FOLLOWER_OFFSET_LAG = "follower_offset_lag";
-  protected static final String LEADER_OFFSET_LAG = "leader_offset_lag";
-  protected static final String HYBRID_LEADER_OFFSET_LAG = "hybrid_leader_offset_lag";
-  protected static final String HYBRID_FOLLOWER_OFFSET_LAG = "hybrid_follower_offset_lag";
-  protected static final String BATCH_REPLICATION_LAG = "batch_replication_lag";
-  protected static final String BATCH_LEADER_OFFSET_LAG = "batch_leader_offset_lag";
-  protected static final String BATCH_FOLLOWER_OFFSET_LAG = "batch_follower_offset_lag";
-
   protected static final String RECORDS_CONSUMED_METRIC_NAME = "records_consumed";
   protected static final String BYTES_CONSUMED_METRIC_NAME = "bytes_consumed";
   protected static final String LEADER_RECORDS_CONSUMED_METRIC_NAME = "leader_records_consumed";
   protected static final String LEADER_BYTES_CONSUMED_METRIC_NAME = "leader_bytes_consumed";
-  protected static final String LEADER_STALLED_HYBRID_INGESTION_METRIC_NAME = "leader_stalled_hybrid_ingestion";
   protected static final String FOLLOWER_RECORDS_CONSUMED_METRIC_NAME = "follower_records_consumed";
   protected static final String FOLLOWER_BYTES_CONSUMED_METRIC_NAME = "follower_bytes_consumed";
   protected static final String LEADER_RECORDS_PRODUCED_METRIC_NAME = "leader_records_produced";
@@ -54,7 +45,6 @@ public class IngestionStats {
   protected static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
   protected static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
   protected static final String READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME = "ready_to_serve_with_rt_lag";
-  public static final String VERSION_TOPIC_END_OFFSET_REWIND_COUNT = "version_topic_end_offset_rewind_count";
   public static final String NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY = "nearline_producer_to_local_broker_latency";
   public static final String NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY =
       "nearline_local_broker_to_ready_to_serve_latency";
@@ -110,9 +100,6 @@ public class IngestionStats {
   private final Count totalDuplicateKeyUpdateCount = new Count();
   private final Sensor totalDuplicateKeyUpdateCountSensor;
 
-  /** Record a version-level offset rewind events for VTs across all stores. */
-  private final Count versionTopicEndOffsetRewindCount = new Count();
-  private final Sensor versionTopicEndOffsetRewindSensor;
   private final MetricsRepository localMetricRepository;
 
   // Measure the max idle time among partitions for a given the store on this host
@@ -164,8 +151,6 @@ public class IngestionStats {
     registerSensor(localMetricRepository, LEADER_RECORDS_PRODUCED_METRIC_NAME, leaderRecordsProducedSensor);
     registerSensor(localMetricRepository, LEADER_BYTES_PRODUCED_METRIC_NAME, leaderBytesProducedSensor);
 
-    versionTopicEndOffsetRewindSensor = localMetricRepository.sensor(VERSION_TOPIC_END_OFFSET_REWIND_COUNT);
-    versionTopicEndOffsetRewindSensor.add(VERSION_TOPIC_END_OFFSET_REWIND_COUNT, versionTopicEndOffsetRewindCount);
     totalDuplicateKeyUpdateCountSensor = localMetricRepository.sensor(TOTAL_DUPLICATE_KEY_UPDATE_COUNT);
     totalDuplicateKeyUpdateCountSensor.add(TOTAL_DUPLICATE_KEY_UPDATE_COUNT, totalDuplicateKeyUpdateCount);
 
@@ -240,88 +225,11 @@ public class IngestionStats {
     return anyCompleted ? totalFailedIngestionPartitions : 0;
   }
 
-  public long getBatchReplicationLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getBatchReplicationLag();
-  }
-
-  public long getLeaderOffsetLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getLeaderOffsetLag();
-  }
-
-  public long getBatchLeaderOffsetLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getBatchLeaderOffsetLag();
-  }
-
-  public long getHybridLeaderOffsetLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getHybridLeaderOffsetLag();
-  }
-
-  /**
-   * @return This stats is usually aggregated across the nodes so that
-   * we can see the overall lags between leaders and followers.
-   *
-   * we return 0 instead of {@link com.linkedin.venice.stats.StatsErrorCode#INACTIVE_STORE_INGESTION_TASK}
-   * so the negative error code will not mess up the aggregation.
-   */
-  public long getFollowerOffsetLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getFollowerOffsetLag();
-  }
-
-  public long getBatchFollowerOffsetLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getBatchFollowerOffsetLag();
-  }
-
-  public long getHybridFollowerOffsetLag() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getHybridFollowerOffsetLag();
-  }
-
-  public long getRegionHybridOffsetLag(int regionId) {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    return ingestionTask.getRegionHybridOffsetLag(regionId);
-  }
-
   public int getWriteComputeErrorCode() {
     if (!hasActiveIngestionTask()) {
       return INACTIVE_STORE_INGESTION_TASK.code;
     }
     return ingestionTask.getWriteComputeErrorCode();
-  }
-
-  /**
-   * @return 1 if the leader offset lag is greater than 0 and not actively ingesting data, otherwise 0.
-   */
-  public double getLeaderStalledHybridIngestion() {
-    if (!hasActiveIngestionTask()) {
-      return 0;
-    }
-    if (getHybridLeaderOffsetLag() > 0 && getLeaderBytesConsumed() == 0) {
-      return 1;
-    } else {
-      return 0;
-    }
   }
 
   public double getReadyToServeWithRTLag() {
@@ -376,14 +284,6 @@ public class IngestionStats {
 
   public void recordInternalPreprocessingLatency(double value, long currentTimeMs) {
     internalPreprocessingLatency.record(value, currentTimeMs);
-  }
-
-  public void recordVersionTopicEndOffsetRewind() {
-    versionTopicEndOffsetRewindSensor.record();
-  }
-
-  public double getVersionTopicEndOffsetRewindCount() {
-    return versionTopicEndOffsetRewindCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public double getConsumedRecordEndToEndProcessingLatencyAvg() {

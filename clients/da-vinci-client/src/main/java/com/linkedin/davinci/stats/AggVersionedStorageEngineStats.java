@@ -84,13 +84,6 @@ public class AggVersionedStorageEngineStats extends
       return 0;
     }
 
-    public long getDuplicateKeyCountEstimate() {
-      if (storageEngine != null) {
-        return storageEngine.getStats().getDuplicateKeyCountEstimate();
-      }
-      return 0;
-    }
-
     public void recordRocksDBOpenFailure() {
       rocksDBOpenFailureCount.incrementAndGet();
     }
@@ -135,14 +128,6 @@ public class AggVersionedStorageEngineStats extends
           return stats.getKeyCountEstimate();
         }
       }, "rocksdb_key_count_estimate"));
-      registerSensor(new AsyncGauge((ignored, ignored2) -> {
-        StorageEngineStatsWrapper stats = getStats();
-        if (stats == null) {
-          return StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code;
-        } else {
-          return stats.getDuplicateKeyCountEstimate();
-        }
-      }, "rocksdb_duplicate_key_count_estimate"));
     }
   }
 }

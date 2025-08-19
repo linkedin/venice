@@ -32,6 +32,7 @@ import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.AdminTopicMetadataResponse;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.ClusterStaleDataAuditResponse;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerClientFactory;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -85,6 +86,7 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.StoreInfo;
@@ -1348,6 +1350,11 @@ public class AdminTool {
     booleanParam(cmd, Arg.DAVINCI_HEARTBEAT_REPORTED, p -> params.setIsDavinciHeartbeatReported(p), argSet);
     booleanParam(cmd, Arg.GLOBAL_RT_DIV_ENABLED, params::setGlobalRtDivEnabled, argSet);
     booleanParam(cmd, Arg.ENUM_SCHEMA_EVOLUTION_ALLOWED, params::setEnumSchemaEvolutionAllowed, argSet);
+
+    String storeLifecycleHooksStr = getOptionalArgument(cmd, Arg.STORE_LIFECYCLE_HOOKS_LIST);
+    List<LifecycleHooksRecord> lifecycleHooksList =
+        Utils.parseStoreLifecycleHooksListFromString(storeLifecycleHooksStr, Arg.STORE_LIFECYCLE_HOOKS_LIST.toString());
+    params.setStoreLifecycleHooks(lifecycleHooksList);
 
     /**
      * {@link Arg#REPLICATE_ALL_CONFIGS} doesn't require parameters; once specified, it means true.
@@ -2921,9 +2928,23 @@ public class AdminTool {
   private static void getDeadStores(CommandLine cmd) {
     String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
     Optional<String> storeName = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE));
-    boolean includeSystemStores = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES));
+    String includeSystemStoresStr = getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES);
+    String lookBackMSStr = getOptionalArgument(cmd, Arg.LOOK_BACK_MS);
 
-    MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, includeSystemStores, storeName);
+    // Build parameters map for clean, extensible API
+    Map<String, String> params = new HashMap<>();
+
+    // Include system stores parameter (default: false if not specified)
+    if (includeSystemStoresStr != null && !includeSystemStoresStr.isEmpty()) {
+      params.put(ControllerApiConstants.INCLUDE_SYSTEM_STORES, includeSystemStoresStr);
+    }
+
+    // Look back MS parameter
+    if (lookBackMSStr != null && !lookBackMSStr.isEmpty()) {
+      params.put(ControllerApiConstants.LOOK_BACK_MS, lookBackMSStr);
+    }
+
+    MultiStoreInfoResponse response = controllerClient.getDeadStores(clusterName, storeName, params);
     printObject(response);
   }
 

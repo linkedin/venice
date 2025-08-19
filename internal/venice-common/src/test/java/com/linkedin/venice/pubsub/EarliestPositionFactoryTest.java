@@ -18,14 +18,14 @@ public class EarliestPositionFactoryTest {
   private static final int TYPE_ID = -2;
 
   @Test
-  public void testCreateFromWireFormatReturnsSingleton() {
+  public void testCreateFromPositionRawBytesReturnsSingleton() {
     EarliestPositionFactory factory = new EarliestPositionFactory(TYPE_ID);
 
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.setType(TYPE_ID);
     wireFormat.setRawBytes(ByteBuffer.wrap(new byte[0]));
 
-    PubSubPosition result = factory.createFromWireFormat(wireFormat);
+    PubSubPosition result = factory.fromPositionRawBytes(wireFormat);
 
     assertNotNull(result);
     assertSame(result, PubSubSymbolicPosition.EARLIEST);
@@ -38,14 +38,14 @@ public class EarliestPositionFactoryTest {
   }
 
   @Test
-  public void testCreateFromWireFormatThrowsOnTypeMismatch() {
+  public void testCreateFromPositionRawBytesThrowsOnTypeMismatch() {
     EarliestPositionFactory factory = new EarliestPositionFactory(TYPE_ID);
 
     PubSubPositionWireFormat wireFormat = new PubSubPositionWireFormat();
     wireFormat.setType(456); // wrong type
     wireFormat.setRawBytes(ByteBuffer.wrap(new byte[0]));
 
-    VeniceException ex = expectThrows(VeniceException.class, () -> factory.createFromWireFormat(wireFormat));
+    VeniceException ex = expectThrows(VeniceException.class, () -> factory.fromPositionRawBytes(wireFormat));
     assertTrue(ex.getMessage().contains("Position type ID mismatch"));
   }
 }

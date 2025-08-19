@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.transformMetricName;
 import static com.linkedin.venice.stats.VeniceOpenTelemetryMetricNamingFormat.validateMetricName;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.dimensions.VeniceDimensionInterface;
 import com.linkedin.venice.stats.dimensions.VeniceMetricsDimensions;
@@ -11,6 +12,7 @@ import com.linkedin.venice.stats.metrics.MetricEntityStateBase;
 import com.linkedin.venice.stats.metrics.MetricType;
 import com.linkedin.venice.stats.metrics.MetricUnit;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributesBuilder;
@@ -21,6 +23,7 @@ import io.opentelemetry.api.metrics.DoubleHistogramBuilder;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongCounterBuilder;
 import io.opentelemetry.api.metrics.Meter;
+import io.opentelemetry.api.metrics.MeterProvider;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporter;
 import io.opentelemetry.exporter.otlp.http.metrics.OtlpHttpMetricExporterBuilder;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -55,6 +58,7 @@ public class VeniceOpenTelemetryMetricsRepository {
   public static final String DEFAULT_METRIC_PREFIX = "venice.";
   private final VeniceMetricsConfig metricsConfig;
   private SdkMeterProvider sdkMeterProvider = null;
+  private final OpenTelemetry openTelemetry;
   private final boolean emitOpenTelemetryMetrics;
   private final VeniceOpenTelemetryMetricNamingFormat metricFormat;
   private Meter meter;
@@ -72,70 +76,84 @@ public class VeniceOpenTelemetryMetricsRepository {
     metricFormat = metricsConfig.getMetricNamingFormat();
     if (!emitOpenTelemetryMetrics) {
       LOGGER.info("OpenTelemetry metrics are disabled");
+      openTelemetry = null;
       return;
     }
-    LOGGER.info(
-        "OpenTelemetry initialization for {} started with config: {}",
-        metricsConfig.getServiceName(),
-        metricsConfig.toString());
     this.metricPrefix = metricsConfig.getMetricPrefix();
     validateMetricName(getMetricPrefix());
-    try {
-      SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
-
-      if (metricsConfig.exportOtelMetricsToEndpoint()) {
-        MetricExporter httpExporter = getOtlpHttpMetricExporter(metricsConfig);
-        builder.registerMetricReader(
-            PeriodicMetricReader.builder(httpExporter)
-                .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
-                .build());
+    if (metricsConfig.useOpenTelemetryInitializedByApplication()) {
+      LOGGER.info("Using globally initialized OpenTelemetry for {}", metricsConfig.getServiceName());
+      openTelemetry = GlobalOpenTelemetry.get();
+      if (openTelemetry == null || openTelemetry.getMeterProvider() == null
+          || openTelemetry.getMeterProvider().equals(MeterProvider.noop())) {
+        // Fail fast if no global OpenTelemetry instance is initialized to avoid silent metric loss.
+        // When disabled, each Venice component will initialize its own OpenTelemetry instance,
+        // which can lead to multiple instances in the same application, especially when used as
+        // a library (common for Venice clients) when multiple such libraries initialized.
+        throw new VeniceException(
+            "OpenTelemetry is not initialized globally by the application: disable the configuration or "
+                + "initialize OpenTelemetry in the application before initializing venice");
       }
-
-      if (metricsConfig.exportOtelMetricsToLog()) {
-        // internal to test: Disabled by default
-        builder.registerMetricReader(
-            PeriodicMetricReader.builder(new LogBasedMetricExporter(metricsConfig))
-                .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
-                .build());
-      }
-
-      if (metricsConfig.getOtelAdditionalMetricsReader() != null) {
-        // additional metrics reader apart from the above. For instance,
-        // an in-memory metric reader can be passed in for testing purposes.
-        builder.registerMetricReader(metricsConfig.getOtelAdditionalMetricsReader());
-      }
-
-      if (metricsConfig.useOtelExponentialHistogram()) {
-        setExponentialHistogramAggregation(builder, metricsConfig);
-      }
-
-      // Set resource to empty to avoid adding any default resource attributes. The receiver
-      // pipeline can choose to add the respective resource attributes if needed.
-      builder.setResource(Resource.empty());
-
-      sdkMeterProvider = builder.build();
-
-      // Register MeterProvider with the OpenTelemetry instance
-      OpenTelemetry openTelemetry = OpenTelemetrySdk.builder().setMeterProvider(sdkMeterProvider).build();
-
-      this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
-
-      this.recordFailureMetric = MetricEntityStateBase.create(
-          CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(),
-          this,
-          Collections.EMPTY_MAP,
-          Attributes.empty());
-
+    } else {
       LOGGER.info(
-          "OpenTelemetry initialization for {} completed with config: {}",
+          "OpenTelemetry initialization for {} started with config: {}",
           metricsConfig.getServiceName(),
-          metricsConfig);
-    } catch (Exception e) {
-      String err = "OpenTelemetry initialization for " + metricsConfig.getServiceName() + " failed with config: "
-          + metricsConfig;
-      LOGGER.error(err, e);
-      throw new VeniceException(err, e);
+          metricsConfig.toString());
+      try {
+        SdkMeterProviderBuilder builder = SdkMeterProvider.builder();
+
+        if (metricsConfig.exportOtelMetricsToEndpoint()) {
+          MetricExporter httpExporter = getOtlpHttpMetricExporter(metricsConfig);
+          builder.registerMetricReader(
+              PeriodicMetricReader.builder(httpExporter)
+                  .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
+                  .build());
+        }
+
+        if (metricsConfig.exportOtelMetricsToLog()) {
+          // internal to test: Disabled by default
+          builder.registerMetricReader(
+              PeriodicMetricReader.builder(new LogBasedMetricExporter(metricsConfig))
+                  .setInterval(metricsConfig.getExportOtelMetricsIntervalInSeconds(), TimeUnit.SECONDS)
+                  .build());
+        }
+
+        if (metricsConfig.getOtelAdditionalMetricsReader() != null) {
+          // additional metrics reader apart from the above. For instance,
+          // an in-memory metric reader can be passed in for testing purposes.
+          builder.registerMetricReader(metricsConfig.getOtelAdditionalMetricsReader());
+        }
+
+        if (metricsConfig.useOtelExponentialHistogram()) {
+          setExponentialHistogramAggregation(builder, metricsConfig);
+        }
+
+        // Set resource to empty to avoid adding any default resource attributes. The receiver
+        // pipeline can choose to add the respective resource attributes if needed.
+        builder.setResource(Resource.empty());
+
+        sdkMeterProvider = builder.build();
+
+        // Register MeterProvider with the OpenTelemetry instance
+        openTelemetry = OpenTelemetrySdk.builder().setMeterProvider(sdkMeterProvider).build();
+        LOGGER.info(
+            "OpenTelemetry initialization for {} completed with config: {}",
+            metricsConfig.getServiceName(),
+            metricsConfig);
+      } catch (Exception e) {
+        String err = "OpenTelemetry initialization for " + metricsConfig.getServiceName() + " failed with config: "
+            + metricsConfig;
+        LOGGER.error(err, e);
+        throw new VeniceException(err, e);
+      }
     }
+
+    this.meter = openTelemetry.getMeter(transformMetricName(getMetricPrefix(), metricFormat));
+    this.recordFailureMetric = MetricEntityStateBase.create(
+        CommonMetricsEntity.METRIC_RECORD_FAILURE.getMetricEntity(),
+        this,
+        Collections.EMPTY_MAP,
+        Attributes.empty());
   }
 
   /**
@@ -162,14 +180,12 @@ public class VeniceOpenTelemetryMetricsRepository {
   }
 
   /**
-   * Setting Exponential Histogram aggregation for {@link MetricType#HISTOGRAM} by looping through all
-   * the metric entities set for this service to registering the view with exponential histogram aggregation for
-   * all the {@link MetricType#HISTOGRAM} metrics.
+   * Setting Exponential Histogram aggregation for each {@link MetricType#HISTOGRAM} metric by looping through all
+   * the metric entities set for this service using views.
    *
-   * There is a limitation in opentelemetry sdk to configure different histogram aggregation for different
-   * instruments, so {@link OtlpHttpMetricExporterBuilder#setDefaultAggregationSelector} to enable exponential
-   * histogram aggregation is not used here to not convert the histograms of type {@link MetricType#MIN_MAX_COUNT_SUM_AGGREGATIONS}
-   * to exponential histograms to be able to follow explict boundaries.
+   * Because the OpenTelemetry SDK cannot currently assign different histogram aggregations to different histogram
+   * instruments, we deliberately avoid {@link OtlpHttpMetricExporterBuilder#setDefaultAggregationSelector}. Using it
+   * would also convert {@link MetricType#MIN_MAX_COUNT_SUM_AGGREGATIONS} to exponential histograms.
    *
    * If the metric entities are empty, it will throw an exception. Failing fast here as
    * 1. If we configure exponential histogram aggregation for every histogram: it could lead to increased memory usage
@@ -226,6 +242,16 @@ public class VeniceOpenTelemetryMetricsRepository {
         : createFullMetricPrefix(metricEntity.getCustomMetricPrefix()));
   }
 
+  static String getMetricDescription(MetricEntity metricEntity, VeniceMetricsConfig metricsConfig) {
+    String customDescription = metricsConfig.getOtelCustomDescriptionForHistogramMetrics();
+    if (metricEntity.getMetricType() == MetricType.HISTOGRAM && customDescription != null
+        && !customDescription.isEmpty()) {
+      return customDescription;
+    } else {
+      return metricEntity.getDescription();
+    }
+  }
+
   public DoubleHistogram createHistogram(MetricEntity metricEntity) {
     if (!emitOpenTelemetryMetrics()) {
       return null;
@@ -234,10 +260,10 @@ public class VeniceOpenTelemetryMetricsRepository {
       String fullMetricName = getFullMetricName(metricEntity);
       DoubleHistogramBuilder builder = meter.histogramBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
-          .setDescription(metricEntity.getDescription());
+          .setDescription(getMetricDescription(metricEntity, metricsConfig));
       if (metricEntity.getMetricType() == MetricType.MIN_MAX_COUNT_SUM_AGGREGATIONS) {
         // No buckets needed to get only min/max/count/sum aggregations
-        builder.setExplicitBucketBoundariesAdvice(new ArrayList<>());
+        builder.setExplicitBucketBoundariesAdvice(new ArrayList<>()).setDescription(metricEntity.getDescription());
       }
       return builder.build();
     });
@@ -251,7 +277,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       String fullMetricName = getFullMetricName(metricEntity);
       LongCounterBuilder builder = meter.counterBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
-          .setDescription(metricEntity.getDescription());
+          .setDescription(getMetricDescription(metricEntity, metricsConfig));
       return builder.build();
     });
   }
@@ -264,7 +290,7 @@ public class VeniceOpenTelemetryMetricsRepository {
       String fullMetricName = getFullMetricName(metricEntity);
       DoubleGaugeBuilder builder = meter.gaugeBuilder(fullMetricName)
           .setUnit(metricEntity.getUnit().name())
-          .setDescription(metricEntity.getDescription());
+          .setDescription(getMetricDescription(metricEntity, metricsConfig));
       return builder.build();
     });
   }
@@ -433,17 +459,22 @@ public class VeniceOpenTelemetryMetricsRepository {
     }
   }
 
-  /** for testing purposes */
+  @VisibleForTesting
   SdkMeterProvider getSdkMeterProvider() {
     return sdkMeterProvider;
   }
 
-  /** for testing purposes */
+  @VisibleForTesting
+  OpenTelemetry getOpenTelemetry() {
+    return openTelemetry;
+  }
+
+  @VisibleForTesting
   Meter getMeter() {
     return meter;
   }
 
-  /** for testing purposes */
+  @VisibleForTesting
   public MetricEntityStateBase getRecordFailureMetric() {
     return this.recordFailureMetric;
   }

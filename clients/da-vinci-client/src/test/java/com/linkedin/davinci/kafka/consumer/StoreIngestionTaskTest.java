@@ -37,11 +37,11 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.utils.TestUtils.getOffsetRecord;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
-import static com.linkedin.venice.utils.Time.MS_PER_DAY;
 import static com.linkedin.venice.utils.Time.MS_PER_HOUR;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_COMPLETED;
 import static com.linkedin.venice.writer.LeaderCompleteState.LEADER_NOT_COMPLETED;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
+import static com.linkedin.venice.writer.VeniceWriter.LEADER_COMPLETE_STATE_HEADERS;
 import static com.linkedin.venice.writer.VeniceWriter.generateHeartbeatMessage;
 import static com.linkedin.venice.writer.VeniceWriter.getHeartbeatKME;
 import static org.mockito.ArgumentMatchers.any;
@@ -81,6 +81,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.davinci.client.DaVinciRecordTransformerConfig;
+import com.linkedin.davinci.client.InternalDaVinciRecordTransformerConfig;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -913,6 +914,13 @@ public abstract class StoreIngestionTaskTest {
 
     zkHelixAdmin = mock(ZKHelixAdmin.class);
     doNothing().when(zkHelixAdmin).setPartitionsToError(anyString(), anyString(), anyString(), anyList());
+
+    InternalDaVinciRecordTransformerConfig internalDaVinciRecordTransformerConfig = null;
+    if (recordTransformerConfig != null) {
+      internalDaVinciRecordTransformerConfig =
+          new InternalDaVinciRecordTransformerConfig(recordTransformerConfig, mockDaVinciRecordTransformerStats);
+    }
+
     storeIngestionTaskUnderTest = spy(
         ingestionTaskFactory.getNewIngestionTask(
             this.mockStorageService,
@@ -924,7 +932,7 @@ public abstract class StoreIngestionTaskTest {
             PARTITION_FOO,
             false,
             Optional.empty(),
-            recordTransformerConfig,
+            internalDaVinciRecordTransformerConfig,
             Lazy.of(() -> zkHelixAdmin)));
 
     Future testSubscribeTaskFuture = null;
@@ -1176,7 +1184,6 @@ public abstract class StoreIngestionTaskTest {
         .setHostLevelIngestionStats(mockAggStoreIngestionStats)
         .setVersionedDIVStats(mockVersionedDIVStats)
         .setVersionedIngestionStats(mockVersionedStorageIngestionStats)
-        .setDaVinciRecordTransformerStats(mockDaVinciRecordTransformerStats)
         .setStoreBufferService(storeBufferService)
         .setServerConfig(veniceServerConfig)
         .setDiskUsage(diskUsage)
@@ -2715,6 +2722,77 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test(dataProvider = "aaConfigProvider")
+  public void testRecordTransformerDatabaseChecksumDefaultSettings(AAConfig aaConfig) throws Exception {
+    databaseChecksumVerificationEnabled = true;
+    doReturn(false).when(rocksDBServerConfig).isRocksDBPlainTableFormatEnabled();
+    setStoreVersionStateSupplier(true);
+
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+      localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
+      try {
+        localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
+      } catch (Exception e) {
+        throw new VeniceException(e);
+      }
+
+      // Verify it retrieves the offset from the Offset Manager
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
+
+      StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
+      deferredWritePartitionConfig.setDeferredWrite(true);
+
+      waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        // When DVRT is enabled with default settings, checksum shouldn't be calculated
+        verify(mockAbstractStorageEngine)
+            .beginBatchWrite(eq(deferredWritePartitionConfig), any(), eq(Optional.empty()));
+      });
+    }, aaConfig);
+
+    config.setRecordTransformerConfig(buildRecordTransformerConfig(false));
+    runTest(config);
+  }
+
+  @Test(dataProvider = "aaConfigProvider")
+  public void testRecordTransformerDatabaseChecksumSkipCompatabilityChecks(AAConfig aaConfig) throws Exception {
+    databaseChecksumVerificationEnabled = true;
+    doReturn(false).when(rocksDBServerConfig).isRocksDBPlainTableFormatEnabled();
+    setStoreVersionStateSupplier(true);
+
+    StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
+      localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
+      try {
+        localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
+      } catch (Exception e) {
+        throw new VeniceException(e);
+      }
+
+      CheckSum checksum = CheckSum.getInstance(CheckSumType.MD5);
+      checksum.update(putKeyFoo);
+      checksum.update(SCHEMA_ID);
+      checksum.update(putValue);
+      ArgumentCaptor<Optional<Supplier<byte[]>>> checksumCaptor = ArgumentCaptor.forClass(Optional.class);
+
+      // Verify it retrieves the offset from the Offset Manager
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
+
+      StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
+      deferredWritePartitionConfig.setDeferredWrite(true);
+
+      waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        // When DVRT is enabled with skip compatability checks enabled, checksum should be calculated
+        verify(mockAbstractStorageEngine)
+            .beginBatchWrite(eq(deferredWritePartitionConfig), any(), checksumCaptor.capture());
+        Optional<Supplier<byte[]>> checksumSupplier = checksumCaptor.getValue();
+        Assert.assertTrue(checksumSupplier.isPresent());
+        Assert.assertTrue(Arrays.equals(checksumSupplier.get().get(), checksum.getCheckSum()));
+      });
+    }, aaConfig);
+
+    config.setRecordTransformerConfig(buildRecordTransformerConfig(true));
+    runTest(config);
+  }
+
+  @Test(dataProvider = "aaConfigProvider")
   public void testDelayedTransitionToOnlineInHybridMode(AAConfig aaConfig) throws Exception {
     final long MESSAGES_BEFORE_EOP = 100;
     final long MESSAGES_AFTER_EOP = 100;
@@ -3442,10 +3520,6 @@ public abstract class StoreIngestionTaskTest {
         .getOffsetRecord();
     doReturn(5L).when(mockTopicManager).getLatestOffsetCached(any(), anyInt());
     doReturn(5L).when(mockTopicManagerRemoteKafka).getLatestOffsetCached(any(), anyInt());
-    doReturn(System.currentTimeMillis() - 2 * MS_PER_DAY).when(mockTopicManager)
-        .getProducerTimestampOfLastDataMessageCached(any());
-    doReturn(System.currentTimeMillis()).when(mockTopicManagerRemoteKafka)
-        .getProducerTimestampOfLastDataMessageCached(any());
     if (nodeType == NodeType.LEADER) {
       // case 7a: leader replica => partition is not ready to serve
       doReturn(LeaderFollowerStateType.LEADER).when(mockPcsOffsetLagCaughtUpTimestampLagging).getLeaderFollowerState();
@@ -3815,7 +3889,7 @@ public abstract class StoreIngestionTaskTest {
         getHeartbeatKME(producerTimestamp, mockLeaderMetadataWrapper, generateHeartbeatMessage(CheckSumType.NONE), "0");
 
     PubSubMessageHeaders pubSubMessageHeaders = new PubSubMessageHeaders();
-    pubSubMessageHeaders.add(VeniceWriter.getLeaderCompleteStateHeader(LEADER_COMPLETED));
+    pubSubMessageHeaders.add(LEADER_COMPLETE_STATE_HEADERS.get(LEADER_COMPLETED));
     DefaultPubSubMessage pubSubMessage = new ImmutablePubSubMessage(
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
@@ -5036,17 +5110,6 @@ public abstract class StoreIngestionTaskTest {
     when(leaderProducedRecordContext.getKeyBytes()).thenReturn(putKeyFoo);
     when(leaderProducedRecordContext.getConsumedPosition()).thenReturn(mockedPubSubPosition);
 
-    Schema myKeySchema = Schema.create(Schema.Type.INT);
-    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
-    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
-    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
-
-    Schema myValueSchema = Schema.create(Schema.Type.STRING);
-    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
-    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
-    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
-    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
-
     StoreIngestionTaskTestConfig config = new StoreIngestionTaskTestConfig(Collections.singleton(PARTITION_FOO), () -> {
       TestUtils.waitForNonDeterministicAssertion(
           5,
@@ -5066,13 +5129,7 @@ public abstract class StoreIngestionTaskTest {
       }
     }, aaConfig);
 
-    DaVinciRecordTransformerConfig recordTransformerConfig =
-        new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
-            .setOutputValueClass(String.class)
-            .setOutputValueSchema(Schema.create(Schema.Type.STRING))
-            .build();
-    config.setRecordTransformerConfig(recordTransformerConfig);
-
+    config.setRecordTransformerConfig(buildRecordTransformerConfig(false));
     runTest(config);
 
     // Metrics that should have been recorded
@@ -5987,5 +6044,24 @@ public abstract class StoreIngestionTaskTest {
       this.version = version;
       this.storeVersionConfig = storeVersionConfig;
     }
+  }
+
+  private DaVinciRecordTransformerConfig buildRecordTransformerConfig(boolean skipCompatabilityChecks) {
+    Schema myKeySchema = Schema.create(Schema.Type.INT);
+    SchemaEntry keySchemaEntry = mock(SchemaEntry.class);
+    when(keySchemaEntry.getSchema()).thenReturn(myKeySchema);
+    when(mockSchemaRepo.getKeySchema(storeNameWithoutVersionInfo)).thenReturn(keySchemaEntry);
+
+    Schema myValueSchema = Schema.create(Schema.Type.STRING);
+    SchemaEntry valueSchemaEntry = mock(SchemaEntry.class);
+    when(valueSchemaEntry.getSchema()).thenReturn(myValueSchema);
+    when(mockSchemaRepo.getValueSchema(eq(storeNameWithoutVersionInfo), anyInt())).thenReturn(valueSchemaEntry);
+    when(mockSchemaRepo.getSupersetOrLatestValueSchema(eq(storeNameWithoutVersionInfo))).thenReturn(valueSchemaEntry);
+
+    return new DaVinciRecordTransformerConfig.Builder().setRecordTransformerFunction(TestStringRecordTransformer::new)
+        .setOutputValueClass(String.class)
+        .setOutputValueSchema(Schema.create(Schema.Type.STRING))
+        .setSkipCompatibilityChecks(skipCompatabilityChecks)
+        .build();
   }
 }

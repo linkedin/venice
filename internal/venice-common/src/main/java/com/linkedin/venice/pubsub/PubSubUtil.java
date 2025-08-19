@@ -285,4 +285,15 @@ public final class PubSubUtil {
     }
     return position;
   }
+
+  /**
+   * Calculates the seek offset based on the base offset and inclusiveness flag.
+   *
+   * @param baseOffset the base offset to calculate from
+   * @param isInclusive if true, returns the base offset; if false, returns base offset + 1
+   * @return the calculated seek offset
+   */
+  public static long calculateSeekOffset(long baseOffset, boolean isInclusive) {
+    return isInclusive ? baseOffset : baseOffset + 1;
+  }
 }

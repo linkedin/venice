@@ -18,7 +18,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.Test;
 
@@ -62,9 +61,6 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
     produceRandomPubSubMessage(topic, true, timestamp); // This timestamp is expected to be retrieved
     produceRandomPubSubMessage(topic, false, timestamp + 1000L); // produce a control message
 
-    long retrievedTimestamp = topicManager.getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, 1);
-    Assert.assertEquals(retrievedTimestamp, timestamp);
-
     // Produce more data records to this topic partition
     for (int i = 0; i < 100; i++) {
       timestamp += 1000L;
@@ -80,10 +76,9 @@ public class TopicManagerIntegrationTest extends TopicManagerTest {
     Future[] vwFutures = new Future[numberOfThreads];
     // Put all topic manager calls related to partition offset fetcher with admin and consumer here.
     Runnable[] tasks = { () -> topicManager.getOffsetByTime(pubSubTopicPartition, checkTimestamp),
-        () -> topicManager.getProducerTimestampOfLastDataMessageWithRetries(pubSubTopicPartition, 1),
         () -> topicManager.getPartitionCount(topic),
         () -> topicManager.getLatestOffsetWithRetries(pubSubTopicPartition, 1),
-        () -> topicManager.getTopicLatestOffsets(topic) };
+        () -> topicManager.getEndPositionsForTopicWithRetries(topic) };
 
     for (int i = 0; i < numberOfThreads; i++) {
       vwFutures[i] = executorService.submit(tasks[i % tasks.length]);

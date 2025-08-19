@@ -710,7 +710,7 @@
               "default": false
             },
             {
-              "name": "StoreLifecycleHooks",
+              "name": "storeLifecycleHooks",
               "doc": "List of store lifecycle hooks",
               "type": {
                 "type": "array",

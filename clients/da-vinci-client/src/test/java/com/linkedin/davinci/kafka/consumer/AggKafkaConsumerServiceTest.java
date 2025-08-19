@@ -12,7 +12,6 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.StuckConsumerRepairStats;
@@ -149,31 +148,6 @@ public class AggKafkaConsumerServiceTest {
     AbstractKafkaConsumerService kafkaConsumerServiceForSep =
         aggKafkaConsumerService.getKafkaConsumerService(PUBSUB_URL_SEP);
     Assert.assertSame(kafkaConsumerService, kafkaConsumerServiceForSep);
-  }
-
-  @Test
-  public void testGetOffsetLagBasedOnMetrics() {
-    AggKafkaConsumerService aggKafkaConsumerServiceSpy = spy(aggKafkaConsumerService);
-
-    doReturn(null).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(PUBSUB_URL);
-    assertEquals(aggKafkaConsumerServiceSpy.getOffsetLagBasedOnMetrics(PUBSUB_URL, topic, topicPartition), -1);
-
-    AbstractKafkaConsumerService consumerService = mock(AbstractKafkaConsumerService.class);
-    when(consumerService.getOffsetLagBasedOnMetrics(topic, topicPartition)).thenReturn(123L);
-    doReturn(consumerService).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(any());
-    assertEquals(aggKafkaConsumerServiceSpy.getOffsetLagBasedOnMetrics(PUBSUB_URL, topic, topicPartition), 123L);
-  }
-
-  @Test
-  public void testGetLatestOffsetBasedOnMetrics() {
-    AggKafkaConsumerService aggKafkaConsumerServiceSpy = spy(aggKafkaConsumerService);
-    doReturn(null).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(PUBSUB_URL);
-    assertEquals(aggKafkaConsumerServiceSpy.getLatestOffsetBasedOnMetrics(PUBSUB_URL, topic, topicPartition), -1);
-
-    AbstractKafkaConsumerService consumerService = mock(AbstractKafkaConsumerService.class);
-    when(consumerService.getLatestOffsetBasedOnMetrics(topic, topicPartition)).thenReturn(1234L);
-    doReturn(consumerService).when(aggKafkaConsumerServiceSpy).getKafkaConsumerService(any());
-    assertEquals(aggKafkaConsumerServiceSpy.getLatestOffsetBasedOnMetrics(PUBSUB_URL, topic, topicPartition), 1234L);
   }
 
   @Test

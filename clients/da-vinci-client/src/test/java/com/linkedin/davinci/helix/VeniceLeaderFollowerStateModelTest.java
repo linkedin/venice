@@ -19,6 +19,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatLagMonitorAction;
 import com.linkedin.davinci.stats.ingestion.heartbeat.HeartbeatMonitoringService;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
@@ -38,6 +39,7 @@ import org.testng.annotations.Test;
 public class VeniceLeaderFollowerStateModelTest extends
     AbstractVenicePartitionStateModelTest<LeaderFollowerPartitionStateModel, LeaderFollowerIngestionProgressNotifier> {
   private HeartbeatMonitoringService spyHeartbeatMonitoringService;
+  private HelixCustomizedViewOfflinePushRepository mockCustomizedViewRepository;
 
   @Override
   protected LeaderFollowerPartitionStateModel getParticipantStateModel() {
@@ -45,8 +47,13 @@ public class VeniceLeaderFollowerStateModelTest extends
     doReturn(new HashSet<>()).when(serverConfig).getRegionNames();
     doReturn("local").when(serverConfig).getRegionName();
     doReturn(Duration.ofSeconds(5)).when(serverConfig).getServerMaxWaitForVersionInfo();
-    HeartbeatMonitoringService heartbeatMonitoringService =
-        new HeartbeatMonitoringService(new MetricsRepository(), mockReadOnlyStoreRepository, serverConfig, null);
+    mockCustomizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
+    HeartbeatMonitoringService heartbeatMonitoringService = new HeartbeatMonitoringService(
+        new MetricsRepository(),
+        mockReadOnlyStoreRepository,
+        serverConfig,
+        null,
+        CompletableFuture.completedFuture(mockCustomizedViewRepository));
     spyHeartbeatMonitoringService = spy(heartbeatMonitoringService);
     return new LeaderFollowerPartitionStateModel(
         mockIngestionBackend,

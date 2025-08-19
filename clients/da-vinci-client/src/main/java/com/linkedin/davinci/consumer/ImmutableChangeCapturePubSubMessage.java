@@ -22,7 +22,8 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
       PubSubPosition pubSubPosition,
       long timestamp,
       int payloadSize,
-      boolean isEndOfBootstrap) {
+      boolean isEndOfBootstrap,
+      long consumerSequenceId) {
     this.key = key;
     this.value = value;
     this.topicPartition = Objects.requireNonNull(topicPartition);
@@ -31,7 +32,8 @@ public class ImmutableChangeCapturePubSubMessage<K, V> implements PubSubMessage<
     this.offset = new VeniceChangeCoordinate(
         this.topicPartition.getPubSubTopic().getName(),
         pubSubPosition,
-        this.topicPartition.getPartitionNumber());
+        this.topicPartition.getPartitionNumber(),
+        consumerSequenceId);
     this.isEndOfBootstrap = isEndOfBootstrap;
   }
 

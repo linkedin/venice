@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.RouterKey;
+import com.linkedin.venice.router.api.RoutingComputationMode;
 import com.linkedin.venice.router.api.VeniceDelegateMode;
 import com.linkedin.venice.router.api.VeniceHostFinder;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
@@ -88,6 +89,7 @@ public class RouterRequestThrottlingTest {
     // mock a scatter gather helper for multi-key requests
     VeniceRouterConfig config = mock(VeniceRouterConfig.class);
     doReturn(LEAST_LOADED_ROUTING).when(config).getMultiKeyRoutingStrategy();
+    doReturn(RoutingComputationMode.SEQUENTIAL).when(config).getRoutingComputationMode();
 
     // multi-get/compute requests are throttled in VeniceDelegateMode
     VeniceDelegateMode delegateMode =

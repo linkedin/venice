@@ -3,8 +3,8 @@ package com.linkedin.venice.writer;
 import static com.linkedin.venice.ConfigKeys.INSTANCE_ID;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.message.KafkaKey.CONTROL_MESSAGE_KAFKA_KEY_LENGTH;
-import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER;
 import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_TRANSPORT_PROTOCOL_HEADER;
+import static com.linkedin.venice.pubsub.api.PubSubMessageHeaders.VENICE_VIEW_PARTITIONS_MAP_HEADER;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.Threadsafe;
@@ -64,6 +64,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -246,7 +247,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       DEFAULT_UPSTREAM_PUBSUB_POSITION);
 
   // Immutable state
-  private final PubSubMessageHeaders protocolSchemaHeaders;
+  private final PubSubMessageHeader protocolSchemaHeader;
 
   protected final VeniceKafkaSerializer<K> keySerializer;
   protected final VeniceKafkaSerializer<V> valueSerializer;
@@ -313,6 +314,18 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final int maxRecordSizeBytes;
 
   private final ControlMessage heartBeatMessage;
+
+  public static final Map<LeaderCompleteState, PubSubMessageHeader> LEADER_COMPLETE_STATE_HEADERS;
+
+  static {
+    Map<LeaderCompleteState, PubSubMessageHeader> map = new EnumMap<>(LeaderCompleteState.class);
+    for (LeaderCompleteState state: LeaderCompleteState.values()) {
+      byte[] val = new byte[1];
+      val[0] = (byte) state.getValue();
+      map.put(state, new PubSubMessageHeader(PubSubMessageHeaders.VENICE_LEADER_COMPLETION_STATE_HEADER, val));
+    }
+    LEADER_COMPLETE_STATE_HEADERS = Collections.unmodifiableMap(map);
+  }
 
   public VeniceWriter(VeniceWriterOptions params, VeniceProperties props, PubSubProducerAdapter producerAdapter) {
     this(params, props, producerAdapter, KafkaMessageEnvelope.SCHEMA$);
@@ -393,10 +406,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         new DaemonThreadFactory("VW-" + topicName));
     this.threadPoolExecutor.allowCoreThreadTimeOut(true); // allow core threads to timeout
 
-    this.protocolSchemaHeaders = overrideProtocolSchema == null
-        ? EmptyPubSubMessageHeaders.SINGLETON
-        : new PubSubMessageHeaders()
-            .add(VENICE_TRANSPORT_PROTOCOL_HEADER, overrideProtocolSchema.toString().getBytes(StandardCharsets.UTF_8));
+    this.protocolSchemaHeader = overrideProtocolSchema == null
+        ? null
+        : new PubSubMessageHeader(
+            VENICE_TRANSPORT_PROTOCOL_HEADER,
+            overrideProtocolSchema.toString().getBytes(StandardCharsets.UTF_8));
+
     try {
       this.producerAdapter = producerAdapter;
       // We cache the number of partitions, as it is expected to be immutable, and the call to Kafka is expensive.
@@ -993,7 +1008,67 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         upstreamPartition,
         callback,
         false,
-        null);
+        EmptyPubSubMessageHeaders.SINGLETON);
+  }
+
+  /**
+   * Write a record with new DIV to a predetermined partition.
+   */
+
+  public CompletableFuture<PubSubProduceResult> put(
+      K key,
+      V value,
+      int valueSchemaId,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      PutMetadata putMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      PubSubMessageHeaders pubSubMessageHeaders) {
+    byte[] serializedKey = keySerializer.serialize(topicName, key);
+    byte[] serializedValue = valueSerializer.serialize(topicName, value);
+    int partition = getPartition(serializedKey);
+    return put(
+        serializedKey,
+        serializedValue,
+        partition,
+        valueSchemaId,
+        callback,
+        leaderMetadataWrapper,
+        logicalTs,
+        putMetadata,
+        oldValueManifest,
+        oldRmdManifest,
+        true,
+        pubSubMessageHeaders);
+  }
+
+  public CompletableFuture<PubSubProduceResult> put(
+      byte[] serializedKey,
+      byte[] serializedValue,
+      int partition,
+      int valueSchemaId,
+      PubSubProducerCallback callback,
+      LeaderMetadataWrapper leaderMetadataWrapper,
+      long logicalTs,
+      PutMetadata putMetadata,
+      ChunkedValueManifest oldValueManifest,
+      ChunkedValueManifest oldRmdManifest,
+      boolean isPutMessage) {
+    return put(
+        serializedKey,
+        serializedValue,
+        partition,
+        valueSchemaId,
+        callback,
+        leaderMetadataWrapper,
+        logicalTs,
+        putMetadata,
+        oldValueManifest,
+        oldRmdManifest,
+        isPutMessage,
+        EmptyPubSubMessageHeaders.SINGLETON);
   }
 
   /**
@@ -1010,7 +1085,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PutMetadata putMetadata,
       ChunkedValueManifest oldValueManifest,
       ChunkedValueManifest oldRmdManifest,
-      boolean isPutMessage) {
+      boolean isPutMessage,
+      PubSubMessageHeaders pubSubMessageHeaders) {
     int replicationMetadataPayloadSize = putMetadata == null ? 0 : putMetadata.getSerializedSize();
     isChunkingFlagInvoked = true;
 
@@ -1061,10 +1137,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         producerMetadata -> kafkaKey,
         MessageType.PUT,
         putPayload,
+        false,
         partition,
         callback,
+        true,
         leaderMetadataWrapper,
-        logicalTs);
+        logicalTs,
+        pubSubMessageHeaders);
 
     DeleteMetadata deleteMetadata =
         new DeleteMetadata(valueSchemaId, putPayload.replicationMetadataVersionId, VeniceWriter.EMPTY_BYTE_BUFFER);
@@ -1135,7 +1214,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         upstreamPartition,
         callback,
         false,
-        null);
+        EmptyPubSubMessageHeaders.SINGLETON);
   }
 
   @Override
@@ -1414,7 +1493,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           callback,
           true,
           leaderMetadataWrapper,
-          logicalTs);
+          logicalTs,
+          EmptyPubSubMessageHeaders.SINGLETON);
     }
   }
 
@@ -1427,7 +1507,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       PubSubProducerCallback callback,
       boolean updateDIV,
       LeaderMetadataWrapper leaderMetadataWrapper,
-      long logicalTs) {
+      long logicalTs,
+      PubSubMessageHeaders pubSubMessageHeaders) {
     synchronized (this.partitionLocks[partition]) {
       KafkaMessageEnvelopeProvider kafkaMessageEnvelopeProvider = () -> {
         KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(
@@ -1440,13 +1521,21 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         kafkaValue.payloadUnion = payload;
         return kafkaValue;
       };
+      PubSubMessageHeader viewPartitionHeader =
+          ViewUtils.getViewDestinationPartitionHeader(leaderMetadataWrapper.getViewPartitionMap());
+      if (viewPartitionHeader != null) {
+        if (pubSubMessageHeaders instanceof EmptyPubSubMessageHeaders) {
+          pubSubMessageHeaders = new PubSubMessageHeaders();
+        }
+        pubSubMessageHeaders.add(viewPartitionHeader);
+      }
       return sendMessage(
           keyProvider,
           kafkaMessageEnvelopeProvider,
           partition,
           callback,
           updateDIV,
-          ViewUtils.getViewDestinationPartitionHeader(leaderMetadataWrapper.getViewPartitionMap()));
+          pubSubMessageHeaders);
     }
   }
 
@@ -1480,7 +1569,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       int partition,
       PubSubProducerCallback callback,
       boolean updateDIV,
-      PubSubMessageHeader viewPartitionHeader) {
+      PubSubMessageHeaders pubSubMessageHeaders) {
     synchronized (this.partitionLocks[partition]) {
       KafkaMessageEnvelope kafkaValue = valueProvider.getKafkaMessageEnvelope();
       KafkaKey key = keyProvider.getKey(kafkaValue.producerMetadata);
@@ -1494,14 +1583,14 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
       PubSubProducerCallback internalCallback = new SendMessageErrorLoggerCallback(kafkaValue, logger);
       PubSubProducerCallback outputCallback = setInternalCallback(callback, internalCallback);
+      PubSubMessageHeaders finalPubSubMessageHeaders = getHeaders(
+          kafkaValue.getProducerMetadata(),
+          false,
+          LeaderCompleteState.LEADER_NOT_COMPLETED,
+          pubSubMessageHeaders);
       try {
-        return producerAdapter.sendMessage(
-            topicName,
-            partition,
-            key,
-            kafkaValue,
-            getHeaders(kafkaValue.getProducerMetadata(), viewPartitionHeader),
-            outputCallback);
+        return producerAdapter
+            .sendMessage(topicName, partition, key, kafkaValue, finalPubSubMessageHeaders, outputCallback);
       } catch (Exception e) {
         if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicAuthorizationException.class)) {
           throw new VeniceResourceAccessException(
@@ -1527,13 +1616,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   /**
-   * We only include the protocol schema headers on this writer's first message to each partition.
-   */
-  private PubSubMessageHeaders getHeaders(ProducerMetadata producerMetadata, PubSubMessageHeader viewPartitionHeader) {
-    return getHeaders(producerMetadata, false, LeaderCompleteState.LEADER_NOT_COMPLETED, viewPartitionHeader);
-  }
-
-  /**
    * {@link PubSubMessageHeaders#VENICE_TRANSPORT_PROTOCOL_HEADER} or {@link EmptyPubSubMessageHeaders} is used for
    * all messages to a partition based on {@link VeniceWriter} param overrideProtocolSchema and whether it's a first message.
    * {@link PubSubMessageHeaders#VENICE_LEADER_COMPLETION_STATE_HEADER} is added to the above headers for HB SOS message.
@@ -1549,40 +1631,34 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * leader complete header (LEADER_COMPLETED)
    * leader complete header (LEADER_NOT_COMPLETED)
    */
+
   private PubSubMessageHeaders getHeaders(
       ProducerMetadata producerMetadata,
       boolean addLeaderCompleteState,
       LeaderCompleteState leaderCompleteState,
-      PubSubMessageHeader viewPartitionHeader) {
-    PubSubMessageHeaders returnPubSubMessageHeaders;
-    PubSubMessageHeaders pubSubMessageHeaders =
-        producerMetadata.getSegmentNumber() == 0 && producerMetadata.getMessageSequenceNumber() == 0
-            ? protocolSchemaHeaders
-            : EmptyPubSubMessageHeaders.SINGLETON;
+      PubSubMessageHeaders headers) {
+    PubSubMessageHeader viewPartitionHeader = headers.get(VENICE_VIEW_PARTITIONS_MAP_HEADER);
+    // If the message is the first message in a segment, we need to add the protocol schema headers.
+    boolean needVtpHeader =
+        producerMetadata.getSegmentNumber() == 0 && producerMetadata.getMessageSequenceNumber() == 0;
 
-    if (addLeaderCompleteState || viewPartitionHeader != null) {
-      // copy protocolSchemaHeaders locally and add extra header(s) for leaderCompleteState and/or viewPartitionHeader.
-      returnPubSubMessageHeaders = new PubSubMessageHeaders();
-      for (PubSubMessageHeader header: pubSubMessageHeaders) {
-        returnPubSubMessageHeaders.add(header);
-      }
-      if (addLeaderCompleteState) {
-        returnPubSubMessageHeaders.add(getLeaderCompleteStateHeader(leaderCompleteState));
-      }
-      if (viewPartitionHeader != null) {
-        returnPubSubMessageHeaders.add(viewPartitionHeader);
-      }
-    } else {
-      returnPubSubMessageHeaders = pubSubMessageHeaders;
+    // construct PubSubMessageHeaders only if it is needed
+    PubSubMessageHeaders returnPubSubMessageHeaders = (headers instanceof EmptyPubSubMessageHeaders)
+        && (needVtpHeader || addLeaderCompleteState || viewPartitionHeader != null)
+            ? new PubSubMessageHeaders()
+            : headers;
+
+    if (needVtpHeader && protocolSchemaHeader != null) {
+      returnPubSubMessageHeaders.add(protocolSchemaHeader);
     }
-    return returnPubSubMessageHeaders;
-  }
+    if (addLeaderCompleteState) {
+      returnPubSubMessageHeaders.add(LEADER_COMPLETE_STATE_HEADERS.get(leaderCompleteState));
+    }
+    if (viewPartitionHeader != null) {
+      returnPubSubMessageHeaders.add(viewPartitionHeader);
+    }
 
-  public static PubSubMessageHeader getLeaderCompleteStateHeader(LeaderCompleteState leaderCompleteState) {
-    // 1 byte holding 0/1 based on leaderCompleteState
-    byte[] val = new byte[1];
-    val[0] = (byte) (leaderCompleteState.getValue());
-    return new PubSubMessageHeader(VENICE_LEADER_COMPLETION_STATE_HEADER, val);
+    return returnPubSubMessageHeaders;
   }
 
   /**
@@ -1943,7 +2019,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
               callback,
               updateCheckSum,
               leaderMetadataWrapper,
-              VENICE_DEFAULT_LOGICAL_TS).get();
+              VENICE_DEFAULT_LOGICAL_TS,
+              EmptyPubSubMessageHeaders.SINGLETON).get();
           return;
         } catch (InterruptedException | ExecutionException e) {
           if (ExceptionUtils.recursiveClassEquals(e, PubSubTopicDoesNotExistException.class)) {
@@ -2009,7 +2086,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           callback,
           true,
           leaderMetadataWrapper,
-          VENICE_DEFAULT_LOGICAL_TS);
+          VENICE_DEFAULT_LOGICAL_TS,
+          EmptyPubSubMessageHeaders.SINGLETON);
     }
   }
 
@@ -2039,7 +2117,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           callback,
           updateCheckSum,
           leaderMetadataWrapper,
-          VENICE_DEFAULT_LOGICAL_TS);
+          VENICE_DEFAULT_LOGICAL_TS,
+          EmptyPubSubMessageHeaders.SINGLETON);
     }
   }
 
@@ -2091,7 +2170,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         topicPartition.getPartitionNumber(),
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
-        getHeaders(kafkaMessageEnvelope.getProducerMetadata(), addLeaderCompleteState, leaderCompleteState, null),
+        getHeaders(
+            kafkaMessageEnvelope.getProducerMetadata(),
+            addLeaderCompleteState,
+            leaderCompleteState,
+            EmptyPubSubMessageHeaders.SINGLETON),
         callback);
   }
 
@@ -2110,7 +2193,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         partitionNumber,
         KafkaKey.HEART_BEAT,
         kafkaMessageEnvelope,
-        getHeaders(kafkaMessageEnvelope.getProducerMetadata(), addLeaderCompleteState, leaderCompleteState, null),
+        getHeaders(
+            kafkaMessageEnvelope.getProducerMetadata(),
+            addLeaderCompleteState,
+            leaderCompleteState,
+            EmptyPubSubMessageHeaders.SINGLETON),
         callback);
   }
 

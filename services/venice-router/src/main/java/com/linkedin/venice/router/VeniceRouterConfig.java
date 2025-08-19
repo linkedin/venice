@@ -76,6 +76,8 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_MULTIGET_TARDY_LATENCY_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MULTI_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MULTI_KEY_ROUTING_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PARALLEL_ROUTING_CHUNK_SIZE;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PARALLEL_ROUTING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_THREAD_COUNT;
@@ -85,6 +87,7 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_READ_QUOTA_THROTTLING_LEASE_
 import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_RESOLVE_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_RETRY_MANAGER_CORE_POOL_SIZE;
+import static com.linkedin.venice.ConfigKeys.ROUTER_ROUTING_COMPUTATION_MODE;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLEGET_TARDY_LATENCY_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLE_KEY_LONG_TAIL_RETRY_BUDGET_PERCENT_DECIMAL;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS;
@@ -107,6 +110,7 @@ import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.NameRepository;
+import com.linkedin.venice.router.api.RoutingComputationMode;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
@@ -231,6 +235,9 @@ public class VeniceRouterConfig implements RouterRetryConfig {
   private final int nameRepoMaxEntryCount;
   private final int aclInMemoryCacheTTLMs;
   private final LogContext logContext;
+  private final RoutingComputationMode routingComputationMode;
+  private final int parallelRoutingThreadCount;
+  private final int parallelRoutingChunkSize;;
 
   // MUTABLE CONFIGS
 
@@ -418,6 +425,19 @@ public class VeniceRouterConfig implements RouterRetryConfig {
       this.nameRepoMaxEntryCount =
           props.getInt(NAME_REPOSITORY_MAX_ENTRY_COUNT, NameRepository.DEFAULT_MAXIMUM_ENTRY_COUNT);
       aclInMemoryCacheTTLMs = props.getInt(ACL_IN_MEMORY_CACHE_TTL_MS, -1); // acl caching is disabled by default
+
+      String routingComputationModeStr =
+          props.getString(ROUTER_ROUTING_COMPUTATION_MODE, RoutingComputationMode.SEQUENTIAL.name());
+      try {
+        routingComputationMode = RoutingComputationMode.valueOf(routingComputationModeStr);
+      } catch (Exception e) {
+        throw new VeniceException(
+            "Invalid " + ROUTER_ROUTING_COMPUTATION_MODE + " config: " + routingComputationModeStr
+                + ", and allowed values are: " + Arrays.toString(RoutingComputationMode.values()));
+      }
+      parallelRoutingThreadCount =
+          props.getInt(ROUTER_PARALLEL_ROUTING_THREAD_POOL_SIZE, Runtime.getRuntime().availableProcessors());
+      parallelRoutingChunkSize = props.getInt(ROUTER_PARALLEL_ROUTING_CHUNK_SIZE, 100);
       LOGGER.info("Loaded configuration");
     } catch (Exception e) {
       String errorMessage = "Can not load properties.";
@@ -909,5 +929,17 @@ public class VeniceRouterConfig implements RouterRetryConfig {
 
   public LogContext getLogContext() {
     return logContext;
+  }
+
+  public RoutingComputationMode getRoutingComputationMode() {
+    return routingComputationMode;
+  }
+
+  public int getParallelRoutingThreadCount() {
+    return parallelRoutingThreadCount;
+  }
+
+  public int getParallelRoutingChunkSize() {
+    return parallelRoutingChunkSize;
   }
 }

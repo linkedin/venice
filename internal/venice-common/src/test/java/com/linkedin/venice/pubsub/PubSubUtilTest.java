@@ -234,4 +234,13 @@ public class PubSubUtilTest {
     assertTrue(PubSubUtil.comparePubSubPositions(pos2, pos1) > 0);
     assertEquals(PubSubUtil.comparePubSubPositions(pos1, pos1), 0);
   }
+
+  @Test
+  public void testCalculateSeekOffset() {
+    // Case 1: Inclusive = true, should return the same offset
+    assertEquals(PubSubUtil.calculateSeekOffset(100L, true), 100L, "Inclusive seek should return the base offset");
+
+    // Case 2: Inclusive = false, should return base offset + 1
+    assertEquals(PubSubUtil.calculateSeekOffset(100L, false), 101L, "Exclusive seek should return base offset + 1");
+  }
 }

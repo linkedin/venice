@@ -410,9 +410,12 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       return !routingDataRepository.containsKafkaTopic(version.kafkaTopicName());
     });
 
-    stateModelFactoryByNodeID.forEach(
-        (nodeId, stateModelFactory) -> Assert
-            .assertEquals(stateModelFactory.getModelList(version.kafkaTopicName(), 0).size(), 1));
+    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
+      stateModelFactoryByNodeID.forEach(
+          (nodeId, stateModelFactory) -> Assert
+              .assertEquals(stateModelFactory.getModelList(version.kafkaTopicName(), 0).size(), 1));
+    });
+
     // Replica become OFFLINE state
     stateModelFactoryByNodeID.forEach(
         (nodeId, stateModelFactory) -> Assert.assertEquals(

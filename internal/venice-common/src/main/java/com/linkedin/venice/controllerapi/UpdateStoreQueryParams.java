@@ -63,6 +63,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNK
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEPARATE_REAL_TIME_TOPIC_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_READ_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_LIFECYCLE_HOOKS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW_CLASS;
@@ -78,6 +79,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -86,6 +88,7 @@ import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.ObjectMapperFactory;
@@ -834,6 +837,30 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> isTTLRepushEnabled() {
     return getBoolean(TTL_REPUSH_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
+    try {
+      return (UpdateStoreQueryParams) add(
+          STORE_LIFECYCLE_HOOKS_LIST,
+          OBJECT_MAPPER.writeValueAsString(storeLifecycleHooks));
+    } catch (JsonProcessingException e) {
+      throw new VeniceException(e.getMessage());
+    }
+  }
+
+  public Optional<List<LifecycleHooksRecord>> getStoreLifecycleHooks() {
+    if (params.get(STORE_LIFECYCLE_HOOKS_LIST) == null) {
+      return Optional.empty();
+    }
+    try {
+      return Optional.of(
+          OBJECT_MAPPER
+              .readValue(params.get(STORE_LIFECYCLE_HOOKS_LIST), new TypeReference<List<LifecycleHooksRecord>>() {
+              }));
+    } catch (IOException e) {
+      throw new VeniceException(e.getMessage());
+    }
   }
 
   // ***************** above this line are getters and setters *****************

@@ -135,6 +135,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
 import com.linkedin.venice.meta.LiveClusterConfig;
 import com.linkedin.venice.meta.LiveInstanceChangedListener;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
@@ -1616,7 +1617,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     VeniceWriterOptions.Builder vwOptionsBuilder =
         new VeniceWriterOptions.Builder(topicToReceiveEndOfPush).setUseKafkaKeySerializer(true)
             .setPartitionCount(partitionCount);
-    if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()) {
+    if (multiClusterConfigs.isParent()) {
       vwOptionsBuilder.setBrokerAddress(version.getPushStreamSourceAddress());
     }
     try (VeniceWriter veniceWriter = factory.createVeniceWriter(vwOptionsBuilder.build())) {
@@ -2523,13 +2524,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceControllerClusterConfig clusterConfig = resources.getConfig();
         version.setNativeReplicationEnabled(clusterConfig.isMultiRegion());
 
-        if (version.isNativeReplicationEnabled()) {
-          if (remoteKafkaBootstrapServers != null) {
-            version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
-          } else {
-            version.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
-          }
+        if (remoteKafkaBootstrapServers != null) {
+          version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
+        } else {
+          version.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
         }
+
         /**
          * Version-level rewind time override.
          */
@@ -3001,17 +3001,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               version = new VersionImpl(storeName, versionNumber, pushJobId, numberOfPartitions);
             }
             long createBatchTopicStartTime = System.currentTimeMillis();
-            topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
-            createBatchTopics(
-                version,
-                pushType,
-                getTopicManager(),
-                numberOfPartitions,
-                clusterConfig,
-                useFastKafkaOperationTimeout);
-            addVersionLatencyStats
-                .recordBatchTopicCreationLatency(LatencyUtils.getElapsedTimeFromMsToMs(createBatchTopicStartTime));
-
+            if (clusterConfig.getConcurrentPushDetectionStrategy().isTopicWriteNeeded() || !isParent()) {
+              topicToCreationTime.computeIfAbsent(version.kafkaTopicName(), topic -> System.currentTimeMillis());
+              createBatchTopics(
+                  version,
+                  pushType,
+                  getTopicManager(),
+                  numberOfPartitions,
+                  clusterConfig,
+                  useFastKafkaOperationTimeout);
+              addVersionLatencyStats
+                  .recordBatchTopicCreationLatency(LatencyUtils.getElapsedTimeFromMsToMs(createBatchTopicStartTime));
+            }
             String sourceKafkaBootstrapServers = null;
 
             store = repository.getStore(storeName);
@@ -3132,7 +3133,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 VeniceWriterOptions.Builder vwOptionsBuilder =
                     new VeniceWriterOptions.Builder(version.kafkaTopicName()).setUseKafkaKeySerializer(true)
                         .setPartitionCount(numberOfPartitions);
-                if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()) {
+                if (multiClusterConfigs.isParent()) {
                   // Produce directly into one of the child fabric
                   vwOptionsBuilder.setBrokerAddress(version.getPushStreamSourceAddress());
                 } else {
@@ -5272,6 +5273,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  private void setStoreLifecycleHooks(
+      String clusterName,
+      String storeName,
+      List<LifecycleHooksRecord> storeLifecycleHooks) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setStoreLifecycleHooks(storeLifecycleHooks);
+      return store;
+    });
+  }
+
   private void setAutoSchemaRegisterPushJobEnabled(
       String clusterName,
       String storeName,
@@ -5498,6 +5509,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> globalRtDivEnabled = params.isGlobalRtDivEnabled();
     Optional<Boolean> ttlRepushEnabled = params.isTTLRepushEnabled();
     Optional<Boolean> enumSchemaEvolutionAllowed = params.isEnumSchemaEvolutionAllowed();
+    Optional<List<LifecycleHooksRecord>> storeLifecycleHooks = params.getStoreLifecycleHooks();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -5705,6 +5717,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (backupStrategy.isPresent()) {
         setBackupStrategy(clusterName, storeName, backupStrategy.get());
+      }
+
+      if (storeLifecycleHooks.isPresent()) {
+        List<LifecycleHooksRecord> validatedStoreLifecycleHooks =
+            validateLifecycleHooks(originalStore, storeLifecycleHooks);
+        setStoreLifecycleHooks(clusterName, storeName, validatedStoreLifecycleHooks);
       }
 
       autoSchemaRegisterPushJobEnabled
@@ -6013,6 +6031,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         partitionerClass.orElseGet(originalPartitionerConfig::getPartitionerClass),
         partitionerParams.orElseGet(originalPartitionerConfig::getPartitionerParams),
         amplificationFactor.orElseGet(originalPartitionerConfig::getAmplificationFactor));
+  }
+
+  static List<LifecycleHooksRecord> validateLifecycleHooks(
+      Store oldStore,
+      Optional<List<LifecycleHooksRecord>> newLifecycleHooks) {
+    List<LifecycleHooksRecord> currLifecycleHooks = oldStore.getStoreLifecycleHooks();
+
+    // No change to existing store lifecycle hooks
+    if (!newLifecycleHooks.isPresent() && !currLifecycleHooks.isEmpty()) {
+      return currLifecycleHooks;
+    } else if (!newLifecycleHooks.isPresent() && currLifecycleHooks.isEmpty()) {
+      return Collections.emptyList();
+    }
+
+    // Validate new lifecycle hooks
+    if (newLifecycleHooks.isPresent()) {
+      for (LifecycleHooksRecord lifecycleHooksRecord: newLifecycleHooks.get()) {
+        if (lifecycleHooksRecord.getStoreLifecycleHooksClassName() == null) {
+          throw new VeniceException("Cannot add lifecycle hooks with null class name");
+        }
+      }
+    }
+
+    return newLifecycleHooks.get();
   }
 
   static Map<String, StoreViewConfigRecord> mergeNewViewConfigsIntoOldConfigs(
@@ -7066,10 +7108,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         helixClusterConfig.setDelayRebalaceEnabled(true);
       }
       helixClusterConfig.setPersistBestPossibleAssignment(true);
-      // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constraints on CRUSH alg to
-      // choose proper instance to hold the replica.
-      helixClusterConfig.setTopology("/" + HelixUtils.TOPOLOGY_CONSTRAINT);
-      helixClusterConfig.setFaultZoneType(HelixUtils.TOPOLOGY_CONSTRAINT);
+      helixClusterConfig.setTopologyAwareEnabled(clusterConfigs.isServerHelixClusterTopologyAware());
+      if (clusterConfigs.isServerHelixClusterTopologyAware()) {
+        helixClusterConfig.setTopology(clusterConfigs.getServerHelixClusterTopology());
+        helixClusterConfig.setFaultZoneType(clusterConfigs.getServerHelixClusterFaultZoneType());
+      }
 
       RESTConfig restConfig = null;
       if (!StringUtils.isEmpty(clusterConfigs.getHelixRestCustomizedHealthUrl())) {
@@ -7101,7 +7144,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);
-    HelixConfigScope configScope =
+    HelixConfigScope clusterConfigScope =
         new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
     Map<String, String> helixClusterProperties = new HashMap<>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
@@ -7112,13 +7155,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     helixClusterProperties
         .put(ClusterConfig.ClusterConfigProperty.PERSIST_BEST_POSSIBLE_ASSIGNMENT.name(), String.valueOf(true));
-    // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to
-    // choose proper instance to hold the replica.
-    helixClusterProperties
-        .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
-    helixClusterProperties
-        .put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), HelixUtils.TOPOLOGY_CONSTRAINT);
-    admin.setConfig(configScope, helixClusterProperties);
+    helixClusterProperties.put(
+        ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(),
+        String.valueOf(config.isServerHelixClusterTopologyAware()));
+    if (config.isServerHelixClusterTopologyAware()) {
+      helixClusterProperties
+          .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), config.getServerHelixClusterTopology());
+      helixClusterProperties
+          .put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), config.getServerHelixClusterFaultZoneType());
+    }
+
+    admin.setConfig(clusterConfigScope, helixClusterProperties);
     LOGGER.info(
         "Cluster creation: {} completed, auto join to true. Delayed rebalance time: {}ms",
         clusterName,
@@ -8532,14 +8579,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getDeadStores(String, String, boolean)
+   * @see Admin#getDeadStores(String, String, Map)
    */
   @Override
-  public List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores) {
+  public List<StoreInfo> getDeadStores(String clusterName, String storeName, Map<String, String> params) {
     checkControllerLeadershipFor(clusterName);
     if (!multiClusterConfigs.getControllerConfig(clusterName).isDeadStoreEndpointEnabled()) {
       throw new VeniceUnsupportedOperationException("Dead store stats is not enabled.");
     }
+
+    // Extract includeSystemStores from params (default: false)
+    boolean includeSystemStores = Boolean.parseBoolean(params.getOrDefault("includeSystemStores", "false"));
 
     if (storeName == null) {
       List<StoreInfo> clusterStoreInfos = getAllStores(clusterName).stream()
@@ -8547,13 +8597,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           .filter(store -> includeSystemStores || !store.isSystemStore())
           .map(StoreInfo::fromStore)
           .collect(Collectors.toList());
-      return deadStoreStatsMap.get(clusterName).getDeadStores(clusterStoreInfos);
+      return deadStoreStatsMap.get(clusterName).getDeadStores(clusterStoreInfos, params);
     } else {
       StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
       if (store == null) {
         throw new VeniceNoStoreException(storeName, clusterName);
       }
-      return deadStoreStatsMap.get(clusterName).getDeadStores(Collections.singletonList(store));
+      return deadStoreStatsMap.get(clusterName).getDeadStores(Collections.singletonList(store), params);
     }
   }
 
