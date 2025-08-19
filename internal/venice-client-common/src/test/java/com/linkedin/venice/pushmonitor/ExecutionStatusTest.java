@@ -4,6 +4,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.ARCHIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DROPPED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_OTHER;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
@@ -53,6 +54,7 @@ public class ExecutionStatusTest extends VeniceEnumValueTest<ExecutionStatus> {
         .put(16, ExecutionStatus.NOT_STARTED)
         .put(17, ExecutionStatus.DATA_RECOVERY_COMPLETED)
         .put(18, ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL)
+        .put(19, DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED)
         .put(20, ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES)
         .put(21, ExecutionStatus.DVC_INGESTION_ERROR_OTHER)
         .build();
@@ -61,8 +63,8 @@ public class ExecutionStatusTest extends VeniceEnumValueTest<ExecutionStatus> {
   @Test
   public void testisDVCIngestionError() {
     for (ExecutionStatus status: ExecutionStatus.values()) {
-      if (status == DVC_INGESTION_ERROR_DISK_FULL || status == DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES
-          || status == DVC_INGESTION_ERROR_OTHER) {
+      if (status == DVC_INGESTION_ERROR_DISK_FULL || status == DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED
+          || status == DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES || status == DVC_INGESTION_ERROR_OTHER) {
         assertTrue(status.isDVCIngestionError(), status + " should not pass isDVCIngestionError()");
       } else {
         assertFalse(status.isDVCIngestionError(), status + " should pass isDVCIngestionError()");
@@ -74,7 +76,8 @@ public class ExecutionStatusTest extends VeniceEnumValueTest<ExecutionStatus> {
   public void testisError() {
     for (ExecutionStatus status: ExecutionStatus.values()) {
       if (status == ERROR || status == DVC_INGESTION_ERROR_DISK_FULL
-          || status == DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES || status == DVC_INGESTION_ERROR_OTHER) {
+          || status == DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED || status == DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES
+          || status == DVC_INGESTION_ERROR_OTHER) {
         assertTrue(status.isError(), status + " should not pass isIngestionError()");
       } else {
         assertFalse(status.isError(), status + " should pass isIngestionError()");
@@ -97,6 +100,7 @@ public class ExecutionStatusTest extends VeniceEnumValueTest<ExecutionStatus> {
   public void testIsUsedByDaVinciClientOnly() {
     Set<ExecutionStatus> dvcOnly = new HashSet<>();
     dvcOnly.add(DVC_INGESTION_ERROR_DISK_FULL);
+    dvcOnly.add(DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED);
     dvcOnly.add(DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES);
     dvcOnly.add(DVC_INGESTION_ERROR_OTHER);
 
@@ -118,6 +122,7 @@ public class ExecutionStatusTest extends VeniceEnumValueTest<ExecutionStatus> {
     terminalStatuses.add(ERROR);
     terminalStatuses.add(ARCHIVED);
     terminalStatuses.add(DVC_INGESTION_ERROR_DISK_FULL);
+    terminalStatuses.add(DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED);
     terminalStatuses.add(DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES);
     terminalStatuses.add(DVC_INGESTION_ERROR_OTHER);
 
@@ -139,6 +144,7 @@ public class ExecutionStatusTest extends VeniceEnumValueTest<ExecutionStatus> {
     determinedStatuses.add(DROPPED);
     determinedStatuses.add(END_OF_PUSH_RECEIVED);
     determinedStatuses.add(DVC_INGESTION_ERROR_DISK_FULL);
+    determinedStatuses.add(DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED);
     determinedStatuses.add(DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES);
     determinedStatuses.add(DVC_INGESTION_ERROR_OTHER);
 
@@ -155,6 +161,7 @@ public class ExecutionStatusTest extends VeniceEnumValueTest<ExecutionStatus> {
   public void testRootStatus() {
     Map<ExecutionStatus, ExecutionStatus> rootStatusMap = new HashMap<>();
     rootStatusMap.put(DVC_INGESTION_ERROR_DISK_FULL, ERROR);
+    rootStatusMap.put(DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED, ERROR);
     rootStatusMap.put(DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES, ERROR);
     rootStatusMap.put(DVC_INGESTION_ERROR_OTHER, ERROR);
 

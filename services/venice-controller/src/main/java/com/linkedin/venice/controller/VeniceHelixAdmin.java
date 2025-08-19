@@ -338,6 +338,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       ExecutionStatus.END_OF_PUSH_RECEIVED,
       ExecutionStatus.DVC_INGESTION_ERROR_OTHER,
       ExecutionStatus.DVC_INGESTION_ERROR_DISK_FULL,
+      ExecutionStatus.DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED,
       ExecutionStatus.DVC_INGESTION_ERROR_TOO_MANY_DEAD_INSTANCES,
       ExecutionStatus.ERROR,
       ExecutionStatus.WARNING,
