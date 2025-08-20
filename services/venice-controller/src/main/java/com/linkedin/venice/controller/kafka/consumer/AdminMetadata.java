@@ -9,6 +9,8 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -21,6 +23,7 @@ public class AdminMetadata {
   private Long adminOperationProtocolVersion;
   private PubSubPosition position;
   private PubSubPosition upstreamPosition;
+  private final Logger LOGGER = LogManager.getLogger(getClass().getSimpleName());
 
   public AdminMetadata() {
   }
@@ -84,6 +87,7 @@ public class AdminMetadata {
    * Convert AdminMetadata to legacy Map<String, Long> format for V1 compatibility
    * This only includes the Long fields and excludes Position objects
    * @return Map<String, Long> containing only the Long fields
+   * @deprecated Scheduled for removal
    */
   public Map<String, Long> toLegacyMap() {
     Map<String, Long> legacyMap = new HashMap<>();
@@ -127,7 +131,7 @@ public class AdminMetadata {
 
   // Getters and setters
   public Long getExecutionId() {
-    return executionId;
+    return executionId == null ? UNDEFINED_VALUE : executionId;
   }
 
   public void setExecutionId(Long executionId) {
@@ -135,7 +139,7 @@ public class AdminMetadata {
   }
 
   public Long getOffset() {
-    return offset;
+    return offset == null ? UNDEFINED_VALUE : offset;
   }
 
   public void setOffset(Long offset) {
@@ -143,7 +147,7 @@ public class AdminMetadata {
   }
 
   public Long getUpstreamOffset() {
-    return upstreamOffset;
+    return upstreamOffset == null ? UNDEFINED_VALUE : upstreamOffset;
   }
 
   public void setUpstreamOffset(Long upstreamOffset) {
@@ -173,6 +177,12 @@ public class AdminMetadata {
       } else {
         return PubSubSymbolicPosition.EARLIEST;
       }
+    } else if (offset > position.getNumericOffset()) {
+      LOGGER.warn(
+          "Offset {} is greater than position {}. Resetting position to offset.",
+          offset,
+          position.getNumericOffset());
+      return ApacheKafkaOffsetPosition.of(offset);
     } else {
       return position;
     }
@@ -180,10 +190,12 @@ public class AdminMetadata {
 
   public void setPubSubPosition(PubSubPosition pubSubPosition) {
     this.position = pubSubPosition;
+    this.offset = pubSubPosition.getNumericOffset();
   }
 
   public void setUpstreamPubSubPosition(PubSubPosition upstreamPubPosition) {
     this.upstreamPosition = upstreamPubPosition;
+    this.upstreamOffset = upstreamPubPosition.getNumericOffset();
   }
 
   @Override

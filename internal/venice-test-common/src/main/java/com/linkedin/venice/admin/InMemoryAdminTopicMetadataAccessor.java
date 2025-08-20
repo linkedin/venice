@@ -35,7 +35,7 @@ public class InMemoryAdminTopicMetadataAccessor extends AdminTopicMetadataAccess
       inMemoryMetadata.setPubSubPosition(newPosition);
     }
     if (!newUpstreamPosition.equals(PubSubSymbolicPosition.EARLIEST)) {
-      inMemoryMetadata.setPubSubPosition(newUpstreamPosition);
+      inMemoryMetadata.setUpstreamPubSubPosition(newUpstreamPosition);
     }
 
     LOGGER.info("Persisted admin topic metadata for cluster: {}, metadata: {}", clusterName, metadataDelta);

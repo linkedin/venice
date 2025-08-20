@@ -33,13 +33,13 @@ public class TestAdminMetadata {
 
   @Test
   public void testSerializeAndDeserializeAdminMetadata() throws IOException {
-    PubSubPosition originalPosition = PubSubSymbolicPosition.EARLIEST;
+    PubSubPosition originalPosition = ApacheKafkaOffsetPosition.of(12345L);
     PubSubPosition originalUpstreamPosition = ApacheKafkaOffsetPosition.of(67890L);
 
     AdminMetadata originalMetadata = new AdminMetadata();
-    originalMetadata.setExecutionId(12345L);
-    originalMetadata.setOffset(67890L);
-    originalMetadata.setUpstreamOffset(11111L);
+    originalMetadata.setExecutionId(123L);
+    originalMetadata.setOffset(12345L);
+    originalMetadata.setUpstreamOffset(67890L);
     originalMetadata.setAdminOperationProtocolVersion(88L);
     originalMetadata.setPubSubPosition(originalPosition);
     originalMetadata.setUpstreamPubSubPosition(originalUpstreamPosition);
@@ -51,9 +51,9 @@ public class TestAdminMetadata {
 
     // Verify JSON is human-readable
     String jsonString = new String(jsonBytes);
-    assertTrue(jsonString.contains("\"executionId\" : 12345"));
-    assertTrue(jsonString.contains("\"offset\" : 67890"));
-    assertTrue(jsonString.contains("\"upstreamOffset\" : 11111"));
+    assertTrue(jsonString.contains("\"executionId\" : 123"));
+    assertTrue(jsonString.contains("\"offset\" : 12345"));
+    assertTrue(jsonString.contains("\"upstreamOffset\" : 67890"));
     assertTrue(jsonString.contains("\"adminOperationProtocolVersion\" : 88"));
     assertTrue(jsonString.contains("\"pubSubPositionJsonWireFormat\""));
     assertTrue(jsonString.contains("\"pubSubUpstreamPositionJsonWireFormat\""));
@@ -65,9 +65,9 @@ public class TestAdminMetadata {
 
     // Verify all fields
     assertNotNull(deserializedMetadata);
-    assertEquals(deserializedMetadata.getExecutionId(), Long.valueOf(12345L));
-    assertEquals(deserializedMetadata.getOffset(), Long.valueOf(67890L));
-    assertEquals(deserializedMetadata.getUpstreamOffset(), Long.valueOf(11111L));
+    assertEquals(deserializedMetadata.getExecutionId(), Long.valueOf(123L));
+    assertEquals(deserializedMetadata.getOffset(), Long.valueOf(12345L));
+    assertEquals(deserializedMetadata.getUpstreamOffset(), Long.valueOf(67890L));
     assertEquals(deserializedMetadata.getAdminOperationProtocolVersion(), Long.valueOf(88L));
 
     // Verify position objects
@@ -98,7 +98,7 @@ public class TestAdminMetadata {
     assertEquals(deserializedMetadata.getOffset(), Long.valueOf(1234L));
 
     // Verify null fields remain null
-    assertNull(deserializedMetadata.getUpstreamOffset());
+    assertEquals(deserializedMetadata.getUpstreamOffset(), UNDEFINED_VALUE);
     assertEquals(deserializedMetadata.getAdminOperationProtocolVersion(), UNDEFINED_VALUE);
 
     // verify position objects derived from offset
@@ -135,8 +135,10 @@ public class TestAdminMetadata {
 
     // All fields should be null
     assertNull(deserializedMetadata.getExecutionId());
-    assertNull(deserializedMetadata.getOffset());
-    assertNull(deserializedMetadata.getUpstreamOffset());
+    assertEquals(deserializedMetadata.getOffset().longValue(), PubSubSymbolicPosition.EARLIEST.getNumericOffset());
+    assertEquals(
+        deserializedMetadata.getUpstreamOffset().longValue(),
+        PubSubSymbolicPosition.EARLIEST.getNumericOffset());
     assertEquals(deserializedMetadata.getAdminOperationProtocolVersion(), UNDEFINED_VALUE);
   }
 

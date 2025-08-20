@@ -113,7 +113,7 @@ public class TestZkAdminTopicMetadataAccessor {
 
       // The updated metadata should be the original metadata with the offset/position updated
       Map<String, Long> updatedMetadata = AdminTopicMetadataAccessor
-          .generateMetadataMap(Optional.of(newOffset), Optional.of(-1L), Optional.of(1L), Optional.of(18L));
+          .generateMetadataMap(Optional.of(newOffset), Optional.of(12345L), Optional.of(1L), Optional.of(18L));
       AdminMetadata updatedV2Metadata = AdminMetadata.fromLegacyMap(updatedMetadata);
       updatedV2Metadata.setUpstreamPubSubPosition(position);
 
