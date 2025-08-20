@@ -318,6 +318,10 @@ public enum Command {
       new Arg[] { FABRIC, SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, ALLOW_STORE_MIGRATION,
           CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED }
   ),
+  UPDATE_DARK_CLUSTER_CONFIG(
+      "update-dark-cluster-config", "Update dark cluster configs", new Arg[] { URL, CLUSTER, FABRIC },
+      new Arg[] { STORE }
+  ),
   EMPTY_PUSH(
       "empty-push", "Do an empty push into an existing store", new Arg[] { URL, STORE, PUSH_ID, STORE_SIZE },
       new Arg[] { CLUSTER }

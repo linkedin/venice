@@ -10,6 +10,7 @@ import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -471,6 +472,8 @@ public interface Admin extends AutoCloseable, Closeable {
   void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params);
 
   void updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams params);
+
+  void updateDarkClusterConfig(String clusterName, UpdateDarkClusterConfigQueryParams params);
 
   double getStorageEngineOverheadRatio(String clusterName);
 

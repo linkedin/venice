@@ -68,6 +68,7 @@ import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -363,6 +364,9 @@ public class AdminTool {
           break;
         case UPDATE_CLUSTER_CONFIG:
           updateClusterConfig(cmd);
+          break;
+        case UPDATE_DARK_CLUSTER_CONFIG:
+          updateDarkClusterConfig(cmd);
           break;
         case ADD_SCHEMA:
           applyValueSchemaToStore(cmd);
@@ -1237,6 +1241,13 @@ public class AdminTool {
     printSuccess(response);
   }
 
+  private static void updateDarkClusterConfig(CommandLine cmd) {
+    UpdateDarkClusterConfigQueryParams params = getUpdateDarkClusterConfigQueryParams(cmd);
+
+    ControllerResponse response = controllerClient.updateDarkClusterConfig(params);
+    printSuccess(response);
+  }
+
   static UpdateStoreQueryParams getConfigureStoreViewQueryParams(CommandLine cmd) {
     Set<Arg> argSet = new HashSet<>(Arrays.asList(Command.CONFIGURE_STORE_VIEW.getOptionalArgs()));
     argSet.addAll(new HashSet<>(Arrays.asList(Command.CONFIGURE_STORE_VIEW.getRequiredArgs())));
@@ -1405,6 +1416,18 @@ public class AdminTool {
         getOptionalArgument(cmd, Arg.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED);
     if (adminTopicConsumptionEnabled != null) {
       params.setChildControllerAdminTopicConsumptionEnabled(Boolean.parseBoolean(adminTopicConsumptionEnabled));
+    }
+
+    return params;
+  }
+
+  protected static UpdateDarkClusterConfigQueryParams getUpdateDarkClusterConfigQueryParams(CommandLine cmd) {
+    UpdateDarkClusterConfigQueryParams params = new UpdateDarkClusterConfigQueryParams();
+
+    String darkRegionTargetStoresStr = getOptionalArgument(cmd, Arg.STORE);
+    if (darkRegionTargetStoresStr != null) {
+      Set<String> darkRegionTargetStores = Utils.parseCommaSeparatedStringToSet(darkRegionTargetStoresStr);
+      params.setStoresSet(darkRegionTargetStores);
     }
 
     return params;

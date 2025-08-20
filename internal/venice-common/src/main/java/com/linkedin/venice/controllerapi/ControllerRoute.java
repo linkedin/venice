@@ -150,7 +150,7 @@ public enum ControllerRoute {
   UPDATE_CLUSTER_CONFIG(
       "/update_cluster_config", HttpMethod.POST, Collections.singletonList(CLUSTER),
       SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND
-  ),
+  ), UPDATE_DARK_CLUSTER_CONFIG("/update_dark_cluster_config", HttpMethod.POST, Collections.singletonList(CLUSTER)),
 
   JOB("/job", HttpMethod.GET, Arrays.asList(NAME, VERSION)),
   KILL_OFFLINE_PUSH_JOB("/kill_offline_push_job", HttpMethod.POST, Collections.singletonList(TOPIC)),
