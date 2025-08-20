@@ -18,6 +18,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.File;
@@ -85,11 +86,9 @@ public class DefaultIngestionBackend implements IngestionBackend {
           partition);
     };
 
-    boolean storeLevelBlobTransferEnabled = storeAndVersion.getStore().isBlobTransferEnabled();
-    boolean serverLevelBlobTransferOverride = serverConfig.isBlobTransferServerOverride();
-    boolean blobTransferEnabledInStoreLevelOrServerLevel =
-        storeLevelBlobTransferEnabled || serverLevelBlobTransferOverride;
-    if (!blobTransferEnabledInStoreLevelOrServerLevel || blobTransferManager == null) {
+    boolean blobTransferActiveInReceiver = shouldEnableBlobTransfer(storeAndVersion.getStore());
+
+    if (!blobTransferActiveInReceiver || blobTransferManager == null) {
       runnable.run();
     } else {
       BlobTransferTableFormat requestTableFormat =
@@ -423,5 +422,59 @@ public class DefaultIngestionBackend implements IngestionBackend {
     } catch (Exception e) {
       LOGGER.error("Failed to update blob transfer response stats for store {} version {}", storeName, version, e);
     }
+  }
+
+  /**
+   * Determines whether blob transfer should be enabled based on the combined logic of
+   * store-level and server-level configurations.
+   *
+   * For the DaVinci client:
+   *  it uses the store's blob transfer enabled flag (BLOB_TRANSFER_ENABLED) directly.
+   *
+   * For the server:
+   *  it uses the combination of store-level (BLOB_TRANSFER_IN_SERVER_ENABLED) and server-level (BLOB_TRANSFER_RECEIVER_SERVER_POLICY) config:
+   *
+   * - Default (Disabled): If both configurations are NOT_SPECIFIED, feature is disabled
+   * - Scope-Specific Enablement: If one is NOT_SPECIFIED and other is ENABLED, feature is enabled
+   * - Scope-Specific Disablement: If either configuration is DISABLED, feature is disabled
+   * - Enabled in Both Scopes: If both are ENABLED, feature is enabled
+   *
+   * @param store The store metadata containing store-level blob transfer configuration
+   * @return true if blob transfer should be enabled, false otherwise
+   */
+  private boolean shouldEnableBlobTransfer(Store store) {
+    boolean isDaVinciClient = storeIngestionService.isDaVinciClient();
+
+    // For DaVinci clients, use the store's blob transfer enabled flag
+    if (isDaVinciClient) {
+      boolean blobTransferEnabledForDVC = store.isBlobTransferEnabled();
+      LOGGER.info("DaVinci client detected. Blob transfer enabled {}", blobTransferEnabledForDVC);
+      return blobTransferEnabledForDVC;
+    }
+
+    // For server mode, apply the combined logic
+    String blobTransferInServerPolicyForStoreLevel = store.getBlobTransferInServerEnabled(); // Store-level
+    String blobTransferInServerPolicyForNodeLevel = serverConfig.getBlobTransferReceiverServerPolicy(); // Server-level
+
+    LOGGER.info(
+        "Evaluating blob transfer enablement for store {}. Store-level: {}, Server-level: {} in Server.",
+        store.getName(),
+        blobTransferInServerPolicyForStoreLevel,
+        blobTransferInServerPolicyForNodeLevel);
+
+    // case 1: If either configuration explicitly disables, feature is disabled
+    if (ConfigCommonUtils.ActivationState.DISABLED.name().equals(blobTransferInServerPolicyForStoreLevel)
+        || ConfigCommonUtils.ActivationState.DISABLED.name().equals(blobTransferInServerPolicyForNodeLevel)) {
+      return false;
+    }
+
+    // case 2: If either configuration enables (and the other is not disabled), feature is enabled
+    if (ConfigCommonUtils.ActivationState.ENABLED.name().equals(blobTransferInServerPolicyForStoreLevel)
+        || ConfigCommonUtils.ActivationState.ENABLED.name().equals(blobTransferInServerPolicyForNodeLevel)) {
+      return true;
+    }
+
+    // case 3: Default case, both are NOT_SPECIFIED or null, feature is disabled
+    return false;
   }
 }

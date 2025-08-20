@@ -1997,9 +1997,9 @@ public class ConfigKeys {
   // this is a host-level config to decide whether bootstrap a blob transfer manager for the host
   public static final String BLOB_TRANSFER_MANAGER_ENABLED = "blob.transfer.manager.enabled";
 
-  // this is a server level (host-level) config to decide if bootstrap from blob transfer override the store-level
-  // config setting.
-  public static final String BLOB_TRANSFER_SERVER_OVERRIDE_ENABLED = "blob.transfer.server.override.enabled";
+  // this is a host-level config to decide if bootstrap from blob transfer for venice server
+  // the store level config is controlled by BLOB_TRANSFER_IN_SERVER_ENABLED.
+  public static final String BLOB_TRANSFER_RECEIVER_SERVER_POLICY = "blob.transfer.receiver.server.policy";
 
   // this is a config to decide whether the snapshot is expired and need to be recreated.
   public static final String BLOB_TRANSFER_SNAPSHOT_RETENTION_TIME_IN_MIN =

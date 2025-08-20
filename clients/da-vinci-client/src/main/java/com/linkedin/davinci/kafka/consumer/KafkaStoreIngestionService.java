@@ -171,6 +171,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final boolean isIsolatedIngestion;
 
+  private final boolean isDaVinciClient;
+
   private final TopicManagerRepository topicManagerRepository;
 
   private ExecutorService participantStoreConsumerExecutorService;
@@ -246,6 +248,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
     this.veniceConfigLoader = veniceConfigLoader;
     this.isIsolatedIngestion = isIsolatedIngestion;
+    this.isDaVinciClient = isDaVinciClient;
     this.partitionStateSerializer = partitionStateSerializer;
     this.compressorFactory = compressorFactory;
     this.zkHelixAdmin = zkHelixAdmin;
@@ -1291,6 +1294,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public StoreIngestionTask getStoreIngestionTask(String topicName) {
     return topicNameToIngestionTaskMap.get(topicName);
+  }
+
+  public boolean isDaVinciClient() {
+    return this.isDaVinciClient;
   }
 
   public AdminResponse getConsumptionSnapshots(String topicName, ComplementSet<Integer> partitions) {

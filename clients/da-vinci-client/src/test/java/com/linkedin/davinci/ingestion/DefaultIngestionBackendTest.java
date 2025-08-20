@@ -33,6 +33,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.utils.ConfigCommonUtils;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
@@ -134,7 +135,9 @@ public class DefaultIngestionBackendTest {
   @Test
   public void testStartConsumptionWithBlobTransferStoreLevelConfigDisabled() {
     when(store.isBlobTransferEnabled()).thenReturn(false); // disable store level config
-    when(veniceServerConfig.isBlobTransferServerOverride()).thenReturn(true); // enable server level config
+    when(store.getBlobTransferInServerEnabled()).thenReturn(ConfigCommonUtils.ActivationState.NOT_SPECIFIED.name());
+    when(veniceServerConfig.getBlobTransferReceiverServerPolicy())
+        .thenReturn(ConfigCommonUtils.ActivationState.ENABLED.name());
     when(store.isHybrid()).thenReturn(false);
     when(blobTransferManager.get(eq(STORE_NAME), eq(VERSION_NUMBER), eq(PARTITION), eq(BLOB_TRANSFER_FORMAT)))
         .thenReturn(CompletableFuture.completedFuture(null));
