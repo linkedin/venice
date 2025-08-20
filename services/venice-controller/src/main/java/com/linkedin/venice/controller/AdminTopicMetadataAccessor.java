@@ -84,7 +84,7 @@ public abstract class AdminTopicMetadataAccessor {
    * @return the execution ID from the metadata
    */
   public static long getExecutionId(AdminMetadata metadata) {
-    return metadata.getExecutionId() != null ? metadata.getExecutionId() : UNDEFINED_VALUE;
+    return metadata != null && metadata.getExecutionId() != null ? metadata.getExecutionId() : UNDEFINED_VALUE;
   }
 
   /**

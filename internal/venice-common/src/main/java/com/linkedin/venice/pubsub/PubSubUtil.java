@@ -197,7 +197,9 @@ public final class PubSubUtil {
    * @return A negative integer, zero, or a positive integer if position1 is less than,
    *         equal to, or greater than position2, respectively.
    * @throws IllegalArgumentException if either position is {@code null}.
+   * @Deprecated Use {@link com.linkedin.venice.pubsub.manager.TopicManager#diffPosition(PubSubTopicPartition, PubSubPosition, PubSubPosition)} instead.
    */
+  @Deprecated
   public static int comparePubSubPositions(PubSubPosition position1, PubSubPosition position2) {
     if (position1 == null || position2 == null) {
       throw new IllegalArgumentException("Positions cannot be null");
@@ -291,7 +293,7 @@ public final class PubSubUtil {
    * @return the calculated seek offset
    */
   public static long calculateSeekOffset(long baseOffset, boolean isInclusive) {
-    return isInclusive ? baseOffset : baseOffset + 1;
+    return Math.max(0L, isInclusive ? baseOffset : baseOffset + 1);
   }
 
   /**

@@ -9,6 +9,9 @@ import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -21,6 +24,7 @@ public class AdminMetadata {
   private Long adminOperationProtocolVersion;
   private PubSubPosition position;
   private PubSubPosition upstreamPosition;
+  private static final Logger LOGGER = LogManager.getLogger(AdminMetadata.class);
 
   public AdminMetadata() {
   }
@@ -84,6 +88,7 @@ public class AdminMetadata {
    * Convert AdminMetadata to legacy Map<String, Long> format for V1 compatibility
    * This only includes the Long fields and excludes Position objects
    * @return Map<String, Long> containing only the Long fields
+   * @deprecated Scheduled for removal
    */
   public Map<String, Long> toLegacyMap() {
     Map<String, Long> legacyMap = new HashMap<>();
@@ -127,7 +132,7 @@ public class AdminMetadata {
 
   // Getters and setters
   public Long getExecutionId() {
-    return executionId;
+    return executionId == null ? UNDEFINED_VALUE : executionId;
   }
 
   public void setExecutionId(Long executionId) {
@@ -135,7 +140,7 @@ public class AdminMetadata {
   }
 
   public Long getOffset() {
-    return offset;
+    return offset == null ? UNDEFINED_VALUE : offset;
   }
 
   public void setOffset(Long offset) {
@@ -143,7 +148,7 @@ public class AdminMetadata {
   }
 
   public Long getUpstreamOffset() {
-    return upstreamOffset;
+    return upstreamOffset == null ? UNDEFINED_VALUE : upstreamOffset;
   }
 
   public void setUpstreamOffset(Long upstreamOffset) {
@@ -173,6 +178,12 @@ public class AdminMetadata {
       } else {
         return PubSubSymbolicPosition.EARLIEST;
       }
+    } else if (offset != null && offset > position.getNumericOffset()) {
+      LOGGER.warn(
+          "Offset {} is greater than position {}. Resetting position to offset.",
+          offset,
+          position.getNumericOffset());
+      return ApacheKafkaOffsetPosition.of(offset);
     } else {
       return position;
     }
@@ -180,10 +191,20 @@ public class AdminMetadata {
 
   public void setPubSubPosition(PubSubPosition pubSubPosition) {
     this.position = pubSubPosition;
+    if (pubSubPosition != null) {
+      this.offset = pubSubPosition.getNumericOffset();
+    } else {
+      this.offset = UNDEFINED_VALUE;
+    }
   }
 
   public void setUpstreamPubSubPosition(PubSubPosition upstreamPubPosition) {
     this.upstreamPosition = upstreamPubPosition;
+    if (upstreamPubPosition != null) {
+      this.upstreamOffset = upstreamPubPosition.getNumericOffset();
+    } else {
+      this.upstreamOffset = UNDEFINED_VALUE;
+    }
   }
 
   @Override
@@ -191,5 +212,33 @@ public class AdminMetadata {
     return "AdminMetadata{" + "executionId=" + executionId + ", offset=" + offset + ", upstreamOffset=" + upstreamOffset
         + ", adminOperationProtocolVersion=" + adminOperationProtocolVersion + ", position=" + position
         + ", upstreamPosition=" + upstreamPosition + '}';
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    AdminMetadata that = (AdminMetadata) o;
+    return Objects.equals(this.getExecutionId(), that.getExecutionId())
+        && Objects.equals(this.getOffset(), that.getOffset())
+        && Objects.equals(this.getUpstreamOffset(), that.getUpstreamOffset())
+        && Objects.equals(this.getAdminOperationProtocolVersion(), that.getAdminOperationProtocolVersion())
+        && Objects.equals(this.getPosition(), that.getPosition())
+        && Objects.equals(this.getUpstreamPosition(), that.getUpstreamPosition());
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(
+        this.getExecutionId(),
+        this.getOffset(),
+        this.getUpstreamOffset(),
+        this.getAdminOperationProtocolVersion(),
+        this.getPosition(),
+        this.getUpstreamPosition());
   }
 }

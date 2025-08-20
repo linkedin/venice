@@ -68,6 +68,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
@@ -92,7 +93,6 @@ public class AdminExecutionTask implements Callable<Void> {
   private final long lastPersistedExecutionId;
 
   AdminExecutionTask(
-      Logger LOGGER,
       String clusterName,
       String storeName,
       ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap,
@@ -103,7 +103,7 @@ public class AdminExecutionTask implements Callable<Void> {
       boolean isParentController,
       AdminConsumptionStats stats,
       String regionName) {
-    this.LOGGER = LOGGER;
+    this.LOGGER = LogManager.getLogger(AdminExecutionTask.class);
     this.clusterName = clusterName;
     this.storeName = storeName;
     this.lastSucceededExecutionIdMap = lastSucceededExecutionIdMap;
@@ -150,7 +150,7 @@ public class AdminExecutionTask implements Callable<Void> {
       // The queue with the problematic operation will be delegated and retried by the worker thread in the next cycle.
       AdminOperationWrapper adminOperationWrapper = internalTopic.peek();
       String logMessage =
-          "when processing admin message for store " + storeName + " with offset " + adminOperationWrapper.getOffset()
+          "when processing admin message for store " + storeName + " with offset " + adminOperationWrapper.getPosition()
               + " and execution id " + adminOperationWrapper.getAdminOperation().executionId;
       if (e instanceof VeniceRetriableException) {
         // These retriable exceptions are expected, therefore logging at the info level should be sufficient.
