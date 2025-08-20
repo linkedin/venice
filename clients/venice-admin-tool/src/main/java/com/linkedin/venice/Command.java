@@ -319,8 +319,7 @@ public enum Command {
           CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED }
   ),
   UPDATE_DARK_CLUSTER_CONFIG(
-      "update-dark-cluster-config", "Update dark cluster configs", new Arg[] { URL, CLUSTER, FABRIC },
-      new Arg[] { STORE }
+      "update-dark-cluster-config", "Update dark cluster configs", new Arg[] { URL, CLUSTER }, new Arg[] { STORES }
   ),
   EMPTY_PUSH(
       "empty-push", "Do an empty push into an existing store", new Arg[] { URL, STORE, PUSH_ID, STORE_SIZE },

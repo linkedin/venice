@@ -2,12 +2,18 @@ package com.linkedin.venice.controllerapi;
 
 import static com.linkedin.venice.ConfigKeys.DARK_CLUSTER_TARGET_STORES;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.ObjectMapperFactory;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 
 public class UpdateDarkClusterConfigQueryParams extends QueryParams {
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
+
   public UpdateDarkClusterConfigQueryParams(Map<String, String> initialParams) {
     super(initialParams);
   }
@@ -16,17 +22,25 @@ public class UpdateDarkClusterConfigQueryParams extends QueryParams {
     super();
   }
 
-  public Optional<Set<String>> getStoresSet() {
+  // ***************** below this line are getters and setters *****************
+  public Optional<List<String>> getTargetStores() {
     String stores = getString(DARK_CLUSTER_TARGET_STORES).orElse(null);
     if (stores != null) {
-      return Optional.of(com.linkedin.venice.utils.Utils.parseCommaSeparatedStringToSet(stores));
+      return Optional.of(com.linkedin.venice.utils.Utils.parseCommaSeparatedStringToList(stores));
     }
     return Optional.empty();
   }
 
-  public UpdateDarkClusterConfigQueryParams setStoresSet(Set<String> storesSet) {
-    return (UpdateDarkClusterConfigQueryParams) putStringSet(DARK_CLUSTER_TARGET_STORES, storesSet);
+  public UpdateDarkClusterConfigQueryParams setTargetStores(List<String> targetStores) {
+    return putStringList(DARK_CLUSTER_TARGET_STORES, targetStores);
   }
 
-  // Add more getters and setters as needed for dark cluster specific configs
+  // ***************** above this line are getters and setters *****************
+  private UpdateDarkClusterConfigQueryParams putStringList(String name, List<String> value) {
+    try {
+      return (UpdateDarkClusterConfigQueryParams) add(name, OBJECT_MAPPER.writeValueAsString(value));
+    } catch (JsonProcessingException e) {
+      throw new VeniceException(e.getMessage());
+    }
+  }
 }

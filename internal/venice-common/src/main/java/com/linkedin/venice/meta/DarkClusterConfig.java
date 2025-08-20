@@ -2,30 +2,28 @@ package com.linkedin.venice.meta;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.ConfigKeys;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 
 public class DarkClusterConfig {
   @JsonProperty(ConfigKeys.DARK_CLUSTER_TARGET_STORES)
-  private Set<String> targetStores = new HashSet<>();
+  private List<String> targetStores = new ArrayList<>();
 
   public DarkClusterConfig() {
   }
 
   public DarkClusterConfig(DarkClusterConfig clone) {
     if (clone.getTargetStores() != null) {
-      targetStores = new HashSet<>(clone.getTargetStores());
+      targetStores = new ArrayList<>(clone.getTargetStores());
     }
   }
 
-  public Set<String> getTargetStores() {
+  public List<String> getTargetStores() {
     return targetStores;
   }
 
-  public void setTargetStores(Set<String> targetStores) {
+  public void setTargetStores(List<String> targetStores) {
     this.targetStores = targetStores;
   }
-
-  // Add more fields and methods as needed for dark cluster specific config
 }
