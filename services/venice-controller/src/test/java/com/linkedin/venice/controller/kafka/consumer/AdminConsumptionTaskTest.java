@@ -444,7 +444,7 @@ public class AdminConsumptionTaskTest {
     executor.submit(task);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(task.getFailingOffset(), failingOffset);
+      Assert.assertEquals(task.getFailingPosition(), failingOffset);
     });
 
     task.close();
@@ -471,10 +471,10 @@ public class AdminConsumptionTaskTest {
     executor.submit(task);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(task.getFailingOffset(), 1L);
+      Assert.assertEquals(task.getFailingPosition(), 1L);
     });
 
-    verify(mockStats, timeout(100).atLeastOnce()).setAdminConsumptionFailedOffset(1);
+    verify(mockStats, timeout(100).atLeastOnce()).setAdminConsumptionFailedPosition(1);
     verify(mockStats, timeout(100).atLeastOnce()).recordPendingAdminMessagesCount(2D);
     verify(mockStats, timeout(100).atLeastOnce()).recordStoresWithPendingAdminMessagesCount(1D);
     verify(mockStats, timeout(100).atLeastOnce()).recordAdminConsumptionCycleDurationMs(anyDouble());
@@ -609,7 +609,7 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingOffset(), 3L));
+        () -> Assert.assertEquals(task.getFailingPosition(), 3L));
     task.skipMessageWithOffset(3L);
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
@@ -658,7 +658,7 @@ public class AdminConsumptionTaskTest {
         TIMEOUT,
         TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(getLastOffset(clusterName), 3L));
-    Assert.assertEquals(task.getFailingOffset(), -1);
+    Assert.assertEquals(task.getFailingPosition(), -1);
     task.close();
     verify(stats, never()).recordAdminTopicDIVErrorReportCount();
     verify(admin, atLeastOnce()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
@@ -715,7 +715,7 @@ public class AdminConsumptionTaskTest {
         TIMEOUT,
         TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(getLastOffset(clusterName), 5L));
-    Assert.assertEquals(task.getFailingOffset(), -1);
+    Assert.assertEquals(task.getFailingPosition(), -1);
     task.close();
     verify(stats, never()).recordAdminTopicDIVErrorReportCount();
     verify(admin, atLeastOnce()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
@@ -1075,7 +1075,7 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingOffset(), 1L));
+        () -> Assert.assertEquals(task.getFailingPosition(), 1L));
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1102,7 +1102,7 @@ public class AdminConsumptionTaskTest {
     Assert.assertEquals(
         executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName1, -1L).longValue(),
         3L);
-    Assert.assertEquals(task.getFailingOffset(), -1L);
+    Assert.assertEquals(task.getFailingPosition(), -1L);
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -1210,18 +1210,18 @@ public class AdminConsumptionTaskTest {
     when(admin.isLeaderControllerFor(clusterName)).thenReturn(true, true, true, true, true, false, false, false, true);
     executor.submit(task);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(task.getFailingOffset(), failingOffset);
+      Assert.assertEquals(task.getFailingPosition(), failingOffset);
     });
     // Failing offset should be set to -1 once the consumption task unsubscribed.
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingOffset(), -1));
+        () -> Assert.assertEquals(task.getFailingPosition(), -1));
     // The consumption task will eventually resubscribe and should be stuck on the same admin message.
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingOffset(), failingOffset));
+        () -> Assert.assertEquals(task.getFailingPosition(), failingOffset));
     task.close();
     executor.shutdown();
     ;
@@ -1325,7 +1325,7 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingOffset(), offset));
+        () -> Assert.assertEquals(task.getFailingPosition(), offset));
     // Skip the DIV check, make sure the sequence number is updated and new admin messages can also be processed
     task.skipMessageDIVWithOffset(offset);
     TestUtils.waitForNonDeterministicAssertion(
@@ -1369,7 +1369,7 @@ public class AdminConsumptionTaskTest {
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getFailingOffset(), offset));
+        () -> Assert.assertEquals(task.getFailingPosition(), offset));
     // The add version message is expected to fail with retriable VeniceOperationAgainstKafkaTimeOut exception and the
     // corresponding code path for handling retriable exceptions should have been executed.
     verify(stats, atLeastOnce()).recordFailedRetriableAdminConsumption();
@@ -1742,7 +1742,7 @@ public class AdminConsumptionTaskTest {
 
     Assert.assertEquals(getLastOffset(clusterName), -1L);
     Assert.assertEquals(getLastExecutionId(clusterName), -1L);
-    Assert.assertEquals(task.getFailingOffset(), 1L);
+    Assert.assertEquals(task.getFailingPosition(), 1L);
     Assert.assertEquals(task.getLastSucceededExecutionId().longValue(), -1L);
     Assert.assertNull(task.getLastSucceededExecutionId(storeName1));
     Assert.assertEquals(task.getLastSucceededExecutionId(storeName2).longValue(), 4L);
@@ -1759,7 +1759,7 @@ public class AdminConsumptionTaskTest {
     Assert.assertEquals(
         executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName1, -1L).longValue(),
         3L);
-    Assert.assertEquals(task.getFailingOffset(), -1L);
+    Assert.assertEquals(task.getFailingPosition(), -1L);
 
     task.close();
     executor.shutdown();

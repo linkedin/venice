@@ -11,6 +11,7 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LogContext;
@@ -168,8 +169,8 @@ public class AdminConsumerService extends AbstractVeniceService {
   /**
    * @return The first or the smallest failing offset.
    */
-  public long getFailingOffset() {
-    return consumerTask.getFailingOffset();
+  public PubSubPosition getFailingPosition() {
+    return consumerTask.getFailingPosition();
   }
 
   /**

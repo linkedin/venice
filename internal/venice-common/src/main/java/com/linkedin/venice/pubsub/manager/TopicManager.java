@@ -802,23 +802,23 @@ public class TopicManager implements Closeable {
     return topicMetadataFetcher.containsTopicWithRetries(pubSubTopic, retries);
   }
 
-  public long getLatestOffsetWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
-    return topicMetadataFetcher.getLatestOffsetWithRetries(pubSubTopicPartition, retries);
+  public PubSubPosition getLatestOffsetWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
+    return topicMetadataFetcher.getLatestPositionWithRetries(pubSubTopicPartition, retries);
   }
 
-  public long getLatestOffsetCached(PubSubTopic pubSubTopic, int partitionId) {
-    return topicMetadataFetcher.getLatestOffsetCached(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
+  public PubSubPosition getLatestOffsetCached(PubSubTopic pubSubTopic, int partitionId) {
+    return topicMetadataFetcher.getLatestPositionCached(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
   }
 
-  public long getLatestOffsetCachedNonBlocking(PubSubTopic pubSubTopic, int partitionId) {
+  public PubSubPosition getLatestOffsetCachedNonBlocking(PubSubTopic pubSubTopic, int partitionId) {
     return topicMetadataFetcher
-        .getLatestOffsetCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
+        .getLatestPositionCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, partitionId));
   }
 
   /**
    * Get offsets for only one partition with a specific timestamp.
    */
-  public long getOffsetByTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+  public PubSubPosition getPositionByTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
     return topicMetadataFetcher.getOffsetForTimeWithRetries(pubSubTopicPartition, timestamp, 25);
   }
 

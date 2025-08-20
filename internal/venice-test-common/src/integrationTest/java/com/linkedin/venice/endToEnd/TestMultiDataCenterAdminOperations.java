@@ -188,7 +188,7 @@ public class TestMultiDataCenterAdminOperations {
     TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
       for (VeniceControllerWrapper controller: controllersToTest) {
         AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
-        if (adminConsumerService.getFailingOffset() < 0) {
+        if (adminConsumerService.getFailingPosition().getNumericOffset() < 0) {
           return false;
         }
       }
@@ -198,16 +198,17 @@ public class TestMultiDataCenterAdminOperations {
     // Cleanup the failing admin message
     for (VeniceControllerWrapper controller: controllersToTest) {
       AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
-      adminConsumerService.setOffsetToSkip(clusterName, adminConsumerService.getFailingOffset(), false);
+      adminConsumerService
+          .setOffsetToSkip(clusterName, adminConsumerService.getFailingPosition().getNumericOffset(), false);
     }
 
     AdminConsumerService parentAdminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      boolean allFailedMessagesSkipped = parentAdminConsumerService.getFailingOffset() == -1;
+      boolean allFailedMessagesSkipped = parentAdminConsumerService.getFailingPosition().getNumericOffset() == -1;
       for (List<VeniceControllerWrapper> controllerWrappers: childControllers) {
         AdminConsumerService childAdminConsumerService =
             controllerWrappers.get(0).getAdminConsumerServiceByCluster(clusterName);
-        allFailedMessagesSkipped &= childAdminConsumerService.getFailingOffset() == -1;
+        allFailedMessagesSkipped &= childAdminConsumerService.getFailingPosition().getNumericOffset() == -1;
       }
       return allFailedMessagesSkipped;
     });

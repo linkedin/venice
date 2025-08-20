@@ -252,7 +252,7 @@ public class TopicMetadataFetcherTest {
     assertEquals(res.get(tp0Info.getTopicPartition()), ApacheKafkaOffsetPosition.of(111L));
     assertEquals(res.get(tp1Info.getTopicPartition()), ApacheKafkaOffsetPosition.of(222L));
     assertEquals(
-        topicMetadataFetcher.getLatestOffsetCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, 0)),
+        topicMetadataFetcher.getLatestPositionCachedNonBlocking(new PubSubTopicPartitionImpl(pubSubTopic, 0)),
         PubSubConstants.UNKNOWN_LATEST_OFFSET);
 
     verify(consumerMock, times(3)).partitionsFor(pubSubTopic);
@@ -333,23 +333,23 @@ public class TopicMetadataFetcherTest {
   }
 
   @Test
-  public void testGetLatestOffset() {
+  public void testGetLatestPosition() {
     PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
     Map<PubSubTopicPartition, PubSubPosition> offsetMap = new HashMap<>();
     offsetMap.put(tp0, ApacheKafkaOffsetPosition.of(1001L));
     when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(offsetMap);
-    long latestOffset = topicMetadataFetcher.getLatestOffset(tp0);
+    long latestOffset = topicMetadataFetcher.getLatestPosition(tp0);
     assertEquals(latestOffset, 1001L);
 
     // test when endOffsets returns null
     when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(Collections.emptyMap());
-    Throwable t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.getLatestOffset(tp0));
+    Throwable t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.getLatestPosition(tp0));
     assertTrue(t.getMessage().contains("Got null position for:"), "Got: " + t.getMessage());
     assertEquals(pubSubConsumerPool.size(), 1);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
-  public void testGetLatestOffsetWithRetries() throws ExecutionException, InterruptedException {
+  public void testGetLatestPositionWithRetries() throws ExecutionException, InterruptedException {
     PubSubTopicPartition tp0 = new PubSubTopicPartitionImpl(pubSubTopic, 0);
     when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
 
@@ -358,24 +358,24 @@ public class TopicMetadataFetcherTest {
         .doThrow(new PubSubOpTimeoutException("Test3"))
         .doReturn(99L)
         .when(topicMetadataFetcherSpy)
-        .getLatestOffset(tp0);
+        .getLatestPosition(tp0);
     assertEquals((long) topicMetadataFetcherSpy.getLatestOffsetWithRetriesAsync(tp0, 5).get(), 99L);
-    verify(topicMetadataFetcherSpy, times(4)).getLatestOffset(tp0);
+    verify(topicMetadataFetcherSpy, times(4)).getLatestPosition(tp0);
 
-    doThrow(new PubSubTopicDoesNotExistException("Test1")).when(topicMetadataFetcherSpy).getLatestOffset(tp0);
+    doThrow(new PubSubTopicDoesNotExistException("Test1")).when(topicMetadataFetcherSpy).getLatestPosition(tp0);
     expectThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicMetadataFetcherSpy.getLatestOffsetWithRetries(tp0, 1));
+        () -> topicMetadataFetcherSpy.getLatestPositionWithRetries(tp0, 1));
 
     Map<PubSubTopicPartition, PubSubPosition> offsetMap = new HashMap<>();
     offsetMap.put(tp0, ApacheKafkaOffsetPosition.of(1001L));
     when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(offsetMap);
-    long latestOffset = topicMetadataFetcher.getLatestOffsetWithRetries(tp0, 1);
+    long latestOffset = topicMetadataFetcher.getLatestPositionWithRetries(tp0, 1);
     assertEquals(latestOffset, 1001L);
 
     // test when endOffsets returns null
     when(consumerMock.endPositions(eq(offsetMap.keySet()), any(Duration.class))).thenReturn(Collections.emptyMap());
-    Throwable t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.getLatestOffsetWithRetries(tp0, 1));
+    Throwable t = expectThrows(VeniceException.class, () -> topicMetadataFetcher.getLatestPositionWithRetries(tp0, 1));
     assertTrue(t.getMessage().contains("Got null position for:"));
     assertEquals(pubSubConsumerPool.size(), 1);
   }
@@ -386,7 +386,7 @@ public class TopicMetadataFetcherTest {
     when(adminMock.containsTopic(pubSubTopic)).thenReturn(true);
     long latestOffset = 12321L;
     TopicMetadataFetcher topicMetadataFetcherSpy = spy(topicMetadataFetcher);
-    doReturn(latestOffset).when(topicMetadataFetcherSpy).getLatestOffset(tp0);
+    doReturn(latestOffset).when(topicMetadataFetcherSpy).getLatestPosition(tp0);
 
     long ts = System.currentTimeMillis();
     when(consumerMock.offsetForTime(eq(tp0), eq(ts), any(Duration.class))).thenReturn(9988L);

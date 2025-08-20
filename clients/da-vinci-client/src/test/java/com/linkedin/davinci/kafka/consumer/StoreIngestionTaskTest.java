@@ -4022,7 +4022,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(PARTITION_FOO).when(mockPcs).getPartition();
     PubSubPosition p10 = InMemoryPubSubPosition.of(10L);
     storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, p10, mockPcs);
-    verify(mockTopicManagerRemoteKafka, never()).getOffsetByTime(any(), anyLong());
+    verify(mockTopicManagerRemoteKafka, never()).getPositionByTime(any(), anyLong());
     verify(mockOffsetRecord, never()).checkpointRtPosition(anyString(), any(PubSubPosition.class));
   }
 

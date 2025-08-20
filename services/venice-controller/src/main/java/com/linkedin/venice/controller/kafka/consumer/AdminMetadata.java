@@ -103,11 +103,12 @@ public class AdminMetadata {
   }
 
   /**
-   * Factory method to create AdminMetadata from legacy Map<String, Long> format
+   * Factory method to create AdminMetadata from legacy Map<String, Long> format.
+   * Returns null if the legacyMap is null.
    */
   public static AdminMetadata fromLegacyMap(Map<String, Long> legacyMap) {
-    AdminMetadata metadata = new AdminMetadata();
     if (legacyMap != null) {
+      AdminMetadata metadata = new AdminMetadata();
       metadata.setExecutionId(legacyMap.get(AdminTopicMetadataAccessor.EXECUTION_ID_KEY));
       metadata.setOffset(legacyMap.get(AdminTopicMetadataAccessor.OFFSET_KEY));
       metadata.setUpstreamOffset(legacyMap.get(AdminTopicMetadataAccessor.UPSTREAM_OFFSET_KEY));
@@ -121,8 +122,10 @@ public class AdminMetadata {
           metadata.getUpstreamOffset() == null
               ? PubSubSymbolicPosition.EARLIEST
               : ApacheKafkaOffsetPosition.of(metadata.getUpstreamOffset()));
+      return metadata;
+    } else {
+      return null;
     }
-    return metadata;
   }
 
   // Getters and setters
@@ -180,10 +183,12 @@ public class AdminMetadata {
 
   public void setPubSubPosition(PubSubPosition pubSubPosition) {
     this.position = pubSubPosition;
+    this.offset = pubSubPosition.getNumericOffset();
   }
 
   public void setUpstreamPubSubPosition(PubSubPosition upstreamPubPosition) {
     this.upstreamPosition = upstreamPubPosition;
+    this.upstreamOffset = upstreamPubPosition.getNumericOffset();
   }
 
   @Override

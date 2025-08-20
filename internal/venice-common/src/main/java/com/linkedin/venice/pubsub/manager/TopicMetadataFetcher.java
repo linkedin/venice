@@ -13,7 +13,6 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pubsub.PubSubConstants;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterContext;
 import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
@@ -21,12 +20,12 @@ import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubClientRetriableException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubOpTimeoutException;
 import com.linkedin.venice.pubsub.api.exceptions.PubSubTopicDoesNotExistException;
-import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
@@ -85,7 +84,8 @@ class TopicMetadataFetcher implements Closeable {
    * key within the specific cache.
    */
   private final Map<PubSubTopic, ValueAndExpiryTime<Boolean>> topicExistenceCache = new VeniceConcurrentHashMap<>();
-  private final Map<PubSubTopicPartition, ValueAndExpiryTime<Long>> latestOffsetCache = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopicPartition, ValueAndExpiryTime<PubSubPosition>> latestPositionCache =
+      new VeniceConcurrentHashMap<>();
   private final Map<PubSubTopicPartition, ValueAndExpiryTime<Long>> lastProducerTimestampCache =
       new VeniceConcurrentHashMap<>();
   private final long cachedEntryTtlInNs;
@@ -391,62 +391,65 @@ class TopicMetadataFetcher implements Closeable {
     });
   }
 
-  long getLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
-    return getEndPositionsForPartition(pubSubTopicPartition).getNumericOffset();
+  PubSubPosition getLatestPosition(PubSubTopicPartition pubSubTopicPartition) {
+    return getEndPositionsForPartition(pubSubTopicPartition);
   }
 
-  long getLatestOffsetWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
+  PubSubPosition getLatestPositionWithRetries(PubSubTopicPartition pubSubTopicPartition, int retries) {
     return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
       validateTopicPartition(pubSubTopicPartition);
-      return getLatestOffset(pubSubTopicPartition);
+      return getLatestPosition(pubSubTopicPartition);
     }, retries, INITIAL_RETRY_DELAY, Duration.ofSeconds(5), Duration.ofMinutes(5), PUBSUB_RETRIABLE_FAILURES);
   }
 
-  CompletableFuture<Long> getLatestOffsetNoRetry(PubSubTopicPartition pubSubTopicPartition) {
+  CompletableFuture<PubSubPosition> getLatestPositionNoRetry(PubSubTopicPartition pubSubTopicPartition) {
     return CompletableFuture.supplyAsync(() -> {
       validateTopicPartition(pubSubTopicPartition);
-      return getLatestOffset(pubSubTopicPartition);
+      return getLatestPosition(pubSubTopicPartition);
     }, threadPoolExecutor);
   }
 
-  CompletableFuture<Long> getLatestOffsetWithRetriesAsync(PubSubTopicPartition pubSubTopicPartition, int retries) {
+  CompletableFuture<PubSubPosition> getLatestOffsetWithRetriesAsync(
+      PubSubTopicPartition pubSubTopicPartition,
+      int retries) {
     return CompletableFuture
-        .supplyAsync(() -> getLatestOffsetWithRetries(pubSubTopicPartition, retries), threadPoolExecutor);
+        .supplyAsync(() -> getLatestPositionWithRetries(pubSubTopicPartition, retries), threadPoolExecutor);
   }
 
-  long getLatestOffsetCachedNonBlocking(PubSubTopicPartition pubSubTopicPartition) {
-    ValueAndExpiryTime<Long> cachedValue;
-    cachedValue = latestOffsetCache.get(pubSubTopicPartition);
+  PubSubPosition getLatestPositionCachedNonBlocking(PubSubTopicPartition pubSubTopicPartition) {
+    ValueAndExpiryTime<PubSubPosition> cachedValue;
+    cachedValue = latestPositionCache.get(pubSubTopicPartition);
     updateCacheAsync(
         pubSubTopicPartition,
         cachedValue,
-        latestOffsetCache,
-        () -> getLatestOffsetNoRetry(pubSubTopicPartition));
+        latestPositionCache,
+        () -> getLatestPositionNoRetry(pubSubTopicPartition));
     if (cachedValue == null) {
-      cachedValue = latestOffsetCache.get(pubSubTopicPartition);
+      cachedValue = latestPositionCache.get(pubSubTopicPartition);
       if (cachedValue == null) {
-        return PubSubConstants.UNKNOWN_LATEST_OFFSET;
+        return PubSubSymbolicPosition.EARLIEST;
       }
     }
     return cachedValue.getValue();
   }
 
-  long getLatestOffsetCached(PubSubTopicPartition pubSubTopicPartition) {
-    ValueAndExpiryTime<Long> cachedValue;
+  PubSubPosition getLatestPositionCached(PubSubTopicPartition pubSubTopicPartition) {
+    ValueAndExpiryTime<PubSubPosition> cachedValue;
     try {
-      cachedValue = latestOffsetCache.computeIfAbsent(pubSubTopicPartition, k -> {
-        long latestOffset =
-            getLatestOffsetWithRetries(pubSubTopicPartition, DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY);
-        return new ValueAndExpiryTime<>(latestOffset);
+      cachedValue = latestPositionCache.computeIfAbsent(pubSubTopicPartition, k -> {
+        PubSubPosition latestPosition =
+            getLatestPositionWithRetries(pubSubTopicPartition, DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY);
+        return new ValueAndExpiryTime<>(latestPosition);
       });
     } catch (PubSubTopicDoesNotExistException | PubSubOpTimeoutException e) {
       LOGGER.error("Failed to get end offset for topic-partition: {}", pubSubTopicPartition, e);
-      return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
+      // todo return special offset?
+      return PubSubSymbolicPosition.EARLIEST;
     }
     updateCacheAsync(
         pubSubTopicPartition,
         cachedValue,
-        latestOffsetCache,
+        latestPositionCache,
         () -> getLatestOffsetWithRetriesAsync(
             pubSubTopicPartition,
             DEFAULT_MAX_RETRIES_FOR_POPULATING_TMD_CACHE_ENTRY));
@@ -457,7 +460,7 @@ class TopicMetadataFetcher implements Closeable {
   void populateCacheWithLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
     CompletableFuture.runAsync(() -> {
       validateTopicPartition(pubSubTopicPartition);
-      getLatestOffsetCached(pubSubTopicPartition);
+      getLatestPositionCached(pubSubTopicPartition);
     }, threadPoolExecutor);
   }
 
@@ -467,18 +470,18 @@ class TopicMetadataFetcher implements Closeable {
    * @param timestamp timestamp to get the offset for
    * @return the offset for the given timestamp
    */
-  long getOffsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+  PubSubPosition getOffsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
     validateTopicPartition(pubSubTopicPartition);
     // We start by retrieving the latest offset. If the provided timestamp is out of range,
     // we return the latest offset. This ensures that we don't miss any records produced
     // after the 'offsetForTime' call when the latest offset is obtained after timestamp checking.
-    long latestOffset = getLatestOffset(pubSubTopicPartition);
+    PubSubPosition latestPosition = getLatestPosition(pubSubTopicPartition);
 
     PubSubConsumerAdapter pubSubConsumerAdapter = acquireConsumer();
     try {
       long startTime = System.nanoTime();
-      Long result = pubSubConsumerAdapter
-          .offsetForTime(pubSubTopicPartition, timestamp, getPubsubOffsetApiTimeoutDurationDefaultValue());
+      PubSubPosition result = pubSubConsumerAdapter
+          .getPositionByTimestamp(pubSubTopicPartition, timestamp, getPubsubOffsetApiTimeoutDurationDefaultValue());
       stats.recordLatency(GET_OFFSET_FOR_TIME, startTime);
       if (result != null) {
         return result;
@@ -491,8 +494,8 @@ class TopicMetadataFetcher implements Closeable {
               + "the latest message timestamp or if the topic has no messages. Returning the latest offset: {}",
           timestamp,
           pubSubTopicPartition,
-          latestOffset);
-      return latestOffset;
+          latestPosition);
+      return latestPosition;
     } finally {
       releaseConsumer(pubSubConsumerAdapter);
     }
@@ -505,7 +508,7 @@ class TopicMetadataFetcher implements Closeable {
    * @param retries number of retries
    * @return the offset for the given timestamp
    */
-  long getOffsetForTimeWithRetries(PubSubTopicPartition pubSubTopicPartition, long timestamp, int retries) {
+  PubSubPosition getOffsetForTimeWithRetries(PubSubTopicPartition pubSubTopicPartition, long timestamp, int retries) {
     return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
         () -> getOffsetForTime(pubSubTopicPartition, timestamp),
         retries,
@@ -543,7 +546,7 @@ class TopicMetadataFetcher implements Closeable {
   }
 
   void invalidateKey(PubSubTopicPartition pubSubTopicPartition) {
-    latestOffsetCache.remove(pubSubTopicPartition);
+    latestPositionCache.remove(pubSubTopicPartition);
     lastProducerTimestampCache.remove(pubSubTopicPartition);
     lastProducerTimestampCache.remove(pubSubTopicPartition);
   }
@@ -558,7 +561,7 @@ class TopicMetadataFetcher implements Closeable {
     topicExistenceCache.remove(pubSubTopic);
     Set<PubSubTopicPartition> topicPartitions = new HashSet<>();
 
-    for (PubSubTopicPartition pubSubTopicPartition: latestOffsetCache.keySet()) {
+    for (PubSubTopicPartition pubSubTopicPartition: latestPositionCache.keySet()) {
       if (pubSubTopicPartition.getPubSubTopic().equals(pubSubTopic)) {
         topicPartitions.add(pubSubTopicPartition);
       }

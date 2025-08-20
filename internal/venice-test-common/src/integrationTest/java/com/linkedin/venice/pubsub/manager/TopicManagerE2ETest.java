@@ -210,16 +210,17 @@ public class TopicManagerE2ETest {
         StatsErrorCode.LAG_MEASUREMENT_FAILURE.code);
 
     // get offset by time for an existing topic
-    Runnable t15 =
-        () -> assertEquals(topicManager.getOffsetByTime(topicPartition, System.currentTimeMillis()), numMessages);
+    Runnable t15 = () -> assertEquals(
+        topicManager.getPositionByTime(topicPartition, System.currentTimeMillis()).getNumericOffset(),
+        numMessages);
 
     // get offset by time for a non-existent topic
     Runnable t16 = () -> assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getOffsetByTime(nonExistentTopicPartition, tsOfLastDataMessage));
+        () -> topicManager.getPositionByTime(nonExistentTopicPartition, tsOfLastDataMessage));
 
     // get offset by time for an existing topic: first message
-    Runnable t17 = () -> assertEquals(topicManager.getOffsetByTime(topicPartition, timeBeforeProduce), 0);
+    Runnable t17 = () -> assertEquals(topicManager.getPositionByTime(topicPartition, timeBeforeProduce), 0);
 
     // invalidate cache for an existing topic
     Runnable t18 = () -> topicManager.invalidateCache(testTopic);
@@ -256,7 +257,7 @@ public class TopicManagerE2ETest {
     PubSubTopicPartitionImpl nonExistentTopicPartition = new PubSubTopicPartitionImpl(nonExistentTopic, 0);
     assertThrows(
         PubSubTopicDoesNotExistException.class,
-        () -> topicManager.getOffsetByTime(nonExistentTopicPartition, System.currentTimeMillis()));
+        () -> topicManager.getPositionByTime(nonExistentTopicPartition, System.currentTimeMillis()));
     topicManager.invalidateCache(nonExistentTopic).get(1, TimeUnit.MINUTES); // should not throw an exception
     assertThrows(
         PubSubTopicDoesNotExistException.class,
@@ -378,17 +379,17 @@ public class TopicManagerE2ETest {
 
     // if timestamp is greater than the latest message timestamp, the offset returned should be the latest offset
     long timestamp = System.currentTimeMillis();
-    assertEquals(topicManager.getOffsetByTime(p0, timestamp), p0Messages.size());
+    assertEquals(topicManager.getPositionByTime(p0, timestamp).getNumericOffset(), p0Messages.size());
 
     // If the provided timestamp is less than or equal to the timestamp of a message,
     // the offset returned should correspond to that message.
     long tsAfterM4ButBeforeM5 = p0Messages.get(4).getTimestampAfterProduce() + 1;
     assertTrue(tsAfterM4ButBeforeM5 > p0Messages.get(4).getTimestampAfterProduce());
     assertTrue(tsAfterM4ButBeforeM5 < p0Messages.get(5).getTimestampBeforeProduce());
-    assertEquals(topicManager.getOffsetByTime(p0, tsAfterM4ButBeforeM5), 5);
+    assertEquals(topicManager.getPositionByTime(p0, tsAfterM4ButBeforeM5), 5);
 
     long p0TsBeforeM0 = p0Messages.get(0).getTimestampBeforeProduce();
-    assertEquals(topicManager.getOffsetByTime(p0, p0TsBeforeM0), 0);
+    assertEquals(topicManager.getPositionByTime(p0, p0TsBeforeM0), 0);
   }
 
   @Test(timeOut = 3 * Time.MS_PER_MINUTE)

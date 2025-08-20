@@ -149,7 +149,7 @@ public class AdminExecutionTask implements Callable<Void> {
       // The queue with the problematic operation will be delegated and retried by the worker thread in the next cycle.
       AdminOperationWrapper adminOperationWrapper = internalTopic.peek();
       String logMessage =
-          "when processing admin message for store " + storeName + " with offset " + adminOperationWrapper.getOffset()
+          "when processing admin message for store " + storeName + " with offset " + adminOperationWrapper.getPosition()
               + " and execution id " + adminOperationWrapper.getAdminOperation().executionId;
       if (e instanceof VeniceRetriableException) {
         // These retriable exceptions are expected, therefore logging at the info level should be sufficient.

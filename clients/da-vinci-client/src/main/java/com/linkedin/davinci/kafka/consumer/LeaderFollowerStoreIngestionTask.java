@@ -1082,9 +1082,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PubSubTopicPartition pubSubTopicPartition,
       long rewindStartTimestamp) {
     long topicPartitionOffset =
-        getTopicManager(kafkaURL.toString()).getOffsetByTime(pubSubTopicPartition, rewindStartTimestamp);
+        getTopicManager(kafkaURL.toString()).getPositionByTime(pubSubTopicPartition, rewindStartTimestamp)
+            .getNumericOffset();
     /**
-     * {@link com.linkedin.venice.pubsub.manager.TopicManager#getOffsetByTime} will always
+     * {@link com.linkedin.venice.pubsub.manager.TopicManager#getPositionByTime} will always
      * return the next offset to consume, but {@link ApacheKafkaConsumer#subscribe} is always
      * seeking the next offset, so we will deduct 1 from the returned offset here.
      */

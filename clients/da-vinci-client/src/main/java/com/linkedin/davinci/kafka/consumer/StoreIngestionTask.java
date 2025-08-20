@@ -12,7 +12,6 @@ import static com.linkedin.davinci.validation.DataIntegrityValidator.DISABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.LogMessages.KILLED_JOB_MESSAGE;
 import static com.linkedin.venice.kafka.protocol.enums.ControlMessageType.START_OF_SEGMENT;
-import static com.linkedin.venice.pubsub.PubSubConstants.UNKNOWN_LATEST_OFFSET;
 import static com.linkedin.venice.utils.Utils.FATAL_DATA_VALIDATION_ERROR;
 import static com.linkedin.venice.utils.Utils.closeQuietlyWithErrorLogged;
 import static com.linkedin.venice.utils.Utils.getReplicaId;
@@ -2411,11 +2410,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     try {
       return RetryUtils.executeWithMaxAttemptAndExponentialBackoffNoLog(() -> {
-        long offset = getTopicManager(kafkaUrl).getLatestOffsetCachedNonBlocking(pubSubTopic, partition);
-        if (offset == UNKNOWN_LATEST_OFFSET) {
+        PubSubPosition position = getTopicManager(kafkaUrl).getLatestOffsetCachedNonBlocking(pubSubTopic, partition);
+        if (PubSubSymbolicPosition.EARLIEST.equals(position)) {
           throw new VeniceException("Latest offset is unknown. Check if the topic: " + topicPartition + " exists.");
         }
-        return offset;
+        return position.getNumericOffset();
       },
           MAX_OFFSET_FETCH_ATTEMPTS,
           Duration.ofMillis(10),
@@ -2896,7 +2895,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return Long.MAX_VALUE;
     }
     TopicManager tm = topicManagerProvider.apply(pubSubServerName);
-    long endOffset = tm.getLatestOffsetCached(topic, partition);
+    long endOffset = tm.getLatestOffsetCached(topic, partition).getNumericOffset();
     if (endOffset < 0) {
       // A negative value means there was a problem in measuring the end offset, and therefore we return "infinite lag"
       return Long.MAX_VALUE;
@@ -2904,7 +2903,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       /**
        * Topics which were never produced to have an end offset of zero. Such topics are empty and therefore, by
        * definition, there cannot be any lag.
-       *
+       * <p>
        * Note that the reverse is not true: a topic can be currently empty and have an end offset above zero, if it had
        * messages produced to it before, which have since then disappeared (e.g. due to time-based retention).
        */
