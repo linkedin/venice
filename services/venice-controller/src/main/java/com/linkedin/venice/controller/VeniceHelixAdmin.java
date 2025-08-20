@@ -1541,7 +1541,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Validate.notNull(key);
     ConcurrencyUtils.executeUnderConditionalLock(() -> {
       String storeName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
-      String d2Service = discoverCluster(storeName).getSecond();
+      String d2Service = getRouterD2Service(discoverCluster(storeName));
       pushJobDetailsStoreClient = ClientFactory.getAndStartSpecificAvroClient(
           ClientConfig.defaultSpecificClientConfig(storeName, PushJobDetails.class)
               .setD2ServiceName(d2Service)
@@ -1562,7 +1562,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Validate.notNull(batchJobHeartbeatKey);
     ConcurrencyUtils.executeUnderConditionalLock(() -> {
       String storeName = VeniceSystemStoreType.BATCH_JOB_HEARTBEAT_STORE.getPrefix();
-      String d2Service = discoverCluster(storeName).getSecond();
+      String d2Service = getRouterD2Service(discoverCluster(storeName));
       livenessHeartbeatStoreClient = ClientFactory.getAndStartSpecificAvroClient(
           ClientConfig.defaultSpecificClientConfig(storeName, BatchJobHeartbeatValue.class)
               .setD2ServiceName(d2Service)
@@ -2033,7 +2033,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * Force update cluster discovery so that it will always point to the source cluster.
      * Whichever cluster it currently belongs to do not matter.
      */
-    String clusterDiscovered = this.discoverCluster(storeName).getFirst();
+    String clusterDiscovered = this.discoverCluster(storeName);
     this.updateClusterDiscovery(storeName, clusterDiscovered, srcClusterName, srcClusterName);
   }
 
@@ -5065,7 +5065,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public StoreMetaValue getMetaStoreValue(StoreMetaKey metaKey, String storeName) {
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    String d2Service = discoverCluster(storeName).getSecond();
+    String d2Service = getRouterD2Service(discoverCluster(storeName));
 
     try (AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> client = ClientFactory.getAndStartSpecificAvroClient(
         ClientConfig.defaultSpecificClientConfig(metaStoreName, StoreMetaValue.class)
@@ -8102,7 +8102,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @see Admin#discoverCluster(String)
    */
   @Override
-  public Pair<String, String> discoverCluster(String storeName) {
+  public String discoverCluster(String storeName) {
     StoreConfig config = storeConfigRepo.getStoreConfigOrThrow(storeName);
     if (config == null || StringUtils.isEmpty(config.getCluster())) {
       throw new VeniceNoStoreException(
@@ -8110,12 +8110,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           null,
           "Make sure the store is created and the provided store name is correct");
     }
-    String clusterName = config.getCluster();
+    return config.getCluster();
+  }
+
+  /**
+   * @see Admin#getRouterD2Service(String)
+   */
+  @Override
+  public String getRouterD2Service(String clusterName) {
     String d2Service = multiClusterConfigs.getClusterToD2Map().get(clusterName);
     if (d2Service == null) {
       throw new VeniceException("Could not find d2 service by given cluster: " + clusterName);
     }
-    return new Pair<>(clusterName, d2Service);
+
+    return d2Service;
   }
 
   /**
