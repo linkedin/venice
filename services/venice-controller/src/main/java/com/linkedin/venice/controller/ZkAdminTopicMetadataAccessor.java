@@ -9,7 +9,6 @@ import com.linkedin.venice.controller.kafka.consumer.AdminMetadataJSONSerializer
 import com.linkedin.venice.controller.kafka.consumer.StringToLongMapJSONSerializer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TrieBasedPathResourceRegistry;
@@ -46,11 +45,9 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
       HelixAdapterSerializer adapterSerializer,
       VeniceControllerClusterConfig clusterConfig) {
     this(zkClient, adapterSerializer);
-    PubSubPositionDeserializer pubSubPositionDeserializer =
-        new PubSubPositionDeserializer(clusterConfig.getPubSubPositionTypeRegistry());
     adapterSerializer.registerSerializer(
         ADMIN_TOPIC_METADATA_NODE_V2_PATH_PATTERN,
-        new AdminMetadataJSONSerializer(pubSubPositionDeserializer));
+        new AdminMetadataJSONSerializer(clusterConfig.getPubSubPositionDeserializer()));
     useV2AdminTopicMetadataMap.put(clusterConfig.getClusterName(), clusterConfig.useV2AdminTopicMetadata());
   }
 
@@ -59,11 +56,9 @@ public class ZkAdminTopicMetadataAccessor extends AdminTopicMetadataAccessor {
       HelixAdapterSerializer adapterSerializer,
       VeniceControllerMultiClusterConfig multiClusterConfig) {
     this(zkClient, adapterSerializer);
-    PubSubPositionDeserializer pubSubPositionDeserializer =
-        new PubSubPositionDeserializer(multiClusterConfig.getPubSubPositionTypeRegistry());
     adapterSerializer.registerSerializer(
         ADMIN_TOPIC_METADATA_NODE_V2_PATH_PATTERN,
-        new AdminMetadataJSONSerializer(pubSubPositionDeserializer));
+        new AdminMetadataJSONSerializer(multiClusterConfig.getPubSubPositionDeserializer()));
     multiClusterConfig.getClusters()
         .forEach(
             clusterName -> useV2AdminTopicMetadataMap

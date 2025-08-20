@@ -224,6 +224,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
@@ -457,6 +458,7 @@ public class VeniceControllerClusterConfig {
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private final PubSubClientsFactory pubSubClientsFactory;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
+  private final PubSubPositionDeserializer pubSubPositionDeserializer;
 
   private final PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory;
 
@@ -1100,6 +1102,7 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
     this.pubSubClientsFactory = new PubSubClientsFactory(props);
     this.pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(props);
+    this.pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
     this.sourceOfTruthAdminAdapterFactory = PubSubClientsFactory.createSourceOfTruthAdminFactory(props);
     this.danglingTopicCleanupIntervalSeconds = props.getLong(CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND, -1);
     this.danglingTopicOccurrenceThresholdForCleanup =
@@ -1967,6 +1970,10 @@ public class VeniceControllerClusterConfig {
 
   public PubSubPositionTypeRegistry getPubSubPositionTypeRegistry() {
     return pubSubPositionTypeRegistry;
+  }
+
+  public PubSubPositionDeserializer getPubSubPositionDeserializer() {
+    return pubSubPositionDeserializer;
   }
 
   public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
