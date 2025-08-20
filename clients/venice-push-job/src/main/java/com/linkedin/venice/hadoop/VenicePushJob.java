@@ -1534,37 +1534,44 @@ public class VenicePushJob implements AutoCloseable {
       pushJobDetails.totalUncompressedRecordTooLargeFailures = taskTracker.getUncompressedRecordTooLargeFailureCount();
       // size of largest uncompressed value
       pushJobDetails.largestUncompressedValueSizeBytes = taskTracker.getLargestUncompressedValueSize();
-      LOGGER.info(
-          "Data writer job summary: " + "\n\tTotal number of records: {}" + "\n\tSize of keys: {}"
-              + "\n\tSize of uncompressed values: {}" + "\n\tConfigured value compression strategy: {}"
-              + "\n\tSize of compressed values: {}" + "\n\tFinal data size stored in Venice: {}"
-              + "\n\tCompression Metrics collection: {}" + "\n\tUncompressed records too large: {}",
-          pushJobDetails.totalNumberOfRecords,
-          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalKeyBytes),
-          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalRawValueBytes),
-          pushJobSetting.topicCompressionStrategy,
-          ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalCompressedValueBytes),
-          ByteUtils.generateHumanReadableByteCountString(
-              pushJobDetails.totalKeyBytes + pushJobDetails.totalCompressedValueBytes),
-          pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled",
-          pushJobDetails.totalUncompressedRecordTooLargeFailures);
+      List<String> summaryLogLines = new ArrayList<>();
+      summaryLogLines.add("Total number of records: " + pushJobDetails.totalNumberOfRecords);
+      summaryLogLines
+          .add("Size of keys: " + ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalKeyBytes));
+      summaryLogLines.add(
+          "Size of uncompressed values: "
+              + ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalRawValueBytes));
+      summaryLogLines.add("Configured value compression strategy: " + pushJobSetting.topicCompressionStrategy);
+      summaryLogLines.add(
+          "Size of compressed values: "
+              + ByteUtils.generateHumanReadableByteCountString(pushJobDetails.totalCompressedValueBytes));
+      summaryLogLines.add(
+          "Final data size stored in Venice: " + ByteUtils.generateHumanReadableByteCountString(
+              pushJobDetails.totalKeyBytes + pushJobDetails.totalCompressedValueBytes));
+      summaryLogLines.add(
+          "Compression Metrics collection: "
+              + (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
+      summaryLogLines.add("Uncompressed records too large: " + pushJobDetails.totalUncompressedRecordTooLargeFailures);
+
       if (pushJobDetails.largestUncompressedValueSizeBytes > 0) {
-        LOGGER.info("\t Largest Uncompressed value size: {}", pushJobDetails.largestUncompressedValueSizeBytes);
+        summaryLogLines.add(
+            "Largest Uncompressed value size: "
+                + ByteUtils.generateHumanReadableByteCountString(pushJobDetails.largestUncompressedValueSizeBytes));
       }
       if (pushJobSetting.compressionMetricCollectionEnabled) {
-        LOGGER.info(
-            "\tData size if compressed using Gzip: {}",
-            ByteUtils.generateHumanReadableByteCountString(
+        summaryLogLines.add(
+            "Data size if compressed using Gzip: " + ByteUtils.generateHumanReadableByteCountString(
                 pushJobDetails.totalKeyBytes + pushJobDetails.totalGzipCompressedValueBytes));
         if (pushJobSetting.isZstdDictCreationSuccess) {
-          LOGGER.info(
-              "\tData size if compressed using Zstd with Dictionary: {}",
-              ByteUtils.generateHumanReadableByteCountString(
+          summaryLogLines.add(
+              "Data size if compressed using Zstd with Dictionary: " + ByteUtils.generateHumanReadableByteCountString(
                   pushJobDetails.totalKeyBytes + pushJobDetails.totalZstdWithDictCompressedValueBytes));
         } else {
-          LOGGER.info("\tZstd Dictionary creation Failed");
+          summaryLogLines.add("Zstd Dictionary creation Failed");
         }
       }
+
+      LOGGER.info("Data writer job summary: \n\t{}", StringUtils.join(summaryLogLines, "\n\t"));
     } catch (Exception e) {
       LOGGER.warn(
           "Exception caught while updating push job details with map reduce counters. {}",
