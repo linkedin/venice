@@ -2472,6 +2472,14 @@ public class VenicePushJob implements AutoCloseable {
      */
     long unknownStateStartTimeMs = 0;
 
+    /**
+     * The start time for when a push reaches terminal state.
+     * If 0, it seems that the push has not reached terminal state yet.
+     * This will be used to calculate how long the push is stalled for version swap and it is allowed to stay
+     * in this state from terminal state time + store wait time + {@link DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS}
+     */
+    long versionSwapStartTimeMs = 0;
+
     String topicToMonitor = getTopicToMonitor(pushJobSetting);
 
     List<ExecutionStatus> successfulStatuses =
@@ -2542,6 +2550,7 @@ public class VenicePushJob implements AutoCloseable {
         // For target region push with deferred swap, stall push completion until version swap is complete
         // Version swap is complete when the parent version is online, partially online, or error
         if (isTargetRegionPushWithDeferredSwap) {
+          versionSwapStartTimeMs = versionSwapStartTimeMs == 0 ? System.currentTimeMillis() : versionSwapStartTimeMs;
           StoreResponse parentStoreResponse = getStoreResponse(pushJobSetting.storeName, true);
 
           StoreInfo parentStoreInfo = parentStoreResponse.getStore();
@@ -2574,6 +2583,16 @@ public class VenicePushJob implements AutoCloseable {
                     + "Check nuage to see which regions are not serving the latest version");
           } else if (VersionStatus.ONLINE.equals(parentVersionStatus)) {
             return;
+          }
+
+          long timeoutTimeMs =
+              versionSwapStartTimeMs + TimeUnit.MINUTES.toMillis(parentStoreInfo.getTargetRegionSwapWaitTime())
+                  + pushJobSetting.jobStatusInUnknownStateTimeoutMs;
+          if (versionSwapStartTimeMs > 0
+              && LatencyUtils.getElapsedTimeFromMsToMs(versionSwapStartTimeMs) > timeoutTimeMs) {
+            throw new VeniceException(
+                "After waiting for " + timeoutTimeMs / Time.MS_PER_MINUTE
+                    + " minutes, version swap is still not complete.");
           }
 
           LOGGER.info("Version status is {} and version swap is not complete yet", parentVersion.getStatus());
