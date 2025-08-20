@@ -133,16 +133,20 @@ public class AdminMetadataJSONSerializer implements VeniceSerializer<AdminMetada
 
     @Override
     public boolean equals(Object o) {
-      if (this == o)
+      if (this == o) {
         return true;
-      if (o == null || getClass() != o.getClass())
+      }
+      if (o == null || getClass() != o.getClass()) {
         return false;
+      }
 
       PubSubPositionJsonWireFormat that = (PubSubPositionJsonWireFormat) o;
 
-      if (!Objects.equals(typeId, that.typeId))
+      if (!Objects.equals(typeId, that.typeId)) {
         return false;
-      return Objects.equals(base64PositionBytes, that.base64PositionBytes);
+      } else {
+        return Objects.equals(base64PositionBytes, that.base64PositionBytes);
+      }
     }
 
     @Override

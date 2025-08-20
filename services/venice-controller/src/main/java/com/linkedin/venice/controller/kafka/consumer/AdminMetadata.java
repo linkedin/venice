@@ -87,14 +87,18 @@ public class AdminMetadata {
    */
   public Map<String, Long> toLegacyMap() {
     Map<String, Long> legacyMap = new HashMap<>();
-    if (executionId != null)
+    if (executionId != null) {
       legacyMap.put(AdminTopicMetadataAccessor.EXECUTION_ID_KEY, executionId);
-    if (offset != null)
+    }
+    if (offset != null) {
       legacyMap.put(AdminTopicMetadataAccessor.OFFSET_KEY, offset);
-    if (upstreamOffset != null)
+    }
+    if (upstreamOffset != null) {
       legacyMap.put(AdminTopicMetadataAccessor.UPSTREAM_OFFSET_KEY, upstreamOffset);
-    if (adminOperationProtocolVersion != null)
+    }
+    if (adminOperationProtocolVersion != null) {
       legacyMap.put(AdminTopicMetadataAccessor.ADMIN_OPERATION_PROTOCOL_VERSION_KEY, adminOperationProtocolVersion);
+    }
     return legacyMap;
   }
 
