@@ -355,7 +355,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String controllerClusterName;
-  private final int controllerClusterReplica;
   private final String controllerName;
   private final String kafkaBootstrapServers;
   private final String kafkaSSLBootstrapServers;
@@ -517,7 +516,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.controllerName =
         Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminHostname(), multiClusterConfigs.getAdminPort());
     this.controllerClusterName = multiClusterConfigs.getControllerClusterName();
-    this.controllerClusterReplica = multiClusterConfigs.getControllerClusterReplica();
     this.kafkaBootstrapServers = multiClusterConfigs.getKafkaBootstrapServers();
     this.kafkaSSLBootstrapServers = multiClusterConfigs.getSslKafkaBootstrapServers();
     this.deprecatedJobTopicRetentionMs = multiClusterConfigs.getDeprecatedJobTopicRetentionMs();
@@ -7185,6 +7183,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         AutoRebalanceStrategy.class.getName());
     IdealState idealState = admin.getResourceIdealState(controllerClusterName, clusterName);
     // Use crush alg to allocate controller as well.
+    int controllerClusterReplica = config.getControllerClusterReplica();
+    idealState.setReplicas(String.valueOf(controllerClusterReplica));
     idealState.setMinActiveReplicas(controllerClusterReplica);
     idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
     idealState.setRebalanceStrategy(CrushRebalanceStrategy.class.getName());
