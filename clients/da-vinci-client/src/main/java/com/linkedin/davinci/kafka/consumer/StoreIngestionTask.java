@@ -60,7 +60,6 @@ import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
-import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -393,7 +392,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PubSubContext pubSubContext;
   protected final PubSubTopicRepository pubSubTopicRepository;
   private final String[] msgForLagMeasurement;
-  private final Runnable runnableForKillIngestionTasksForNonCurrentVersions;
   protected final AtomicBoolean recordLevelMetricEnabled;
   protected final boolean isGlobalRtDivEnabled;
   protected volatile PartitionReplicaIngestionContext.VersionRole versionRole;
@@ -631,8 +629,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     for (int i = 0; i < this.msgForLagMeasurement.length; i++) {
       this.msgForLagMeasurement[i] = kafkaVersionTopic + "_" + i;
     }
-    this.runnableForKillIngestionTasksForNonCurrentVersions =
-        builder.getRunnableForKillIngestionTasksForNonCurrentVersions();
     this.ingestionTaskMaxIdleCount = serverConfig.getIngestionTaskMaxIdleCount();
     this.recordLevelMetricEnabled = new AtomicBoolean(
         serverConfig.isRecordLevelMetricWhenBootstrappingCurrentVersionEnabled()
@@ -1459,43 +1455,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         partitionIngestionExceptionList.set(exceptionPartition, null);
       } else {
-        PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, exceptionPartition);
-        /**
-         * Special handling for current version when encountering {@link MemoryLimitExhaustedException}.
-         */
-        if (isCurrentVersion.getAsBoolean()
-            && ExceptionUtils.recursiveClassEquals(partitionException, MemoryLimitExhaustedException.class)) {
-          LOGGER.warn(
-              "Encountered MemoryLimitExhaustedException, and ingestion task will try to reopen the database and"
-                  + " resume the consumption after killing ingestion tasks for non current versions");
-          /**
-           * Pause topic consumption to avoid more damage.
-           * We can't unsubscribe it since in some scenario, all the partitions can be unsubscribed, and the ingestion task
-           * will end. Even later on, there are avaiable memory space, we can't resume the ingestion task.
-           */
-          pauseConsumption(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
-          LOGGER.info(
-              "Memory limit reached. Pausing consumption of topic-partition: {}",
-              getReplicaId(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber()));
-          runnableForKillIngestionTasksForNonCurrentVersions.run();
-          if (storageEngine.getStats().hasMemorySpaceLeft()) {
-            unSubscribePartition(pubSubTopicPartition, false);
-            /**
-             * DaVinci ingestion hits memory limit and we would like to retry it in the following way:
-             * 1. Kill the ingestion tasks for non-current versions.
-             * 2. Reopen the database since the current database in a bad state, where it can't write or sync even
-             *    there are rooms (bug in SSTFileManager implementation in RocksDB). Reopen will drop the not-yet-synced
-             *    memtable unfortunately.
-             * 3. Resubscribe the affected partition.
-             */
-            LOGGER.info(
-                "Ingestion for topic-partition: {} can resume since more space has been reclaimed.",
-                getReplicaId(kafkaVersionTopic, exceptionPartition));
-            storageEngine.reopenStoragePartition(exceptionPartition);
-            // DaVinci is always a follower.
-            subscribePartition(pubSubTopicPartition, false);
-          }
-        } else if (isCurrentVersion.getAsBoolean() && resetErrorReplicaEnabled && !isDaVinciClient) {
+        if (isCurrentVersion.getAsBoolean() && resetErrorReplicaEnabled && !isDaVinciClient) {
           try {
             // marking its replica status ERROR which will later be reset by the controller
             zkHelixAdmin.get()
@@ -4656,19 +4616,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected String getKafkaVersionTopic() {
     return kafkaVersionTopic;
-  }
-
-  public boolean isStuckByMemoryConstraint() {
-    for (PartitionExceptionInfo ex: partitionIngestionExceptionList) {
-      if (ex == null) {
-        continue;
-      }
-      Exception partitionIngestionException = ex.getException();
-      if (ExceptionUtils.recursiveClassEquals(partitionIngestionException, MemoryLimitExhaustedException.class)) {
-        return true;
-      }
-    }
-    return false;
   }
 
   /**

@@ -2340,30 +2340,6 @@ public class ConfigKeys {
    */
   public static final String WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES = "writer.batching.max.buffer.size.in.bytes";
 
-  /*
-   * The memory up-limit for the ingestion path while using RocksDB Plaintable format.
-   * Currently, this option is only meaningful for DaVinci use cases.
-   */
-  public static final String INGESTION_MEMORY_LIMIT = "ingestion.memory.limit";
-
-  /**
-   * Whether the ingestion is using mlock or not.
-   * Currently, this option is only meaningful for DaVinci use cases.
-   *
-   * Actually, this config option is being actively used, and it is a placeholder for the future optimization.
-   * The memory limit logic implemented today is assuming mlock usage, and to make it backward compatible when
-   * we want to do more optimization for non-mlock usage, we will ask the mlock user to enable this flag.
-   */
-  public static final String INGESTION_MLOCK_ENABLED = "ingestion.mlock.enabled";
-
-  /**
-   * Only applies the memory limiter to the stores listed in this config.
-   * This is mainly used for testing purpose since ultimately, we want to enforce memory limiter against
-   * all the stores to avoid node crash.
-   * Empty config means ingestion memory limiter will apply to all the stores.
-   */
-  public static final String INGESTION_MEMORY_LIMIT_STORE_LIST = "ingestion.memory.limit.store.list";
-
   /**
    * The maximum age (in milliseconds) of producer state retained by Data Ingestion Validation. Tuning this
    * can prevent OOMing in cases where there is a lot of historical churn in RT producers. The age of a given

@@ -122,7 +122,6 @@ public class StoreIngestionTaskFactory {
     private MetaStoreWriter metaStoreWriter;
     private StorageEngineBackedCompressorFactory compressorFactory;
     private PubSubContext pubSubContext;
-    private Runnable runnableForKillIngestionTasksForNonCurrentVersions;
     private ExecutorService aaWCWorkLoadProcessingThreadPool;
     private ExecutorService aaWCIngestionStorageLookupThreadPool;
     private Supplier<IngestionTaskReusableObjects> reusableObjectsSupplier;
@@ -303,14 +302,6 @@ public class StoreIngestionTaskFactory {
 
     public Builder setCompressorFactory(StorageEngineBackedCompressorFactory compressorFactory) {
       return set(() -> this.compressorFactory = compressorFactory);
-    }
-
-    public Runnable getRunnableForKillIngestionTasksForNonCurrentVersions() {
-      return runnableForKillIngestionTasksForNonCurrentVersions;
-    }
-
-    public Builder setRunnableForKillIngestionTasksForNonCurrentVersions(Runnable runnable) {
-      return set(() -> this.runnableForKillIngestionTasksForNonCurrentVersions = runnable);
     }
 
     public Builder setAAWCWorkLoadProcessingThreadPool(ExecutorService executorService) {

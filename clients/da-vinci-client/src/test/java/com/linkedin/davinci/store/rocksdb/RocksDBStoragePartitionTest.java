@@ -14,16 +14,11 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEV
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_FOR_READ_WRITE_LEADER;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_MAX_MEMTABLE_COUNT;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_MEMTABLE_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_MIN_BLOB_SIZE_IN_BYTES;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES;
 import static com.linkedin.venice.ConfigKeys.BLOB_TRANSFER_MANAGER_ENABLED;
-import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
-import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -31,17 +26,14 @@ import static org.testng.AssertJUnit.assertFalse;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
-import com.linkedin.davinci.stats.RocksDBMemoryStats;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.davinci.store.StoragePartitionConfig;
 import com.linkedin.venice.exceptions.DiskLimitExhaustedException;
-import com.linkedin.venice.exceptions.MemoryLimitExhaustedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -986,93 +978,6 @@ public class RocksDBStoragePartitionTest {
   }
 
   @Test
-  public void checkMemoryLimitAtDatabaseOpen() {
-    String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
-    String storeDir = getTempDatabaseDir(storeName);
-    RocksDBStoragePartition storagePartition = null;
-    try {
-      Properties extraProps = new Properties();
-      extraProps.setProperty(INGESTION_USE_DA_VINCI_CLIENT, "true");
-      extraProps.setProperty(INGESTION_MEMORY_LIMIT, "1MB");
-      extraProps.setProperty(ROCKSDB_MAX_MEMTABLE_COUNT, "2");
-      extraProps.setProperty(ROCKSDB_MEMTABLE_SIZE_IN_BYTES, "128KB");
-      extraProps.setProperty(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, "512KB");
-      extraProps.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "true");
-
-      VeniceProperties veniceServerProperties =
-          AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, extraProps);
-      RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
-
-      int partitionId = 0;
-      StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
-
-      RocksDBMemoryStats mockMemoryStats = mock(RocksDBMemoryStats.class);
-      VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-      RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(
-          serverConfig,
-          mockMemoryStats,
-          AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
-          AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-      Mockito.verify(mockMemoryStats).setMemoryLimit(anyLong());
-      Mockito.verify(mockMemoryStats).setSstFileManager(factory.getSstFileManagerForMemoryLimiter());
-      storagePartition = new RocksDBStoragePartition(
-          partitionConfig,
-          factory,
-          DATA_BASE_DIR,
-          null,
-          ROCKSDB_THROTTLER,
-          rocksDBServerConfig);
-      RocksDBStoragePartition finalStoragePartition = storagePartition;
-      Assert.expectThrows(MemoryLimitExhaustedException.class, () -> {
-        String keyPrefix = "key_prefix_";
-        String valuePrefix = "value_prefix________________________________________";
-        for (int i = 0; i < 100000; ++i) {
-          finalStoragePartition.put((keyPrefix + i).getBytes(), (valuePrefix + i).getBytes());
-        }
-        ;
-      });
-
-      Assert.expectThrows(MemoryLimitExhaustedException.class, () -> {
-        String keyPrefix = "key_prefix1_";
-        for (int i = 0; i < 100000; ++i) {
-          finalStoragePartition.delete((keyPrefix + i).getBytes());
-        }
-        ;
-      });
-
-      Assert.expectThrows(MemoryLimitExhaustedException.class, () -> finalStoragePartition.sync());
-      storagePartition.close();
-
-      extraProps.setProperty(INGESTION_MEMORY_LIMIT, "800KB");
-      // With a tighter memory limiter, the database open should fail
-      veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, extraProps);
-      RocksDBServerConfig finalRocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
-
-      serverConfig = new VeniceServerConfig(veniceServerProperties);
-      RocksDBStorageEngineFactory finalFactory = new RocksDBStorageEngineFactory(
-          serverConfig,
-          mockMemoryStats,
-          AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
-          AvroProtocolDefinition.PARTITION_STATE.getSerializer());
-      Assert.expectThrows(
-          MemoryLimitExhaustedException.class,
-          () -> new RocksDBStoragePartition(
-              partitionConfig,
-              finalFactory,
-              DATA_BASE_DIR,
-              null,
-              ROCKSDB_THROTTLER,
-              finalRocksDBServerConfig));
-    } finally {
-      if (storagePartition != null) {
-        storagePartition.close();
-        storagePartition.drop();
-      }
-      removeDir(storeDir);
-    }
-  }
-
-  @Test
   public void testCreateSnapshot() {
     String storeName = Version.composeKafkaTopic(Utils.getUniqueString("test_store"), 1);
     String storeDir = getTempDatabaseDir(storeName);
@@ -1209,7 +1114,6 @@ public class RocksDBStoragePartitionTest {
     RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
-    serverConfig.enforceMemoryLimitInStore(storeName);
     RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
     VeniceStoreVersionConfig storeConfig = new VeniceStoreVersionConfig(storeName, veniceServerProperties);
 
@@ -1226,7 +1130,7 @@ public class RocksDBStoragePartitionTest {
 
     // DiskLimitExhaustedException
     try {
-      storagePartition.checkAndThrowSpecificException(
+      storagePartition.checkAndThrowDiskLimitException(
           new RocksDBException(RocksDBStoragePartition.ROCKSDB_ERROR_MESSAGE_FOR_RUNNING_OUT_OF_DISK_QUOTA));
     } catch (Exception e) {
       Assert.assertTrue(e instanceof DiskLimitExhaustedException, "Unexpected exception type: " + e);
