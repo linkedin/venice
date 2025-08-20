@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.logcompaction;
 
 import com.linkedin.venice.annotation.VisibleForTesting;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.controller.repush.RepushJobRequest;
 import com.linkedin.venice.controller.repush.RepushOrchestrator;
 import com.linkedin.venice.controller.stats.LogCompactionStats;
@@ -30,15 +31,15 @@ public class CompactionManager {
   private static final Logger LOGGER = LogManager.getLogger(CompactionManager.class + " [log-compaction]");
 
   private final RepushOrchestrator repushOrchestrator;
-  private final long logCompactionThresholdMs;
   private final Map<String, LogCompactionStats> statsMap;
+  private final VeniceControllerMultiClusterConfig multiClusterConfig;
 
   public CompactionManager(
       RepushOrchestrator repushOrchestrator,
-      long logCompactionThresholdMs,
+      VeniceControllerMultiClusterConfig multiClusterConfig,
       Map<String, LogCompactionStats> statsMap) {
     this.repushOrchestrator = repushOrchestrator;
-    this.logCompactionThresholdMs = logCompactionThresholdMs;
+    this.multiClusterConfig = multiClusterConfig;
     this.statsMap = statsMap;
   }
 
@@ -69,7 +70,7 @@ public class CompactionManager {
   List<StoreInfo> filterStoresForCompaction(List<StoreInfo> storeInfoList, String clusterName) {
     Map<String, StoreInfo> storesReadyForCompaction = new HashMap<>();
     for (StoreInfo storeInfo: storeInfoList) {
-      if (!storesReadyForCompaction.containsKey(storeInfo.getName()) && isCompactionReady(storeInfo)) {
+      if (!storesReadyForCompaction.containsKey(storeInfo.getName()) && isCompactionReady(storeInfo, clusterName)) {
         storesReadyForCompaction.put(storeInfo.getName(), storeInfo);
         LogCompactionStats stats = statsMap.get(clusterName);
         stats.recordStoreNominatedForCompactionCount(storeInfo.getName());
@@ -86,11 +87,40 @@ public class CompactionManager {
    * TODO: move TestHybrid::testHybridStoreLogCompaction to TestCompactionManager, then make this class package private
    */
   //
-  public boolean isCompactionReady(StoreInfo storeInfo) {
-    boolean isHybridStore = storeInfo.getHybridStoreConfig() != null;
-    return !VeniceSystemStoreUtils.isSystemStore(storeInfo.getName()) && isHybridStore
-        && isLastCompactionTimeOlderThanThreshold(getLogCompactionThresholdMs(storeInfo), storeInfo)
-        && storeInfo.isActiveActiveReplicationEnabled() && storeInfo.isCompactionEnabled();
+  public boolean isCompactionReady(StoreInfo storeInfo, String clusterName) {
+
+    // Cluster level config
+    if (!multiClusterConfig.getControllerConfig(clusterName).isLogCompactionEnabled()) {
+      return false;
+    }
+
+    // Filter system stores
+    if (VeniceSystemStoreUtils.isSystemStore(storeInfo.getName())) {
+      return false;
+    }
+
+    // Filter non-Hybrid stores
+    if (storeInfo.getHybridStoreConfig() == null) {
+      return false;
+    }
+
+    // Filter non-AA
+    if (!storeInfo.isActiveActiveReplicationEnabled()) {
+      return false;
+    }
+
+    // Store level config
+    if (!storeInfo.isCompactionEnabled()) {
+      return false;
+    }
+
+    // Check version staleness
+    if (!isLatestVersionStale(getLogCompactionThresholdMs(storeInfo, clusterName), storeInfo)) {
+      return false;
+    }
+
+    // Schedule for compaction
+    return true;
   }
 
   /**
@@ -128,7 +158,7 @@ public class CompactionManager {
    * @param storeInfo, the store to check the last compaction time for
    * @return true if the last compaction time is older than the threshold, false otherwise
    */
-  private boolean isLastCompactionTimeOlderThanThreshold(long thresholdMs, StoreInfo storeInfo) {
+  private boolean isLatestVersionStale(long thresholdMs, StoreInfo storeInfo) {
     /**
      *  Reason for getting the largest version:
      *  The largest version may be larger than the current version if there is an ongoing push.
@@ -177,7 +207,9 @@ public class CompactionManager {
   * @param storeInfo
   * @return
   * */
-  private long getLogCompactionThresholdMs(StoreInfo storeInfo) {
-    return storeInfo.getCompactionThreshold() > -1 ? storeInfo.getCompactionThreshold() : logCompactionThresholdMs;
+  private long getLogCompactionThresholdMs(StoreInfo storeInfo, String clusterName) {
+    return storeInfo.getCompactionThreshold() > -1
+        ? storeInfo.getCompactionThreshold()
+        : multiClusterConfig.getControllerConfig(clusterName).getLogCompactionThresholdMS();
   }
 }

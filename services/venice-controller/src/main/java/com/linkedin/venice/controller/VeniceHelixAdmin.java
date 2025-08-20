@@ -786,25 +786,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         public void handleDeletedInstances(Set<Instance> deletedInstances) {
         }
       });
-    }
 
-    if (multiClusterConfigs.isLogCompactionEnabled()) {
-      Class<? extends RepushOrchestrator> repushOrchestratorClass =
-          ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
-      try {
-        RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
-            repushOrchestratorClass,
-            new Class[] { VeniceProperties.class },
-            new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
-        this.compactionManager = new CompactionManager(
-            repushOrchestrator,
-            multiClusterConfigs.getLogCompactionThresholdMS(),
-            logCompactionStatsMap);
-      } catch (Exception e) {
-        LOGGER.error(
-            "[log-compaction] Failed to enable repush for log compaction " + CompactionManager.class.getSimpleName(),
-            e);
-        throw new VeniceException(e);
+      if (multiClusterConfigs.getControllerConfig(clusterName).isLogCompactionEnabled()
+          && this.compactionManager == null) {
+        Class<? extends RepushOrchestrator> repushOrchestratorClass =
+            ReflectUtils.loadClass(multiClusterConfigs.getRepushOrchestratorClassName());
+        try {
+          RepushOrchestrator repushOrchestrator = ReflectUtils.callConstructor(
+              repushOrchestratorClass,
+              new Class[] { VeniceProperties.class },
+              new Object[] { multiClusterConfigs.getRepushOrchestratorConfigs() });
+          this.compactionManager =
+              new CompactionManager(repushOrchestrator, multiClusterConfigs, logCompactionStatsMap);
+        } catch (Exception e) {
+          LOGGER.error(
+              "[log-compaction] Failed to enable repush for log compaction " + CompactionManager.class.getSimpleName(),
+              e);
+          throw new VeniceException(e);
+        }
       }
     }
 
