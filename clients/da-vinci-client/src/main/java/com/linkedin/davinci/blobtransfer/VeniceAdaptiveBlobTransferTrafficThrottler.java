@@ -14,11 +14,16 @@ import org.apache.logging.log4j.Logger;
  * that dynamically tunes global read or write limits for blob transfer based on registered boolean signals.
  * It controls either global read or write throughput for the blob transfer behavior based on results of the registered
  * limiter and booster signals.
+ *
  * The heuristic behavior rules are defined as:
  * (1) If any limiter signal found, it will decrease by 20%. (min 20% of the base rate).
  * (2) If no limiter signal found, but there is booster signal found, it will increase by 20%. (max 200% of the base rate).
  * (3) If none of the above rule applies, it will increase idle count, if idle count is greater than the pre-defined
  * threshold, it will try to increase by 20% (still max 200% of the base rate).
+ *
+ * Base rate is initially set to {@link com.linkedin.venice.ConfigKeys#BLOB_TRANSFER_SERVICE_WRITE_LIMIT_BYTES_PER_SEC}
+ * or {@link com.linkedin.venice.ConfigKeys#BLOB_TRANSFER_CLIENT_READ_LIMIT_BYTES_PER_SEC} and will be adjusted based on
+ * input signals dynamically.
  */
 public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiveThrottler {
   private static final Logger LOGGER = LogManager.getLogger(VeniceAdaptiveBlobTransferTrafficThrottler.class);
@@ -40,6 +45,7 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
     this.baseRate = baseRate;
     this.signalIdleThreshold = singleIdleThreshold;
     this.isWriteThrottler = isWriteThrottler;
+    LOGGER.info("Created adaptive throttler with name: {}, base rate: {}", throttlerName, baseRate);
   }
 
   @Override
@@ -114,12 +120,12 @@ public class VeniceAdaptiveBlobTransferTrafficThrottler implements VeniceAdaptiv
 
   @Override
   public long getCurrentThrottlerRate() {
-    return 0;
+    return (long) (currentFactor * baseRate);
   }
 
   @Override
   public String getThrottlerName() {
-    return null;
+    return throttlerName;
   }
 
   public void setGlobalChannelTrafficShapingHandler(
