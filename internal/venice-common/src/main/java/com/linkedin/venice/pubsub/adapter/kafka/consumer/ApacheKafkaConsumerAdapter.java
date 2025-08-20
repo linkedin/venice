@@ -158,10 +158,10 @@ public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
     kafkaConsumer.assign(topicPartitionList);
 
     String logMessage;
-    if (position == PubSubSymbolicPosition.EARLIEST) {
+    if (PubSubSymbolicPosition.EARLIEST.equals(position)) {
       kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
       logMessage = PubSubSymbolicPosition.EARLIEST + " (beginning)";
-    } else if (position == PubSubSymbolicPosition.LATEST) {
+    } else if (PubSubSymbolicPosition.LATEST.equals(position)) {
       kafkaConsumer.seekToEnd(Collections.singletonList(topicPartition));
       logMessage = PubSubSymbolicPosition.LATEST + " (end)";
     } else if (position instanceof ApacheKafkaOffsetPosition) {

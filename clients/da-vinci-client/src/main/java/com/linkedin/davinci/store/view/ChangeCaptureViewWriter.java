@@ -13,6 +13,7 @@ import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -125,7 +126,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       return;
     }
 
-    Map<String, Long> sortedWaterMarkOffsets = partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap();
+    Map<String, PubSubPosition> sortedWaterMarkOffsets = partitionConsumptionState.getLatestProcessedRtPositions();
 
     List<Long> highWaterMarkOffsets;
     /**
@@ -139,7 +140,10 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       for (String url: sortedWaterMarkOffsets.keySet()) {
         highWaterMarkOffsets.set(
             kafkaClusterUrlToIdMap.getInt(url),
-            partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap().get(url));
+            partitionConsumptionState.getLatestProcessedRtPositions().get(url).getNumericOffset());
+        highWaterMarkPubSubPositions.set(
+            kafkaClusterUrlToIdMap.getInt(url),
+            partitionConsumptionState.getLatestProcessedRtPositions().get(url).toWireFormatBuffer());
       }
     } else {
       highWaterMarkOffsets = Collections.emptyList();

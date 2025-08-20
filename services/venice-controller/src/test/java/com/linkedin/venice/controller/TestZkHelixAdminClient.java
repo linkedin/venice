@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigConstants.CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY;
 import static com.linkedin.venice.controller.ZkHelixAdminClient.HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_CONFIG;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
@@ -9,6 +10,7 @@ import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -16,6 +18,7 @@ import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import java.lang.reflect.Field;
@@ -75,20 +78,62 @@ public class TestZkHelixAdminClient {
   }
 
   @Test
-  public void testInstanceGroupTag() {
-    String clusterName = "test-cluster";
-    IdealState mockIdealState = mock(IdealState.class);
-    VeniceControllerClusterConfig mockClusterConfig = mock(VeniceControllerClusterConfig.class);
+  public void testAddVeniceStorageClusterToControllerCluster() {
+    String clusterName1 = "test-cluster1";
+    String clusterName2 = "test-cluster2";
 
-    when(mockClusterConfig.getControllerResourceInstanceGroupTag()).thenReturn("GENERAL");
-    when(mockMultiClusterConfigs.getControllerConfig(clusterName)).thenReturn(mockClusterConfig);
-    when(mockHelixAdmin.getResourceIdealState(any(), any())).thenReturn(mockIdealState);
+    VeniceControllerClusterConfig mockClusterConfig1 = mock(VeniceControllerClusterConfig.class);
+    IdealState mockIdealState1 = mock(IdealState.class);
+    doReturn(clusterName1).when(mockClusterConfig1).getClusterName();
+    when(mockClusterConfig1.getControllerClusterReplica()).thenReturn(2);
+    when(mockClusterConfig1.getControllerResourceInstanceGroupTag()).thenReturn("GENERAL");
+    when(mockHelixAdmin.getResourceIdealState(any(), eq(clusterName1))).thenReturn(mockIdealState1);
+
+    VeniceControllerClusterConfig mockClusterConfig2 = mock(VeniceControllerClusterConfig.class);
+    IdealState mockIdealState2 = mock(IdealState.class);
+    doReturn(clusterName2).when(mockClusterConfig2).getClusterName();
+    when(mockClusterConfig2.getControllerClusterReplica()).thenReturn(5);
+    when(mockClusterConfig2.getControllerResourceInstanceGroupTag()).thenReturn("SPECIAL");
+    when(mockHelixAdmin.getResourceIdealState(any(), eq(clusterName2))).thenReturn(mockIdealState2);
+
+    when(mockMultiClusterConfigs.getControllerConfig(clusterName1)).thenReturn(mockClusterConfig1);
+    when(mockMultiClusterConfigs.getControllerConfig(clusterName2)).thenReturn(mockClusterConfig2);
 
     doCallRealMethod().when(zkHelixAdminClient).addVeniceStorageClusterToControllerCluster(anyString());
 
-    zkHelixAdminClient.addVeniceStorageClusterToControllerCluster(clusterName);
+    zkHelixAdminClient.addVeniceStorageClusterToControllerCluster(clusterName1);
+    verify(mockIdealState1).setReplicas("2");
+    verify(mockIdealState1).setMinActiveReplicas(1);
+    verify(mockIdealState1).setInstanceGroupTag("GENERAL");
 
-    verify(mockIdealState).setInstanceGroupTag("GENERAL");
+    zkHelixAdminClient.addVeniceStorageClusterToControllerCluster(clusterName2);
+    verify(mockIdealState2).setReplicas("5");
+    verify(mockIdealState2).setMinActiveReplicas(4);
+    verify(mockIdealState2).setInstanceGroupTag("SPECIAL");
+  }
+
+  @Test
+  public void testAddVeniceStorageClusterToControllerClusterException() {
+    String clusterName1 = "test-cluster1";
+    String clusterName2 = "test-cluster2";
+
+    doThrow(new RuntimeException("Test exception")).when(mockHelixAdmin)
+        .addResource(any(), any(), anyInt(), any(), any(), any());
+
+    doCallRealMethod().when(zkHelixAdminClient).addVeniceStorageClusterToControllerCluster(anyString());
+    doReturn(false).when(zkHelixAdminClient).isVeniceStorageClusterInControllerCluster(clusterName1);
+    doReturn(true).when(zkHelixAdminClient).isVeniceStorageClusterInControllerCluster(clusterName2);
+
+    Exception e = expectThrows(
+        Exception.class,
+        () -> zkHelixAdminClient.addVeniceStorageClusterToControllerCluster(clusterName1));
+    assertEquals(e.getMessage(), "Test exception");
+
+    // No exception
+    zkHelixAdminClient.addVeniceStorageClusterToControllerCluster(clusterName2);
+
+    // Further code never executes in either case
+    verify(mockMultiClusterConfigs, never()).getControllerConfig(any());
   }
 
   @Test

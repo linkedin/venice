@@ -144,7 +144,7 @@ public class StoresRoutesTest {
   public void testMigrateStore() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class, RETURNS_DEEP_STUBS);
     String DEST_CLUSTER = "dest_cluster";
-    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(TEST_CLUSTER);
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME)).thenReturn(TEST_CLUSTER);
     Request request = mock(Request.class);
     doReturn(LEADER_CONTROLLER.getPath()).when(request).pathInfo();
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
@@ -189,7 +189,7 @@ public class StoresRoutesTest {
   public void testCleanExecutionIds() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class, RETURNS_DEEP_STUBS);
     String DEST_CLUSTER = "dest_cluster";
-    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(TEST_CLUSTER);
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME)).thenReturn(TEST_CLUSTER);
     Request request = mock(Request.class);
     doReturn(LEADER_CONTROLLER.getPath()).when(request).pathInfo();
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
@@ -361,7 +361,7 @@ public class StoresRoutesTest {
   public void testAutoMigrateStore() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class, RETURNS_DEEP_STUBS);
     String DEST_CLUSTER = "dest_cluster";
-    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(TEST_CLUSTER);
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME)).thenReturn(TEST_CLUSTER);
     Request request = mock(Request.class);
     doReturn(LEADER_CONTROLLER.getPath()).when(request).pathInfo();
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
@@ -385,7 +385,7 @@ public class StoresRoutesTest {
 
     // Bad Request Path:
     // 1. Store belongs to destination cluster
-    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(DEST_CLUSTER);
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME)).thenReturn(DEST_CLUSTER);
 
     trackableControllerResponse = ObjectMapperFactory.getInstance()
         .readValue(migrateStoreRoute.handle(request, mock(Response.class)).toString(), StoreMigrationResponse.class);
@@ -397,7 +397,7 @@ public class StoresRoutesTest {
 
     // 2. Store doesn't belong to the source cluster
     String EXTRA_CLUSTER = "extra_cluster";
-    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(EXTRA_CLUSTER);
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME)).thenReturn(EXTRA_CLUSTER);
     trackableControllerResponse = ObjectMapperFactory.getInstance()
         .readValue(migrateStoreRoute.handle(request, mock(Response.class)).toString(), StoreMigrationResponse.class);
     Assert.assertTrue(trackableControllerResponse.isError());

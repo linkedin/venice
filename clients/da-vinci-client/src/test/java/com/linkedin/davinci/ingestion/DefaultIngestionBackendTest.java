@@ -31,6 +31,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreVersionInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
 import java.io.InputStream;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
@@ -95,7 +97,7 @@ public class DefaultIngestionBackendTest {
         .thenReturn(storageEngine);
 
     when(offsetRecord.getOffsetLag()).thenReturn(0L);
-    when(offsetRecord.getLocalVersionTopicOffset()).thenReturn(-1L);
+    when(offsetRecord.getCheckpointedLocalVtPosition()).thenReturn(PubSubSymbolicPosition.EARLIEST);
     when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
         .thenReturn(offsetRecord);
 
@@ -186,7 +188,7 @@ public class DefaultIngestionBackendTest {
   public void testNotStartBootstrapFromBlobTransferWhenNotLaggingForHybridStore() {
     long laggingThreshold = 1000L;
     when(offsetRecord.getOffsetLag()).thenReturn(10L);
-    when(offsetRecord.getLocalVersionTopicOffset()).thenReturn(10L);
+    when(offsetRecord.getCheckpointedLocalVtPosition()).thenReturn(PubSubUtil.fromKafkaOffset(10L));
     when(storageMetadataService.getLastOffset(Version.composeKafkaTopic(STORE_NAME, VERSION_NUMBER), PARTITION))
         .thenReturn(offsetRecord);
 

@@ -450,7 +450,7 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(destClusterName);
         veniceResponse.setName(storeName);
 
-        String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+        String clusterDiscovered = admin.discoverCluster(storeName);
         // Store should belong to src cluster already
         if (!clusterDiscovered.equals(srcClusterName)) {
           veniceResponse.setError(
@@ -505,7 +505,7 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(destClusterName);
         veniceResponse.setName(storeName);
 
-        String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+        String clusterDiscovered = admin.discoverCluster(storeName);
         // Store should belong to src cluster already
         if (!clusterDiscovered.equals(srcClusterName)) {
           veniceResponse.setError(
@@ -545,12 +545,12 @@ public class StoresRoutes extends AbstractRoute {
 
           veniceResponse.setName(storeName);
 
-          String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          String clusterDiscovered = admin.discoverCluster(storeName);
           veniceResponse.setSrcClusterName(clusterDiscovered);
 
           admin.abortMigration(srcClusterName, destClusterName, storeName);
 
-          clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          clusterDiscovered = admin.discoverCluster(storeName);
           veniceResponse.setCluster(clusterDiscovered);
         } catch (Throwable e) {
           veniceResponse.setError(e);
@@ -586,7 +586,7 @@ public class StoresRoutes extends AbstractRoute {
           storeMigrationResponse.setCluster(destClusterName);
           storeMigrationResponse.setName(storeName);
 
-          String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          String clusterDiscovered = admin.discoverCluster(storeName);
           // Store should not belong to dest cluster already
           if (clusterDiscovered.equals(destClusterName)) {
             storeMigrationResponse
@@ -996,7 +996,7 @@ public class StoresRoutes extends AbstractRoute {
           allStoreTopics.forEach((storeName, topicsWithRetention) -> {
             String cluster;
             try {
-              cluster = admin.discoverCluster(storeName).getFirst();
+              cluster = admin.discoverCluster(storeName);
             } catch (VeniceNoStoreException e) {
               LOGGER.warn("Store " + storeName + " does not exist. Skipping it.");
               return;
@@ -1152,13 +1152,13 @@ public class StoresRoutes extends AbstractRoute {
         // Include system stores parameter
         String includeSystemStoresParam = request.queryParams(INCLUDE_SYSTEM_STORES);
         if (includeSystemStoresParam != null && !includeSystemStoresParam.isEmpty()) {
-          params.put("includeSystemStores", includeSystemStoresParam);
+          params.put(INCLUDE_SYSTEM_STORES, includeSystemStoresParam);
         }
 
         // Look back MS parameter
         String lookBackMSParam = request.queryParams(LOOK_BACK_MS);
         if (lookBackMSParam != null && !lookBackMSParam.isEmpty()) {
-          params.put("lookBackMS", lookBackMSParam);
+          params.put(LOOK_BACK_MS, lookBackMSParam);
         }
 
         List<StoreInfo> storeList = admin.getDeadStores(cluster, storeName, params);

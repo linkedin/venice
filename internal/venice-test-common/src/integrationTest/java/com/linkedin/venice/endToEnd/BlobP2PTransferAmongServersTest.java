@@ -120,7 +120,9 @@ public class BlobP2PTransferAmongServersTest {
             server1.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", partitionId);
         OffsetRecord offsetServer2 =
             server2.getVeniceServer().getStorageMetadataService().getLastOffset("test-store_v1", partitionId);
-        Assert.assertEquals(offsetServer1.getLocalVersionTopicOffset(), offsetServer2.getLocalVersionTopicOffset());
+        Assert.assertEquals(
+            offsetServer1.getCheckpointedLocalVtPosition(),
+            offsetServer2.getCheckpointedLocalVtPosition());
       }
     });
   }
@@ -323,7 +325,9 @@ public class BlobP2PTransferAmongServersTest {
             server1.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
         OffsetRecord offsetRecord2 =
             server2.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
-        Assert.assertEquals(offsetRecord2.getLocalVersionTopicOffset(), offsetRecord1.getLocalVersionTopicOffset());
+        Assert.assertEquals(
+            offsetRecord2.getCheckpointedLocalVtPosition(),
+            offsetRecord1.getCheckpointedLocalVtPosition());
       }
     });
 
@@ -389,7 +393,9 @@ public class BlobP2PTransferAmongServersTest {
             server1.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
         OffsetRecord offsetServer2 =
             server2.getVeniceServer().getStorageMetadataService().getLastOffset(storeName + "_v1", partitionId);
-        Assert.assertEquals(offsetServer1.getLocalVersionTopicOffset(), offsetServer2.getLocalVersionTopicOffset());
+        Assert.assertEquals(
+            offsetServer1.getCheckpointedLocalVtPosition(),
+            offsetServer2.getCheckpointedLocalVtPosition());
       }
     });
   }

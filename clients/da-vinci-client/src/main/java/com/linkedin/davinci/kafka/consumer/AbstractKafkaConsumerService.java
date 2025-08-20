@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -33,7 +34,7 @@ public abstract class AbstractKafkaConsumerService extends AbstractVeniceService
 
   public abstract void startConsumptionIntoDataReceiver(
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
-      long lastReadOffset,
+      PubSubPosition lastReadPosition,
       ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver);
 
   public abstract long getLatestOffsetBasedOnMetrics(

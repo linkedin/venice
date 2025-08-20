@@ -35,6 +35,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SY
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED;
@@ -223,6 +224,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
@@ -456,6 +458,7 @@ public class VeniceControllerClusterConfig {
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private final PubSubClientsFactory pubSubClientsFactory;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
+  private final PubSubPositionDeserializer pubSubPositionDeserializer;
 
   private final PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory;
 
@@ -585,6 +588,7 @@ public class VeniceControllerClusterConfig {
 
   private final Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
   private final boolean isRealTimeTopicVersioningEnabled;
+  private final boolean useV2AdminTopicMetadata;
   private final boolean isHybridStorePartitionCountUpdateEnabled;
 
   /**
@@ -635,6 +639,8 @@ public class VeniceControllerClusterConfig {
   private final boolean isMultiTaskSchedulerServiceEnabled;
   private final int storeMigrationThreadPoolSize;
   private final int storeMigrationMaxRetryAttempts;
+
+  private final boolean backupVersionReplicaReductionEnabled;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
@@ -1096,6 +1102,7 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
     this.pubSubClientsFactory = new PubSubClientsFactory(props);
     this.pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(props);
+    this.pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
     this.sourceOfTruthAdminAdapterFactory = PubSubClientsFactory.createSourceOfTruthAdminFactory(props);
     this.danglingTopicCleanupIntervalSeconds = props.getLong(CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND, -1);
     this.danglingTopicOccurrenceThresholdForCleanup =
@@ -1131,6 +1138,7 @@ public class VeniceControllerClusterConfig {
     this.isRealTimeTopicVersioningEnabled = props.getBoolean(
         ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
         DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING);
+    this.useV2AdminTopicMetadata = props.getBoolean(ConfigKeys.USE_V2_ADMIN_TOPIC_METADATA, false);
     this.isHybridStorePartitionCountUpdateEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
 
@@ -1198,6 +1206,8 @@ public class VeniceControllerClusterConfig {
     this.isMultiTaskSchedulerServiceEnabled = props.getBoolean(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, false);
     this.storeMigrationThreadPoolSize = props.getInt(ConfigKeys.STORE_MIGRATION_THREAD_POOL_SIZE, 1);
     this.storeMigrationMaxRetryAttempts = props.getInt(ConfigKeys.STORE_MIGRATION_MAX_RETRY_ATTEMPTS, 3);
+    this.backupVersionReplicaReductionEnabled =
+        props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
   }
 
   public VeniceProperties getProps() {
@@ -1516,6 +1526,10 @@ public class VeniceControllerClusterConfig {
 
   public int getDaVinciPushStatusScanMaxOfflineInstanceCount() {
     return daVinciPushStatusScanMaxOfflineInstanceCount;
+  }
+
+  public boolean isBackupVersionReplicaReductionEnabled() {
+    return backupVersionReplicaReductionEnabled;
   }
 
   public double getDaVinciPushStatusScanMaxOfflineInstanceRatio() {
@@ -1958,6 +1972,10 @@ public class VeniceControllerClusterConfig {
     return pubSubPositionTypeRegistry;
   }
 
+  public PubSubPositionDeserializer getPubSubPositionDeserializer() {
+    return pubSubPositionDeserializer;
+  }
+
   public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
     return sourceOfTruthAdminAdapterFactory;
   }
@@ -2084,6 +2102,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean getRealTimeTopicVersioningEnabled() {
     return isRealTimeTopicVersioningEnabled;
+  }
+
+  public boolean useV2AdminTopicMetadata() {
+    return useV2AdminTopicMetadata;
   }
 
   public boolean isProtocolVersionAutoDetectionServiceEnabled() {

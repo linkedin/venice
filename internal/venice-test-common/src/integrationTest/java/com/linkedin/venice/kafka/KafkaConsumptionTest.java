@@ -213,8 +213,12 @@ public class KafkaConsumptionTest {
         pubSubTopicPartition,
         PartitionReplicaIngestionContext.VersionRole.CURRENT,
         PartitionReplicaIngestionContext.WorkloadType.AA_OR_WRITE_COMPUTE);
-    StorePartitionDataReceiver localDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
-        .subscribeConsumerFor(localKafkaUrl, storeIngestionTask, partitionReplicaIngestionContext, -1);
+    StorePartitionDataReceiver localDataReceiver =
+        (StorePartitionDataReceiver) aggKafkaConsumerService.subscribeConsumerFor(
+            localKafkaUrl,
+            storeIngestionTask,
+            partitionReplicaIngestionContext,
+            PubSubSymbolicPosition.EARLIEST);
     Assert
         .assertTrue(aggKafkaConsumerService.hasConsumerAssignedFor(localKafkaUrl, versionTopic, pubSubTopicPartition));
 
@@ -222,8 +226,12 @@ public class KafkaConsumptionTest {
     consumerProperties = new Properties();
     consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaUrl);
     aggKafkaConsumerService.createKafkaConsumerService(consumerProperties);
-    StorePartitionDataReceiver remoteDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
-        .subscribeConsumerFor(remoteKafkaUrl, storeIngestionTask, partitionReplicaIngestionContext, -1);
+    StorePartitionDataReceiver remoteDataReceiver =
+        (StorePartitionDataReceiver) aggKafkaConsumerService.subscribeConsumerFor(
+            remoteKafkaUrl,
+            storeIngestionTask,
+            partitionReplicaIngestionContext,
+            PubSubSymbolicPosition.EARLIEST);
     Assert
         .assertTrue(aggKafkaConsumerService.hasConsumerAssignedFor(remoteKafkaUrl, versionTopic, pubSubTopicPartition));
 

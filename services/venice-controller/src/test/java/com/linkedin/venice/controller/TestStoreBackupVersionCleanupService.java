@@ -60,7 +60,6 @@ public class TestStoreBackupVersionCleanupService {
     admin = mock(VeniceHelixAdmin.class);
     mockClusterResource = mock(HelixVeniceClusterResources.class);
     clusterManager = mock(ZkRoutersClusterManager.class);
-
   }
 
   private Store mockStore(
@@ -201,6 +200,17 @@ public class TestStoreBackupVersionCleanupService {
     versions.put(3, VersionStatus.STARTED);
     Store storeWithRollback = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 1);
     Assert.assertFalse(service.cleanupBackupVersion(storeWithRollback, clusterName));
+    StoreBackupVersionCleanupService.setMinBackupVersionCleanupDelay(100L);
+    doReturn(true).when(controllerConfig).isBackupVersionReplicaReductionEnabled();
+    versions.clear();
+    versions.put(1, VersionStatus.ONLINE);
+    versions.put(2, VersionStatus.ONLINE);
+    versions.put(3, VersionStatus.STARTED);
+    Store storeWithPush = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 2);
+    doReturn(1509711434L).when(storeWithPush).getBackupVersionRetentionMs();
+    Assert.assertFalse(service.cleanupBackupVersion(storeWithPush, clusterName));
+    verify(admin).updateIdealState(clusterName, Version.composeKafkaTopic(storeWithPush.getName(), 1), 2);
+
   }
 
   @Test

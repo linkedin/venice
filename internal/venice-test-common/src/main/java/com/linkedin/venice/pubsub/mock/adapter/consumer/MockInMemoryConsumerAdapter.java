@@ -3,6 +3,7 @@ package com.linkedin.venice.pubsub.mock.adapter.consumer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubUtil;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
@@ -87,9 +88,9 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
 
     long seekOffset;
 
-    if (position == PubSubSymbolicPosition.EARLIEST) {
+    if (PubSubSymbolicPosition.EARLIEST.equals(position)) {
       seekOffset = 0L; // start from first available record
-    } else if (position == PubSubSymbolicPosition.LATEST) {
+    } else if (PubSubSymbolicPosition.LATEST.equals(position)) {
       PubSubPosition resolved = endPosition(pubSubTopicPartition);
       if (!(resolved instanceof InMemoryPubSubPosition)) {
         throw new IllegalStateException(
@@ -99,6 +100,9 @@ public class MockInMemoryConsumerAdapter implements PubSubConsumerAdapter {
     } else if (position instanceof InMemoryPubSubPosition) {
       long inputOffset = ((InMemoryPubSubPosition) position).getInternalOffset();
       seekOffset = PubSubUtil.calculateSeekOffset(inputOffset, isInclusive);
+    } else if (position instanceof ApacheKafkaOffsetPosition) {
+      seekOffset =
+          PubSubUtil.calculateSeekOffset(((ApacheKafkaOffsetPosition) position).getInternalOffset(), isInclusive);
     } else {
       throw new IllegalArgumentException("Unsupported PubSubPosition type: " + position.getClass());
     }

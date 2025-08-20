@@ -1,7 +1,5 @@
 package com.linkedin.davinci.consumer;
 
-import static com.linkedin.venice.pubsub.api.PubSubSymbolicPosition.LATEST;
-
 import com.linkedin.davinci.repository.NativeMetadataRepositoryViewAdapter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -24,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -37,6 +36,11 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   // swap is produced to VT, then we should remove this as it's no longer needed.
   private final Lazy<PubSubConsumerAdapter> internalSeekConsumer;
   private final AtomicBoolean versionSwapThreadScheduled = new AtomicBoolean(false);
+  /*
+   * Used to track if the version swap thread encountered an exception. If so, the exception will be reflected
+   * in the next call to poll to prevent silent thread termination and fail the process.
+   */
+  private final AtomicReference<Exception> versionSwapThreadException = new AtomicReference<>();
   private final VersionSwapDataChangeListener<K, V> versionSwapListener;
 
   public VeniceAfterImageConsumerImpl(ChangelogClientConfig changelogClientConfig, PubSubConsumerAdapter consumer) {
@@ -58,12 +62,20 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
         this,
         storeRepository,
         storeName,
-        changelogClientConfig.getConsumerName());
+        changelogClientConfig.getConsumerName(),
+        this.changeCaptureStats);
   }
 
   @Override
   public Collection<PubSubMessage<K, ChangeEvent<V>, VeniceChangeCoordinate>> poll(long timeoutInMs) {
     try {
+      Exception versionSwapException = versionSwapThreadException.get();
+      if (versionSwapException != null) {
+        throw new VeniceException(
+            "Version Swap failed for store: " + storeName + " due to exception:",
+            versionSwapException);
+      }
+
       return internalPoll(timeoutInMs, "");
     } catch (UnknownTopicOrPartitionException ex) {
       LOGGER.error("Caught unknown Topic exception, will attempt repair and retry: ", ex);
@@ -126,7 +138,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             topicPartition.getPartitionNumber(),
             new VeniceChangeCoordinate(
                 topicPartition.getPubSubTopic().getName(),
-                LATEST,
+                PubSubSymbolicPosition.LATEST,
                 topicPartition.getPartitionNumber()));
       } else if (checkpoints.get(topicPartition.getPartitionNumber()) == null) {
         LOGGER.warn("No EOP checkpoint found for partition: {}", topicPartition.getPartitionNumber());
@@ -281,5 +293,13 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   public void setStoreRepository(NativeMetadataRepositoryViewAdapter repository) {
     super.setStoreRepository(repository);
     versionSwapListener.setStoreRepository(repository);
+  }
+
+  /**
+   * Used by {@link VersionSwapDataChangeListener} to propagate version swap exceptions to prevent silent thread
+   * termination.
+   */
+  protected void handleVersionSwapFailure(Exception error) {
+    versionSwapThreadException.set(error);
   }
 }
