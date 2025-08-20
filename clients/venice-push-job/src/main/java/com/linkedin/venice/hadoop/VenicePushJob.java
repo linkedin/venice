@@ -2478,13 +2478,6 @@ public class VenicePushJob implements AutoCloseable {
         Arrays.asList(ExecutionStatus.COMPLETED, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
     int fetchParentVersionRetryCount = 0;
     for (;;) {
-      if (fetchParentVersionRetryCount > 5) {
-        throw new VeniceException(
-            "Failed to get parent version from parent store after 5 attempts "
-                + "and cannot infer version swap status after ingestion completed. Check nuage if the latest"
-                + "version is being served");
-      }
-
       long currentTime = System.currentTimeMillis();
       if (currentTime < nextPollingTime) {
         if (!Utils.sleep(nextPollingTime - currentTime)) {
@@ -2557,6 +2550,13 @@ public class VenicePushJob implements AutoCloseable {
           if (!parentVersionFromStore.isPresent()) {
             LOGGER.warn("Failed to get parent version for store: {}", pushJobSetting.storeName);
             fetchParentVersionRetryCount++;
+            if (fetchParentVersionRetryCount > 5) {
+              throw new VeniceException(
+                  "Failed to get parent version from parent store after 5 attempts "
+                      + "and cannot infer version swap status after ingestion completed. Check nuage if the latest"
+                      + "version is being served");
+            }
+
             continue;
           }
 
