@@ -34,6 +34,7 @@ public class VeniceChangeCoordinateSerializationTest {
   private static final String TEST_TOPIC = TEST_STORE_NAME + "_v1";
   private static final Integer TEST_PARTITION = 42;
   private static final long TEST_OFFSET = 12345L;
+  private static final long TEST_CONSUMER_SEQUENCE_ID = 54321L;
 
   // Test fixtures
   private VeniceChangeCoordinate testCoordinate;
@@ -42,12 +43,12 @@ public class VeniceChangeCoordinateSerializationTest {
   @BeforeMethod
   public void setUp() {
     testPosition = ApacheKafkaOffsetPosition.of(TEST_OFFSET);
-    testCoordinate = new VeniceChangeCoordinate(TEST_TOPIC, testPosition, TEST_PARTITION);
+    testCoordinate = new VeniceChangeCoordinate(TEST_TOPIC, testPosition, TEST_PARTITION, TEST_CONSUMER_SEQUENCE_ID);
   }
 
   @Test
-  public void testV2FormatSerializationRoundTrip() throws IOException, ClassNotFoundException {
-    // Test that V2 format can serialize and deserialize correctly
+  public void testV3FormatSerializationRoundTrip() throws IOException, ClassNotFoundException {
+    // Test that V3 format can serialize and deserialize correctly
     byte[] serializedData = serializeToBytes(testCoordinate);
     VeniceChangeCoordinate deserializedCoordinate = deserializeFromBytes(serializedData);
 
@@ -56,8 +57,8 @@ public class VeniceChangeCoordinateSerializationTest {
   }
 
   @Test
-  public void testV2FormatIncludesVersionAndFactory() throws IOException, ClassNotFoundException {
-    // Test that V2 format includes both version tag and factory class name
+  public void testV3FormatIncludesVersionAndFactory() throws IOException, ClassNotFoundException {
+    // Test that V3 format includes version tag, factory class name and consumer sequence id
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
     ObjectOutputStream objectOutput = new ObjectOutputStream(outputStream);
 
@@ -77,11 +78,15 @@ public class VeniceChangeCoordinateSerializationTest {
 
     // Read version field
     int version = objectInput.readShort();
-    assertEquals(version, 2);
+    assertEquals(version, 3);
 
     // Read factory class name
     String factoryClassName = objectInput.readUTF();
     assertTrue(factoryClassName.contains("ApacheKafkaOffsetPositionFactory"));
+
+    // Read consumer sequence id
+    long consumerSequenceId = objectInput.readLong();
+    assertEquals(consumerSequenceId, TEST_CONSUMER_SEQUENCE_ID);
 
     assertEquals(topic, TEST_TOPIC);
     assertEquals(partition, TEST_PARTITION.intValue());

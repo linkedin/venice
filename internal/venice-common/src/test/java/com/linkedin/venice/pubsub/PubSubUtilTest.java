@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL_LEGACY;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_SECURITY_PROTOCOL_LEGACY;
+import static com.linkedin.venice.pubsub.PubSubPositionTypeRegistry.APACHE_KAFKA_OFFSET_POSITION_TYPE_ID;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
@@ -14,14 +15,21 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
 import com.linkedin.venice.pubsub.api.PubSubPosition;
+import com.linkedin.venice.pubsub.api.PubSubPositionWireFormat;
 import com.linkedin.venice.pubsub.api.PubSubSecurityProtocol;
 import com.linkedin.venice.pubsub.api.PubSubSymbolicPosition;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.nio.ByteBuffer;
 import java.util.Properties;
 import org.testng.annotations.Test;
 
 
+/**
+ * Unit tests for {@link PubSubUtil}.
+ */
 public class PubSubUtilTest {
   @Test
   public void testGetPubSubBrokerAddressFromProperties() {
@@ -233,5 +241,94 @@ public class PubSubUtilTest {
     assertTrue(PubSubUtil.comparePubSubPositions(pos1, pos2) < 0);
     assertTrue(PubSubUtil.comparePubSubPositions(pos2, pos1) > 0);
     assertEquals(PubSubUtil.comparePubSubPositions(pos1, pos1), 0);
+  }
+
+  @Test
+  public void testCalculateSeekOffset() {
+    // Case 1: Inclusive = true, should return the same offset
+    assertEquals(PubSubUtil.calculateSeekOffset(100L, true), 100L, "Inclusive seek should return the base offset");
+
+    // Case 2: Inclusive = false, should return base offset + 1
+    assertEquals(PubSubUtil.calculateSeekOffset(100L, false), 101L, "Exclusive seek should return base offset + 1");
+  }
+
+  @Test
+  public void testGetBase64EncodedString() {
+    // Test with normal byte array
+    byte[] testBytes =
+        ByteUtils.extractByteArray(new ApacheKafkaOffsetPosition(12345L).getPositionWireFormat().getRawBytes());
+    String encoded = PubSubUtil.getBase64EncodedString(testBytes);
+    assertEquals(encoded, "8sAB", "Should encode byte array to Base64 string");
+
+    // Test with empty byte array
+    byte[] emptyBytes = new byte[0];
+    String encodedEmpty = PubSubUtil.getBase64EncodedString(emptyBytes);
+    assertTrue(encodedEmpty.isEmpty(), "Should encode empty byte array to empty string");
+
+    // Test with null input
+    String encodedNull = PubSubUtil.getBase64EncodedString(null);
+    assertTrue(encodedNull.isEmpty(), "Should return null for null input");
+
+    // Test with binary data
+    byte[] binaryData = { 0x00, 0x01, 0x02, (byte) 0xFF, (byte) 0xFE };
+    String encodedBinary = PubSubUtil.getBase64EncodedString(binaryData);
+    assertEquals(encodedBinary, "AAEC//4=", "Should encode binary data correctly");
+  }
+
+  @Test
+  public void testGetBase64DecodedBytes() {
+    // Test with normal Base64 string
+    String base64String = "8sAB";
+    PubSubPosition position = PubSubPositionDeserializer.DEFAULT_DESERIALIZER.toPosition(
+        new PubSubPositionWireFormat(
+            APACHE_KAFKA_OFFSET_POSITION_TYPE_ID,
+            ByteBuffer.wrap(PubSubUtil.getBase64DecodedBytes(base64String))));
+    assertEquals(position, new ApacheKafkaOffsetPosition(12345L), "Should decode Base64 string to original bytes");
+
+    // Test with empty string
+    String emptyString = "";
+    byte[] decodedEmpty = PubSubUtil.getBase64DecodedBytes(emptyString);
+    assertEquals(decodedEmpty.length, 0, "Should decode empty string to empty byte array");
+
+    // Test with binary data
+    String binaryBase64 = "AAEC//4=";
+    byte[] decodedBinary = PubSubUtil.getBase64DecodedBytes(binaryBase64);
+    byte[] expectedBinary = { 0x00, 0x01, 0x02, (byte) 0xFF, (byte) 0xFE };
+    assertEquals(decodedBinary, expectedBinary, "Should decode binary Base64 data correctly");
+  }
+
+  @Test
+  public void testGetBase64DecodedBytesWithInvalidInput() {
+    // Test with invalid Base64 string
+    assertThrows(IllegalArgumentException.class, () -> PubSubUtil.getBase64DecodedBytes("Invalid Base64!"));
+
+    // Test with null input - this will throw NPE from Base64.getDecoder().decode()
+    assertThrows(NullPointerException.class, () -> PubSubUtil.getBase64DecodedBytes(null));
+  }
+
+  @Test
+  public void testBase64RoundTrip() {
+    // Test round-trip encoding and decoding
+    byte[] originalData =
+        ByteUtils.extractByteArray(new ApacheKafkaOffsetPosition(12345L).getPositionWireFormat().getRawBytes());
+
+    // Encode then decode
+    String encoded = PubSubUtil.getBase64EncodedString(originalData);
+    byte[] decoded = PubSubUtil.getBase64DecodedBytes(encoded);
+
+    assertEquals(decoded, originalData, "Round-trip encoding/decoding should preserve original data");
+    assertEquals(new String(decoded), new String(originalData), "Round-trip should preserve string content");
+
+    // Test with various data sizes
+    for (int size: new int[] { 1, 10, 100, 1000 }) {
+      byte[] testData = new byte[size];
+      for (int i = 0; i < size; i++) {
+        testData[i] = (byte) (i % 256);
+      }
+
+      String encodedTest = PubSubUtil.getBase64EncodedString(testData);
+      byte[] decodedTest = PubSubUtil.getBase64DecodedBytes(encodedTest);
+      assertEquals(decodedTest, testData, "Round-trip should work for " + size + " bytes");
+    }
   }
 }

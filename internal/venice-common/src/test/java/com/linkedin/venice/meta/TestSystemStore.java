@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import static com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -10,6 +11,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.util.Collections;
 import org.testng.annotations.Test;
 
 
@@ -37,6 +39,7 @@ public class TestSystemStore {
         .setHybridStoreConfig(new HybridStoreConfigImpl(100, 100, 100, BufferReplayPolicy.REWIND_FROM_EOP));
     zkSharedSystemStore.setWriteComputationEnabled(true);
     zkSharedSystemStore.setPartitionCount(1);
+    zkSharedSystemStore.setStoreLifecycleHooks(Collections.emptyList());
     // Setup a regular Venice store
     String testStoreName = "test_store";
     Store veniceStore = new ZKStore(
@@ -101,8 +104,10 @@ public class TestSystemStore {
     assertEquals(systemStore.getNativeReplicationSourceFabric(), "");
     assertFalse(systemStore.isDaVinciPushStatusStoreEnabled());
     assertFalse(systemStore.isBlobTransferEnabled());
+    assertEquals(systemStore.getBlobTransferInServerEnabled(), ActivationState.NOT_SPECIFIED.name());
     assertEquals(systemStore.getMaxRecordSizeBytes(), VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
     assertEquals(systemStore.getMaxNearlineRecordSizeBytes(), VeniceWriter.UNLIMITED_MAX_RECORD_SIZE);
+    assertEquals(systemStore.getStoreLifecycleHooks(), Collections.emptyList());
 
     // All the shared store-level property update should throw exception
     assertThrows(() -> systemStore.setOwner("test"));
@@ -137,6 +142,7 @@ public class TestSystemStore {
     assertThrows(() -> systemStore.setDaVinciPushStatusStoreEnabled(true));
     assertThrows(() -> systemStore.setMaxRecordSizeBytes(1));
     assertThrows(() -> systemStore.setMaxNearlineRecordSizeBytes(1));
+    assertThrows(() -> systemStore.setStoreLifecycleHooks(Collections.emptyList()));
 
     // SystemStores property for SystemStore is not supported.
     assertThrows(() -> systemStore.getSystemStores());

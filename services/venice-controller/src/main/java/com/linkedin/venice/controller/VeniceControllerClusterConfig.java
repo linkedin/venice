@@ -27,6 +27,7 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONCURRENT_PUSH_DETECTION_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_GRPC_PORT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADMIN_SECURE_GRPC_PORT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
@@ -34,6 +35,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SY
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DEFAULT_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_DELETION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_METADATA_FETCH_BASED_CLEANUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION_BASED_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_HELIX_CLOUD_ENABLED;
@@ -61,11 +63,15 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_PROCESS
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_INFO_SOURCES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_CLOUD_PROVIDER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_INSTANCE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_EVENNESS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_FORCE_BASELINE_CONVERGE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REBALANCE_PREFERENCE_LESS_MOVEMENT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_RESOURCE_CAPACITY_WEIGHT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_INSTANCE_TAG_LIST;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_MIN_SCHEMA_COUNT_TO_KEEP;
@@ -75,8 +81,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_REGION_STATE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_SERVICE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_SYSTEM_STORE_VERSION_REFRESH_THRESHOLD_IN_DAYS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SERVICE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_PROTOCOL_VERSION_AUTO_DETECTION_SLEEP_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_REPUSH_PREFIX;
@@ -207,15 +213,18 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.pushmonitor.LeakedPushStatusCleanUpService;
@@ -239,6 +248,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.helix.cloud.constants.CloudProvider;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.model.CloudConfig;
@@ -403,7 +413,13 @@ public class VeniceControllerClusterConfig {
   private final boolean storageClusterHelixCloudEnabled;
   private final CloudConfig helixCloudConfig;
 
+  private final long controllerHelixParticipantDeregistrationTimeoutMs;
+
   private final String helixRestCustomizedHealthUrl;
+
+  private final boolean serverHelixClusterTopologyAware;
+  private final String serverHelixClusterTopology;
+  private final String serverHelixClusterFaultZoneType;
 
   private final boolean usePushStatusStoreForIncrementalPushStatusReads;
 
@@ -427,7 +443,7 @@ public class VeniceControllerClusterConfig {
 
   private final int parentSystemStoreHeartbeatCheckWaitTimeSeconds;
 
-  private final int parentSystemStoreRepairRetryCount;
+  private final int parentSystemStoreVersionRefreshThresholdInDays;
 
   private final boolean parentExternalSupersetSchemaGenerationEnabled;
 
@@ -442,6 +458,7 @@ public class VeniceControllerClusterConfig {
   private final boolean useDaVinciSpecificExecutionStatusForError;
   private final PubSubClientsFactory pubSubClientsFactory;
   private final PubSubPositionTypeRegistry pubSubPositionTypeRegistry;
+  private final PubSubPositionDeserializer pubSubPositionDeserializer;
 
   private final PubSubAdminAdapterFactory sourceOfTruthAdminAdapterFactory;
 
@@ -450,6 +467,8 @@ public class VeniceControllerClusterConfig {
 
   private final PersistenceType persistenceType;
   private final ReadStrategy readStrategy;
+
+  private final ConcurrentPushDetectionStrategy concurrentPushDetectionStrategy;
   private final OfflinePushStrategy offlinePushStrategy;
   private final RoutingStrategy routingStrategy;
   private final int replicationFactor;
@@ -569,6 +588,7 @@ public class VeniceControllerClusterConfig {
 
   private final Set<PushJobCheckpoints> pushJobUserErrorCheckpoints;
   private final boolean isRealTimeTopicVersioningEnabled;
+  private final boolean useV2AdminTopicMetadata;
   private final boolean isHybridStorePartitionCountUpdateEnabled;
 
   /**
@@ -580,9 +600,7 @@ public class VeniceControllerClusterConfig {
   private final double deferredVersionSwapBufferTime;
 
   private final Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> helixGlobalRebalancePreference;
-  private final List<String> helixInstanceCapacityKeys;
-  private final Map<String, Integer> helixDefaultInstanceCapacityMap;
-  private final Map<String, Integer> helixDefaultPartitionWeightMap;
+  private final HelixCapacityConfig helixCapacityConfig;
 
   /**
    * Configs for repush
@@ -622,6 +640,8 @@ public class VeniceControllerClusterConfig {
   private final int storeMigrationThreadPoolSize;
   private final int storeMigrationMaxRetryAttempts;
 
+  private final boolean backupVersionReplicaReductionEnabled;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     this.props = props;
     this.clusterName = props.getString(CLUSTER_NAME);
@@ -651,6 +671,14 @@ public class VeniceControllerClusterConfig {
     } else {
       this.persistenceType = PersistenceType.IN_MEMORY;
     }
+
+    if (props.containsKey(CONCURRENT_PUSH_DETECTION_STRATEGY)) {
+      this.concurrentPushDetectionStrategy =
+          ConcurrentPushDetectionStrategy.valueOf(props.getString(CONCURRENT_PUSH_DETECTION_STRATEGY));
+    } else {
+      this.concurrentPushDetectionStrategy = ConcurrentPushDetectionStrategy.DUAL;
+    }
+
     if (props.containsKey(DEFAULT_READ_STRATEGY)) {
       this.readStrategy = ReadStrategy.valueOf(props.getString(DEFAULT_READ_STRATEGY));
     } else {
@@ -1029,7 +1057,18 @@ public class VeniceControllerClusterConfig {
       helixCloudConfig = null;
     }
 
+    this.controllerHelixParticipantDeregistrationTimeoutMs =
+        props.getLong(CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS, -1L);
     this.helixRestCustomizedHealthUrl = props.getString(CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL, "");
+
+    this.serverHelixClusterTopologyAware = props.getBoolean(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE, false);
+    this.serverHelixClusterTopology = props.getString(CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY, (String) null);
+    this.serverHelixClusterFaultZoneType =
+        props.getString(CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE, (String) null);
+    validateServerHelixClusterTopologyAwareConfigs(
+        serverHelixClusterTopologyAware,
+        serverHelixClusterTopology,
+        serverHelixClusterFaultZoneType);
 
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
@@ -1043,7 +1082,8 @@ public class VeniceControllerClusterConfig {
         props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_CHECK_INTERVAL_SECONDS, 1800);
     this.parentSystemStoreHeartbeatCheckWaitTimeSeconds =
         props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS, 600);
-    this.parentSystemStoreRepairRetryCount = props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT, 1);
+    this.parentSystemStoreVersionRefreshThresholdInDays =
+        props.getInt(CONTROLLER_PARENT_SYSTEM_STORE_VERSION_REFRESH_THRESHOLD_IN_DAYS, 30);
     this.clusterDiscoveryD2ServiceName =
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
     this.parentExternalSupersetSchemaGenerationEnabled =
@@ -1062,6 +1102,7 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(USE_DA_VINCI_SPECIFIC_EXECUTION_STATUS_FOR_ERROR, false);
     this.pubSubClientsFactory = new PubSubClientsFactory(props);
     this.pubSubPositionTypeRegistry = PubSubPositionTypeRegistry.fromPropertiesOrDefault(props);
+    this.pubSubPositionDeserializer = new PubSubPositionDeserializer(pubSubPositionTypeRegistry);
     this.sourceOfTruthAdminAdapterFactory = PubSubClientsFactory.createSourceOfTruthAdminFactory(props);
     this.danglingTopicCleanupIntervalSeconds = props.getLong(CONTROLLER_DANGLING_TOPIC_CLEAN_UP_INTERVAL_SECOND, -1);
     this.danglingTopicOccurrenceThresholdForCleanup =
@@ -1097,6 +1138,7 @@ public class VeniceControllerClusterConfig {
     this.isRealTimeTopicVersioningEnabled = props.getBoolean(
         ConfigKeys.CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING,
         DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING);
+    this.useV2AdminTopicMetadata = props.getBoolean(ConfigKeys.USE_V2_ADMIN_TOPIC_METADATA, false);
     this.isHybridStorePartitionCountUpdateEnabled =
         props.getBoolean(ConfigKeys.CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE, false);
 
@@ -1142,17 +1184,13 @@ public class VeniceControllerClusterConfig {
     validateHelixCapacities(helixInstanceCapacity, helixResourceCapacityWeight);
 
     if (helixInstanceCapacity != null && helixResourceCapacityWeight != null) {
-      helixInstanceCapacityKeys = Collections.singletonList(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY);
-      helixDefaultInstanceCapacityMap = new HashMap<>();
-      helixDefaultPartitionWeightMap = new HashMap<>();
-
-      helixDefaultInstanceCapacityMap.put(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixInstanceCapacity);
-      helixDefaultPartitionWeightMap.put(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixResourceCapacityWeight);
+      helixCapacityConfig = new HelixCapacityConfig(
+          Collections.singletonList(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY),
+          Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixInstanceCapacity),
+          Collections.singletonMap(CONTROLLER_DEFAULT_HELIX_RESOURCE_CAPACITY_KEY, helixResourceCapacityWeight));
 
     } else {
-      helixInstanceCapacityKeys = null;
-      helixDefaultInstanceCapacityMap = null;
-      helixDefaultPartitionWeightMap = null;
+      helixCapacityConfig = null;
     }
 
     this.deferredVersionSwapSleepMs =
@@ -1168,6 +1206,8 @@ public class VeniceControllerClusterConfig {
     this.isMultiTaskSchedulerServiceEnabled = props.getBoolean(ConfigKeys.MULTITASK_SCHEDULER_SERVICE_ENABLED, false);
     this.storeMigrationThreadPoolSize = props.getInt(ConfigKeys.STORE_MIGRATION_THREAD_POOL_SIZE, 1);
     this.storeMigrationMaxRetryAttempts = props.getInt(ConfigKeys.STORE_MIGRATION_MAX_RETRY_ATTEMPTS, 3);
+    this.backupVersionReplicaReductionEnabled =
+        props.getBoolean(CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED, false);
   }
 
   public VeniceProperties getProps() {
@@ -1211,6 +1251,10 @@ public class VeniceControllerClusterConfig {
 
   public ReadStrategy getReadStrategy() {
     return readStrategy;
+  }
+
+  public ConcurrentPushDetectionStrategy getConcurrentPushDetectionStrategy() {
+    return concurrentPushDetectionStrategy;
   }
 
   public OfflinePushStrategy getOfflinePushStrategy() {
@@ -1482,6 +1526,10 @@ public class VeniceControllerClusterConfig {
 
   public int getDaVinciPushStatusScanMaxOfflineInstanceCount() {
     return daVinciPushStatusScanMaxOfflineInstanceCount;
+  }
+
+  public boolean isBackupVersionReplicaReductionEnabled() {
+    return backupVersionReplicaReductionEnabled;
   }
 
   public double getDaVinciPushStatusScanMaxOfflineInstanceRatio() {
@@ -1817,8 +1865,43 @@ public class VeniceControllerClusterConfig {
     return helixCloudConfig;
   }
 
+  public long getControllerHelixParticipantDeregistrationTimeoutMs() {
+    return controllerHelixParticipantDeregistrationTimeoutMs;
+  }
+
   public String getHelixRestCustomizedHealthUrl() {
     return helixRestCustomizedHealthUrl;
+  }
+
+  public boolean isServerHelixClusterTopologyAware() {
+    return serverHelixClusterTopologyAware;
+  }
+
+  public String getServerHelixClusterTopology() {
+    return serverHelixClusterTopology;
+  }
+
+  public String getServerHelixClusterFaultZoneType() {
+    return serverHelixClusterFaultZoneType;
+  }
+
+  private void validateServerHelixClusterTopologyAwareConfigs(
+      boolean serverHelixClusterTopologyAware,
+      String serverHelixClusterTopology,
+      String serverHelixClusterFaultZoneType) {
+    if (!serverHelixClusterTopologyAware) {
+      return;
+    }
+
+    if (StringUtils.isEmpty(serverHelixClusterTopology)) {
+      throw new VeniceException(
+          "Server cluster is configured for topology-aware placement, but no topology is provided");
+    }
+
+    if (StringUtils.isEmpty(serverHelixClusterFaultZoneType)) {
+      throw new VeniceException(
+          "Server cluster is configured for topology-aware placement, but no fault zone type is provided");
+    }
   }
 
   public boolean usePushStatusStoreForIncrementalPush() {
@@ -1865,8 +1948,8 @@ public class VeniceControllerClusterConfig {
     return parentSystemStoreHeartbeatCheckWaitTimeSeconds;
   }
 
-  public int getParentSystemStoreRepairRetryCount() {
-    return parentSystemStoreRepairRetryCount;
+  public int getParentSystemStoreVersionRefreshThresholdInDays() {
+    return parentSystemStoreVersionRefreshThresholdInDays;
   }
 
   public boolean isParentExternalSupersetSchemaGenerationEnabled() {
@@ -1887,6 +1970,10 @@ public class VeniceControllerClusterConfig {
 
   public PubSubPositionTypeRegistry getPubSubPositionTypeRegistry() {
     return pubSubPositionTypeRegistry;
+  }
+
+  public PubSubPositionDeserializer getPubSubPositionDeserializer() {
+    return pubSubPositionDeserializer;
   }
 
   public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
@@ -2017,6 +2104,10 @@ public class VeniceControllerClusterConfig {
     return isRealTimeTopicVersioningEnabled;
   }
 
+  public boolean useV2AdminTopicMetadata() {
+    return useV2AdminTopicMetadata;
+  }
+
   public boolean isProtocolVersionAutoDetectionServiceEnabled() {
     return isProtocolVersionAutoDetectionServiceEnabled;
   }
@@ -2110,16 +2201,8 @@ public class VeniceControllerClusterConfig {
     return helixGlobalRebalancePreference;
   }
 
-  public List<String> getHelixInstanceCapacityKeys() {
-    return helixInstanceCapacityKeys;
-  }
-
-  public Map<String, Integer> getHelixDefaultInstanceCapacityMap() {
-    return helixDefaultInstanceCapacityMap;
-  }
-
-  public Map<String, Integer> getHelixDefaultPartitionWeightMap() {
-    return helixDefaultPartitionWeightMap;
+  public HelixCapacityConfig getHelixCapacityConfig() {
+    return helixCapacityConfig;
   }
 
   private void validateHelixRebalancePreferences(

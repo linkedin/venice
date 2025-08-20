@@ -27,7 +27,6 @@ import java.util.function.ToLongFunction;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.rocksdb.SstFileManager;
 
 
 public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition> {
@@ -86,12 +85,7 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
       }
     }
 
-    this.stats = new RocksDBStorageEngineStats(
-        storeDbPath,
-        this::getRMDSizeInBytes,
-        this::getDuplicateKeyCountEstimate,
-        this::getKeyCountEstimate,
-        this::hasMemorySpaceLeft);
+    this.stats = new RocksDBStorageEngineStats(storeDbPath, this::getRMDSizeInBytes, this::getKeyCountEstimate);
 
     // restoreStoragePartitions will create metadata partition if not exist.
     restoreStoragePartitions(storeConfig.isRestoreMetadataPartition(), storeConfig.isRestoreDataPartitions());
@@ -156,10 +150,6 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
 
   private long getRMDSizeInBytes() {
     return getStatSumAcrossPartitions(RocksDBStoragePartition::getRmdByteUsage);
-  }
-
-  private long getDuplicateKeyCountEstimate() {
-    return getStatSumAcrossPartitions(RocksDBStoragePartition::getDuplicateKeyCountEstimate);
   }
 
   private long getKeyCountEstimate() {
@@ -250,22 +240,6 @@ public class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePa
   private String getRocksDbEngineConfigPath() {
     return RocksDBUtils.composePartitionDbDir(rocksDbPath, getStoreVersionName(), METADATA_PARTITION_ID) + "/"
         + SERVER_CONFIG_FILE_NAME;
-  }
-
-  private boolean hasMemorySpaceLeft() {
-    SstFileManager sstFileManager = factory.getSstFileManagerForMemoryLimiter();
-    if (sstFileManager == null) {
-      // Memory limiter is disabled.
-      return true;
-    }
-    if (sstFileManager.isMaxAllowedSpaceReached() || sstFileManager.isMaxAllowedSpaceReachedIncludingCompactions()) {
-      return false;
-    }
-    long currentUsage = sstFileManager.getTotalSize();
-    if (factory.getMemoryLimit() - currentUsage >= 2 * factory.getMemtableSize()) {
-      return true;
-    }
-    return false;
   }
 
   // Only used for testing purposes

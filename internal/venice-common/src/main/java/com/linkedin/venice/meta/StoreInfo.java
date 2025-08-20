@@ -5,6 +5,7 @@ import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -79,6 +80,7 @@ public class StoreInfo {
     storeInfo.setMaxNearlineRecordSizeBytes(store.getMaxNearlineRecordSizeBytes());
     storeInfo.setUnusedSchemaDeletionEnabled(store.isUnusedSchemaDeletionEnabled());
     storeInfo.setBlobTransferEnabled(store.isBlobTransferEnabled());
+    storeInfo.setBlobTransferInServerEnabled(store.getBlobTransferInServerEnabled());
     storeInfo.setNearlineProducerCompressionEnabled(store.isNearlineProducerCompressionEnabled());
     storeInfo.setNearlineProducerCountPerWriter(store.getNearlineProducerCountPerWriter());
     storeInfo.setTargetRegionSwap(store.getTargetSwapRegion());
@@ -87,6 +89,7 @@ public class StoreInfo {
     storeInfo.setGlobalRtDivEnabled(store.isGlobalRtDivEnabled());
     storeInfo.setTTLRepushEnabled(store.isTTLRepushEnabled());
     storeInfo.setEnumSchemaEvolutionAllowed(store.isEnumSchemaEvolutionAllowed());
+    storeInfo.setStoreLifecycleHooks(store.getStoreLifecycleHooks());
     return storeInfo;
   }
 
@@ -353,6 +356,7 @@ public class StoreInfo {
   private boolean unusedSchemaDeletionEnabled;
 
   private boolean blobTransferEnabled;
+  private String blobTransferInServerEnable = ActivationState.NOT_SPECIFIED.name();
 
   private boolean nearlineProducerCompressionEnabled;
   private int nearlineProducerCountPerWriter;
@@ -365,6 +369,7 @@ public class StoreInfo {
    */
   private boolean ttlRepushEnabled = false;
   private boolean enumSchemaEvolutionAllowed = false;
+  private List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
 
   public StoreInfo() {
   }
@@ -879,6 +884,14 @@ public class StoreInfo {
     return this.blobTransferEnabled;
   }
 
+  public void setBlobTransferInServerEnabled(String blobTransferInServerEnable) {
+    this.blobTransferInServerEnable = blobTransferInServerEnable;
+  }
+
+  public String getBlobTransferInServerEnabled() {
+    return this.blobTransferInServerEnable;
+  }
+
   public boolean isNearlineProducerCompressionEnabled() {
     return nearlineProducerCompressionEnabled;
   }
@@ -957,5 +970,13 @@ public class StoreInfo {
 
   public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
     this.enumSchemaEvolutionAllowed = enumSchemaEvolutionAllowed;
+  }
+
+  public List<LifecycleHooksRecord> getStoreLifecycleHooks() {
+    return this.storeLifecycleHooks;
+  }
+
+  public void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
+    this.storeLifecycleHooks = storeLifecycleHooks;
   }
 }

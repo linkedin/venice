@@ -21,6 +21,8 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubContext;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.utils.ExceptionCaptorNotifier;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.TestUtils;
@@ -152,7 +154,8 @@ public class PushTimeoutTest {
      * Return 0 as the max offset for VT and 1 as the overall consume progress, so reportIfCatchUpVersionTopicOffset()
      * will determine that base topic is caught up.
      */
-    doReturn(1L).when(mockOffsetRecord).getLocalVersionTopicOffset();
+    PubSubPosition p1 = ApacheKafkaOffsetPosition.of(1L);
+    doReturn(p1).when(mockOffsetRecord).getCheckpointedLocalVtPosition();
     doReturn(mockOffsetRecord).when(mockStorageMetadataService).getLastOffset(eq(versionTopic), eq(0));
 
     LeaderFollowerStoreIngestionTask leaderFollowerStoreIngestionTask = new LeaderFollowerStoreIngestionTask(

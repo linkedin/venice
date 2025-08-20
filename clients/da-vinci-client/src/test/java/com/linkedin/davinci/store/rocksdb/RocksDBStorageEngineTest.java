@@ -1,7 +1,6 @@
 package com.linkedin.davinci.store.rocksdb;
 
 import static com.linkedin.davinci.store.AbstractStorageEngine.METADATA_PARTITION_ID;
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_EMIT_DUPLICATE_KEY_METRIC;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -21,12 +20,13 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.adapter.kafka.common.ApacheKafkaOffsetPosition;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
-import java.util.Properties;
 import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -52,9 +52,8 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     Store mockStore = mock(Store.class);
     when(mockStore.getVersion(versionNumber)).thenReturn(mockVersion);
     when(mockReadOnlyStoreRepository.getStoreOrThrow(storeName)).thenReturn(mockStore);
-    Properties properties = new Properties();
-    properties.put(ROCKSDB_EMIT_DUPLICATE_KEY_METRIC, "true");
-    VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
+
+    VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     storageService = new StorageService(
         AbstractStorageEngineTest.getVeniceConfigLoader(serverProps),
         mock(AggVersionedStorageEngineStats.class),
@@ -135,9 +134,12 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     ProducerPartitionState ppState = createProducerPartitionState(segment, sequence);
     GUID guid = new GUID();
     offsetRecord.setRealtimeTopicProducerState(kafkaUrl, guid, ppState);
-    offsetRecord.setCheckpointLocalVersionTopicOffset(666L);
+    PubSubPosition p666 = ApacheKafkaOffsetPosition.of(666L);
+    offsetRecord.checkpointLocalVtPosition(p666);
     rocksDBStorageEngine.putPartitionOffset(PARTITION_ID, offsetRecord);
-    Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getLocalVersionTopicOffset(), 666L);
+    Assert.assertEquals(
+        rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getCheckpointedLocalVtPosition(),
+        p666);
     ProducerPartitionState ppStateFromRocksDB =
         rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getRealTimeProducerState(kafkaUrl, guid);
     Assert.assertEquals(ppStateFromRocksDB.getSegmentNumber(), segment);
@@ -207,7 +209,6 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest<RocksDBS
     Assert.assertTrue(persistedPartitionIds.contains(PARTITION_ID));
     Assert.assertTrue(persistedPartitionIds.contains(METADATA_PARTITION_ID));
     Assert.assertEquals(2, rocksDBStorageEngine.getStats().getKeyCountEstimate());
-    Assert.assertEquals(0, rocksDBStorageEngine.getStats().getDuplicateKeyCountEstimate());
   }
 
   @Test

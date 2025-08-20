@@ -1,6 +1,5 @@
 package com.linkedin.davinci.client;
 
-import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGESTION_ISOLATION_CONFIG_PREFIX;
 import static com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter.DO_NOT_USE_READER_SCHEMA_ID;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.RECORD_TRANSFORMER_VALUE_SCHEMA;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEVEL0_FILE_NUM_COMPACTION_TRIGGER;
@@ -12,7 +11,6 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_LEV
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DA_VINCI_SUBSCRIBE_ON_DISK_PARTITIONS_AUTOMATICALLY;
-import static com.linkedin.venice.ConfigKeys.INGESTION_MEMORY_LIMIT;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
@@ -727,7 +725,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         .put(INGESTION_USE_DA_VINCI_CLIENT, true)
         .put(RECORD_TRANSFORMER_VALUE_SCHEMA, recordTransformerOutputValueSchema)
         // Explicitly disable memory limiter in Isolated Process
-        .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + INGESTION_MEMORY_LIMIT, -1)
         .put(backendConfig.toProperties())
         .build();
     logger.info("backendConfig=" + config.toString(true));
@@ -783,13 +780,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     }
     logger.info("Starting client, storeName={}", getStoreName());
     VeniceConfigLoader configLoader = buildVeniceConfig();
-
-    if (configLoader.getVeniceServerConfig().isDatabaseChecksumVerificationEnabled()
-        && daVinciConfig.isRecordTransformerEnabled() && !recordTransformerConfig.shouldSkipCompatibilityChecks()) {
-      // The checksum verification will fail when a DaVinciRecordTransformer implementation transforms the values
-      throw new VeniceException(
-          "DaVinciRecordTransformer cannot be used with database checksum verification when skipCompatibilityChecks is set to false.");
-    }
 
     Optional<ObjectCacheConfig> cacheConfig = Optional.ofNullable(daVinciConfig.getCacheConfig());
     initBackend(clientConfig, configLoader, managedClients, icProvider, cacheConfig);

@@ -14,6 +14,7 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -429,7 +430,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
   @Override
   public void startConsumptionIntoDataReceiver(
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
-      long lastReadOffset,
+      PubSubPosition lastReadPosition,
       ConsumedDataReceiver<List<DefaultPubSubMessage>> consumedDataReceiver) {
     PubSubTopic versionTopic = consumedDataReceiver.destinationIdentifier();
     PubSubTopicPartition topicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
@@ -458,7 +459,7 @@ public abstract class KafkaConsumerService extends AbstractKafkaConsumerService 
        * {@link KafkaConsumerService.ConsumptionTask} will not be able to funnel the messages.
        */
       consumptionTask.setDataReceiver(topicPartition, consumedDataReceiver);
-      consumer.subscribe(consumedDataReceiver.destinationIdentifier(), topicPartition, lastReadOffset);
+      consumer.subscribe(consumedDataReceiver.destinationIdentifier(), topicPartition, lastReadPosition);
       consumerPollTracker.recordSubscribed(topicPartition);
     }
   }

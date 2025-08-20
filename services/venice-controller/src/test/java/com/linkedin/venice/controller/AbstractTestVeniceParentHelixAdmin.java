@@ -25,6 +25,7 @@ import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.StoragePersonaRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.meta.ConcurrentPushDetectionStrategy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
@@ -127,6 +128,10 @@ public class AbstractTestVeniceParentHelixAdmin {
 
     config = mockConfig(clusterName);
     doReturn(1).when(config).getReplicationMetadataVersion();
+    doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY)
+        .doReturn(ConcurrentPushDetectionStrategy.PARENT_VERSION_STATUS_ONLY)
+        .when(config)
+        .getConcurrentPushDetectionStrategy();
 
     controllerClients
         .put(regionName, ControllerClient.constructClusterControllerClient(clusterName, "localhost", Optional.empty()));

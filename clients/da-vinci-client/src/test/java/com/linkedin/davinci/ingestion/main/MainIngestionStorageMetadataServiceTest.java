@@ -11,6 +11,7 @@ import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.MetadataUpdateStats;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubUtil;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.function.BiConsumer;
@@ -38,7 +39,7 @@ public class MainIngestionStorageMetadataServiceTest {
     assertNotNull(offsetRecord1);
 
     OffsetRecord offsetRecord2 = new OffsetRecord(PARTITION_STATE.getSerializer());
-    offsetRecord2.setCheckpointLocalVersionTopicOffset(10);
+    offsetRecord2.checkpointLocalVtPosition(PubSubUtil.fromKafkaOffset(10));
 
     mainIngestionStorageMetadataService.putOffsetRecord(topicName, partition, offsetRecord2);
     OffsetRecord offsetRecord3 = mainIngestionStorageMetadataService.getLastOffset(topicName, partition);

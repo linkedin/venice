@@ -669,7 +669,12 @@ public interface Admin extends AutoCloseable, Closeable {
    *
    * @throws com.linkedin.venice.exceptions.VeniceException if not cluster is found.
    */
-  Pair<String, String> discoverCluster(String storeName);
+  String discoverCluster(String storeName);
+
+  /**
+   * Find the router d2 service associated with a given cluster name.
+   */
+  String getRouterD2Service(String clusterName);
 
   /**
    * Find the server d2 service associated with a given cluster name.
@@ -972,8 +977,12 @@ public interface Admin extends AutoCloseable, Closeable {
   /**
    * @return list of stores infos that are considered dead. A store is considered dead if it exists but has no
    * user traffic in it's read or write path.
+   * @param params Parameters for dead store detection including:
+   *               - "includeSystemStores": boolean (default: false)
+   *               - "lookBackMS": long (optional)
+   *               - Future extension points
    */
-  List<StoreInfo> getDeadStores(String clusterName, String storeName, boolean includeSystemStores);
+  List<StoreInfo> getDeadStores(String clusterName, String storeName, Map<String, String> params);
 
   Map<String, RegionPushDetails> listStorePushInfo(
       String clusterName,

@@ -12,7 +12,15 @@ public class MockVeniceChangeCoordinate extends VeniceChangeCoordinate {
   }
 
   public MockVeniceChangeCoordinate(String topic, PubSubPosition pubSubPosition, Integer partition) {
-    super(topic, pubSubPosition, partition);
+    this(topic, pubSubPosition, partition, VeniceChangeCoordinate.UNDEFINED_CONSUMER_SEQUENCE_ID);
+  }
+
+  public MockVeniceChangeCoordinate(
+      String topic,
+      PubSubPosition pubSubPosition,
+      Integer partition,
+      long consumerSequenceId) {
+    super(topic, pubSubPosition, partition, consumerSequenceId);
     this.topic = topic;
   }
 

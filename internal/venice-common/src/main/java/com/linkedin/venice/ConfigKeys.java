@@ -336,6 +336,8 @@ public class ConfigKeys {
    */
   public static final String DEFAULT_READ_STRATEGY = "default.read.strategy";
   public static final String DEFAULT_OFFLINE_PUSH_STRATEGY = "default.offline.push.strategy";
+  public static final String CONCURRENT_PUSH_DETECTION_STRATEGY = "concurrent.push.detection.strategy";
+
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
   public static final String DEFAULT_REPLICA_FACTOR = "default.replica.factor";
   public static final String DEFAULT_NUMBER_OF_PARTITION = "default.partition.count";
@@ -566,10 +568,33 @@ public class ConfigKeys {
   public static final String CONTROLLER_HELIX_CLOUD_INFO_PROCESSOR_NAME = "controller.helix.cloud.info.processor.name";
 
   /**
+   * Controller Helix participant deregistration timeout in milliseconds.
+   */
+  public static final String CONTROLLER_HELIX_PARTICIPANT_DEREGISTRATION_TIMEOUT_MS =
+      "controller.helix.participant.deregistration.timeout.ms";
+
+  /**
    * Base URL for customized health checks triggered by Helix. Default is empty string.
    */
   public static final String CONTROLLER_HELIX_REST_CUSTOMIZED_HEALTH_URL =
       "controller.helix.rest.customized.health.url";
+
+  /**
+   * Config that controls whether server cluster in Helix is TOPOLOGY aware or not.
+   */
+  public static final String CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY_AWARE =
+      "controller.helix.server.cluster.topology.aware";
+
+  /**
+   * The TOPOLOGY string to use for the server cluster in Helix.
+   */
+  public static final String CONTROLLER_HELIX_SERVER_CLUSTER_TOPOLOGY = "controller.helix.server.cluster.topology";
+
+  /**
+   * The FAULT_ZONE_TYPE string to use for the server cluster in Helix.
+   */
+  public static final String CONTROLLER_HELIX_SERVER_CLUSTER_FAULT_ZONE_TYPE =
+      "controller.helix.server.cluster.fault.zone.type";
 
   /**
    * Whether to enable graveyard cleanup for batch-only store at cluster level. Default is false.
@@ -614,12 +639,8 @@ public class ConfigKeys {
   public static final String CONTROLLER_PARENT_SYSTEM_STORE_HEARTBEAT_CHECK_WAIT_TIME_SECONDS =
       "controller.parent.system.store.heartbeat.check.wait.time.seconds";
 
-  /**
-   * The maximum retry count for parent controller to fix a bad system store.
-   * Default is 1.
-   */
-  public static final String CONTROLLER_PARENT_SYSTEM_STORE_REPAIR_RETRY_COUNT =
-      "controller.parent.system.store.repair.retry.count";
+  public static final String CONTROLLER_PARENT_SYSTEM_STORE_VERSION_REFRESH_THRESHOLD_IN_DAYS =
+      "controller.parent.system.store.version.refresh.threshold.in.days";
 
   /**
    * Whether to initialize system schemas when controller starts. Default is true.
@@ -2160,6 +2181,13 @@ public class ConfigKeys {
   public static final String OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART =
       "offset.lag.delta.relax.factor.for.fast.online.transition.in.restart";
 
+  /*
+   * This config will specify the time lag threshold to be used for time lag comparison in making partition
+   * online faster. Default value is -1 meaning disabled.
+   */
+  public static final String TIME_LAG_THRESHOLD_FOR_FAST_ONLINE_TRANSITION_IN_RESTART_MINUTES =
+      "time.lag.threshold.for.fast.online.transition.in.restart.minutes";
+
   /**
    * Enable offset collection for kafka topic partition from kafka consumer metrics.
    */
@@ -2317,30 +2345,6 @@ public class ConfigKeys {
    * The max size of buffer in bytes for Venice writer batching feature.
    */
   public static final String WRITER_BATCHING_MAX_BUFFER_SIZE_IN_BYTES = "writer.batching.max.buffer.size.in.bytes";
-
-  /*
-   * The memory up-limit for the ingestion path while using RocksDB Plaintable format.
-   * Currently, this option is only meaningful for DaVinci use cases.
-   */
-  public static final String INGESTION_MEMORY_LIMIT = "ingestion.memory.limit";
-
-  /**
-   * Whether the ingestion is using mlock or not.
-   * Currently, this option is only meaningful for DaVinci use cases.
-   *
-   * Actually, this config option is being actively used, and it is a placeholder for the future optimization.
-   * The memory limit logic implemented today is assuming mlock usage, and to make it backward compatible when
-   * we want to do more optimization for non-mlock usage, we will ask the mlock user to enable this flag.
-   */
-  public static final String INGESTION_MLOCK_ENABLED = "ingestion.mlock.enabled";
-
-  /**
-   * Only applies the memory limiter to the stores listed in this config.
-   * This is mainly used for testing purpose since ultimately, we want to enforce memory limiter against
-   * all the stores to avoid node crash.
-   * Empty config means ingestion memory limiter will apply to all the stores.
-   */
-  public static final String INGESTION_MEMORY_LIMIT_STORE_LIST = "ingestion.memory.limit.store.list";
 
   /**
    * The maximum age (in milliseconds) of producer state retained by Data Ingestion Validation. Tuning this
@@ -2549,6 +2553,16 @@ public class ConfigKeys {
   public static final String ROUTER_RETRY_MANAGER_CORE_POOL_SIZE = "router.retry.manager.core.pool.size";
 
   /**
+   * Whether to enable concurrent routing within one multi-key request in Router.
+   */
+  public static final String ROUTER_ROUTING_COMPUTATION_MODE = "router.routing.computation.mode";
+  public static final String ROUTER_PARALLEL_ROUTING_THREAD_POOL_SIZE = "router.parallel.routing.thread.pool.size";
+  /**
+   * Chunk size (number of partitions) for parallel routing within one multi-key request in Router.
+   */
+  public static final String ROUTER_PARALLEL_ROUTING_CHUNK_SIZE = "router.parallel.routing.chunk.size";
+
+  /**
    * Server configs to enable the topic partition re-subscription during ingestion to let bottom ingestion service aware
    * of store version's ingestion context changed (workload type {#@link PartitionReplicaIngestionContext.WorkloadType} or
    * {#@link VersionRole.WorkloadType} version role changed).
@@ -2635,6 +2649,7 @@ public class ConfigKeys {
       "controller.enable.realtime.topic.versioning";
 
   public static final boolean DEFAULT_CONTROLLER_ENABLE_REAL_TIME_TOPIC_VERSIONING = false;
+  public final static String USE_V2_ADMIN_TOPIC_METADATA = "controller.use.v2.admin.topic.metadata";
   public static final String CONTROLLER_ENABLE_HYBRID_STORE_PARTITION_COUNT_UPDATE =
       "controller.enable.hybrid.store.partition.count.update";
   public static final String PUSH_JOB_VIEW_CONFIGS = "push.job.view.configs";
@@ -2815,4 +2830,6 @@ public class ConfigKeys {
    */
   public static final String SERVER_INGESTION_TASK_REUSABLE_OBJECTS_STRATEGY =
       "server.ingestion.task.reusable.objects.strategy";
+  public static final String CONTROLLER_BACKUP_VERSION_REPLICA_REDUCTION_ENABLED =
+      "controller.backup.version.replica.reduction.enabled";
 }

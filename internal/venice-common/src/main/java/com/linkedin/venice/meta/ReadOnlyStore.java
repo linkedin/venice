@@ -6,11 +6,13 @@ import com.linkedin.venice.exceptions.StoreVersionNotFoundException;
 import com.linkedin.venice.systemstore.schemas.DataRecoveryConfig;
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
 import com.linkedin.venice.systemstore.schemas.StoreHybridConfig;
+import com.linkedin.venice.systemstore.schemas.StoreLifecycleHooksRecord;
 import com.linkedin.venice.systemstore.schemas.StorePartitionerConfig;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
+import com.linkedin.venice.utils.CollectionUtils;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -517,6 +519,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public String getBlobTransferInServerEnabled() {
+      return this.delegate.getBlobTransferInServerEnabled();
+    }
+
+    @Override
+    public void setBlobTransferInServerEnabled(String blobTransferInServerEnabled) {
+      throw new UnsupportedOperationException("Blob transfer in server not supported");
+    }
+
+    @Override
     public boolean isUseVersionLevelIncrementalPushEnabled() {
       return this.delegate.isUseVersionLevelIncrementalPushEnabled();
     }
@@ -984,11 +996,13 @@ public class ReadOnlyStore implements Store {
     storeProperties.setSystemStores(convertSystemStores(getSystemStores()));
     storeProperties.setStorageNodeReadQuotaEnabled(isStorageNodeReadQuotaEnabled());
     storeProperties.setBlobTransferEnabled(isBlobTransferEnabled());
+    storeProperties.setBlobTransferInServerEnabled(getBlobTransferInServerEnabled());
     storeProperties.setNearlineProducerCompressionEnabled(isNearlineProducerCompressionEnabled());
     storeProperties.setNearlineProducerCountPerWriter(getNearlineProducerCountPerWriter());
     storeProperties.setTargetSwapRegion(getTargetSwapRegion());
     storeProperties.setTargetSwapRegionWaitTime(getTargetSwapRegionWaitTime());
     storeProperties.setIsDaVinciHeartBeatReported(getIsDavinciHeartbeatReported());
+    storeProperties.setStoreLifecycleHooks(convertStoreLifecycleHooks(getStoreLifecycleHooks()));
 
     return storeProperties;
   }
@@ -1575,6 +1589,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public void setBlobTransferInServerEnabled(String blobTransferInServerEnabled) {
+    throw new UnsupportedOperationException("Blob transfer server not supported");
+  }
+
+  @Override
+  public String getBlobTransferInServerEnabled() {
+    return this.delegate.getBlobTransferInServerEnabled();
+  }
+
+  @Override
   public boolean isNearlineProducerCompressionEnabled() {
     return delegate.isNearlineProducerCompressionEnabled();
   }
@@ -1656,6 +1680,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public List<LifecycleHooksRecord> getStoreLifecycleHooks() {
+    return delegate.getStoreLifecycleHooks();
+  }
+
+  @Override
+  public void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks) {
     throw new UnsupportedOperationException();
   }
 
@@ -1796,6 +1830,7 @@ public class ReadOnlyStore implements Store {
     storeVersion.setIncrementalPushEnabled(version.isIncrementalPushEnabled());
     storeVersion.setSeparateRealTimeTopicEnabled(version.isSeparateRealTimeTopicEnabled());
     storeVersion.setBlobTransferEnabled(version.isBlobTransferEnabled());
+    storeVersion.setBlobTransferInServerEnabled(version.getBlobTransferInServerEnabled());
     storeVersion.setUseVersionLevelIncrementalPushEnabled(version.isUseVersionLevelIncrementalPushEnabled());
     storeVersion.setHybridConfig(convertHybridStoreConfig(version.getHybridStoreConfig()));
     storeVersion.setUseVersionLevelHybridConfig(version.isUseVersionLevelHybridConfig());
@@ -1845,5 +1880,22 @@ public class ReadOnlyStore implements Store {
     }
 
     return systemStorePropertiesMap;
+  }
+
+  private static List<StoreLifecycleHooksRecord> convertStoreLifecycleHooks(
+      List<LifecycleHooksRecord> storeLifecycleHooks) {
+    if (storeLifecycleHooks.isEmpty()) {
+      return Collections.emptyList();
+    }
+
+    List<StoreLifecycleHooksRecord> convertedStoreLifecycleHooks = new ArrayList<>();
+    for (LifecycleHooksRecord storeLifecycleHooksRecord: storeLifecycleHooks) {
+      convertedStoreLifecycleHooks.add(
+          new StoreLifecycleHooksRecord(
+              storeLifecycleHooksRecord.getStoreLifecycleHooksClassName(),
+              CollectionUtils
+                  .convertStringMapToCharSequenceMap(storeLifecycleHooksRecord.getStoreLifecycleHooksParams())));
+    }
+    return convertedStoreLifecycleHooks;
   }
 }

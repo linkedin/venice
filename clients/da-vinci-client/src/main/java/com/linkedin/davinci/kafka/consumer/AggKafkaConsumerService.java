@@ -13,6 +13,7 @@ import com.linkedin.venice.pubsub.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.manager.TopicManager;
@@ -77,6 +78,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final Function<String, Boolean> isAAOrWCEnabledFunc;
   private final ReadOnlyStoreRepository metadataRepository;
 
+  private final StuckConsumerRepairStats stuckConsumerStats;
+
   private final static String STUCK_CONSUMER_MSG =
       "Didn't find any suspicious ingestion task, and please contact developers to investigate it further";
   private static final String CONSUMER_POLL_WARNING_MESSAGE_PREFIX =
@@ -115,6 +118,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.kafkaClusterUrlResolver = serverConfig.getKafkaClusterUrlResolver();
     this.metadataRepository = metadataRepository;
     if (serverConfig.isStuckConsumerRepairEnabled()) {
+      this.stuckConsumerStats = new StuckConsumerRepairStats(metricsRepository);
       this.stuckConsumerRepairExecutorService = Executors.newSingleThreadScheduledExecutor(
           new DaemonThreadFactory(this.getClass().getName() + "-StuckConsumerRepair", serverConfig.getLogContext()));
       int intervalInSeconds = serverConfig.getStuckConsumerRepairIntervalSecond();
@@ -128,12 +132,15 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
               TimeUnit.SECONDS.toMillis(serverConfig.getNonExistingTopicIngestionTaskKillThresholdSecond()),
               TimeUnit.SECONDS.toMillis(serverConfig.getNonExistingTopicCheckRetryIntervalSecond()),
               TimeUnit.SECONDS.toMillis(serverConfig.getConsumerPollTrackerStaleThresholdSeconds()),
-              new StuckConsumerRepairStats(metricsRepository),
+              stuckConsumerStats,
               killIngestionTaskRunnable),
           intervalInSeconds,
           intervalInSeconds,
           TimeUnit.SECONDS);
       LOGGER.info("Started stuck consumer repair service with checking interval: {} seconds", intervalInSeconds);
+    } else {
+      this.stuckConsumerStats = null;
+      LOGGER.info("Stuck consumer repair service is disabled");
     }
     this.isAAOrWCEnabledFunc = isAAOrWCEnabledFunc;
     this.pubSubPropertiesSupplier = pubSubPropertiesSupplier;
@@ -425,7 +432,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final String kafkaURL,
       StoreIngestionTask storeIngestionTask,
       PartitionReplicaIngestionContext partitionReplicaIngestionContext,
-      long lastOffset) {
+      PubSubPosition lastOffset) {
     PubSubTopic versionTopic = storeIngestionTask.getVersionTopic();
     PubSubTopicPartition pubSubTopicPartition = partitionReplicaIngestionContext.getPubSubTopicPartition();
     AbstractKafkaConsumerService consumerService =

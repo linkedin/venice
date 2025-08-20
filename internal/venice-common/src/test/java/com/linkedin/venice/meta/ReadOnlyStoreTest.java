@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import static com.linkedin.venice.utils.ConfigCommonUtils.ActivationState;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.systemstore.schemas.StoreETLConfig;
@@ -9,6 +10,9 @@ import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import org.apache.logging.log4j.LogManager;
@@ -39,6 +43,9 @@ public class ReadOnlyStoreTest {
             System.currentTimeMillis()),
         RANDOM);
 
+    List<LifecycleHooksRecord> storeLifecycleHooks = new ArrayList<>();
+    storeLifecycleHooks.add(new LifecycleHooksRecordImpl("testLifecycleHooksClassName", Collections.emptyMap()));
+    store.setStoreLifecycleHooks(storeLifecycleHooks);
     ReadOnlyStore readOnlyStore = new ReadOnlyStore(store);
     StoreProperties storeProperties = readOnlyStore.cloneStoreProperties();
 
@@ -102,8 +109,11 @@ public class ReadOnlyStoreTest {
     assertEqualsSystemStores(storeProperties.getSystemStores(), store.getSystemStores());
     assertEquals(storeProperties.getStorageNodeReadQuotaEnabled(), store.isStorageNodeReadQuotaEnabled());
     assertEquals(storeProperties.getBlobTransferEnabled(), store.isBlobTransferEnabled());
+    assertEquals(storeProperties.getBlobTransferInServerEnabled(), store.getBlobTransferInServerEnabled());
+    assertEquals(storeProperties.getBlobTransferInServerEnabled(), ActivationState.NOT_SPECIFIED.name());
     assertEquals(storeProperties.getNearlineProducerCompressionEnabled(), store.isNearlineProducerCompressionEnabled());
     assertEquals(storeProperties.getNearlineProducerCountPerWriter(), store.getNearlineProducerCountPerWriter());
+    assertEquals(storeProperties.getStoreLifecycleHooks().size(), store.getStoreLifecycleHooks().size());
   }
 
   private void assertEqualHybridConfig(StoreHybridConfig actual, HybridStoreConfig expected) {

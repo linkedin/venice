@@ -33,9 +33,39 @@ public class VeniceMetricsConfig {
   public static final String OTEL_VENICE_METRICS_ENABLED = "otel.venice.metrics.enabled";
 
   /**
+   * Configuration to reuse the {@link io.opentelemetry.api.OpenTelemetry} instance
+   * already initialized by the application or other libraries and registered as
+   * {@link io.opentelemetry.api.GlobalOpenTelemetry}, instead of creating a new one.
+   *
+   * This is especially useful in clients where a single application may use
+   * multiple Venice client libraries. Without this setting, each library would
+   * initialize its own OpenTelemetry instance, leading to redundant initialization
+   * and increased resource usage.
+   */
+  public static final String OTEL_VENICE_USE_OPENTELEMETRY_INITIALIZED_BY_APPLICATION =
+      "otel.venice.use.opentelemetry.initialized.by.application";
+
+  /**
    * Config to set the metric prefix for OpenTelemetry metrics
    */
   public static final String OTEL_VENICE_METRICS_PREFIX = "otel.venice.metrics.prefix";
+
+  /**
+   * Configuration to define a custom description for all Histogram metrics.
+   *
+   * This option is particularly relevant when
+   * {@link #OTEL_VENICE_USE_OPENTELEMETRY_INITIALIZED_BY_APPLICATION} is enabled,
+   * restricting direct configuration of OpenTelemetry via Venice code and application
+   * code overrides can rely on something else like the description here without
+   * introducing new setters or APIs. When set to a non-empty string, if neeeded,
+   * this description could be used by application-level code overrides to control
+   * Histogram behavior (e.g., exponential vs. explicit aggregation) as done in
+   * {@link VeniceOpenTelemetryMetricsRepository#setExponentialHistogramAggregation}
+   *
+   * If null or unset, this configuration has no effect.
+   */
+  public static final String OTEL_VENICE_METRICS_CUSTOM_DESCRIPTION_FOR_HISTOGRAM =
+      "otel.venice.metrics.custom.description.for.histogram";
 
   /**
    * Config to set the naming format for OpenTelemetry metrics
@@ -139,6 +169,17 @@ public class VeniceMetricsConfig {
   /** Feature flag to use OpenTelemetry instrumentation for metrics or not */
   private final boolean emitOTelMetrics;
 
+  /**
+   * Feature flag to use OpenTelemetry initialized by the application or not.
+   * If true, it will use the GlobalOpenTelemetry instance. It could be initialized
+   *          by the application or by some other library
+   * If false, it will initialize its own OpenTelemetry instance.
+   */
+  private final boolean useOpenTelemetryInitializedByApplication;
+
+  /** custom description for all Histogram metrics */
+  private final String otelCustomDescriptionForHistogramMetrics;
+
   /** extra configs for OpenTelemetry. Supports 2 exporter currently <br>
    * 1. {@link MetricExporter} for exporting to Http/Grpc endpoint. More details are supported via configs,
    *    check {@link Builder#extractAndSetOtelConfigs} and {@link VeniceOpenTelemetryMetricsRepository#getOtlpHttpMetricExporter}<br>
@@ -183,6 +224,8 @@ public class VeniceMetricsConfig {
     this.metricPrefix = builder.metricPrefix;
     this.metricEntities = builder.metricEntities;
     this.emitOTelMetrics = builder.emitOtelMetrics;
+    this.useOpenTelemetryInitializedByApplication = builder.useOpenTelemetryInitializedByApplication;
+    this.otelCustomDescriptionForHistogramMetrics = builder.otelCustomDescriptionForHistogramMetrics;
     this.exportOtelMetricsToEndpoint = builder.exportOtelMetricsToEndpoint;
     this.exportOtelMetricsIntervalInSeconds = builder.exportOtelMetricsIntervalInSeconds;
     this.otelCustomDimensionsMap = builder.otelCustomDimensionsMap;
@@ -204,6 +247,8 @@ public class VeniceMetricsConfig {
     private String metricPrefix = null;
     private Collection<MetricEntity> metricEntities = new ArrayList<>();
     private boolean emitOtelMetrics = false;
+    private boolean useOpenTelemetryInitializedByApplication = false;
+    private String otelCustomDescriptionForHistogramMetrics = null;
     private boolean exportOtelMetricsToEndpoint = false;
     private int exportOtelMetricsIntervalInSeconds = 60;
     private Map<String, String> otelCustomDimensionsMap = new HashMap<>();
@@ -237,6 +282,16 @@ public class VeniceMetricsConfig {
 
     public Builder setEmitOtelMetrics(boolean emitOtelMetrics) {
       this.emitOtelMetrics = emitOtelMetrics;
+      return this;
+    }
+
+    public Builder setUseOpenTelemetryInitializedByApplication(boolean useOpenTelemetryInitializedByApplication) {
+      this.useOpenTelemetryInitializedByApplication = useOpenTelemetryInitializedByApplication;
+      return this;
+    }
+
+    public Builder setOtelCustomDescriptionForHistogramMetrics(String otelCustomDescriptionForHistogramMetrics) {
+      this.otelCustomDescriptionForHistogramMetrics = otelCustomDescriptionForHistogramMetrics;
       return this;
     }
 
@@ -323,6 +378,14 @@ public class VeniceMetricsConfig {
 
       if ((configValue = configs.get(OTEL_VENICE_METRICS_PREFIX)) != null) {
         setMetricPrefix(configValue);
+      }
+
+      if ((configValue = configs.get(OTEL_VENICE_USE_OPENTELEMETRY_INITIALIZED_BY_APPLICATION)) != null) {
+        setUseOpenTelemetryInitializedByApplication(Boolean.parseBoolean(configValue));
+      }
+
+      if ((configValue = configs.get(OTEL_VENICE_METRICS_CUSTOM_DESCRIPTION_FOR_HISTOGRAM)) != null) {
+        setOtelCustomDescriptionForHistogramMetrics(configValue);
       }
 
       if ((configValue = configs.get(OTEL_VENICE_METRICS_EXPORT_TO_LOG)) != null) {
@@ -467,6 +530,14 @@ public class VeniceMetricsConfig {
 
   public boolean emitOtelMetrics() {
     return emitOTelMetrics;
+  }
+
+  public boolean useOpenTelemetryInitializedByApplication() {
+    return useOpenTelemetryInitializedByApplication;
+  }
+
+  public String getOtelCustomDescriptionForHistogramMetrics() {
+    return otelCustomDescriptionForHistogramMetrics;
   }
 
   public boolean exportOtelMetricsToEndpoint() {

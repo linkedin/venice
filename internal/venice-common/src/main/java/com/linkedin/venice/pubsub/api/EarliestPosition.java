@@ -76,6 +76,6 @@ final class EarliestPosition implements PubSubPosition {
 
   @Override
   public long getNumericOffset() {
-    return -1;
+    return -1L;
   }
 }

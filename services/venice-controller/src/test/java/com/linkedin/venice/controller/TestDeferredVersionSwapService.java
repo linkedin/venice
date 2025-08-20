@@ -12,6 +12,9 @@ import com.linkedin.venice.controller.stats.DeferredVersionSwapStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hooks.StoreVersionLifecycleEventOutcome;
+import com.linkedin.venice.meta.LifecycleHooksRecord;
+import com.linkedin.venice.meta.LifecycleHooksRecordImpl;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -20,6 +23,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -28,6 +32,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -208,6 +213,19 @@ public class TestDeferredVersionSwapService {
 
     DeferredVersionSwapService deferredVersionSwapService =
         new DeferredVersionSwapService(admin, veniceControllerMultiClusterConfig, mock(DeferredVersionSwapStats.class));
+
+    List<LifecycleHooksRecord> lifecycleHooks = new ArrayList<>();
+    Map<String, String> params = new HashMap<>();
+    params.put("outcome", StoreVersionLifecycleEventOutcome.PROCEED.toString());
+    lifecycleHooks.add(new LifecycleHooksRecordImpl(MockStoreLifecycleHooks.class.getName(), params));
+    doReturn(lifecycleHooks).when(store).getStoreLifecycleHooks();
+    Assert.assertEquals(store.getStoreLifecycleHooks().size(), 1);
+
+    Properties properties = new Properties();
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+    VeniceControllerClusterConfig veniceControllerClusterConfig = mock(VeniceControllerClusterConfig.class);
+    doReturn(veniceProperties).when(veniceControllerClusterConfig).getProps();
+    doReturn(veniceControllerClusterConfig).when(veniceControllerMultiClusterConfig).getCommonConfig();
 
     deferredVersionSwapService.startInner();
 

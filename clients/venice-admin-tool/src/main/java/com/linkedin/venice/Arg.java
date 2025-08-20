@@ -161,6 +161,7 @@ public enum Arg {
   FLAT_JSON("flat-json", "flj", false, "Display output as flat json, without pretty-print indentation and line breaks"),
   HELP("help", "h", false, "Show usage"), FORCE("force", "f", false, "Force execute this operation"),
   INCLUDE_SYSTEM_STORES("include-system-stores", "iss", true, "Include internal stores maintained by the system."),
+  LOOK_BACK_MS("look-back-ms", "lbms", true, "Look back time in milliseconds for dead store detection"),
   SSL_CONFIG_PATH("ssl-config-path", "scp", true, "SSl config file path"),
   STORE_TYPE(
       "store-type", "st", true,
@@ -291,6 +292,10 @@ public enum Arg {
   BACKUP_FOLDER("backup-folder", "bf", true, "Backup folder path"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery"),
   BLOB_TRANSFER_ENABLED("blob-transfer-enabled", "bt", true, "Flag to indicate if the blob transfer is allowed or not"),
+  BLOB_TRANSFER_IN_SERVER_ENABLED(
+      "blob-transfer-in-server-enabled", "bts", true,
+      "Flag to indicate if the blob transfer is allowed or not in server. Values can be 'NOT_SPECIFIED' as default, 'ENABLED', or 'DISABLED'."
+  ),
   NEARLINE_PRODUCER_COMPRESSION_ENABLED(
       "nearline-producer-compression-enabled", "npce", true,
       "Flag to control whether KafkaProducer will use compression or not for nearline workload"
@@ -315,7 +320,8 @@ public enum Arg {
   ENUM_SCHEMA_EVOLUTION_ALLOWED(
       "enum-schema-evolution-allowed", "esea", true, "Allow enum schema evolution for a store"
   ), INITIAL_STEP("initial-step", "is", true, "Initial step of the auto store migration"),
-  ABORT_ON_FAILURE("abort-on-failure", "aof", true, "Abort the auto store migration if any step fails"),;
+  ABORT_ON_FAILURE("abort-on-failure", "aof", true, "Abort the auto store migration if any step fails"),
+  STORE_LIFECYCLE_HOOKS_LIST("store-lifecycle-hooks-list", "slhl", true, "List of store lifecycle hooks");
 
   private final String argName;
   private final String first;

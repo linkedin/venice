@@ -303,11 +303,7 @@ public class TestFatalDataValidationExceptionHandling {
         stringSerializer.serialize("value_writer_1"),
         1,
         null,
-        new LeaderMetadataWrapper(
-            pubSubPosition0.getNumericOffset(),
-            0,
-            DEFAULT_TERM_ID,
-            pubSubPosition0.toWireFormatBuffer()));
+        new LeaderMetadataWrapper(pubSubPosition0, 0, DEFAULT_TERM_ID));
     vw1.flush();
 
     PubSubPosition pubSubPosition1 = new ApacheKafkaOffsetPosition(1);
@@ -316,11 +312,7 @@ public class TestFatalDataValidationExceptionHandling {
         stringSerializer.serialize("value_writer_2"),
         1,
         null,
-        new LeaderMetadataWrapper(
-            pubSubPosition1.getNumericOffset(),
-            0,
-            DEFAULT_TERM_ID,
-            pubSubPosition1.toWireFormatBuffer()));
+        new LeaderMetadataWrapper(pubSubPosition1, 0, DEFAULT_TERM_ID));
 
     PubSubPosition pubSubPosition2 = new ApacheKafkaOffsetPosition(2);
     vw2.put(
@@ -328,11 +320,7 @@ public class TestFatalDataValidationExceptionHandling {
         stringSerializer.serialize("value_writer_3"),
         1,
         null,
-        new LeaderMetadataWrapper(
-            pubSubPosition2.getNumericOffset(),
-            0,
-            DEFAULT_TERM_ID,
-            pubSubPosition2.toWireFormatBuffer()));
+        new LeaderMetadataWrapper(pubSubPosition2, 0, DEFAULT_TERM_ID));
     vw2.flush();
 
     PubSubPosition pubSubPosition3 = new ApacheKafkaOffsetPosition(3);
@@ -341,11 +329,7 @@ public class TestFatalDataValidationExceptionHandling {
         stringSerializer.serialize("value_writer_4"),
         1,
         null,
-        new LeaderMetadataWrapper(
-            pubSubPosition3.getNumericOffset(),
-            0,
-            DEFAULT_TERM_ID,
-            pubSubPosition3.toWireFormatBuffer()));
+        new LeaderMetadataWrapper(pubSubPosition3, 0, DEFAULT_TERM_ID));
     vw1.flush();
     vw1.closePartition(0);
     vw1.flush();

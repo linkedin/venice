@@ -3,8 +3,8 @@ package com.linkedin.venice.hadoop.input.kafka;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.PUBSUB_BROKER_ADDRESS;
-import static com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.vpj.VenicePushJobConstants.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX;
 import static com.linkedin.venice.vpj.VenicePushJobConstants.SSL_CONFIGURATOR_CLASS_CONFIG;
 import static org.testng.Assert.assertEquals;
 

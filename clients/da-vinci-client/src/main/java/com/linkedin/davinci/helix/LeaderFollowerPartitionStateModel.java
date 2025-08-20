@@ -159,6 +159,8 @@ public class LeaderFollowerPartitionStateModel extends AbstractPartitionStateMod
 
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
+    heartbeatMonitoringService
+        .updateLagMonitor(message.getResourceName(), getPartition(), HeartbeatLagMonitorAction.REMOVE_MONITOR);
     executeStateTransition(message, context, () -> {
       boolean isCurrentVersion = false;
       try {

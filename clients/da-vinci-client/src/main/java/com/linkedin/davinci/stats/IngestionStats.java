@@ -45,7 +45,6 @@ public class IngestionStats {
   protected static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
   protected static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
   protected static final String READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME = "ready_to_serve_with_rt_lag";
-  public static final String VERSION_TOPIC_END_OFFSET_REWIND_COUNT = "version_topic_end_offset_rewind_count";
   public static final String NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY = "nearline_producer_to_local_broker_latency";
   public static final String NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY =
       "nearline_local_broker_to_ready_to_serve_latency";
@@ -101,9 +100,6 @@ public class IngestionStats {
   private final Count totalDuplicateKeyUpdateCount = new Count();
   private final Sensor totalDuplicateKeyUpdateCountSensor;
 
-  /** Record a version-level offset rewind events for VTs across all stores. */
-  private final Count versionTopicEndOffsetRewindCount = new Count();
-  private final Sensor versionTopicEndOffsetRewindSensor;
   private final MetricsRepository localMetricRepository;
 
   // Measure the max idle time among partitions for a given the store on this host
@@ -155,8 +151,6 @@ public class IngestionStats {
     registerSensor(localMetricRepository, LEADER_RECORDS_PRODUCED_METRIC_NAME, leaderRecordsProducedSensor);
     registerSensor(localMetricRepository, LEADER_BYTES_PRODUCED_METRIC_NAME, leaderBytesProducedSensor);
 
-    versionTopicEndOffsetRewindSensor = localMetricRepository.sensor(VERSION_TOPIC_END_OFFSET_REWIND_COUNT);
-    versionTopicEndOffsetRewindSensor.add(VERSION_TOPIC_END_OFFSET_REWIND_COUNT, versionTopicEndOffsetRewindCount);
     totalDuplicateKeyUpdateCountSensor = localMetricRepository.sensor(TOTAL_DUPLICATE_KEY_UPDATE_COUNT);
     totalDuplicateKeyUpdateCountSensor.add(TOTAL_DUPLICATE_KEY_UPDATE_COUNT, totalDuplicateKeyUpdateCount);
 
@@ -290,14 +284,6 @@ public class IngestionStats {
 
   public void recordInternalPreprocessingLatency(double value, long currentTimeMs) {
     internalPreprocessingLatency.record(value, currentTimeMs);
-  }
-
-  public void recordVersionTopicEndOffsetRewind() {
-    versionTopicEndOffsetRewindSensor.record();
-  }
-
-  public double getVersionTopicEndOffsetRewindCount() {
-    return versionTopicEndOffsetRewindCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public double getConsumedRecordEndToEndProcessingLatencyAvg() {

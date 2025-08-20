@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+import javax.annotation.Nonnull;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -141,12 +142,21 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
         this.getClass().getSimpleName() + " does not support subscribe without specifying a version-topic.");
   }
 
+  @Override
+  public void subscribe(
+      @Nonnull PubSubTopicPartition pubSubTopicPartition,
+      @Nonnull PubSubPosition position,
+      boolean isInclusive) {
+    throw new VeniceException(
+        this.getClass().getSimpleName() + " does not support subscribe without specifying a version-topic.");
+  }
+
   synchronized void subscribe(
       PubSubTopic versionTopic,
       PubSubTopicPartition topicPartitionToSubscribe,
-      long lastReadOffset) {
+      PubSubPosition lastReadPosition) {
     long delegateSubscribeStartTime = System.currentTimeMillis();
-    this.delegate.subscribe(topicPartitionToSubscribe, lastReadOffset);
+    this.delegate.subscribe(topicPartitionToSubscribe, lastReadPosition);
     PubSubTopic previousVersionTopic =
         subscribedTopicPartitionToVersionTopic.put(topicPartitionToSubscribe, versionTopic);
     if (previousVersionTopic != null && !previousVersionTopic.equals(versionTopic)) {
@@ -374,13 +384,15 @@ class SharedKafkaConsumer implements PubSubConsumerAdapter {
   }
 
   @Override
-  public Long beginningOffset(PubSubTopicPartition partition, Duration timeout) {
-    throw new UnsupportedOperationException("beginningOffset is not supported in SharedKafkaConsumer");
+  public PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
+    throw new UnsupportedOperationException("beginningPosition is not supported in SharedKafkaConsumer");
   }
 
   @Override
-  public PubSubPosition beginningPosition(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
-    throw new UnsupportedOperationException("beginningPosition is not supported in SharedKafkaConsumer");
+  public Map<PubSubTopicPartition, PubSubPosition> beginningPositions(
+      Collection<PubSubTopicPartition> partitions,
+      Duration timeout) {
+    throw new UnsupportedOperationException("beginningPositions is not supported in SharedKafkaConsumer");
   }
 
   @Override

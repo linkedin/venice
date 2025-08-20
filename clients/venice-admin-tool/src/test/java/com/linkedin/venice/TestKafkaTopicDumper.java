@@ -337,9 +337,9 @@ public class TestKafkaTopicDumper {
     long startOffset = -1;
     long startTimestamp = 123456789L;
     long offsetForTime = 1234L;
-    long beginningOffset = 0;
+    ApacheKafkaOffsetPosition startPosition = ApacheKafkaOffsetPosition.of(0L);
     when(consumerAdapter.offsetForTime(topicPartition, startTimestamp)).thenReturn(offsetForTime);
-    when(consumerAdapter.beginningOffset(eq(topicPartition), any())).thenReturn(beginningOffset);
+    when(consumerAdapter.beginningPosition(eq(topicPartition), any())).thenReturn(startPosition);
     long actualStartOffset =
         KafkaTopicDumper.calculateStartingOffset(consumerAdapter, topicPartition, startOffset, startTimestamp);
     assertEquals(actualStartOffset, offsetForTime);
@@ -357,18 +357,18 @@ public class TestKafkaTopicDumper {
 
     // Case 3: When start timestamp is non-negative and start offset is non-negative; but beginning offset is higher
     // than offsetForTime, beginning offset should be used as the start offset.
-    beginningOffset = 12356L;
+    startPosition = ApacheKafkaOffsetPosition.of(12356L);
     when(consumerAdapter.offsetForTime(topicPartition, startTimestamp)).thenReturn(startOffset);
-    when(consumerAdapter.beginningOffset(eq(topicPartition), any())).thenReturn(beginningOffset);
+    when(consumerAdapter.beginningPosition(eq(topicPartition), any())).thenReturn(startPosition);
     actualStartOffset =
         KafkaTopicDumper.calculateStartingOffset(consumerAdapter, topicPartition, startOffset, startTimestamp);
-    assertEquals(actualStartOffset, beginningOffset);
+    assertEquals(actualStartOffset, startPosition.getInternalOffset());
 
     // Case 4: When start timestamp is negative and start offset > beginning offset, start offset should be used.
     startOffset = 1234L;
     startTimestamp = -1;
     when(consumerAdapter.offsetForTime(topicPartition, startTimestamp)).thenReturn(null);
-    when(consumerAdapter.beginningOffset(eq(topicPartition), any())).thenReturn(0L);
+    when(consumerAdapter.beginningPosition(eq(topicPartition), any())).thenReturn(ApacheKafkaOffsetPosition.of(0L));
     actualStartOffset =
         KafkaTopicDumper.calculateStartingOffset(consumerAdapter, topicPartition, startOffset, startTimestamp);
     assertEquals(actualStartOffset, startOffset);

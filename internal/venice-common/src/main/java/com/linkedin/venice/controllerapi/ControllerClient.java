@@ -30,6 +30,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOOK_BACK_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OFFSET;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
@@ -104,6 +105,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -1253,11 +1255,27 @@ public class ControllerClient implements Closeable {
 
   public MultiStoreInfoResponse getDeadStores(
       String clusterName,
-      boolean includeSystemStores,
-      Optional<String> storeName) {
-    QueryParams params = newParams().add(CLUSTER, clusterName).add(INCLUDE_SYSTEM_STORES, includeSystemStores);
-    storeName.ifPresent(s -> params.add(NAME, s));
-    return request(ControllerRoute.GET_DEAD_STORES, params, MultiStoreInfoResponse.class);
+      Optional<String> storeName,
+      Map<String, String> params) {
+    QueryParams queryParams = newParams().add(CLUSTER, clusterName);
+
+    // Add storeName if present
+    storeName.ifPresent(s -> queryParams.add(NAME, s));
+
+    // Add all parameters from the map including includeSystemStores
+    for (Map.Entry<String, String> entry: params.entrySet()) {
+      String key = entry.getKey();
+      String value = entry.getValue();
+
+      // Map our internal param names to the API constants
+      if (INCLUDE_SYSTEM_STORES.equals(key)) {
+        queryParams.add(INCLUDE_SYSTEM_STORES, value);
+      } else if (LOOK_BACK_MS.equals(key)) {
+        queryParams.add(LOOK_BACK_MS, value);
+      }
+    }
+
+    return request(ControllerRoute.GET_DEAD_STORES, queryParams, MultiStoreInfoResponse.class);
   }
 
   public VersionResponse getStoreLargestUsedVersion(String clusterName, String storeName) {

@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.controller.helix.HelixCapacityConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.pubsub.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubPositionDeserializer;
 import com.linkedin.venice.pubsub.PubSubPositionTypeRegistry;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.LogContext;
@@ -16,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.apache.helix.model.CloudConfig;
+import org.apache.helix.model.ClusterConfig;
 
 
 public class VeniceControllerMultiClusterConfig {
@@ -97,10 +101,6 @@ public class VeniceControllerMultiClusterConfig {
 
   public String getControllerHAASSuperClusterName() {
     return getCommonConfig().getControllerHAASSuperClusterName();
-  }
-
-  public int getControllerClusterReplica() {
-    return getCommonConfig().getControllerClusterReplica();
   }
 
   public String getKafkaBootstrapServers() {
@@ -307,6 +307,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getPubSubPositionTypeRegistry();
   }
 
+  public PubSubPositionDeserializer getPubSubPositionDeserializer() {
+    return getCommonConfig().getPubSubPositionDeserializer();
+  }
+
   public PubSubAdminAdapterFactory getSourceOfTruthAdminAdapterFactory() {
     return getCommonConfig().getSourceOfTruthAdminAdapterFactory();
   }
@@ -329,6 +333,26 @@ public class VeniceControllerMultiClusterConfig {
 
   public List<String> getControllerInstanceTagList() {
     return getCommonConfig().getControllerInstanceTagList();
+  }
+
+  public Map<ClusterConfig.GlobalRebalancePreferenceKey, Integer> getHelixGlobalRebalancePreference() {
+    return getCommonConfig().getHelixGlobalRebalancePreference();
+  }
+
+  public HelixCapacityConfig getHelixCapacityConfig() {
+    return getCommonConfig().getHelixCapacityConfig();
+  }
+
+  public boolean isControllerClusterHelixCloudEnabled() {
+    return getCommonConfig().isControllerClusterHelixCloudEnabled();
+  }
+
+  public CloudConfig getHelixCloudConfig() {
+    return getCommonConfig().getHelixCloudConfig();
+  }
+
+  public long getControllerHelixParticipantDeregistrationTimeoutMs() {
+    return getCommonConfig().getControllerHelixParticipantDeregistrationTimeoutMs();
   }
 
   public String getRepushOrchestratorClassName() {

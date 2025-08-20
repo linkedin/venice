@@ -332,6 +332,10 @@ public interface Store {
 
   void setBlobTransferEnabled(boolean blobTransferEnabled);
 
+  void setBlobTransferInServerEnabled(String blobTransferInServerEnabled);
+
+  String getBlobTransferInServerEnabled();
+
   boolean isNearlineProducerCompressionEnabled();
 
   void setNearlineProducerCompressionEnabled(boolean compressionEnabled);
@@ -365,4 +369,8 @@ public interface Store {
   boolean isEnumSchemaEvolutionAllowed();
 
   void setEnumSchemaEvolutionAllowed(boolean enumSchemaEvolutionAllowed);
+
+  List<LifecycleHooksRecord> getStoreLifecycleHooks();
+
+  void setStoreLifecycleHooks(List<LifecycleHooksRecord> storeLifecycleHooks);
 }

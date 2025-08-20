@@ -414,6 +414,7 @@ public abstract class AbstractDataWriterSparkJob extends DataWriterComputeJob {
     logAccumulatorValue(accumulatorsForDataWriterJob.recordTooLargeFailureCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.duplicateKeyWithIdenticalValueCounter);
     logAccumulatorValue(accumulatorsForDataWriterJob.duplicateKeyWithDistinctValueCounter);
+    logAccumulatorValue(accumulatorsForDataWriterJob.largestUncompressedValueSize);
   }
 
   private void logAccumulatorValue(AccumulatorV2<?, ?> accumulator) {

@@ -114,6 +114,7 @@ public class ControllerApiConstants {
   public static final String BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS = "bootstrap_to_online_timeout_in_hours";
 
   public static final String INCLUDE_SYSTEM_STORES = "include_system_stores";
+  public static final String LOOK_BACK_MS = "look_back_ms";
 
   public static final String STORE_VIEW = "store_view";
   public static final String STORE_VIEW_NAME = "store_view_name";
@@ -259,6 +260,7 @@ public class ControllerApiConstants {
   public static final String UNUSED_SCHEMA_DELETION_ENABLED = "unused_schema_deletion_enabled";
 
   public static final String BLOB_TRANSFER_ENABLED = "blob_transfer_enabled";
+  public static final String BLOB_TRANSFER_IN_SERVER_ENABLED = "blob_transfer_in_server_enabled";
 
   public static final String HEARTBEAT_TIMESTAMP = "heartbeat_timestamp";
 
@@ -269,6 +271,7 @@ public class ControllerApiConstants {
   public static final String IS_DAVINCI_HEARTBEAT_REPORTED = "is_davinci_heartbeat_reported";
   public static final String GLOBAL_RT_DIV_ENABLED = "global_rt_div_enabled";
   public static final String ENUM_SCHEMA_EVOLUTION_ALLOWED = "enum_schema_evolution_allowed";
+  public static final String STORE_LIFECYCLE_HOOKS_LIST = "store_lifecycle_hooks_list";
 
   /**
    * Params for repush job

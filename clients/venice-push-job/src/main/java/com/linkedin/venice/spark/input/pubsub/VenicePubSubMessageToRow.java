@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.DefaultPubSubMessage;
+import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow;
@@ -26,14 +27,9 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
   public static InternalRow convertPubSubMessageToRow(
       @NotNull DefaultPubSubMessage pubSubMessage,
       String region,
-      int partitionNumber) {
-    return new VenicePubSubMessageToRow().convert(pubSubMessage, region, partitionNumber);
-  }
-
-  static byte[] loadRemainingBytes(ByteBuffer buffer) {
-    byte[] bytes = new byte[buffer.remaining()];
-    buffer.get(bytes); // this stamps the bytes with contents of the buffer
-    return bytes;
+      int partitionNumber,
+      long offset) {
+    return new VenicePubSubMessageToRow().convert(pubSubMessage, region, partitionNumber, offset);
   }
 
   /**
@@ -56,14 +52,17 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
    *         See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
    */
   @Override
-  public InternalRow convert(@NotNull DefaultPubSubMessage pubSubMessage, String region, int partitionNumber) {
+  public InternalRow convert(
+      @NotNull DefaultPubSubMessage pubSubMessage,
+      String region,
+      int partitionNumber,
+      long offset) {
 
     KafkaKey pubSubMessageKey = pubSubMessage.getKey();
     KafkaMessageEnvelope pubSubMessageValue = pubSubMessage.getValue();
     MessageType pubSubMessageType = MessageType.valueOf(pubSubMessageValue);
 
     // Spark row setup :
-    long offset = pubSubMessage.getPosition().getNumericOffset();
     ByteBuffer key = ByteBuffer.wrap(pubSubMessageKey.getKey(), 0, pubSubMessageKey.getKeyLength());
     ByteBuffer value;
     int messageType;
@@ -98,13 +97,12 @@ public class VenicePubSubMessageToRow implements PubSubMessageConverter {
         // we don't care about messages other than PUT and DELETE
     }
 
-    byte[] keyBytes = loadRemainingBytes(key);
-    byte[] valueBytes = loadRemainingBytes(value);
-    byte[] replicationMetadataPayloadBytes = loadRemainingBytes(replicationMetadataPayload);
-
-    // See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
+    /**
+     *  See {@link com.linkedin.venice.spark.SparkConstants#RAW_PUBSUB_INPUT_TABLE_SCHEMA} for the schema definition.
+     */
     return new GenericInternalRow(
-        new Object[] { region, partitionNumber, messageType, offset, schemaId, keyBytes, valueBytes,
-            replicationMetadataPayloadBytes, replicationMetadataVersionId });
+        new Object[] { region, partitionNumber, messageType, offset, schemaId, ByteUtils.extractByteArray(key),
+            ByteUtils.extractByteArray(value), ByteUtils.extractByteArray(replicationMetadataPayload),
+            replicationMetadataVersionId });
   }
 }

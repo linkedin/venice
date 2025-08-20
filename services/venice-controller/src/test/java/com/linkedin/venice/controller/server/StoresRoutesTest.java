@@ -18,6 +18,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
+import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.RepushJobResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
@@ -31,11 +32,14 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ObjectMapperFactory;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.testng.Assert;
@@ -140,7 +144,7 @@ public class StoresRoutesTest {
   public void testMigrateStore() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class, RETURNS_DEEP_STUBS);
     String DEST_CLUSTER = "dest_cluster";
-    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(TEST_CLUSTER);
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME)).thenReturn(TEST_CLUSTER);
     Request request = mock(Request.class);
     doReturn(LEADER_CONTROLLER.getPath()).when(request).pathInfo();
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
@@ -185,7 +189,7 @@ public class StoresRoutesTest {
   public void testCleanExecutionIds() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class, RETURNS_DEEP_STUBS);
     String DEST_CLUSTER = "dest_cluster";
-    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(TEST_CLUSTER);
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME)).thenReturn(TEST_CLUSTER);
     Request request = mock(Request.class);
     doReturn(LEADER_CONTROLLER.getPath()).when(request).pathInfo();
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
@@ -357,7 +361,7 @@ public class StoresRoutesTest {
   public void testAutoMigrateStore() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class, RETURNS_DEEP_STUBS);
     String DEST_CLUSTER = "dest_cluster";
-    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(TEST_CLUSTER);
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME)).thenReturn(TEST_CLUSTER);
     Request request = mock(Request.class);
     doReturn(LEADER_CONTROLLER.getPath()).when(request).pathInfo();
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
@@ -381,7 +385,7 @@ public class StoresRoutesTest {
 
     // Bad Request Path:
     // 1. Store belongs to destination cluster
-    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(DEST_CLUSTER);
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME)).thenReturn(DEST_CLUSTER);
 
     trackableControllerResponse = ObjectMapperFactory.getInstance()
         .readValue(migrateStoreRoute.handle(request, mock(Response.class)).toString(), StoreMigrationResponse.class);
@@ -393,7 +397,7 @@ public class StoresRoutesTest {
 
     // 2. Store doesn't belong to the source cluster
     String EXTRA_CLUSTER = "extra_cluster";
-    when(mockAdmin.discoverCluster(TEST_STORE_NAME).getFirst()).thenReturn(EXTRA_CLUSTER);
+    when(mockAdmin.discoverCluster(TEST_STORE_NAME)).thenReturn(EXTRA_CLUSTER);
     trackableControllerResponse = ObjectMapperFactory.getInstance()
         .readValue(migrateStoreRoute.handle(request, mock(Response.class)).toString(), StoreMigrationResponse.class);
     Assert.assertTrue(trackableControllerResponse.isError());
@@ -427,5 +431,72 @@ public class StoresRoutesTest {
             SystemStoreHeartbeatResponse.class);
     Assert.assertEquals(multiStoreStatusResponse.getCluster(), TEST_CLUSTER);
     Assert.assertEquals(multiStoreStatusResponse.getHeartbeatTimestamp(), 100L);
+  }
+
+  /**
+   * Test the parameter handling of the getDeadStores API.
+   */
+  @Test
+  public void testGetDeadStoresParameterHandling() throws Exception {
+    Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(true).when(mockAdmin).isLeaderControllerFor(TEST_CLUSTER);
+
+    // Mock the response data
+    StoreInfo mockStoreInfo = new StoreInfo();
+    mockStoreInfo.setName(TEST_STORE_NAME);
+    mockStoreInfo.setIsStoreDead(true);
+    List<StoreInfo> mockStoreList = Arrays.asList(mockStoreInfo);
+    doReturn(mockStoreList).when(mockAdmin).getDeadStores(eq(TEST_CLUSTER), eq(TEST_STORE_NAME), any(Map.class));
+
+    // Test 1: No parameters (both if conditions false - covers 4 branches)
+    Request request1 = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request1).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request1).queryParams(eq(ControllerApiConstants.NAME));
+    doReturn(null).when(request1).queryParams(eq(ControllerApiConstants.INCLUDE_SYSTEM_STORES));
+    doReturn(null).when(request1).queryParams(eq(ControllerApiConstants.LOOK_BACK_MS));
+
+    Route getDeadStoresRoute =
+        new StoresRoutes(false, Optional.empty(), pubSubTopicRepository).getDeadStores(mockAdmin);
+    MultiStoreInfoResponse response1 = ObjectMapperFactory.getInstance()
+        .readValue(getDeadStoresRoute.handle(request1, mock(Response.class)).toString(), MultiStoreInfoResponse.class);
+    Assert.assertEquals(response1.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(response1.getStoreInfoList().size(), 1);
+
+    // Test 2: includeSystemStores parameter only (first if true, second if false - covers 2 branches)
+    Request request2 = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request2).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request2).queryParams(eq(ControllerApiConstants.NAME));
+    doReturn("true").when(request2).queryParams(eq(ControllerApiConstants.INCLUDE_SYSTEM_STORES));
+    doReturn(null).when(request2).queryParams(eq(ControllerApiConstants.LOOK_BACK_MS));
+
+    MultiStoreInfoResponse response2 = ObjectMapperFactory.getInstance()
+        .readValue(getDeadStoresRoute.handle(request2, mock(Response.class)).toString(), MultiStoreInfoResponse.class);
+    Assert.assertEquals(response2.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(response2.getStoreInfoList().size(), 1);
+
+    // Test 3: lookBackMS parameter only (first if false, second if true - covers 2 branches)
+    Request request3 = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request3).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request3).queryParams(eq(ControllerApiConstants.NAME));
+    doReturn("").when(request3).queryParams(eq(ControllerApiConstants.INCLUDE_SYSTEM_STORES)); // empty string should
+                                                                                               // not be added to params
+    doReturn("30000").when(request3).queryParams(eq(ControllerApiConstants.LOOK_BACK_MS));
+
+    MultiStoreInfoResponse response3 = ObjectMapperFactory.getInstance()
+        .readValue(getDeadStoresRoute.handle(request3, mock(Response.class)).toString(), MultiStoreInfoResponse.class);
+    Assert.assertEquals(response3.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(response3.getStoreInfoList().size(), 1);
+
+    // Test 4: Both parameters (both if conditions true - covers remaining branches)
+    Request request4 = mock(Request.class);
+    doReturn(TEST_CLUSTER).when(request4).queryParams(eq(ControllerApiConstants.CLUSTER));
+    doReturn(TEST_STORE_NAME).when(request4).queryParams(eq(ControllerApiConstants.NAME));
+    doReturn("false").when(request4).queryParams(eq(ControllerApiConstants.INCLUDE_SYSTEM_STORES));
+    doReturn("60000").when(request4).queryParams(eq(ControllerApiConstants.LOOK_BACK_MS));
+
+    MultiStoreInfoResponse response4 = ObjectMapperFactory.getInstance()
+        .readValue(getDeadStoresRoute.handle(request4, mock(Response.class)).toString(), MultiStoreInfoResponse.class);
+    Assert.assertEquals(response4.getCluster(), TEST_CLUSTER);
+    Assert.assertEquals(response4.getStoreInfoList().size(), 1);
   }
 }

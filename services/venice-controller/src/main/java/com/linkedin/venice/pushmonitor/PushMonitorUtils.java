@@ -33,8 +33,6 @@ public class PushMonitorUtils {
     switch (errorReplicaStatus) {
       case DVC_INGESTION_ERROR_DISK_FULL:
         return " due to disk threshold reached";
-      case DVC_INGESTION_ERROR_MEMORY_LIMIT_REACHED:
-        return " due to memory limit reached";
       default:
         return "";
     }

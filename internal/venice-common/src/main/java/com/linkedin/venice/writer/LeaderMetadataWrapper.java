@@ -1,6 +1,6 @@
 package com.linkedin.venice.writer;
 
-import java.nio.ByteBuffer;
+import com.linkedin.venice.pubsub.api.PubSubPosition;
 import java.util.Map;
 import java.util.Set;
 
@@ -11,35 +11,28 @@ import java.util.Set;
  */
 
 public class LeaderMetadataWrapper {
-  private final long upstreamOffset;
+  private final PubSubPosition upstreamPosition;
   private final int upstreamKafkaClusterId;
   private final Map<String, Set<Integer>> viewPartitionMap;
-  private final ByteBuffer upstreamPubSubPosition;
   private final long termId;
 
-  public LeaderMetadataWrapper(
-      long upstreamOffset,
-      int upstreamKafkaClusterId,
-      long termId,
-      ByteBuffer upstreamPubSubPosition) {
-    this(upstreamOffset, upstreamKafkaClusterId, termId, upstreamPubSubPosition, null);
+  public LeaderMetadataWrapper(PubSubPosition upstreamPosition, int upstreamKafkaClusterId, long termId) {
+    this(upstreamPosition, upstreamKafkaClusterId, termId, null);
   }
 
   public LeaderMetadataWrapper(
-      long upstreamOffset,
+      PubSubPosition upstreamPosition,
       int upstreamKafkaClusterId,
       long termId,
-      ByteBuffer upstreamPubSubPosition,
       Map<String, Set<Integer>> viewPartitionMap) {
-    this.upstreamOffset = upstreamOffset;
+    this.upstreamPosition = upstreamPosition;
     this.upstreamKafkaClusterId = upstreamKafkaClusterId;
     this.termId = termId;
-    this.upstreamPubSubPosition = upstreamPubSubPosition;
     this.viewPartitionMap = viewPartitionMap;
   }
 
-  public long getUpstreamOffset() {
-    return upstreamOffset;
+  public PubSubPosition getUpstreamPosition() {
+    return upstreamPosition;
   }
 
   public int getUpstreamKafkaClusterId() {
@@ -48,10 +41,6 @@ public class LeaderMetadataWrapper {
 
   public Map<String, Set<Integer>> getViewPartitionMap() {
     return viewPartitionMap;
-  }
-
-  public ByteBuffer getUpstreamPubSubPosition() {
-    return upstreamPubSubPosition;
   }
 
   public long getTermId() {

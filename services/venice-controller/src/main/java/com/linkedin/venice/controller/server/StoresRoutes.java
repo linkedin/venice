@@ -11,6 +11,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HEARTBEAT_TIMESTAMP;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_ABORT_MIGRATION_CLEANUP;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOOK_BACK_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
@@ -120,6 +121,7 @@ import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -448,7 +450,7 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(destClusterName);
         veniceResponse.setName(storeName);
 
-        String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+        String clusterDiscovered = admin.discoverCluster(storeName);
         // Store should belong to src cluster already
         if (!clusterDiscovered.equals(srcClusterName)) {
           veniceResponse.setError(
@@ -503,7 +505,7 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(destClusterName);
         veniceResponse.setName(storeName);
 
-        String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+        String clusterDiscovered = admin.discoverCluster(storeName);
         // Store should belong to src cluster already
         if (!clusterDiscovered.equals(srcClusterName)) {
           veniceResponse.setError(
@@ -543,12 +545,12 @@ public class StoresRoutes extends AbstractRoute {
 
           veniceResponse.setName(storeName);
 
-          String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          String clusterDiscovered = admin.discoverCluster(storeName);
           veniceResponse.setSrcClusterName(clusterDiscovered);
 
           admin.abortMigration(srcClusterName, destClusterName, storeName);
 
-          clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          clusterDiscovered = admin.discoverCluster(storeName);
           veniceResponse.setCluster(clusterDiscovered);
         } catch (Throwable e) {
           veniceResponse.setError(e);
@@ -584,7 +586,7 @@ public class StoresRoutes extends AbstractRoute {
           storeMigrationResponse.setCluster(destClusterName);
           storeMigrationResponse.setName(storeName);
 
-          String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          String clusterDiscovered = admin.discoverCluster(storeName);
           // Store should not belong to dest cluster already
           if (clusterDiscovered.equals(destClusterName)) {
             storeMigrationResponse
@@ -994,7 +996,7 @@ public class StoresRoutes extends AbstractRoute {
           allStoreTopics.forEach((storeName, topicsWithRetention) -> {
             String cluster;
             try {
-              cluster = admin.discoverCluster(storeName).getFirst();
+              cluster = admin.discoverCluster(storeName);
             } catch (VeniceNoStoreException e) {
               LOGGER.warn("Store " + storeName + " does not exist. Skipping it.");
               return;
@@ -1134,7 +1136,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#getDeadStores(String, String, boolean)
+   * @see Admin#getDeadStores(String, String, Map)
    */
   public Route getDeadStores(Admin admin) {
     return new VeniceRouteHandler<MultiStoreInfoResponse>(MultiStoreInfoResponse.class) {
@@ -1143,8 +1145,24 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, GET_DEAD_STORES.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        boolean includeSystemStores = Boolean.parseBoolean(request.queryParams(INCLUDE_SYSTEM_STORES));
-        List<StoreInfo> storeList = admin.getDeadStores(cluster, storeName, includeSystemStores);
+
+        // Collect all parameters into a map for extensibility
+        Map<String, String> params = new HashMap<>();
+
+        // Include system stores parameter
+        String includeSystemStoresParam = request.queryParams(INCLUDE_SYSTEM_STORES);
+        if (includeSystemStoresParam != null && !includeSystemStoresParam.isEmpty()) {
+          params.put(INCLUDE_SYSTEM_STORES, includeSystemStoresParam);
+        }
+
+        // Look back MS parameter
+        String lookBackMSParam = request.queryParams(LOOK_BACK_MS);
+        if (lookBackMSParam != null && !lookBackMSParam.isEmpty()) {
+          params.put(LOOK_BACK_MS, lookBackMSParam);
+        }
+
+        List<StoreInfo> storeList = admin.getDeadStores(cluster, storeName, params);
+        veniceResponse.setCluster(cluster);
         veniceResponse.setStoreInfoList(storeList);
       }
     };
