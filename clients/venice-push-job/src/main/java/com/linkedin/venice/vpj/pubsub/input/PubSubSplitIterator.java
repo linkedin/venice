@@ -185,10 +185,11 @@ public class PubSubSplitIterator implements AutoCloseable {
     }
     float progress = Math.min(1.0f, ((float) readSoFar / targetCount));
 
-    // Throttled progress logging (every >=1% change)
-    if (lastLoggedProgress < 0.0f || Math.abs(progress - lastLoggedProgress) >= 0.01f) {
+    // Throttled progress logging (every >=1% change or 100% completion)
+    if (lastLoggedProgress < 0.0f || Math.abs(progress - lastLoggedProgress) >= 0.01f
+        || (progress >= 1.0f && lastLoggedProgress < 1.0f)) {
       LOGGER.info(
-          "PubSubSplitIterator progress for {}: read={} / {}, delivered={}, skipped={}, progress={}%",
+          "PubSubSplitIterator progress for: {} read: {} / {}, delivered: {}, skipped: {}, progress: {}%",
           topicPartition,
           readSoFar,
           targetCount,
