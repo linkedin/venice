@@ -255,6 +255,7 @@ public class VenicePushJob implements AutoCloseable {
   private PushJobHeartbeatSender pushJobHeartbeatSender = null;
   private volatile boolean pushJobStatusUploadDisabledHasBeenLogged = false;
   private final ScheduledExecutorService timeoutExecutor;
+  private static final int VERSION_SWAP_BUFFER_TIME_MINUTES = 20;
 
   /**
    * @param jobId  id of the job
@@ -2587,7 +2588,7 @@ public class VenicePushJob implements AutoCloseable {
 
           long timeoutTimeMs =
               versionSwapStartTimeMs + TimeUnit.MINUTES.toMillis(parentStoreInfo.getTargetRegionSwapWaitTime())
-                  + pushJobSetting.jobStatusInUnknownStateTimeoutMs;
+                  + TimeUnit.MINUTES.toMillis(VERSION_SWAP_BUFFER_TIME_MINUTES);
           if (versionSwapStartTimeMs > 0
               && LatencyUtils.getElapsedTimeFromMsToMs(versionSwapStartTimeMs) > timeoutTimeMs) {
             throw new VeniceException(
