@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import static com.linkedin.venice.zk.VeniceZkPaths.CLUSTER_CONFIG;
+import static com.linkedin.venice.zk.VeniceZkPaths.DARK_CLUSTER_CONFIG;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.DarkClusterConfig;
@@ -17,8 +17,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class is used to cache dark cluster configs.
- * The expected users are all venice-backend components.
+ * This class is used to configure dark cluster.
  */
 public class HelixReadOnlyDarkClusterConfigRepository implements ReadOnlyDarkClusterConfigRepository {
   private static final Logger LOGGER = LogManager.getLogger(HelixReadOnlyDarkClusterConfigRepository.class);
@@ -34,7 +33,7 @@ public class HelixReadOnlyDarkClusterConfigRepository implements ReadOnlyDarkClu
   // Listener to handle modifications to cluster config
   private final IZkDataListener clusterConfigListener = new ClusterConfigZkListener();
 
-  private static final String CLUSTER_CONFIG_PATH = "/" + CLUSTER_CONFIG;
+  private static final String CLUSTER_CONFIG_PATH = "/" + DARK_CLUSTER_CONFIG;
 
   public HelixReadOnlyDarkClusterConfigRepository(
       ZkClient zkClient,

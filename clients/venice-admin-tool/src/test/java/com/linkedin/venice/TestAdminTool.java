@@ -23,6 +23,7 @@ import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
+import com.linkedin.venice.controllerapi.UpdateDarkClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.LifecycleHooksRecord;
@@ -138,6 +139,22 @@ public class TestAdminTool {
         (int) serverKafkaFetchQuotaRecordsPerSecond.get().get(regionName),
         kafkaFetchQuota,
         "Kafka fetch quota has incorrect info for region");
+  }
+
+  @Test
+  public void testAdminUpdateDarkClusterConfigArg() throws ParseException, IOException {
+    String controllerUrl = "controllerUrl";
+    String clusterName = "clusterName";
+    String storeNames = "store1,store2,store3";
+
+    String[] args =
+        { "--update-dark-cluster-config", "--url", controllerUrl, "--cluster", clusterName, "--stores", storeNames };
+
+    CommandLine commandLine = AdminTool.getCommandLine(args);
+    UpdateDarkClusterConfigQueryParams params = AdminTool.getUpdateDarkClusterConfigQueryParams(commandLine);
+    Optional<List<String>> targetStores = params.getTargetStores();
+    Assert.assertTrue(targetStores.isPresent(), "Target stores not parsed from args");
+    Assert.assertEquals(targetStores.get().size(), 3);
   }
 
   @Test
